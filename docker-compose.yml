@@ -15,6 +15,7 @@ services:
       retries: 12
 
   app:
+    image: ghcr.io/darthvauban/baner-grid-builder:latest
     build: .
     restart: unless-stopped
     env_file:
