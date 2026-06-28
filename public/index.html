@@ -27,7 +27,7 @@
 
       <div class="mt-auth__message" id="auth-message" role="status" hidden></div>
 
-      <form class="mt-auth__form" id="login-form">
+      <form class="mt-auth__form" id="login-form" method="post">
         <label class="mt-banner-builder__field">
           <span class="mt-banner-builder__label">Email</span>
           <input class="mt-banner-builder__input" name="email" type="email" autocomplete="email" required>
@@ -39,7 +39,7 @@
         <button class="mt-banner-builder__button mt-banner-builder__button--primary" type="submit">Увійти</button>
       </form>
 
-      <form class="mt-auth__form" id="register-form" hidden>
+      <form class="mt-auth__form" id="register-form" method="post" hidden>
         <label class="mt-banner-builder__field">
           <span class="mt-banner-builder__label">Ім’я</span>
           <input class="mt-banner-builder__input" name="name" type="text" autocomplete="name" minlength="2" required>

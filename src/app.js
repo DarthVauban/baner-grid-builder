@@ -23,6 +23,7 @@ app.disable('x-powered-by');
 
 app.use(helmet({
   contentSecurityPolicy: {
+    useDefaults: false,
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
@@ -31,10 +32,10 @@ app.use(helmet({
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
-      frameAncestors: ["'none'"],
-      upgradeInsecureRequests: null
+      frameAncestors: ["'none'"]
     }
   },
+  hsts: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
