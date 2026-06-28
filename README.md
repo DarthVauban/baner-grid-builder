@@ -1,0 +1,82 @@
+# MT Banner Grid Builder
+
+Вебзастосунок для створення банерних сіток і коду товарних вибірок для Хорошопу.
+
+## Можливості
+
+- реєстрація та авторизація через захищену `httpOnly` cookie;
+- ролі `admin` і `user`;
+- нові користувачі отримують статус `pending`;
+- admin схвалює або відхиляє користувачів у вкладці **Користувачі**;
+- персональні бібліотеки банерних сіток і окремих банерів;
+- пошук, створення, редагування та видалення записів;
+- PostgreSQL замість `localStorage`;
+- автоматичні SQL-міграції та створення початкового admin;
+- запуск через Docker Compose.
+
+## Архітектура
+
+```text
+public/                  клієнтський застосунок
+  assets/css/
+  assets/js/
+src/
+  config/                конфігурація середовища
+  db/                    PostgreSQL pool і runner міграцій
+  migrations/            SQL-міграції
+  middleware/            авторизація та обробка помилок
+  modules/
+    auth/                 реєстрація, вхід, поточний користувач
+    admin/                approval і ролі користувачів
+    grids/                CRUD банерних сіток
+    banners/              CRUD окремих банерів
+    users/                bootstrap admin
+```
+
+## Запуск у Docker
+
+1. Створіть `.env` на основі `.env.example`.
+2. Обов’язково замініть `POSTGRES_PASSWORD`, `JWT_SECRET` і `ADMIN_PASSWORD`.
+3. Для локального HTTP залиште `COOKIE_SECURE=false`; на HTTPS-сервері встановіть `COOKIE_SECURE=true`.
+4. Запустіть:
+
+```bash
+docker compose up -d --build
+```
+
+Застосунок буде доступний на `http://localhost:3000` або на порту з `APP_PORT`.
+
+Під час першого старту сервер застосує міграції та створить admin із `ADMIN_EMAIL` і `ADMIN_PASSWORD`. Якщо користувач із цим email уже існує, сервер надасть йому роль `admin` і статус `approved`, але не змінюватиме пароль.
+
+## Локальний запуск
+
+Потрібні Node.js 20+ і PostgreSQL 14+.
+
+```bash
+npm install
+npm run dev
+```
+
+Значення `DATABASE_URL` у `.env` має вказувати на локальну PostgreSQL.
+
+## Основні REST endpoint-и
+
+| Метод | Endpoint | Доступ | Призначення |
+|---|---|---|---|
+| POST | `/api/auth/register` | public | Реєстрація user зі статусом `pending` |
+| POST | `/api/auth/login` | public | Вхід лише для `approved` |
+| POST | `/api/auth/logout` | user | Завершення сесії |
+| GET | `/api/auth/me` | user | Поточний користувач |
+| GET | `/api/admin/users` | admin | Список і пошук користувачів |
+| PATCH | `/api/admin/users/:id/status` | admin | Approval або rejection |
+| PATCH | `/api/admin/users/:id/role` | admin | Зміна ролі |
+| GET/POST | `/api/grids` | user | Список і створення сіток |
+| GET/PUT/DELETE | `/api/grids/:id` | owner | Робота з конкретною сіткою |
+| GET/POST | `/api/banners` | user | Список і створення банерів |
+| GET/PUT/DELETE | `/api/banners/:id` | owner | Робота з конкретним банером |
+
+Усі записи сіток і банерів фільтруються за `user_id`: користувач не може читати чи змінювати чужі дані.
+
+## Резервне копіювання БД
+
+Дані PostgreSQL зберігаються у Docker volume `banner_db_data`. Перед оновленням сервера варто робити `pg_dump`.

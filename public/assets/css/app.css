@@ -1,0 +1,271 @@
+:root {
+  color-scheme: light;
+  background: #f5f5f1;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: #f5f5f1;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.mt-banner-builder__clipboard-helper {
+  position: fixed;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mt-auth {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.mt-auth__card {
+  width: min(100%, 520px);
+  padding: clamp(26px, 6vw, 48px);
+  border: 1px solid #deded6;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(18, 18, 15, .12);
+}
+
+.mt-auth__brand {
+  margin-bottom: 28px;
+}
+
+.mt-auth__title {
+  margin: 0;
+  color: #11110f;
+  font-size: clamp(36px, 8vw, 58px);
+  font-weight: 900;
+  line-height: .95;
+  letter-spacing: -.055em;
+}
+
+.mt-auth__intro {
+  margin: 18px 0 0;
+  color: #6d6d64;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.mt-auth__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding: 5px;
+  border-radius: 14px;
+  background: #f0f0ea;
+}
+
+.mt-auth__tab {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  background: transparent;
+  color: #6d6d64;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.mt-auth__tab--active {
+  background: #11110f;
+  color: #fff;
+}
+
+.mt-auth__form {
+  display: grid;
+  gap: 16px;
+}
+
+.mt-auth__form .mt-banner-builder__button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.mt-auth__hint {
+  color: #6d6d64;
+  font-size: 12px;
+}
+
+.mt-auth__message {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #edfaee;
+  color: #17702a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.mt-auth__message--error {
+  background: #fff0ee;
+  color: #c93424;
+}
+
+.mt-account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid #deded6;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.mt-account-bar strong,
+.mt-account-bar span {
+  display: block;
+}
+
+.mt-account-bar strong {
+  color: #11110f;
+  font-size: 14px;
+}
+
+.mt-account-bar span {
+  margin-top: 3px;
+  color: #6d6d64;
+  font-size: 12px;
+}
+
+.mt-admin__filters {
+  display: flex;
+  flex: 0 1 580px;
+  align-items: end;
+  gap: 10px;
+}
+
+.mt-admin__filters .mt-banner-builder__search {
+  flex: 1 1 auto;
+}
+
+.mt-admin__users {
+  display: grid;
+  gap: 10px;
+}
+
+.mt-admin__user {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 15px 16px;
+  border: 1px solid #deded6;
+  border-radius: 14px;
+  background: #fafaf7;
+}
+
+.mt-admin__identity {
+  min-width: 0;
+}
+
+.mt-admin__identity strong,
+.mt-admin__identity span {
+  display: block;
+}
+
+.mt-admin__identity strong {
+  overflow: hidden;
+  color: #11110f;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mt-admin__identity span {
+  overflow: hidden;
+  margin-top: 4px;
+  color: #6d6d64;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mt-admin__badges,
+.mt-admin__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.mt-admin__badge {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #efefe9;
+  color: #54544d;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.mt-admin__badge--approved {
+  background: #edfaee;
+  color: #17702a;
+}
+
+.mt-admin__badge--pending {
+  background: #fff7c9;
+  color: #766700;
+}
+
+.mt-admin__badge--rejected {
+  background: #fff0ee;
+  color: #c93424;
+}
+
+.mt-admin__actions .mt-banner-builder__button {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+@media (max-width: 860px) {
+  .mt-admin__user {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .mt-admin__badges,
+  .mt-admin__actions {
+    justify-content: flex-start;
+  }
+
+  .mt-admin__filters {
+    width: 100%;
+    flex-basis: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .mt-auth {
+    padding: 10px;
+  }
+
+  .mt-auth__card {
+    border-radius: 18px;
+  }
+
+  .mt-account-bar,
+  .mt-admin__filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

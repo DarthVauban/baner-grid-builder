@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Конструктор банерної сітки</title>
+  <link rel="stylesheet" href="/assets/css/builder.css">
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <script src="/assets/js/api.js" defer></script>
+  <script src="/assets/js/builder.js" defer></script>
+  <script src="/assets/js/admin.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+</head>
+<body>
+  <section class="mt-auth" id="auth-screen">
+    <div class="mt-auth__card">
+      <div class="mt-auth__brand">
+        <p class="mt-banner-builder__eyebrow">Mobile Trend tools</p>
+        <h1 class="mt-auth__title">Конструктор банерів</h1>
+        <p class="mt-auth__intro">Увійдіть або створіть обліковий запис. Нових користувачів має схвалити адміністратор.</p>
+      </div>
+
+      <div class="mt-auth__tabs" role="tablist" aria-label="Авторизація">
+        <button class="mt-auth__tab mt-auth__tab--active" type="button" data-auth-target="login-form">Вхід</button>
+        <button class="mt-auth__tab" type="button" data-auth-target="register-form">Реєстрація</button>
+      </div>
+
+      <div class="mt-auth__message" id="auth-message" role="status" hidden></div>
+
+      <form class="mt-auth__form" id="login-form">
+        <label class="mt-banner-builder__field">
+          <span class="mt-banner-builder__label">Email</span>
+          <input class="mt-banner-builder__input" name="email" type="email" autocomplete="email" required>
+        </label>
+        <label class="mt-banner-builder__field">
+          <span class="mt-banner-builder__label">Пароль</span>
+          <input class="mt-banner-builder__input" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="mt-banner-builder__button mt-banner-builder__button--primary" type="submit">Увійти</button>
+      </form>
+
+      <form class="mt-auth__form" id="register-form" hidden>
+        <label class="mt-banner-builder__field">
+          <span class="mt-banner-builder__label">Ім’я</span>
+          <input class="mt-banner-builder__input" name="name" type="text" autocomplete="name" minlength="2" required>
+        </label>
+        <label class="mt-banner-builder__field">
+          <span class="mt-banner-builder__label">Email</span>
+          <input class="mt-banner-builder__input" name="email" type="email" autocomplete="email" required>
+        </label>
+        <label class="mt-banner-builder__field">
+          <span class="mt-banner-builder__label">Пароль</span>
+          <input class="mt-banner-builder__input" name="password" type="password" autocomplete="new-password" minlength="10" required>
+          <small class="mt-auth__hint">Щонайменше 10 символів.</small>
+        </label>
+        <button class="mt-banner-builder__button mt-banner-builder__button--primary" type="submit">Зареєструватися</button>
+      </form>
+    </div>
+  </section>
+
+  <main class="mt-banner-builder" id="builder-app" hidden>
+    <section class="mt-account-bar" aria-label="Обліковий запис">
+      <div>
+        <strong id="current-user-name"></strong>
+        <span id="current-user-meta"></span>
+      </div>
+      <button class="mt-banner-builder__button mt-banner-builder__button--secondary" id="logout-button" type="button">
+        Вийти
+      </button>
+    </section>
+
+    <header class="mt-banner-builder__hero">
+      <p class="mt-banner-builder__eyebrow">Сумісно з Хорошоп</p>
+      <h1 class="mt-banner-builder__heading">Банерна сітка</h1>
+      <p class="mt-banner-builder__intro">
+        Створіть банери та скопіюйте готовий фрагмент з HTML і CSS.
+      </p>
+    </header>
+
+    <nav class="mt-banner-builder__tabs" aria-label="Розділи конструктора">
+      <button class="mt-banner-builder__tab mt-banner-builder__tab--active" type="button" data-tab-target="banner-grid-page">
+        Банерна сітка
+      </button>
+      <button class="mt-banner-builder__tab" type="button" data-tab-target="products-code-page">
+        Вибірка товарів
+      </button>
+      <button class="mt-banner-builder__tab" type="button" data-tab-target="saved-grids-page">
+        Збережені сітки
+      </button>
+      <button class="mt-banner-builder__tab" type="button" data-tab-target="saved-banners-page">
+        Збережені банери
+      </button>
+      <button class="mt-banner-builder__tab" id="admin-users-tab" type="button" data-tab-target="admin-users-page" hidden>
+        Користувачі
+      </button>
+    </nav>
+
+    <section class="mt-banner-builder__page mt-banner-builder__page--active" id="banner-grid-page">
+      <section class="mt-banner-builder__workspace-bar" aria-label="Керування банерною сіткою">
+        <label class="mt-banner-builder__field mt-banner-builder__workspace-name">
+          <span class="mt-banner-builder__label">Назва банерної сітки</span>
+          <input class="mt-banner-builder__input" id="grid-name" type="text" maxlength="160"
+            placeholder="Наприклад, Літній розпродаж">
+        </label>
+        <span class="mt-banner-builder__editing-state" id="grid-editing-state" hidden></span>
+        <div class="mt-banner-builder__workspace-actions">
+          <button class="mt-banner-builder__button mt-banner-builder__button--secondary" id="new-grid" type="button">
+            Нова сітка
+          </button>
+          <button class="mt-banner-builder__button mt-banner-builder__button--primary" id="save-grid" type="button">
+            Зберегти сітку
+          </button>
+        </div>
+      </section>
+
+      <div class="mt-banner-builder__layout">
+        <section class="mt-banner-builder__panel" aria-labelledby="forms-title">
+          <div class="mt-banner-builder__section-head">
+            <div>
+              <p class="mt-banner-builder__step">Крок 1</p>
+              <h2 class="mt-banner-builder__section-title" id="forms-title">Дані банерів</h2>
+            </div>
+            <span class="mt-banner-builder__counter" id="banner-counter">1 банер</span>
+          </div>
+
+          <div class="mt-banner-builder__forms" id="banner-forms"></div>
+
+          <button class="mt-banner-builder__button mt-banner-builder__button--add" id="add-banner" type="button">
+            + Додати банер
+          </button>
+        </section>
+
+        <section class="mt-banner-builder__panel mt-banner-builder__preview-panel" aria-labelledby="preview-title">
+          <div class="mt-banner-builder__section-head">
+            <div>
+              <p class="mt-banner-builder__step">Крок 2</p>
+              <h2 class="mt-banner-builder__section-title" id="preview-title">Live preview</h2>
+            </div>
+            <span class="mt-banner-builder__live">Наживо</span>
+          </div>
+
+          <div class="mt-banner-builder__preview">
+            <div class="mt-banner-grid" id="banner-preview"></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="mt-banner-builder__panel mt-banner-builder__code-panel" aria-labelledby="code-title">
+        <div class="mt-banner-builder__section-head mt-banner-builder__section-head--code">
+          <div>
+            <p class="mt-banner-builder__step">Крок 3</p>
+            <h2 class="mt-banner-builder__section-title" id="code-title">Готовий HTML + CSS</h2>
+            <p class="mt-banner-builder__section-note" id="code-summary"></p>
+          </div>
+          <button class="mt-banner-builder__button mt-banner-builder__button--primary" id="copy-all" type="button">
+            Копіювати HTML + CSS
+          </button>
+        </div>
+
+        <label class="mt-banner-builder__field mt-banner-builder__field--wide mt-banner-builder__share-field">
+          <span class="mt-banner-builder__label">Опис для шеру посилання</span>
+          <textarea class="mt-banner-builder__input mt-banner-builder__textarea" id="banner-share-description"
+            placeholder="Короткий опис, який має відображатися під заголовком сторінки при шері посилання"></textarea>
+        </label>
+
+        <textarea class="mt-banner-builder__code" id="generated-code" readonly spellcheck="false"
+          aria-label="Згенерований HTML та CSS код"></textarea>
+      </section>
+    </section>
+
+    <section class="mt-banner-builder__page" id="products-code-page" hidden>
+      <section class="mt-banner-builder__panel mt-banner-builder__products-panel" aria-labelledby="products-code-title">
+        <div class="mt-banner-builder__section-head mt-banner-builder__section-head--code">
+          <div>
+            <p class="mt-banner-builder__step">Окремий код</p>
+            <h2 class="mt-banner-builder__section-title" id="products-code-title">Вибірка товарів</h2>
+            <p class="mt-banner-builder__section-note">
+              Вставте цей фрагмент у режимі “Джерело” на сторінці Хорошопу.
+            </p>
+          </div>
+          <button class="mt-banner-builder__button mt-banner-builder__button--primary" id="copy-products-code" type="button">
+            Копіювати код
+          </button>
+        </div>
+
+        <div class="mt-banner-builder__products-settings" aria-label="Налаштування банера">
+          <div class="mt-banner-builder__fields">
+            <label class="mt-banner-builder__field mt-banner-builder__field--wide">
+              <span class="mt-banner-builder__label">Посилання на зображення банера</span>
+              <input class="mt-banner-builder__input" id="products-banner-image-url" type="text"
+                placeholder="https://example.com/banner.jpg">
+            </label>
+
+            <label class="mt-banner-builder__field">
+              <span class="mt-banner-builder__label">Посилання, куди веде банер</span>
+              <input class="mt-banner-builder__input" id="products-banner-link-url" type="text"
+                placeholder="https://example.com/sale/">
+            </label>
+
+            <label class="mt-banner-builder__field">
+              <span class="mt-banner-builder__label">Alt текст банера</span>
+              <input class="mt-banner-builder__input" id="products-banner-alt" type="text"
+                placeholder="Опис банера">
+            </label>
+
+            <label class="mt-banner-builder__field">
+              <span class="mt-banner-builder__label">Збільшення старої ціни, %</span>
+              <input class="mt-banner-builder__input" id="products-old-price-percent" type="number"
+                min="0" step="0.01" inputmode="decimal" placeholder="Наприклад, 10">
+            </label>
+
+            <label class="mt-banner-builder__field">
+              <span class="mt-banner-builder__label">Збільшення старої ціни, грн</span>
+              <input class="mt-banner-builder__input" id="products-old-price-fixed" type="number"
+                min="0" step="0.01" inputmode="decimal" placeholder="Наприклад, 300">
+            </label>
+          </div>
+        </div>
+
+        <label class="mt-banner-builder__field mt-banner-builder__field--wide mt-banner-builder__share-field">
+          <span class="mt-banner-builder__label">Опис для шеру посилання</span>
+          <textarea class="mt-banner-builder__input mt-banner-builder__textarea" id="products-share-description"
+            placeholder="Короткий опис, який має відображатися під заголовком сторінки при шері посилання"></textarea>
+        </label>
+
+        <textarea class="mt-banner-builder__code mt-banner-builder__code--products" id="products-code" readonly spellcheck="false"
+          aria-label="HTML, CSS та JS код для вибірки товарів"></textarea>
+
+        <section class="mt-banner-builder__global-code" aria-labelledby="global-product-script-title">
+          <div class="mt-banner-builder__section-head mt-banner-builder__section-head--code">
+            <div>
+              <p class="mt-banner-builder__step">Глобальний код</p>
+              <h3 class="mt-banner-builder__subsection-title" id="global-product-script-title">
+                Ціни на сторінці товару
+              </h3>
+              <p class="mt-banner-builder__section-note">
+                Встановіть цей код глобально на сайті. Він зчитує параметри переходу з картки товару.
+              </p>
+            </div>
+            <button class="mt-banner-builder__button mt-banner-builder__button--primary" id="copy-global-product-code" type="button">
+              Копіювати глобальний код
+            </button>
+          </div>
+
+          <textarea class="mt-banner-builder__code mt-banner-builder__code--global" id="global-product-code" readonly spellcheck="false"
+            aria-label="Глобальний код для відображення старої ціни на сторінці товару"></textarea>
+        </section>
+      </section>
+    </section>
+
+    <section class="mt-banner-builder__page" id="saved-grids-page" hidden>
+      <section class="mt-banner-builder__panel mt-banner-builder__library-panel" aria-labelledby="saved-grids-title">
+        <div class="mt-banner-builder__library-head">
+          <div>
+            <p class="mt-banner-builder__step">Бібліотека</p>
+            <h2 class="mt-banner-builder__section-title" id="saved-grids-title">Збережені сітки</h2>
+            <p class="mt-banner-builder__section-note" id="saved-grids-summary"></p>
+          </div>
+          <label class="mt-banner-builder__search">
+            <span class="mt-banner-builder__visually-hidden">Пошук сіток за назвою</span>
+            <input class="mt-banner-builder__input" id="saved-grids-search" type="search"
+              placeholder="Пошук за назвою">
+          </label>
+        </div>
+        <div class="mt-banner-builder__library" id="saved-grids-list"></div>
+      </section>
+    </section>
+
+    <section class="mt-banner-builder__page" id="saved-banners-page" hidden>
+      <section class="mt-banner-builder__panel mt-banner-builder__library-panel" aria-labelledby="saved-banners-title">
+        <div class="mt-banner-builder__library-head">
+          <div>
+            <p class="mt-banner-builder__step">Бібліотека</p>
+            <h2 class="mt-banner-builder__section-title" id="saved-banners-title">Збережені банери</h2>
+            <p class="mt-banner-builder__section-note" id="saved-banners-summary"></p>
+          </div>
+          <label class="mt-banner-builder__search">
+            <span class="mt-banner-builder__visually-hidden">Пошук банерів за назвою</span>
+            <input class="mt-banner-builder__input" id="saved-banners-search" type="search"
+              placeholder="Пошук за назвою">
+          </label>
+        </div>
+        <div class="mt-banner-builder__library" id="saved-banners-list"></div>
+      </section>
+    </section>
+
+    <section class="mt-banner-builder__page" id="admin-users-page" hidden>
+      <section class="mt-banner-builder__panel mt-banner-builder__library-panel" aria-labelledby="admin-users-title">
+        <div class="mt-banner-builder__library-head">
+          <div>
+            <p class="mt-banner-builder__step">Admin panel</p>
+            <h2 class="mt-banner-builder__section-title" id="admin-users-title">Користувачі</h2>
+            <p class="mt-banner-builder__section-note" id="admin-users-summary"></p>
+          </div>
+          <div class="mt-admin__filters">
+            <label class="mt-banner-builder__search">
+              <span class="mt-banner-builder__visually-hidden">Пошук користувачів</span>
+              <input class="mt-banner-builder__input" id="admin-users-search" type="search"
+                placeholder="Ім’я або email">
+            </label>
+            <label class="mt-banner-builder__field">
+              <span class="mt-banner-builder__visually-hidden">Статус користувача</span>
+              <select class="mt-banner-builder__input" id="admin-users-status">
+                <option value="">Усі статуси</option>
+                <option value="pending">Очікують</option>
+                <option value="approved">Схвалені</option>
+                <option value="rejected">Відхилені</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="mt-admin__users" id="admin-users-list"></div>
+      </section>
+    </section>
+
+    <div class="mt-banner-builder__toast" id="copy-toast" role="status" aria-live="polite"></div>
+  </main>
+
+  <template id="banner-form-template">
+    <article class="mt-banner-builder__item">
+      <div class="mt-banner-builder__item-head">
+        <div class="mt-banner-builder__item-title-wrap">
+          <span class="mt-banner-builder__item-number"></span>
+          <h3 class="mt-banner-builder__item-title"></h3>
+        </div>
+        <span class="mt-banner-builder__item-state">Не готовий</span>
+      </div>
+
+      <div class="mt-banner-builder__fields">
+        <label class="mt-banner-builder__field mt-banner-builder__field--wide">
+          <span class="mt-banner-builder__label">Заголовок банера *</span>
+          <input class="mt-banner-builder__input" name="title" type="text" maxlength="300"
+            placeholder="Знижки до -40% на всі смартфони" required>
+        </label>
+
+        <label class="mt-banner-builder__field">
+          <span class="mt-banner-builder__label">Дата завершення *</span>
+          <input class="mt-banner-builder__input" name="endDate" type="date" required>
+        </label>
+
+        <label class="mt-banner-builder__field">
+          <span class="mt-banner-builder__label">Час завершення</span>
+          <input class="mt-banner-builder__input" name="endTime" type="time">
+        </label>
+
+        <label class="mt-banner-builder__field mt-banner-builder__field--wide">
+          <span class="mt-banner-builder__label">Посилання на зображення *</span>
+          <input class="mt-banner-builder__input" name="imageUrl" type="text"
+            placeholder="https://example.com/image.jpg" required>
+        </label>
+
+        <label class="mt-banner-builder__field mt-banner-builder__field--wide">
+          <span class="mt-banner-builder__label">Посилання, куди веде банер *</span>
+          <input class="mt-banner-builder__input" name="targetUrl" type="text"
+            placeholder="https://example.com/sale/" required>
+        </label>
+
+        <label class="mt-banner-builder__check mt-banner-builder__field--wide">
+          <input class="mt-banner-builder__checkbox" name="disableWhenExpired" type="checkbox">
+          <span>
+            Вимикати банер після завершення акції
+            <small>Якщо дата минула, банер стане неклікабельним і чорно-білим.</small>
+          </span>
+        </label>
+      </div>
+
+      <div class="mt-banner-builder__item-actions">
+        <button class="mt-banner-builder__button mt-banner-builder__button--save-one" type="button">
+          Зберегти банер
+        </button>
+        <button class="mt-banner-builder__button mt-banner-builder__button--copy-one" type="button">
+          Копіювати тільки цей банер
+        </button>
+        <button class="mt-banner-builder__button mt-banner-builder__button--danger" type="button">
+          Видалити банер
+        </button>
+      </div>
+    </article>
+  </template>
+</body>
+</html>
