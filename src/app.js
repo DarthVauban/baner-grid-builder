@@ -28,6 +28,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'"],
+      fontSrc: ["'self'", 'data:'],
       imgSrc: ["'self'", 'data:', 'https:', 'http:'],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
@@ -36,6 +37,7 @@ app.use(helmet({
     }
   },
   hsts: false,
+  crossOriginOpenerPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
