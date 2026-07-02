@@ -5,8 +5,8 @@
   --mtb-yellow: #ffe001;
   --mtb-red: #c93424;
   box-sizing: border-box;
-  width: min(100% - 32px, 1520px);
-  margin: 28px auto 56px;
+  width: min(100%, 1520px);
+  margin: 0 auto 56px;
   color: var(--mtb-ink);
   font-family: Arial, sans-serif;
 }
@@ -766,8 +766,8 @@
 
 @media (max-width: 768px) {
   .mt-banner-builder {
-    width: min(100% - 20px, 1520px);
-    margin-top: 10px;
+    width: 100%;
+    margin-top: 0;
   }
 
   .mt-banner-builder__fields {

@@ -58,42 +58,86 @@
     </div>
   </section>
 
-  <main class="mt-banner-builder" id="builder-app" hidden>
-    <section class="mt-account-bar" aria-label="Обліковий запис">
-      <div>
-        <strong id="current-user-name"></strong>
-        <span id="current-user-meta"></span>
-      </div>
-      <button class="mt-banner-builder__button mt-banner-builder__button--secondary" id="logout-button" type="button">
-        Вийти
+  <main class="mt-app-shell" id="builder-app" hidden>
+    <header class="mt-mobile-header">
+      <button class="mt-mobile-header__menu" id="sidebar-toggle" type="button" aria-controls="app-sidebar" aria-expanded="false">
+        <span class="mt-banner-builder__visually-hidden">Відкрити меню</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
-    </section>
-
-    <header class="mt-banner-builder__hero">
-      <p class="mt-banner-builder__eyebrow">Сумісно з Хорошоп</p>
-      <h1 class="mt-banner-builder__heading">Банерна сітка</h1>
-      <p class="mt-banner-builder__intro">
-        Створіть банери та скопіюйте готовий фрагмент з HTML і CSS.
-      </p>
+      <strong id="mobile-page-title">Банерна сітка</strong>
     </header>
 
-    <nav class="mt-banner-builder__tabs" aria-label="Розділи конструктора">
-      <button class="mt-banner-builder__tab mt-banner-builder__tab--active" type="button" data-tab-target="banner-grid-page">
-        Банерна сітка
-      </button>
-      <button class="mt-banner-builder__tab" type="button" data-tab-target="products-code-page">
-        Вибірка товарів
-      </button>
-      <button class="mt-banner-builder__tab" type="button" data-tab-target="saved-grids-page">
-        Збережені сітки
-      </button>
-      <button class="mt-banner-builder__tab" type="button" data-tab-target="saved-banners-page">
-        Збережені банери
-      </button>
-      <button class="mt-banner-builder__tab" id="admin-users-tab" type="button" data-tab-target="admin-users-page" hidden>
-        Користувачі
-      </button>
-    </nav>
+    <div class="mt-sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+    <aside class="mt-sidebar" id="app-sidebar" aria-label="Головне меню">
+      <div class="mt-sidebar__brand">
+        <span class="mt-sidebar__brand-mark" aria-hidden="true">MT</span>
+        <span class="mt-sidebar__brand-copy">
+          <strong>Mobile Trend</strong>
+          <small>Робочий простір</small>
+        </span>
+        <button class="mt-sidebar__collapse" id="sidebar-collapse-toggle" type="button"
+          aria-label="Згорнути сайдбар" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 7-5 5 5 5"/></svg>
+        </button>
+      </div>
+
+      <nav class="mt-sidebar__nav" aria-label="Розділи конструктора">
+        <span class="mt-sidebar__nav-label">Інструменти</span>
+        <button class="mt-sidebar__nav-item mt-banner-builder__tab--active" type="button"
+          data-tab-target="banner-grid-page" data-nav-section="builder" data-page-title="Банерна сітка"
+          title="Банерна сітка">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+          <span>Банерна сітка</span>
+        </button>
+        <button class="mt-sidebar__nav-item" type="button"
+          data-tab-target="products-code-page" data-page-title="Вибірка товарів" title="Вибірка товарів">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 7 8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10"/></svg>
+          <span>Вибірка товарів</span>
+        </button>
+      </nav>
+
+      <div class="mt-sidebar__profile">
+        <div class="mt-profile-menu" id="profile-menu" hidden>
+          <p class="mt-profile-menu__caption">Обліковий запис</p>
+          <button class="mt-profile-menu__item" id="admin-users-tab" type="button"
+            data-tab-target="admin-users-page" data-page-title="Користувачі" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 20v-2a4 4 0 0 0-3-3.87M16 2.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Користувачі</span>
+          </button>
+          <button class="mt-profile-menu__item mt-profile-menu__item--logout" id="logout-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            <span>Вийти</span>
+          </button>
+        </div>
+
+        <button class="mt-sidebar__profile-button" id="profile-menu-toggle" type="button"
+          aria-label="Відкрити меню профілю" aria-haspopup="menu" aria-controls="profile-menu" aria-expanded="false">
+          <span class="mt-sidebar__avatar" id="current-user-avatar" aria-hidden="true"></span>
+          <span class="mt-sidebar__profile-copy">
+            <strong id="current-user-name"></strong>
+            <small id="current-user-meta"></small>
+          </span>
+          <svg class="mt-sidebar__chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 14 4-4 4 4"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <div class="mt-banner-builder">
+      <nav class="mt-banner-builder__tabs" id="builder-section-tabs" aria-label="Розділи банерної сітки">
+        <button class="mt-banner-builder__tab mt-banner-builder__tab--active" type="button"
+          data-tab-target="banner-grid-page" data-page-title="Банерна сітка">
+          Банерна сітка
+        </button>
+        <button class="mt-banner-builder__tab" type="button"
+          data-tab-target="saved-grids-page" data-page-title="Збережені сітки">
+          Збережені сітки
+        </button>
+        <button class="mt-banner-builder__tab" type="button"
+          data-tab-target="saved-banners-page" data-page-title="Збережені банери">
+          Збережені банери
+        </button>
+      </nav>
 
     <section class="mt-banner-builder__page mt-banner-builder__page--active" id="banner-grid-page">
       <section class="mt-banner-builder__workspace-bar" aria-label="Керування банерною сіткою">
@@ -313,7 +357,8 @@
       </section>
     </section>
 
-    <div class="mt-banner-builder__toast" id="copy-toast" role="status" aria-live="polite"></div>
+      <div class="mt-banner-builder__toast" id="copy-toast" role="status" aria-live="polite"></div>
+    </div>
   </main>
 
   <template id="banner-form-template">

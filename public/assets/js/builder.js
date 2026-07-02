@@ -244,6 +244,9 @@
   const toast = document.getElementById('copy-toast');
   const tabButtons = Array.from(document.querySelectorAll('[data-tab-target]'));
   const pages = Array.from(document.querySelectorAll('.mt-banner-builder__page'));
+  const mobilePageTitle = document.getElementById('mobile-page-title');
+  const builderSectionTabs = document.getElementById('builder-section-tabs');
+  const builderPageIds = ['banner-grid-page', 'saved-grids-page', 'saved-banners-page'];
   const productsCode = document.getElementById('products-code');
   const copyProductsButton = document.getElementById('copy-products-code');
   const globalProductCode = document.getElementById('global-product-code');
@@ -707,8 +710,15 @@
   }
 
   function switchTab(targetId) {
+    const isBuilderPage = builderPageIds.includes(targetId);
+    const activeButton = tabButtons.find((button) => (
+      button.dataset.tabTarget === targetId && !button.dataset.navSection
+    )) || tabButtons.find((button) => button.dataset.tabTarget === targetId);
+
     tabButtons.forEach((button) => {
-      const isActive = button.dataset.tabTarget === targetId;
+      const isActive = button.dataset.navSection === 'builder'
+        ? isBuilderPage
+        : button.dataset.tabTarget === targetId;
       button.classList.toggle('mt-banner-builder__tab--active', isActive);
       button.setAttribute('aria-selected', String(isActive));
     });
@@ -718,6 +728,12 @@
       page.hidden = !isActive;
       page.classList.toggle('mt-banner-builder__page--active', isActive);
     });
+
+    builderSectionTabs.hidden = !isBuilderPage;
+
+    if (activeButton && mobilePageTitle) {
+      mobilePageTitle.textContent = activeButton.dataset.pageTitle || activeButton.textContent.trim();
+    }
 
     if (targetId === 'banner-grid-page') {
       updatePreviewScale();

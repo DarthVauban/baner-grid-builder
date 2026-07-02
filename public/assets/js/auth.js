@@ -11,8 +11,58 @@
   const logoutButton = document.getElementById('logout-button');
   const currentUserName = document.getElementById('current-user-name');
   const currentUserMeta = document.getElementById('current-user-meta');
+  const currentUserAvatar = document.getElementById('current-user-avatar');
   const adminTab = document.getElementById('admin-users-tab');
+  const profileMenuToggle = document.getElementById('profile-menu-toggle');
+  const profileMenu = document.getElementById('profile-menu');
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+  const sidebarCollapseToggle = document.getElementById('sidebar-collapse-toggle');
+  const navigationButtons = Array.from(document.querySelectorAll('[data-tab-target]'));
   let currentUser = null;
+
+  function getInitials(name) {
+    return String(name || '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join('')
+      .toUpperCase() || 'MT';
+  }
+
+  function setProfileMenu(open) {
+    profileMenu.hidden = !open;
+    profileMenuToggle.setAttribute('aria-expanded', String(open));
+  }
+
+  function setSidebar(open) {
+    builderApp.classList.toggle('mt-app-shell--sidebar-open', open);
+    sidebarToggle.setAttribute('aria-expanded', String(open));
+    sidebarBackdrop.hidden = !open;
+  }
+
+  function setSidebarCompact(compact, persist) {
+    builderApp.classList.toggle('mt-app-shell--sidebar-compact', compact);
+    sidebarCollapseToggle.setAttribute('aria-pressed', String(compact));
+    sidebarCollapseToggle.setAttribute('aria-label', compact ? 'Розгорнути сайдбар' : 'Згорнути сайдбар');
+
+    if (persist !== false) {
+      try {
+        window.localStorage.setItem('mt-sidebar-compact', String(compact));
+      } catch (error) {
+        // The layout still works when a browser blocks local storage.
+      }
+    }
+  }
+
+  function getSavedSidebarState() {
+    try {
+      return window.localStorage.getItem('mt-sidebar-compact') === 'true';
+    } catch (error) {
+      return false;
+    }
+  }
 
   function showMessage(message, isError) {
     authMessage.textContent = message;
@@ -41,8 +91,11 @@
     authScreen.hidden = true;
     builderApp.hidden = false;
     currentUserName.textContent = user.name;
-    currentUserMeta.textContent = `${user.email} · ${user.role}`;
+    currentUserMeta.textContent = user.role === 'admin' ? `${user.email} · Адмін` : user.email;
+    currentUserAvatar.textContent = getInitials(user.name);
     adminTab.hidden = user.role !== 'admin';
+    setProfileMenu(false);
+    setSidebar(false);
     window.dispatchEvent(new CustomEvent('mt:authenticated', { detail: { user } }));
   }
 
@@ -51,6 +104,8 @@
     builderApp.hidden = true;
     authScreen.hidden = false;
     adminTab.hidden = true;
+    setProfileMenu(false);
+    setSidebar(false);
     switchAuthForm('login-form');
     showMessage(message || '', Boolean(message));
   }
@@ -58,6 +113,41 @@
   authTabs.forEach((button) => {
     button.addEventListener('click', () => switchAuthForm(button.dataset.authTarget));
   });
+
+  profileMenuToggle.addEventListener('click', () => {
+    setProfileMenu(profileMenu.hidden);
+  });
+
+  sidebarToggle.addEventListener('click', () => {
+    setSidebar(!builderApp.classList.contains('mt-app-shell--sidebar-open'));
+  });
+
+  sidebarCollapseToggle.addEventListener('click', () => {
+    setSidebarCompact(!builderApp.classList.contains('mt-app-shell--sidebar-compact'));
+  });
+
+  sidebarBackdrop.addEventListener('click', () => setSidebar(false));
+
+  navigationButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      setProfileMenu(false);
+      setSidebar(false);
+    });
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!profileMenu.hidden && !event.target.closest('.mt-sidebar__profile')) {
+      setProfileMenu(false);
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    setProfileMenu(false);
+    setSidebar(false);
+  });
+
+  setSidebarCompact(getSavedSidebarState(), false);
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();

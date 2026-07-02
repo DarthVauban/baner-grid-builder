@@ -117,32 +117,349 @@ body {
   color: #c93424;
 }
 
-.mt-account-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-  padding: 12px 16px;
-  border: 1px solid #deded6;
-  border-radius: 14px;
-  background: #fff;
+.mt-app-shell {
+  min-height: 100vh;
+  padding: 24px 24px 1px 288px;
 }
 
-.mt-account-bar strong,
-.mt-account-bar span {
+.mt-sidebar {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  width: 264px;
+  flex-direction: column;
+  padding: 22px 14px 14px;
+  background: #11110f;
+  color: #fff;
+  box-shadow: 12px 0 32px rgba(18, 18, 15, .08);
+}
+
+.mt-sidebar__brand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 9px;
+}
+
+.mt-sidebar__brand-copy {
+  min-width: 0;
+}
+
+.mt-sidebar__collapse {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  right: -28px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #deded6;
+  border-radius: 50%;
+  place-items: center;
+  cursor: pointer;
+  background: #fff;
+  color: #11110f;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .16);
+}
+
+.mt-sidebar__collapse:hover {
+  background: #ffe001;
+}
+
+.mt-sidebar__collapse svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  transition: transform .18s ease;
+}
+
+.mt-sidebar__brand-mark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 11px;
+  place-items: center;
+  background: #ffe001;
+  color: #11110f;
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: -.04em;
+}
+
+.mt-sidebar__brand strong,
+.mt-sidebar__brand small {
   display: block;
 }
 
-.mt-account-bar strong {
-  color: #11110f;
+.mt-sidebar__brand strong {
   font-size: 14px;
+  line-height: 1.2;
 }
 
-.mt-account-bar span {
+.mt-sidebar__brand small {
   margin-top: 3px;
-  color: #6d6d64;
+  color: #8f8f87;
+  font-size: 11px;
+}
+
+.mt-sidebar__nav {
+  display: grid;
+  gap: 5px;
+  margin-top: 35px;
+}
+
+.mt-sidebar__nav-label {
+  margin: 0 11px 7px;
+  color: #74746d;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.mt-sidebar__nav-item,
+.mt-profile-menu__item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 11px;
+  cursor: pointer;
+  background: transparent;
+  color: #b9b9b1;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: left;
+  transition: background-color .16s ease, color .16s ease, transform .16s ease;
+}
+
+.mt-sidebar__nav-item:hover {
+  background: #22221f;
+  color: #fff;
+}
+
+.mt-sidebar__nav-item.mt-banner-builder__tab--active {
+  background: #ffe001;
+  color: #11110f;
+}
+
+.mt-sidebar__nav-item svg,
+.mt-profile-menu__item svg,
+.mt-mobile-header__menu svg,
+.mt-sidebar__chevron {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.mt-sidebar__profile {
+  position: relative;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid #292925;
+}
+
+.mt-sidebar__profile-button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 38px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  text-align: left;
+}
+
+.mt-sidebar__profile-button:hover,
+.mt-sidebar__profile-button[aria-expanded="true"] {
+  background: #22221f;
+}
+
+.mt-sidebar__avatar {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  place-items: center;
+  background: #34342f;
+  color: #ffe001;
   font-size: 12px;
+  font-weight: 900;
+}
+
+.mt-sidebar__profile-copy {
+  min-width: 0;
+}
+
+.mt-sidebar__profile-copy strong,
+.mt-sidebar__profile-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mt-sidebar__profile-copy strong {
+  font-size: 13px;
+}
+
+.mt-sidebar__profile-copy small {
+  margin-top: 3px;
+  color: #8f8f87;
+  font-size: 10px;
+}
+
+.mt-sidebar__chevron {
+  width: 16px;
+  height: 16px;
+  transition: transform .16s ease;
+}
+
+.mt-sidebar__profile-button[aria-expanded="true"] .mt-sidebar__chevron {
+  transform: rotate(180deg);
+}
+
+.mt-profile-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  left: 0;
+  padding: 7px;
+  border: 1px solid #deded6;
+  border-radius: 14px;
+  background: #fff;
+  color: #11110f;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .25);
+}
+
+.mt-profile-menu__caption {
+  margin: 3px 9px 6px;
+  color: #818178;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.mt-profile-menu__item {
+  min-height: 42px;
+  color: #363631;
+}
+
+.mt-profile-menu__item:hover {
+  background: #f2f2ec;
+  color: #11110f;
+}
+
+.mt-profile-menu__item--logout {
+  color: #b72e20;
+}
+
+.mt-profile-menu__item--logout:not(:first-of-type) {
+  margin-top: 5px;
+  border-top: 1px solid #ecece6;
+  border-radius: 0 0 9px 9px;
+}
+
+.mt-mobile-header {
+  display: none;
+}
+
+.mt-sidebar-backdrop {
+  display: none;
+}
+
+.mt-sidebar__nav-item:focus-visible,
+.mt-sidebar__collapse:focus-visible,
+.mt-sidebar__profile-button:focus-visible,
+.mt-profile-menu__item:focus-visible,
+.mt-mobile-header__menu:focus-visible {
+  outline: 3px solid rgba(255, 224, 1, .55);
+  outline-offset: 2px;
+}
+
+@media (min-width: 921px) {
+  .mt-app-shell,
+  .mt-sidebar {
+    transition: padding-left .2s ease, width .2s ease;
+  }
+
+  .mt-app-shell--sidebar-compact {
+    padding-left: 108px;
+  }
+
+  .mt-app-shell--sidebar-compact .mt-sidebar {
+    width: 84px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .mt-app-shell--sidebar-compact .mt-sidebar__brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .mt-app-shell--sidebar-compact .mt-sidebar__brand-copy,
+  .mt-app-shell--sidebar-compact .mt-sidebar__nav-label,
+  .mt-app-shell--sidebar-compact .mt-sidebar__nav-item span,
+  .mt-app-shell--sidebar-compact .mt-sidebar__profile-copy,
+  .mt-app-shell--sidebar-compact .mt-sidebar__chevron {
+    display: none;
+  }
+
+  .mt-app-shell--sidebar-compact .mt-sidebar__collapse {
+    right: -25px;
+  }
+
+  .mt-app-shell--sidebar-compact .mt-sidebar__collapse svg {
+    transform: rotate(180deg);
+  }
+
+  .mt-app-shell--sidebar-compact .mt-sidebar__nav {
+    margin-top: 35px;
+  }
+
+  .mt-app-shell--sidebar-compact .mt-sidebar__nav-item {
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .mt-app-shell--sidebar-compact .mt-sidebar__profile-button {
+    display: flex;
+    justify-content: center;
+    padding: 9px;
+  }
+
+  .mt-app-shell--sidebar-compact .mt-profile-menu {
+    right: auto;
+    bottom: 0;
+    left: calc(100% + 19px);
+    width: 240px;
+  }
 }
 
 .mt-admin__filters {
@@ -263,9 +580,74 @@ body {
     border-radius: 18px;
   }
 
-  .mt-account-bar,
   .mt-admin__filters {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 920px) {
+  .mt-app-shell {
+    padding: 76px 14px 1px;
+  }
+
+  .mt-mobile-header {
+    position: fixed;
+    z-index: 40;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: flex;
+    height: 62px;
+    align-items: center;
+    gap: 13px;
+    padding: 0 14px;
+    border-bottom: 1px solid #deded6;
+    background: rgba(245, 245, 241, .94);
+    backdrop-filter: blur(12px);
+  }
+
+  .mt-mobile-header strong {
+    color: #11110f;
+    font-size: 15px;
+  }
+
+  .mt-mobile-header__menu {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    border: 1px solid #deded6;
+    border-radius: 11px;
+    place-items: center;
+    cursor: pointer;
+    background: #fff;
+    color: #11110f;
+  }
+
+  .mt-sidebar {
+    width: min(284px, calc(100vw - 44px));
+    transform: translateX(-105%);
+    transition: transform .2s ease;
+  }
+
+  .mt-sidebar__collapse {
+    display: none;
+  }
+
+  .mt-app-shell--sidebar-open .mt-sidebar {
+    transform: translateX(0);
+  }
+
+  .mt-sidebar-backdrop:not([hidden]) {
+    position: fixed;
+    z-index: 45;
+    inset: 0;
+    display: block;
+    background: rgba(17, 17, 15, .5);
+    backdrop-filter: blur(2px);
+  }
+
+  .mt-banner-builder {
+    margin-bottom: 40px;
   }
 }
