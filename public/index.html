@@ -401,7 +401,11 @@
               </div>
               <div class="mt-sheet-toolbar__controls">
                 <button class="mt-banner-builder__button mt-banner-builder__button--secondary"
-                  id="spreadsheet-add-upload-status" type="button">
+                  id="spreadsheet-toggle-completed-status" type="button" aria-pressed="false">
+                  + Колонка «Заповнено»
+                </button>
+                <button class="mt-banner-builder__button mt-banner-builder__button--secondary"
+                  id="spreadsheet-toggle-uploaded-status" type="button" aria-pressed="false">
                   + Колонка «Вивантажено»
                 </button>
                 <button class="mt-banner-builder__button mt-banner-builder__button--secondary"
@@ -419,6 +423,31 @@
               <table class="mt-sheet-table" id="spreadsheet-table"></table>
             </div>
           </div>
+
+          <dialog class="mt-sheet-import" id="spreadsheet-sheet-import" aria-labelledby="spreadsheet-sheet-import-title">
+            <div class="mt-sheet-import__header">
+              <div>
+                <p class="mt-banner-builder__step">Імпорт XLSX</p>
+                <h3 id="spreadsheet-sheet-import-title">Оберіть аркуші для імпорту</h3>
+                <p id="spreadsheet-sheet-import-file"></p>
+              </div>
+              <button class="mt-sheet-import__close" id="spreadsheet-sheet-import-cancel" type="button"
+                aria-label="Скасувати імпорт">×</button>
+            </div>
+            <div class="mt-sheet-import__selection-actions">
+              <button type="button" id="spreadsheet-sheet-select-all">Вибрати всі</button>
+              <button type="button" id="spreadsheet-sheet-select-none">Зняти всі</button>
+              <span id="spreadsheet-sheet-selection-summary"></span>
+            </div>
+            <div class="mt-sheet-import__list" id="spreadsheet-sheet-import-list"></div>
+            <p class="mt-sheet-import__message" id="spreadsheet-sheet-import-message" hidden></p>
+            <div class="mt-sheet-import__footer">
+              <button class="mt-banner-builder__button mt-banner-builder__button--secondary"
+                id="spreadsheet-sheet-import-back" type="button">Скасувати</button>
+              <button class="mt-banner-builder__button mt-banner-builder__button--primary"
+                id="spreadsheet-sheet-import-confirm" type="button">Імпортувати вибрані</button>
+            </div>
+          </dialog>
         </div>
 
         <section class="mt-sheet-library" id="spreadsheet-library-view" hidden aria-labelledby="spreadsheet-library-title">

@@ -16,10 +16,23 @@
   const summary = document.getElementById('spreadsheet-summary');
   const sheetField = document.getElementById('spreadsheet-sheet-field');
   const sheetSelect = document.getElementById('spreadsheet-sheet-select');
-  const addUploadedStatusButton = document.getElementById('spreadsheet-add-upload-status');
+  const completedStatusButton = document.getElementById('spreadsheet-toggle-completed-status');
+  const uploadedStatusButton = document.getElementById('spreadsheet-toggle-uploaded-status');
   const fullscreenButton = document.getElementById('spreadsheet-fullscreen');
   const tool = document.querySelector('.mt-sheet-tool');
   const table = document.getElementById('spreadsheet-table');
+  const importDialog = document.getElementById('spreadsheet-sheet-import');
+  const importFile = document.getElementById('spreadsheet-sheet-import-file');
+  const importList = document.getElementById('spreadsheet-sheet-import-list');
+  const importMessage = document.getElementById('spreadsheet-sheet-import-message');
+  const importSummary = document.getElementById('spreadsheet-sheet-selection-summary');
+  const importSelectAllButton = document.getElementById('spreadsheet-sheet-select-all');
+  const importSelectNoneButton = document.getElementById('spreadsheet-sheet-select-none');
+  const importConfirmButton = document.getElementById('spreadsheet-sheet-import-confirm');
+  const importCancelButtons = [
+    document.getElementById('spreadsheet-sheet-import-cancel'),
+    document.getElementById('spreadsheet-sheet-import-back')
+  ];
   const viewButtons = Array.from(document.querySelectorAll('[data-sheet-view]'));
   const editorView = document.getElementById('spreadsheet-editor-view');
   const libraryView = document.getElementById('spreadsheet-library-view');
@@ -38,6 +51,7 @@
   let dirty = false;
   let pending = false;
   let fullscreenFallback = false;
+  let pendingImport = null;
   let copyTimer;
   let searchTimer;
 
@@ -82,11 +96,11 @@
       }))
       .filter((row) => row.values.some(Boolean));
 
-    return { name, headers, showUploadedStatus: false, rows };
+    return { name, headers, showCompletedStatus: false, showUploadedStatus: false, rows };
   }
 
-  function normalizeWorkbook(workbook) {
-    const sheets = workbook.SheetNames.map((sheetName) => {
+  function normalizeWorkbook(workbook, selectedSheetNames) {
+    const sheets = selectedSheetNames.map((sheetName) => {
       const matrix = window.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
         header: 1,
         defval: '',
@@ -102,6 +116,9 @@
     const sheets = Array.isArray(data?.sheets) ? data.sheets.map((sheet) => ({
       name: normalizeText(sheet.name),
       headers: Array.isArray(sheet.headers) ? sheet.headers.map(normalizeText) : ['Назва товару'],
+      showCompletedStatus: Object.hasOwn(sheet, 'showCompletedStatus')
+        ? Boolean(sheet.showCompletedStatus)
+        : true,
       showUploadedStatus: Boolean(sheet.showUploadedStatus),
       rows: Array.isArray(sheet.rows) ? sheet.rows.map((row) => ({
         sourceIndex: Number(row.sourceIndex) || 0,
@@ -131,7 +148,8 @@
     saveButton.disabled = value;
     deleteButton.disabled = value;
     resetButton.disabled = value;
-    addUploadedStatusButton.disabled = value;
+    completedStatusButton.disabled = value;
+    uploadedStatusButton.disabled = value;
     nameInput.disabled = value;
   }
 
@@ -170,9 +188,13 @@
     return button;
   }
 
-  function createHeaderCell(text) {
+  function createHeaderCell(text, isProduct, stickyLeft) {
     const th = document.createElement('th');
     th.scope = 'col';
+    if (isProduct) {
+      th.classList.add('mt-sheet-table__product-head');
+      th.style.setProperty('--mt-sheet-sticky-left', `${stickyLeft}px`);
+    }
     const line = document.createElement('div');
     const value = document.createElement('span');
     line.className = 'mt-sheet-table__head-copy';
@@ -182,19 +204,22 @@
     return th;
   }
 
-  function createStatusHeader(label) {
+  function createStatusHeader(label, statusIndex) {
     const th = document.createElement('th');
     th.scope = 'col';
     th.className = 'mt-sheet-table__status-head';
+    th.style.setProperty('--mt-sheet-sticky-left', `${statusIndex * 88}px`);
     th.textContent = label;
     return th;
   }
 
-  function createProductCell(productName) {
+  function createProductCell(productName, stickyLeft) {
     const td = document.createElement('td');
     const line = document.createElement('div');
     const value = document.createElement('span');
     const displayValue = productName || '—';
+    td.className = 'mt-sheet-table__product-cell';
+    td.style.setProperty('--mt-sheet-sticky-left', `${stickyLeft}px`);
     line.className = 'mt-sheet-table__product';
     value.textContent = displayValue;
     if (!productName) value.classList.add('mt-sheet-table__empty-value');
@@ -227,10 +252,12 @@
     return td;
   }
 
-  function createStatusCell(rowData, status, label) {
+  function createStatusCell(rowData, status, label, statusIndex) {
     const td = document.createElement('td');
     const checkbox = document.createElement('input');
     const productName = rowData.values[0] || `рядок ${rowData.sourceIndex + 1}`;
+    td.className = 'mt-sheet-table__status-cell';
+    td.style.setProperty('--mt-sheet-sticky-left', `${statusIndex * 88}px`);
     checkbox.type = 'checkbox';
     checkbox.className = 'mt-sheet-table__checkbox';
     checkbox.dataset.rowStatus = status;
@@ -241,25 +268,56 @@
     return td;
   }
 
-  function applyRowStatusClasses(rowElement, rowData) {
-    rowElement.classList.toggle('mt-sheet-table__row--done', rowData.completed);
-    rowElement.classList.toggle('mt-sheet-table__row--uploaded', rowData.uploaded);
+  function applyRowStatusClasses(rowElement, rowData, sheet) {
+    rowElement.classList.toggle(
+      'mt-sheet-table__row--done',
+      Boolean(sheet?.showCompletedStatus && rowData.completed)
+    );
+    rowElement.classList.toggle(
+      'mt-sheet-table__row--uploaded',
+      Boolean(sheet?.showUploadedStatus && rowData.uploaded)
+    );
   }
 
   function getCurrentSheet() {
     return tableData?.sheets.find((sheet) => sheet.name === currentSheetName) || null;
   }
 
-  function addUploadedStatus() {
+  function updateStatusButtons(sheet) {
+    const completedVisible = Boolean(sheet?.showCompletedStatus);
+    const uploadedVisible = Boolean(sheet?.showUploadedStatus);
+    completedStatusButton.textContent = completedVisible
+      ? '− Прибрати «Заповнено»'
+      : '+ Колонка «Заповнено»';
+    uploadedStatusButton.textContent = uploadedVisible
+      ? '− Прибрати «Вивантажено»'
+      : '+ Колонка «Вивантажено»';
+    completedStatusButton.setAttribute('aria-pressed', String(completedVisible));
+    uploadedStatusButton.setAttribute('aria-pressed', String(uploadedVisible));
+    completedStatusButton.classList.toggle('mt-sheet-status-toggle--active', completedVisible);
+    uploadedStatusButton.classList.toggle('mt-sheet-status-toggle--active', uploadedVisible);
+  }
+
+  function toggleStatusColumn(status) {
     const sheet = getCurrentSheet();
-    if (!sheet || sheet.showUploadedStatus) return;
-    sheet.showUploadedStatus = true;
+    if (!sheet) return;
+    const isCompleted = status === 'completed';
+    const visibilityField = isCompleted ? 'showCompletedStatus' : 'showUploadedStatus';
+    const label = isCompleted ? 'Заповнено' : 'Вивантажено';
+    const willShow = !sheet[visibilityField];
+    if (!willShow && sheet.rows.some((row) => row[status])) {
+      const confirmed = window.confirm(
+        `У колонці «${label}» є позначені товари. Видалити колонку та очистити всі її позначки?`
+      );
+      if (!confirmed) return;
+    }
+    sheet[visibilityField] = willShow;
     sheet.rows.forEach((row) => {
-      row.uploaded = Boolean(row.uploaded);
+      row[status] = willShow ? Boolean(row[status]) : false;
     });
     renderSheet(sheet.name);
     setDirty(true);
-    notify('Колонку «Вивантажено» додано.', false);
+    notify(willShow ? `Колонку «${label}» додано.` : `Колонку «${label}» видалено.`, false);
   }
 
   function updateFullscreenState() {
@@ -290,16 +348,23 @@
   }
 
   function updateSummary() {
-    const completed = currentRows.filter((row) => row.completed).length;
     const sheet = getCurrentSheet();
-    const uploaded = currentRows.filter((row) => row.uploaded).length;
-    const uploadedSummary = sheet?.showUploadedStatus ? ` · Вивантажено: ${uploaded}` : '';
-    summary.textContent = `${formatCount(currentRows.length, 'рядок', 'рядки', 'рядків')} · ${formatCount(
+    const parts = [
+      formatCount(currentRows.length, 'рядок', 'рядки', 'рядків'),
+      formatCount(
       currentCharacteristicCount,
       'характеристика',
       'характеристики',
       'характеристик'
-    )} · Заповнено: ${completed}${uploadedSummary}`;
+      )
+    ];
+    if (sheet?.showCompletedStatus) {
+      parts.push(`Заповнено: ${currentRows.filter((row) => row.completed).length}`);
+    }
+    if (sheet?.showUploadedStatus) {
+      parts.push(`Вивантажено: ${currentRows.filter((row) => row.uploaded).length}`);
+    }
+    summary.textContent = parts.join(' · ');
   }
 
   function renderSheet(sheetName) {
@@ -309,18 +374,24 @@
     const headerRow = document.createElement('tr');
     const tbody = document.createElement('tbody');
     const fragment = document.createDocumentFragment();
-    headerRow.appendChild(createStatusHeader('Заповнено'));
-    if (sheet.showUploadedStatus) headerRow.appendChild(createStatusHeader('Вивантажено'));
-    sheet.headers.forEach((header) => headerRow.appendChild(createHeaderCell(header)));
+    const statuses = [];
+    if (sheet.showCompletedStatus) statuses.push({ field: 'completed', label: 'Заповнено' });
+    if (sheet.showUploadedStatus) statuses.push({ field: 'uploaded', label: 'Вивантажено' });
+    const productStickyLeft = statuses.length * 88;
+    statuses.forEach((status, index) => headerRow.appendChild(createStatusHeader(status.label, index)));
+    sheet.headers.forEach((header, index) => {
+      headerRow.appendChild(createHeaderCell(header, index === 0, productStickyLeft));
+    });
     thead.appendChild(headerRow);
 
     sheet.rows.forEach((rowData) => {
       const tr = document.createElement('tr');
       tr.dataset.rowIndex = String(rowData.sourceIndex);
-      applyRowStatusClasses(tr, rowData);
-      tr.appendChild(createStatusCell(rowData, 'completed', 'Заповнено'));
-      if (sheet.showUploadedStatus) tr.appendChild(createStatusCell(rowData, 'uploaded', 'Вивантажено'));
-      tr.appendChild(createProductCell(rowData.values[0]));
+      applyRowStatusClasses(tr, rowData, sheet);
+      statuses.forEach((status, index) => {
+        tr.appendChild(createStatusCell(rowData, status.field, status.label, index));
+      });
+      tr.appendChild(createProductCell(rowData.values[0], productStickyLeft));
       sheet.headers.slice(1).forEach((header, index) => {
         tr.appendChild(createCharacteristicCell(header, rowData.values[index + 1] || ''));
       });
@@ -332,9 +403,8 @@
     currentRows = sheet.rows;
     currentCharacteristicCount = Math.max(0, sheet.headers.length - 1);
     tbody.appendChild(fragment);
-    table.classList.toggle('mt-sheet-table--uploaded-status', sheet.showUploadedStatus);
-    addUploadedStatusButton.hidden = sheet.showUploadedStatus;
-    const statusWidth = sheet.showUploadedStatus ? 176 : 88;
+    updateStatusButtons(sheet);
+    const statusWidth = statuses.length * 88;
     table.style.width = `${Math.max(820, statusWidth + 220 + (currentCharacteristicCount * 220))}px`;
     table.replaceChildren(thead, tbody);
     updateSummary();
@@ -365,6 +435,89 @@
     switchView('editor');
   }
 
+  function getSelectedImportSheets() {
+    return Array.from(importList.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((checkbox) => checkbox.value);
+  }
+
+  function updateImportSelection() {
+    const selectedCount = getSelectedImportSheets().length;
+    const totalCount = importList.querySelectorAll('input[type="checkbox"]').length;
+    importSummary.textContent = `Обрано ${selectedCount} із ${totalCount}`;
+    importConfirmButton.disabled = selectedCount === 0;
+    importMessage.hidden = selectedCount > 0;
+    importMessage.textContent = selectedCount ? '' : 'Оберіть щонайменше один аркуш.';
+  }
+
+  function closeImportDialog() {
+    pendingImport = null;
+    if (importDialog.open) importDialog.close();
+    else importDialog.removeAttribute('open');
+    importList.replaceChildren();
+    importMessage.hidden = true;
+    fileInput.value = '';
+  }
+
+  function openImportDialog(workbook, file) {
+    pendingImport = { workbook, file };
+    importFile.textContent = `${file.name} · ${formatCount(
+      workbook.SheetNames.length,
+      'аркуш',
+      'аркуші',
+      'аркушів'
+    )}`;
+    importList.replaceChildren();
+    workbook.SheetNames.forEach((sheetName, index) => {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      const copy = document.createElement('span');
+      const name = document.createElement('strong');
+      const order = document.createElement('small');
+      label.className = 'mt-sheet-import__item';
+      checkbox.type = 'checkbox';
+      checkbox.value = sheetName;
+      checkbox.checked = true;
+      name.textContent = sheetName;
+      order.textContent = `Аркуш ${index + 1}`;
+      copy.append(name, order);
+      label.append(checkbox, copy);
+      importList.appendChild(label);
+    });
+    updateImportSelection();
+    showMessage('', false);
+    if (typeof importDialog.showModal === 'function') importDialog.showModal();
+    else importDialog.setAttribute('open', '');
+  }
+
+  function confirmSheetImport() {
+    if (!pendingImport) return;
+    const selectedSheetNames = getSelectedImportSheets();
+    if (!selectedSheetNames.length) {
+      updateImportSelection();
+      return;
+    }
+    const { workbook, file } = pendingImport;
+    importConfirmButton.disabled = true;
+    importConfirmButton.textContent = 'Імпортуємо…';
+    try {
+      tableData = normalizeWorkbook(workbook, selectedSheetNames);
+      currentFileName = file.name;
+      currentSavedId = null;
+      nameInput.value = file.name.replace(/\.xlsx$/i, '');
+      closeImportDialog();
+      showTableEditor();
+      setDirty(true);
+      notify(`Імпортовано ${formatCount(selectedSheetNames.length, 'аркуш', 'аркуші', 'аркушів')}.`, false);
+    } catch (error) {
+      tableData = null;
+      importMessage.textContent = error.message || 'Не вдалося імпортувати вибрані аркуші.';
+      importMessage.hidden = false;
+    } finally {
+      importConfirmButton.textContent = 'Імпортувати вибрані';
+      if (pendingImport) importConfirmButton.disabled = false;
+    }
+  }
+
   async function loadFile(file) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
@@ -387,13 +540,7 @@
       const data = await file.arrayBuffer();
       const workbook = window.XLSX.read(data, { type: 'array', cellDates: true });
       if (!workbook.SheetNames.length) throw new Error('У файлі немає аркушів.');
-      tableData = normalizeWorkbook(workbook);
-      currentFileName = file.name;
-      currentSavedId = null;
-      nameInput.value = file.name.replace(/\.xlsx$/i, '');
-      showTableEditor();
-      setDirty(true);
-      notify('Таблицю завантажено.', false);
+      openImportDialog(workbook, file);
     } catch (error) {
       tableData = null;
       showMessage(error.message || 'Не вдалося прочитати XLSX-файл.', true);
@@ -413,9 +560,9 @@
     currentCharacteristicCount = 0;
     dirty = false;
     table.replaceChildren();
-    table.classList.remove('mt-sheet-table--uploaded-status');
     table.style.removeProperty('width');
-    addUploadedStatusButton.hidden = false;
+    updateStatusButtons(null);
+    if (pendingImport || importDialog.open) closeImportDialog();
     sheetSelect.replaceChildren();
     nameInput.value = '';
     fileName.textContent = '';
@@ -603,7 +750,8 @@
     renderSheet(sheetSelect.value);
     setDirty(true);
   });
-  addUploadedStatusButton.addEventListener('click', addUploadedStatus);
+  completedStatusButton.addEventListener('click', () => toggleStatusColumn('completed'));
+  uploadedStatusButton.addEventListener('click', () => toggleStatusColumn('uploaded'));
   fullscreenButton.addEventListener('click', toggleFullscreen);
   document.addEventListener('fullscreenchange', updateFullscreenState);
   document.addEventListener('keydown', (event) => {
@@ -614,6 +762,25 @@
   });
   viewButtons.forEach((button) => {
     button.addEventListener('click', () => switchView(button.dataset.sheetView));
+  });
+  importList.addEventListener('change', updateImportSelection);
+  importSelectAllButton.addEventListener('click', () => {
+    importList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.checked = true;
+    });
+    updateImportSelection();
+  });
+  importSelectNoneButton.addEventListener('click', () => {
+    importList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.checked = false;
+    });
+    updateImportSelection();
+  });
+  importConfirmButton.addEventListener('click', confirmSheetImport);
+  importCancelButtons.forEach((button) => button.addEventListener('click', closeImportDialog));
+  importDialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeImportDialog();
   });
 
   ['dragenter', 'dragover'].forEach((eventName) => {
@@ -643,7 +810,7 @@
     const row = getCurrentSheet()?.rows.find((candidate) => candidate.sourceIndex === rowIndex);
     if (!row) return;
     row[status] = checkbox.checked;
-    applyRowStatusClasses(checkbox.closest('tr'), row);
+    applyRowStatusClasses(checkbox.closest('tr'), row, getCurrentSheet());
     updateSummary();
     setDirty(true);
   });

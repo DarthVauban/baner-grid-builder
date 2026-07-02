@@ -162,6 +162,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     sheets: [{
       name: 'Товари',
       headers: ['Назва товару', 'Колір'],
+      showCompletedStatus: true,
       showUploadedStatus: true,
       rows: [
         { sourceIndex: 1, values: ['Смартфон', 'Чорний'], completed: false, uploaded: false },
@@ -176,6 +177,7 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.equal(createdTable.body.data.rowCount, 2);
   assert.equal(createdTable.body.data.data.sheets[0].rows[1].completed, true);
   assert.equal(createdTable.body.data.data.sheets[0].rows[1].uploaded, true);
+  assert.equal(createdTable.body.data.data.sheets[0].showCompletedStatus, true);
   assert.equal(createdTable.body.data.data.sheets[0].showUploadedStatus, true);
 
   const tableId = createdTable.body.data.id;

@@ -22,6 +22,7 @@ const tableRowSchema = z.object({
 const tableSheetSchema = z.object({
   name: z.string().trim().min(1).max(255),
   headers: z.array(z.string().trim().min(1).max(1000)).min(1).max(200),
+  showCompletedStatus: z.boolean().default(true),
   showUploadedStatus: z.boolean().default(false),
   rows: z.array(tableRowSchema).max(20000)
 });
