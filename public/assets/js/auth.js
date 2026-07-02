@@ -20,6 +20,7 @@
   const sidebarCollapseToggle = document.getElementById('sidebar-collapse-toggle');
   const navigationButtons = Array.from(document.querySelectorAll('[data-tab-target]'));
   let currentUser = null;
+  let sidebarContentAnimation = null;
   const roleLabels = {
     admin: 'Адміністратор',
     editor: 'Редактор',
@@ -48,9 +49,31 @@
   }
 
   function setSidebarCompact(compact, persist) {
+    const content = builderApp.querySelector(':scope > .mt-banner-builder');
+    const shouldAnimate = persist !== false
+      && window.matchMedia('(min-width: 921px)').matches
+      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      && typeof content?.animate === 'function';
+    const previousLeft = shouldAnimate && content ? content.getBoundingClientRect().left : 0;
+
     builderApp.classList.toggle('mt-app-shell--sidebar-compact', compact);
     sidebarCollapseToggle.setAttribute('aria-pressed', String(compact));
     sidebarCollapseToggle.setAttribute('aria-label', compact ? 'Розгорнути сайдбар' : 'Згорнути сайдбар');
+
+    if (shouldAnimate && content) {
+      const nextLeft = content.getBoundingClientRect().left;
+      sidebarContentAnimation?.cancel();
+      sidebarContentAnimation = content.animate(
+        [
+          { transform: `translateX(${previousLeft - nextLeft}px)` },
+          { transform: 'translateX(0)' }
+        ],
+        { duration: 180, easing: 'cubic-bezier(.2, .8, .2, 1)' }
+      );
+      sidebarContentAnimation.addEventListener('finish', () => {
+        sidebarContentAnimation = null;
+      }, { once: true });
+    }
 
     if (persist !== false) {
       try {

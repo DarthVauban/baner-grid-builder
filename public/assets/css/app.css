@@ -403,9 +403,9 @@ body {
 }
 
 @media (min-width: 921px) {
-  .mt-app-shell,
   .mt-sidebar {
-    transition: padding-left .2s ease, width .2s ease;
+    will-change: width, padding;
+    transition: padding .18s ease, width .18s ease;
   }
 
   .mt-app-shell--sidebar-compact {

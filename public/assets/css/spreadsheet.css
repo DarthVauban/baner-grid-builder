@@ -290,14 +290,16 @@
 .mt-sheet-table-wrap {
   width: 100%;
   max-height: calc(100vh - 245px);
-  min-height: 360px;
+  min-height: 320px;
   overflow: auto;
+  overscroll-behavior: contain;
+  contain: layout paint style;
   background: #fff;
 }
 
 .mt-sheet-table {
   width: 100%;
-  min-width: 980px;
+  min-width: 820px;
   border-spacing: 0;
   border-collapse: separate;
   color: #11110f;
@@ -306,8 +308,8 @@
 
 .mt-sheet-table th,
 .mt-sheet-table td {
-  min-width: 260px;
-  padding: 14px 15px;
+  min-width: 200px;
+  padding: 9px 10px;
   border-right: 1px solid #deded6;
   border-bottom: 1px solid #deded6;
   background: #fff;
@@ -319,20 +321,20 @@
   position: sticky;
   z-index: 5;
   top: 0;
-  height: 58px;
+  height: 44px;
   background: #f4f4ee;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 900;
 }
 
 .mt-sheet-table th:first-child,
 .mt-sheet-table td:first-child {
   left: 0;
-  width: 104px;
-  min-width: 104px;
-  max-width: 104px;
-  padding-right: 10px;
-  padding-left: 10px;
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+  padding-right: 7px;
+  padding-left: 7px;
   position: sticky;
   z-index: 4;
   text-align: center;
@@ -340,9 +342,9 @@
 
 .mt-sheet-table th:nth-child(2),
 .mt-sheet-table td:nth-child(2) {
-  left: 104px;
-  width: 280px;
-  min-width: 280px;
+  left: 88px;
+  width: 220px;
+  min-width: 220px;
   position: sticky;
   z-index: 3;
   box-shadow: 7px 0 12px rgba(17, 17, 15, .045);
@@ -356,12 +358,12 @@
 
 .mt-sheet-table--uploaded-status th:nth-child(2),
 .mt-sheet-table--uploaded-status td:nth-child(2) {
-  left: 104px;
-  width: 104px;
-  min-width: 104px;
-  max-width: 104px;
-  padding-right: 10px;
-  padding-left: 10px;
+  left: 88px;
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+  padding-right: 7px;
+  padding-left: 7px;
   z-index: 4;
   box-shadow: none;
   text-align: center;
@@ -369,9 +371,9 @@
 
 .mt-sheet-table--uploaded-status th:nth-child(3),
 .mt-sheet-table--uploaded-status td:nth-child(3) {
-  left: 208px;
-  width: 280px;
-  min-width: 280px;
+  left: 176px;
+  width: 220px;
+  min-width: 220px;
   position: sticky;
   z-index: 3;
   box-shadow: 7px 0 12px rgba(17, 17, 15, .045);
@@ -385,7 +387,7 @@
 
 .mt-sheet-table__status-head {
   color: #5f5f58;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: .035em;
   line-height: 1.25;
   text-align: center;
@@ -399,7 +401,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 7px;
 }
 
 .mt-sheet-table__head-copy span,
@@ -412,15 +414,15 @@
 
 .mt-sheet-table__product {
   align-items: center;
-  min-height: 34px;
-  font-size: 15px;
+  min-height: 26px;
+  font-size: 13px;
   font-weight: 850;
   line-height: 1.35;
 }
 
 .mt-sheet-table__cell-label {
   color: #75756d;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
   letter-spacing: .055em;
   line-height: 1.35;
@@ -428,10 +430,10 @@
 }
 
 .mt-sheet-table__cell-value {
-  margin-top: 10px;
+  margin-top: 6px;
   color: #11110f;
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .mt-sheet-table__empty-value {
@@ -440,11 +442,11 @@
 
 .mt-sheet-copy {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
   border: 1px solid #d8d8d0;
-  border-radius: 8px;
+  border-radius: 7px;
   place-items: center;
   cursor: pointer;
   background: #fff;
@@ -469,8 +471,8 @@
 }
 
 .mt-sheet-copy svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -479,33 +481,33 @@
 }
 
 .mt-sheet-table__checkbox {
-  width: 19px;
-  height: 19px;
-  margin-top: 2px;
+  width: 17px;
+  height: 17px;
+  margin-top: 0;
   accent-color: #11110f;
   cursor: pointer;
 }
 
 .mt-sheet-table__row--done td {
-  background: #eef7ea;
+  background: #fff4ae;
 }
 
 .mt-sheet-table__row--done .mt-sheet-table__product span {
-  color: #477348;
+  color: #655700;
   text-decoration: line-through;
 }
 
 .mt-sheet-table__row--done .mt-sheet-table__cell-value {
-  color: #477348;
+  color: #655700;
 }
 
 .mt-sheet-table__row--uploaded td {
-  background: #e7f1ff;
+  background: #e3f3e4;
 }
 
 .mt-sheet-table__row--uploaded .mt-sheet-table__product span,
 .mt-sheet-table__row--uploaded .mt-sheet-table__cell-value {
-  color: #285d91;
+  color: #2d6a36;
 }
 
 .mt-sheet-library {

@@ -334,8 +334,8 @@
     tbody.appendChild(fragment);
     table.classList.toggle('mt-sheet-table--uploaded-status', sheet.showUploadedStatus);
     addUploadedStatusButton.hidden = sheet.showUploadedStatus;
-    const statusWidth = sheet.showUploadedStatus ? 208 : 104;
-    table.style.width = `${Math.max(980, statusWidth + 280 + (currentCharacteristicCount * 280))}px`;
+    const statusWidth = sheet.showUploadedStatus ? 176 : 88;
+    table.style.width = `${Math.max(820, statusWidth + 220 + (currentCharacteristicCount * 220))}px`;
     table.replaceChildren(thead, tbody);
     updateSummary();
     showMessage(sheet.rows.length ? '' : 'Обраний аркуш не містить товарів.', false);
