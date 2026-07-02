@@ -124,6 +124,44 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.equal(sharedBanners.body.data[0].isOwner, false);
   assert.equal(sharedBanners.body.data[0].owner.name, 'Test User');
 
+  const tableData = {
+    activeSheet: 'Товари',
+    sheets: [{
+      name: 'Товари',
+      headers: ['Назва товару', 'Колір'],
+      rows: [
+        { sourceIndex: 1, values: ['Смартфон', 'Чорний'], completed: false },
+        { sourceIndex: 2, values: ['Навушники', 'Білі'], completed: true }
+      ]
+    }]
+  };
+  const createdTable = await user
+    .post('/api/product-tables')
+    .send({ name: 'Характеристики товарів', fileName: 'products.xlsx', data: tableData })
+    .expect(201);
+  assert.equal(createdTable.body.data.rowCount, 2);
+  assert.equal(createdTable.body.data.data.sheets[0].rows[1].completed, true);
+
+  const tableId = createdTable.body.data.id;
+  const tableList = await user.get('/api/product-tables?search=Характеристики').expect(200);
+  assert.equal(tableList.body.data.length, 1);
+  assert.equal(Object.hasOwn(tableList.body.data[0], 'data'), false);
+
+  const updatedTableData = structuredClone(tableData);
+  updatedTableData.sheets[0].rows[0].completed = true;
+  await user
+    .put(`/api/product-tables/${tableId}`)
+    .send({ name: 'Готові характеристики', fileName: 'products.xlsx', data: updatedTableData })
+    .expect(200)
+    .expect((response) => {
+      assert.equal(response.body.data.name, 'Готові характеристики');
+      assert.equal(response.body.data.data.sheets[0].rows[0].completed, true);
+    });
+
+  await secondUser.get(`/api/product-tables/${tableId}`).expect(404);
+  const secondUserTables = await secondUser.get('/api/product-tables').expect(200);
+  assert.equal(secondUserTables.body.data.length, 0);
+
   await secondUser.get(`/api/grids/${gridId}`).expect(200);
   await secondUser.get(`/api/banners/${createdBanner.body.data.id}`).expect(200);
   await secondUser
@@ -136,4 +174,6 @@ test('approval flow and shared banner storage work through REST API', async () =
   await request(app).get('/api/grids').expect(401);
   await user.delete(`/api/grids/${gridId}`).expect(204);
   await user.delete(`/api/banners/${createdBanner.body.data.id}`).expect(204);
+  await user.delete(`/api/product-tables/${tableId}`).expect(204);
+  await user.get(`/api/product-tables/${tableId}`).expect(404);
 });

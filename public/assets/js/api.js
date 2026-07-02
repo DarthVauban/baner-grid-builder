@@ -73,6 +73,16 @@
       update: (id, data) => request(`/api/banners/${encodeURIComponent(id)}`, { method: 'PUT', body: data }),
       remove: (id) => request(`/api/banners/${encodeURIComponent(id)}`, { method: 'DELETE' })
     },
+    productTables: {
+      list: (search) => request(`/api/product-tables${queryString({ search })}`),
+      get: (id) => request(`/api/product-tables/${encodeURIComponent(id)}`),
+      create: (data) => request('/api/product-tables', { method: 'POST', body: data }),
+      update: (id, data) => request(`/api/product-tables/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: data
+      }),
+      remove: (id) => request(`/api/product-tables/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
     admin: {
       users: (filters) => request(`/api/admin/users${queryString(filters)}`),
       setStatus: (id, status) => request(`/api/admin/users/${encodeURIComponent(id)}/status`, {

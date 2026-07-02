@@ -9,6 +9,7 @@ import authRoutes from './modules/auth/auth.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import gridRoutes from './modules/grids/grid.routes.js';
 import bannerRoutes from './modules/banners/banner.routes.js';
+import productTableRoutes from './modules/product-tables/product-table.routes.js';
 import { env } from './config/env.js';
 import { query } from './db/pool.js';
 import { asyncHandler } from './lib/async-handler.js';
@@ -16,6 +17,7 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(currentDir, '../public');
+const xlsxBrowserBundle = path.resolve(currentDir, '../node_modules/xlsx/dist/xlsx.full.min.js');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -45,7 +47,7 @@ if (env.APP_ORIGIN) {
   app.use(cors({ origin: env.APP_ORIGIN, credentials: true }));
 }
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '25mb' }));
 app.use(cookieParser());
 
 const authLimiter = rateLimit({
@@ -64,8 +66,12 @@ app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/grids', gridRoutes);
 app.use('/api/banners', bannerRoutes);
+app.use('/api/product-tables', productTableRoutes);
 app.use('/api', notFoundHandler);
 
+app.get('/vendor/xlsx.full.min.js', (req, res) => {
+  res.sendFile(xlsxBrowserBundle);
+});
 app.use(express.static(publicDir, { index: false, maxAge: env.isProduction ? '1h' : 0 }));
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();

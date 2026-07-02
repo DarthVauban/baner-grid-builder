@@ -6,8 +6,11 @@
   <title>Конструктор банерної сітки</title>
   <link rel="stylesheet" href="/assets/css/builder.css">
   <link rel="stylesheet" href="/assets/css/app.css">
+  <link rel="stylesheet" href="/assets/css/spreadsheet.css">
+  <script src="/vendor/xlsx.full.min.js" defer></script>
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/builder.js" defer></script>
+  <script src="/assets/js/spreadsheet.js" defer></script>
   <script src="/assets/js/admin.js" defer></script>
   <script src="/assets/js/auth.js" defer></script>
 </head>
@@ -94,6 +97,11 @@
           data-tab-target="products-code-page" data-page-title="Вибірка товарів" title="Вибірка товарів">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 7 8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10"/></svg>
           <span>Вибірка товарів</span>
+        </button>
+        <button class="mt-sidebar__nav-item" type="button"
+          data-tab-target="spreadsheet-page" data-page-title="Таблиця товарів" title="Таблиця товарів">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM4 9h16M9 4v16M9 14h11"/></svg>
+          <span>Таблиця товарів</span>
         </button>
       </nav>
 
@@ -325,6 +333,98 @@
           </label>
         </div>
         <div class="mt-banner-builder__library" id="saved-banners-list"></div>
+      </section>
+    </section>
+
+    <section class="mt-banner-builder__page" id="spreadsheet-page" hidden>
+      <section class="mt-banner-builder__panel mt-sheet-tool" aria-labelledby="spreadsheet-title">
+        <div class="mt-sheet-tool__header">
+          <div>
+            <p class="mt-banner-builder__step">Excel інструмент</p>
+            <h2 class="mt-banner-builder__section-title" id="spreadsheet-title">Таблиця товарів</h2>
+            <p class="mt-banner-builder__section-note">
+              Завантажте XLSX: перша колонка — назви товарів, решта — їхні характеристики.
+            </p>
+          </div>
+        </div>
+
+        <nav class="mt-sheet-view-tabs" aria-label="Розділи таблиць">
+          <button class="mt-sheet-view-tabs__button mt-sheet-view-tabs__button--active" type="button" data-sheet-view="editor">
+            Поточна таблиця
+          </button>
+          <button class="mt-sheet-view-tabs__button" type="button" data-sheet-view="library">
+            Збережені таблиці <span id="spreadsheet-library-count">0</span>
+          </button>
+        </nav>
+
+        <div id="spreadsheet-editor-view">
+          <label class="mt-sheet-upload" id="spreadsheet-dropzone" for="spreadsheet-file">
+            <input class="mt-banner-builder__visually-hidden" id="spreadsheet-file" type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+            <span class="mt-sheet-upload__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 14v5h14v-5"/></svg>
+            </span>
+            <span class="mt-sheet-upload__copy">
+              <strong>Виберіть XLSX-файл</strong>
+              <small>або перетягніть його сюди · до 20 МБ</small>
+            </span>
+            <span class="mt-sheet-upload__action">Вибрати файл</span>
+          </label>
+
+          <div class="mt-sheet-tool__message" id="spreadsheet-message" role="status" aria-live="polite" hidden></div>
+
+          <div class="mt-sheet-tool__content" id="spreadsheet-content" hidden>
+            <div class="mt-sheet-workspace">
+              <label class="mt-banner-builder__field mt-sheet-workspace__name">
+                <span class="mt-banner-builder__label">Назва таблиці</span>
+                <input class="mt-banner-builder__input" id="spreadsheet-name" type="text" maxlength="160"
+                  placeholder="Наприклад, Характеристики смартфонів">
+              </label>
+              <span class="mt-sheet-workspace__state" id="spreadsheet-editing-state" hidden></span>
+              <div class="mt-sheet-workspace__actions">
+                <button class="mt-banner-builder__button mt-banner-builder__button--secondary" id="spreadsheet-reset" type="button">
+                  Нова таблиця
+                </button>
+                <button class="mt-banner-builder__button mt-banner-builder__button--danger" id="spreadsheet-delete" type="button" hidden>
+                  Видалити
+                </button>
+                <button class="mt-banner-builder__button mt-banner-builder__button--primary" id="spreadsheet-save" type="button">
+                  Зберегти таблицю
+                </button>
+              </div>
+            </div>
+
+            <div class="mt-sheet-toolbar">
+              <div>
+                <strong id="spreadsheet-file-name"></strong>
+                <span id="spreadsheet-summary"></span>
+              </div>
+              <label class="mt-sheet-toolbar__sheet" id="spreadsheet-sheet-field">
+                <span>Аркуш</span>
+                <select class="mt-banner-builder__input" id="spreadsheet-sheet-select"></select>
+              </label>
+            </div>
+
+            <div class="mt-sheet-table-wrap">
+              <table class="mt-sheet-table" id="spreadsheet-table"></table>
+            </div>
+          </div>
+        </div>
+
+        <section class="mt-sheet-library" id="spreadsheet-library-view" hidden aria-labelledby="spreadsheet-library-title">
+          <div class="mt-sheet-library__header">
+            <div>
+              <h3 id="spreadsheet-library-title">Збережені таблиці</h3>
+              <p id="spreadsheet-library-summary">Завантаження…</p>
+            </div>
+            <label class="mt-banner-builder__search">
+              <span class="mt-banner-builder__visually-hidden">Пошук таблиць за назвою</span>
+              <input class="mt-banner-builder__input" id="spreadsheet-library-search" type="search"
+                placeholder="Пошук за назвою">
+            </label>
+          </div>
+          <div class="mt-sheet-library__list" id="spreadsheet-library-list"></div>
+        </section>
       </section>
     </section>
 
