@@ -506,9 +506,9 @@
   box-shadow: 7px 0 12px rgba(17, 17, 15, .045);
 }
 
-.mt-sheet-table__status-head,
-.mt-sheet-table__product-head {
-  z-index: 7;
+.mt-sheet-table th.mt-sheet-table__status-head,
+.mt-sheet-table th.mt-sheet-table__product-head {
+  z-index: 20;
   background: #f4f4ee;
 }
 
