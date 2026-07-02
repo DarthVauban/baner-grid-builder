@@ -415,24 +415,26 @@
     title.textContent = item.name;
     source.textContent = item.fileName || 'Без вихідного файлу';
     meta.className = 'mt-sheet-library__meta';
+    const ownerLabel = item.owner?.name ? ` · Автор: ${item.owner.name}` : '';
     meta.textContent = `${formatCount(item.rowCount, 'рядок', 'рядки', 'рядків')} · ${formatCount(
       item.sheetCount,
       'аркуш',
       'аркуші',
       'аркушів'
-    )} · ${formatDate(item.updatedAt)}`;
+    )} · ${formatDate(item.updatedAt)}${ownerLabel}`;
     actions.className = 'mt-sheet-library__actions';
     openButton.type = 'button';
     openButton.className = 'mt-banner-builder__button mt-banner-builder__button--primary';
     openButton.dataset.openTable = item.id;
-    openButton.textContent = 'Відкрити';
+    openButton.textContent = item.isOwner === false ? 'Використати як копію' : 'Відкрити';
     removeButton.type = 'button';
     removeButton.className = 'mt-banner-builder__button mt-banner-builder__button--danger';
     removeButton.dataset.deleteTable = item.id;
     removeButton.dataset.tableName = item.name;
     removeButton.textContent = 'Видалити';
     heading.append(title, source);
-    actions.append(openButton, removeButton);
+    actions.appendChild(openButton);
+    if (item.isOwner !== false) actions.appendChild(removeButton);
     card.append(heading, meta, actions);
     return card;
   }
@@ -473,12 +475,13 @@
       const saved = await api.productTables.get(id);
       tableData = normalizeSavedData(saved.data);
       if (!tableData.sheets.length) throw new Error('Збережена таблиця не містить аркушів.');
-      currentSavedId = saved.id;
+      const isOwner = saved.isOwner !== false;
+      currentSavedId = isOwner ? saved.id : null;
       currentFileName = saved.fileName;
-      nameInput.value = saved.name;
+      nameInput.value = isOwner ? saved.name : `Копія — ${saved.name}`;
       showTableEditor();
-      setDirty(false);
-      notify('Таблицю відкрито.', false);
+      setDirty(!isOwner);
+      notify(isOwner ? 'Таблицю відкрито.' : 'Таблицю відкрито як нову копію.', false);
     } catch (error) {
       notify(error.message, true);
     } finally {

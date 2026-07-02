@@ -31,6 +31,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(201);
 
   assert.equal(registration.body.data.status, 'pending');
+  assert.equal(registration.body.data.role, 'content_manager');
 
   await request(app)
     .post('/api/auth/login')
@@ -45,6 +46,14 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(200);
   assert.equal(adminLogin.body.data.role, 'admin');
 
+  const initialPermissions = await admin.get('/api/admin/permissions').expect(200);
+  assert.equal(
+    initialPermissions.body.data.find((item) => (
+      item.role === 'editor' && item.resource === 'product_tables'
+    )).canViewAll,
+    true
+  );
+
   const users = await admin.get('/api/admin/users?status=pending').expect(200);
   const pendingUser = users.body.data.find((user) => user.email === 'user@test.local');
   assert.ok(pendingUser);
@@ -54,6 +63,16 @@ test('approval flow and shared banner storage work through REST API', async () =
     .send({ status: 'approved' })
     .expect(200)
     .expect((response) => assert.equal(response.body.data.status, 'approved'));
+
+  await admin
+    .patch(`/api/admin/users/${pendingUser.id}/role`)
+    .send({ role: 'editor' })
+    .expect(200)
+    .expect((response) => assert.equal(response.body.data.role, 'editor'));
+  await admin
+    .patch(`/api/admin/users/${pendingUser.id}/role`)
+    .send({ role: 'content_manager' })
+    .expect(200);
 
   const user = request.agent(app);
   await user
@@ -114,6 +133,20 @@ test('approval flow and shared banner storage work through REST API', async () =
     .send({ email: 'second@test.local', password: 'SecondPassword123!' })
     .expect(200);
 
+  const privateGrids = await secondUser.get('/api/grids?search=Updated').expect(200);
+  assert.equal(privateGrids.body.data.length, 0);
+  const privateBanners = await secondUser.get('/api/banners?search=Sale').expect(200);
+  assert.equal(privateBanners.body.data.length, 0);
+
+  await admin
+    .patch('/api/admin/permissions')
+    .send({ role: 'content_manager', resource: 'banner_grids', canViewAll: true })
+    .expect(200);
+  await admin
+    .patch('/api/admin/permissions')
+    .send({ role: 'content_manager', resource: 'saved_banners', canViewAll: true })
+    .expect(200);
+
   const sharedGrids = await secondUser.get('/api/grids?search=Updated').expect(200);
   assert.equal(sharedGrids.body.data.length, 1);
   assert.equal(sharedGrids.body.data[0].isOwner, false);
@@ -159,8 +192,20 @@ test('approval flow and shared banner storage work through REST API', async () =
     });
 
   await secondUser.get(`/api/product-tables/${tableId}`).expect(404);
-  const secondUserTables = await secondUser.get('/api/product-tables').expect(200);
-  assert.equal(secondUserTables.body.data.length, 0);
+  const privateTables = await secondUser.get('/api/product-tables').expect(200);
+  assert.equal(privateTables.body.data.length, 0);
+
+  await admin
+    .patch('/api/admin/permissions')
+    .send({ role: 'content_manager', resource: 'product_tables', canViewAll: true })
+    .expect(200);
+  const sharedTables = await secondUser.get('/api/product-tables').expect(200);
+  assert.equal(sharedTables.body.data.length, 1);
+  assert.equal(sharedTables.body.data[0].isOwner, false);
+  await secondUser
+    .get(`/api/product-tables/${tableId}`)
+    .expect(200)
+    .expect((response) => assert.equal(response.body.data.isOwner, false));
 
   await secondUser.get(`/api/grids/${gridId}`).expect(200);
   await secondUser.get(`/api/banners/${createdBanner.body.data.id}`).expect(200);
@@ -170,6 +215,11 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(404);
   await secondUser.delete(`/api/grids/${gridId}`).expect(404);
   await secondUser.delete(`/api/banners/${createdBanner.body.data.id}`).expect(404);
+  await secondUser
+    .put(`/api/product-tables/${tableId}`)
+    .send({ name: 'Forbidden table update', fileName: 'products.xlsx', data: updatedTableData })
+    .expect(404);
+  await secondUser.delete(`/api/product-tables/${tableId}`).expect(404);
 
   await request(app).get('/api/grids').expect(401);
   await user.delete(`/api/grids/${gridId}`).expect(204);

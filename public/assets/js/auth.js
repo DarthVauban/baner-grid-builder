@@ -20,6 +20,11 @@
   const sidebarCollapseToggle = document.getElementById('sidebar-collapse-toggle');
   const navigationButtons = Array.from(document.querySelectorAll('[data-tab-target]'));
   let currentUser = null;
+  const roleLabels = {
+    admin: 'Адміністратор',
+    editor: 'Редактор',
+    content_manager: 'Контент-менеджер'
+  };
 
   function getInitials(name) {
     return String(name || '')
@@ -91,7 +96,7 @@
     authScreen.hidden = true;
     builderApp.hidden = false;
     currentUserName.textContent = user.name;
-    currentUserMeta.textContent = user.role === 'admin' ? `${user.email} · Адмін` : user.email;
+    currentUserMeta.textContent = `${user.email} · ${roleLabels[user.role] || user.role}`;
     currentUserAvatar.textContent = getInitials(user.name);
     adminTab.hidden = user.role !== 'admin';
     setProfileMenu(false);

@@ -473,6 +473,93 @@ body {
   flex: 1 1 auto;
 }
 
+.mt-admin-access {
+  margin-bottom: 28px;
+  padding: 20px;
+  border: 1px solid #deded6;
+  border-radius: 18px;
+  background: #f4f4ee;
+}
+
+.mt-admin-access__header h3,
+.mt-admin-access__header p,
+.mt-admin__section-title h3 {
+  margin: 0;
+}
+
+.mt-admin-access__header h3,
+.mt-admin__section-title h3 {
+  color: #11110f;
+  font-size: 17px;
+  letter-spacing: -.025em;
+}
+
+.mt-admin-access__header p {
+  margin-top: 5px;
+  color: #6d6d64;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mt-admin-access__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.mt-admin-access__card {
+  padding: 15px;
+  border: 1px solid #deded6;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.mt-admin-access__card h4 {
+  margin: 0 0 8px;
+  color: #11110f;
+  font-size: 14px;
+}
+
+.mt-admin-access__permission {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 11px 0;
+  border-top: 1px solid #ecece6;
+  cursor: pointer;
+}
+
+.mt-admin-access__permission strong,
+.mt-admin-access__permission small {
+  display: block;
+}
+
+.mt-admin-access__permission strong {
+  color: #30302c;
+  font-size: 12px;
+}
+
+.mt-admin-access__permission small {
+  margin-top: 3px;
+  color: #818178;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.mt-admin-access__toggle {
+  width: 38px;
+  height: 21px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  accent-color: #11110f;
+}
+
+.mt-admin__section-title {
+  margin: 0 0 12px;
+}
+
 .mt-admin__users {
   display: grid;
   gap: 10px;
@@ -554,6 +641,23 @@ body {
   font-size: 12px;
 }
 
+.mt-admin__role-select {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #77776f;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.mt-admin__role-select .mt-banner-builder__input {
+  width: auto;
+  min-width: 160px;
+  min-height: 36px;
+  padding: 6px 30px 6px 9px;
+  font-size: 11px;
+}
+
 @media (max-width: 860px) {
   .mt-admin__user {
     grid-template-columns: 1fr;
@@ -568,6 +672,10 @@ body {
   .mt-admin__filters {
     width: 100%;
     flex-basis: auto;
+  }
+
+  .mt-admin-access__grid {
+    grid-template-columns: 1fr;
   }
 }
 

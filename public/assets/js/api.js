@@ -85,6 +85,11 @@
     },
     admin: {
       users: (filters) => request(`/api/admin/users${queryString(filters)}`),
+      permissions: () => request('/api/admin/permissions'),
+      setPermission: (role, resource, canViewAll) => request('/api/admin/permissions', {
+        method: 'PATCH',
+        body: { role, resource, canViewAll }
+      }),
       setStatus: (id, status) => request(`/api/admin/users/${encodeURIComponent(id)}/status`, {
         method: 'PATCH',
         body: { status }

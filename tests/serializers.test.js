@@ -5,7 +5,7 @@ import { serializeBanner, serializeGrid, serializeUser } from '../src/lib/serial
 test('serializers expose camelCase API contracts', () => {
   const created = new Date().toISOString();
   const user = serializeUser({
-    id: '1', name: 'User', email: 'u@example.com', role: 'user', status: 'approved',
+    id: '1', name: 'User', email: 'u@example.com', role: 'editor', status: 'approved',
     approved_at: created, created_at: created, updated_at: created
   });
   const grid = serializeGrid({

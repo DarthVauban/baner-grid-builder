@@ -6,6 +6,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { serializeGrid } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
+import { canViewAllSavedData } from '../access/access.service.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -27,6 +28,7 @@ const gridSchema = z.object({
 
 router.get('/', asyncHandler(async (req, res) => {
   const search = String(req.query.search || '').trim();
+  const canViewAll = await canViewAllSavedData(req.user, 'banner_grids');
   const result = await query(
     `SELECT grids.id, grids.name, grids.share_description, grids.banners,
             grids.user_id AS owner_id, users.name AS owner_name,
@@ -34,15 +36,17 @@ router.get('/', asyncHandler(async (req, res) => {
             grids.created_at, grids.updated_at
      FROM banner_grids AS grids
      JOIN users ON users.id = grids.user_id
-     WHERE $2 = '' OR grids.name ILIKE '%' || $2 || '%'
+     WHERE ($3::BOOLEAN OR grids.user_id = $1)
+       AND ($2 = '' OR grids.name ILIKE '%' || $2 || '%')
      ORDER BY grids.updated_at DESC`,
-    [req.user.id, search]
+    [req.user.id, search, canViewAll]
   );
   res.json({ data: result.rows.map(serializeGrid) });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
+  const canViewAll = await canViewAllSavedData(req.user, 'banner_grids');
   const result = await query(
     `SELECT grids.id, grids.name, grids.share_description, grids.banners,
             grids.user_id AS owner_id, users.name AS owner_name,
@@ -50,8 +54,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
             grids.created_at, grids.updated_at
      FROM banner_grids AS grids
      JOIN users ON users.id = grids.user_id
-     WHERE grids.id = $1`,
-    [id, req.user.id]
+     WHERE grids.id = $1 AND ($3::BOOLEAN OR grids.user_id = $2)`,
+    [id, req.user.id, canViewAll]
   );
   if (!result.rows[0]) throw new AppError(404, 'GRID_NOT_FOUND', 'Сітку не знайдено.');
   res.json({ data: serializeGrid(result.rows[0]) });

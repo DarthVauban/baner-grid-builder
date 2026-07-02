@@ -6,13 +6,19 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { serializeUser } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth, requireRole } from '../../middleware/auth.js';
+import { assignableRoles, savedDataResources } from '../access/access.service.js';
 
 const router = Router();
 router.use(requireAuth, requireRole('admin'));
 
 const idSchema = z.string().uuid();
 const statusSchema = z.object({ status: z.enum(['pending', 'approved', 'rejected']) });
-const roleSchema = z.object({ role: z.enum(['admin', 'user']) });
+const roleSchema = z.object({ role: z.enum(['admin', 'editor', 'content_manager']) });
+const permissionSchema = z.object({
+  role: z.enum(['editor', 'content_manager']),
+  resource: z.enum(['banner_grids', 'saved_banners', 'product_tables']),
+  canViewAll: z.boolean()
+});
 
 router.get('/users', asyncHandler(async (req, res) => {
   const search = String(req.query.search || '').trim();
@@ -29,7 +35,7 @@ router.get('/users', asyncHandler(async (req, res) => {
     params.push(status);
     where.push(`status = $${params.length}`);
   }
-  if (['admin', 'user'].includes(role)) {
+  if (assignableRoles.includes(role)) {
     params.push(role);
     where.push(`role = $${params.length}`);
   }
@@ -44,6 +50,47 @@ router.get('/users', asyncHandler(async (req, res) => {
   );
 
   res.json({ data: result.rows.map(serializeUser) });
+}));
+
+router.get('/permissions', asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT role, resource, can_view_all, updated_at
+     FROM role_permissions
+     ORDER BY role, resource`
+  );
+  res.json({
+    data: result.rows.map((row) => ({
+      role: row.role,
+      resource: row.resource,
+      canViewAll: row.can_view_all,
+      updatedAt: row.updated_at
+    }))
+  });
+}));
+
+router.patch('/permissions', asyncHandler(async (req, res) => {
+  const input = parseInput(permissionSchema, req.body);
+  if (!savedDataResources.includes(input.resource)) {
+    throw new AppError(422, 'INVALID_RESOURCE', 'Невідомий тип збережених даних.');
+  }
+  const result = await query(
+    `INSERT INTO role_permissions (role, resource, can_view_all, updated_at, updated_by)
+     VALUES ($1, $2, $3, NOW(), $4)
+     ON CONFLICT (role, resource)
+     DO UPDATE SET can_view_all = EXCLUDED.can_view_all,
+                   updated_at = NOW(), updated_by = EXCLUDED.updated_by
+     RETURNING role, resource, can_view_all, updated_at`,
+    [input.role, input.resource, input.canViewAll, req.user.id]
+  );
+  const row = result.rows[0];
+  res.json({
+    data: {
+      role: row.role,
+      resource: row.resource,
+      canViewAll: row.can_view_all,
+      updatedAt: row.updated_at
+    }
+  });
 }));
 
 router.patch('/users/:id/status', asyncHandler(async (req, res) => {

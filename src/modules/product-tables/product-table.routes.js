@@ -6,6 +6,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { serializeProductTable } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
+import { canViewAllSavedData } from '../access/access.service.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -41,26 +42,38 @@ function getTableStats(data) {
 
 router.get('/', asyncHandler(async (req, res) => {
   const search = String(req.query.search || '').trim();
+  const canViewAll = await canViewAllSavedData(req.user, 'product_tables');
   const result = await query(
-    `SELECT id, name, file_name, sheet_count, row_count, created_at, updated_at
-     FROM product_tables
-     WHERE user_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%')
-     ORDER BY updated_at DESC`,
-    [req.user.id, search]
+    `SELECT tables.id, tables.name, tables.file_name, tables.sheet_count, tables.row_count,
+            tables.user_id AS owner_id, users.name AS owner_name,
+            tables.user_id = $1 AS is_owner,
+            tables.created_at, tables.updated_at
+     FROM product_tables AS tables
+     JOIN users ON users.id = tables.user_id
+     WHERE ($3::BOOLEAN OR tables.user_id = $1)
+       AND ($2 = '' OR tables.name ILIKE '%' || $2 || '%')
+     ORDER BY tables.updated_at DESC`,
+    [req.user.id, search, canViewAll]
   );
-  res.json({ data: result.rows.map(serializeProductTable) });
+  res.json({ data: result.rows.map((row) => serializeProductTable(row, req.user)) });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
+  const canViewAll = await canViewAllSavedData(req.user, 'product_tables');
   const result = await query(
-    `SELECT id, name, file_name, data, sheet_count, row_count, created_at, updated_at
-     FROM product_tables
-     WHERE id = $1 AND user_id = $2`,
-    [id, req.user.id]
+    `SELECT tables.id, tables.name, tables.file_name, tables.data,
+            tables.sheet_count, tables.row_count,
+            tables.user_id AS owner_id, users.name AS owner_name,
+            tables.user_id = $2 AS is_owner,
+            tables.created_at, tables.updated_at
+     FROM product_tables AS tables
+     JOIN users ON users.id = tables.user_id
+     WHERE tables.id = $1 AND ($3::BOOLEAN OR tables.user_id = $2)`,
+    [id, req.user.id, canViewAll]
   );
   if (!result.rows[0]) throw new AppError(404, 'PRODUCT_TABLE_NOT_FOUND', 'Таблицю не знайдено.');
-  res.json({ data: serializeProductTable(result.rows[0]) });
+  res.json({ data: serializeProductTable(result.rows[0], req.user) });
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
@@ -79,7 +92,7 @@ router.post('/', asyncHandler(async (req, res) => {
       stats.rowCount
     ]
   );
-  res.status(201).json({ data: serializeProductTable(result.rows[0]) });
+  res.status(201).json({ data: serializeProductTable(result.rows[0], req.user) });
 }));
 
 router.put('/:id', asyncHandler(async (req, res) => {
@@ -103,7 +116,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
     ]
   );
   if (!result.rows[0]) throw new AppError(404, 'PRODUCT_TABLE_NOT_FOUND', 'Таблицю не знайдено.');
-  res.json({ data: serializeProductTable(result.rows[0]) });
+  res.json({ data: serializeProductTable(result.rows[0], req.user) });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

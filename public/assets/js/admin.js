@@ -6,6 +6,17 @@
   const summary = document.getElementById('admin-users-summary');
   const searchInput = document.getElementById('admin-users-search');
   const statusInput = document.getElementById('admin-users-status');
+  const permissionsGrid = document.getElementById('admin-permissions-grid');
+  const roleLabels = {
+    admin: 'Адміністратор',
+    editor: 'Редактор',
+    content_manager: 'Контент-менеджер'
+  };
+  const resources = [
+    { id: 'banner_grids', label: 'Банерні сітки', note: 'Перегляд усіх збережених сіток' },
+    { id: 'saved_banners', label: 'Збережені банери', note: 'Перегляд усіх окремих банерів' },
+    { id: 'product_tables', label: 'Таблиці товарів', note: 'Перегляд усіх завантажених таблиць' }
+  ];
   let currentUser = null;
   let searchTimer;
 
@@ -39,6 +50,38 @@
     return badge;
   }
 
+  function createRoleSelect(user) {
+    const label = document.createElement('label');
+    const caption = document.createElement('span');
+    const select = document.createElement('select');
+    label.className = 'mt-admin__role-select';
+    caption.textContent = 'Роль';
+    select.className = 'mt-banner-builder__input';
+    Object.entries(roleLabels).forEach(([value, text]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      select.appendChild(option);
+    });
+    select.value = user.role;
+    select.addEventListener('change', async () => {
+      const previousRole = user.role;
+      select.disabled = true;
+      try {
+        await api.admin.setRole(user.id, select.value);
+        notify('Роль користувача оновлено.', false);
+        await loadUsers();
+      } catch (error) {
+        select.value = previousRole;
+        notify(error.message, true);
+      } finally {
+        select.disabled = false;
+      }
+    });
+    label.append(caption, select);
+    return label;
+  }
+
   function renderUser(user) {
     const row = document.createElement('article');
     const identity = document.createElement('div');
@@ -56,10 +99,11 @@
     email.textContent = user.email;
     identity.append(name, email);
     badges.append(
-      createBadge(user.role, ''),
+      createBadge(roleLabels[user.role] || user.role, ''),
       createBadge(user.status, `mt-admin__badge--${user.status}`)
     );
 
+    if (!isSelf) actions.appendChild(createRoleSelect(user));
     if (user.status !== 'approved') {
       actions.append(createButton('Схвалити', 'mt-banner-builder__button--primary', async () => {
         await api.admin.setStatus(user.id, 'approved');
@@ -72,26 +116,71 @@
         notify('Користувача відхилено.', false);
       }));
     }
-    if (!isSelf) {
-      const nextRole = user.role === 'admin' ? 'user' : 'admin';
-      actions.append(createButton(
-        user.role === 'admin' ? 'Зробити user' : 'Зробити admin',
-        'mt-banner-builder__button--secondary',
-        async () => {
-          await api.admin.setRole(user.id, nextRole);
-          notify('Роль користувача оновлено.', false);
-        }
-      ));
-    }
 
     row.append(identity, badges, actions);
     return row;
   }
 
+  function createPermissionCard(role, permissions) {
+    const card = document.createElement('section');
+    const title = document.createElement('h4');
+    card.className = 'mt-admin-access__card';
+    title.textContent = roleLabels[role];
+    card.appendChild(title);
+
+    resources.forEach((resource) => {
+      const row = document.createElement('label');
+      const copy = document.createElement('span');
+      const name = document.createElement('strong');
+      const note = document.createElement('small');
+      const toggle = document.createElement('input');
+      const current = permissions.find((item) => item.role === role && item.resource === resource.id);
+      row.className = 'mt-admin-access__permission';
+      name.textContent = resource.label;
+      note.textContent = resource.note;
+      copy.append(name, note);
+      toggle.type = 'checkbox';
+      toggle.className = 'mt-admin-access__toggle';
+      toggle.checked = Boolean(current?.canViewAll);
+      toggle.setAttribute('aria-label', `${roleLabels[role]}: ${resource.label}`);
+      toggle.addEventListener('change', async () => {
+        const nextValue = toggle.checked;
+        toggle.disabled = true;
+        try {
+          await api.admin.setPermission(role, resource.id, nextValue);
+          notify('Доступи ролі оновлено.', false);
+        } catch (error) {
+          toggle.checked = !nextValue;
+          notify(error.message, true);
+        } finally {
+          toggle.disabled = false;
+        }
+      });
+      row.append(copy, toggle);
+      card.appendChild(row);
+    });
+    return card;
+  }
+
+  async function loadPermissions() {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    permissionsGrid.setAttribute('aria-busy', 'true');
+    try {
+      const permissions = await api.admin.permissions();
+      permissionsGrid.replaceChildren(
+        createPermissionCard('editor', permissions),
+        createPermissionCard('content_manager', permissions)
+      );
+    } catch (error) {
+      permissionsGrid.textContent = error.message;
+    } finally {
+      permissionsGrid.removeAttribute('aria-busy');
+    }
+  }
+
   async function loadUsers() {
     if (!currentUser || currentUser.role !== 'admin') return;
     summary.textContent = 'Завантаження…';
-
     try {
       const users = await api.admin.users({
         search: searchInput.value.trim(),
@@ -119,10 +208,11 @@
   statusInput.addEventListener('change', loadUsers);
   window.addEventListener('mt:authenticated', (event) => {
     currentUser = event.detail.user;
-    if (currentUser.role === 'admin') loadUsers();
+    if (currentUser.role === 'admin') Promise.all([loadUsers(), loadPermissions()]);
   });
   window.addEventListener('mt:signed-out', () => {
     currentUser = null;
     list.replaceChildren();
+    permissionsGrid.replaceChildren();
   });
 })();
