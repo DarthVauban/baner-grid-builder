@@ -16,6 +16,9 @@
   const summary = document.getElementById('spreadsheet-summary');
   const sheetField = document.getElementById('spreadsheet-sheet-field');
   const sheetSelect = document.getElementById('spreadsheet-sheet-select');
+  const addUploadedStatusButton = document.getElementById('spreadsheet-add-upload-status');
+  const fullscreenButton = document.getElementById('spreadsheet-fullscreen');
+  const tool = document.querySelector('.mt-sheet-tool');
   const table = document.getElementById('spreadsheet-table');
   const viewButtons = Array.from(document.querySelectorAll('[data-sheet-view]'));
   const editorView = document.getElementById('spreadsheet-editor-view');
@@ -34,6 +37,7 @@
   let savedTableTotal = 0;
   let dirty = false;
   let pending = false;
+  let fullscreenFallback = false;
   let copyTimer;
   let searchTimer;
 
@@ -73,11 +77,12 @@
       .map((row, index) => ({
         sourceIndex: index + 1,
         values: Array.from({ length: columnCount }, (_, columnIndex) => normalizeText(row[columnIndex])),
-        completed: false
+        completed: false,
+        uploaded: false
       }))
       .filter((row) => row.values.some(Boolean));
 
-    return { name, headers, rows };
+    return { name, headers, showUploadedStatus: false, rows };
   }
 
   function normalizeWorkbook(workbook) {
@@ -97,10 +102,12 @@
     const sheets = Array.isArray(data?.sheets) ? data.sheets.map((sheet) => ({
       name: normalizeText(sheet.name),
       headers: Array.isArray(sheet.headers) ? sheet.headers.map(normalizeText) : ['Назва товару'],
+      showUploadedStatus: Boolean(sheet.showUploadedStatus),
       rows: Array.isArray(sheet.rows) ? sheet.rows.map((row) => ({
         sourceIndex: Number(row.sourceIndex) || 0,
         values: Array.isArray(row.values) ? row.values.map(normalizeText) : [''],
-        completed: Boolean(row.completed)
+        completed: Boolean(row.completed),
+        uploaded: Boolean(row.uploaded)
       })) : []
     })) : [];
     return {
@@ -124,6 +131,7 @@
     saveButton.disabled = value;
     deleteButton.disabled = value;
     resetButton.disabled = value;
+    addUploadedStatusButton.disabled = value;
     nameInput.disabled = value;
   }
 
@@ -162,22 +170,23 @@
     return button;
   }
 
-  function createHeaderCell(text, index) {
+  function createHeaderCell(text) {
     const th = document.createElement('th');
     th.scope = 'col';
-    if (index === -1) {
-      const hidden = document.createElement('span');
-      hidden.className = 'mt-banner-builder__visually-hidden';
-      hidden.textContent = 'Готово';
-      th.appendChild(hidden);
-      return th;
-    }
     const line = document.createElement('div');
     const value = document.createElement('span');
     line.className = 'mt-sheet-table__head-copy';
     value.textContent = text;
     line.append(value, createCopyButton(text, `Копіювати назву колонки: ${text}`));
     th.appendChild(line);
+    return th;
+  }
+
+  function createStatusHeader(label) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.className = 'mt-sheet-table__status-head';
+    th.textContent = label;
     return th;
   }
 
@@ -218,31 +227,79 @@
     return td;
   }
 
-  function createStatusCell(rowData) {
+  function createStatusCell(rowData, status, label) {
     const td = document.createElement('td');
     const checkbox = document.createElement('input');
     const productName = rowData.values[0] || `рядок ${rowData.sourceIndex + 1}`;
     checkbox.type = 'checkbox';
     checkbox.className = 'mt-sheet-table__checkbox';
-    checkbox.dataset.rowComplete = String(rowData.sourceIndex);
-    checkbox.checked = rowData.completed;
-    checkbox.setAttribute('aria-label', `Позначити як готовий: ${productName}`);
+    checkbox.dataset.rowStatus = status;
+    checkbox.dataset.rowIndex = String(rowData.sourceIndex);
+    checkbox.checked = Boolean(rowData[status]);
+    checkbox.setAttribute('aria-label', `Позначити як ${label.toLowerCase()}: ${productName}`);
     td.appendChild(checkbox);
     return td;
+  }
+
+  function applyRowStatusClasses(rowElement, rowData) {
+    rowElement.classList.toggle('mt-sheet-table__row--done', rowData.completed);
+    rowElement.classList.toggle('mt-sheet-table__row--uploaded', rowData.uploaded);
   }
 
   function getCurrentSheet() {
     return tableData?.sheets.find((sheet) => sheet.name === currentSheetName) || null;
   }
 
+  function addUploadedStatus() {
+    const sheet = getCurrentSheet();
+    if (!sheet || sheet.showUploadedStatus) return;
+    sheet.showUploadedStatus = true;
+    sheet.rows.forEach((row) => {
+      row.uploaded = Boolean(row.uploaded);
+    });
+    renderSheet(sheet.name);
+    setDirty(true);
+    notify('Колонку «Вивантажено» додано.', false);
+  }
+
+  function updateFullscreenState() {
+    const isFullscreen = document.fullscreenElement === tool || fullscreenFallback;
+    tool.classList.toggle('mt-sheet-tool--fullscreen', isFullscreen);
+    fullscreenButton.textContent = isFullscreen ? 'Вийти з повного екрана' : 'На весь екран';
+    fullscreenButton.setAttribute('aria-pressed', String(isFullscreen));
+  }
+
+  async function toggleFullscreen() {
+    if (fullscreenFallback) {
+      fullscreenFallback = false;
+      updateFullscreenState();
+      return;
+    }
+    try {
+      if (document.fullscreenElement === tool) {
+        await document.exitFullscreen();
+      } else if (tool.requestFullscreen) {
+        await tool.requestFullscreen();
+      } else {
+        throw new Error('Fullscreen API is not supported');
+      }
+    } catch (error) {
+      fullscreenFallback = true;
+      updateFullscreenState();
+    }
+  }
+
   function updateSummary() {
     const completed = currentRows.filter((row) => row.completed).length;
+    const sheet = getCurrentSheet();
+    const uploaded = currentRows.filter((row) => row.uploaded).length;
+    const uploadedSummary = sheet?.showUploadedStatus ? ` · Вивантажено: ${uploaded}` : '';
     summary.textContent = `${formatCount(currentRows.length, 'рядок', 'рядки', 'рядків')} · ${formatCount(
       currentCharacteristicCount,
       'характеристика',
       'характеристики',
       'характеристик'
-    )} · Готово: ${completed}`;
+    )} · Заповнено: ${completed}${uploadedSummary}`;
   }
 
   function renderSheet(sheetName) {
@@ -252,15 +309,17 @@
     const headerRow = document.createElement('tr');
     const tbody = document.createElement('tbody');
     const fragment = document.createDocumentFragment();
-    headerRow.appendChild(createHeaderCell('', -1));
-    sheet.headers.forEach((header, index) => headerRow.appendChild(createHeaderCell(header, index)));
+    headerRow.appendChild(createStatusHeader('Заповнено'));
+    if (sheet.showUploadedStatus) headerRow.appendChild(createStatusHeader('Вивантажено'));
+    sheet.headers.forEach((header) => headerRow.appendChild(createHeaderCell(header)));
     thead.appendChild(headerRow);
 
     sheet.rows.forEach((rowData) => {
       const tr = document.createElement('tr');
       tr.dataset.rowIndex = String(rowData.sourceIndex);
-      tr.classList.toggle('mt-sheet-table__row--done', rowData.completed);
-      tr.appendChild(createStatusCell(rowData));
+      applyRowStatusClasses(tr, rowData);
+      tr.appendChild(createStatusCell(rowData, 'completed', 'Заповнено'));
+      if (sheet.showUploadedStatus) tr.appendChild(createStatusCell(rowData, 'uploaded', 'Вивантажено'));
       tr.appendChild(createProductCell(rowData.values[0]));
       sheet.headers.slice(1).forEach((header, index) => {
         tr.appendChild(createCharacteristicCell(header, rowData.values[index + 1] || ''));
@@ -273,7 +332,10 @@
     currentRows = sheet.rows;
     currentCharacteristicCount = Math.max(0, sheet.headers.length - 1);
     tbody.appendChild(fragment);
-    table.style.width = `${Math.max(980, 334 + (currentCharacteristicCount * 280))}px`;
+    table.classList.toggle('mt-sheet-table--uploaded-status', sheet.showUploadedStatus);
+    addUploadedStatusButton.hidden = sheet.showUploadedStatus;
+    const statusWidth = sheet.showUploadedStatus ? 208 : 104;
+    table.style.width = `${Math.max(980, statusWidth + 280 + (currentCharacteristicCount * 280))}px`;
     table.replaceChildren(thead, tbody);
     updateSummary();
     showMessage(sheet.rows.length ? '' : 'Обраний аркуш не містить товарів.', false);
@@ -351,7 +413,9 @@
     currentCharacteristicCount = 0;
     dirty = false;
     table.replaceChildren();
+    table.classList.remove('mt-sheet-table--uploaded-status');
     table.style.removeProperty('width');
+    addUploadedStatusButton.hidden = false;
     sheetSelect.replaceChildren();
     nameInput.value = '';
     fileName.textContent = '';
@@ -539,6 +603,15 @@
     renderSheet(sheetSelect.value);
     setDirty(true);
   });
+  addUploadedStatusButton.addEventListener('click', addUploadedStatus);
+  fullscreenButton.addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', updateFullscreenState);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && fullscreenFallback) {
+      fullscreenFallback = false;
+      updateFullscreenState();
+    }
+  });
   viewButtons.forEach((button) => {
     button.addEventListener('click', () => switchView(button.dataset.sheetView));
   });
@@ -562,13 +635,15 @@
     if (button) copyText(button.dataset.copyText, button);
   });
   table.addEventListener('change', (event) => {
-    const checkbox = event.target.closest('[data-row-complete]');
+    const checkbox = event.target.closest('[data-row-status]');
     if (!checkbox) return;
-    const rowIndex = Number(checkbox.dataset.rowComplete);
+    const status = checkbox.dataset.rowStatus;
+    if (status !== 'completed' && status !== 'uploaded') return;
+    const rowIndex = Number(checkbox.dataset.rowIndex);
     const row = getCurrentSheet()?.rows.find((candidate) => candidate.sourceIndex === rowIndex);
     if (!row) return;
-    row.completed = checkbox.checked;
-    checkbox.closest('tr').classList.toggle('mt-sheet-table__row--done', checkbox.checked);
+    row[status] = checkbox.checked;
+    applyRowStatusClasses(checkbox.closest('tr'), row);
     updateSummary();
     setDirty(true);
   });

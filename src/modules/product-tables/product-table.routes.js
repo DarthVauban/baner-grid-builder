@@ -16,11 +16,13 @@ const cellSchema = z.string().max(10000);
 const tableRowSchema = z.object({
   sourceIndex: z.number().int().nonnegative(),
   values: z.array(cellSchema).min(1).max(200),
-  completed: z.boolean().default(false)
+  completed: z.boolean().default(false),
+  uploaded: z.boolean().default(false)
 });
 const tableSheetSchema = z.object({
   name: z.string().trim().min(1).max(255),
   headers: z.array(z.string().trim().min(1).max(1000)).min(1).max(200),
+  showUploadedStatus: z.boolean().default(false),
   rows: z.array(tableRowSchema).max(20000)
 });
 const tableDataSchema = z.object({
@@ -43,6 +45,7 @@ function getTableStats(data) {
 router.get('/', asyncHandler(async (req, res) => {
   const search = String(req.query.search || '').trim();
   const canViewAll = await canViewAllSavedData(req.user, 'product_tables');
+  const ownershipFilter = canViewAll ? 'TRUE' : 'tables.user_id = $1';
   const result = await query(
     `SELECT tables.id, tables.name, tables.file_name, tables.sheet_count, tables.row_count,
             tables.user_id AS owner_id, users.name AS owner_name,
@@ -50,10 +53,10 @@ router.get('/', asyncHandler(async (req, res) => {
             tables.created_at, tables.updated_at
      FROM product_tables AS tables
      JOIN users ON users.id = tables.user_id
-     WHERE ($3::BOOLEAN OR tables.user_id = $1)
+     WHERE ${ownershipFilter}
        AND ($2 = '' OR tables.name ILIKE '%' || $2 || '%')
      ORDER BY tables.updated_at DESC`,
-    [req.user.id, search, canViewAll]
+    [req.user.id, search]
   );
   res.json({ data: result.rows.map((row) => serializeProductTable(row, req.user)) });
 }));
@@ -61,6 +64,7 @@ router.get('/', asyncHandler(async (req, res) => {
 router.get('/:id', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const canViewAll = await canViewAllSavedData(req.user, 'product_tables');
+  const accessFilter = canViewAll ? 'TRUE' : 'tables.user_id = $2';
   const result = await query(
     `SELECT tables.id, tables.name, tables.file_name, tables.data,
             tables.sheet_count, tables.row_count,
@@ -69,8 +73,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
             tables.created_at, tables.updated_at
      FROM product_tables AS tables
      JOIN users ON users.id = tables.user_id
-     WHERE tables.id = $1 AND ($3::BOOLEAN OR tables.user_id = $2)`,
-    [id, req.user.id, canViewAll]
+     WHERE tables.id = $1 AND ${accessFilter}`,
+    [id, req.user.id]
   );
   if (!result.rows[0]) throw new AppError(404, 'PRODUCT_TABLE_NOT_FOUND', 'Таблицю не знайдено.');
   res.json({ data: serializeProductTable(result.rows[0], req.user) });

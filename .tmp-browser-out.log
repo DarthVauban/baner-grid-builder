@@ -1,0 +1,5 @@
+Applied migration: 001_initial_schema.sql
+Applied migration: 002_product_tables.sql
+Applied migration: 003_roles_and_permissions.sql
+Bootstrap admin created: admin@test.local
+Banner builder is running on port 3100

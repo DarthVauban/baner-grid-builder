@@ -162,9 +162,10 @@ test('approval flow and shared banner storage work through REST API', async () =
     sheets: [{
       name: 'Товари',
       headers: ['Назва товару', 'Колір'],
+      showUploadedStatus: true,
       rows: [
-        { sourceIndex: 1, values: ['Смартфон', 'Чорний'], completed: false },
-        { sourceIndex: 2, values: ['Навушники', 'Білі'], completed: true }
+        { sourceIndex: 1, values: ['Смартфон', 'Чорний'], completed: false, uploaded: false },
+        { sourceIndex: 2, values: ['Навушники', 'Білі'], completed: true, uploaded: true }
       ]
     }]
   };
@@ -174,6 +175,8 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(201);
   assert.equal(createdTable.body.data.rowCount, 2);
   assert.equal(createdTable.body.data.data.sheets[0].rows[1].completed, true);
+  assert.equal(createdTable.body.data.data.sheets[0].rows[1].uploaded, true);
+  assert.equal(createdTable.body.data.data.sheets[0].showUploadedStatus, true);
 
   const tableId = createdTable.body.data.id;
   const tableList = await user.get('/api/product-tables?search=Характеристики').expect(200);
@@ -182,6 +185,7 @@ test('approval flow and shared banner storage work through REST API', async () =
 
   const updatedTableData = structuredClone(tableData);
   updatedTableData.sheets[0].rows[0].completed = true;
+  updatedTableData.sheets[0].rows[0].uploaded = true;
   await user
     .put(`/api/product-tables/${tableId}`)
     .send({ name: 'Готові характеристики', fileName: 'products.xlsx', data: updatedTableData })
@@ -189,6 +193,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect((response) => {
       assert.equal(response.body.data.name, 'Готові характеристики');
       assert.equal(response.body.data.data.sheets[0].rows[0].completed, true);
+      assert.equal(response.body.data.data.sheets[0].rows[0].uploaded, true);
     });
 
   await secondUser.get(`/api/product-tables/${tableId}`).expect(404);

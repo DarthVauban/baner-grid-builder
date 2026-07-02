@@ -1,0 +1,30 @@
+NotSupported [Error]: 🔨 Not supported 🔨 : lookups on joins
+
+👉 pg-mem is work-in-progress, and it would seem that you've hit one of its limits.
+
+*️⃣ Failed SQL statement: SELECT tables.id, tables.name, tables.file_name, tables.sheet_count, tables.row_count,
+            tables.user_id AS owner_id, users.name AS owner_name,
+            tables.user_id = '67d6c965-2ca3-4fe5-b653-e0cfe79933e6' AS is_owner,
+            tables.created_at, tables.updated_at
+     FROM product_tables AS tables
+     JOIN users ON users.id = tables.user_id
+     WHERE ('true'::BOOLEAN OR tables.user_id = '67d6c965-2ca3-4fe5-b653-e0cfe79933e6')
+       AND ('' = '' OR tables.name ILIKE '%' || '' || '%')
+     ORDER BY tables.updated_at DESC;
+
+👉 You can file an issue at https://github.com/oguimbal/pg-mem along with a way to reproduce this error (if you can), and  the stacktrace:
+
+
+    at JoinSelection.hasItem (C:\Users\Dante\OneDrive\Рабочий стол\baner-grid-builder\node_modules\pg-mem\index.js:5326:15)
+    at OrFilter.hasItem (C:\Users\Dante\OneDrive\Рабочий стол\baner-grid-builder\node_modules\pg-mem\index.js:13044:26)
+    at C:\Users\Dante\OneDrive\Рабочий стол\baner-grid-builder\node_modules\pg-mem\index.js:13010:38
+    at Array.every (<anonymous>)
+    at AndFilter.enumerate (C:\Users\Dante\OneDrive\Рабочий стол\baner-grid-builder\node_modules\pg-mem\index.js:13010:25)
+    at enumerate.next (<anonymous>)
+    at OrderBy.enumerate (C:\Users\Dante\OneDrive\Рабочий стол\baner-grid-builder\node_modules\pg-mem\index.js:14599:35)
+    at Selection.enumerate (C:\Users\Dante\OneDrive\Рабочий стол\baner-grid-builder\node_modules\pg-mem\index.js:2862:38)
+    at enumerate.next (<anonymous>)
+    at SelectExec.execute (C:\Users\Dante\OneDrive\Рабочий стол\baner-grid-builder\node_modules\pg-mem\index.js:3202:41) {
+  location: { start: 0, end: 0 },
+  Symbol(errorDetailsIncluded): true
+}
