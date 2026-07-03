@@ -1,4 +1,14 @@
-import type { LoginInput, RegisterInput, User } from '../types/user';
+import type {
+  LoginInput,
+  PermissionRole,
+  RegisterInput,
+  RolePermission,
+  SavedDataResource,
+  User,
+  UserDirectory,
+  UserRole,
+  UserStatus
+} from '../types/user';
 import type {
   Notification,
   NotificationFeed,
@@ -69,10 +79,10 @@ function jsonBody(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function queryString(params: Record<string, string | undefined>): string {
+function queryString(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value) search.set(key, value);
+    if (value !== undefined && value !== '') search.set(key, String(value));
   });
   const result = search.toString();
   return result ? `?${result}` : '';
@@ -125,5 +135,28 @@ export const api = {
       method: 'PATCH'
     }),
     markAllRead: () => request<void>('/api/notifications/read-all', { method: 'POST' })
+  },
+  admin: {
+    directory: (params: {
+      search?: string;
+      status?: UserStatus;
+      role?: UserRole;
+      page?: number;
+      pageSize?: number;
+    }) => request<UserDirectory>(`/api/admin/directory${queryString(params)}`),
+    permissions: () => request<RolePermission[]>('/api/admin/permissions'),
+    setPermission: (role: PermissionRole, resource: SavedDataResource, canViewAll: boolean) =>
+      request<RolePermission>('/api/admin/permissions', {
+        method: 'PATCH',
+        body: jsonBody({ role, resource, canViewAll })
+      }),
+    setStatus: (id: string, status: UserStatus) => request<User>(
+      `/api/admin/users/${encodeURIComponent(id)}/status`,
+      { method: 'PATCH', body: jsonBody({ status }) }
+    ),
+    setRole: (id: string, role: UserRole) => request<User>(
+      `/api/admin/users/${encodeURIComponent(id)}/role`,
+      { method: 'PATCH', body: jsonBody({ role }) }
+    )
   }
 };

@@ -37,6 +37,12 @@ export function AppShell() {
             <span>Справи</span>
             <span className="sidebar__new">Новий</span>
           </NavLink>
+          {user.role === 'admin' && (
+            <NavLink className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/users" onClick={closeSidebar}>
+              <Icon name="users" />
+              <span>Користувачі</span>
+            </NavLink>
+          )}
 
           <p className="sidebar__label sidebar__label--spaced">Інструменти</p>
           <a className="sidebar__link" href="/legacy">

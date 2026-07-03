@@ -1,0 +1,38 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import type { User } from '../types/user';
+import { AdminUserRow } from './AdminUsersPage';
+
+const pendingUser: User = {
+  id: 'user-2',
+  name: 'Ірина Коваль',
+  email: 'iryna@example.com',
+  role: 'content_manager',
+  status: 'pending',
+  approvedAt: null,
+  createdAt: '2030-01-01T00:00:00.000Z',
+  updatedAt: '2030-01-01T00:00:00.000Z'
+};
+
+describe('AdminUserRow', () => {
+  it('allows an administrator to approve a pending user and change their role', async () => {
+    const onRole = vi.fn();
+    const onStatus = vi.fn();
+    render(<AdminUserRow user={pendingUser} currentUserId="admin-1" busy={false} onRole={onRole} onStatus={onStatus} />);
+
+    expect(screen.getByText('Очікує схвалення')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'editor');
+    expect(onRole).toHaveBeenCalledWith(pendingUser, 'editor');
+    await userEvent.click(screen.getByRole('button', { name: 'Схвалити' }));
+    expect(onStatus).toHaveBeenCalledWith(pendingUser, 'approved');
+  });
+
+  it('does not allow the current administrator to demote or reject themselves', () => {
+    const self = { ...pendingUser, id: 'admin-1', role: 'admin' as const, status: 'approved' as const };
+    render(<AdminUserRow user={self} currentUserId="admin-1" busy={false} onRole={vi.fn()} onStatus={vi.fn()} />);
+    expect(screen.getByText('Ви')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Відхилити' })).not.toBeInTheDocument();
+  });
+});

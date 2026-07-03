@@ -54,6 +54,12 @@ test('approval flow and shared banner storage work through REST API', async () =
     true
   );
 
+  const directory = await admin.get('/api/admin/directory?page=1&pageSize=10').expect(200);
+  assert.equal(directory.body.data.page, 1);
+  assert.equal(directory.body.data.pageSize, 10);
+  assert.ok(directory.body.data.summary.total >= 2);
+  assert.ok(directory.body.data.items.some((candidate) => candidate.email === 'admin@test.local'));
+
   const users = await admin.get('/api/admin/users?status=pending').expect(200);
   const pendingUser = users.body.data.find((user) => user.email === 'user@test.local');
   assert.ok(pendingUser);

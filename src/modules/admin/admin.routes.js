@@ -19,6 +19,74 @@ const permissionSchema = z.object({
   resource: z.enum(['banner_grids', 'saved_banners', 'product_tables']),
   canViewAll: z.boolean()
 });
+const directoryQuerySchema = z.object({
+  search: z.string().trim().max(160).default(''),
+  status: z.enum(['pending', 'approved', 'rejected']).optional(),
+  role: z.enum(['admin', 'editor', 'content_manager']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(10).max(100).default(25)
+});
+
+router.get('/directory', asyncHandler(async (req, res) => {
+  const input = parseInput(directoryQuerySchema, {
+    search: String(req.query.search || ''),
+    status: req.query.status || undefined,
+    role: req.query.role || undefined,
+    page: req.query.page || 1,
+    pageSize: req.query.pageSize || 25
+  });
+  const params = [];
+  const where = [];
+
+  if (input.search) {
+    params.push(`%${input.search}%`);
+    where.push(`(name ILIKE $${params.length} OR email ILIKE $${params.length})`);
+  }
+  if (input.status) {
+    params.push(input.status);
+    where.push(`status = $${params.length}`);
+  }
+  if (input.role) {
+    params.push(input.role);
+    where.push(`role = $${params.length}`);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const countResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM users ${whereSql}`, params);
+  const total = countResult.rows[0]?.count || 0;
+  const offset = (input.page - 1) * input.pageSize;
+  const listParams = [...params, input.pageSize, offset];
+  const usersResult = await query(
+    `SELECT id, name, email, role, status, approved_at, created_at, updated_at
+     FROM users
+     ${whereSql}
+     ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+              lower(name), created_at DESC
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    listParams
+  );
+  const summaryResult = await query(
+    `SELECT status, COUNT(*)::INTEGER AS count
+     FROM users
+     GROUP BY status`
+  );
+  const summary = { total: 0, pending: 0, approved: 0, rejected: 0 };
+  for (const row of summaryResult.rows) {
+    summary[row.status] = row.count;
+    summary.total += row.count;
+  }
+
+  res.json({
+    data: {
+      items: usersResult.rows.map(serializeUser),
+      total,
+      page: input.page,
+      pageSize: input.pageSize,
+      pageCount: Math.max(1, Math.ceil(total / input.pageSize)),
+      summary
+    }
+  });
+}));
 
 router.get('/users', asyncHandler(async (req, res) => {
   const search = String(req.query.search || '').trim();

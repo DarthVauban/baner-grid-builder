@@ -1,5 +1,5 @@
 interface IconProps {
-  name: 'home' | 'tasks' | 'tools' | 'menu' | 'logout' | 'arrow' | 'bell' | 'calendar';
+  name: 'home' | 'tasks' | 'tools' | 'users' | 'menu' | 'logout' | 'arrow' | 'bell' | 'calendar';
   size?: number;
 }
 
@@ -7,6 +7,7 @@ const paths: Record<IconProps['name'], React.ReactNode> = {
   home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></>,
   tasks: <><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 9 1.5 1.5L12 8M14 9h3M8 15l1.5 1.5L12 14M14 15h3"/></>,
   tools: <><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></>,
+  users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
   menu: <path d="M4 7h16M4 12h16M4 17h16"/>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></>,
   arrow: <path d="m9 18 6-6-6-6"/>,

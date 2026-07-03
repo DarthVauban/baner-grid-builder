@@ -6,6 +6,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { TasksPage } from '../pages/TasksPage';
+import { AdminUsersPage } from '../pages/AdminUsersPage';
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -25,6 +26,12 @@ function AnonymousRoute() {
   return <Outlet />;
 }
 
+function AdminRoute() {
+  const { user } = useAuth();
+  if (user?.role !== 'admin') return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
 export function App() {
   return (
     <Routes>
@@ -37,6 +44,9 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
+          <Route element={<AdminRoute />}>
+            <Route path="admin/users" element={<AdminUsersPage />} />
+          </Route>
         </Route>
       </Route>
 
