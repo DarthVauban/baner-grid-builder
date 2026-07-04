@@ -9,6 +9,7 @@ import { createAccessToken } from '../../lib/jwt.js';
 import { serializeUser } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
+import { grantDefaultToolAccess } from '../access/access.service.js';
 
 const router = Router();
 
@@ -43,9 +44,10 @@ router.post('/register', asyncHandler(async (req, res) => {
   const result = await query(
     `INSERT INTO users (name, email, password_hash)
      VALUES ($1, $2, $3)
-     RETURNING id, name, email, role, status, approved_at, created_at, updated_at`,
+     RETURNING id, name, email, role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
     [input.name, email, passwordHash]
   );
+  await grantDefaultToolAccess(result.rows[0].id);
 
   res.status(201).json({
     data: serializeUser(result.rows[0]),

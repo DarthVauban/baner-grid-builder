@@ -6,10 +6,10 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { serializeGrid } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { canViewAllSavedData } from '../access/access.service.js';
+import { canViewAllSavedData, requireToolAccess } from '../access/access.service.js';
 
 const router = Router();
-router.use(requireAuth);
+router.use(requireAuth, requireToolAccess('banner_grid'));
 
 const idSchema = z.string().uuid();
 const bannerSchema = z.object({

@@ -6,10 +6,10 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { serializeProductTable } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { canViewAllSavedData } from '../access/access.service.js';
+import { canViewAllSavedData, requireToolAccess } from '../access/access.service.js';
 
 const router = Router();
-router.use(requireAuth);
+router.use(requireAuth, requireToolAccess('product_tables'));
 
 const idSchema = z.string().uuid();
 const cellSchema = z.string().max(10000);

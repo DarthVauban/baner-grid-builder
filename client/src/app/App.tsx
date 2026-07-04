@@ -11,6 +11,8 @@ import { AdminUsersPage } from '../pages/AdminUsersPage';
 import { BannerWorkspaceProvider } from '../workspace/BannerWorkspaceContext';
 import { BannerBuilderPage } from '../pages/BannerBuilderPage';
 import { ProductSelectionPage } from '../pages/ProductSelectionPage';
+import { ToolsPage } from '../pages/ToolsPage';
+import { ToolAccessRoute } from '../components/ToolAccessRoute';
 
 const ProductTablesPage = lazy(() => import('../pages/ProductTablesPage').then((module) => ({
   default: module.ProductTablesPage
@@ -36,7 +38,7 @@ function AnonymousRoute() {
 
 function AdminRoute() {
   const { user } = useAuth();
-  if (user?.role !== 'admin') return <Navigate to="/" replace />;
+  if (user?.role !== 'admin' && !user?.canManageToolAccess) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 
@@ -56,11 +58,18 @@ export function App() {
         <Route element={<WorkspaceShell />}>
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
-          <Route path="tools/banner-grid" element={<BannerBuilderPage />} />
-          <Route path="tools/product-selection" element={<ProductSelectionPage />} />
-          <Route path="tools/saved-grids" element={<Navigate to="/tools/banner-grid?tab=grids" replace />} />
-          <Route path="tools/saved-banners" element={<Navigate to="/tools/banner-grid?tab=banners" replace />} />
-          <Route path="tools/product-tables" element={<Suspense fallback={<LoadingScreen />}><ProductTablesPage /></Suspense>} />
+          <Route path="tools" element={<ToolsPage />} />
+          <Route element={<ToolAccessRoute tool="banner_grid" />}>
+            <Route path="tools/banner-grid" element={<BannerBuilderPage />} />
+            <Route path="tools/saved-grids" element={<Navigate to="/tools/banner-grid?tab=grids" replace />} />
+            <Route path="tools/saved-banners" element={<Navigate to="/tools/banner-grid?tab=banners" replace />} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="product_selection" />}>
+            <Route path="tools/product-selection" element={<ProductSelectionPage />} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="product_tables" />}>
+            <Route path="tools/product-tables" element={<Suspense fallback={<LoadingScreen />}><ProductTablesPage /></Suspense>} />
+          </Route>
           <Route element={<AdminRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />
           </Route>

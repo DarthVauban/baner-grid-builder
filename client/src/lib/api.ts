@@ -26,6 +26,7 @@ import type {
   SavedBanner,
   SavedGrid
 } from '../types/workspace';
+import type { ToolId, UserToolAccess } from '../types/tool';
 
 interface ApiErrorPayload {
   error?: {
@@ -135,7 +136,8 @@ export const api = {
     remove: (id: string) => request<void>(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   users: {
-    search: (search: string) => request<UserSearchResult[]>(`/api/users/search${queryString({ search })}`)
+    search: (search: string) => request<UserSearchResult[]>(`/api/users/search${queryString({ search })}`),
+    toolAccess: () => request<ToolId[]>('/api/users/tool-access')
   },
   notifications: {
     list: (unreadOnly = false) => request<NotificationFeed>(
@@ -167,6 +169,11 @@ export const api = {
     setRole: (id: string, role: UserRole) => request<User>(
       `/api/admin/users/${encodeURIComponent(id)}/role`,
       { method: 'PATCH', body: jsonBody({ role }) }
+    ),
+    toolAccess: (id: string) => request<UserToolAccess>(`/api/admin/users/${encodeURIComponent(id)}/tool-access`),
+    setToolAccess: (id: string, tools: ToolId[], canManageToolAccess: boolean) => request<UserToolAccess>(
+      `/api/admin/users/${encodeURIComponent(id)}/tool-access`,
+      { method: 'PUT', body: jsonBody({ tools, canManageToolAccess }) }
     )
   },
   grids: {

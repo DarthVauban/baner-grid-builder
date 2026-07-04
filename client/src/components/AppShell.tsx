@@ -103,7 +103,7 @@ export function AppShell() {
             <span>Справи</span>
             <span className="sidebar__new">Новий</span>
           </NavLink>
-          {user.role === 'admin' && (
+          {(user.role === 'admin' || user.canManageToolAccess) && (
             <NavLink aria-label="Користувачі" title="Користувачі" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/users" onClick={closeSidebar}>
               <Icon name="users" />
               <span>Користувачі</span>
@@ -111,17 +111,9 @@ export function AppShell() {
           )}
 
           <p className="sidebar__label sidebar__label--spaced">Інструменти</p>
-          <NavLink aria-label="Банерна сітка" title="Банерна сітка" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/banner-grid" onClick={closeSidebar}>
-            <Icon name="bannerGrid" />
-            <span>Банерна сітка</span>
-          </NavLink>
-          <NavLink aria-label="Вибірка товарів" title="Вибірка товарів" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/product-selection" onClick={closeSidebar}>
-            <Icon name="productSelection" />
-            <span>Вибірка товарів</span>
-          </NavLink>
-          <NavLink aria-label="Таблиці товарів" title="Таблиці товарів" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/product-tables" onClick={closeSidebar}>
-            <Icon name="productTables" />
-            <span>Таблиці товарів</span>
+          <NavLink aria-label="Інструменти" title="Інструменти" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools" onClick={closeSidebar}>
+            <Icon name="tools" />
+            <span>Інструменти</span>
           </NavLink>
         </nav>
 

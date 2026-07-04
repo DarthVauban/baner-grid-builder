@@ -5,6 +5,7 @@ export function serializeUser(row) {
     email: row.email,
     role: row.role,
     status: row.status,
+    canManageToolAccess: row.can_manage_tool_access === true,
     approvedAt: row.approved_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at

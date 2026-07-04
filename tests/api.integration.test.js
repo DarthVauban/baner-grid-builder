@@ -139,6 +139,23 @@ test('approval flow and shared banner storage work through REST API', async () =
     .send({ email: 'second@test.local', password: 'SecondPassword123!' })
     .expect(200);
 
+  const defaultToolAccess = await secondUser.get('/api/users/tool-access').expect(200);
+  assert.deepEqual(defaultToolAccess.body.data.sort(), ['banner_grid', 'product_selection', 'product_tables']);
+
+  await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({ tools: [] }).expect(200);
+  await secondUser.get('/api/grids').expect(403)
+    .expect((response) => assert.equal(response.body.error.code, 'TOOL_ACCESS_DENIED'));
+  await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({
+    tools: ['banner_grid', 'product_selection', 'product_tables'],
+    canManageToolAccess: true
+  }).expect(200);
+  await secondUser.get('/api/admin/directory?page=1&pageSize=10').expect(200);
+  await secondUser.patch(`/api/admin/users/${pendingUser.id}/role`).send({ role: 'editor' }).expect(403);
+  await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({
+    tools: ['banner_grid', 'product_selection', 'product_tables'],
+    canManageToolAccess: false
+  }).expect(200);
+
   const privateGrids = await secondUser.get('/api/grids?search=Updated').expect(200);
   assert.equal(privateGrids.body.data.length, 0);
   const privateBanners = await secondUser.get('/api/banners?search=Sale').expect(200);

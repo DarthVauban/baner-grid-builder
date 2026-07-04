@@ -4,11 +4,9 @@ import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { getInitials, roleLabels } from '../lib/user';
 import { Icon } from '../components/Icon';
+import { UserToolAccessModal } from '../components/UserToolAccessModal';
 import { useToast } from '../toast/ToastContext';
 import type {
-  PermissionRole,
-  RolePermission,
-  SavedDataResource,
   User,
   UserRole,
   UserStatus
@@ -20,24 +18,20 @@ const statusLabels: Record<UserStatus, string> = {
   rejected: 'Відхилений'
 };
 
-const resources: Array<{ id: SavedDataResource; label: string; note: string }> = [
-  { id: 'banner_grids', label: 'Банерні сітки', note: 'Перегляд сіток, створених іншими користувачами' },
-  { id: 'saved_banners', label: 'Збережені банери', note: 'Перегляд окремих банерів інших користувачів' },
-  { id: 'product_tables', label: 'Таблиці товарів', note: 'Перегляд завантажених іншими користувачами таблиць' }
-];
-
-const permissionRoles: PermissionRole[] = ['editor', 'content_manager'];
-
 export function AdminUserRow({
   user,
   currentUserId,
   busy,
+  canAdminister,
+  onAccess,
   onRole,
   onStatus
 }: {
   user: User;
   currentUserId: string;
   busy: boolean;
+  canAdminister: boolean;
+  onAccess: (user: User) => void;
   onRole: (user: User, role: UserRole) => void;
   onStatus: (user: User, status: UserStatus) => void;
 }) {
@@ -54,45 +48,16 @@ export function AdminUserRow({
         <time title="Дата реєстрації">{new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(user.createdAt))}</time>
       </div>
       <div className="admin-user-row__actions">
-        {isSelf ? (
+        <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => onAccess(user)}><Icon name="tools" size={16} /> Доступи</button>
+        {!canAdminister || isSelf ? (
           <span className="admin-role-static">{roleLabels[user.role]}</span>
         ) : (
           <label className="admin-role-select"><span className="visually-hidden">Роль користувача {user.name}</span><select value={user.role} disabled={busy} onChange={(event) => onRole(user, event.target.value as UserRole)}>
             <option value="admin">Адміністратор</option><option value="editor">Редактор</option><option value="content_manager">Контент-менеджер</option>
           </select></label>
         )}
-        {user.status !== 'approved' && <button className="button button--primary button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'approved')}>Схвалити</button>}
-        {!isSelf && user.status !== 'rejected' && <button className="button button--danger button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'rejected')}>Відхилити</button>}
-      </div>
-    </article>
-  );
-}
-
-function PermissionCard({
-  role,
-  permissions,
-  pendingKey,
-  onChange
-}: {
-  role: PermissionRole;
-  permissions: RolePermission[];
-  pendingKey: string;
-  onChange: (role: PermissionRole, resource: SavedDataResource, value: boolean) => void;
-}) {
-  return (
-    <article className="permission-card">
-      <header><span className="permission-card__role-mark">{role === 'editor' ? 'Р' : 'К'}</span><div><h3>{roleLabels[role]}</h3><p>Доступ до даних робочих інструментів</p></div></header>
-      <div className="permission-card__list">
-        {resources.map((resource) => {
-          const permission = permissions.find((item) => item.role === role && item.resource === resource.id);
-          const key = `${role}:${resource.id}`;
-          return (
-            <label className="permission-row" key={resource.id}>
-              <span><strong>{resource.label}</strong><small>{resource.note}</small></span>
-              <input className="switch" type="checkbox" checked={permission?.canViewAll || false} disabled={pendingKey === key} onChange={(event) => onChange(role, resource.id, event.target.checked)} />
-            </label>
-          );
-        })}
+        {canAdminister && user.status !== 'approved' && <button className="button button--primary button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'approved')}>Схвалити</button>}
+        {canAdminister && !isSelf && user.status !== 'rejected' && <button className="button button--danger button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'rejected')}>Відхилити</button>}
       </div>
     </article>
   );
@@ -108,7 +73,8 @@ export function AdminUsersPage() {
   const [role, setRole] = useState<UserRole | ''>('');
   const [page, setPage] = useState(1);
   const [busyUserId, setBusyUserId] = useState('');
-  const [pendingPermission, setPendingPermission] = useState('');
+  const [accessUser, setAccessUser] = useState<User | null>(null);
+  const canAdminister = currentUser?.role === 'admin';
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -128,13 +94,8 @@ export function AdminUsersPage() {
       pageSize: 25
     })
   });
-  const permissions = useQuery({
-    queryKey: ['admin-permissions'],
-    queryFn: api.admin.permissions
-  });
   const setUserStatus = useMutation({ mutationFn: ({ id, value }: { id: string; value: UserStatus }) => api.admin.setStatus(id, value) });
   const setUserRole = useMutation({ mutationFn: ({ id, value }: { id: string; value: UserRole }) => api.admin.setRole(id, value) });
-  const setPermission = useMutation({ mutationFn: ({ permissionRole, resource, value }: { permissionRole: PermissionRole; resource: SavedDataResource; value: boolean }) => api.admin.setPermission(permissionRole, resource, value) });
 
   const summary = directory.data?.summary;
   const summaryCards = useMemo(() => [
@@ -175,20 +136,6 @@ export function AdminUsersPage() {
     }
   }
 
-  async function changePermission(permissionRole: PermissionRole, resource: SavedDataResource, value: boolean) {
-    const key = `${permissionRole}:${resource}`;
-    setPendingPermission(key);
-    try {
-      await setPermission.mutateAsync({ permissionRole, resource, value });
-      showToast('Дозволи ролі оновлено.');
-      await queryClient.invalidateQueries({ queryKey: ['admin-permissions'] });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося оновити дозволи.', 'error');
-    } finally {
-      setPendingPermission('');
-    }
-  }
-
   return (
     <div className="admin-page">
       <header className="page-heading admin-page__heading">
@@ -213,18 +160,13 @@ export function AdminUsersPage() {
           {directory.isLoading && <div className="admin-list-state">Завантажуємо користувачів…</div>}
           {directory.isError && <div className="admin-list-state admin-list-state--error">{directory.error instanceof Error ? directory.error.message : 'Не вдалося завантажити користувачів.'}</div>}
           {!directory.isLoading && !directory.data?.items.length && <div className="admin-list-state">Користувачів за цими умовами не знайдено.</div>}
-          {directory.data?.items.map((directoryUser) => <AdminUserRow key={directoryUser.id} user={directoryUser} currentUserId={currentUser?.id || ''} busy={busyUserId === directoryUser.id} onRole={(target, value) => void changeRole(target, value)} onStatus={(target, value) => void changeStatus(target, value)} />)}
+          {directory.data?.items.map((directoryUser) => <AdminUserRow key={directoryUser.id} user={directoryUser} currentUserId={currentUser?.id || ''} busy={busyUserId === directoryUser.id} canAdminister={canAdminister} onAccess={setAccessUser} onRole={(target, value) => void changeRole(target, value)} onStatus={(target, value) => void changeStatus(target, value)} />)}
         </div>
 
         {directory.data && directory.data.pageCount > 1 && <nav className="admin-pagination" aria-label="Сторінки користувачів"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><Icon name="arrowLeft" size={17} /> Назад</button><span>Сторінка {page} із {directory.data.pageCount}</span><button type="button" disabled={page >= directory.data.pageCount} onClick={() => setPage((value) => value + 1)}>Далі <Icon name="arrowRight" size={17} /></button></nav>}
       </section>
 
-      <section className="admin-section admin-section--permissions">
-        <header className="admin-section__header"><div><p className="eyebrow">Налаштування ролей</p><h2>Доступ до спільних даних</h2><p>Особисті справи сюди не входять: їх бачать лише власник і запрошені учасники.</p></div><span className="admin-always-access">Адміністратор завжди має повний доступ</span></header>
-        {permissions.isLoading && <div className="admin-list-state">Завантажуємо дозволи…</div>}
-        {permissions.isError && <div className="admin-list-state admin-list-state--error">Не вдалося завантажити дозволи.</div>}
-        {permissions.data && <div className="permission-grid">{permissionRoles.map((permissionRole) => <PermissionCard key={permissionRole} role={permissionRole} permissions={permissions.data} pendingKey={pendingPermission} onChange={(selectedRole, resource, value) => void changePermission(selectedRole, resource, value)} />)}</div>}
-      </section>
+      {accessUser && <UserToolAccessModal user={accessUser} onClose={() => setAccessUser(null)} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ export interface User {
   email: string;
   role: UserRole;
   status: UserStatus;
+  canManageToolAccess?: boolean;
   approvedAt: string | null;
   createdAt: string;
   updatedAt: string;

@@ -19,9 +19,12 @@ describe('AdminUserRow', () => {
   it('allows an administrator to approve a pending user and change their role', async () => {
     const onRole = vi.fn();
     const onStatus = vi.fn();
-    render(<AdminUserRow user={pendingUser} currentUserId="admin-1" busy={false} onRole={onRole} onStatus={onStatus} />);
+    const onAccess = vi.fn();
+    render(<AdminUserRow user={pendingUser} currentUserId="admin-1" busy={false} canAdminister onAccess={onAccess} onRole={onRole} onStatus={onStatus} />);
 
     expect(screen.getByText('Очікує схвалення')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Доступи' }));
+    expect(onAccess).toHaveBeenCalledWith(pendingUser);
     await userEvent.selectOptions(screen.getByRole('combobox'), 'editor');
     expect(onRole).toHaveBeenCalledWith(pendingUser, 'editor');
     await userEvent.click(screen.getByRole('button', { name: 'Схвалити' }));
@@ -30,7 +33,7 @@ describe('AdminUserRow', () => {
 
   it('does not allow the current administrator to demote or reject themselves', () => {
     const self = { ...pendingUser, id: 'admin-1', role: 'admin' as const, status: 'approved' as const };
-    render(<AdminUserRow user={self} currentUserId="admin-1" busy={false} onRole={vi.fn()} onStatus={vi.fn()} />);
+    render(<AdminUserRow user={self} currentUserId="admin-1" busy={false} canAdminister onAccess={vi.fn()} onRole={vi.fn()} onStatus={vi.fn()} />);
     expect(screen.getByText('Ви')).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Відхилити' })).not.toBeInTheDocument();

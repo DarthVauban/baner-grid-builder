@@ -151,7 +151,7 @@ export function TasksPage() {
           })}
         </div>
         <div className="task-toolbar__controls">
-          <label className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук справ" aria-label="Пошук справ" /></label>
+          <div className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук справ" aria-label="Пошук справ" />{search && <button type="button" onClick={() => setSearch('')} aria-label="Очистити пошук" title="Очистити"><Icon name="close" size={16} /></button>}</div>
           <div className="task-view-switch" role="group" aria-label="Вигляд списку справ">
             <button className={viewMode === 'list' ? 'active' : ''} type="button" onClick={() => setViewMode('list')} aria-label="Відображати рядками" title="Рядки"><Icon name="viewList" size={18} /></button>
             <button className={viewMode === 'grid' ? 'active' : ''} type="button" onClick={() => setViewMode('grid')} aria-label="Відображати плитками" title="Плитки"><Icon name="viewGrid" size={18} /></button>

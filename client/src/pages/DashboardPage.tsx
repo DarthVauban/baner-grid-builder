@@ -31,7 +31,7 @@ export function DashboardPage() {
             <h2>Робочі інструменти</h2>
             <p>Конструктор банерів, вибірка товарів і таблиці вже працюють у новому інтерфейсі.</p>
           </div>
-          <Link className="text-link" to="/tools/banner-grid">Відкрити інструменти <Icon name="arrow" size={15} /></Link>
+          <Link className="text-link" to="/tools">Відкрити інструменти <Icon name="arrow" size={15} /></Link>
         </article>
         <article className="section-card section-card--muted">
           <span className="section-card__icon"><Icon name="calendar" /></span>

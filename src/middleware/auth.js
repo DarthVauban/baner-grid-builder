@@ -23,7 +23,7 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
   }
 
   const result = await query(
-    'SELECT id, name, email, role, status, approved_at, created_at, updated_at FROM users WHERE id = $1',
+    'SELECT id, name, email, role, status, can_manage_tool_access, approved_at, created_at, updated_at FROM users WHERE id = $1',
     [payload.sub]
   );
   const user = result.rows[0];

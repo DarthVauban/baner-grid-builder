@@ -4,11 +4,16 @@ import { query } from '../../db/pool.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
+import { getUserToolAccess } from '../access/access.service.js';
 
 const router = Router();
 router.use(requireAuth);
 
 const searchSchema = z.string().trim().min(2).max(120);
+
+router.get('/tool-access', asyncHandler(async (req, res) => {
+  res.json({ data: await getUserToolAccess(req.user) });
+}));
 
 router.get('/search', asyncHandler(async (req, res) => {
   const search = parseInput(searchSchema, String(req.query.search || ''));
