@@ -332,18 +332,28 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
   const { status } = parseInput(statusSchema, req.body);
   const client = await pool.connect();
   const notifiedUserIds = new Set();
+  let transactionOpen = false;
+  let task;
 
   try {
     await client.query('BEGIN');
+    transactionOpen = true;
+    const changedAt = new Date();
     const result = await client.query(
       `UPDATE tasks SET
          status = $1,
-         completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE NULL END,
-         cancelled_at = CASE WHEN $1 = 'cancelled' THEN NOW() ELSE NULL END,
+         completed_at = $2,
+         cancelled_at = $3,
          updated_at = NOW()
-       WHERE id = $2 AND owner_id = $3
+       WHERE id = $4 AND owner_id = $5
        RETURNING title`,
-      [status, id, req.user.id]
+      [
+        status,
+        status === 'completed' ? changedAt : null,
+        status === 'cancelled' ? changedAt : null,
+        id,
+        req.user.id
+      ]
     );
     if (!result.rows[0]) throw new AppError(404, 'TASK_NOT_FOUND', 'Справу не знайдено.');
 
@@ -371,15 +381,17 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
       );
     }
     await client.query('COMMIT');
-    publishNotificationUpdates([...notifiedUserIds]);
-    const task = await loadTaskView(id, req.user.id);
-    res.json({ data: task });
+    transactionOpen = false;
+    task = await loadTaskView(id, req.user.id, client);
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
     client.release();
   }
+
+  publishNotificationUpdates([...notifiedUserIds]);
+  res.json({ data: task });
 }));
 
 router.post('/:id/respond', asyncHandler(async (req, res) => {
