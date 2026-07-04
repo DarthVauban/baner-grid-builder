@@ -28,6 +28,7 @@ import type {
 } from '../types/workspace';
 import type { ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
+import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 
 interface ApiErrorPayload {
   error?: {
@@ -150,6 +151,18 @@ export const api = {
       request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}/status`, {
         method: 'PATCH', body: jsonBody({ status, publicationUrl })
       })
+  },
+  chat: {
+    contacts: () => request<ChatPerson[]>('/api/chat/contacts'),
+    conversations: () => request<ChatConversation[]>('/api/chat/conversations'),
+    createConversation: (userId: string) => request<{ id: string; contact: ChatPerson }>('/api/chat/conversations', {
+      method: 'POST', body: jsonBody({ userId })
+    }),
+    messages: (conversationId: string) => request<ChatMessage[]>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`),
+    sendMessage: (conversationId: string, body: string) => request<ChatMessage>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: 'POST', body: jsonBody({ body })
+    }),
+    markRead: (conversationId: string) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST' })
   },
   users: {
     search: (search = '', excludeSelf = false) => request<UserSearchResult[]>(`/api/users/search${queryString({ search, excludeSelf: excludeSelf ? 'true' : undefined })}`),

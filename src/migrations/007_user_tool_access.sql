@@ -4,7 +4,7 @@ ALTER TABLE users
 CREATE TABLE user_tool_access (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   tool_id VARCHAR(50) NOT NULL CHECK (tool_id IN (
-    'banner_grid', 'product_selection', 'product_tables', 'blog_publications'
+    'banner_grid', 'product_selection', 'product_tables', 'blog_publications', 'chat'
   )),
   granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
   granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

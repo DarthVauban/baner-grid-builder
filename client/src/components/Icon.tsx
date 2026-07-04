@@ -19,6 +19,7 @@ import GridViewRounded from '@mui/icons-material/GridViewRounded';
 import GroupRounded from '@mui/icons-material/GroupRounded';
 import HomeRounded from '@mui/icons-material/HomeRounded';
 import ChecklistRounded from '@mui/icons-material/ChecklistRounded';
+import ChatBubbleOutlineRounded from '@mui/icons-material/ChatBubbleOutlineRounded';
 import LogoutRounded from '@mui/icons-material/LogoutRounded';
 import MenuRounded from '@mui/icons-material/MenuRounded';
 import NotificationsNoneRounded from '@mui/icons-material/NotificationsNoneRounded';
@@ -56,6 +57,7 @@ export type IconName =
   | 'blogPublications'
   | 'calendar'
   | 'check'
+  | 'chat'
   | 'chevronLeft'
   | 'chevronRight'
   | 'close'
@@ -110,6 +112,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   blogPublications: ArticleOutlined,
   calendar: CalendarMonthRounded,
   check: CheckRounded,
+  chat: ChatBubbleOutlineRounded,
   chevronLeft: ChevronLeftRounded,
   chevronRight: ChevronRightRounded,
   close: CloseRounded,
