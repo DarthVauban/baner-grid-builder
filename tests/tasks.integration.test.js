@@ -127,6 +127,11 @@ test('shared task invitation, privacy and reminder flow work through REST API', 
   await owner.patch(`/api/tasks/${taskId}/status`).send({ status: 'completed' }).expect(200)
     .expect((response) => assert.equal(response.body.data.status, 'completed'));
 
+  const completedNotifications = await participant.get('/api/notifications').expect(200);
+  assert.ok(completedNotifications.body.data.items.some((item) => (
+    item.taskId === taskId && item.type === 'task_completed'
+  )));
+
   await owner.delete(`/api/tasks/${taskId}`).expect(409)
     .expect((response) => assert.equal(response.body.error.code, 'SHARED_TASK_CANNOT_BE_DELETED'));
 });

@@ -357,7 +357,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
     );
     if (!result.rows[0]) throw new AppError(404, 'TASK_NOT_FOUND', 'Справу не знайдено.');
 
-    if (status === 'cancelled') {
+    if (status === 'completed' || status === 'cancelled') {
       const participants = await client.query(
         `SELECT user_id FROM task_participants WHERE task_id = $1 AND response_status IN ('pending', 'accepted')`,
         [id]
@@ -367,9 +367,11 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
         await createNotification(client, {
           userId: participant.user_id,
           taskId: id,
-          type: 'task_cancelled',
-          title: 'Справу скасовано',
-          message: `Справу «${result.rows[0].title}» скасовано.`
+          type: status === 'completed' ? 'task_completed' : 'task_cancelled',
+          title: status === 'completed' ? 'Справу завершено' : 'Справу скасовано',
+          message: status === 'completed'
+            ? `Справу «${result.rows[0].title}» позначено як виконану.`
+            : `Справу «${result.rows[0].title}» скасовано.`
         });
       }
     }

@@ -55,7 +55,7 @@ CREATE TABLE notifications (
   task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
   type VARCHAR(40) NOT NULL CHECK (type IN (
     'task_invitation', 'invitation_accepted', 'invitation_declined',
-    'task_updated', 'task_cancelled', 'participant_removed',
+    'task_updated', 'task_completed', 'task_cancelled', 'participant_removed',
     'task_reminder', 'task_overdue'
   )),
   title VARCHAR(200) NOT NULL,
