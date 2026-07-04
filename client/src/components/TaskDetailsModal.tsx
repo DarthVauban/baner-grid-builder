@@ -6,8 +6,10 @@ import { Icon } from './Icon';
 
 interface TaskDetailsModalProps {
   task: Task;
+  busy?: boolean;
   onClose: () => void;
   onShare: (task: Task) => void;
+  onRespond: (task: Task, response: 'accepted' | 'declined') => void;
 }
 
 const responseLabels: Record<ParticipantResponse, string> = {
@@ -22,8 +24,9 @@ function formatMinutes(value: number): string {
   return `${value} хв.`;
 }
 
-export function TaskDetailsModal({ task, onClose, onShare }: TaskDetailsModalProps) {
+export function TaskDetailsModal({ task, busy, onClose, onShare, onRespond }: TaskDetailsModalProps) {
   const overdue = isTaskOverdue(task);
+  const pendingInvitation = !task.isOwner && task.myResponseStatus === 'pending';
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -90,7 +93,11 @@ export function TaskDetailsModal({ task, onClose, onShare }: TaskDetailsModalPro
           </section>
         </div>
 
-        <footer className="task-details-modal__footer"><button className="button button--secondary" type="button" onClick={() => onShare(task)}><Icon name="share" size={17} /> Поділитися</button><button className="button button--secondary" type="button" onClick={onClose}>Закрити</button></footer>
+        <footer className="task-details-modal__footer">
+          {pendingInvitation && <><button className="button button--primary" type="button" disabled={busy} onClick={() => onRespond(task, 'accepted')}><Icon name="check" size={17} /> Прийняти</button><button className="button button--danger" type="button" disabled={busy} onClick={() => onRespond(task, 'declined')}><Icon name="close" size={17} /> Відхилити</button></>}
+          <button className="button button--secondary" type="button" onClick={() => onShare(task)}><Icon name="share" size={17} /> Поділитися</button>
+          <button className="button button--secondary" type="button" onClick={onClose}>Закрити</button>
+        </footer>
       </section>
     </div>
   );

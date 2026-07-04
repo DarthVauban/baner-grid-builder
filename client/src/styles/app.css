@@ -525,7 +525,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .task-details-participants article > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
 .task-details-participants article strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .task-details-participants article small { overflow: hidden; color: #8c96a7; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.task-details-modal__footer { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 0 28px 24px; }
+.task-details-modal__footer { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 9px; padding: 0 28px 24px; }
 
 /* Notification center */
 .notification-center { position: relative; }
@@ -1064,7 +1064,8 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   .task-card__actions .button { flex: 1; }
   .task-details-grid { grid-template-columns: 1fr; }
   .task-details-modal__content { padding: 20px 19px; }
-  .task-details-modal__footer { padding: 0 19px 20px; }
+  .task-details-modal__footer { align-items: stretch; flex-direction: column; padding: 0 19px 20px; }
+  .task-details-modal__footer .button { width: 100%; }
   .modal-backdrop { align-items: flex-end; padding: 0; }
   .modal { max-height: 94vh; border-radius: 22px 22px 0 0; }
   .modal__header { padding: 20px 19px 16px; }

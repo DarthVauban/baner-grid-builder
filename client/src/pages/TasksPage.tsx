@@ -110,7 +110,11 @@ export function TasksPage() {
 
   async function handleRespond(task: Task, response: 'accepted' | 'declined') {
     try {
-      await respond.mutateAsync({ id: task.id, response });
+      const updatedTask = await respond.mutateAsync({ id: task.id, response });
+      if (detailsTask?.id === task.id) {
+        if (updatedTask) setDetailsTask(updatedTask);
+        else closeDetails();
+      }
       showToast(response === 'accepted' ? 'Запрошення прийнято.' : 'Запрошення відхилено.');
       await refresh();
     } catch (error) {
@@ -226,7 +230,7 @@ export function TasksPage() {
 
       {formOpen && <TaskFormModal key={editingTask?.id || 'new'} task={editingTask} onClose={() => { setFormOpen(false); setEditingTask(null); }} onSubmit={saveTask} />}
       {reminderTask && <ReminderModal task={reminderTask} onClose={() => setReminderTask(null)} onSubmit={handleReminder} />}
-      {detailsTask && <TaskDetailsModal task={detailsTask} onClose={closeDetails} onShare={(selected) => void handleShare(selected)} />}
+      {detailsTask && <TaskDetailsModal task={detailsTask} busy={respond.isPending} onClose={closeDetails} onShare={(selected) => void handleShare(selected)} onRespond={(selected, responseValue) => void handleRespond(selected, responseValue)} />}
     </div>
   );
 }
