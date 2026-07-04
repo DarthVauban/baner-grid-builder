@@ -67,7 +67,13 @@ export function ChatPage() {
   const [draftContact, setDraftContact] = useState<ChatPerson | null>(null);
   const [contactsOpen, setContactsOpen] = useState(false);
   const [message, setMessage] = useState('');
-  const messageEndRef = useRef<HTMLDivElement>(null);
+  const [contactTyping, setContactTyping] = useState(false);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const typingStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingDisplayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingConversationRef = useRef<string | null>(null);
+  const localTypingRef = useRef(false);
+  const lastTypingSentAtRef = useRef(0);
   const conversations = useQuery({ queryKey: ['chat-conversations'], queryFn: api.chat.conversations, refetchOnMount: 'always' });
   const contacts = useQuery({ queryKey: ['chat-contacts'], queryFn: api.chat.contacts, enabled: contactsOpen, staleTime: 60_000 });
   const messages = useQuery({
@@ -98,8 +104,70 @@ export function ChatPage() {
       queryClient.invalidateQueries({ queryKey: ['chat-conversations'] }),
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] })
     ])).catch(() => undefined);
-    messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.data, queryClient, selectedId]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const container = messagesRef.current;
+      if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [contactTyping, messages.data]);
+
+  useEffect(() => {
+    setContactTyping(false);
+    const handleTyping = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId?: string; isTyping?: boolean }>).detail;
+      if (!selectedId || detail?.conversationId !== selectedId) return;
+      if (typingDisplayTimeoutRef.current) clearTimeout(typingDisplayTimeoutRef.current);
+      setContactTyping(detail.isTyping === true);
+      if (detail.isTyping) {
+        typingDisplayTimeoutRef.current = setTimeout(() => setContactTyping(false), 3500);
+      }
+    };
+    window.addEventListener('mt:chat-typing', handleTyping);
+    return () => {
+      window.removeEventListener('mt:chat-typing', handleTyping);
+      if (typingDisplayTimeoutRef.current) clearTimeout(typingDisplayTimeoutRef.current);
+      typingDisplayTimeoutRef.current = null;
+    };
+  }, [selectedId]);
+
+  useEffect(() => () => {
+    if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current);
+    const conversationId = typingConversationRef.current;
+    if (localTypingRef.current && conversationId) void api.chat.setTyping(conversationId, false).catch(() => undefined);
+    typingConversationRef.current = null;
+    localTypingRef.current = false;
+  }, [selectedId]);
+
+  function stopTyping() {
+    if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current);
+    typingStopTimeoutRef.current = null;
+    const conversationId = typingConversationRef.current;
+    if (localTypingRef.current && conversationId) void api.chat.setTyping(conversationId, false).catch(() => undefined);
+    typingConversationRef.current = null;
+    localTypingRef.current = false;
+    lastTypingSentAtRef.current = 0;
+  }
+
+  function handleMessageChange(value: string) {
+    setMessage(value);
+    if (!selectedId || !value.trim()) {
+      if (!value.trim()) stopTyping();
+      return;
+    }
+    if (typingConversationRef.current && typingConversationRef.current !== selectedId) stopTyping();
+    typingConversationRef.current = selectedId;
+    localTypingRef.current = true;
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current >= 1000) {
+      lastTypingSentAtRef.current = now;
+      void api.chat.setTyping(selectedId, true).catch(() => undefined);
+    }
+    if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current);
+    typingStopTimeoutRef.current = setTimeout(stopTyping, 1600);
+  }
 
   function selectContact(contact: ChatPerson) {
     const existingConversation = conversations.data?.find((conversation) => conversation.contact.id === contact.id);
@@ -114,6 +182,7 @@ export function ChatPage() {
     const body = message.trim();
     if ((!selectedId && !draftContact) || !body || send.isPending || startConversation.isPending) return;
     try {
+      stopTyping();
       setMessage('');
       let conversationId = selectedId;
       if (conversationId) {
@@ -143,10 +212,9 @@ export function ChatPage() {
   }
 
   return <div className="chat-page">
-    <header className="page-heading page-heading--row chat-page__heading"><div><p className="eyebrow">Комунікація</p><h1>Чат</h1><p>Обговорюйте роботу та діліться інтерактивними картками внутрішніх інструментів.</p></div><button className="button button--primary" type="button" onClick={() => setContactsOpen(true)}><Icon name="users" size={18} /> Усі контакти</button></header>
     <section className="chat-layout">
       <aside className="chat-conversations">
-        <header><strong>Діалоги</strong><button className="icon-button" type="button" onClick={() => setContactsOpen(true)} aria-label="Новий діалог"><Icon name="add" size={19} /></button></header>
+        <header><strong>Діалоги</strong><button className="button button--primary chat-new-button" type="button" onClick={() => setContactsOpen(true)}><Icon name="add" size={16} /> Новий чат</button></header>
         <div className="chat-conversations__list">
           {conversations.isLoading && <p className="chat-empty-copy">Завантажуємо…</p>}
           {!conversations.isLoading && !conversations.data?.length && <div className="chat-empty-copy"><Icon name="chat" size={25} /><span>Діалогів поки немає.<br />Оберіть колегу зі списку контактів.</span></div>}
@@ -158,13 +226,13 @@ export function ChatPage() {
         {!activeContact && <div className="chat-thread__empty"><span><Icon name="chat" size={34} /></span><h2>Оберіть діалог</h2><p>Відкрийте існуючий діалог або оберіть користувача у списку контактів.</p><button className="button button--secondary" type="button" onClick={() => setContactsOpen(true)}>Відкрити контакти</button></div>}
         {activeContact && <>
           <header className="chat-thread__header"><span className="avatar">{getInitials(activeContact.name)}</span><span><strong>{activeContact.name}</strong><small>{activeContact.email}</small></span></header>
-          <div className="chat-messages">
+          <div className="chat-messages" ref={messagesRef}>
             {messages.isLoading && <p className="chat-empty-copy">Завантажуємо повідомлення…</p>}
             {!messages.isLoading && !messages.data?.length && <div className="chat-messages__empty"><p>Почніть розмову або надішліть посилання на справу чи публікацію.</p></div>}
             {messages.data?.map((item) => { const body = renderMessageBody(item); return <article className={item.own ? 'chat-message chat-message--own' : 'chat-message'} key={item.id}><div className="chat-message__bubble">{body && <p>{body}</p>}{item.entities.map((entity) => <ChatEntityCard entity={entity} conversationId={item.conversationId} key={`${entity.type}-${entity.id}`} />)}<time>{formatChatTime(item.createdAt)}</time></div></article>; })}
-            <div ref={messageEndRef} />
+            {contactTyping && <div className="chat-typing" role="status" aria-label={`${activeContact.name} набирає повідомлення`}><span /><span /><span /><small>{activeContact.name} набирає…</small></div>}
           </div>
-          <form className="chat-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleComposerKeyDown} maxLength={5000} rows={1} placeholder="Напишіть повідомлення…" /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending || startConversation.isPending} aria-label="Надіслати"><Icon name="arrowRight" size={19} /></button></form>
+          <form className="chat-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => handleMessageChange(event.target.value)} onKeyDown={handleComposerKeyDown} maxLength={5000} rows={1} placeholder="Напишіть повідомлення…" /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending || startConversation.isPending} aria-label="Надіслати"><Icon name="arrowRight" size={19} /></button></form>
         </>}
       </div>
     </section>

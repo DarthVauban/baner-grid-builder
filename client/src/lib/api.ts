@@ -160,6 +160,9 @@ export const api = {
       method: 'POST', body: jsonBody({ userId, body })
     }),
     messages: (conversationId: string) => request<ChatMessage[]>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`),
+    setTyping: (conversationId: string, isTyping: boolean) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/typing`, {
+      method: 'POST', body: jsonBody({ isTyping })
+    }),
     sendMessage: (conversationId: string, body: string) => request<ChatMessage>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
       method: 'POST', body: jsonBody({ body })
     }),

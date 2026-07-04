@@ -25,6 +25,7 @@ const createConversationSchema = z.object({
   body: z.string().trim().min(1).max(5000)
 });
 const messageSchema = z.object({ body: z.string().trim().min(1).max(5000) });
+const typingSchema = z.object({ isTyping: z.boolean() });
 
 function getAllowedOrigins(req) {
   const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
@@ -197,6 +198,20 @@ router.get('/conversations/:id/messages', asyncHandler(async (req, res) => {
   const messages = [];
   for (const row of [...result.rows].reverse()) messages.push(await serializeChatMessage(row, req.user, allowedOrigins));
   res.json({ data: messages });
+}));
+
+router.post('/conversations/:id/typing', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const { isTyping } = parseInput(typingSchema, req.body);
+  if (!await assertConversationMember(id, req.user.id)) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Діалог не знайдено.');
+  const members = await loadConversationMembers(id);
+  publishChatUpdates(members.filter((userId) => userId !== req.user.id), {
+    type: 'typing',
+    conversationId: id,
+    senderId: req.user.id,
+    isTyping
+  });
+  res.status(204).end();
 }));
 
 router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {

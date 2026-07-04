@@ -45,8 +45,12 @@ export function AppShell() {
     sound.preload = 'auto';
     sound.volume = 0.55;
     const refresh = (event: Event) => {
-      let payload: { type?: string; conversationId?: string; senderId?: string } = {};
+      let payload: { type?: string; conversationId?: string; senderId?: string; isTyping?: boolean } = {};
       try { payload = JSON.parse((event as MessageEvent).data || '{}'); } catch { /* ignore malformed event data */ }
+      if (payload.type === 'typing') {
+        window.dispatchEvent(new CustomEvent('mt:chat-typing', { detail: payload }));
+        return;
+      }
       void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
       void queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
       if (payload.conversationId) void queryClient.invalidateQueries({ queryKey: ['chat-messages', payload.conversationId] });

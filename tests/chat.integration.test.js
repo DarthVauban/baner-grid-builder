@@ -15,6 +15,7 @@ const { default: app } = await import('../src/app.js');
 const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
+const { subscribeToChatUpdates } = await import('../src/modules/chat/chat.events.js');
 
 const admin = request.agent(app);
 const planner = request.agent(app);
@@ -74,6 +75,16 @@ test('chat access, contacts and interactive task links work through REST API', a
     .expect(201);
   const conversationId = conversation.body.data.id;
   assert.equal(conversation.body.data.message.entities[0].type, 'task');
+  let unsubscribeTyping;
+  const typingEvent = new Promise((resolve) => {
+    unsubscribeTyping = subscribeToChatUpdates(colleagueId, resolve);
+  });
+  await planner.post(`/api/chat/conversations/${conversationId}/typing`).send({ isTyping: true }).expect(204);
+  const typingPayload = await typingEvent;
+  unsubscribeTyping();
+  assert.deepEqual(typingPayload, {
+    type: 'typing', conversationId, senderId: plannerId, isTyping: true
+  });
 
   const colleagueConversations = await colleague.get('/api/chat/conversations').expect(200);
   assert.equal(colleagueConversations.body.data[0].unreadCount, 1);
