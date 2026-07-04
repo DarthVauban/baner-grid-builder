@@ -30,7 +30,7 @@ describe('TaskCard', () => {
   it('shows invitation actions and returns the selected response', async () => {
     const onRespond = vi.fn();
     const onOpen = vi.fn();
-    render(<TaskCard task={invitation} viewMode="list" onOpen={onOpen} onEdit={vi.fn()} onRespond={onRespond} onStatus={vi.fn()} onReminder={vi.fn()} onDelete={vi.fn()} />);
+    render(<TaskCard task={invitation} viewMode="list" onOpen={onOpen} onShare={vi.fn()} onEdit={vi.fn()} onRespond={onRespond} onStatus={vi.fn()} onReminder={vi.fn()} onDelete={vi.fn()} />);
 
     expect(screen.getByText('Потрібна відповідь')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Деталі' }));

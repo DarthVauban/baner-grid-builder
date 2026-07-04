@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
 import { PublicationBatchModal } from '../components/PublicationBatchModal';
@@ -8,6 +9,7 @@ import { PublicationDetailsModal } from '../components/PublicationDetailsModal';
 import { PublicationFormModal } from '../components/PublicationFormModal';
 import { PublicationPublishModal } from '../components/PublicationPublishModal';
 import { api } from '../lib/api';
+import { copyShareLink } from '../lib/share';
 import { useToast } from '../toast/ToastContext';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 
@@ -30,6 +32,7 @@ export function BlogPublicationsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState('active');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => localStorage.getItem('publications:view-mode') === 'list' ? 'list' : 'grid');
@@ -39,6 +42,7 @@ export function BlogPublicationsPage() {
   const [details, setDetails] = useState<BlogPublication | null>(null);
   const [publishing, setPublishing] = useState<BlogPublication | null>(null);
   const range = useMemo(todayRange, []);
+  const sharedPublicationId = searchParams.get('publication');
 
   useEffect(() => localStorage.setItem('publications:view-mode', viewMode), [viewMode]);
 
@@ -51,6 +55,24 @@ export function BlogPublicationsPage() {
     queryFn: () => api.publications.counts(range),
     refetchInterval: 30_000
   });
+  const sharedPublication = useQuery({
+    queryKey: ['shared-publication', sharedPublicationId],
+    queryFn: () => api.publications.get(sharedPublicationId!),
+    enabled: Boolean(sharedPublicationId),
+    retry: false
+  });
+
+  useEffect(() => {
+    if (sharedPublication.data) setDetails(sharedPublication.data);
+  }, [sharedPublication.data]);
+
+  useEffect(() => {
+    if (!sharedPublicationId || !sharedPublication.error) return;
+    showToast(sharedPublication.error instanceof Error ? sharedPublication.error.message : 'Не вдалося відкрити публікацію за посиланням.', 'error');
+    const next = new URLSearchParams(searchParams);
+    next.delete('publication');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, sharedPublication.error, sharedPublicationId, showToast]);
   const createOne = useMutation({ mutationFn: api.publications.create });
   const createBatch = useMutation({ mutationFn: api.publications.createBatch });
   const update = useMutation({ mutationFn: ({ id, input }: { id: string; input: PublicationInput }) => api.publications.update(id, input) });
@@ -95,6 +117,23 @@ export function BlogPublicationsPage() {
     void applyStatus(publication, status);
   }
 
+  async function sharePublication(publication: BlogPublication) {
+    try {
+      await copyShareLink('publication', publication.id);
+      showToast('Посилання на публікацію скопійовано.');
+    } catch {
+      showToast('Не вдалося скопіювати посилання.', 'error');
+    }
+  }
+
+  function closeDetails() {
+    setDetails(null);
+    if (!searchParams.has('publication')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('publication');
+    setSearchParams(next, { replace: true });
+  }
+
   const items = publications.data || [];
 
   return <div className="publications-page">
@@ -111,11 +150,11 @@ export function BlogPublicationsPage() {
     {publications.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо публікації…</p></div>}
     {publications.isError && <div className="task-list-state task-list-state--error"><p>{publications.error instanceof Error ? publications.error.message : 'Не вдалося завантажити публікації.'}</p><button className="button button--secondary" type="button" onClick={() => void publications.refetch()}>Спробувати ще</button></div>}
     {!publications.isLoading && !publications.isError && !items.length && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="blogPublications" size={28} /></span><h2>Публікацій поки немає</h2><p>Заплануйте одну статтю або створіть одразу декілька карток.</p></div>}
-    {items.length > 0 && <section className={`publication-list publication-list--${viewMode}`}><div className="task-list__summary"><span>{items.length} публікацій</span></div>{items.map((publication) => <PublicationCard key={publication.id} publication={publication} viewMode={viewMode} canEdit={Boolean(user && (user.role === 'admin' || user.id === publication.creator.id || user.id === publication.assignee?.id))} busy={busy} onOpen={setDetails} onEdit={(selected) => { setEditing(selected); setFormOpen(true); }} onStatus={(selected, status) => void changeStatus(selected, status)} />)}</section>}
+    {items.length > 0 && <section className={`publication-list publication-list--${viewMode}`}><div className="task-list__summary"><span>{items.length} публікацій</span></div>{items.map((publication) => <PublicationCard key={publication.id} publication={publication} viewMode={viewMode} canEdit={Boolean(user && (user.role === 'admin' || user.id === publication.creator.id || user.id === publication.assignee?.id))} busy={busy} onOpen={setDetails} onShare={(selected) => void sharePublication(selected)} onEdit={(selected) => { setEditing(selected); setFormOpen(true); }} onStatus={(selected, status) => void changeStatus(selected, status)} />)}</section>}
 
     {batchOpen && <PublicationBatchModal onClose={() => setBatchOpen(false)} onSubmit={saveBatch} />}
     {formOpen && <PublicationFormModal key={editing?.id || 'new'} publication={editing} onClose={() => { setFormOpen(false); setEditing(null); }} onSubmit={save} />}
-    {details && <PublicationDetailsModal publication={details} onClose={() => setDetails(null)} />}
+    {details && <PublicationDetailsModal publication={details} onClose={closeDetails} onShare={(selected) => void sharePublication(selected)} />}
     {publishing && <PublicationPublishModal publication={publishing} pending={setStatus.isPending} onClose={() => setPublishing(null)} onSubmit={(url) => applyStatus(publishing, 'published', url)} />}
   </div>;
 }

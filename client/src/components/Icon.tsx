@@ -35,6 +35,7 @@ import Inventory2Outlined from '@mui/icons-material/Inventory2Outlined';
 import RemoveRounded from '@mui/icons-material/RemoveRounded';
 import SaveRounded from '@mui/icons-material/SaveRounded';
 import SearchRounded from '@mui/icons-material/SearchRounded';
+import ShareRounded from '@mui/icons-material/ShareRounded';
 import UploadFileRounded from '@mui/icons-material/UploadFileRounded';
 import VideoCameraFrontOutlined from '@mui/icons-material/VideoCameraFrontOutlined';
 import GridOnRounded from '@mui/icons-material/GridOnRounded';
@@ -81,6 +82,7 @@ export type IconName =
   | 'remove'
   | 'save'
   | 'search'
+  | 'share'
   | 'schedule'
   | 'savedBanners'
   | 'savedGrids'
@@ -134,6 +136,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   remove: RemoveRounded,
   save: SaveRounded,
   search: SearchRounded,
+  share: ShareRounded,
   schedule: AccessTimeRounded,
   savedBanners: ImageOutlined,
   savedGrids: GridOnRounded,

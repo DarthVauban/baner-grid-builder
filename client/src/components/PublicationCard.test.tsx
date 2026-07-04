@@ -24,7 +24,7 @@ describe('PublicationCard', () => {
   it('keeps resources visible and opens only from the details button', async () => {
     const onOpen = vi.fn();
     const { container } = render(
-      <PublicationCard publication={publication} viewMode="list" canEdit={false} busy={false} onOpen={onOpen} onEdit={vi.fn()} onStatus={vi.fn()} />
+      <PublicationCard publication={publication} viewMode="list" canEdit={false} busy={false} onOpen={onOpen} onShare={vi.fn()} onEdit={vi.fn()} onStatus={vi.fn()} />
     );
 
     expect(screen.getByRole('link', { name: /Article draft/ })).toHaveAttribute('href', publication.materials[0].url);

@@ -7,6 +7,7 @@ import { Icon } from './Icon';
 interface TaskDetailsModalProps {
   task: Task;
   onClose: () => void;
+  onShare: (task: Task) => void;
 }
 
 const responseLabels: Record<ParticipantResponse, string> = {
@@ -21,7 +22,7 @@ function formatMinutes(value: number): string {
   return `${value} хв.`;
 }
 
-export function TaskDetailsModal({ task, onClose }: TaskDetailsModalProps) {
+export function TaskDetailsModal({ task, onClose, onShare }: TaskDetailsModalProps) {
   const overdue = isTaskOverdue(task);
 
   useEffect(() => {
@@ -89,7 +90,7 @@ export function TaskDetailsModal({ task, onClose }: TaskDetailsModalProps) {
           </section>
         </div>
 
-        <footer className="task-details-modal__footer"><button className="button button--secondary" type="button" onClick={onClose}>Закрити</button></footer>
+        <footer className="task-details-modal__footer"><button className="button button--secondary" type="button" onClick={() => onShare(task)}><Icon name="share" size={17} /> Поділитися</button><button className="button button--secondary" type="button" onClick={onClose}>Закрити</button></footer>
       </section>
     </div>
   );

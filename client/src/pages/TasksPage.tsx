@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { copyShareLink } from '../lib/share';
 import { TaskCard } from '../components/TaskCard';
 import { TaskFormModal } from '../components/TaskFormModal';
 import { ReminderModal } from '../components/ReminderModal';
@@ -34,6 +36,7 @@ function todayRange() {
 export function TasksPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState('active');
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -44,6 +47,7 @@ export function TasksPage() {
     window.localStorage.getItem('tasks:view-mode') === 'grid' ? 'grid' : 'list'
   ));
   const range = useMemo(todayRange, []);
+  const sharedTaskId = searchParams.get('task');
 
   useEffect(() => window.localStorage.setItem('tasks:view-mode', viewMode), [viewMode]);
 
@@ -61,6 +65,24 @@ export function TasksPage() {
     refetchInterval: 30_000,
     refetchIntervalInBackground: true
   });
+  const sharedTaskQuery = useQuery({
+    queryKey: ['shared-task', sharedTaskId],
+    queryFn: () => api.tasks.get(sharedTaskId!),
+    enabled: Boolean(sharedTaskId),
+    retry: false
+  });
+
+  useEffect(() => {
+    if (sharedTaskQuery.data) setDetailsTask(sharedTaskQuery.data);
+  }, [sharedTaskQuery.data]);
+
+  useEffect(() => {
+    if (!sharedTaskId || !sharedTaskQuery.error) return;
+    showToast(sharedTaskQuery.error instanceof Error ? sharedTaskQuery.error.message : 'Не вдалося відкрити справу за посиланням.', 'error');
+    const next = new URLSearchParams(searchParams);
+    next.delete('task');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, sharedTaskId, sharedTaskQuery.error, showToast]);
 
   const refresh = async () => {
     await Promise.all([
@@ -125,6 +147,23 @@ export function TasksPage() {
     }
   }
 
+  async function handleShare(task: Task) {
+    try {
+      await copyShareLink('task', task.id);
+      showToast('Посилання на справу скопійовано.');
+    } catch {
+      showToast('Не вдалося скопіювати посилання.', 'error');
+    }
+  }
+
+  function closeDetails() {
+    setDetailsTask(null);
+    if (!searchParams.has('task')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('task');
+    setSearchParams(next, { replace: true });
+  }
+
   const tasks = tasksQuery.data || [];
 
   return (
@@ -174,6 +213,7 @@ export function TasksPage() {
               viewMode={viewMode}
               busy={busy}
               onOpen={setDetailsTask}
+              onShare={(selected) => void handleShare(selected)}
               onEdit={(selected) => { setEditingTask(selected); setFormOpen(true); }}
               onRespond={(selected, responseValue) => void handleRespond(selected, responseValue)}
               onStatus={(selected, statusValue) => void handleStatus(selected, statusValue)}
@@ -186,7 +226,7 @@ export function TasksPage() {
 
       {formOpen && <TaskFormModal key={editingTask?.id || 'new'} task={editingTask} onClose={() => { setFormOpen(false); setEditingTask(null); }} onSubmit={saveTask} />}
       {reminderTask && <ReminderModal task={reminderTask} onClose={() => setReminderTask(null)} onSubmit={handleReminder} />}
-      {detailsTask && <TaskDetailsModal task={detailsTask} onClose={() => setDetailsTask(null)} />}
+      {detailsTask && <TaskDetailsModal task={detailsTask} onClose={closeDetails} onShare={(selected) => void handleShare(selected)} />}
     </div>
   );
 }

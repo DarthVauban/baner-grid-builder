@@ -9,6 +9,7 @@ interface TaskCardProps {
   viewMode: 'list' | 'grid';
   busy?: boolean;
   onOpen: (task: Task) => void;
+  onShare: (task: Task) => void;
   onEdit: (task: Task) => void;
   onRespond: (task: Task, response: 'accepted' | 'declined') => void;
   onStatus: (task: Task, status: TaskStatus) => void;
@@ -34,7 +35,7 @@ const taskTypeIcons: Record<TaskType, IconName> = {
   other: 'other'
 };
 
-export function TaskCard({ task, viewMode, busy, onOpen, onEdit, onRespond, onStatus, onReminder, onDelete }: TaskCardProps) {
+export function TaskCard({ task, viewMode, busy, onOpen, onShare, onEdit, onRespond, onStatus, onReminder, onDelete }: TaskCardProps) {
   const overdue = isTaskOverdue(task);
   const pendingInvitation = !task.isOwner && task.myResponseStatus === 'pending';
 
@@ -81,6 +82,7 @@ export function TaskCard({ task, viewMode, busy, onOpen, onEdit, onRespond, onSt
 
         <footer className="task-card__actions">
           <button className="task-action task-action--details" type="button" onClick={() => onOpen(task)}><Icon name="visibility" size={15} /> Деталі</button>
+          <button className="task-action" type="button" onClick={() => onShare(task)}><Icon name="share" size={15} /> Поділитися</button>
           {pendingInvitation ? (
             <>
               <button className="button button--primary button--small" type="button" disabled={busy} onClick={() => onRespond(task, 'accepted')}>Прийняти</button>
