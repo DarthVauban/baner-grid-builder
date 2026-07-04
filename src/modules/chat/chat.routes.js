@@ -20,7 +20,10 @@ const router = Router();
 router.use(requireAuth, requireToolAccess('chat'));
 
 const idSchema = z.string().uuid();
-const createConversationSchema = z.object({ userId: z.string().uuid() });
+const createConversationSchema = z.object({
+  userId: z.string().uuid(),
+  body: z.string().trim().min(1).max(5000)
+});
 const messageSchema = z.object({ body: z.string().trim().min(1).max(5000) });
 
 function getAllowedOrigins(req) {
@@ -86,6 +89,8 @@ router.get('/conversations', asyncHandler(async (req, res) => {
             other_user.id AS other_id, other_user.name AS other_name, other_user.email AS other_email,
             member.last_read_at, member.joined_at
      FROM chat_conversations AS conversation
+     JOIN (SELECT DISTINCT conversation_id FROM chat_messages) AS populated
+       ON populated.conversation_id = conversation.id
      JOIN chat_members AS member ON member.conversation_id = conversation.id AND member.user_id = $1
      JOIN chat_members AS other_member ON other_member.conversation_id = conversation.id AND other_member.user_id <> $1
      JOIN users AS other_user ON other_user.id = other_member.user_id
@@ -117,7 +122,7 @@ router.get('/conversations', asyncHandler(async (req, res) => {
 }));
 
 router.post('/conversations', asyncHandler(async (req, res) => {
-  const { userId } = parseInput(createConversationSchema, req.body);
+  const { userId, body } = parseInput(createConversationSchema, req.body);
   if (userId === req.user.id) throw new AppError(422, 'INVALID_CONTACT', 'Не можна створити діалог із собою.');
   const contact = await query(
     `SELECT users.id, users.name, users.email FROM users
@@ -129,13 +134,16 @@ router.post('/conversations', asyncHandler(async (req, res) => {
   );
   if (!contact.rows[0]) throw new AppError(404, 'CONTACT_NOT_FOUND', 'Контакт недоступний у чаті.');
   const key = directConversationKey(req.user.id, userId);
+  const allowedOrigins = getAllowedOrigins(req);
+  const references = extractEntityReferences(body, allowedOrigins);
   const client = await pool.connect();
   let conversationId;
+  let message;
   try {
     await client.query('BEGIN');
     const created = await client.query(
       `INSERT INTO chat_conversations (direct_key) VALUES ($1)
-       ON CONFLICT (direct_key) DO UPDATE SET direct_key = EXCLUDED.direct_key
+       ON CONFLICT (direct_key) DO UPDATE SET updated_at = NOW()
        RETURNING id`,
       [key]
     );
@@ -146,13 +154,31 @@ router.post('/conversations', asyncHandler(async (req, res) => {
        ON CONFLICT (conversation_id, user_id) DO NOTHING`,
       [conversationId, req.user.id, userId]
     );
+    const insertedMessage = await client.query(
+      `INSERT INTO chat_messages (conversation_id, sender_id, body, entity_references)
+       VALUES ($1, $2, $3, $4::JSONB)
+       RETURNING *, $5::VARCHAR AS sender_name, $6::VARCHAR AS sender_email`,
+      [conversationId, req.user.id, body, JSON.stringify(references), req.user.name, req.user.email]
+    );
+    message = insertedMessage.rows[0];
+    await client.query(
+      'UPDATE chat_members SET last_read_at = NOW() WHERE conversation_id = $1 AND user_id = $2',
+      [conversationId, req.user.id]
+    );
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally { client.release(); }
-  publishChatUpdates([userId], { type: 'conversation', conversationId, senderId: req.user.id });
-  res.status(201).json({ data: { id: conversationId, contact: contact.rows[0] } });
+  const members = await loadConversationMembers(conversationId);
+  publishChatUpdates(members, { type: 'message', conversationId, senderId: req.user.id });
+  res.status(201).json({
+    data: {
+      id: conversationId,
+      contact: contact.rows[0],
+      message: await serializeChatMessage(message, req.user, allowedOrigins)
+    }
+  });
 }));
 
 router.get('/conversations/:id/messages', asyncHandler(async (req, res) => {

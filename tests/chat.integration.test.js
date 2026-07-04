@@ -60,13 +60,20 @@ test('chat access, contacts and interactive task links work through REST API', a
     reminder: { enabled: true, remindBeforeMinutes: 60, repeatIntervalMinutes: null }
   }).expect(201);
 
-  const conversation = await planner.post('/api/chat/conversations').send({ userId: colleagueId }).expect(201);
-  const conversationId = conversation.body.data.id;
-  await planner.post(`/api/chat/conversations/${conversationId}/messages`)
+  await planner.post('/api/chat/conversations').send({ userId: colleagueId }).expect(422);
+  const emptyConversations = await colleague.get('/api/chat/conversations').expect(200);
+  assert.equal(emptyConversations.body.data.length, 0);
+
+  const conversation = await planner.post('/api/chat/conversations')
     .set('Host', 'mt-panel.sbs')
     .set('X-Forwarded-Proto', 'https')
-    .send({ body: `Please review https://mt-panel.sbs/tasks?task=${task.body.data.id}` })
+    .send({
+      userId: colleagueId,
+      body: `Please review https://mt-panel.sbs/tasks?task=${task.body.data.id}`
+    })
     .expect(201);
+  const conversationId = conversation.body.data.id;
+  assert.equal(conversation.body.data.message.entities[0].type, 'task');
 
   const colleagueConversations = await colleague.get('/api/chat/conversations').expect(200);
   assert.equal(colleagueConversations.body.data[0].unreadCount, 1);

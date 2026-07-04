@@ -156,8 +156,8 @@ export const api = {
     contacts: () => request<ChatPerson[]>('/api/chat/contacts'),
     unreadCount: () => request<number>('/api/chat/unread-count'),
     conversations: () => request<ChatConversation[]>('/api/chat/conversations'),
-    createConversation: (userId: string) => request<{ id: string; contact: ChatPerson }>('/api/chat/conversations', {
-      method: 'POST', body: jsonBody({ userId })
+    startConversation: (userId: string, body: string) => request<{ id: string; contact: ChatPerson; message: ChatMessage }>('/api/chat/conversations', {
+      method: 'POST', body: jsonBody({ userId, body })
     }),
     messages: (conversationId: string) => request<ChatMessage[]>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`),
     sendMessage: (conversationId: string, body: string) => request<ChatMessage>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
