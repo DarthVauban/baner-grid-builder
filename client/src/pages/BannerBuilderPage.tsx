@@ -17,7 +17,6 @@ export function BannerBuilderPage() {
   const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState('');
   const validBanners = useMemo(() => workspace.banners.map(normalizeBanner).filter(isBannerValid), [workspace.banners]);
   const generatedCode = useMemo(() => buildGridExport(validBanners, workspace.shareDescription), [validBanners, workspace.shareDescription]);
   const requestedTab = searchParams.get('tab');
@@ -33,16 +32,16 @@ export function BannerBuilderPage() {
   }
 
   async function saveGrid() {
-    if (!workspace.gridName.trim()) return setMessage('Вкажіть назву банерної сітки.');
-    if (!workspace.banners.some((banner) => Object.values(normalizeBanner(banner)).some(Boolean))) return setMessage('Додайте хоча б один банер.');
+    if (!workspace.gridName.trim()) return showToast('Вкажіть назву банерної сітки.', 'error');
+    if (!workspace.banners.some((banner) => Object.values(normalizeBanner(banner)).some(Boolean))) return showToast('Додайте хоча б один банер.', 'error');
     setPending(true);
     try {
       const input = { name: workspace.gridName.trim(), shareDescription: workspace.shareDescription.trim(), banners: workspace.banners.map(normalizeBanner) };
       const saved = workspace.editingGridId ? await api.grids.update(workspace.editingGridId, input) : await api.grids.create(input);
       workspace.setEditingGridId(saved.id);
       await queryClient.invalidateQueries({ queryKey: ['saved-grids'] });
-      setMessage(workspace.editingGridId ? 'Сітку оновлено.' : 'Сітку збережено.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Не вдалося зберегти сітку.'); }
+      showToast(workspace.editingGridId ? 'Сітку оновлено.' : 'Сітку збережено.');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося зберегти сітку.', 'error'); }
     finally { setPending(false); }
   }
 
@@ -55,8 +54,8 @@ export function BannerBuilderPage() {
       const saved = draft.savedBannerId ? await api.banners.update(draft.savedBannerId, input) : await api.banners.create(input);
       workspace.markBannerSaved(localId, saved.id);
       await queryClient.invalidateQueries({ queryKey: ['saved-banners'] });
-      setMessage(draft.savedBannerId ? 'Банер оновлено.' : 'Банер збережено.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Не вдалося зберегти банер.'); }
+      showToast(draft.savedBannerId ? 'Банер оновлено.' : 'Банер збережено.');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося зберегти банер.', 'error'); }
     finally { setPending(false); }
   }
 
@@ -69,7 +68,6 @@ export function BannerBuilderPage() {
         <button type="button" className={activeTab === 'banners' ? 'active' : ''} onClick={() => setActiveTab('banners')}><Icon name="savedBanners" size={18} /> Збережені банери</button>
       </nav>
       {activeTab === 'builder' && <>
-      {message && <div className="tasks-page__message"><span>{message}</span><button type="button" onClick={() => setMessage('')} aria-label="Закрити повідомлення"><Icon name="close" size={18} /></button></div>}
       <section className="tool-workspace-bar"><label className="field"><span>Назва банерної сітки</span><input value={workspace.gridName} maxLength={160} onChange={(event) => workspace.setGridName(event.target.value)} placeholder="Наприклад, Літній розпродаж" /></label>{workspace.editingGridId && <span className="workspace-mode">Режим редагування</span>}</section>
       <div className="banner-builder-layout">
         <section className="tool-panel"><header className="tool-panel__header"><div><p className="eyebrow">Крок 1</p><h2>Дані банерів</h2></div><span>{workspace.banners.length}</span></header><div className="banner-editor-list">{workspace.banners.map((banner, index) => <BannerEditorCard key={banner.localId} banner={banner} index={index} canRemove={workspace.banners.length > 1} pending={pending} onChange={(patch) => workspace.updateBanner(banner.localId, patch)} onRemove={() => workspace.removeBanner(banner.localId)} onSave={() => void saveBanner(banner.localId)} onCopy={() => void copy(buildBannerHtml(normalizeBanner(banner)), 'HTML банера скопійовано.')} />)}</div><button className="button button--add" type="button" onClick={() => workspace.addBanner()}><Icon name="add" size={18} /> Додати банер</button></section>

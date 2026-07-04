@@ -39,6 +39,8 @@ import UploadFileRounded from '@mui/icons-material/UploadFileRounded';
 import VideoCameraFrontOutlined from '@mui/icons-material/VideoCameraFrontOutlined';
 import GridOnRounded from '@mui/icons-material/GridOnRounded';
 import TableChartOutlined from '@mui/icons-material/TableChartOutlined';
+import ViewAgendaOutlined from '@mui/icons-material/ViewAgendaOutlined';
+import VisibilityOutlined from '@mui/icons-material/VisibilityOutlined';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -83,7 +85,10 @@ export type IconName =
   | 'tasks'
   | 'tools'
   | 'upload'
-  | 'users';
+  | 'users'
+  | 'viewGrid'
+  | 'viewList'
+  | 'visibility';
 
 interface IconProps {
   name: IconName;
@@ -132,7 +137,10 @@ const icons: Record<IconName, SvgIconComponent> = {
   tasks: ChecklistRounded,
   tools: GridViewRounded,
   upload: UploadFileRounded,
-  users: GroupRounded
+  users: GroupRounded,
+  viewGrid: GridViewRounded,
+  viewList: ViewAgendaOutlined,
+  visibility: VisibilityOutlined
 };
 
 export function Icon({ name, size = 20 }: IconProps) {

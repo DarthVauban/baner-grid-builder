@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { getInitials, roleLabels } from '../lib/user';
 import { Icon } from '../components/Icon';
+import { useToast } from '../toast/ToastContext';
 import type {
   PermissionRole,
   RolePermission,
@@ -98,6 +99,7 @@ function PermissionCard({
 }
 
 export function AdminUsersPage() {
+  const { showToast } = useToast();
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useState('');
@@ -105,7 +107,6 @@ export function AdminUsersPage() {
   const [status, setStatus] = useState<UserStatus | ''>('');
   const [role, setRole] = useState<UserRole | ''>('');
   const [page, setPage] = useState(1);
-  const [message, setMessage] = useState('');
   const [busyUserId, setBusyUserId] = useState('');
   const [pendingPermission, setPendingPermission] = useState('');
 
@@ -150,13 +151,12 @@ export function AdminUsersPage() {
   async function changeStatus(target: User, value: UserStatus) {
     if (value === 'rejected' && !window.confirm(`Відхилити доступ для ${target.name}?`)) return;
     setBusyUserId(target.id);
-    setMessage('');
     try {
       await setUserStatus.mutateAsync({ id: target.id, value });
-      setMessage(value === 'approved' ? 'Користувача схвалено.' : 'Доступ користувача відхилено.');
+      showToast(value === 'approved' ? 'Користувача схвалено.' : 'Доступ користувача відхилено.');
       await refreshUsers();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Не вдалося змінити статус.');
+      showToast(error instanceof Error ? error.message : 'Не вдалося змінити статус.', 'error');
     } finally {
       setBusyUserId('');
     }
@@ -164,13 +164,12 @@ export function AdminUsersPage() {
 
   async function changeRole(target: User, value: UserRole) {
     setBusyUserId(target.id);
-    setMessage('');
     try {
       await setUserRole.mutateAsync({ id: target.id, value });
-      setMessage('Роль користувача оновлено.');
+      showToast('Роль користувача оновлено.');
       await refreshUsers();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Не вдалося змінити роль.');
+      showToast(error instanceof Error ? error.message : 'Не вдалося змінити роль.', 'error');
     } finally {
       setBusyUserId('');
     }
@@ -179,13 +178,12 @@ export function AdminUsersPage() {
   async function changePermission(permissionRole: PermissionRole, resource: SavedDataResource, value: boolean) {
     const key = `${permissionRole}:${resource}`;
     setPendingPermission(key);
-    setMessage('');
     try {
       await setPermission.mutateAsync({ permissionRole, resource, value });
-      setMessage('Дозволи ролі оновлено.');
+      showToast('Дозволи ролі оновлено.');
       await queryClient.invalidateQueries({ queryKey: ['admin-permissions'] });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Не вдалося оновити дозволи.');
+      showToast(error instanceof Error ? error.message : 'Не вдалося оновити дозволи.', 'error');
     } finally {
       setPendingPermission('');
     }
@@ -198,8 +196,6 @@ export function AdminUsersPage() {
         <h1>Користувачі та доступи</h1>
         <p>Схвалюйте облікові записи, призначайте ролі та керуйте переглядом спільних робочих даних.</p>
       </header>
-
-      {message && <div className="tasks-page__message" role="status"><span>{message}</span><button type="button" onClick={() => setMessage('')} aria-label="Закрити повідомлення"><Icon name="close" size={18} /></button></div>}
 
       <section className="admin-summary" aria-label="Зведення користувачів">
         {summaryCards.map(([label, value, kind]) => <article key={kind} className={`admin-summary__card admin-summary__card--${kind}`}><span>{label}</span><strong>{directory.isLoading ? '—' : value}</strong></article>)}

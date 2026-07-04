@@ -6,7 +6,9 @@ import type { IconName } from './Icon';
 
 interface TaskCardProps {
   task: Task;
+  viewMode: 'list' | 'grid';
   busy?: boolean;
+  onOpen: (task: Task) => void;
   onEdit: (task: Task) => void;
   onRespond: (task: Task, response: 'accepted' | 'declined') => void;
   onStatus: (task: Task, status: TaskStatus) => void;
@@ -32,12 +34,12 @@ const taskTypeIcons: Record<TaskType, IconName> = {
   other: 'other'
 };
 
-export function TaskCard({ task, busy, onEdit, onRespond, onStatus, onReminder, onDelete }: TaskCardProps) {
+export function TaskCard({ task, viewMode, busy, onOpen, onEdit, onRespond, onStatus, onReminder, onDelete }: TaskCardProps) {
   const overdue = isTaskOverdue(task);
   const pendingInvitation = !task.isOwner && task.myResponseStatus === 'pending';
 
   return (
-    <article className={`task-card task-card--${task.type}${overdue ? ' task-card--overdue' : ''}${pendingInvitation ? ' task-card--invitation' : ''}`}>
+    <article className={`task-card task-card--${viewMode} task-card--${task.type}${overdue ? ' task-card--overdue' : ''}${pendingInvitation ? ' task-card--invitation' : ''}`}>
       <div className="task-card__mark" aria-hidden="true"><Icon name={taskTypeIcons[task.type]} size={21} /></div>
       <div className="task-card__body">
         <div className="task-card__meta">
@@ -76,6 +78,7 @@ export function TaskCard({ task, busy, onEdit, onRespond, onStatus, onReminder, 
         )}
 
         <footer className="task-card__actions">
+          <button className="task-action task-action--details" type="button" onClick={() => onOpen(task)}><Icon name="visibility" size={15} /> Деталі</button>
           {pendingInvitation ? (
             <>
               <button className="button button--primary button--small" type="button" disabled={busy} onClick={() => onRespond(task, 'accepted')}>Прийняти</button>

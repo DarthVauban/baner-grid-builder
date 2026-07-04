@@ -45,7 +45,6 @@ export function ProductTablesPage() {
   const [savedId, setSavedId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState('');
   const [search, setSearch] = useState('');
   const [dragging, setDragging] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -71,38 +70,38 @@ export function ProductTablesPage() {
 
   async function loadFile(file?: File) {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.xlsx')) return setMessage('Потрібен файл у форматі XLSX.');
-    if (file.size > MAX_FILE_SIZE) return setMessage('Файл завеликий. Максимальний розмір — 20 МБ.');
+    if (!file.name.toLowerCase().endsWith('.xlsx')) return showToast('Потрібен файл у форматі XLSX.', 'error');
+    if (file.size > MAX_FILE_SIZE) return showToast('Файл завеликий. Максимальний розмір — 20 МБ.', 'error');
     setPending(true);
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
       if (!workbook.SheetNames.length) throw new Error('У файлі немає аркушів.');
       setImportState({ workbook, file, selected: [...workbook.SheetNames] });
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Не вдалося прочитати XLSX-файл.'); }
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося прочитати XLSX-файл.', 'error'); }
     finally { setPending(false); }
   }
 
   function confirmImport() {
     if (!importState?.selected.length) return;
     const table = normalizeWorkbook(importState.workbook, importState.selected);
-    setData(table); setName(importState.file.name.replace(/\.xlsx$/i, '')); setFileName(importState.file.name); setSavedId(null); setDirty(true); setImportState(null); setView('editor'); setMessage(`Імпортовано аркушів: ${table.sheets.length}.`);
+    setData(table); setName(importState.file.name.replace(/\.xlsx$/i, '')); setFileName(importState.file.name); setSavedId(null); setDirty(true); setImportState(null); setView('editor'); showToast(`Імпортовано аркушів: ${table.sheets.length}.`);
   }
 
   function reset(force = false) {
     if (!force && dirty && !window.confirm('Незбережені зміни буде втрачено. Створити нову таблицю?')) return;
-    setData(null); setName(''); setFileName(''); setSavedId(null); setDirty(false); setMessage(''); setView('editor');
+    setData(null); setName(''); setFileName(''); setSavedId(null); setDirty(false); setView('editor');
   }
 
   async function save() {
     if (!data) return;
-    if (!name.trim()) return setMessage('Вкажіть назву таблиці.');
+    if (!name.trim()) return showToast('Вкажіть назву таблиці.', 'error');
     setPending(true);
     try {
       const input = { name: name.trim(), fileName, data };
       const record = savedId ? await api.productTables.update(savedId, input) : await api.productTables.create(input);
-      setSavedId(record.id); setFileName(record.fileName); setDirty(false); setMessage('Таблицю збережено.');
+      setSavedId(record.id); setFileName(record.fileName); setDirty(false); showToast('Таблицю збережено.');
       await queryClient.invalidateQueries({ queryKey: ['product-tables'] });
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Не вдалося зберегти таблицю.'); }
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося зберегти таблицю.', 'error'); }
     finally { setPending(false); }
   }
 
@@ -112,16 +111,16 @@ export function ProductTablesPage() {
     try {
       const loaded = await api.productTables.get(record.id);
       if (!loaded.data?.sheets.length) throw new Error('Збережена таблиця не містить аркушів.');
-      setData(loaded.data); setFileName(loaded.fileName); setSavedId(loaded.isOwner ? loaded.id : null); setName(loaded.isOwner ? loaded.name : `Копія — ${loaded.name}`); setDirty(!loaded.isOwner); setView('editor'); setMessage(loaded.isOwner ? 'Таблицю відкрито.' : 'Таблицю відкрито як нову копію.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Не вдалося відкрити таблицю.'); }
+      setData(loaded.data); setFileName(loaded.fileName); setSavedId(loaded.isOwner ? loaded.id : null); setName(loaded.isOwner ? loaded.name : `Копія — ${loaded.name}`); setDirty(!loaded.isOwner); setView('editor'); showToast(loaded.isOwner ? 'Таблицю відкрито.' : 'Таблицю відкрито як нову копію.');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося відкрити таблицю.', 'error'); }
     finally { setPending(false); }
   }
 
   async function remove(record: ProductTableRecord) {
     if (!window.confirm(`Видалити таблицю «${record.name}»?`)) return;
     setPending(true);
-    try { await api.productTables.remove(record.id); if (savedId === record.id) reset(true); await queryClient.invalidateQueries({ queryKey: ['product-tables'] }); setMessage('Таблицю видалено.'); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Не вдалося видалити таблицю.'); }
+    try { await api.productTables.remove(record.id); if (savedId === record.id) reset(true); await queryClient.invalidateQueries({ queryKey: ['product-tables'] }); showToast('Таблицю видалено.'); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося видалити таблицю.', 'error'); }
     finally { setPending(false); }
   }
 
@@ -164,8 +163,6 @@ export function ProductTablesPage() {
           <button className={view === 'library' ? 'active' : ''} onClick={() => setView('library')}>Збережені <span>{library.data?.length || 0}</span></button>
         </div>
       </header>
-
-      {message && <div className="tasks-page__message"><span>{message}</span><button onClick={() => setMessage('')} aria-label="Закрити повідомлення"><Icon name="close" size={18} /></button></div>}
 
       {view === 'library' ? (
         <section className="tool-panel">

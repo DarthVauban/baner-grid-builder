@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { TaskCard } from '../components/TaskCard';
 import { TaskFormModal } from '../components/TaskFormModal';
 import { ReminderModal } from '../components/ReminderModal';
+import { TaskDetailsModal } from '../components/TaskDetailsModal';
 import { Icon } from '../components/Icon';
+import { useToast } from '../toast/ToastContext';
 import type { ReminderSettings, Task, TaskCounts, TaskInput, TaskStatus } from '../types/task';
 
 const filters = [
@@ -31,13 +33,19 @@ function todayRange() {
 
 export function TasksPage() {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [filter, setFilter] = useState('active');
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [reminderTask, setReminderTask] = useState<Task | null>(null);
-  const [message, setMessage] = useState('');
+  const [detailsTask, setDetailsTask] = useState<Task | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => (
+    window.localStorage.getItem('tasks:view-mode') === 'grid' ? 'grid' : 'list'
+  ));
   const range = useMemo(todayRange, []);
+
+  useEffect(() => window.localStorage.setItem('tasks:view-mode', viewMode), [viewMode]);
 
   const tasksQuery = useQuery({
     queryKey: ['tasks', filter, search],
@@ -74,27 +82,27 @@ export function TasksPage() {
     else await createTask.mutateAsync(input);
     setFormOpen(false);
     setEditingTask(null);
-    setMessage(editingTask ? 'Зміни збережено.' : 'Справу створено.');
+    showToast(editingTask ? 'Зміни збережено.' : 'Справу створено.');
     await refresh();
   }
 
   async function handleRespond(task: Task, response: 'accepted' | 'declined') {
     try {
       await respond.mutateAsync({ id: task.id, response });
-      setMessage(response === 'accepted' ? 'Запрошення прийнято.' : 'Запрошення відхилено.');
+      showToast(response === 'accepted' ? 'Запрошення прийнято.' : 'Запрошення відхилено.');
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Не вдалося відповісти на запрошення.');
+      showToast(error instanceof Error ? error.message : 'Не вдалося відповісти на запрошення.', 'error');
     }
   }
 
   async function handleStatus(task: Task, status: TaskStatus) {
     try {
       await setStatus.mutateAsync({ id: task.id, status });
-      setMessage(status === 'completed' ? 'Справу виконано.' : 'Статус справи змінено.');
+      showToast(status === 'completed' ? 'Справу виконано.' : 'Статус справи змінено.');
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Не вдалося змінити статус.');
+      showToast(error instanceof Error ? error.message : 'Не вдалося змінити статус.', 'error');
     }
   }
 
@@ -102,7 +110,7 @@ export function TasksPage() {
     if (!reminderTask) return;
     await setReminder.mutateAsync({ id: reminderTask.id, settings });
     setReminderTask(null);
-    setMessage('Нагадування оновлено.');
+    showToast('Нагадування оновлено.');
     await refresh();
   }
 
@@ -110,10 +118,10 @@ export function TasksPage() {
     if (!window.confirm(`Видалити справу «${task.title}»?`)) return;
     try {
       await removeTask.mutateAsync(task.id);
-      setMessage('Справу видалено.');
+      showToast('Справу видалено.');
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Не вдалося видалити справу.');
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити справу.', 'error');
     }
   }
 
@@ -130,8 +138,6 @@ export function TasksPage() {
         <button className="button button--primary" type="button" onClick={() => { setEditingTask(null); setFormOpen(true); }}>+ Створити справу</button>
       </header>
 
-      {message && <div className="tasks-page__message" role="status"><span>{message}</span><button type="button" onClick={() => setMessage('')} aria-label="Закрити повідомлення"><Icon name="close" size={18} /></button></div>}
-
       <section className="task-toolbar" aria-label="Фільтри справ">
         <div className="task-filters">
           {filters.map(([value, label]) => {
@@ -144,7 +150,13 @@ export function TasksPage() {
             );
           })}
         </div>
-        <label className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук справ" aria-label="Пошук справ" /></label>
+        <div className="task-toolbar__controls">
+          <label className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук справ" aria-label="Пошук справ" /></label>
+          <div className="task-view-switch" role="group" aria-label="Вигляд списку справ">
+            <button className={viewMode === 'list' ? 'active' : ''} type="button" onClick={() => setViewMode('list')} aria-label="Відображати рядками" title="Рядки"><Icon name="viewList" size={18} /></button>
+            <button className={viewMode === 'grid' ? 'active' : ''} type="button" onClick={() => setViewMode('grid')} aria-label="Відображати плитками" title="Плитки"><Icon name="viewGrid" size={18} /></button>
+          </div>
+        </div>
       </section>
 
       {tasksQuery.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо справи…</p></div>}
@@ -153,13 +165,15 @@ export function TasksPage() {
         <div className="task-list-state"><span className="task-list-state__icon"><Icon name="check" size={28} /></span><h2>{filter === 'invitations' ? 'Нових запрошень немає' : 'Тут поки порожньо'}</h2><p>{search ? 'Спробуйте змінити пошуковий запит.' : 'Створіть першу справу або оберіть інший фільтр.'}</p></div>
       )}
       {tasks.length > 0 && (
-        <section className="task-list" aria-label="Список справ">
+        <section className={`task-list task-list--${viewMode}`} aria-label="Список справ">
           <div className="task-list__summary"><span>{tasks.length} {tasks.length === 1 ? 'справа' : 'справ'}</span></div>
           {tasks.map((task) => (
             <TaskCard
               key={task.id}
               task={task}
+              viewMode={viewMode}
               busy={busy}
+              onOpen={setDetailsTask}
               onEdit={(selected) => { setEditingTask(selected); setFormOpen(true); }}
               onRespond={(selected, responseValue) => void handleRespond(selected, responseValue)}
               onStatus={(selected, statusValue) => void handleStatus(selected, statusValue)}
@@ -172,6 +186,7 @@ export function TasksPage() {
 
       {formOpen && <TaskFormModal key={editingTask?.id || 'new'} task={editingTask} onClose={() => { setFormOpen(false); setEditingTask(null); }} onSubmit={saveTask} />}
       {reminderTask && <ReminderModal task={reminderTask} onClose={() => setReminderTask(null)} onSubmit={handleReminder} />}
+      {detailsTask && <TaskDetailsModal task={detailsTask} onClose={() => setDetailsTask(null)} />}
     </div>
   );
 }

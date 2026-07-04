@@ -10,7 +10,6 @@ import { useToast } from '../toast/ToastContext';
 
 export function SavedGridsPage({ embedded = false }: { embedded?: boolean }) {
   const [search, setSearch] = useState('');
-  const [message, setMessage] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const workspace = useBannerWorkspace();
@@ -19,14 +18,13 @@ export function SavedGridsPage({ embedded = false }: { embedded?: boolean }) {
 
   async function remove(id: string, name: string) {
     if (!window.confirm(`Видалити сітку «${name}»?`)) return;
-    try { await api.grids.remove(id); await queryClient.invalidateQueries({ queryKey: ['saved-grids'] }); setMessage('Сітку видалено.'); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Не вдалося видалити сітку.'); }
+    try { await api.grids.remove(id); await queryClient.invalidateQueries({ queryKey: ['saved-grids'] }); showToast('Сітку видалено.'); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося видалити сітку.', 'error'); }
   }
 
   return (
     <div className={embedded ? 'banner-library-pane' : 'tool-page'}>
       {!embedded && <header className="page-heading"><p className="eyebrow">Бібліотека</p><h1>Збережені сітки</h1><p>Відкривайте власні сітки для редагування або використовуйте доступні сітки колег як нову копію.</p></header>}
-      {message && <div className="tasks-page__message"><span>{message}</span><button onClick={() => setMessage('')} aria-label="Закрити повідомлення"><Icon name="close" size={18} /></button></div>}
       <div className="library-toolbar"><label className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук сіток" /></label><span>{grids.data?.length ?? 0} сіток</span></div>
       <section className="workspace-library">
         {grids.isLoading && <div className="admin-list-state">Завантажуємо сітки…</div>}

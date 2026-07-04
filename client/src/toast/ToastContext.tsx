@@ -30,7 +30,7 @@ export function ToastProvider({ children }: PropsWithChildren) {
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     const id = ++nextId.current;
-    setToasts((current) => [...current.slice(-2), { id, message, type }]);
+    setToasts((current) => [...current, { id, message, type }].slice(-5));
     timers.current.set(id, window.setTimeout(() => dismiss(id), 2800));
   }, [dismiss]);
 
