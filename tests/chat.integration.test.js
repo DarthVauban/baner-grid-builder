@@ -62,20 +62,38 @@ test('chat access, contacts and interactive task links work through REST API', a
 
   const conversation = await planner.post('/api/chat/conversations').send({ userId: colleagueId }).expect(201);
   const conversationId = conversation.body.data.id;
-  await planner.post(`/api/chat/conversations/${conversationId}/messages`).send({
-    body: `Please review http://localhost:3000/tasks?task=${task.body.data.id}`
-  }).expect(201);
+  await planner.post(`/api/chat/conversations/${conversationId}/messages`)
+    .set('Host', 'mt-panel.sbs')
+    .set('X-Forwarded-Proto', 'https')
+    .send({ body: `Please review https://mt-panel.sbs/tasks?task=${task.body.data.id}` })
+    .expect(201);
 
   const colleagueConversations = await colleague.get('/api/chat/conversations').expect(200);
   assert.equal(colleagueConversations.body.data[0].unreadCount, 1);
+  const unread = await colleague.get('/api/chat/unread-count').expect(200);
+  assert.equal(unread.body.data, 1);
   const messages = await colleague.get(`/api/chat/conversations/${conversationId}/messages`).expect(200);
   assert.equal(messages.body.data[0].entities[0].type, 'task');
   assert.equal(messages.body.data[0].entities[0].available, true);
   assert.equal(messages.body.data[0].entities[0].data.myResponseStatus, 'pending');
+  await colleague.post(`/api/chat/conversations/${conversationId}/read`).expect(204);
+  const read = await colleague.get('/api/chat/unread-count').expect(200);
+  assert.equal(read.body.data, 0);
 
   await colleague.post(`/api/tasks/${task.body.data.id}/respond`).send({ response: 'accepted' }).expect(200);
   const acceptedMessages = await colleague.get(`/api/chat/conversations/${conversationId}/messages`).expect(200);
   assert.equal(acceptedMessages.body.data[0].entities[0].data.myResponseStatus, 'accepted');
+
+  await pool.query(
+    `INSERT INTO chat_messages (conversation_id, sender_id, body, entity_references)
+     VALUES ($1, $2, $3, '[]'::JSONB)`,
+    [conversationId, plannerId, `Legacy link https://mt-panel.sbs/tasks?task=${task.body.data.id}`]
+  );
+  const legacyMessages = await colleague.get(`/api/chat/conversations/${conversationId}/messages`)
+    .set('Host', 'mt-panel.sbs')
+    .set('X-Forwarded-Proto', 'https')
+    .expect(200);
+  assert.equal(legacyMessages.body.data.at(-1).entities[0].type, 'task');
 
   const publication = await planner.post('/api/publications').send({
     title: 'Shared blog publication', description: '', publishAt: dueAt,

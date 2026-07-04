@@ -63,6 +63,7 @@ export function App() {
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tools" element={<ToolsPage />} />
+          <Route path="tools/chat" element={<Navigate to="/chat" replace />} />
           <Route element={<ToolAccessRoute tool="banner_grid" />}>
             <Route path="tools/banner-grid" element={<BannerBuilderPage />} />
             <Route path="tools/saved-grids" element={<Navigate to="/tools/banner-grid?tab=grids" replace />} />
@@ -78,7 +79,7 @@ export function App() {
             <Route path="tools/blog-publications" element={<BlogPublicationsPage />} />
           </Route>
           <Route element={<ToolAccessRoute tool="chat" />}>
-            <Route path="tools/chat" element={<Suspense fallback={<LoadingScreen />}><ChatPage /></Suspense>} />
+            <Route path="chat" element={<Suspense fallback={<LoadingScreen />}><ChatPage /></Suspense>} />
           </Route>
           <Route element={<AdminRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

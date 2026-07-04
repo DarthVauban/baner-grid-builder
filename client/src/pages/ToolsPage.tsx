@@ -11,7 +11,7 @@ export function ToolsPage() {
     refetchInterval: 30_000,
     refetchIntervalInBackground: true
   });
-  const availableTools = tools.filter((tool) => access.data?.includes(tool.id));
+  const availableTools = tools.filter((tool) => tool.id !== 'chat' && access.data?.includes(tool.id));
 
   return (
     <div className="tools-page">

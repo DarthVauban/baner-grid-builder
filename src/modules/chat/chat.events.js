@@ -7,8 +7,8 @@ function eventName(userId) {
   return `chat:${userId}`;
 }
 
-export function publishChatUpdates(userIds) {
-  for (const userId of new Set(userIds.filter(Boolean))) chatEvents.emit(eventName(userId));
+export function publishChatUpdates(userIds, payload = { type: 'refresh' }) {
+  for (const userId of new Set(userIds.filter(Boolean))) chatEvents.emit(eventName(userId), payload);
 }
 
 export function subscribeToChatUpdates(userId, listener) {

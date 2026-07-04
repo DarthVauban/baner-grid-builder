@@ -1,6 +1,8 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { api } from '../lib/api';
 import { getInitials, roleLabels } from '../lib/user';
 import { Icon } from './Icon';
 import { NotificationCenter } from './NotificationCenter';
@@ -9,12 +11,56 @@ import { useTheme } from '../theme/ThemeContext';
 export function AppShell() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  const userId = user?.id;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('mt-sidebar-collapsed') === 'true');
   const sidebarRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const previousLayoutRef = useRef<{ contentLeft: number; sidebarWidth: number } | null>(null);
   const layoutAnimationsRef = useRef<Animation[]>([]);
+  const locationRef = useRef(location);
+  const toolAccess = useQuery({
+    queryKey: ['tool-access'],
+    queryFn: api.users.toolAccess,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true
+  });
+  const hasChatAccess = toolAccess.data?.includes('chat') === true;
+  const chatUnread = useQuery({
+    queryKey: ['chat-unread-count'],
+    queryFn: api.chat.unreadCount,
+    enabled: hasChatAccess,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true
+  });
+
+  useEffect(() => { locationRef.current = location; }, [location]);
+
+  useEffect(() => {
+    if (!hasChatAccess || !userId) return undefined;
+    const stream = new EventSource('/api/chat/stream');
+    const sound = new Audio('/sounds/chat-notification.mp3');
+    sound.preload = 'auto';
+    sound.volume = 0.55;
+    const refresh = (event: Event) => {
+      let payload: { type?: string; conversationId?: string; senderId?: string } = {};
+      try { payload = JSON.parse((event as MessageEvent).data || '{}'); } catch { /* ignore malformed event data */ }
+      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
+      void queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+      if (payload.conversationId) void queryClient.invalidateQueries({ queryKey: ['chat-messages', payload.conversationId] });
+      const currentLocation = locationRef.current;
+      const activeConversation = new URLSearchParams(currentLocation.search).get('conversation');
+      const isActiveConversation = currentLocation.pathname === '/chat' && activeConversation === payload.conversationId;
+      if (payload.type === 'message' && payload.senderId !== userId && !isActiveConversation) {
+        sound.currentTime = 0;
+        void sound.play().catch(() => undefined);
+      }
+    };
+    stream.addEventListener('chat', refresh);
+    return () => { stream.removeEventListener('chat', refresh); stream.close(); sound.pause(); };
+  }, [hasChatAccess, queryClient, userId]);
 
   const closeSidebar = () => setSidebarOpen(false);
   const toggleSidebar = () => {
@@ -103,6 +149,11 @@ export function AppShell() {
             <span>Справи</span>
             <span className="sidebar__new">Новий</span>
           </NavLink>
+          {hasChatAccess && <NavLink aria-label="Чат" title="Чат" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/chat" onClick={closeSidebar}>
+            <Icon name="chat" />
+            <span>Чат</span>
+            {(chatUnread.data || 0) > 0 && <span className="sidebar__count">{(chatUnread.data || 0) > 99 ? '99+' : chatUnread.data}</span>}
+          </NavLink>}
           {(user.role === 'admin' || user.canManageToolAccess) && (
             <NavLink aria-label="Користувачі" title="Користувачі" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/users" onClick={closeSidebar}>
               <Icon name="users" />

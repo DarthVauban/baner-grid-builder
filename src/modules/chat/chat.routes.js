@@ -23,13 +23,27 @@ const idSchema = z.string().uuid();
 const createConversationSchema = z.object({ userId: z.string().uuid() });
 const messageSchema = z.object({ body: z.string().trim().min(1).max(5000) });
 
+function getAllowedOrigins(req) {
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim();
+  const candidates = [
+    env.APP_ORIGIN,
+    `${req.protocol}://${req.get('host')}`,
+    req.get('origin'),
+    forwardedHost ? `${forwardedProto}://${forwardedHost}` : ''
+  ];
+  return [...new Set(candidates.filter(Boolean).flatMap((candidate) => {
+    try { return [new URL(candidate).origin]; } catch { return []; }
+  }))];
+}
+
 router.get('/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
-  const sendUpdate = () => res.write('event: chat\ndata: {}\n\n');
+  const sendUpdate = (payload) => res.write(`event: chat\ndata: ${JSON.stringify(payload)}\n\n`);
   const unsubscribe = subscribeToChatUpdates(req.user.id, sendUpdate);
   const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), 25_000);
   heartbeat.unref();
@@ -51,6 +65,19 @@ router.get('/contacts', asyncHandler(async (req, res) => {
     [req.user.id]
   );
   res.json({ data: result.rows });
+}));
+
+router.get('/unread-count', asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT COUNT(*)::INTEGER AS count
+     FROM chat_messages AS message
+     JOIN chat_members AS member ON member.conversation_id = message.conversation_id
+     WHERE member.user_id = $1
+       AND message.sender_id <> $1
+       AND message.created_at > COALESCE(member.last_read_at, member.joined_at)`,
+    [req.user.id]
+  );
+  res.json({ data: Number(result.rows[0]?.count || 0) });
 }));
 
 router.get('/conversations', asyncHandler(async (req, res) => {
@@ -124,6 +151,7 @@ router.post('/conversations', asyncHandler(async (req, res) => {
     await client.query('ROLLBACK');
     throw error;
   } finally { client.release(); }
+  publishChatUpdates([userId], { type: 'conversation', conversationId, senderId: req.user.id });
   res.status(201).json({ data: { id: conversationId, contact: contact.rows[0] } });
 }));
 
@@ -139,8 +167,9 @@ router.get('/conversations/:id/messages', asyncHandler(async (req, res) => {
      LIMIT 100`,
     [id]
   );
+  const allowedOrigins = getAllowedOrigins(req);
   const messages = [];
-  for (const row of [...result.rows].reverse()) messages.push(await serializeChatMessage(row, req.user));
+  for (const row of [...result.rows].reverse()) messages.push(await serializeChatMessage(row, req.user, allowedOrigins));
   res.json({ data: messages });
 }));
 
@@ -148,8 +177,8 @@ router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const { body } = parseInput(messageSchema, req.body);
   if (!await assertConversationMember(id, req.user.id)) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Діалог не знайдено.');
-  const allowedOrigin = new URL(env.APP_ORIGIN || `${req.protocol}://${req.get('host')}`).origin;
-  const references = extractEntityReferences(body, allowedOrigin);
+  const allowedOrigins = getAllowedOrigins(req);
+  const references = extractEntityReferences(body, allowedOrigins);
   const result = await query(
     `INSERT INTO chat_messages (conversation_id, sender_id, body, entity_references)
      VALUES ($1, $2, $3, $4::JSONB)
@@ -159,8 +188,8 @@ router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
   await query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [id]);
   await query('UPDATE chat_members SET last_read_at = NOW() WHERE conversation_id = $1 AND user_id = $2', [id, req.user.id]);
   const members = await loadConversationMembers(id);
-  publishChatUpdates(members);
-  res.status(201).json({ data: await serializeChatMessage(result.rows[0], req.user) });
+  publishChatUpdates(members, { type: 'message', conversationId: id, senderId: req.user.id });
+  res.status(201).json({ data: await serializeChatMessage(result.rows[0], req.user, allowedOrigins) });
 }));
 
 router.post('/conversations/:id/read', asyncHandler(async (req, res) => {

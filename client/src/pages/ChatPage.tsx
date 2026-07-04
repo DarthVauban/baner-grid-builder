@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { getInitials } from '../lib/user';
 import { useToast } from '../toast/ToastContext';
@@ -61,38 +62,37 @@ function ContactsModal({ contacts, loading, onClose, onSelect }: {
 export function ChatPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get('conversation'));
   const [contactsOpen, setContactsOpen] = useState(false);
   const [message, setMessage] = useState('');
   const messageEndRef = useRef<HTMLDivElement>(null);
-  const conversations = useQuery({ queryKey: ['chat-conversations'], queryFn: api.chat.conversations });
+  const conversations = useQuery({ queryKey: ['chat-conversations'], queryFn: api.chat.conversations, refetchOnMount: 'always' });
   const contacts = useQuery({ queryKey: ['chat-contacts'], queryFn: api.chat.contacts, enabled: contactsOpen, staleTime: 60_000 });
   const messages = useQuery({
     queryKey: ['chat-messages', selectedId],
     queryFn: () => api.chat.messages(selectedId!),
-    enabled: Boolean(selectedId)
+    enabled: Boolean(selectedId),
+    refetchOnMount: 'always'
   });
   const createConversation = useMutation({ mutationFn: api.chat.createConversation });
   const send = useMutation({ mutationFn: ({ conversationId, body }: { conversationId: string; body: string }) => api.chat.sendMessage(conversationId, body) });
   const activeConversation = conversations.data?.find((conversation) => conversation.id === selectedId) || null;
 
   useEffect(() => {
-    if (!selectedId && conversations.data?.length) setSelectedId(conversations.data[0].id);
-  }, [conversations.data, selectedId]);
-
-  useEffect(() => {
-    const stream = new EventSource('/api/chat/stream');
-    const refresh = () => {
-      void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
-      if (selectedId) void queryClient.invalidateQueries({ queryKey: ['chat-messages', selectedId] });
-    };
-    stream.addEventListener('chat', refresh);
-    return () => { stream.removeEventListener('chat', refresh); stream.close(); };
-  }, [queryClient, selectedId]);
+    if (!conversations.data?.length) return;
+    if (selectedId && conversations.data.some((conversation) => conversation.id === selectedId)) return;
+    const conversationId = conversations.data[0].id;
+    setSelectedId(conversationId);
+    setSearchParams({ conversation: conversationId }, { replace: true });
+  }, [conversations.data, selectedId, setSearchParams]);
 
   useEffect(() => {
     if (!selectedId || !messages.data) return;
-    void api.chat.markRead(selectedId).then(() => queryClient.invalidateQueries({ queryKey: ['chat-conversations'] }));
+    void api.chat.markRead(selectedId).then(() => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['chat-conversations'] }),
+      queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] })
+    ])).catch(() => undefined);
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.data, queryClient, selectedId]);
 
@@ -101,6 +101,7 @@ export function ChatPage() {
       const conversation = await createConversation.mutateAsync(contact.id);
       await queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
       setSelectedId(conversation.id);
+      setSearchParams({ conversation: conversation.id }, { replace: true });
       setContactsOpen(false);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося створити діалог.', 'error');
@@ -139,7 +140,7 @@ export function ChatPage() {
         <div className="chat-conversations__list">
           {conversations.isLoading && <p className="chat-empty-copy">Завантажуємо…</p>}
           {!conversations.isLoading && !conversations.data?.length && <div className="chat-empty-copy"><Icon name="chat" size={25} /><span>Діалогів поки немає.<br />Оберіть колегу зі списку контактів.</span></div>}
-          {conversations.data?.map((conversation: ChatConversation) => <button className={selectedId === conversation.id ? 'chat-conversation chat-conversation--active' : 'chat-conversation'} type="button" key={conversation.id} onClick={() => setSelectedId(conversation.id)}><span className="avatar">{getInitials(conversation.contact.name)}</span><span><strong>{conversation.contact.name}</strong><small>{conversation.lastMessage?.body || conversation.contact.email}</small></span>{conversation.unreadCount > 0 && <b>{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</b>}</button>)}
+          {conversations.data?.map((conversation: ChatConversation) => <button className={selectedId === conversation.id ? 'chat-conversation chat-conversation--active' : 'chat-conversation'} type="button" key={conversation.id} onClick={() => { setSelectedId(conversation.id); setSearchParams({ conversation: conversation.id }, { replace: true }); }}><span className="avatar">{getInitials(conversation.contact.name)}</span><span><strong>{conversation.contact.name}</strong><small>{conversation.lastMessage?.body || conversation.contact.email}</small></span>{conversation.unreadCount > 0 && <b>{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</b>}</button>)}
         </div>
       </aside>
 

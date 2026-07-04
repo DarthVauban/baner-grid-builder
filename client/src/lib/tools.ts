@@ -14,7 +14,7 @@ export const tools: ToolDefinition[] = [
     id: 'chat',
     name: 'Чат',
     description: 'Особисті діалоги з колегами та інтерактивні картки справ і публікацій у повідомленнях.',
-    path: '/tools/chat',
+    path: '/chat',
     icon: 'chat'
   },
   {

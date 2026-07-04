@@ -13,15 +13,16 @@ export function directConversationKey(firstUserId, secondUserId) {
   return [firstUserId, secondUserId].sort().join(':');
 }
 
-export function extractEntityReferences(body, allowedOrigin) {
+export function extractEntityReferences(body, allowedOrigins) {
   const references = [];
   const seen = new Set();
+  const origins = new Set((Array.isArray(allowedOrigins) ? allowedOrigins : [allowedOrigins]).filter(Boolean));
   const urlPattern = /https?:\/\/[^\s<>"']+/gi;
   for (const match of body.matchAll(urlPattern)) {
     const raw = match[0].replace(/[),.;!?]+$/g, '');
     try {
       const url = new URL(raw);
-      if (url.origin !== allowedOrigin) continue;
+      if (!origins.has(url.origin)) continue;
       const matcher = entityLinkMatchers.find((candidate) => candidate.path === url.pathname);
       const type = matcher?.type;
       const id = matcher ? url.searchParams.get(matcher.parameter) : null;
@@ -52,6 +53,9 @@ async function hydrateTask(reference, viewer) {
       dueAt: task.dueAt,
       isAllDay: task.isAllDay,
       owner: task.owner,
+      description: task.description,
+      participantCount: task.participants.length,
+      meetingUrl: task.meetingUrl,
       isOwner: task.isOwner,
       myResponseStatus: task.myResponseStatus
     }
@@ -68,10 +72,12 @@ async function hydratePublication(reference, viewer) {
     available: true,
     data: {
       title: publication.title,
+      description: publication.description,
       status: publication.status,
       publishAt: publication.publishAt,
       creator: publication.creator,
       assignee: publication.assignee,
+      materials: publication.materials.slice(0, 3),
       publicationUrl: publication.publicationUrl
     }
   };
@@ -89,8 +95,9 @@ export async function hydrateEntityReferences(references, viewer) {
   }));
 }
 
-export async function serializeChatMessage(row, viewer) {
-  const references = Array.isArray(row.entity_references) ? row.entity_references : JSON.parse(row.entity_references || '[]');
+export async function serializeChatMessage(row, viewer, allowedOrigins = []) {
+  const storedReferences = Array.isArray(row.entity_references) ? row.entity_references : JSON.parse(row.entity_references || '[]');
+  const references = storedReferences.length ? storedReferences : extractEntityReferences(row.body, allowedOrigins);
   return {
     id: row.id,
     conversationId: row.conversation_id,

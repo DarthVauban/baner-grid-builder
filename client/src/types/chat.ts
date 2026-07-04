@@ -1,4 +1,4 @@
-import type { PublicationPerson, PublicationStatus } from './publication';
+import type { PublicationMaterial, PublicationPerson, PublicationStatus } from './publication';
 import type { ParticipantResponse, TaskStatus, TaskType } from './task';
 
 export interface ChatPerson {
@@ -17,22 +17,27 @@ export interface ChatConversation {
 
 export interface ChatTaskPreview {
   title: string;
+  description: string;
   type: TaskType;
   status: TaskStatus;
   startsAt: string | null;
   dueAt: string;
   isAllDay: boolean;
   owner: { id: string; name: string };
+  participantCount: number;
+  meetingUrl: string;
   isOwner: boolean;
   myResponseStatus: ParticipantResponse;
 }
 
 export interface ChatPublicationPreview {
   title: string;
+  description: string;
   status: PublicationStatus;
   publishAt: string;
   creator: PublicationPerson;
   assignee: PublicationPerson | null;
+  materials: PublicationMaterial[];
   publicationUrl: string;
 }
 
