@@ -22,9 +22,17 @@ interface BannerWorkspaceValue {
 }
 
 const BannerWorkspaceContext = createContext<BannerWorkspaceValue | null>(null);
+
+let localIdSequence = 0;
+
+function createLocalId(): string {
+  localIdSequence += 1;
+  return `banner-${Date.now().toString(36)}-${localIdSequence.toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 const draft = (value?: Partial<BannerData>, savedBannerId?: string): BannerDraft => ({
   ...normalizeBanner(value),
-  localId: crypto.randomUUID(),
+  localId: createLocalId(),
   ...(savedBannerId ? { savedBannerId } : {})
 });
 
