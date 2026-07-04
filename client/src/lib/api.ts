@@ -27,6 +27,7 @@ import type {
   SavedGrid
 } from '../types/workspace';
 import type { ToolId, UserToolAccess } from '../types/tool';
+import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 
 interface ApiErrorPayload {
   error?: {
@@ -134,6 +135,21 @@ export const api = {
       { method: 'PUT', body: jsonBody(input) }
     ),
     remove: (id: string) => request<void>(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  publications: {
+    list: (params: { filter?: string; search?: string; from?: string; to?: string }) =>
+      request<BlogPublication[]>(`/api/publications${queryString(params)}`),
+    counts: (params: { from: string; to: string }) =>
+      request<PublicationCounts>(`/api/publications/counts${queryString(params)}`),
+    get: (id: string) => request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}`),
+    create: (input: PublicationInput) => request<BlogPublication>('/api/publications', { method: 'POST', body: jsonBody(input) }),
+    createBatch: (items: Array<Pick<PublicationInput, 'title' | 'publishAt' | 'assigneeId'>>) =>
+      request<BlogPublication[]>('/api/publications/batch', { method: 'POST', body: jsonBody({ items }) }),
+    update: (id: string, input: PublicationInput) => request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    setStatus: (id: string, status: PublicationStatus, publicationUrl = '') =>
+      request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}/status`, {
+        method: 'PATCH', body: jsonBody({ status, publicationUrl })
+      })
   },
   users: {
     search: (search: string) => request<UserSearchResult[]>(`/api/users/search${queryString({ search })}`),

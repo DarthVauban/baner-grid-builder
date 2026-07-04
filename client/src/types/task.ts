@@ -72,6 +72,7 @@ export interface UserSearchResult {
 export interface Notification {
   id: string;
   taskId: string | null;
+  publicationId: string | null;
   type: string;
   title: string;
   message: string;

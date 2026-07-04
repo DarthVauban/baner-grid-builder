@@ -4,6 +4,7 @@ import { pool } from './db/pool.js';
 import { runMigrations } from './db/migrate.js';
 import { ensureBootstrapAdmin } from './modules/users/user.service.js';
 import { startReminderWorker } from './modules/tasks/reminder.worker.js';
+import { startPublicationWorker } from './modules/publications/publication.worker.js';
 
 await runMigrations();
 await ensureBootstrapAdmin();
@@ -12,10 +13,12 @@ const server = app.listen(env.PORT, () => {
   console.log(`MT Workspace is running on port ${env.PORT}`);
 });
 const stopReminderWorker = env.NODE_ENV === 'test' ? () => {} : startReminderWorker();
+const stopPublicationWorker = env.NODE_ENV === 'test' ? () => {} : startPublicationWorker();
 
 async function shutdown(signal) {
   console.log(`${signal} received. Shutting down...`);
   stopReminderWorker();
+  stopPublicationWorker();
   server.close(async () => {
     await pool.end();
     process.exit(0);

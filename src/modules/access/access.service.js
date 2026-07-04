@@ -4,7 +4,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 
 export const savedDataResources = ['banner_grids', 'saved_banners', 'product_tables'];
 export const assignableRoles = ['admin', 'editor', 'content_manager'];
-export const toolIds = ['banner_grid', 'product_selection', 'product_tables'];
+export const toolIds = ['banner_grid', 'product_selection', 'product_tables', 'blog_publications'];
 
 export async function getUserToolAccess(user, db = { query }) {
   if (user.role === 'admin') return [...toolIds];

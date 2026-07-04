@@ -31,6 +31,8 @@ export function NotificationCenter() {
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
       void queryClient.invalidateQueries({ queryKey: ['tasks'] });
       void queryClient.invalidateQueries({ queryKey: ['task-counts'] });
+      void queryClient.invalidateQueries({ queryKey: ['publications'] });
+      void queryClient.invalidateQueries({ queryKey: ['publication-counts'] });
     };
     stream.addEventListener('notifications', refresh);
     return () => {
@@ -59,7 +61,8 @@ export function NotificationCenter() {
   async function openNotification(notification: Notification) {
     if (!notification.readAt) await markRead.mutateAsync(notification.id);
     setOpen(false);
-    if (notification.taskId && notification.type !== 'participant_removed') navigate('/tasks');
+    if (notification.publicationId) navigate('/tools/blog-publications');
+    else if (notification.taskId && notification.type !== 'participant_removed') navigate('/tasks');
   }
 
   const unreadCount = feed.data?.unreadCount || 0;

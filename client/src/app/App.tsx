@@ -13,6 +13,7 @@ import { BannerBuilderPage } from '../pages/BannerBuilderPage';
 import { ProductSelectionPage } from '../pages/ProductSelectionPage';
 import { ToolsPage } from '../pages/ToolsPage';
 import { ToolAccessRoute } from '../components/ToolAccessRoute';
+import { BlogPublicationsPage } from '../pages/BlogPublicationsPage';
 
 const ProductTablesPage = lazy(() => import('../pages/ProductTablesPage').then((module) => ({
   default: module.ProductTablesPage
@@ -69,6 +70,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="product_tables" />}>
             <Route path="tools/product-tables" element={<Suspense fallback={<LoadingScreen />}><ProductTablesPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="blog_publications" />}>
+            <Route path="tools/blog-publications" element={<BlogPublicationsPage />} />
           </Route>
           <Route element={<AdminRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

@@ -11,6 +11,13 @@ export interface ToolDefinition {
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'blog_publications',
+    name: 'Публікації блогу',
+    description: 'Планування статей, передача матеріалів і контроль публікацій команди.',
+    path: '/tools/blog-publications',
+    icon: 'blogPublications'
+  },
+  {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',

@@ -56,7 +56,10 @@ CREATE TABLE notifications (
   type VARCHAR(40) NOT NULL CHECK (type IN (
     'task_invitation', 'invitation_accepted', 'invitation_declined',
     'task_updated', 'task_completed', 'task_cancelled', 'participant_removed',
-    'task_reminder', 'task_overdue'
+    'task_reminder', 'task_overdue',
+    'publication_assigned', 'publication_updated', 'publication_ready',
+    'publication_published', 'publication_cancelled',
+    'publication_reminder', 'publication_overdue'
   )),
   title VARCHAR(200) NOT NULL,
   message TEXT NOT NULL DEFAULT '',

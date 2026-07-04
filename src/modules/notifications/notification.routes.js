@@ -35,7 +35,7 @@ router.get('/stream', (req, res) => {
 router.get('/', asyncHandler(async (req, res) => {
   const unreadOnly = String(req.query.unreadOnly || '') === 'true';
   const result = await query(
-    `SELECT id, task_id, type, title, message, read_at, created_at
+    `SELECT id, task_id, publication_id, type, title, message, read_at, created_at
      FROM notifications
      WHERE user_id = $1 AND ($2::BOOLEAN = FALSE OR read_at IS NULL)
      ORDER BY created_at DESC
@@ -60,7 +60,7 @@ router.patch('/:id/read', asyncHandler(async (req, res) => {
   const result = await query(
     `UPDATE notifications SET read_at = COALESCE(read_at, NOW())
      WHERE id = $1 AND user_id = $2
-     RETURNING id, task_id, type, title, message, read_at, created_at`,
+     RETURNING id, task_id, publication_id, type, title, message, read_at, created_at`,
     [id, req.user.id]
   );
   if (!result.rows[0]) throw new AppError(404, 'NOTIFICATION_NOT_FOUND', 'Сповіщення не знайдено.');

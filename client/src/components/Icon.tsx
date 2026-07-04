@@ -39,6 +39,7 @@ import UploadFileRounded from '@mui/icons-material/UploadFileRounded';
 import VideoCameraFrontOutlined from '@mui/icons-material/VideoCameraFrontOutlined';
 import GridOnRounded from '@mui/icons-material/GridOnRounded';
 import TableChartOutlined from '@mui/icons-material/TableChartOutlined';
+import ArticleOutlined from '@mui/icons-material/ArticleOutlined';
 import ViewAgendaOutlined from '@mui/icons-material/ViewAgendaOutlined';
 import VisibilityOutlined from '@mui/icons-material/VisibilityOutlined';
 import type { SvgIconComponent } from '@mui/icons-material';
@@ -51,6 +52,7 @@ export type IconName =
   | 'arrowRight'
   | 'bell'
   | 'bannerGrid'
+  | 'blogPublications'
   | 'calendar'
   | 'check'
   | 'chevronLeft'
@@ -103,6 +105,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   arrowRight: ArrowForwardRounded,
   bell: NotificationsNoneRounded,
   bannerGrid: DashboardCustomizeRounded,
+  blogPublications: ArticleOutlined,
   calendar: CalendarMonthRounded,
   check: CheckRounded,
   chevronLeft: ChevronLeftRounded,
