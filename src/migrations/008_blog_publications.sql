@@ -13,7 +13,7 @@ ON CONFLICT (user_id, tool_id) DO NOTHING;
 CREATE TABLE blog_publications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   creator_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  assignee_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
   title VARCHAR(200) NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   status VARCHAR(20) NOT NULL DEFAULT 'planned' CHECK (status IN (

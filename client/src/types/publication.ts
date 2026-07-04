@@ -22,7 +22,7 @@ export interface BlogPublication {
   publishAt: string;
   publicationUrl: string;
   creator: PublicationPerson;
-  assignee: PublicationPerson;
+  assignee: PublicationPerson | null;
   materials: PublicationMaterial[];
   publishedAt: string | null;
   cancelledAt: string | null;
@@ -34,7 +34,7 @@ export interface PublicationInput {
   title: string;
   description: string;
   publishAt: string;
-  assigneeId: string;
+  assigneeId: string | null;
   materials: PublicationMaterial[];
 }
 

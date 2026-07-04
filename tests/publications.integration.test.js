@@ -73,6 +73,19 @@ test('publication planning, materials and status flow work through REST API', as
   assert.ok(creatorNotifications.body.data.items.some((item) => item.type === 'publication_published'));
 });
 
+test('publication can be created without an assignee', async () => {
+  const response = await creator.post('/api/publications').send({
+    title: 'Unassigned article',
+    description: 'An editor can be selected later.',
+    publishAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    assigneeId: null,
+    materials: []
+  }).expect(201);
+
+  assert.equal(response.body.data.assignee, null);
+  assert.equal(response.body.data.creator.email, 'planner@test.local');
+});
+
 test('publication worker creates reminder and overdue notifications once', async () => {
   const created = await creator.post('/api/publications').send({
     title: 'Reminder article', description: '',

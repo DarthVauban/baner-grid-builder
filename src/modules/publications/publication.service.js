@@ -18,7 +18,7 @@ export function serializePublication(row, materials = []) {
     publishAt: row.publish_at,
     publicationUrl: row.publication_url,
     creator: { id: row.creator_id, name: row.creator_name, email: row.creator_email },
-    assignee: { id: row.assignee_id, name: row.assignee_name, email: row.assignee_email },
+    assignee: row.assignee_id ? { id: row.assignee_id, name: row.assignee_name, email: row.assignee_email } : null,
     materials,
     publishedAt: row.published_at,
     cancelledAt: row.cancelled_at,
@@ -34,7 +34,7 @@ export async function loadPublication(id, db = pool) {
             assignee.name AS assignee_name, assignee.email AS assignee_email
      FROM blog_publications AS publication
      JOIN users AS creator ON creator.id = publication.creator_id
-     JOIN users AS assignee ON assignee.id = publication.assignee_id
+     LEFT JOIN users AS assignee ON assignee.id = publication.assignee_id
      WHERE publication.id = $1`,
     [id]
   );
@@ -50,8 +50,8 @@ export async function loadPublication(id, db = pool) {
 }
 
 export async function assertApprovedAssignees(db, ids) {
-  const uniqueIds = [...new Set(ids)];
-  if (!uniqueIds.length) return false;
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (!uniqueIds.length) return true;
   const placeholders = uniqueIds.map((_, index) => `$${index + 1}`).join(', ');
   const result = await db.query(
     `SELECT id FROM users WHERE status = 'approved' AND id IN (${placeholders})`,

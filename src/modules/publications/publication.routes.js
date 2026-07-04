@@ -28,7 +28,7 @@ const publicationSchema = z.object({
   title: z.string().trim().min(1, 'Вкажіть назву публікації.').max(200),
   description: z.string().trim().max(5000).default(''),
   publishAt: z.string().datetime({ offset: true }),
-  assigneeId: z.string().uuid(),
+  assigneeId: z.string().uuid().nullable().default(null),
   materials: z.array(materialSchema).max(30).default([])
 });
 const batchSchema = z.object({
@@ -46,7 +46,7 @@ const rangeSchema = z.object({
 function canEdit(user, publication) {
   return user.role === 'admin'
     || user.id === publication.creator.id
-    || user.id === publication.assignee.id;
+    || user.id === publication.assignee?.id;
 }
 
 router.get('/counts', asyncHandler(async (req, res) => {
@@ -115,7 +115,7 @@ router.post('/batch', asyncHandler(async (req, res) => {
       );
       const publicationId = result.rows[0].id;
       createdIds.push(publicationId);
-      if (item.assigneeId !== req.user.id) {
+      if (item.assigneeId && item.assigneeId !== req.user.id) {
         notifiedUsers.add(item.assigneeId);
         await createNotification(client, {
           userId: item.assigneeId,
@@ -155,7 +155,7 @@ router.post('/', asyncHandler(async (req, res) => {
     );
     publicationId = result.rows[0].id;
     await replaceMaterials(client, publicationId, input.materials);
-    if (input.assigneeId !== req.user.id) {
+    if (input.assigneeId && input.assigneeId !== req.user.id) {
       await createNotification(client, {
         userId: input.assigneeId, publicationId, type: 'publication_assigned',
         title: 'Нова публікація блогу', message: `${req.user.name} призначив(-ла) вам публікацію «${input.title}».`
@@ -167,7 +167,7 @@ router.post('/', asyncHandler(async (req, res) => {
     throw error;
   } finally { client.release(); }
 
-  if (input.assigneeId !== req.user.id) publishNotificationUpdates([input.assigneeId]);
+  if (input.assigneeId && input.assigneeId !== req.user.id) publishNotificationUpdates([input.assigneeId]);
   res.status(201).json({ data: await loadPublication(publicationId) });
 }));
 
@@ -198,11 +198,11 @@ router.put('/:id', asyncHandler(async (req, res) => {
       [input.assigneeId, input.title, input.description, input.publishAt, id]
     );
     await replaceMaterials(client, id, input.materials);
-    const recipientIds = [...new Set([current.creator.id, current.assignee.id, input.assigneeId])]
-      .filter((userId) => userId !== req.user.id);
+    const recipientIds = [...new Set([current.creator.id, current.assignee?.id, input.assigneeId])]
+      .filter((userId) => userId && userId !== req.user.id);
     for (const userId of recipientIds) {
       notifiedUsers.add(userId);
-      const newlyAssigned = userId === input.assigneeId && current.assignee.id !== input.assigneeId;
+      const newlyAssigned = userId === input.assigneeId && current.assignee?.id !== input.assigneeId;
       await createNotification(client, {
         userId, publicationId: id, type: newlyAssigned ? 'publication_assigned' : 'publication_updated',
         title: newlyAssigned ? 'Нова публікація блогу' : 'Публікацію оновлено',
@@ -247,7 +247,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
     ]
   );
 
-  const recipientIds = [...new Set([current.creator.id, current.assignee.id])].filter((userId) => userId !== req.user.id);
+  const recipientIds = [...new Set([current.creator.id, current.assignee?.id])].filter((userId) => userId && userId !== req.user.id);
   const notificationMap = {
     ready: ['publication_ready', 'Матеріали готові', `Публікація «${current.title}» готова до публікації.`],
     published: ['publication_published', 'Статтю опубліковано', `Публікацію «${current.title}» позначено опублікованою.`],

@@ -19,6 +19,7 @@ export async function processPublicationReminders({ now = new Date(), lockRows =
     );
 
     for (const publication of result.rows) {
+      if (!publication.assignee_id) continue;
       const publishAt = new Date(publication.publish_at);
       if (!publication.overdue_notified_at && publishAt <= now) {
         await createNotification(client, {

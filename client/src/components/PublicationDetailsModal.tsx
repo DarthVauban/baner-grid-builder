@@ -18,8 +18,8 @@ export function PublicationDetailsModal({ publication, onClose }: { publication:
         <div className="publication-details-modal__badges"><span className={`publication-status publication-status--${overdue ? 'overdue' : publication.status}`}>{overdue ? 'Прострочено' : publicationStatusLabels[publication.status]}</span></div>
         <section className="task-details-grid">
           <div><Icon name="calendar" size={18} /><span><small>Дата публікації</small><strong>{formatPublicationDate(publication.publishAt)}</strong></span></div>
-          <div><Icon name="users" size={18} /><span><small>Відповідальний</small><strong>{publication.assignee.name}</strong></span></div>
-          <div><Icon name="edit" size={18} /><span><small>Автор картки</small><strong>{publication.creator.name}</strong></span></div>
+          <div><Icon name="users" size={18} /><span><small>Відповідальний</small><strong>{publication.assignee?.name || 'Не призначено'}</strong></span></div>
+          <div><Icon name="edit" size={18} /><span><small>Поставив(-ла) задачу</small><strong>{publication.creator.name}</strong></span></div>
           <div><Icon name="schedule" size={18} /><span><small>Оновлено</small><strong>{formatPublicationDate(publication.updatedAt)}</strong></span></div>
         </section>
         <section className="task-details-section"><h3>Опис</h3><p className={publication.description ? '' : 'task-details-section__muted'}>{publication.description || 'Опис не додано.'}</p></section>

@@ -9,7 +9,7 @@ import { PublicationFormModal } from '../components/PublicationFormModal';
 import { PublicationPublishModal } from '../components/PublicationPublishModal';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
-import type { BlogPublication, PublicationCounts, PublicationInput, PublicationPerson, PublicationStatus } from '../types/publication';
+import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 
 const filters = [
   ['active', 'Активні'], ['today', 'Сьогодні'], ['upcoming', 'Майбутні'],
@@ -39,7 +39,6 @@ export function BlogPublicationsPage() {
   const [details, setDetails] = useState<BlogPublication | null>(null);
   const [publishing, setPublishing] = useState<BlogPublication | null>(null);
   const range = useMemo(todayRange, []);
-  const currentUser: PublicationPerson | null = user ? { id: user.id, name: user.name, email: user.email } : null;
 
   useEffect(() => localStorage.setItem('publications:view-mode', viewMode), [viewMode]);
 
@@ -112,10 +111,10 @@ export function BlogPublicationsPage() {
     {publications.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо публікації…</p></div>}
     {publications.isError && <div className="task-list-state task-list-state--error"><p>{publications.error instanceof Error ? publications.error.message : 'Не вдалося завантажити публікації.'}</p><button className="button button--secondary" type="button" onClick={() => void publications.refetch()}>Спробувати ще</button></div>}
     {!publications.isLoading && !publications.isError && !items.length && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="blogPublications" size={28} /></span><h2>Публікацій поки немає</h2><p>Заплануйте одну статтю або створіть одразу декілька карток.</p></div>}
-    {items.length > 0 && <section className={`publication-list publication-list--${viewMode}`}><div className="task-list__summary"><span>{items.length} публікацій</span></div>{items.map((publication) => <PublicationCard key={publication.id} publication={publication} viewMode={viewMode} canEdit={Boolean(user && (user.role === 'admin' || user.id === publication.creator.id || user.id === publication.assignee.id))} busy={busy} onOpen={setDetails} onEdit={(selected) => { setEditing(selected); setFormOpen(true); }} onStatus={(selected, status) => void changeStatus(selected, status)} />)}</section>}
+    {items.length > 0 && <section className={`publication-list publication-list--${viewMode}`}><div className="task-list__summary"><span>{items.length} публікацій</span></div>{items.map((publication) => <PublicationCard key={publication.id} publication={publication} viewMode={viewMode} canEdit={Boolean(user && (user.role === 'admin' || user.id === publication.creator.id || user.id === publication.assignee?.id))} busy={busy} onOpen={setDetails} onEdit={(selected) => { setEditing(selected); setFormOpen(true); }} onStatus={(selected, status) => void changeStatus(selected, status)} />)}</section>}
 
-    {currentUser && batchOpen && <PublicationBatchModal currentUser={currentUser} onClose={() => setBatchOpen(false)} onSubmit={saveBatch} />}
-    {currentUser && formOpen && <PublicationFormModal key={editing?.id || 'new'} publication={editing} currentUser={currentUser} onClose={() => { setFormOpen(false); setEditing(null); }} onSubmit={save} />}
+    {batchOpen && <PublicationBatchModal onClose={() => setBatchOpen(false)} onSubmit={saveBatch} />}
+    {formOpen && <PublicationFormModal key={editing?.id || 'new'} publication={editing} onClose={() => { setFormOpen(false); setEditing(null); }} onSubmit={save} />}
     {details && <PublicationDetailsModal publication={details} onClose={() => setDetails(null)} />}
     {publishing && <PublicationPublishModal publication={publishing} pending={setStatus.isPending} onClose={() => setPublishing(null)} onSubmit={(url) => applyStatus(publishing, 'published', url)} />}
   </div>;

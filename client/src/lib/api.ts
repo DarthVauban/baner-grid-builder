@@ -152,7 +152,7 @@ export const api = {
       })
   },
   users: {
-    search: (search: string) => request<UserSearchResult[]>(`/api/users/search${queryString({ search })}`),
+    search: (search = '', excludeSelf = false) => request<UserSearchResult[]>(`/api/users/search${queryString({ search, excludeSelf: excludeSelf ? 'true' : undefined })}`),
     toolAccess: () => request<ToolId[]>('/api/users/tool-access')
   },
   notifications: {

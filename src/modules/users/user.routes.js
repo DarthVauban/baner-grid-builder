@@ -9,7 +9,7 @@ import { getUserToolAccess } from '../access/access.service.js';
 const router = Router();
 router.use(requireAuth);
 
-const searchSchema = z.string().trim().min(2).max(120);
+const searchSchema = z.string().trim().max(120);
 
 router.get('/tool-access', asyncHandler(async (req, res) => {
   res.json({ data: await getUserToolAccess(req.user) });
@@ -17,15 +17,16 @@ router.get('/tool-access', asyncHandler(async (req, res) => {
 
 router.get('/search', asyncHandler(async (req, res) => {
   const search = parseInput(searchSchema, String(req.query.search || ''));
+  const excludeSelf = String(req.query.excludeSelf || '') === 'true';
   const result = await query(
     `SELECT id, name, email
      FROM users
      WHERE status = 'approved'
-       AND id <> $1
-       AND (name ILIKE '%' || $2 || '%' OR email ILIKE '%' || $2 || '%')
+       AND ($2::BOOLEAN = FALSE OR id <> $1)
+       AND ($3 = '' OR name ILIKE '%' || $3 || '%' OR email ILIKE '%' || $3 || '%')
      ORDER BY lower(name), lower(email)
-     LIMIT 12`,
-    [req.user.id, search]
+     LIMIT 50`,
+    [req.user.id, excludeSelf, search]
   );
 
   res.json({

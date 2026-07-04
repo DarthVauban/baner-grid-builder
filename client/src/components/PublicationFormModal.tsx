@@ -12,13 +12,12 @@ function defaultPublishAt() {
   return toLocalDateTime(date);
 }
 
-export function PublicationFormModal({ publication, currentUser, onClose, onSubmit }: {
+export function PublicationFormModal({ publication, onClose, onSubmit }: {
   publication?: BlogPublication | null;
-  currentUser: PublicationPerson;
   onClose: () => void;
   onSubmit: (input: PublicationInput) => Promise<void>;
 }) {
-  const [assignee, setAssignee] = useState(publication?.assignee || currentUser);
+  const [assignee, setAssignee] = useState<PublicationPerson | null>(publication?.assignee || null);
   const [publishAt, setPublishAt] = useState(publication ? toLocalDateTime(publication.publishAt) : defaultPublishAt());
   const [materials, setMaterials] = useState<PublicationMaterial[]>(publication?.materials || []);
   const [materialInput, setMaterialInput] = useState('');
@@ -49,7 +48,7 @@ export function PublicationFormModal({ publication, currentUser, onClose, onSubm
         title: String(form.get('title') || ''),
         description: String(form.get('description') || ''),
         publishAt: new Date(publishAt).toISOString(),
-        assigneeId: assignee.id,
+        assigneeId: assignee?.id || null,
         materials: materials.map(({ type, label, url }) => ({ type, label, url }))
       });
     } catch (submitError) {
@@ -66,7 +65,7 @@ export function PublicationFormModal({ publication, currentUser, onClose, onSubm
           <label className="field publication-form__wide"><span>Робоча назва</span><input name="title" defaultValue={publication?.title || ''} maxLength={200} required autoFocus placeholder="Наприклад, Огляд нової моделі" /></label>
           <label className="field publication-form__wide"><span>Опис та інструкції</span><textarea name="description" defaultValue={publication?.description || ''} rows={4} maxLength={5000} placeholder="Що важливо врахувати під час публікації" /></label>
           <label className="field"><span>Дата й час публікації</span><input type="datetime-local" value={publishAt} onChange={(event) => setPublishAt(event.target.value)} required /></label>
-          <div className="field"><span>Відповідальний</span><PublicationAssigneePicker value={assignee} self={currentUser} onChange={setAssignee} /></div>
+          <div className="field"><span>Відповідальний</span><PublicationAssigneePicker value={assignee} onChange={setAssignee} /></div>
 
           <section className="publication-materials publication-form__wide">
             <header><div><h3>Матеріали</h3><p>Вставте посилання на Google Docs, папки чи файли Google Drive.</p></div><span>{materials.length}</span></header>

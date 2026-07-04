@@ -13,12 +13,11 @@ function newRow(days = 1): BatchRow {
   return { id: ++nextRowId, title: '', publishAt: toLocalDateTime(date) };
 }
 
-export function PublicationBatchModal({ currentUser, onClose, onSubmit }: {
-  currentUser: PublicationPerson;
+export function PublicationBatchModal({ onClose, onSubmit }: {
   onClose: () => void;
   onSubmit: (items: Array<Pick<PublicationInput, 'title' | 'publishAt' | 'assigneeId'>>) => Promise<void>;
 }) {
-  const [assignee, setAssignee] = useState(currentUser);
+  const [assignee, setAssignee] = useState<PublicationPerson | null>(null);
   const [rows, setRows] = useState<BatchRow[]>([newRow(1), newRow(2), newRow(3)]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -33,7 +32,7 @@ export function PublicationBatchModal({ currentUser, onClose, onSubmit }: {
       await onSubmit(completeRows.map((row) => ({
         title: row.title.trim(),
         publishAt: new Date(row.publishAt).toISOString(),
-        assigneeId: assignee.id
+        assigneeId: assignee?.id || null
       })));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Не вдалося створити публікації.');
@@ -46,7 +45,7 @@ export function PublicationBatchModal({ currentUser, onClose, onSubmit }: {
         <header className="modal__header"><div><p className="eyebrow">Швидке планування</p><h2 id="publication-batch-title">Створити декілька публікацій</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={20} /></button></header>
         <form className="publication-batch-form" onSubmit={submit}>
           {error && <div className="form-message form-message--error" role="alert">{error}</div>}
-          <div className="field"><span>Спільний відповідальний</span><PublicationAssigneePicker value={assignee} self={currentUser} onChange={setAssignee} /></div>
+          <div className="field"><span>Спільний відповідальний</span><PublicationAssigneePicker value={assignee} onChange={setAssignee} /></div>
           <div className="publication-batch-rows">
             <div className="publication-batch-rows__head"><span>Назва</span><span>Дата й час</span><span /></div>
             {rows.map((row) => <div className="publication-batch-row" key={row.id}>

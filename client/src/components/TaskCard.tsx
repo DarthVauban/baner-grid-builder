@@ -38,25 +38,9 @@ export function TaskCard({ task, viewMode, busy, onOpen, onEdit, onRespond, onSt
   const overdue = isTaskOverdue(task);
   const pendingInvitation = !task.isOwner && task.myResponseStatus === 'pending';
 
-  function openFromCard(event: React.MouseEvent<HTMLElement>) {
-    if ((event.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
-    onOpen(task);
-  }
-
-  function openFromKeyboard(event: React.KeyboardEvent<HTMLElement>) {
-    if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return;
-    event.preventDefault();
-    onOpen(task);
-  }
-
   return (
     <article
       className={`task-card task-card--${viewMode} task-card--${task.type}${overdue ? ' task-card--overdue' : ''}${pendingInvitation ? ' task-card--invitation' : ''}`}
-      role="group"
-      tabIndex={0}
-      aria-label={`Відкрити справу «${task.title}»`}
-      onClick={openFromCard}
-      onKeyDown={openFromKeyboard}
     >
       <div className="task-card__mark" aria-hidden="true"><Icon name={taskTypeIcons[task.type]} size={21} /></div>
       <div className="task-card__body">

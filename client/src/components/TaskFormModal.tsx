@@ -31,6 +31,7 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
     task?.participants.map(({ id, name, email }) => ({ id, name, email })) || []
   );
   const [userSearch, setUserSearch] = useState('');
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(task?.reminder?.enabled ?? true);
   const [remindBefore, setRemindBefore] = useState(task?.reminder?.remindBeforeMinutes ?? 30);
   const [repeatEvery, setRepeatEvery] = useState<number | null>(task?.reminder?.repeatIntervalMinutes ?? null);
@@ -38,9 +39,9 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
   const [error, setError] = useState('');
 
   const searchQuery = useQuery({
-    queryKey: ['user-search', userSearch],
-    queryFn: () => api.users.search(userSearch.trim()),
-    enabled: userSearch.trim().length >= 2,
+    queryKey: ['user-search', userSearch, 'exclude-self'],
+    queryFn: () => api.users.search(userSearch.trim(), true),
+    enabled: userSearchOpen,
     staleTime: 60_000
   });
 
@@ -150,9 +151,9 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
               <div><h3>Учасники</h3><p>Запросити можна лише активних користувачів системи.</p></div>
               <span>{selectedUsers.length}</span>
             </div>
-            <div className="participant-search">
-              <input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Почніть вводити ім’я або email" />
-              {userSearch.trim().length >= 2 && (
+            <div className="participant-search" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setUserSearchOpen(false); }}>
+              <input value={userSearch} onFocus={() => setUserSearchOpen(true)} onChange={(event) => setUserSearch(event.target.value)} placeholder="Оберіть користувача або почніть вводити ім’я" />
+              {userSearchOpen && (
                 <div className="participant-search__results">
                   {searchQuery.isLoading && <p>Шукаємо…</p>}
                   {!searchQuery.isLoading && availableUsers.length === 0 && <p>Нікого не знайдено</p>}
@@ -160,6 +161,7 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
                     <button key={user.id} type="button" onClick={() => {
                       setSelectedUsers((current) => [...current, user]);
                       setUserSearch('');
+                      setUserSearchOpen(false);
                     }}>
                       <span>{user.name}</span><small>{user.email}</small>
                     </button>

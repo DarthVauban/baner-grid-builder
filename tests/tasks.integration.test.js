@@ -55,6 +55,10 @@ after(async () => {
 });
 
 test('shared task invitation, privacy and reminder flow work through REST API', async () => {
+  const directory = await owner.get('/api/users/search?excludeSelf=true').expect(200);
+  assert.ok(directory.body.data.some((user) => user.email === 'participant@test.local'));
+  assert.ok(directory.body.data.every((user) => user.email !== 'owner@test.local'));
+
   const search = await owner.get('/api/users/search?search=Participant').expect(200);
   const invitedUser = search.body.data[0];
   assert.equal(invitedUser.email, 'participant@test.local');

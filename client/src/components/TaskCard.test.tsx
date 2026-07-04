@@ -33,12 +33,10 @@ describe('TaskCard', () => {
     render(<TaskCard task={invitation} viewMode="list" onOpen={onOpen} onEdit={vi.fn()} onRespond={onRespond} onStatus={vi.fn()} onReminder={vi.fn()} onDelete={vi.fn()} />);
 
     expect(screen.getByText('Потрібна відповідь')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('group', { name: `Відкрити справу «${invitation.title}»` }));
-    expect(onOpen).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole('button', { name: 'Деталі' }));
-    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onOpen).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole('button', { name: 'Прийняти' }));
     expect(onRespond).toHaveBeenCalledWith(invitation, 'accepted');
-    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
