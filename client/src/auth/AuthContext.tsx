@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { PropsWithChildren } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import type { LoginInput, RegisterInput, User } from '../types/user';
+import type { LoginInput, ProfileInput, RegisterInput, User } from '../types/user';
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
@@ -11,6 +11,7 @@ interface AuthContextValue {
   status: AuthStatus;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
+  updateProfile: (input: ProfileInput) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -59,6 +60,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await api.auth.register(input);
   }, []);
 
+  const updateProfile = useCallback(async (input: ProfileInput) => {
+    const updatedUser = await api.users.updateProfile(input);
+    setUser(updatedUser);
+    return updatedUser;
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.auth.logout();
@@ -67,11 +74,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [clearSession]);
 
-  const value = useMemo(() => ({ user, status, login, register, logout }), [
+  const value = useMemo(() => ({ user, status, login, register, updateProfile, logout }), [
     user,
     status,
     login,
     register,
+    updateProfile,
     logout
   ]);
 

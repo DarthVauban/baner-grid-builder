@@ -27,11 +27,17 @@ after(async () => {
 test('approval flow and shared banner storage work through REST API', async () => {
   const registration = await request(app)
     .post('/api/auth/register')
-    .send({ name: 'Test User', email: 'user@test.local', password: 'UserPassword123!' })
+    .send({
+      firstName: 'Test', lastName: 'User', email: 'user@test.local',
+      password: 'UserPassword123!', avatarDataUrl: 'data:image/png;base64,AA=='
+    })
     .expect(201);
 
   assert.equal(registration.body.data.status, 'pending');
   assert.equal(registration.body.data.role, 'content_manager');
+  assert.equal(registration.body.data.firstName, 'Test');
+  assert.equal(registration.body.data.lastName, 'User');
+  assert.match(registration.body.data.avatarUrl, /^\/api\/users\/.+\/avatar\?v=/);
 
   await request(app)
     .post('/api/auth/login')
@@ -45,6 +51,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     .send({ email: 'admin@test.local', password: 'AdminPassword123!' })
     .expect(200);
   assert.equal(adminLogin.body.data.role, 'admin');
+  await admin.get(registration.body.data.avatarUrl).expect(200).expect('Content-Type', /image\/png/);
 
   const initialPermissions = await admin.get('/api/admin/permissions').expect(200);
   assert.equal(
@@ -85,6 +92,20 @@ test('approval flow and shared banner storage work through REST API', async () =
     .post('/api/auth/login')
     .send({ email: 'user@test.local', password: 'UserPassword123!' })
     .expect(200);
+
+  const profile = await user.put('/api/users/profile').send({
+    firstName: 'Test', lastName: 'User', email: 'user@test.local',
+    department: 'Marketing', position: 'Editor', avatarDataUrl: 'data:image/webp;base64,AA==',
+    currentPassword: 'UserPassword123!', newPassword: 'UpdatedPassword123!'
+  }).expect(200);
+  assert.equal(profile.body.data.department, 'Marketing');
+  assert.equal(profile.body.data.position, 'Editor');
+  assert.match(profile.body.data.avatarUrl, /^\/api\/users\/.+\/avatar\?v=/);
+  await user.get(profile.body.data.avatarUrl).expect(200).expect('Content-Type', /image\/webp/);
+  await request(app).post('/api/auth/login')
+    .send({ email: 'user@test.local', password: 'UserPassword123!' }).expect(401);
+  await request(app).post('/api/auth/login')
+    .send({ email: 'user@test.local', password: 'UpdatedPassword123!' }).expect(200);
 
   const bannerData = {
     title: 'Sale -20%',

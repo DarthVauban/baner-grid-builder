@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
-import { getInitials, roleLabels } from '../lib/user';
+import { roleLabels } from '../lib/user';
 import { Icon } from '../components/Icon';
+import { UserAvatar } from '../components/UserAvatar';
 import { UserToolAccessModal } from '../components/UserToolAccessModal';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -40,7 +41,7 @@ export function AdminUserRow({
   return (
     <article className="admin-user-row">
       <div className="admin-user-row__identity">
-        <span className="avatar">{getInitials(user.name)}</span>
+        <UserAvatar name={user.name} avatarUrl={user.avatarUrl} />
         <span><strong>{user.name}{isSelf && <small className="admin-user-row__you">Ви</small>}</strong><small>{user.email}</small></span>
       </div>
       <div className="admin-user-row__meta">

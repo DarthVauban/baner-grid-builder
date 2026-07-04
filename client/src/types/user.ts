@@ -4,7 +4,12 @@ export type UserStatus = 'pending' | 'approved' | 'rejected';
 export interface User {
   id: string;
   name: string;
+  firstName: string;
+  lastName: string;
   email: string;
+  department: string;
+  position: string;
+  avatarUrl: string;
   role: UserRole;
   status: UserStatus;
   canManageToolAccess?: boolean;
@@ -19,7 +24,20 @@ export interface LoginInput {
 }
 
 export interface RegisterInput extends LoginInput {
-  name: string;
+  firstName: string;
+  lastName: string;
+  avatarDataUrl: string;
+}
+
+export interface ProfileInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  department: string;
+  position: string;
+  avatarDataUrl: string | null;
+  currentPassword: string;
+  newPassword: string;
 }
 
 export type SavedDataResource = 'banner_grids' | 'saved_banners' | 'product_tables';

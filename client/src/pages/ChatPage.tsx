@@ -3,11 +3,11 @@ import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { getInitials } from '../lib/user';
 import { useToast } from '../toast/ToastContext';
 import type { ChatConversation, ChatEntity, ChatMessage, ChatPerson } from '../types/chat';
 import { ChatEntityCard } from '../components/ChatEntityCard';
 import { Icon } from '../components/Icon';
+import { UserAvatar } from '../components/UserAvatar';
 
 function formatChatTime(value: string): string {
   return new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
@@ -53,7 +53,7 @@ function ContactsModal({ contacts, loading, onClose, onSelect }: {
         <div className="task-search chat-contacts-modal__search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук у контактах" />{search && <button type="button" onClick={() => setSearch('')} aria-label="Очистити"><Icon name="close" size={15} /></button>}</div>
         {loading && <p className="chat-empty-copy">Завантажуємо контакти…</p>}
         {!loading && !filtered.length && <p className="chat-empty-copy">Доступних контактів немає.</p>}
-        <div className="chat-contact-list">{filtered.map((contact) => <button type="button" key={contact.id} onClick={() => onSelect(contact)}><span className="avatar">{getInitials(contact.name)}</span><span><strong>{contact.name}</strong><small>{contact.email}</small></span><Icon name="arrow" size={18} /></button>)}</div>
+        <div className="chat-contact-list">{filtered.map((contact) => <button type="button" key={contact.id} onClick={() => onSelect(contact)}><UserAvatar name={contact.name} avatarUrl={contact.avatarUrl} /><span><strong>{contact.name}</strong><small>{contact.email}</small></span><Icon name="arrow" size={18} /></button>)}</div>
       </div>
     </section>
   </div>;
@@ -218,14 +218,14 @@ export function ChatPage() {
         <div className="chat-conversations__list">
           {conversations.isLoading && <p className="chat-empty-copy">Завантажуємо…</p>}
           {!conversations.isLoading && !conversations.data?.length && <div className="chat-empty-copy"><Icon name="chat" size={25} /><span>Діалогів поки немає.<br />Оберіть колегу зі списку контактів.</span></div>}
-          {conversations.data?.map((conversation: ChatConversation) => <button className={selectedId === conversation.id ? 'chat-conversation chat-conversation--active' : 'chat-conversation'} type="button" key={conversation.id} onClick={() => { setDraftContact(null); setSelectedId(conversation.id); setSearchParams({ conversation: conversation.id }, { replace: true }); }}><span className="avatar">{getInitials(conversation.contact.name)}</span><span><strong>{conversation.contact.name}</strong><small>{conversation.lastMessage?.body || conversation.contact.email}</small></span>{conversation.unreadCount > 0 && <b>{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</b>}</button>)}
+          {conversations.data?.map((conversation: ChatConversation) => <button className={selectedId === conversation.id ? 'chat-conversation chat-conversation--active' : 'chat-conversation'} type="button" key={conversation.id} onClick={() => { setDraftContact(null); setSelectedId(conversation.id); setSearchParams({ conversation: conversation.id }, { replace: true }); }}><UserAvatar name={conversation.contact.name} avatarUrl={conversation.contact.avatarUrl} /><span><strong>{conversation.contact.name}</strong><small>{conversation.lastMessage?.body || conversation.contact.email}</small></span>{conversation.unreadCount > 0 && <b>{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</b>}</button>)}
         </div>
       </aside>
 
       <div className="chat-thread">
         {!activeContact && <div className="chat-thread__empty"><span><Icon name="chat" size={34} /></span><h2>Оберіть діалог</h2><p>Відкрийте існуючий діалог або оберіть користувача у списку контактів.</p><button className="button button--secondary" type="button" onClick={() => setContactsOpen(true)}>Відкрити контакти</button></div>}
         {activeContact && <>
-          <header className="chat-thread__header"><span className="avatar">{getInitials(activeContact.name)}</span><span><strong>{activeContact.name}</strong><small>{activeContact.email}</small></span></header>
+          <header className="chat-thread__header"><UserAvatar name={activeContact.name} avatarUrl={activeContact.avatarUrl} /><span><strong>{activeContact.name}</strong><small>{activeContact.email}</small></span></header>
           <div className="chat-messages" ref={messagesRef}>
             {messages.isLoading && <p className="chat-empty-copy">Завантажуємо повідомлення…</p>}
             {!messages.isLoading && !messages.data?.length && <div className="chat-messages__empty"><p>Почніть розмову або надішліть посилання на справу чи публікацію.</p></div>}

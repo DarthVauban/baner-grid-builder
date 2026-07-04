@@ -44,6 +44,8 @@ import TableChartOutlined from '@mui/icons-material/TableChartOutlined';
 import ArticleOutlined from '@mui/icons-material/ArticleOutlined';
 import ViewAgendaOutlined from '@mui/icons-material/ViewAgendaOutlined';
 import VisibilityOutlined from '@mui/icons-material/VisibilityOutlined';
+import VisibilityOffOutlined from '@mui/icons-material/VisibilityOffOutlined';
+import PasswordRounded from '@mui/icons-material/PasswordRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -94,7 +96,9 @@ export type IconName =
   | 'users'
   | 'viewGrid'
   | 'viewList'
-  | 'visibility';
+  | 'visibility'
+  | 'visibilityOff'
+  | 'password';
 
 interface IconProps {
   name: IconName;
@@ -149,7 +153,9 @@ const icons: Record<IconName, SvgIconComponent> = {
   users: GroupRounded,
   viewGrid: GridViewRounded,
   viewList: ViewAgendaOutlined,
-  visibility: VisibilityOutlined
+  visibility: VisibilityOutlined,
+  visibilityOff: VisibilityOffOutlined,
+  password: PasswordRounded
 };
 
 export function Icon({ name, size = 20 }: IconProps) {

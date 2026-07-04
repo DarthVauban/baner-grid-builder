@@ -102,7 +102,14 @@ export async function serializeChatMessage(row, viewer, allowedOrigins = []) {
     id: row.id,
     conversationId: row.conversation_id,
     body: row.body,
-    sender: { id: row.sender_id, name: row.sender_name, email: row.sender_email },
+    sender: {
+      id: row.sender_id,
+      name: row.sender_name,
+      email: row.sender_email,
+      avatarUrl: row.sender_avatar_mime
+        ? `/api/users/${row.sender_id}/avatar?v=${encodeURIComponent(row.sender_updated_at || '')}`
+        : (row.sender_id === viewer.id ? viewer.avatarUrl : '')
+    },
     own: row.sender_id === viewer.id,
     entities: await hydrateEntityReferences(references, viewer),
     createdAt: row.created_at

@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
-import { getInitials, roleLabels } from '../lib/user';
+import { roleLabels } from '../lib/user';
 import { Icon } from './Icon';
 import { NotificationCenter } from './NotificationCenter';
 import { useTheme } from '../theme/ThemeContext';
+import { UserAvatar } from './UserAvatar';
 
 export function AppShell() {
   const { user, logout } = useAuth();
@@ -173,11 +174,10 @@ export function AppShell() {
         </nav>
 
         <div className="sidebar__profile">
-          <span className="avatar">{getInitials(user.name)}</span>
-          <span className="sidebar__profile-copy">
-            <strong>{user.name}</strong>
-            <small>{roleLabels[user.role]}</small>
-          </span>
+          <Link className="sidebar__profile-link" to="/profile" title="Відкрити профіль">
+            <UserAvatar name={user.name} avatarUrl={user.avatarUrl} />
+            <span className="sidebar__profile-copy"><strong>{user.name}</strong><small>{roleLabels[user.role]}</small></span>
+          </Link>
           <button className="icon-button" type="button" onClick={() => void logout()} aria-label="Вийти">
             <Icon name="logout" />
           </button>
@@ -194,7 +194,7 @@ export function AppShell() {
             <Icon name={theme === 'light' ? 'darkMode' : 'lightMode'} />
           </button>
           <NotificationCenter />
-          <span className="topbar__avatar avatar">{getInitials(user.name)}</span>
+          <Link className="topbar__profile" to="/profile" title="Відкрити профіль"><UserAvatar name={user.name} avatarUrl={user.avatarUrl} /></Link>
         </header>
 
         <main className="page-container">

@@ -67,7 +67,8 @@ router.get('/directory', accessManagerOnly, asyncHandler(async (req, res) => {
   const offset = (input.page - 1) * input.pageSize;
   const listParams = [...params, input.pageSize, offset];
   const usersResult = await query(
-    `SELECT id, name, email, role, status, can_manage_tool_access, approved_at, created_at, updated_at
+    `SELECT id, name, first_name, last_name, email, department, position, avatar_mime,
+            role, status, can_manage_tool_access, approved_at, created_at, updated_at
      FROM users
      ${whereSql}
      ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
@@ -119,7 +120,8 @@ router.get('/users', accessManagerOnly, asyncHandler(async (req, res) => {
   }
 
   const result = await query(
-    `SELECT id, name, email, role, status, can_manage_tool_access, approved_at, created_at, updated_at
+    `SELECT id, name, first_name, last_name, email, department, position, avatar_mime,
+            role, status, can_manage_tool_access, approved_at, created_at, updated_at
      FROM users
      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
      ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC
@@ -244,7 +246,8 @@ router.patch('/users/:id/status', adminOnly, asyncHandler(async (req, res) => {
          approved_by = CASE WHEN $1::VARCHAR = 'approved' THEN $2::UUID ELSE NULL END,
          updated_at = NOW()
      WHERE id = $3::UUID
-     RETURNING id, name, email, role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
+     RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
+               role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
     [status, req.user.id, id]
   );
   if (!result.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
@@ -261,7 +264,8 @@ router.patch('/users/:id/role', adminOnly, asyncHandler(async (req, res) => {
   const result = await query(
     `UPDATE users SET role = $1, updated_at = NOW()
      WHERE id = $2
-     RETURNING id, name, email, role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
+     RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
+               role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
     [role, id]
   );
   if (!result.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');

@@ -21,6 +21,9 @@ const ProductTablesPage = lazy(() => import('../pages/ProductTablesPage').then((
 const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({
   default: module.ChatPage
 })));
+const ProfilePage = lazy(() => import('../pages/ProfilePage').then((module) => ({
+  default: module.ProfilePage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -62,6 +65,7 @@ export function App() {
         <Route element={<WorkspaceShell />}>
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
+          <Route path="profile" element={<Suspense fallback={<LoadingScreen />}><ProfilePage /></Suspense>} />
           <Route path="tools" element={<ToolsPage />} />
           <Route path="tools/chat" element={<Navigate to="/chat" replace />} />
           <Route element={<ToolAccessRoute tool="banner_grid" />}>

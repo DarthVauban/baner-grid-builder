@@ -6,6 +6,7 @@ import type {
   SavedDataResource,
   User,
   UserDirectory,
+  ProfileInput,
   UserRole,
   UserStatus
 } from '../types/user';
@@ -170,7 +171,10 @@ export const api = {
   },
   users: {
     search: (search = '', excludeSelf = false) => request<UserSearchResult[]>(`/api/users/search${queryString({ search, excludeSelf: excludeSelf ? 'true' : undefined })}`),
-    toolAccess: () => request<ToolId[]>('/api/users/tool-access')
+    toolAccess: () => request<ToolId[]>('/api/users/tool-access'),
+    updateProfile: (input: ProfileInput) => request<User>('/api/users/profile', {
+      method: 'PUT', body: jsonBody(input)
+    })
   },
   notifications: {
     list: (unreadOnly = false) => request<NotificationFeed>(

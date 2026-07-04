@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AuthLayout } from '../components/AuthLayout';
+import { PasswordField } from '../components/PasswordField';
 
 interface LocationState {
   from?: string;
@@ -16,6 +17,7 @@ export function LoginPage() {
   const state = (location.state || {}) as LocationState;
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
+  const [password, setPassword] = useState('');
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -26,7 +28,7 @@ export function LoginPage() {
     try {
       await login({
         email: String(form.get('email') || ''),
-        password: String(form.get('password') || '')
+        password
       });
       navigate(state.from || '/', { replace: true });
     } catch (submitError) {
@@ -46,10 +48,7 @@ export function LoginPage() {
           <span>Email</span>
           <input name="email" type="email" autoComplete="email" placeholder="name@company.com" required autoFocus />
         </label>
-        <label className="field">
-          <span>Пароль</span>
-          <input name="password" type="password" autoComplete="current-password" placeholder="Ваш пароль" required />
-        </label>
+        <PasswordField label="Пароль" name="password" value={password} onChange={setPassword} autoComplete="current-password" placeholder="Ваш пароль" required />
         <button className="button button--primary button--wide" type="submit" disabled={pending}>
           {pending ? 'Входимо…' : 'Увійти'}
         </button>

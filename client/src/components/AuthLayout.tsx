@@ -3,9 +3,10 @@ import type { PropsWithChildren } from 'react';
 interface AuthLayoutProps extends PropsWithChildren {
   title: string;
   description: string;
+  wide?: boolean;
 }
 
-export function AuthLayout({ title, description, children }: AuthLayoutProps) {
+export function AuthLayout({ title, description, wide = false, children }: AuthLayoutProps) {
   return (
     <main className="auth-layout">
       <section className="auth-layout__story" aria-label="Mobile Trend tools">
@@ -22,7 +23,7 @@ export function AuthLayout({ title, description, children }: AuthLayoutProps) {
       </section>
 
       <section className="auth-layout__panel">
-        <div className="auth-card">
+        <div className={wide ? 'auth-card auth-card--wide' : 'auth-card'}>
           <div className="auth-card__heading">
             <p className="eyebrow">Раді вас бачити</p>
             <h2>{title}</h2>

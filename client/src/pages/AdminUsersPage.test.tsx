@@ -7,7 +7,12 @@ import { AdminUserRow } from './AdminUsersPage';
 const pendingUser: User = {
   id: 'user-2',
   name: 'Ірина Коваль',
+  firstName: 'Ірина',
+  lastName: 'Коваль',
   email: 'iryna@example.com',
+  department: '',
+  position: '',
+  avatarUrl: '',
   role: 'content_manager',
   status: 'pending',
   approvedAt: null,

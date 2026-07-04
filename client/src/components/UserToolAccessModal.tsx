@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { tools } from '../lib/tools';
-import { getInitials, roleLabels } from '../lib/user';
+import { roleLabels } from '../lib/user';
 import { useToast } from '../toast/ToastContext';
 import { useAuth } from '../auth/AuthContext';
 import type { ToolId } from '../types/tool';
 import type { User } from '../types/user';
 import { Icon } from './Icon';
+import { UserAvatar } from './UserAvatar';
 
 export function UserToolAccessModal({ user, onClose }: { user: User; onClose: () => void }) {
   const { showToast } = useToast();
@@ -70,7 +71,7 @@ export function UserToolAccessModal({ user, onClose }: { user: User; onClose: ()
 
         <div className="user-access-modal__content">
           <article className="user-access-profile">
-            <span className="avatar">{getInitials(user.name)}</span>
+            <UserAvatar name={user.name} avatarUrl={user.avatarUrl} />
             <span><strong>{user.name}</strong><small>{user.email}</small></span>
             <span className="admin-role-static">{roleLabels[user.role]}</span>
           </article>

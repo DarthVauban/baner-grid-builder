@@ -1,8 +1,17 @@
 export function serializeUser(row) {
+  const nameParts = String(row.name || '').trim().split(/\s+/).filter(Boolean);
+  const storedFirstName = String(row.first_name || '').trim();
+  const storedLastName = String(row.last_name || '').trim();
+  const hasStructuredName = Boolean(storedLastName || (storedFirstName && storedFirstName !== row.name));
   return {
     id: row.id,
     name: row.name,
+    firstName: hasStructuredName ? storedFirstName : (nameParts[0] || ''),
+    lastName: hasStructuredName ? storedLastName : nameParts.slice(1).join(' '),
     email: row.email,
+    department: row.department || '',
+    position: row.position || '',
+    avatarUrl: row.avatar_mime ? `/api/users/${row.id}/avatar?v=${encodeURIComponent(row.updated_at || '')}` : '',
     role: row.role,
     status: row.status,
     canManageToolAccess: row.can_manage_tool_access === true,

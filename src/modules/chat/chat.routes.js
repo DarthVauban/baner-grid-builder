@@ -57,7 +57,7 @@ router.get('/stream', (req, res) => {
 
 router.get('/contacts', asyncHandler(async (req, res) => {
   const result = await query(
-    `SELECT users.id, users.name, users.email
+    `SELECT users.id, users.name, users.email, users.avatar_mime, users.updated_at
      FROM users
      LEFT JOIN user_tool_access AS chat_access
        ON chat_access.user_id = users.id AND chat_access.tool_id = 'chat'
@@ -68,7 +68,12 @@ router.get('/contacts', asyncHandler(async (req, res) => {
      LIMIT 500`,
     [req.user.id]
   );
-  res.json({ data: result.rows });
+  res.json({ data: result.rows.map((user) => ({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    avatarUrl: user.avatar_mime ? `/api/users/${user.id}/avatar?v=${encodeURIComponent(user.updated_at || '')}` : ''
+  })) });
 }));
 
 router.get('/unread-count', asyncHandler(async (req, res) => {
@@ -88,6 +93,7 @@ router.get('/conversations', asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT conversation.id, conversation.updated_at,
             other_user.id AS other_id, other_user.name AS other_name, other_user.email AS other_email,
+            other_user.avatar_mime AS other_avatar_mime, other_user.updated_at AS other_updated_at,
             member.last_read_at, member.joined_at
      FROM chat_conversations AS conversation
      JOIN (SELECT DISTINCT conversation_id FROM chat_messages) AS populated
@@ -113,7 +119,12 @@ router.get('/conversations', asyncHandler(async (req, res) => {
     );
     return {
       id: row.id,
-      contact: { id: row.other_id, name: row.other_name, email: row.other_email },
+      contact: {
+        id: row.other_id,
+        name: row.other_name,
+        email: row.other_email,
+        avatarUrl: row.other_avatar_mime ? `/api/users/${row.other_id}/avatar?v=${encodeURIComponent(row.other_updated_at || '')}` : ''
+      },
       lastMessage: latest.rows[0] ? { body: latest.rows[0].body, createdAt: latest.rows[0].created_at } : null,
       unreadCount: Number(unread.rows[0]?.count || 0),
       updatedAt: row.updated_at
@@ -126,7 +137,7 @@ router.post('/conversations', asyncHandler(async (req, res) => {
   const { userId, body } = parseInput(createConversationSchema, req.body);
   if (userId === req.user.id) throw new AppError(422, 'INVALID_CONTACT', 'Не можна створити діалог із собою.');
   const contact = await query(
-    `SELECT users.id, users.name, users.email FROM users
+    `SELECT users.id, users.name, users.email, users.avatar_mime, users.updated_at FROM users
      LEFT JOIN user_tool_access AS chat_access
        ON chat_access.user_id = users.id AND chat_access.tool_id = 'chat'
      WHERE users.id = $1 AND users.status = 'approved'
@@ -134,6 +145,14 @@ router.post('/conversations', asyncHandler(async (req, res) => {
     [userId]
   );
   if (!contact.rows[0]) throw new AppError(404, 'CONTACT_NOT_FOUND', 'Контакт недоступний у чаті.');
+  const contactView = {
+    id: contact.rows[0].id,
+    name: contact.rows[0].name,
+    email: contact.rows[0].email,
+    avatarUrl: contact.rows[0].avatar_mime
+      ? `/api/users/${contact.rows[0].id}/avatar?v=${encodeURIComponent(contact.rows[0].updated_at || '')}`
+      : ''
+  };
   const key = directConversationKey(req.user.id, userId);
   const allowedOrigins = getAllowedOrigins(req);
   const references = extractEntityReferences(body, allowedOrigins);
@@ -176,7 +195,7 @@ router.post('/conversations', asyncHandler(async (req, res) => {
   res.status(201).json({
     data: {
       id: conversationId,
-      contact: contact.rows[0],
+      contact: contactView,
       message: await serializeChatMessage(message, req.user, allowedOrigins)
     }
   });
@@ -186,7 +205,8 @@ router.get('/conversations/:id/messages', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   if (!await assertConversationMember(id, req.user.id)) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Діалог не знайдено.');
   const result = await query(
-    `SELECT message.*, sender.name AS sender_name, sender.email AS sender_email
+    `SELECT message.*, sender.name AS sender_name, sender.email AS sender_email,
+            sender.avatar_mime AS sender_avatar_mime, sender.updated_at AS sender_updated_at
      FROM chat_messages AS message
      JOIN users AS sender ON sender.id = message.sender_id
      WHERE message.conversation_id = $1
