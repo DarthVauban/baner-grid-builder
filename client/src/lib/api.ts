@@ -14,10 +14,18 @@ import type {
   NotificationFeed,
   ReminderSettings,
   Task,
+  TaskCounts,
   TaskInput,
   TaskStatus,
   UserSearchResult
 } from '../types/task';
+import type {
+  BannerData,
+  ProductTableInput,
+  ProductTableRecord,
+  SavedBanner,
+  SavedGrid
+} from '../types/workspace';
 
 interface ApiErrorPayload {
   error?: {
@@ -104,6 +112,8 @@ export const api = {
   tasks: {
     list: (params: { filter?: string; search?: string; from?: string; to?: string }) =>
       request<Task[]>(`/api/tasks${queryString(params)}`),
+    counts: (params: { from: string; to: string }) =>
+      request<TaskCounts>(`/api/tasks/counts${queryString(params)}`),
     get: (id: string) => request<Task>(`/api/tasks/${encodeURIComponent(id)}`),
     create: (input: TaskInput) => request<Task>('/api/tasks', { method: 'POST', body: jsonBody(input) }),
     update: (id: string, input: TaskInput) => request<Task>(`/api/tasks/${encodeURIComponent(id)}`, {
@@ -158,5 +168,28 @@ export const api = {
       `/api/admin/users/${encodeURIComponent(id)}/role`,
       { method: 'PATCH', body: jsonBody({ role }) }
     )
+  },
+  grids: {
+    list: (search = '') => request<SavedGrid[]>(`/api/grids${queryString({ search })}`),
+    create: (input: { name: string; shareDescription: string; banners: BannerData[] }) =>
+      request<SavedGrid>('/api/grids', { method: 'POST', body: jsonBody(input) }),
+    update: (id: string, input: { name: string; shareDescription: string; banners: BannerData[] }) =>
+      request<SavedGrid>(`/api/grids/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    remove: (id: string) => request<void>(`/api/grids/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  banners: {
+    list: (search = '') => request<SavedBanner[]>(`/api/banners${queryString({ search })}`),
+    create: (input: { name: string; banner: BannerData }) =>
+      request<SavedBanner>('/api/banners', { method: 'POST', body: jsonBody(input) }),
+    update: (id: string, input: { name: string; banner: BannerData }) =>
+      request<SavedBanner>(`/api/banners/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    remove: (id: string) => request<void>(`/api/banners/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  productTables: {
+    list: (search = '') => request<ProductTableRecord[]>(`/api/product-tables${queryString({ search })}`),
+    get: (id: string) => request<ProductTableRecord>(`/api/product-tables/${encodeURIComponent(id)}`),
+    create: (input: ProductTableInput) => request<ProductTableRecord>('/api/product-tables', { method: 'POST', body: jsonBody(input) }),
+    update: (id: string, input: ProductTableInput) => request<ProductTableRecord>(`/api/product-tables/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    remove: (id: string) => request<void>(`/api/product-tables/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 };

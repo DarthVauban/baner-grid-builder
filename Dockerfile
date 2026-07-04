@@ -14,7 +14,6 @@ RUN addgroup -S nodeapp && adduser -S nodeapp -G nodeapp
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src
-COPY public ./public
 COPY --from=build /app/dist ./dist
 
 USER nodeapp

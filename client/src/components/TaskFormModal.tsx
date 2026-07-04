@@ -93,7 +93,7 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
             <p className="eyebrow">{task ? 'Редагування' : 'Нова картка'}</p>
             <h2 id="task-form-title">{task ? 'Редагувати справу' : 'Створити справу'}</h2>
           </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити">×</button>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={20} /></button>
         </header>
 
         <form className="task-form" onSubmit={handleSubmit}>
@@ -170,7 +170,7 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
             {selectedUsers.length > 0 && (
               <div className="participant-chips">
                 {selectedUsers.map((user) => (
-                  <span key={user.id}>{user.name}<button type="button" onClick={() => setSelectedUsers((current) => current.filter((item) => item.id !== user.id))}>×</button></span>
+                  <span key={user.id}>{user.name}<button type="button" aria-label={`Прибрати ${user.name}`} onClick={() => setSelectedUsers((current) => current.filter((item) => item.id !== user.id))}><Icon name="close" size={14} /></button></span>
                 ))}
               </div>
             )}

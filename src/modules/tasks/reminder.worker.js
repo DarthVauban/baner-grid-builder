@@ -1,10 +1,12 @@
 import { pool } from '../../db/pool.js';
 import { env } from '../../config/env.js';
+import { publishNotificationUpdates } from '../notifications/notification.events.js';
 import { createNotification } from '../notifications/notification.service.js';
 
 export async function processDueReminders({ now = new Date(), lockRows = env.NODE_ENV !== 'test' } = {}) {
   const useTransaction = lockRows;
   const client = useTransaction ? await pool.connect() : pool;
+  const notifiedUserIds = new Set();
   try {
     if (useTransaction) await client.query('BEGIN');
     const result = !lockRows
@@ -52,6 +54,7 @@ export async function processDueReminders({ now = new Date(), lockRows = env.NOD
           ? `Минув термін справи «${task.title}».`
           : `Незабаром: «${task.title}».`
       });
+      notifiedUserIds.add(reminder.user_id);
 
       let nextReminderAt = null;
       if (!isOverdue && reminder.repeat_interval_minutes) {
@@ -67,6 +70,7 @@ export async function processDueReminders({ now = new Date(), lockRows = env.NOD
       );
     }
     if (useTransaction) await client.query('COMMIT');
+    publishNotificationUpdates([...notifiedUserIds]);
     return dueReminders.length;
   } catch (error) {
     if (useTransaction) await client.query('ROLLBACK');

@@ -12,18 +12,6 @@ export const taskTypeLabels: Record<TaskType, string> = {
   other: 'Інше'
 };
 
-export const taskTypeMarks: Record<TaskType, string> = {
-  general: '✓',
-  reminder: '⏰',
-  deadline: '◆',
-  offline_meeting: '⌂',
-  online_meeting: '◉',
-  call: '☎',
-  event: '◇',
-  publication: '↗',
-  other: '•'
-};
-
 export function formatTaskDate(task: Task): string {
   const date = new Date(task.dueAt);
   return new Intl.DateTimeFormat('uk-UA', {
@@ -32,6 +20,13 @@ export function formatTaskDate(task: Task): string {
     month: 'short',
     ...(task.isAllDay ? {} : { hour: '2-digit', minute: '2-digit' })
   }).format(date);
+}
+
+export function formatTaskDateValue(value: string, isAllDay = false): string {
+  return new Intl.DateTimeFormat('uk-UA', isAllDay
+    ? { dateStyle: 'medium' }
+    : { dateStyle: 'medium', timeStyle: 'short' }
+  ).format(new Date(value));
 }
 
 export function isTaskOverdue(task: Task): boolean {

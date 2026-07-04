@@ -1,6 +1,8 @@
-import { formatTaskDate, isTaskOverdue, taskTypeLabels, taskTypeMarks } from '../lib/task';
+import { formatTaskDateValue, isTaskOverdue, taskTypeLabels } from '../lib/task';
 import { getInitials } from '../lib/user';
-import type { Task, TaskStatus } from '../types/task';
+import type { Task, TaskStatus, TaskType } from '../types/task';
+import { Icon } from './Icon';
+import type { IconName } from './Icon';
 
 interface TaskCardProps {
   task: Task;
@@ -18,13 +20,25 @@ const responseLabels = {
   declined: 'Відхилено'
 };
 
+const taskTypeIcons: Record<TaskType, IconName> = {
+  general: 'check',
+  reminder: 'alarm',
+  deadline: 'deadline',
+  offline_meeting: 'offlineMeeting',
+  online_meeting: 'onlineMeeting',
+  call: 'phone',
+  event: 'calendar',
+  publication: 'publication',
+  other: 'other'
+};
+
 export function TaskCard({ task, busy, onEdit, onRespond, onStatus, onReminder, onDelete }: TaskCardProps) {
   const overdue = isTaskOverdue(task);
   const pendingInvitation = !task.isOwner && task.myResponseStatus === 'pending';
 
   return (
     <article className={`task-card task-card--${task.type}${overdue ? ' task-card--overdue' : ''}${pendingInvitation ? ' task-card--invitation' : ''}`}>
-      <div className="task-card__mark" aria-hidden="true">{taskTypeMarks[task.type]}</div>
+      <div className="task-card__mark" aria-hidden="true"><Icon name={taskTypeIcons[task.type]} size={21} /></div>
       <div className="task-card__body">
         <div className="task-card__meta">
           <span>{taskTypeLabels[task.type]}</span>
@@ -37,8 +51,9 @@ export function TaskCard({ task, busy, onEdit, onRespond, onStatus, onReminder, 
         {task.description && <p className="task-card__description">{task.description}</p>}
 
         <div className="task-card__details">
-          <span className={overdue ? 'task-card__date task-card__date--overdue' : 'task-card__date'}>◷ {formatTaskDate(task)}</span>
-          {task.location && <span>⌖ {task.location}</span>}
+          <span className="task-card__time"><Icon name="schedule" size={16} /><span><small>Початок</small><strong>{task.startsAt ? formatTaskDateValue(task.startsAt, task.isAllDay) : 'Не вказано'}</strong></span></span>
+          <span className={overdue ? 'task-card__time task-card__date--overdue' : 'task-card__time'}><Icon name="deadline" size={16} /><span><small>Завершення</small><strong>{formatTaskDateValue(task.dueAt, task.isAllDay)}</strong></span></span>
+          {task.location && <span><Icon name="location" size={16} /> {task.location}</span>}
           {!task.isOwner && <span>Власник: {task.owner.name}</span>}
         </div>
 
@@ -55,7 +70,7 @@ export function TaskCard({ task, busy, onEdit, onRespond, onStatus, onReminder, 
               </div>
             )}
             {task.meetingUrl && (
-              <a className="task-card__join" href={task.meetingUrl} target="_blank" rel="noreferrer">Приєднатися ↗</a>
+              <a className="task-card__join" href={task.meetingUrl} target="_blank" rel="noreferrer">Приєднатися <Icon name="openInNew" size={15} /></a>
             )}
           </div>
         )}
@@ -68,11 +83,11 @@ export function TaskCard({ task, busy, onEdit, onRespond, onStatus, onReminder, 
             </>
           ) : (
             <>
-              {task.status === 'active' && <button className="task-action" type="button" disabled={busy} onClick={() => onReminder(task)}>⏰ Нагадування</button>}
-              {task.isOwner && task.status === 'active' && <button className="task-action" type="button" disabled={busy} onClick={() => onEdit(task)}>Редагувати</button>}
-              {task.isOwner && task.status === 'active' && <button className="task-action task-action--success" type="button" disabled={busy} onClick={() => onStatus(task, 'completed')}>Виконано</button>}
-              {task.isOwner && task.status === 'active' && task.participants.length > 0 && <button className="task-action task-action--danger" type="button" disabled={busy} onClick={() => onStatus(task, 'cancelled')}>Скасувати</button>}
-              {task.isOwner && task.participants.length === 0 && <button className="task-action task-action--danger" type="button" disabled={busy} onClick={() => onDelete(task)}>Видалити</button>}
+              {task.status === 'active' && <button className="task-action" type="button" disabled={busy} onClick={() => onReminder(task)}><Icon name="alarm" size={15} /> Нагадування</button>}
+              {task.isOwner && task.status === 'active' && <button className="task-action" type="button" disabled={busy} onClick={() => onEdit(task)}><Icon name="edit" size={15} /> Редагувати</button>}
+              {task.isOwner && task.status === 'active' && <button className="task-action task-action--success" type="button" disabled={busy} onClick={() => onStatus(task, 'completed')}><Icon name="check" size={15} /> Виконано</button>}
+              {task.isOwner && task.status === 'active' && task.participants.length > 0 && <button className="task-action task-action--danger" type="button" disabled={busy} onClick={() => onStatus(task, 'cancelled')}><Icon name="close" size={15} /> Скасувати</button>}
+              {task.isOwner && task.participants.length === 0 && <button className="task-action task-action--danger" type="button" disabled={busy} onClick={() => onDelete(task)}><Icon name="delete" size={15} /> Видалити</button>}
             </>
           )}
         </footer>

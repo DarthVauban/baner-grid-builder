@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import type { ReminderSettings, Task } from '../types/task';
+import { Icon } from './Icon';
 
 interface ReminderModalProps {
   task: Task;
@@ -33,7 +34,7 @@ export function ReminderModal({ task, onClose, onSubmit }: ReminderModalProps) {
       <section className="modal reminder-modal" role="dialog" aria-modal="true" aria-labelledby="reminder-title">
         <header className="modal__header">
           <div><p className="eyebrow">Персональні налаштування</p><h2 id="reminder-title">Нагадування</h2></div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити">×</button>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={20} /></button>
         </header>
         <form onSubmit={submit} className="reminder-form">
           <p className="reminder-form__task">{task.title}</p>

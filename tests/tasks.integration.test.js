@@ -174,3 +174,35 @@ test('due reminder worker creates one persisted notification', async () => {
     item.taskId === created.body.data.id && item.type === 'task_reminder'
   )));
 });
+
+test('today filter includes an active meeting that overlaps today and counters match it', async () => {
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 1);
+  const startsAt = new Date();
+  startsAt.setHours(Math.max(0, startsAt.getHours() - 1));
+  const dueAt = new Date(to.getTime() + 60 * 60 * 1000);
+
+  const created = await owner.post('/api/tasks').send({
+    type: 'online_meeting',
+    title: 'Meeting spanning today',
+    description: '',
+    isAllDay: false,
+    startsAt: startsAt.toISOString(),
+    dueAt: dueAt.toISOString(),
+    meetingUrl: 'https://meet.google.com/today-overlap',
+    location: '',
+    participantIds: [],
+    reminder: { enabled: false, remindBeforeMinutes: 30, repeatIntervalMinutes: null }
+  }).expect(201);
+
+  const rangeQuery = `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+  const today = await owner.get(`/api/tasks?filter=today&${rangeQuery}`).expect(200);
+  assert.ok(today.body.data.some((task) => task.id === created.body.data.id));
+
+  const counts = await owner.get(`/api/tasks/counts?${rangeQuery}`).expect(200);
+  assert.ok(counts.body.data.today >= 1);
+  assert.ok(counts.body.data.active >= counts.body.data.today);
+  assert.equal(typeof counts.body.data.invitations, 'number');
+});

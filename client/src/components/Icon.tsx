@@ -1,35 +1,150 @@
+import AddRounded from '@mui/icons-material/AddRounded';
+import AccessTimeRounded from '@mui/icons-material/AccessTimeRounded';
+import AlarmRounded from '@mui/icons-material/AlarmRounded';
+import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
+import ArrowForwardRounded from '@mui/icons-material/ArrowForwardRounded';
+import CalendarMonthRounded from '@mui/icons-material/CalendarMonthRounded';
+import CheckRounded from '@mui/icons-material/CheckRounded';
+import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
+import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
+import CloseRounded from '@mui/icons-material/CloseRounded';
+import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded';
+import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded';
+import DashboardCustomizeRounded from '@mui/icons-material/DashboardCustomizeRounded';
+import DarkModeRounded from '@mui/icons-material/DarkModeRounded';
+import EditRounded from '@mui/icons-material/EditRounded';
+import FullscreenExitRounded from '@mui/icons-material/FullscreenExitRounded';
+import FullscreenRounded from '@mui/icons-material/FullscreenRounded';
+import GridViewRounded from '@mui/icons-material/GridViewRounded';
+import GroupRounded from '@mui/icons-material/GroupRounded';
+import HomeRounded from '@mui/icons-material/HomeRounded';
+import ChecklistRounded from '@mui/icons-material/ChecklistRounded';
+import LogoutRounded from '@mui/icons-material/LogoutRounded';
+import MenuRounded from '@mui/icons-material/MenuRounded';
+import NotificationsNoneRounded from '@mui/icons-material/NotificationsNoneRounded';
+import LocationOnOutlined from '@mui/icons-material/LocationOnOutlined';
+import LightModeRounded from '@mui/icons-material/LightModeRounded';
+import MeetingRoomOutlined from '@mui/icons-material/MeetingRoomOutlined';
+import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded';
+import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
+import PhoneOutlined from '@mui/icons-material/PhoneOutlined';
+import FlagOutlined from '@mui/icons-material/FlagOutlined';
+import PublishRounded from '@mui/icons-material/PublishRounded';
+import ImageOutlined from '@mui/icons-material/ImageOutlined';
+import Inventory2Outlined from '@mui/icons-material/Inventory2Outlined';
+import RemoveRounded from '@mui/icons-material/RemoveRounded';
+import SaveRounded from '@mui/icons-material/SaveRounded';
+import SearchRounded from '@mui/icons-material/SearchRounded';
+import UploadFileRounded from '@mui/icons-material/UploadFileRounded';
+import VideoCameraFrontOutlined from '@mui/icons-material/VideoCameraFrontOutlined';
+import GridOnRounded from '@mui/icons-material/GridOnRounded';
+import TableChartOutlined from '@mui/icons-material/TableChartOutlined';
+import type { SvgIconComponent } from '@mui/icons-material';
+
+export type IconName =
+  | 'add'
+  | 'alarm'
+  | 'arrow'
+  | 'arrowLeft'
+  | 'arrowRight'
+  | 'bell'
+  | 'bannerGrid'
+  | 'calendar'
+  | 'check'
+  | 'chevronLeft'
+  | 'chevronRight'
+  | 'close'
+  | 'copy'
+  | 'delete'
+  | 'deadline'
+  | 'darkMode'
+  | 'edit'
+  | 'fullscreen'
+  | 'fullscreenExit'
+  | 'home'
+  | 'logout'
+  | 'menu'
+  | 'location'
+  | 'lightMode'
+  | 'offlineMeeting'
+  | 'onlineMeeting'
+  | 'openInNew'
+  | 'other'
+  | 'phone'
+  | 'publication'
+  | 'productSelection'
+  | 'productTables'
+  | 'remove'
+  | 'save'
+  | 'search'
+  | 'schedule'
+  | 'savedBanners'
+  | 'savedGrids'
+  | 'tasks'
+  | 'tools'
+  | 'upload'
+  | 'users';
+
 interface IconProps {
-  name: 'home' | 'tasks' | 'tools' | 'users' | 'menu' | 'logout' | 'arrow' | 'bell' | 'calendar';
+  name: IconName;
   size?: number;
 }
 
-const paths: Record<IconProps['name'], React.ReactNode> = {
-  home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></>,
-  tasks: <><rect x="4" y="3" width="16" height="18" rx="3"/><path d="m8 9 1.5 1.5L12 8M14 9h3M8 15l1.5 1.5L12 14M14 15h3"/></>,
-  tools: <><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></>,
-  users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
-  menu: <path d="M4 7h16M4 12h16M4 17h16"/>,
-  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></>,
-  arrow: <path d="m9 18 6-6-6-6"/>,
-  bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></>,
-  calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></>
+const icons: Record<IconName, SvgIconComponent> = {
+  add: AddRounded,
+  alarm: AlarmRounded,
+  arrow: ChevronRightRounded,
+  arrowLeft: ArrowBackRounded,
+  arrowRight: ArrowForwardRounded,
+  bell: NotificationsNoneRounded,
+  bannerGrid: DashboardCustomizeRounded,
+  calendar: CalendarMonthRounded,
+  check: CheckRounded,
+  chevronLeft: ChevronLeftRounded,
+  chevronRight: ChevronRightRounded,
+  close: CloseRounded,
+  copy: ContentCopyRounded,
+  delete: DeleteOutlineRounded,
+  deadline: FlagOutlined,
+  darkMode: DarkModeRounded,
+  edit: EditRounded,
+  fullscreen: FullscreenRounded,
+  fullscreenExit: FullscreenExitRounded,
+  home: HomeRounded,
+  logout: LogoutRounded,
+  menu: MenuRounded,
+  location: LocationOnOutlined,
+  lightMode: LightModeRounded,
+  offlineMeeting: MeetingRoomOutlined,
+  onlineMeeting: VideoCameraFrontOutlined,
+  openInNew: OpenInNewRounded,
+  other: MoreHorizRounded,
+  phone: PhoneOutlined,
+  publication: PublishRounded,
+  productSelection: Inventory2Outlined,
+  productTables: TableChartOutlined,
+  remove: RemoveRounded,
+  save: SaveRounded,
+  search: SearchRounded,
+  schedule: AccessTimeRounded,
+  savedBanners: ImageOutlined,
+  savedGrids: GridOnRounded,
+  tasks: ChecklistRounded,
+  tools: GridViewRounded,
+  upload: UploadFileRounded,
+  users: GroupRounded
 };
 
 export function Icon({ name, size = 20 }: IconProps) {
+  const Component = icons[name];
   return (
-    <svg
-      aria-hidden="true"
+    <Component
+      aria-hidden
       className="icon"
       width={size}
       height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {paths[name]}
-    </svg>
+      fill="currentColor"
+      style={{ width: size, height: size, fontSize: size, fill: 'currentColor' }}
+    />
   );
 }

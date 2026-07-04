@@ -4,7 +4,8 @@ import { api } from '../lib/api';
 import { TaskCard } from '../components/TaskCard';
 import { TaskFormModal } from '../components/TaskFormModal';
 import { ReminderModal } from '../components/ReminderModal';
-import type { ReminderSettings, Task, TaskInput, TaskStatus } from '../types/task';
+import { Icon } from '../components/Icon';
+import type { ReminderSettings, Task, TaskCounts, TaskInput, TaskStatus } from '../types/task';
 
 const filters = [
   ['active', 'Активні'],
@@ -15,6 +16,10 @@ const filters = [
   ['completed', 'Виконані'],
   ['cancelled', 'Скасовані']
 ] as const;
+
+function isCountedFilter(value: string): value is keyof TaskCounts {
+  return ['active', 'today', 'upcoming', 'overdue', 'invitations'].includes(value);
+}
 
 function todayRange() {
   const from = new Date();
@@ -42,10 +47,17 @@ export function TasksPage() {
       ...(filter === 'today' ? range : {})
     })
   });
+  const countsQuery = useQuery({
+    queryKey: ['task-counts', range.from, range.to],
+    queryFn: () => api.tasks.counts(range),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true
+  });
 
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+      queryClient.invalidateQueries({ queryKey: ['task-counts'] }),
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
     ]);
   };
@@ -118,21 +130,27 @@ export function TasksPage() {
         <button className="button button--primary" type="button" onClick={() => { setEditingTask(null); setFormOpen(true); }}>+ Створити справу</button>
       </header>
 
-      {message && <div className="tasks-page__message" role="status"><span>{message}</span><button type="button" onClick={() => setMessage('')}>×</button></div>}
+      {message && <div className="tasks-page__message" role="status"><span>{message}</span><button type="button" onClick={() => setMessage('')} aria-label="Закрити повідомлення"><Icon name="close" size={18} /></button></div>}
 
       <section className="task-toolbar" aria-label="Фільтри справ">
         <div className="task-filters">
-          {filters.map(([value, label]) => (
-            <button key={value} className={filter === value ? 'task-filter task-filter--active' : 'task-filter'} type="button" onClick={() => setFilter(value)}>{label}</button>
-          ))}
+          {filters.map(([value, label]) => {
+            const count = isCountedFilter(value) ? countsQuery.data?.[value] ?? 0 : 0;
+            return (
+              <button key={value} className={filter === value ? 'task-filter task-filter--active' : 'task-filter'} type="button" onClick={() => setFilter(value)}>
+                <span>{label}</span>
+                {count > 0 && <span className="task-filter__count">{count > 99 ? '99+' : count}</span>}
+              </button>
+            );
+          })}
         </div>
-        <label className="task-search"><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук справ" aria-label="Пошук справ" /></label>
+        <label className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук справ" aria-label="Пошук справ" /></label>
       </section>
 
       {tasksQuery.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо справи…</p></div>}
       {tasksQuery.isError && <div className="task-list-state task-list-state--error"><p>{tasksQuery.error instanceof Error ? tasksQuery.error.message : 'Не вдалося завантажити справи.'}</p><button className="button button--secondary" onClick={() => void tasksQuery.refetch()}>Спробувати ще</button></div>}
       {!tasksQuery.isLoading && !tasksQuery.isError && tasks.length === 0 && (
-        <div className="task-list-state"><span className="task-list-state__icon">✓</span><h2>{filter === 'invitations' ? 'Нових запрошень немає' : 'Тут поки порожньо'}</h2><p>{search ? 'Спробуйте змінити пошуковий запит.' : 'Створіть першу справу або оберіть інший фільтр.'}</p></div>
+        <div className="task-list-state"><span className="task-list-state__icon"><Icon name="check" size={28} /></span><h2>{filter === 'invitations' ? 'Нових запрошень немає' : 'Тут поки порожньо'}</h2><p>{search ? 'Спробуйте змінити пошуковий запит.' : 'Створіть першу справу або оберіть інший фільтр.'}</p></div>
       )}
       {tasks.length > 0 && (
         <section className="task-list" aria-label="Список справ">

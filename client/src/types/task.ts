@@ -83,3 +83,11 @@ export interface NotificationFeed {
   items: Notification[];
   unreadCount: number;
 }
+
+export interface TaskCounts {
+  active: number;
+  today: number;
+  upcoming: number;
+  overdue: number;
+  invitations: number;
+}

@@ -5,6 +5,7 @@ import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
+import { publishNotificationUpdates } from '../notifications/notification.events.js';
 import { createNotification } from '../notifications/notification.service.js';
 import {
   assertApprovedParticipants,
@@ -55,6 +56,46 @@ const taskSchema = z.object({
 });
 const responseSchema = z.object({ response: z.enum(['accepted', 'declined']) });
 const statusSchema = z.object({ status: z.enum(['active', 'completed', 'cancelled']) });
+const rangeSchema = z.object({
+  from: z.string().datetime({ offset: true }),
+  to: z.string().datetime({ offset: true })
+});
+
+router.get('/counts', asyncHandler(async (req, res) => {
+  const range = parseInput(rangeSchema, {
+    from: String(req.query.from || ''),
+    to: String(req.query.to || '')
+  });
+  const result = await query(
+    `SELECT
+       COUNT(*) FILTER (WHERE tasks.status = 'active')::INTEGER AS active,
+       COUNT(*) FILTER (
+         WHERE tasks.status = 'active'
+           AND COALESCE(tasks.starts_at, tasks.due_at) < $3
+           AND tasks.due_at >= $2
+       )::INTEGER AS today,
+       COUNT(*) FILTER (WHERE tasks.status = 'active' AND tasks.due_at >= NOW())::INTEGER AS upcoming,
+       COUNT(*) FILTER (WHERE tasks.status = 'active' AND tasks.due_at < NOW())::INTEGER AS overdue,
+       COUNT(*) FILTER (
+         WHERE tasks.status = 'active' AND participant.response_status = 'pending'
+       )::INTEGER AS invitations
+     FROM tasks
+     LEFT JOIN task_participants AS participant
+       ON participant.task_id = tasks.id AND participant.user_id = $1
+     WHERE tasks.owner_id = $1 OR participant.response_status IN ('pending', 'accepted')`,
+    [req.user.id, range.from, range.to]
+  );
+  const counts = result.rows[0] || {};
+  res.json({
+    data: {
+      active: Number(counts.active || 0),
+      today: Number(counts.today || 0),
+      upcoming: Number(counts.upcoming || 0),
+      overdue: Number(counts.overdue || 0),
+      invitations: Number(counts.invitations || 0)
+    }
+  });
+}));
 
 router.get('/', asyncHandler(async (req, res) => {
   const search = String(req.query.search || '').trim().slice(0, 160);
@@ -73,13 +114,13 @@ router.get('/', asyncHandler(async (req, res) => {
   else if (filter === 'today') {
     const from = String(req.query.from || '');
     const to = String(req.query.to || '');
-    const rangeSchema = z.object({
-      from: z.string().datetime({ offset: true }),
-      to: z.string().datetime({ offset: true })
-    });
     const range = parseInput(rangeSchema, { from, to });
     params.push(range.from, range.to);
-    conditions.push(`tasks.status = 'active' AND tasks.due_at >= $3 AND tasks.due_at < $4`);
+    conditions.push(
+      `tasks.status = 'active'
+       AND COALESCE(tasks.starts_at, tasks.due_at) < $4
+       AND tasks.due_at >= $3`
+    );
   } else if (filter !== 'all') {
     conditions.push(`tasks.status = 'active'`);
   }
@@ -154,6 +195,7 @@ router.post('/', asyncHandler(async (req, res) => {
     }
 
     await client.query('COMMIT');
+    publishNotificationUpdates(participants.map((participant) => participant.id));
     const task = await loadTaskView(taskId, req.user.id);
     res.status(201).json({ data: task });
   } catch (error) {
@@ -168,6 +210,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const input = parseInput(taskSchema, req.body);
   const client = await pool.connect();
+  const notifiedUserIds = new Set();
 
   try {
     await client.query('BEGIN');
@@ -190,6 +233,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
 
     for (const existing of existingResult.rows) {
       if (desiredIds.has(existing.user_id)) continue;
+      notifiedUserIds.add(existing.user_id);
       await createNotification(client, {
         userId: existing.user_id,
         taskId: id,
@@ -204,6 +248,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
     const existingIds = new Set(existingResult.rows.map((participant) => participant.user_id));
     for (const participant of participants) {
       if (existingIds.has(participant.id)) continue;
+      notifiedUserIds.add(participant.id);
       await client.query('INSERT INTO task_participants (task_id, user_id) VALUES ($1, $2)', [id, participant.id]);
       await createNotification(client, {
         userId: participant.id,
@@ -260,6 +305,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
       [id]
     );
     for (const participant of activeParticipants.rows) {
+      notifiedUserIds.add(participant.user_id);
       await createNotification(client, {
         userId: participant.user_id,
         taskId: id,
@@ -270,6 +316,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
     }
 
     await client.query('COMMIT');
+    publishNotificationUpdates([...notifiedUserIds]);
     const task = await loadTaskView(id, req.user.id);
     res.json({ data: task });
   } catch (error) {
@@ -284,6 +331,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const { status } = parseInput(statusSchema, req.body);
   const client = await pool.connect();
+  const notifiedUserIds = new Set();
 
   try {
     await client.query('BEGIN');
@@ -305,6 +353,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
         [id]
       );
       for (const participant of participants.rows) {
+        notifiedUserIds.add(participant.user_id);
         await createNotification(client, {
           userId: participant.user_id,
           taskId: id,
@@ -322,6 +371,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
       );
     }
     await client.query('COMMIT');
+    publishNotificationUpdates([...notifiedUserIds]);
     const task = await loadTaskView(id, req.user.id);
     res.json({ data: task });
   } catch (error) {
@@ -384,6 +434,7 @@ router.post('/:id/respond', asyncHandler(async (req, res) => {
     }
 
     await client.query('COMMIT');
+    publishNotificationUpdates([task.owner_id]);
     const responseTask = response === 'accepted' ? await loadTaskView(id, req.user.id) : null;
     res.json({ data: responseTask });
   } catch (error) {

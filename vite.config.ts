@@ -13,10 +13,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/legacy': 'http://localhost:3000',
-      '/assets': 'http://localhost:3000',
-      '/vendor': 'http://localhost:3000'
+      '/api': 'http://localhost:3000'
     }
   },
   test: {

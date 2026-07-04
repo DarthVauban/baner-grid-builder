@@ -5,12 +5,32 @@ import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
+import { subscribeToNotificationUpdates } from './notification.events.js';
 import { serializeNotification } from './notification.service.js';
 
 const router = Router();
 router.use(requireAuth);
 
 const idSchema = z.string().uuid();
+
+router.get('/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const sendUpdate = () => res.write('event: notifications\ndata: {}\n\n');
+  const unsubscribe = subscribeToNotificationUpdates(req.user.id, sendUpdate);
+  const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), 25_000);
+  heartbeat.unref();
+  res.write('event: connected\ndata: {}\n\n');
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+});
 
 router.get('/', asyncHandler(async (req, res) => {
   const unreadOnly = String(req.query.unreadOnly || '') === 'true';

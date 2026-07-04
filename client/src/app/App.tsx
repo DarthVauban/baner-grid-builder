@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AppShell } from '../components/AppShell';
@@ -7,6 +8,13 @@ import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { TasksPage } from '../pages/TasksPage';
 import { AdminUsersPage } from '../pages/AdminUsersPage';
+import { BannerWorkspaceProvider } from '../workspace/BannerWorkspaceContext';
+import { BannerBuilderPage } from '../pages/BannerBuilderPage';
+import { ProductSelectionPage } from '../pages/ProductSelectionPage';
+
+const ProductTablesPage = lazy(() => import('../pages/ProductTablesPage').then((module) => ({
+  default: module.ProductTablesPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -32,6 +40,10 @@ function AdminRoute() {
   return <Outlet />;
 }
 
+function WorkspaceShell() {
+  return <BannerWorkspaceProvider><AppShell /></BannerWorkspaceProvider>;
+}
+
 export function App() {
   return (
     <Routes>
@@ -41,9 +53,14 @@ export function App() {
       </Route>
 
       <Route element={<ProtectedRoute />}>
-        <Route element={<AppShell />}>
+        <Route element={<WorkspaceShell />}>
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
+          <Route path="tools/banner-grid" element={<BannerBuilderPage />} />
+          <Route path="tools/product-selection" element={<ProductSelectionPage />} />
+          <Route path="tools/saved-grids" element={<Navigate to="/tools/banner-grid?tab=grids" replace />} />
+          <Route path="tools/saved-banners" element={<Navigate to="/tools/banner-grid?tab=banners" replace />} />
+          <Route path="tools/product-tables" element={<Suspense fallback={<LoadingScreen />}><ProductTablesPage /></Suspense>} />
           <Route element={<AdminRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />
           </Route>

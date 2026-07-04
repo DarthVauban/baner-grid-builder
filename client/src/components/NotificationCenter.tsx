@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -7,16 +7,54 @@ import { Icon } from './Icon';
 
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
+  const centerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const feed = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.notifications.list(),
-    refetchInterval: 30_000
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true
   });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['notifications'] });
   const markRead = useMutation({ mutationFn: api.notifications.markRead, onSuccess: invalidate });
   const markAll = useMutation({ mutationFn: api.notifications.markAllRead, onSuccess: invalidate });
+
+  useEffect(() => {
+    const stream = new EventSource('/api/notifications/stream');
+    const notificationSound = new Audio('/sounds/notification.mp3');
+    notificationSound.preload = 'auto';
+    notificationSound.volume = 0.55;
+    const refresh = () => {
+      notificationSound.currentTime = 0;
+      void notificationSound.play().catch(() => undefined);
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      void queryClient.invalidateQueries({ queryKey: ['task-counts'] });
+    };
+    stream.addEventListener('notifications', refresh);
+    return () => {
+      stream.removeEventListener('notifications', refresh);
+      stream.close();
+      notificationSound.pause();
+    };
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!centerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
 
   async function openNotification(notification: Notification) {
     if (!notification.readAt) await markRead.mutateAsync(notification.id);
@@ -27,7 +65,7 @@ export function NotificationCenter() {
   const unreadCount = feed.data?.unreadCount || 0;
 
   return (
-    <div className="notification-center">
+    <div className="notification-center" ref={centerRef}>
       <button className="icon-button notification-center__toggle" type="button" aria-label="Сповіщення" onClick={() => setOpen((value) => !value)}>
         <Icon name="bell" />
         {unreadCount > 0 && <span>{unreadCount > 9 ? '9+' : unreadCount}</span>}

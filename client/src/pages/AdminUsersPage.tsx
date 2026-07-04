@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { getInitials, roleLabels } from '../lib/user';
+import { Icon } from '../components/Icon';
 import type {
   PermissionRole,
   RolePermission,
@@ -198,7 +199,7 @@ export function AdminUsersPage() {
         <p>Схвалюйте облікові записи, призначайте ролі та керуйте переглядом спільних робочих даних.</p>
       </header>
 
-      {message && <div className="tasks-page__message" role="status"><span>{message}</span><button type="button" onClick={() => setMessage('')}>×</button></div>}
+      {message && <div className="tasks-page__message" role="status"><span>{message}</span><button type="button" onClick={() => setMessage('')} aria-label="Закрити повідомлення"><Icon name="close" size={18} /></button></div>}
 
       <section className="admin-summary" aria-label="Зведення користувачів">
         {summaryCards.map(([label, value, kind]) => <article key={kind} className={`admin-summary__card admin-summary__card--${kind}`}><span>{label}</span><strong>{directory.isLoading ? '—' : value}</strong></article>)}
@@ -207,7 +208,7 @@ export function AdminUsersPage() {
       <section className="admin-section">
         <header className="admin-section__header"><div><p className="eyebrow">Облікові записи</p><h2>Каталог користувачів</h2></div><span>{directory.data ? `${directory.data.total} у вибірці` : 'Завантаження…'}</span></header>
         <div className="admin-filters">
-          <label className="task-search admin-filters__search"><span aria-hidden="true">⌕</span><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Ім’я або email" aria-label="Пошук користувачів" /></label>
+          <label className="task-search admin-filters__search"><Icon name="search" size={18} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Ім’я або email" aria-label="Пошук користувачів" /></label>
           <label className="admin-filter"><span>Статус</span><select value={status} onChange={(event) => { setStatus(event.target.value as UserStatus | ''); setPage(1); }}><option value="">Усі статуси</option><option value="pending">Очікують</option><option value="approved">Активні</option><option value="rejected">Відхилені</option></select></label>
           <label className="admin-filter"><span>Роль</span><select value={role} onChange={(event) => { setRole(event.target.value as UserRole | ''); setPage(1); }}><option value="">Усі ролі</option><option value="admin">Адміністратор</option><option value="editor">Редактор</option><option value="content_manager">Контент-менеджер</option></select></label>
         </div>
@@ -219,7 +220,7 @@ export function AdminUsersPage() {
           {directory.data?.items.map((directoryUser) => <AdminUserRow key={directoryUser.id} user={directoryUser} currentUserId={currentUser?.id || ''} busy={busyUserId === directoryUser.id} onRole={(target, value) => void changeRole(target, value)} onStatus={(target, value) => void changeStatus(target, value)} />)}
         </div>
 
-        {directory.data && directory.data.pageCount > 1 && <nav className="admin-pagination" aria-label="Сторінки користувачів"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>← Назад</button><span>Сторінка {page} із {directory.data.pageCount}</span><button type="button" disabled={page >= directory.data.pageCount} onClick={() => setPage((value) => value + 1)}>Далі →</button></nav>}
+        {directory.data && directory.data.pageCount > 1 && <nav className="admin-pagination" aria-label="Сторінки користувачів"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><Icon name="arrowLeft" size={17} /> Назад</button><span>Сторінка {page} із {directory.data.pageCount}</span><button type="button" disabled={page >= directory.data.pageCount} onClick={() => setPage((value) => value + 1)}>Далі <Icon name="arrowRight" size={17} /></button></nav>}
       </section>
 
       <section className="admin-section admin-section--permissions">

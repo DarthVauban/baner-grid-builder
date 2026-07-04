@@ -20,10 +20,8 @@ import { asyncHandler } from './lib/async-handler.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
-const publicDir = path.resolve(currentDir, '../public');
 const webDistDir = path.resolve(currentDir, '../dist/web');
 const webIndex = path.join(webDistDir, 'index.html');
-const xlsxBrowserBundle = path.resolve(currentDir, '../node_modules/xlsx/dist/xlsx.full.min.js');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -78,20 +76,12 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api', notFoundHandler);
 
-app.get('/vendor/xlsx.full.min.js', (req, res) => {
-  res.sendFile(xlsxBrowserBundle);
-});
-app.use('/assets', express.static(path.join(publicDir, 'assets'), {
-  index: false,
-  maxAge: env.isProduction ? '1h' : 0
-}));
-app.get(['/legacy', '/legacy/'], (req, res) => {
-  res.sendFile(path.join(publicDir, 'index.html'));
-});
 app.use(express.static(webDistDir, { index: false, maxAge: env.isProduction ? '1h' : 0 }));
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();
-  if (!existsSync(webIndex)) return res.redirect('/legacy');
+  if (!existsSync(webIndex)) {
+    return res.status(503).send('Web application is not built. Run npm run build first.');
+  }
   return res.sendFile(webIndex);
 });
 
