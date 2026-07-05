@@ -1,10 +1,50 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { PasswordField } from '../components/PasswordField';
 import { ProfilePhotoField } from '../components/ProfilePhotoField';
 import { roleLabels } from '../lib/user';
+import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
+import { Icon } from '../components/Icon';
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const { showToast } = useToast();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      await api.users.changePassword({ currentPassword, newPassword });
+      showToast('Пароль змінено.');
+      onClose();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося змінити пароль.', 'error');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <section className="modal password-change-modal" role="dialog" aria-modal="true" aria-labelledby="password-change-title">
+      <header className="modal__header"><div><p className="eyebrow">Безпека</p><h2 id="password-change-title">Зміна пароля</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={20} /></button></header>
+      <form className="password-change-form" onSubmit={submit}>
+        <PasswordField label="Поточний пароль" name="currentPassword" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" placeholder="Вкажіть поточний пароль" required />
+        <PasswordField label="Новий пароль" name="newPassword" value={newPassword} onChange={setNewPassword} autoComplete="new-password" minLength={10} placeholder="Щонайменше 10 символів" required allowGenerate />
+        <footer className="modal__footer"><button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button><button className="button button--primary" type="submit" disabled={pending}>{pending ? 'Змінюємо…' : 'Змінити пароль'}</button></footer>
+      </form>
+    </section>
+  </div>;
+}
 
 export function ProfilePage() {
   const { user, updateProfile } = useAuth();
@@ -16,8 +56,7 @@ export function ProfilePage() {
   const [position, setPosition] = useState(user?.position || '');
   const [avatarPreview, setAvatarPreview] = useState(user?.avatarUrl || '');
   const [avatarChanged, setAvatarChanged] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
   if (!user) return null;
@@ -28,13 +67,10 @@ export function ProfilePage() {
     try {
       const updated = await updateProfile({
         firstName, lastName, email, department, position,
-        avatarDataUrl: avatarChanged ? avatarPreview : null,
-        currentPassword, newPassword
+        avatarDataUrl: avatarChanged ? avatarPreview : null
       });
       setAvatarPreview(updated.avatarUrl);
       setAvatarChanged(false);
-      setCurrentPassword('');
-      setNewPassword('');
       showToast('Профіль оновлено.');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося оновити профіль.', 'error');
@@ -59,14 +95,11 @@ export function ProfilePage() {
       </section>
 
       <section className="profile-section">
-        <header><div><h2>Зміна пароля</h2><p>Залиште обидва поля порожніми, якщо не плануєте змінювати пароль.</p></div></header>
-        <div className="profile-fields">
-          <PasswordField label="Поточний пароль" name="currentPassword" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" placeholder="Потрібен лише для зміни пароля" />
-          <PasswordField label="Новий пароль" name="newPassword" value={newPassword} onChange={setNewPassword} autoComplete="new-password" minLength={10} placeholder="Щонайменше 10 символів" allowGenerate />
-        </div>
+        <header><div><h2>Пароль і безпека</h2><p>Поточний пароль ніколи не відображається у профілі.</p></div><button className="button button--secondary" type="button" onClick={() => setPasswordModalOpen(true)}><Icon name="password" size={18} /> Змінити пароль</button></header>
       </section>
 
       <div className="profile-form__actions"><button className="button button--primary" type="submit" disabled={pending}>{pending ? 'Зберігаємо…' : 'Зберегти зміни'}</button></div>
     </form>
+    {passwordModalOpen && <ChangePasswordModal onClose={() => setPasswordModalOpen(false)} />}
   </div>;
 }

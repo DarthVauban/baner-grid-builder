@@ -25,13 +25,13 @@ const profileSchema = z.object({
   email: z.string().trim().email('Вкажіть коректний email.').max(255),
   department: z.string().trim().max(120).default(''),
   position: z.string().trim().max(120).default(''),
-  avatarDataUrl: avatarSchema.nullable().default(null),
-  currentPassword: z.string().max(128).optional().default(''),
-  newPassword: z.string().max(128).optional().default('')
+  avatarDataUrl: avatarSchema.nullable().default(null)
 }).superRefine((input, context) => {
   if (`${input.firstName} ${input.lastName}`.length > 120) context.addIssue({ code: 'custom', path: ['lastName'], message: 'Ім’я та прізвище завеликі.' });
-  if (input.newPassword && input.newPassword.length < 10) context.addIssue({ code: 'custom', path: ['newPassword'], message: 'Новий пароль має містити щонайменше 10 символів.' });
-  if (input.newPassword && !input.currentPassword) context.addIssue({ code: 'custom', path: ['currentPassword'], message: 'Вкажіть поточний пароль.' });
+});
+const passwordSchema = z.object({
+  currentPassword: z.string().min(1, 'Вкажіть поточний пароль.').max(128),
+  newPassword: z.string().min(10, 'Новий пароль має містити щонайменше 10 символів.').max(128)
 });
 
 router.get('/tool-access', asyncHandler(async (req, res) => {
@@ -48,19 +48,21 @@ router.get('/:id/avatar', asyncHandler(async (req, res) => {
   res.send(avatar.avatar_data);
 }));
 
+router.put('/profile/password', asyncHandler(async (req, res) => {
+  const input = parseInput(passwordSchema, req.body);
+  const passwordResult = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+  const matches = await bcrypt.compare(input.currentPassword, passwordResult.rows[0]?.password_hash || '');
+  if (!matches) throw new AppError(422, 'INVALID_CURRENT_PASSWORD', 'Поточний пароль вказано неправильно.');
+  const passwordHash = await bcrypt.hash(input.newPassword, 12);
+  await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [passwordHash, req.user.id]);
+  res.status(204).end();
+}));
+
 router.put('/profile', asyncHandler(async (req, res) => {
   const input = parseInput(profileSchema, req.body);
   const email = input.email.toLowerCase();
   const duplicate = await query('SELECT 1 FROM users WHERE email = $1 AND id <> $2', [email, req.user.id]);
   if (duplicate.rowCount) throw new AppError(409, 'EMAIL_EXISTS', 'Користувач із таким email уже існує.');
-
-  let passwordHash = null;
-  if (input.newPassword) {
-    const passwordResult = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
-    const matches = await bcrypt.compare(input.currentPassword, passwordResult.rows[0]?.password_hash || '');
-    if (!matches) throw new AppError(422, 'INVALID_CURRENT_PASSWORD', 'Поточний пароль вказано неправильно.');
-    passwordHash = await bcrypt.hash(input.newPassword, 12);
-  }
 
   const avatarChanged = input.avatarDataUrl !== null;
   const avatar = avatarChanged ? parseAvatarDataUrl(input.avatarDataUrl) : { data: null, mime: null };
@@ -72,12 +74,12 @@ router.put('/profile', asyncHandler(async (req, res) => {
          department = $5, position = $6,
          avatar_data = CASE WHEN $7::BOOLEAN THEN $8 ELSE avatar_data END,
          avatar_mime = CASE WHEN $7::BOOLEAN THEN $9 ELSE avatar_mime END,
-         password_hash = COALESCE($10, password_hash), updated_at = NOW()
-     WHERE id = $11
+         updated_at = NOW()
+     WHERE id = $10
      RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
                role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
     [name, input.firstName, input.lastName, email, input.department, input.position,
-      avatarChanged, avatar.data, avatar.mime, passwordHash, req.user.id]
+      avatarChanged, avatar.data, avatar.mime, req.user.id]
   );
   res.json({ data: serializeUser(result.rows[0]) });
 }));

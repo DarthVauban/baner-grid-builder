@@ -74,7 +74,9 @@ test('chat access, contacts and interactive task links work through REST API', a
     })
     .expect(201);
   const conversationId = conversation.body.data.id;
+  const firstMessageId = conversation.body.data.message.id;
   assert.equal(conversation.body.data.message.entities[0].type, 'task');
+  assert.deepEqual(conversation.body.data.message.linkPreviews, []);
   let unsubscribeTyping;
   const typingEvent = new Promise((resolve) => {
     unsubscribeTyping = subscribeToChatUpdates(colleagueId, resolve);
@@ -101,6 +103,21 @@ test('chat access, contacts and interactive task links work through REST API', a
   await colleague.post(`/api/tasks/${task.body.data.id}/respond`).send({ response: 'accepted' }).expect(200);
   const acceptedMessages = await colleague.get(`/api/chat/conversations/${conversationId}/messages`).expect(200);
   assert.equal(acceptedMessages.body.data[0].entities[0].data.myResponseStatus, 'accepted');
+
+  const reply = await colleague.post(`/api/chat/conversations/${conversationId}/messages`).send({
+    body: 'Accepted. Screenshot: https://mt.in.ua/img/2026-06-25_174748.png and docs https://example.com/docs/start',
+    replyToId: firstMessageId
+  }).expect(201);
+  assert.equal(reply.body.data.replyTo.id, firstMessageId);
+  assert.equal(reply.body.data.replyTo.sender.id, plannerId);
+  assert.equal(reply.body.data.linkPreviews.length, 2);
+  assert.deepEqual(reply.body.data.linkPreviews.map((preview) => preview.type), ['image', 'link']);
+  assert.equal(reply.body.data.linkPreviews[0].url, 'https://mt.in.ua/img/2026-06-25_174748.png');
+
+  const messagesWithReply = await planner.get(`/api/chat/conversations/${conversationId}/messages`).expect(200);
+  const storedReply = messagesWithReply.body.data.find((message) => message.id === reply.body.data.id);
+  assert.equal(storedReply.replyTo.id, firstMessageId);
+  assert.equal(storedReply.replyTo.own, true);
 
   await pool.query(
     `INSERT INTO chat_messages (conversation_id, sender_id, body, entity_references)

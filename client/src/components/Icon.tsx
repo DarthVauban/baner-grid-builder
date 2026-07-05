@@ -46,6 +46,8 @@ import ViewAgendaOutlined from '@mui/icons-material/ViewAgendaOutlined';
 import VisibilityOutlined from '@mui/icons-material/VisibilityOutlined';
 import VisibilityOffOutlined from '@mui/icons-material/VisibilityOffOutlined';
 import PasswordRounded from '@mui/icons-material/PasswordRounded';
+import ReplyRounded from '@mui/icons-material/ReplyRounded';
+import LinkRounded from '@mui/icons-material/LinkRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -98,7 +100,9 @@ export type IconName =
   | 'viewList'
   | 'visibility'
   | 'visibilityOff'
-  | 'password';
+  | 'password'
+  | 'reply'
+  | 'link';
 
 interface IconProps {
   name: IconName;
@@ -155,7 +159,9 @@ const icons: Record<IconName, SvgIconComponent> = {
   viewList: ViewAgendaOutlined,
   visibility: VisibilityOutlined,
   visibilityOff: VisibilityOffOutlined,
-  password: PasswordRounded
+  password: PasswordRounded,
+  reply: ReplyRounded,
+  link: LinkRounded
 };
 
 export function Icon({ name, size = 20 }: IconProps) {

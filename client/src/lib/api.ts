@@ -1,6 +1,7 @@
 import type {
   LoginInput,
   PermissionRole,
+  PasswordChangeInput,
   RegisterInput,
   RolePermission,
   SavedDataResource,
@@ -164,8 +165,8 @@ export const api = {
     setTyping: (conversationId: string, isTyping: boolean) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/typing`, {
       method: 'POST', body: jsonBody({ isTyping })
     }),
-    sendMessage: (conversationId: string, body: string) => request<ChatMessage>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
-      method: 'POST', body: jsonBody({ body })
+    sendMessage: (conversationId: string, body: string, replyToId: string | null = null) => request<ChatMessage>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: 'POST', body: jsonBody({ body, replyToId })
     }),
     markRead: (conversationId: string) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST' })
   },
@@ -173,6 +174,9 @@ export const api = {
     search: (search = '', excludeSelf = false) => request<UserSearchResult[]>(`/api/users/search${queryString({ search, excludeSelf: excludeSelf ? 'true' : undefined })}`),
     toolAccess: () => request<ToolId[]>('/api/users/tool-access'),
     updateProfile: (input: ProfileInput) => request<User>('/api/users/profile', {
+      method: 'PUT', body: jsonBody(input)
+    }),
+    changePassword: (input: PasswordChangeInput) => request<void>('/api/users/profile/password', {
       method: 'PUT', body: jsonBody(input)
     })
   },

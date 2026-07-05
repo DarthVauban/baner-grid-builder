@@ -95,13 +95,18 @@ test('approval flow and shared banner storage work through REST API', async () =
 
   const profile = await user.put('/api/users/profile').send({
     firstName: 'Test', lastName: 'User', email: 'user@test.local',
-    department: 'Marketing', position: 'Editor', avatarDataUrl: 'data:image/webp;base64,AA==',
-    currentPassword: 'UserPassword123!', newPassword: 'UpdatedPassword123!'
+    department: 'Marketing', position: 'Editor', avatarDataUrl: 'data:image/webp;base64,AA=='
   }).expect(200);
   assert.equal(profile.body.data.department, 'Marketing');
   assert.equal(profile.body.data.position, 'Editor');
   assert.match(profile.body.data.avatarUrl, /^\/api\/users\/.+\/avatar\?v=/);
   await user.get(profile.body.data.avatarUrl).expect(200).expect('Content-Type', /image\/webp/);
+  await user.put('/api/users/profile/password').send({
+    currentPassword: 'WrongPassword123!', newPassword: 'UpdatedPassword123!'
+  }).expect(422).expect((response) => assert.equal(response.body.error.code, 'INVALID_CURRENT_PASSWORD'));
+  await user.put('/api/users/profile/password').send({
+    currentPassword: 'UserPassword123!', newPassword: 'UpdatedPassword123!'
+  }).expect(204);
   await request(app).post('/api/auth/login')
     .send({ email: 'user@test.local', password: 'UserPassword123!' }).expect(401);
   await request(app).post('/api/auth/login')

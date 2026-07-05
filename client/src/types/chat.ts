@@ -48,6 +48,17 @@ export type ChatEntity =
   | { type: 'publication'; id: string; available: false }
   | { type: 'publication'; id: string; available: true; data: ChatPublicationPreview };
 
+export type ChatLinkPreview =
+  | { type: 'image'; url: string; hostname: string }
+  | { type: 'link'; url: string; hostname: string; path: string };
+
+export interface ChatReplyPreview {
+  id: string;
+  body: string;
+  sender: { id: string; name: string };
+  own: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -55,5 +66,7 @@ export interface ChatMessage {
   sender: ChatPerson;
   own: boolean;
   entities: ChatEntity[];
+  linkPreviews: ChatLinkPreview[];
+  replyTo: ChatReplyPreview | null;
   createdAt: string;
 }

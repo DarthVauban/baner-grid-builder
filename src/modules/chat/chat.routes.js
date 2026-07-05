@@ -24,7 +24,10 @@ const createConversationSchema = z.object({
   userId: z.string().uuid(),
   body: z.string().trim().min(1).max(5000)
 });
-const messageSchema = z.object({ body: z.string().trim().min(1).max(5000) });
+const messageSchema = z.object({
+  body: z.string().trim().min(1).max(5000),
+  replyToId: z.string().uuid().nullable().optional().default(null)
+});
 const typingSchema = z.object({ isTyping: z.boolean() });
 
 function getAllowedOrigins(req) {
@@ -206,9 +209,13 @@ router.get('/conversations/:id/messages', asyncHandler(async (req, res) => {
   if (!await assertConversationMember(id, req.user.id)) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Діалог не знайдено.');
   const result = await query(
     `SELECT message.*, sender.name AS sender_name, sender.email AS sender_email,
-            sender.avatar_mime AS sender_avatar_mime, sender.updated_at AS sender_updated_at
+            sender.avatar_mime AS sender_avatar_mime, sender.updated_at AS sender_updated_at,
+            reply.body AS reply_body, reply.sender_id AS reply_sender_id,
+            reply_sender.name AS reply_sender_name
      FROM chat_messages AS message
      JOIN users AS sender ON sender.id = message.sender_id
+     LEFT JOIN chat_messages AS reply ON reply.id = message.reply_to_id
+     LEFT JOIN users AS reply_sender ON reply_sender.id = reply.sender_id
      WHERE message.conversation_id = $1
      ORDER BY message.created_at DESC
      LIMIT 100`,
@@ -236,16 +243,33 @@ router.post('/conversations/:id/typing', asyncHandler(async (req, res) => {
 
 router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
-  const { body } = parseInput(messageSchema, req.body);
+  const { body, replyToId } = parseInput(messageSchema, req.body);
   if (!await assertConversationMember(id, req.user.id)) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Діалог не знайдено.');
+  let reply = null;
+  if (replyToId) {
+    const replyResult = await query(
+      `SELECT message.id, message.body, message.sender_id, sender.name AS sender_name
+       FROM chat_messages AS message
+       JOIN users AS sender ON sender.id = message.sender_id
+       WHERE message.id = $1 AND message.conversation_id = $2`,
+      [replyToId, id]
+    );
+    reply = replyResult.rows[0];
+    if (!reply) throw new AppError(422, 'INVALID_REPLY_TARGET', 'Повідомлення для відповіді не знайдено в цьому діалозі.');
+  }
   const allowedOrigins = getAllowedOrigins(req);
   const references = extractEntityReferences(body, allowedOrigins);
   const result = await query(
-    `INSERT INTO chat_messages (conversation_id, sender_id, body, entity_references)
-     VALUES ($1, $2, $3, $4::JSONB)
-     RETURNING *, $5::VARCHAR AS sender_name, $6::VARCHAR AS sender_email`,
-    [id, req.user.id, body, JSON.stringify(references), req.user.name, req.user.email]
+    `INSERT INTO chat_messages (conversation_id, sender_id, body, entity_references, reply_to_id)
+     VALUES ($1, $2, $3, $4::JSONB, $5)
+     RETURNING *, $6::VARCHAR AS sender_name, $7::VARCHAR AS sender_email`,
+    [id, req.user.id, body, JSON.stringify(references), replyToId, req.user.name, req.user.email]
   );
+  if (reply) Object.assign(result.rows[0], {
+    reply_body: reply.body,
+    reply_sender_id: reply.sender_id,
+    reply_sender_name: reply.sender_name
+  });
   await query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [id]);
   await query('UPDATE chat_members SET last_read_at = NOW() WHERE conversation_id = $1 AND user_id = $2', [id, req.user.id]);
   const members = await loadConversationMembers(id);

@@ -4,10 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
-import type { ChatConversation, ChatEntity, ChatMessage, ChatPerson } from '../types/chat';
+import type { ChatConversation, ChatEntity, ChatLinkPreview as ChatLinkPreviewType, ChatMessage, ChatPerson } from '../types/chat';
 import { ChatEntityCard } from '../components/ChatEntityCard';
 import { Icon } from '../components/Icon';
 import { UserAvatar } from '../components/UserAvatar';
+import { ChatLinkPreview } from '../components/ChatLinkPreview';
 
 function formatChatTime(value: string): string {
   return new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
@@ -23,12 +24,19 @@ function isEntityUrl(value: string, entities: ChatEntity[]): boolean {
   } catch { return false; }
 }
 
+function isPreviewUrl(value: string, previews: ChatLinkPreviewType[]): boolean {
+  try {
+    const href = new URL(value).href;
+    return previews.some((preview) => preview.url === href);
+  } catch { return false; }
+}
+
 function renderMessageBody(message: ChatMessage): ReactNode {
   const parts = message.body.split(/(https?:\/\/[^\s<>"']+)/gi);
   const rendered = parts.map((part, index) => {
     if (!/^https?:\/\//i.test(part)) return part;
     const clean = part.replace(/[),.;!?]+$/g, '');
-    if (isEntityUrl(clean, message.entities)) return part.slice(clean.length);
+    if (isEntityUrl(clean, message.entities) || isPreviewUrl(clean, message.linkPreviews)) return part.slice(clean.length);
     return <a key={`${part}-${index}`} href={clean} target="_blank" rel="noreferrer">{clean}<Icon name="openInNew" size={13} /></a>;
   });
   return rendered.some((part) => typeof part !== 'string' || part.trim()) ? rendered : null;
@@ -67,8 +75,10 @@ export function ChatPage() {
   const [draftContact, setDraftContact] = useState<ChatPerson | null>(null);
   const [contactsOpen, setContactsOpen] = useState(false);
   const [message, setMessage] = useState('');
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [contactTyping, setContactTyping] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const typingStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingDisplayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingConversationRef = useRef<string | null>(null);
@@ -85,7 +95,11 @@ export function ChatPage() {
   const startConversation = useMutation({
     mutationFn: ({ userId, body }: { userId: string; body: string }) => api.chat.startConversation(userId, body)
   });
-  const send = useMutation({ mutationFn: ({ conversationId, body }: { conversationId: string; body: string }) => api.chat.sendMessage(conversationId, body) });
+  const send = useMutation({
+    mutationFn: ({ conversationId, body, replyToId }: { conversationId: string; body: string; replyToId: string | null }) => (
+      api.chat.sendMessage(conversationId, body, replyToId)
+    )
+  });
   const activeConversation = conversations.data?.find((conversation) => conversation.id === selectedId) || null;
   const activeContact = activeConversation?.contact || draftContact;
 
@@ -97,6 +111,8 @@ export function ChatPage() {
     setSelectedId(conversationId);
     setSearchParams({ conversation: conversationId }, { replace: true });
   }, [conversations.data, draftContact, selectedId, setSearchParams]);
+
+  useEffect(() => setReplyTo(null), [selectedId]);
 
   useEffect(() => {
     if (!selectedId || !messages.data) return;
@@ -175,6 +191,12 @@ export function ChatPage() {
     setSelectedId(existingConversation?.id || null);
     setSearchParams(existingConversation ? { conversation: existingConversation.id } : {}, { replace: true });
     setContactsOpen(false);
+    setReplyTo(null);
+  }
+
+  function prepareReply(item: ChatMessage) {
+    setReplyTo(item);
+    window.requestAnimationFrame(() => composerRef.current?.focus());
   }
 
   async function submit(event?: FormEvent) {
@@ -186,7 +208,7 @@ export function ChatPage() {
       setMessage('');
       let conversationId = selectedId;
       if (conversationId) {
-        await send.mutateAsync({ conversationId, body });
+        await send.mutateAsync({ conversationId, body, replyToId: replyTo?.id || null });
       } else if (draftContact) {
         const conversation = await startConversation.mutateAsync({ userId: draftContact.id, body });
         conversationId = conversation.id;
@@ -198,6 +220,7 @@ export function ChatPage() {
         queryClient.invalidateQueries({ queryKey: ['chat-messages', conversationId] }),
         queryClient.invalidateQueries({ queryKey: ['chat-conversations'] })
       ]);
+      setReplyTo(null);
     } catch (error) {
       setMessage(body);
       showToast(error instanceof Error ? error.message : 'Не вдалося надіслати повідомлення.', 'error');
@@ -218,7 +241,7 @@ export function ChatPage() {
         <div className="chat-conversations__list">
           {conversations.isLoading && <p className="chat-empty-copy">Завантажуємо…</p>}
           {!conversations.isLoading && !conversations.data?.length && <div className="chat-empty-copy"><Icon name="chat" size={25} /><span>Діалогів поки немає.<br />Оберіть колегу зі списку контактів.</span></div>}
-          {conversations.data?.map((conversation: ChatConversation) => <button className={selectedId === conversation.id ? 'chat-conversation chat-conversation--active' : 'chat-conversation'} type="button" key={conversation.id} onClick={() => { setDraftContact(null); setSelectedId(conversation.id); setSearchParams({ conversation: conversation.id }, { replace: true }); }}><UserAvatar name={conversation.contact.name} avatarUrl={conversation.contact.avatarUrl} /><span><strong>{conversation.contact.name}</strong><small>{conversation.lastMessage?.body || conversation.contact.email}</small></span>{conversation.unreadCount > 0 && <b>{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</b>}</button>)}
+          {conversations.data?.map((conversation: ChatConversation) => <button className={selectedId === conversation.id ? 'chat-conversation chat-conversation--active' : 'chat-conversation'} type="button" key={conversation.id} onClick={() => { setReplyTo(null); setDraftContact(null); setSelectedId(conversation.id); setSearchParams({ conversation: conversation.id }, { replace: true }); }}><UserAvatar name={conversation.contact.name} avatarUrl={conversation.contact.avatarUrl} /><span><strong>{conversation.contact.name}</strong><small>{conversation.lastMessage?.body || conversation.contact.email}</small></span>{conversation.unreadCount > 0 && <b>{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</b>}</button>)}
         </div>
       </aside>
 
@@ -229,10 +252,14 @@ export function ChatPage() {
           <div className="chat-messages" ref={messagesRef}>
             {messages.isLoading && <p className="chat-empty-copy">Завантажуємо повідомлення…</p>}
             {!messages.isLoading && !messages.data?.length && <div className="chat-messages__empty"><p>Почніть розмову або надішліть посилання на справу чи публікацію.</p></div>}
-            {messages.data?.map((item) => { const body = renderMessageBody(item); return <article className={item.own ? 'chat-message chat-message--own' : 'chat-message'} key={item.id}><div className="chat-message__bubble">{body && <p>{body}</p>}{item.entities.map((entity) => <ChatEntityCard entity={entity} conversationId={item.conversationId} key={`${entity.type}-${entity.id}`} />)}<time>{formatChatTime(item.createdAt)}</time></div></article>; })}
+            {messages.data?.map((item) => { const body = renderMessageBody(item); return <article className={item.own ? 'chat-message chat-message--own' : 'chat-message'} id={`chat-message-${item.id}`} key={item.id}><div className="chat-message__bubble">{item.replyTo && <blockquote className="chat-message__quote"><strong>{item.replyTo.own ? 'Ви' : item.replyTo.sender.name}</strong><span>{item.replyTo.body}</span></blockquote>}{body && <p>{body}</p>}{item.entities.map((entity) => <ChatEntityCard entity={entity} conversationId={item.conversationId} key={`${entity.type}-${entity.id}`} />)}{item.linkPreviews.map((preview) => <ChatLinkPreview preview={preview} key={preview.url} />)}<footer className="chat-message__meta"><button type="button" onClick={() => prepareReply(item)}><Icon name="reply" size={14} /> Відповісти</button><time>{formatChatTime(item.createdAt)}</time></footer></div></article>; })}
             {contactTyping && <div className="chat-typing" role="status" aria-label={`${activeContact.name} набирає повідомлення`}><span /><span /><span /><small>{activeContact.name} набирає…</small></div>}
           </div>
-          <form className="chat-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => handleMessageChange(event.target.value)} onKeyDown={handleComposerKeyDown} maxLength={5000} rows={1} placeholder="Напишіть повідомлення…" /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending || startConversation.isPending} aria-label="Надіслати"><Icon name="arrowRight" size={19} /></button></form>
+          <form className="chat-composer" onSubmit={(event) => void submit(event)}>
+            {replyTo && <div className="chat-composer__reply"><Icon name="reply" size={17} /><span><strong>Відповідь {replyTo.own ? 'на своє повідомлення' : replyTo.sender.name}</strong><small>{replyTo.body}</small></span><button type="button" onClick={() => setReplyTo(null)} aria-label="Скасувати відповідь"><Icon name="close" size={17} /></button></div>}
+            <textarea ref={composerRef} value={message} onChange={(event) => handleMessageChange(event.target.value)} onKeyDown={handleComposerKeyDown} maxLength={5000} rows={1} placeholder="Напишіть повідомлення…" />
+            <button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending || startConversation.isPending} aria-label="Надіслати"><Icon name="arrowRight" size={19} /></button>
+          </form>
         </>}
       </div>
     </section>

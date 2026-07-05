@@ -36,6 +36,9 @@ export interface ProfileInput {
   department: string;
   position: string;
   avatarDataUrl: string | null;
+}
+
+export interface PasswordChangeInput {
   currentPassword: string;
   newPassword: string;
 }

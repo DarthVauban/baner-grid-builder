@@ -39,6 +39,39 @@ export function extractEntityReferences(body, allowedOrigins) {
   return references.slice(0, 10);
 }
 
+export function extractLinkPreviews(body, allowedOrigins) {
+  const previews = [];
+  const seen = new Set();
+  const origins = new Set((Array.isArray(allowedOrigins) ? allowedOrigins : [allowedOrigins]).filter(Boolean));
+  const urlPattern = /https?:\/\/[^\s<>"']+/gi;
+  for (const match of body.matchAll(urlPattern)) {
+    const raw = match[0].replace(/[),.;!?]+$/g, '');
+    try {
+      const url = new URL(raw);
+      if (seen.has(url.href)) continue;
+      const internalEntity = origins.has(url.origin) && entityLinkMatchers.some((candidate) => (
+        candidate.path === url.pathname && uuidPattern.test(url.searchParams.get(candidate.parameter) || '')
+      ));
+      if (internalEntity) continue;
+      seen.add(url.href);
+      const isScreenshot = url.hostname.toLowerCase() === 'mt.in.ua'
+        && url.pathname.startsWith('/img/')
+        && /\.(?:png|jpe?g|webp|gif)$/i.test(url.pathname);
+      previews.push(isScreenshot ? {
+        type: 'image', url: url.href, hostname: url.hostname
+      } : {
+        type: 'link',
+        url: url.href,
+        hostname: url.hostname.replace(/^www\./i, ''),
+        path: decodeURIComponent(url.pathname === '/' ? url.href : url.pathname).slice(0, 140)
+      });
+    } catch {
+      // Invalid links remain ordinary message text.
+    }
+  }
+  return previews.slice(0, 5);
+}
+
 async function hydrateTask(reference, viewer) {
   const task = await loadTaskView(reference.id, viewer.id);
   if (!task) return { ...reference, available: false };
@@ -112,6 +145,13 @@ export async function serializeChatMessage(row, viewer, allowedOrigins = []) {
     },
     own: row.sender_id === viewer.id,
     entities: await hydrateEntityReferences(references, viewer),
+    linkPreviews: extractLinkPreviews(row.body, allowedOrigins),
+    replyTo: row.reply_to_id ? {
+      id: row.reply_to_id,
+      body: row.reply_body || '',
+      sender: { id: row.reply_sender_id, name: row.reply_sender_name || 'Видалений користувач' },
+      own: row.reply_sender_id === viewer.id
+    } : null,
     createdAt: row.created_at
   };
 }
