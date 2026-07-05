@@ -20,9 +20,11 @@ const { subscribeToChatUpdates } = await import('../src/modules/chat/chat.events
 const admin = request.agent(app);
 const planner = request.agent(app);
 const colleague = request.agent(app);
+const observer = request.agent(app);
 let plannerId;
 let colleagueId;
 let adminId;
+let observerId;
 
 before(async () => {
   await runMigrations();
@@ -31,14 +33,17 @@ before(async () => {
   adminId = adminLogin.body.data.id;
   for (const user of [
     { name: 'Chat Planner', email: 'chat-planner@test.local', password: 'PlannerPassword123!' },
-    { name: 'Chat Colleague', email: 'chat-colleague@test.local', password: 'ColleaguePassword123!' }
+    { name: 'Chat Colleague', email: 'chat-colleague@test.local', password: 'ColleaguePassword123!' },
+    { name: 'Chat Observer', email: 'chat-observer@test.local', password: 'ObserverPassword123!' }
   ]) await request(app).post('/api/auth/register').send(user).expect(201);
   const pending = await admin.get('/api/admin/users?status=pending').expect(200);
   for (const user of pending.body.data) await admin.patch(`/api/admin/users/${user.id}/status`).send({ status: 'approved' }).expect(200);
   plannerId = pending.body.data.find((user) => user.email === 'chat-planner@test.local').id;
   colleagueId = pending.body.data.find((user) => user.email === 'chat-colleague@test.local').id;
+  observerId = pending.body.data.find((user) => user.email === 'chat-observer@test.local').id;
   await planner.post('/api/auth/login').send({ email: 'chat-planner@test.local', password: 'PlannerPassword123!' }).expect(200);
   await colleague.post('/api/auth/login').send({ email: 'chat-colleague@test.local', password: 'ColleaguePassword123!' }).expect(200);
+  await observer.post('/api/auth/login').send({ email: 'chat-observer@test.local', password: 'ObserverPassword123!' }).expect(200);
 });
 
 after(async () => pool.end());
@@ -50,6 +55,9 @@ test('chat access, contacts and interactive task links work through REST API', a
     tools: [...defaultTools, 'chat'], canManageToolAccess: true
   }).expect(200);
   await planner.put(`/api/admin/users/${colleagueId}/tool-access`).send({
+    tools: [...defaultTools, 'chat']
+  }).expect(200);
+  await planner.put(`/api/admin/users/${observerId}/tool-access`).send({
     tools: [...defaultTools, 'chat']
   }).expect(200);
 
@@ -132,12 +140,26 @@ test('chat access, contacts and interactive task links work through REST API', a
   await planner.put(`/api/chat/messages/${reply.body.data.id}/reaction`).send({ emoji: null }).expect(200);
 
   const group = await planner.post('/api/chat/conversations/groups').send({
-    title: 'Content team', participantIds: [colleagueId, adminId]
+    title: 'Content team', participantIds: [colleagueId, adminId], iconDataUrl: 'data:image/png;base64,AA=='
   }).expect(201);
   assert.equal(group.body.data.type, 'group');
   assert.equal(group.body.data.members.length, 3);
+  assert.equal(group.body.data.myRole, 'owner');
+  assert.equal(group.body.data.members.find((member) => member.id === plannerId).role, 'owner');
+  await colleague.get(group.body.data.iconUrl).expect(200).expect('Content-Type', /image\/png/);
   const colleagueGroups = await colleague.get('/api/chat/conversations').expect(200);
   assert.equal(colleagueGroups.body.data.find((item) => item.id === group.body.data.id).title, 'Content team');
+  await planner.patch(`/api/chat/conversations/${group.body.data.id}/members/${colleagueId}/role`).send({ role: 'admin' }).expect(204);
+  await colleague.patch(`/api/chat/conversations/${group.body.data.id}/group`).send({ title: 'Content editors' }).expect(204);
+  await colleague.post(`/api/chat/conversations/${group.body.data.id}/members`).send({ userIds: [observerId] }).expect(204);
+  const observerGroups = await observer.get('/api/chat/conversations').expect(200);
+  assert.equal(observerGroups.body.data.find((item) => item.id === group.body.data.id).myRole, 'member');
+  await observer.post(`/api/chat/conversations/${group.body.data.id}/members`).send({ userIds: [plannerId] }).expect(403);
+  await planner.patch(`/api/chat/conversations/${group.body.data.id}/members/${observerId}/role`).send({ role: 'admin' }).expect(204);
+  await colleague.delete(`/api/chat/conversations/${group.body.data.id}/members/${observerId}`).expect(403);
+  await planner.patch(`/api/chat/conversations/${group.body.data.id}/members/${observerId}/role`).send({ role: 'member' }).expect(204);
+  await colleague.delete(`/api/chat/conversations/${group.body.data.id}/members/${observerId}`).expect(204);
+  await observer.get(group.body.data.iconUrl).expect(404);
   await colleague.post(`/api/chat/conversations/${group.body.data.id}/messages`).send({ body: 'Hello group' }).expect(201);
   const groupMessages = await planner.get(`/api/chat/conversations/${group.body.data.id}/messages`).expect(200);
   assert.equal(groupMessages.body.data[0].sender.name, 'Chat Colleague');

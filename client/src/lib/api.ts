@@ -161,8 +161,20 @@ export const api = {
     startConversation: (userId: string, body: string) => request<{ id: string; contact: ChatPerson; message: ChatMessage }>('/api/chat/conversations', {
       method: 'POST', body: jsonBody({ userId, body })
     }),
-    createGroup: (title: string, participantIds: string[]) => request<ChatConversation>('/api/chat/conversations/groups', {
-      method: 'POST', body: jsonBody({ title, participantIds })
+    createGroup: (title: string, participantIds: string[], iconDataUrl = '') => request<ChatConversation>('/api/chat/conversations/groups', {
+      method: 'POST', body: jsonBody({ title, participantIds, iconDataUrl })
+    }),
+    updateGroup: (conversationId: string, input: { title?: string; iconDataUrl?: string }) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/group`, {
+      method: 'PATCH', body: jsonBody(input)
+    }),
+    addGroupMembers: (conversationId: string, userIds: string[]) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/members`, {
+      method: 'POST', body: jsonBody({ userIds })
+    }),
+    setGroupMemberRole: (conversationId: string, userId: string, role: 'admin' | 'member') => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userId)}/role`, {
+      method: 'PATCH', body: jsonBody({ role })
+    }),
+    removeGroupMember: (conversationId: string, userId: string) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userId)}`, {
+      method: 'DELETE'
     }),
     messages: (conversationId: string) => request<ChatMessage[]>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`),
     setTyping: (conversationId: string, isTyping: boolean) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/typing`, {

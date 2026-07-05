@@ -8,13 +8,18 @@ export interface ChatPerson {
   avatarUrl?: string;
 }
 
+export type ChatGroupRole = 'owner' | 'admin' | 'member';
+export interface ChatGroupMember extends ChatPerson { role: ChatGroupRole }
+
 export interface ChatConversation {
   id: string;
   type: 'direct' | 'group';
   title: string;
+  iconUrl: string;
   contact: ChatPerson | null;
-  members: ChatPerson[];
+  members: ChatGroupMember[];
   createdBy: string | null;
+  myRole: ChatGroupRole;
   lastMessage: { body: string; senderName: string; createdAt: string } | null;
   unreadCount: number;
   updatedAt: string;

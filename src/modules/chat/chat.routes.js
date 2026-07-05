@@ -8,6 +8,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
+import { parseAvatarDataUrl } from '../users/avatar.service.js';
 import { publishChatUpdates, subscribeToChatUpdates } from './chat.events.js';
 import {
   assertConversationMember,
@@ -22,13 +23,15 @@ const router = Router();
 router.use(requireAuth, requireToolAccess('chat'));
 
 const idSchema = z.string().uuid();
+const groupIconSchema = z.string().trim().max(1_500_000).nullable();
 const createConversationSchema = z.object({
   userId: z.string().uuid(),
   body: z.string().trim().min(1).max(5000)
 });
 const createGroupSchema = z.object({
   title: z.string().trim().min(2).max(120),
-  participantIds: z.array(z.string().uuid()).min(2).max(99)
+  participantIds: z.array(z.string().uuid()).min(2).max(99),
+  iconDataUrl: groupIconSchema.optional().default(null)
 }).transform((input) => ({ ...input, participantIds: [...new Set(input.participantIds)] })).refine(
   (input) => input.participantIds.length >= 2,
   { path: ['participantIds'], message: 'Оберіть щонайменше двох учасників.' }
@@ -40,6 +43,14 @@ const messageSchema = z.object({
 const reactionSchema = z.object({
   emoji: z.enum(['👍', '❤️', '😂', '😮', '😢', '🎉']).nullable()
 });
+const groupSettingsSchema = z.object({
+  title: z.string().trim().min(2).max(120).optional(),
+  iconDataUrl: groupIconSchema.optional()
+}).refine((input) => input.title !== undefined || input.iconDataUrl !== undefined, 'Немає змін для збереження.');
+const addMembersSchema = z.object({
+  userIds: z.array(z.string().uuid()).min(1).max(99)
+}).transform((input) => ({ userIds: [...new Set(input.userIds)] }));
+const memberRoleSchema = z.object({ role: z.enum(['admin', 'member']) });
 const typingSchema = z.object({ isTyping: z.boolean() });
 
 function getAllowedOrigins(req) {
@@ -54,6 +65,36 @@ function getAllowedOrigins(req) {
   return [...new Set(candidates.filter(Boolean).flatMap((candidate) => {
     try { return [new URL(candidate).origin]; } catch { return []; }
   }))];
+}
+
+async function loadGroupActor(conversationId, userId) {
+  const result = await query(
+    `SELECT conversation.id, conversation.conversation_type, conversation.created_by,
+            member.member_role
+     FROM chat_conversations AS conversation
+     JOIN chat_members AS member ON member.conversation_id = conversation.id
+     WHERE conversation.id = $1 AND member.user_id = $2`,
+    [conversationId, userId]
+  );
+  const actor = result.rows[0];
+  if (!actor || actor.conversation_type !== 'group') throw new AppError(404, 'GROUP_NOT_FOUND', 'Груповий чат не знайдено.');
+  return actor;
+}
+
+async function loadAvailableContacts(userIds) {
+  if (!userIds.length) return [];
+  const placeholders = userIds.map((_, index) => `$${index + 1}`).join(', ');
+  const result = await query(
+    `SELECT users.id, users.name, users.email, users.avatar_mime, users.updated_at
+     FROM users
+     LEFT JOIN user_tool_access AS chat_access
+       ON chat_access.user_id = users.id AND chat_access.tool_id = 'chat'
+     WHERE users.id IN (${placeholders}) AND users.status = 'approved'
+       AND (users.role = 'admin' OR chat_access.user_id IS NOT NULL)
+     ORDER BY lower(users.name), users.id`,
+    userIds
+  );
+  return result.rows;
 }
 
 router.get('/stream', (req, res) => {
@@ -107,8 +148,8 @@ router.get('/unread-count', asyncHandler(async (req, res) => {
 router.get('/conversations', asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT conversation.id, conversation.conversation_type, conversation.title,
-            conversation.created_by, conversation.updated_at,
-            member.last_read_at, member.joined_at
+            conversation.created_by, conversation.icon_mime, conversation.updated_at,
+            member.member_role AS my_role, member.last_read_at, member.joined_at
      FROM chat_conversations AS conversation
      JOIN chat_members AS member ON member.conversation_id = conversation.id AND member.user_id = $1
      LEFT JOIN (SELECT DISTINCT conversation_id FROM chat_messages) AS populated
@@ -124,7 +165,7 @@ router.get('/conversations', asyncHandler(async (req, res) => {
   if (conversationIds.length) {
     const placeholders = conversationIds.map((_, index) => `$${index + 1}`).join(', ');
     const membersResult = await query(
-      `SELECT member.conversation_id, users.id, users.name, users.email, users.avatar_mime, users.updated_at
+      `SELECT member.conversation_id, member.member_role, users.id, users.name, users.email, users.avatar_mime, users.updated_at
        FROM chat_members AS member
        JOIN users ON users.id = member.user_id
        WHERE member.conversation_id IN (${placeholders})
@@ -135,7 +176,8 @@ router.get('/conversations', asyncHandler(async (req, res) => {
       id: member.id,
       name: member.name,
       email: member.email,
-      avatarUrl: member.avatar_mime ? `/api/users/${member.id}/avatar?v=${encodeURIComponent(member.updated_at || '')}` : ''
+      avatarUrl: member.avatar_mime ? `/api/users/${member.id}/avatar?v=${encodeURIComponent(member.updated_at || '')}` : '',
+      role: member.member_role
     });
   }
   const conversations = await Promise.all(result.rows.map(async (row) => {
@@ -160,9 +202,13 @@ router.get('/conversations', asyncHandler(async (req, res) => {
       id: row.id,
       type: row.conversation_type,
       title: row.conversation_type === 'group' ? row.title : contact?.name || 'Недоступний контакт',
+      iconUrl: row.conversation_type === 'group' && row.icon_mime
+        ? `/api/chat/conversations/${row.id}/icon?v=${encodeURIComponent(row.updated_at || '')}`
+        : '',
       contact,
       members,
       createdBy: row.created_by,
+      myRole: row.my_role,
       lastMessage: latest.rows[0] ? {
         body: latest.rows[0].body,
         senderName: latest.rows[0].sender_name,
@@ -176,34 +222,25 @@ router.get('/conversations', asyncHandler(async (req, res) => {
 }));
 
 router.post('/conversations/groups', asyncHandler(async (req, res) => {
-  const { title, participantIds } = parseInput(createGroupSchema, req.body);
+  const { title, participantIds, iconDataUrl } = parseInput(createGroupSchema, req.body);
   if (participantIds.includes(req.user.id)) throw new AppError(422, 'INVALID_GROUP_MEMBERS', 'Не додавайте себе до списку учасників.');
-  const placeholders = participantIds.map((_, index) => `$${index + 1}`).join(', ');
-  const contacts = await query(
-    `SELECT users.id, users.name, users.email, users.avatar_mime, users.updated_at
-     FROM users
-     LEFT JOIN user_tool_access AS chat_access
-       ON chat_access.user_id = users.id AND chat_access.tool_id = 'chat'
-     WHERE users.id IN (${placeholders}) AND users.status = 'approved'
-       AND (users.role = 'admin' OR chat_access.user_id IS NOT NULL)
-     ORDER BY lower(users.name), users.id`,
-    participantIds
-  );
-  if (contacts.rows.length !== participantIds.length) throw new AppError(422, 'INVALID_GROUP_MEMBERS', 'Один або кілька учасників недоступні у чаті.');
+  const contacts = await loadAvailableContacts(participantIds);
+  if (contacts.length !== participantIds.length) throw new AppError(422, 'INVALID_GROUP_MEMBERS', 'Один або кілька учасників недоступні у чаті.');
 
   const client = await pool.connect();
   let conversationId;
+  const icon = parseAvatarDataUrl(iconDataUrl || '');
   try {
     await client.query('BEGIN');
     const created = await client.query(
-      `INSERT INTO chat_conversations (direct_key, conversation_type, title, created_by)
-       VALUES ($1, 'group', $2, $3) RETURNING id`,
-      [`group:${randomUUID()}`, title, req.user.id]
+      `INSERT INTO chat_conversations (direct_key, conversation_type, title, created_by, icon_data, icon_mime)
+       VALUES ($1, 'group', $2, $3, $4, $5) RETURNING id`,
+      [`group:${randomUUID()}`, title, req.user.id, icon.data, icon.mime]
     );
     conversationId = created.rows[0].id;
     await client.query(
-      `INSERT INTO chat_members (conversation_id, user_id, last_read_at)
-       VALUES ($1, $2, NOW())`,
+      `INSERT INTO chat_members (conversation_id, user_id, last_read_at, member_role)
+       VALUES ($1, $2, NOW(), 'owner')`,
       [conversationId, req.user.id]
     );
     for (const participantId of participantIds) {
@@ -220,12 +257,13 @@ router.post('/conversations/groups', asyncHandler(async (req, res) => {
   } finally { client.release(); }
 
   const members = [
-    { id: req.user.id, name: req.user.name, email: req.user.email, avatarUrl: req.user.avatarUrl || '' },
-    ...contacts.rows.map((member) => ({
+    { id: req.user.id, name: req.user.name, email: req.user.email, avatarUrl: req.user.avatarUrl || '', role: 'owner' },
+    ...contacts.map((member) => ({
       id: member.id,
       name: member.name,
       email: member.email,
-      avatarUrl: member.avatar_mime ? `/api/users/${member.id}/avatar?v=${encodeURIComponent(member.updated_at || '')}` : ''
+      avatarUrl: member.avatar_mime ? `/api/users/${member.id}/avatar?v=${encodeURIComponent(member.updated_at || '')}` : '',
+      role: 'member'
     }))
   ];
   publishChatUpdates(members.map((member) => member.id), { type: 'conversation', conversationId, senderId: req.user.id });
@@ -233,13 +271,124 @@ router.post('/conversations/groups', asyncHandler(async (req, res) => {
     id: conversationId,
     type: 'group',
     title,
+    iconUrl: icon.mime ? `/api/chat/conversations/${conversationId}/icon?v=${encodeURIComponent(new Date().toISOString())}` : '',
     contact: null,
     members,
     createdBy: req.user.id,
+    myRole: 'owner',
     lastMessage: null,
     unreadCount: 0,
     updatedAt: new Date().toISOString()
   } });
+}));
+
+router.get('/conversations/:id/icon', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const result = await query(
+    `SELECT conversation.icon_data, conversation.icon_mime
+     FROM chat_conversations AS conversation
+     JOIN chat_members AS member ON member.conversation_id = conversation.id
+     WHERE conversation.id = $1 AND member.user_id = $2 AND conversation.conversation_type = 'group'`,
+    [id, req.user.id]
+  );
+  const icon = result.rows[0];
+  if (!icon?.icon_data || !icon.icon_mime) throw new AppError(404, 'GROUP_ICON_NOT_FOUND', 'Іконку групи не знайдено.');
+  res.setHeader('Content-Type', icon.icon_mime);
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.send(icon.icon_data);
+}));
+
+router.patch('/conversations/:id/group', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(groupSettingsSchema, req.body);
+  const actor = await loadGroupActor(id, req.user.id);
+  if (!['owner', 'admin'].includes(actor.member_role)) throw new AppError(403, 'GROUP_MANAGE_FORBIDDEN', 'Недостатньо прав для керування групою.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (input.title !== undefined) await client.query(
+      'UPDATE chat_conversations SET title = $1, updated_at = NOW() WHERE id = $2',
+      [input.title, id]
+    );
+    if (input.iconDataUrl !== undefined) {
+      const icon = parseAvatarDataUrl(input.iconDataUrl || '');
+      await client.query(
+        'UPDATE chat_conversations SET icon_data = $1, icon_mime = $2, updated_at = NOW() WHERE id = $3',
+        [icon.data, icon.mime, id]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
+  const members = await loadConversationMembers(id);
+  publishChatUpdates(members, { type: 'conversation', conversationId: id, senderId: req.user.id });
+  res.status(204).end();
+}));
+
+router.post('/conversations/:id/members', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const { userIds } = parseInput(addMembersSchema, req.body);
+  const actor = await loadGroupActor(id, req.user.id);
+  if (!['owner', 'admin'].includes(actor.member_role)) throw new AppError(403, 'GROUP_MANAGE_FORBIDDEN', 'Недостатньо прав для додавання учасників.');
+  if (userIds.includes(req.user.id)) throw new AppError(422, 'INVALID_GROUP_MEMBERS', 'Ви вже перебуваєте у цій групі.');
+  const contacts = await loadAvailableContacts(userIds);
+  if (contacts.length !== userIds.length) throw new AppError(422, 'INVALID_GROUP_MEMBERS', 'Один або кілька учасників недоступні у чаті.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const userId of userIds) await client.query(
+      `INSERT INTO chat_members (conversation_id, user_id, last_read_at, member_role)
+       VALUES ($1, $2, NOW(), 'member') ON CONFLICT (conversation_id, user_id) DO NOTHING`,
+      [id, userId]
+    );
+    await client.query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [id]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
+  const members = await loadConversationMembers(id);
+  publishChatUpdates([...members, ...userIds], { type: 'conversation', conversationId: id, senderId: req.user.id });
+  res.status(204).end();
+}));
+
+router.patch('/conversations/:id/members/:userId/role', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const userId = parseInput(idSchema, req.params.userId);
+  const { role } = parseInput(memberRoleSchema, req.body);
+  const actor = await loadGroupActor(id, req.user.id);
+  if (actor.member_role !== 'owner') throw new AppError(403, 'GROUP_ROLE_FORBIDDEN', 'Лише власник групи може змінювати ролі.');
+  const updated = await query(
+    `UPDATE chat_members SET member_role = $1
+     WHERE conversation_id = $2 AND user_id = $3 AND member_role <> 'owner'
+     RETURNING user_id`,
+    [role, id, userId]
+  );
+  if (!updated.rows[0]) throw new AppError(404, 'GROUP_MEMBER_NOT_FOUND', 'Учасника не знайдено або його роль не можна змінити.');
+  const members = await loadConversationMembers(id);
+  publishChatUpdates(members, { type: 'conversation', conversationId: id, senderId: req.user.id });
+  res.status(204).end();
+}));
+
+router.delete('/conversations/:id/members/:userId', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const userId = parseInput(idSchema, req.params.userId);
+  const actor = await loadGroupActor(id, req.user.id);
+  if (!['owner', 'admin'].includes(actor.member_role)) throw new AppError(403, 'GROUP_MANAGE_FORBIDDEN', 'Недостатньо прав для видалення учасників.');
+  const target = await query(
+    'SELECT member_role FROM chat_members WHERE conversation_id = $1 AND user_id = $2',
+    [id, userId]
+  );
+  if (!target.rows[0]) throw new AppError(404, 'GROUP_MEMBER_NOT_FOUND', 'Учасника не знайдено.');
+  if (target.rows[0].member_role === 'owner') throw new AppError(422, 'GROUP_OWNER_REQUIRED', 'Власника групи не можна видалити.');
+  if (actor.member_role === 'admin' && target.rows[0].member_role !== 'member') throw new AppError(403, 'GROUP_MANAGE_FORBIDDEN', 'Адміністратор може видаляти лише звичайних учасників.');
+  await query('DELETE FROM chat_members WHERE conversation_id = $1 AND user_id = $2', [id, userId]);
+  await query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [id]);
+  const members = await loadConversationMembers(id);
+  publishChatUpdates([...members, userId], { type: 'conversation', conversationId: id, senderId: req.user.id });
+  res.status(204).end();
 }));
 
 router.post('/conversations', asyncHandler(async (req, res) => {

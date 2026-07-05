@@ -7,9 +7,13 @@ interface ProfilePhotoFieldProps {
   name: string;
   value: string;
   onChange: (value: string) => void;
+  label?: string;
+  description?: string;
+  inputName?: string;
+  disabled?: boolean;
 }
 
-export function ProfilePhotoField({ name, value, onChange }: ProfilePhotoFieldProps) {
+export function ProfilePhotoField({ name, value, onChange, label = 'Фото профілю', description = 'PNG, JPEG або WebP до 1 МБ.', inputName = 'profile-photo', disabled = false }: ProfilePhotoFieldProps) {
   const inputId = useId();
   const [error, setError] = useState('');
 
@@ -26,13 +30,13 @@ export function ProfilePhotoField({ name, value, onChange }: ProfilePhotoFieldPr
   return <div className="profile-photo-field">
     <UserAvatar name={name || 'MT'} avatarUrl={value} className="profile-photo-field__preview" />
     <div>
-      <strong>Фото профілю <small>необов’язково</small></strong>
-      <p>PNG, JPEG або WebP до 1 МБ.</p>
-      <span className="profile-photo-field__actions">
+      <strong>{label} <small>необов’язково</small></strong>
+      <p>{description}</p>
+      {!disabled && <span className="profile-photo-field__actions">
         <label className="button button--secondary button--small" htmlFor={inputId}><Icon name="upload" size={16} /> {value ? 'Змінити' : 'Обрати фото'}</label>
         {value && <button className="button button--danger button--small" type="button" onClick={() => onChange('')}>Видалити</button>}
-      </span>
-      <input id={inputId} name="profile-photo" className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void selectFile(event.target.files?.[0])} />
+      </span>}
+      {!disabled && <input id={inputId} name={inputName} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void selectFile(event.target.files?.[0])} />}
       {error && <small className="profile-photo-field__error" role="alert">{error}</small>}
     </div>
   </div>;
