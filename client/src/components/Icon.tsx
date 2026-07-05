@@ -48,6 +48,7 @@ import VisibilityOffOutlined from '@mui/icons-material/VisibilityOffOutlined';
 import PasswordRounded from '@mui/icons-material/PasswordRounded';
 import ReplyRounded from '@mui/icons-material/ReplyRounded';
 import LinkRounded from '@mui/icons-material/LinkRounded';
+import AddReactionOutlined from '@mui/icons-material/AddReactionOutlined';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -102,7 +103,8 @@ export type IconName =
   | 'visibilityOff'
   | 'password'
   | 'reply'
-  | 'link';
+  | 'link'
+  | 'reaction';
 
 interface IconProps {
   name: IconName;
@@ -161,7 +163,8 @@ const icons: Record<IconName, SvgIconComponent> = {
   visibilityOff: VisibilityOffOutlined,
   password: PasswordRounded,
   reply: ReplyRounded,
-  link: LinkRounded
+  link: LinkRounded,
+  reaction: AddReactionOutlined
 };
 
 export function Icon({ name, size = 20 }: IconProps) {

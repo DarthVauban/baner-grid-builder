@@ -152,8 +152,39 @@ export async function serializeChatMessage(row, viewer, allowedOrigins = []) {
       sender: { id: row.reply_sender_id, name: row.reply_sender_name || 'Видалений користувач' },
       own: row.reply_sender_id === viewer.id
     } : null,
+    reactions: Array.isArray(row.reactions) ? row.reactions : [],
     createdAt: row.created_at
   };
+}
+
+export async function loadMessageReactions(messageIds, viewerId, db = { query }) {
+  const ids = [...new Set(messageIds.filter(Boolean))];
+  if (!ids.length) return new Map();
+  const placeholders = ids.map((_, index) => `$${index + 1}`).join(', ');
+  const result = await db.query(
+    `SELECT reaction.message_id, reaction.emoji, reaction.user_id, users.name
+     FROM chat_message_reactions AS reaction
+     JOIN users ON users.id = reaction.user_id
+     WHERE reaction.message_id IN (${placeholders})
+     ORDER BY reaction.created_at, reaction.user_id`,
+    ids
+  );
+  const grouped = new Map(ids.map((id) => [id, new Map()]));
+  for (const row of result.rows) {
+    const reactions = grouped.get(row.message_id) || new Map();
+    const reaction = reactions.get(row.emoji) || {
+      emoji: row.emoji,
+      count: 0,
+      reactedByMe: false,
+      users: []
+    };
+    reaction.count += 1;
+    reaction.reactedByMe ||= row.user_id === viewerId;
+    reaction.users.push({ id: row.user_id, name: row.name });
+    reactions.set(row.emoji, reaction);
+    grouped.set(row.message_id, reactions);
+  }
+  return new Map([...grouped].map(([id, reactions]) => [id, [...reactions.values()]]));
 }
 
 export async function loadConversationMembers(conversationId, db = { query }) {

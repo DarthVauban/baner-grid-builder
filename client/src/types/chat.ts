@@ -10,8 +10,12 @@ export interface ChatPerson {
 
 export interface ChatConversation {
   id: string;
-  contact: ChatPerson;
-  lastMessage: { body: string; createdAt: string } | null;
+  type: 'direct' | 'group';
+  title: string;
+  contact: ChatPerson | null;
+  members: ChatPerson[];
+  createdBy: string | null;
+  lastMessage: { body: string; senderName: string; createdAt: string } | null;
   unreadCount: number;
   updatedAt: string;
 }
@@ -59,6 +63,13 @@ export interface ChatReplyPreview {
   own: boolean;
 }
 
+export interface ChatReaction {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+  users: Array<{ id: string; name: string }>;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -68,5 +79,6 @@ export interface ChatMessage {
   entities: ChatEntity[];
   linkPreviews: ChatLinkPreview[];
   replyTo: ChatReplyPreview | null;
+  reactions: ChatReaction[];
   createdAt: string;
 }

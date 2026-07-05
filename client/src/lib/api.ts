@@ -161,12 +161,18 @@ export const api = {
     startConversation: (userId: string, body: string) => request<{ id: string; contact: ChatPerson; message: ChatMessage }>('/api/chat/conversations', {
       method: 'POST', body: jsonBody({ userId, body })
     }),
+    createGroup: (title: string, participantIds: string[]) => request<ChatConversation>('/api/chat/conversations/groups', {
+      method: 'POST', body: jsonBody({ title, participantIds })
+    }),
     messages: (conversationId: string) => request<ChatMessage[]>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`),
     setTyping: (conversationId: string, isTyping: boolean) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/typing`, {
       method: 'POST', body: jsonBody({ isTyping })
     }),
     sendMessage: (conversationId: string, body: string, replyToId: string | null = null) => request<ChatMessage>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
       method: 'POST', body: jsonBody({ body, replyToId })
+    }),
+    setReaction: (messageId: string, emoji: string | null) => request<ChatMessage['reactions']>(`/api/chat/messages/${encodeURIComponent(messageId)}/reaction`, {
+      method: 'PUT', body: jsonBody({ emoji })
     }),
     markRead: (conversationId: string) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST' })
   },

@@ -22,11 +22,13 @@ const planner = request.agent(app);
 const colleague = request.agent(app);
 let plannerId;
 let colleagueId;
+let adminId;
 
 before(async () => {
   await runMigrations();
   await ensureBootstrapAdmin();
-  await admin.post('/api/auth/login').send({ email: 'chat-admin@test.local', password: 'AdminPassword123!' }).expect(200);
+  const adminLogin = await admin.post('/api/auth/login').send({ email: 'chat-admin@test.local', password: 'AdminPassword123!' }).expect(200);
+  adminId = adminLogin.body.data.id;
   for (const user of [
     { name: 'Chat Planner', email: 'chat-planner@test.local', password: 'PlannerPassword123!' },
     { name: 'Chat Colleague', email: 'chat-colleague@test.local', password: 'ColleaguePassword123!' }
@@ -85,7 +87,7 @@ test('chat access, contacts and interactive task links work through REST API', a
   const typingPayload = await typingEvent;
   unsubscribeTyping();
   assert.deepEqual(typingPayload, {
-    type: 'typing', conversationId, senderId: plannerId, isTyping: true
+    type: 'typing', conversationId, senderId: plannerId, senderName: 'Chat Planner', isTyping: true
   });
 
   const colleagueConversations = await colleague.get('/api/chat/conversations').expect(200);
@@ -118,6 +120,27 @@ test('chat access, contacts and interactive task links work through REST API', a
   const storedReply = messagesWithReply.body.data.find((message) => message.id === reply.body.data.id);
   assert.equal(storedReply.replyTo.id, firstMessageId);
   assert.equal(storedReply.replyTo.own, true);
+
+  const plannerReaction = await planner.put(`/api/chat/messages/${reply.body.data.id}/reaction`).send({ emoji: '👍' }).expect(200);
+  assert.equal(plannerReaction.body.data[0].emoji, '👍');
+  assert.equal(plannerReaction.body.data[0].reactedByMe, true);
+  await colleague.put(`/api/chat/messages/${reply.body.data.id}/reaction`).send({ emoji: '❤️' }).expect(200);
+  const reactedMessages = await planner.get(`/api/chat/conversations/${conversationId}/messages`).expect(200);
+  const reactedReply = reactedMessages.body.data.find((message) => message.id === reply.body.data.id);
+  assert.deepEqual(reactedReply.reactions.map((reaction) => reaction.emoji), ['👍', '❤️']);
+  assert.equal(reactedReply.reactions.find((reaction) => reaction.emoji === '👍').reactedByMe, true);
+  await planner.put(`/api/chat/messages/${reply.body.data.id}/reaction`).send({ emoji: null }).expect(200);
+
+  const group = await planner.post('/api/chat/conversations/groups').send({
+    title: 'Content team', participantIds: [colleagueId, adminId]
+  }).expect(201);
+  assert.equal(group.body.data.type, 'group');
+  assert.equal(group.body.data.members.length, 3);
+  const colleagueGroups = await colleague.get('/api/chat/conversations').expect(200);
+  assert.equal(colleagueGroups.body.data.find((item) => item.id === group.body.data.id).title, 'Content team');
+  await colleague.post(`/api/chat/conversations/${group.body.data.id}/messages`).send({ body: 'Hello group' }).expect(201);
+  const groupMessages = await planner.get(`/api/chat/conversations/${group.body.data.id}/messages`).expect(200);
+  assert.equal(groupMessages.body.data[0].sender.name, 'Chat Colleague');
 
   await pool.query(
     `INSERT INTO chat_messages (conversation_id, sender_id, body, entity_references)
