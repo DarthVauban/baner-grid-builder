@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApplicationDetailsModal } from '../components/ApplicationDetailsModal';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import { applicationStatusOptions, customerName, formatApplicationDate } from '../lib/application';
 import { copyShareLink } from '../lib/share';
@@ -28,6 +29,13 @@ function ApplicationProductThumb({ src }: { src?: string }) {
   if (!src || failed) return <Icon name="productSelection" size={18} />;
   return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
 }
+
+const sortOptions = [
+  { value: 'created_desc', label: 'Нові спочатку' },
+  { value: 'updated_desc', label: 'Оновлені спочатку' },
+  { value: 'number_desc', label: 'Номер за спаданням' },
+  { value: 'number_asc', label: 'Номер за зростанням' }
+];
 
 export function ApplicationsPage() {
   const queryClient = useQueryClient();
@@ -174,12 +182,7 @@ export function ApplicationsPage() {
         })}
       </div>
       <div className="task-toolbar__controls">
-        <label className="application-sort"><span>Сортування</span><select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }}>
-          <option value="created_desc">Нові спочатку</option>
-          <option value="updated_desc">Оновлені спочатку</option>
-          <option value="number_desc">Номер за спаданням</option>
-          <option value="number_asc">Номер за зростанням</option>
-        </select></label>
+        <label className="application-sort"><span>Сортування</span><StyledSelect compact value={sort} options={sortOptions} onChange={(value) => { setSort(value); setPage(1); }} ariaLabel="Сортування заявок" /></label>
         <div className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Номер, імʼя або телефон" aria-label="Пошук заявки за номером, імʼям або телефоном" />{search && <button type="button" onClick={() => { setSearch(''); setPage(1); }} aria-label="Очистити пошук"><Icon name="close" size={16} /></button>}</div>
       </div>
     </section>
@@ -194,9 +197,7 @@ export function ApplicationsPage() {
         <strong>{application.number}</strong>
         <label className="application-row__status">
           <span className={`application-status application-status--${application.status}`}>{application.statusLabel}</span>
-          <select value={application.status} disabled={setStatus.isPending} onChange={(event) => void changeStatus(application, event.target.value as ApplicationStatus, '')}>
-            {applicationStatusOptions.filter(([value]) => value !== 'all').map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+          <StyledSelect compact value={application.status} disabled={setStatus.isPending} options={applicationStatusOptions.filter(([value]) => value !== 'all').map(([value, label]) => ({ value: value as ApplicationStatus, label }))} onChange={(value) => void changeStatus(application, value, '')} ariaLabel={`Статус заявки ${application.number}`} />
         </label>
         <span>{customerName(application.customer.firstName, application.customer.lastName)}</span>
         <span>{application.customer.phone || '—'}</span>

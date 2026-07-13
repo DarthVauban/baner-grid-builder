@@ -10,6 +10,7 @@ import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded';
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded';
+import DynamicFormRounded from '@mui/icons-material/DynamicFormRounded';
 import DashboardCustomizeRounded from '@mui/icons-material/DashboardCustomizeRounded';
 import DarkModeRounded from '@mui/icons-material/DarkModeRounded';
 import EditRounded from '@mui/icons-material/EditRounded';
@@ -80,6 +81,7 @@ export type IconName =
   | 'edit'
   | 'fullscreen'
   | 'fullscreenExit'
+  | 'formBuilder'
   | 'home'
   | 'integrations'
   | 'logout'
@@ -145,6 +147,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   edit: EditRounded,
   fullscreen: FullscreenRounded,
   fullscreenExit: FullscreenExitRounded,
+  formBuilder: DynamicFormRounded,
   home: HomeRounded,
   integrations: SettingsInputComponentRounded,
   logout: LogoutRounded,

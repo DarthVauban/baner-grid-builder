@@ -4,6 +4,7 @@ import { copyToClipboard } from '../lib/banner-generator';
 import { useToast } from '../toast/ToastContext';
 import type { ApplicationRecord, ApplicationStatus } from '../types/application';
 import { Icon } from './Icon';
+import { StyledSelect } from './StyledSelect';
 
 interface Props {
   application: ApplicationRecord;
@@ -139,9 +140,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
         <section className="task-details-section application-status-editor">
           <h3>Статус</h3>
           <div>
-            <label className="field"><span>Новий статус</span><select value={status} onChange={(event) => setStatus(event.target.value as ApplicationStatus)}>
-              {Object.entries(applicationStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select></label>
+            <div className="field"><span>Новий статус</span><StyledSelect value={status} options={Object.entries(applicationStatusLabels).map(([value, label]) => ({ value: value as ApplicationStatus, label }))} onChange={setStatus} ariaLabel="Новий статус заявки" /></div>
             <label className="field"><span>Коментар до зміни</span><input value={statusComment} onChange={(event) => setStatusComment(event.target.value)} maxLength={1000} placeholder="Необовʼязково" /></label>
             <button className="button button--primary" type="button" disabled={busy || status === application.status} onClick={() => { onStatus(application, status, statusComment); setStatusComment(''); }}>Змінити статус</button>
           </div>

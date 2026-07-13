@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { api } from '../lib/api';
 import { copyToClipboard } from '../lib/banner-generator';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { useToast } from '../toast/ToastContext';
 import type { ProductTableData, ProductTableRecord, ProductTableRow, ProductTableSheet } from '../types/workspace';
@@ -241,7 +242,7 @@ export function ProductTablesPage() {
               <button className={activeSheet?.showUploadedStatus ? 'active' : ''} onClick={() => void toggleStatus('uploaded')}><Icon name={activeSheet?.showUploadedStatus ? 'remove' : 'add'} size={14} /> Вивантажено</button>
               <button className={showHeaderCopyButtons ? 'active' : ''} aria-pressed={showHeaderCopyButtons} onClick={toggleHeaderCopyButtons}><Icon name={showHeaderCopyButtons ? 'remove' : 'add'} size={14} /> Копіювання назв</button>
               <button onClick={() => void toggleFullscreen()}><Icon name={fullscreen ? 'fullscreenExit' : 'fullscreen'} size={16} /> {fullscreen ? 'Вийти з повного екрана' : 'На весь екран'}</button>
-              {data.sheets.length > 1 && <select value={activeSheet?.name} onChange={(event) => { setData((current) => current ? { ...current, activeSheet: event.target.value } : current); setDirty(true); }}>{data.sheets.map((sheet) => <option key={sheet.name}>{sheet.name}</option>)}</select>}
+              {data.sheets.length > 1 && <StyledSelect compact value={activeSheet?.name || ''} options={data.sheets.map((sheet) => ({ value: sheet.name, label: sheet.name }))} onChange={(value) => { setData((current) => current ? { ...current, activeSheet: value } : current); setDirty(true); }} ariaLabel="Активний аркуш" />}
             </div>
           </div>
 

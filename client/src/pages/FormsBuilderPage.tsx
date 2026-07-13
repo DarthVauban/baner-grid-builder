@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
@@ -37,6 +38,21 @@ const productSelectorFields = [
 const productSelectorKeys = productSelectorFields.map(([key]) => key);
 
 const selectorSources = ['textContent', 'src', 'data-src', 'data-href', 'href', 'value', 'content'] as const;
+const fieldTypeOptions = Object.entries(fieldTypeLabels).map(([value, label]) => ({ value: value as ApplicationFieldType, label }));
+const insertPositionOptions = [
+  { value: 'after' as const, label: 'Після контейнера' },
+  { value: 'before' as const, label: 'Перед контейнером' },
+  { value: 'start' as const, label: 'На початку' },
+  { value: 'end' as const, label: 'В кінці' }
+];
+const fontWeightOptions = [
+  { value: '400', label: 'Звичайний' },
+  { value: '500', label: 'Medium' },
+  { value: '600', label: 'Semibold' },
+  { value: '700', label: 'Bold' },
+  { value: '800', label: 'Extra bold' }
+];
+const selectorSourceOptions = selectorSources.map((source) => ({ value: source, label: source }));
 
 function sanitizeProductSelectors(selectors: Record<string, unknown> = {}) {
   return productSelectorKeys.reduce<Record<string, unknown>>((result, key) => {
@@ -413,7 +429,7 @@ export function FormsBuilderPage() {
                 <header><strong>{field.label}</strong><span>{field.system ? 'Системне' : fieldTypeLabels[field.type]}</span></header>
                 <div className="form-builder-grid">
                   <label className="field"><span>Назва</span><input value={field.label} onChange={(event) => updateField(index, { label: event.target.value })} /></label>
-                  <label className="field"><span>Тип</span><select value={field.type} disabled={field.system} onChange={(event) => updateField(index, { type: event.target.value as ApplicationFieldType })}>{Object.entries(fieldTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                  <div className="field"><span>Тип</span><StyledSelect value={field.type} disabled={field.system} options={fieldTypeOptions} onChange={(value) => updateField(index, { type: value })} ariaLabel={`Тип поля ${field.label}`} /></div>
                   <label className="field"><span>Placeholder</span><input value={field.placeholder} onChange={(event) => updateField(index, { placeholder: event.target.value })} /></label>
                   <label className="field"><span>Підказка</span><input value={field.helpText} onChange={(event) => updateField(index, { helpText: event.target.value })} /></label>
                   {['select', 'radio'].includes(field.type) && !field.system && <label className="field form-builder-grid__wide"><span>Варіанти, кожен з нового рядка</span><textarea value={field.options.map((option) => option.label).join('\n')} onChange={(event) => setFieldOptions(index, event.target.value)} rows={3} /></label>}
@@ -448,7 +464,7 @@ export function FormsBuilderPage() {
               } as CSSProperties}>
                 <h3>{draft.title}</h3>
                 {draft.description && <p>{draft.description}</p>}
-                {fields.filter((field) => field.active).map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>{field.type === 'textarea' ? <textarea rows={2} placeholder={field.placeholder} /> : field.type === 'select' ? <select><option>Оберіть</option></select> : field.type === 'radio' ? <div className="form-preview__choices">{(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => <small key={option.value}><input type="radio" name={`preview-${field.key}`} /> {option.label}</small>)}</div> : field.type === 'checkbox' ? <small className="form-preview__checkbox"><input type="checkbox" /> {field.placeholder || 'Так'}</small> : <input placeholder={field.placeholder} />}</label>)}
+                {fields.filter((field) => field.active).map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>{field.type === 'textarea' ? <textarea rows={2} placeholder={field.placeholder} /> : field.type === 'select' ? <StyledSelect value="" options={[{ value: '', label: 'Оберіть' }, ...(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => ({ value: option.value, label: option.label }))]} onChange={() => undefined} ariaLabel={`Попередній перегляд ${field.label}`} /> : field.type === 'radio' ? <div className="form-preview__choices">{(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => <small key={option.value}><input type="radio" name={`preview-${field.key}`} /> {option.label}</small>)}</div> : field.type === 'checkbox' ? <small className="form-preview__checkbox"><input type="checkbox" /> {field.placeholder || 'Так'}</small> : <input placeholder={field.placeholder} />}</label>)}
                 <button type="button">{draft.buttonText}</button>
                 <div className="form-preview__success">
                   <strong>{draft.successMessage}</strong>
@@ -468,7 +484,7 @@ export function FormsBuilderPage() {
               {buttonDraft && <div className="button-config-form">
                 <label className="field"><span>Назва</span><input value={buttonDraft.name} onChange={(event) => setButtonDraft({ ...buttonDraft, name: event.target.value })} /></label>
                 <label className="field"><span>Контейнер</span><input value={buttonDraft.selector} onChange={(event) => setButtonDraft({ ...buttonDraft, selector: event.target.value })} placeholder=".product__buy" /></label>
-                <label className="field"><span>Позиція</span><select value={buttonDraft.insertPosition} onChange={(event) => setButtonDraft({ ...buttonDraft, insertPosition: event.target.value as ApplicationButtonInput['insertPosition'] })}><option value="after">Після контейнера</option><option value="before">Перед контейнером</option><option value="start">На початку</option><option value="end">В кінці</option></select></label>
+                <div className="field"><span>Позиція</span><StyledSelect value={buttonDraft.insertPosition} options={insertPositionOptions} onChange={(value) => setButtonDraft({ ...buttonDraft, insertPosition: value })} ariaLabel="Позиція кнопки" /></div>
                 <label className="field"><span>Текст кнопки</span><input value={buttonDraft.text} onChange={(event) => setButtonDraft({ ...buttonDraft, text: event.target.value })} /></label>
                 <label className="field"><span>CSS-клас</span><input value={buttonDraft.cssClass} onChange={(event) => setButtonDraft({ ...buttonDraft, cssClass: event.target.value })} placeholder="mt-credit-button" /></label>
                 <div className="button-config-checks">
@@ -478,7 +494,7 @@ export function FormsBuilderPage() {
                 <div className="button-style-grid">
                   <label className="field"><span>Фон</span><input type="color" value={buttonStyle('backgroundColor', '#6d5dfc')} onChange={(event) => updateButtonStyle('backgroundColor', event.target.value)} /></label>
                   <label className="field"><span>Текст</span><input type="color" value={buttonStyle('color', '#ffffff')} onChange={(event) => updateButtonStyle('color', event.target.value)} /></label>
-                  <label className="field"><span>Жирність шрифту</span><select value={buttonStyle('fontWeight', '700')} onChange={(event) => updateButtonStyle('fontWeight', event.target.value)}><option value="400">Звичайний</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra bold</option></select></label>
+                  <div className="field"><span>Жирність шрифту</span><StyledSelect value={buttonStyle('fontWeight', '700')} options={fontWeightOptions} onChange={(value) => updateButtonStyle('fontWeight', value)} ariaLabel="Жирність шрифту кнопки" /></div>
                   <label className="field"><span>Заокруглення</span><input value={buttonStyle('borderRadius', '12px')} onChange={(event) => updateButtonStyle('borderRadius', event.target.value)} /></label>
                   <label className="field"><span>Відступи</span><input value={buttonStyle('padding', '12px 18px')} onChange={(event) => updateButtonStyle('padding', event.target.value)} /></label>
                 </div>
@@ -488,7 +504,7 @@ export function FormsBuilderPage() {
                     const config = selectorConfig(key);
                     return <div className="button-selector-row" key={key}>
                       <label className="field"><span>{label}</span><input value={config.selector} onChange={(event) => updateProductSelector(key, { selector: event.target.value })} placeholder={key === 'title' ? 'h1' : ''} /></label>
-                      <label className="field"><span>Джерело</span><select value={config.source} onChange={(event) => updateProductSelector(key, { source: event.target.value })}>{selectorSources.map((source) => <option key={source} value={source}>{source}</option>)}</select></label>
+                      <div className="field"><span>Джерело</span><StyledSelect value={config.source} options={selectorSourceOptions} onChange={(value) => updateProductSelector(key, { source: value })} ariaLabel={`Джерело селектора ${label}`} /></div>
                     </div>;
                   })}
                 </div>

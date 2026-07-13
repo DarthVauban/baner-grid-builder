@@ -4,6 +4,7 @@ import { useToast } from '../toast/ToastContext';
 import type { ChatConversation, ChatGroupMember, ChatGroupRole, ChatPerson } from '../types/chat';
 import { Icon } from './Icon';
 import { ProfilePhotoField } from './ProfilePhotoField';
+import { StyledSelect } from './StyledSelect';
 import { UserAvatar } from './UserAvatar';
 
 const roleLabels: Record<ChatGroupRole, string> = {
@@ -11,6 +12,11 @@ const roleLabels: Record<ChatGroupRole, string> = {
   admin: 'Адміністратор',
   member: 'Учасник'
 };
+
+const assignableRoleOptions = [
+  { value: 'member' as const, label: 'Учасник' },
+  { value: 'admin' as const, label: 'Адміністратор' }
+];
 
 export function GroupManagementModal({ conversation, contacts, onClose, onUpdated }: {
   conversation: ChatConversation;
@@ -85,7 +91,7 @@ export function GroupManagementModal({ conversation, contacts, onClose, onUpdate
           <header><div><h3>Учасники</h3><p>{conversation.members.length} у групі</p></div></header>
           <div className="chat-group-members">{conversation.members.map((member) => {
             const removable = canManage && member.role !== 'owner' && (conversation.myRole === 'owner' || member.role === 'member');
-            return <article key={member.id}><UserAvatar name={member.name} avatarUrl={member.avatarUrl} /><span><strong>{member.name}</strong><small>{member.email}</small></span>{canAssignRoles && member.role !== 'owner' ? <select value={member.role} disabled={pending} onChange={(event) => void setRole(member, event.target.value as 'admin' | 'member')} aria-label={`Роль ${member.name}`}><option value="member">Учасник</option><option value="admin">Адміністратор</option></select> : <b>{roleLabels[member.role]}</b>}{removable && <button className="icon-button icon-button--danger" type="button" disabled={pending} onClick={() => void removeMember(member)} aria-label={`Видалити ${member.name}`}><Icon name="delete" size={17} /></button>}</article>;
+            return <article key={member.id}><UserAvatar name={member.name} avatarUrl={member.avatarUrl} /><span><strong>{member.name}</strong><small>{member.email}</small></span>{canAssignRoles && member.role !== 'owner' ? <StyledSelect compact value={member.role as 'admin' | 'member'} disabled={pending} options={assignableRoleOptions} onChange={(value) => void setRole(member, value)} ariaLabel={`Роль ${member.name}`} /> : <b>{roleLabels[member.role]}</b>}{removable && <button className="icon-button icon-button--danger" type="button" disabled={pending} onClick={() => void removeMember(member)} aria-label={`Видалити ${member.name}`}><Icon name="delete" size={17} /></button>}</article>;
           })}</div>
         </section>
 

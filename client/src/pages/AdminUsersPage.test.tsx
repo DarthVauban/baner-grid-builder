@@ -34,7 +34,8 @@ describe('AdminUserRow', () => {
     expect(screen.getByText('Очікує схвалення')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Доступи' }));
     expect(onAccess).toHaveBeenCalledWith(pendingUser);
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'editor');
+    await userEvent.click(screen.getByRole('button', { name: 'Роль користувача Ірина Коваль' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Редактор' }));
     expect(onRole).toHaveBeenCalledWith(pendingUser, 'editor');
     await userEvent.click(screen.getByRole('button', { name: 'Схвалити' }));
     expect(onStatus).toHaveBeenCalledWith(pendingUser, 'approved');
@@ -46,7 +47,7 @@ describe('AdminUserRow', () => {
     const self = { ...pendingUser, id: 'admin-1', role: 'admin' as const, status: 'approved' as const };
     render(<AdminUserRow user={self} currentUserId="admin-1" busy={false} canAdminister onAccess={vi.fn()} onDelete={vi.fn()} onRole={vi.fn()} onStatus={vi.fn()} />);
     expect(screen.getByText('Ви')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Роль користувача Ірина Коваль' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Відхилити' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Видалити/ })).not.toBeInTheDocument();
   });

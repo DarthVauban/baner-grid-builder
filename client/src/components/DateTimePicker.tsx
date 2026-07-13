@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { StyledSelect } from './StyledSelect';
 
 interface DateTimePickerProps {
   label: string;
@@ -12,6 +13,10 @@ interface DateTimePickerProps {
 
 const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
 const minuteOptions = ['00', '15', '30', '45'];
+const hourOptions = Array.from({ length: 24 }, (_, index) => {
+  const value = pad(index);
+  return { value, label: value };
+});
 
 function pad(value: number) {
   return String(value).padStart(2, '0');
@@ -49,6 +54,7 @@ export function DateTimePicker({ label, value, onChange, mode = 'datetime', requ
   const selectedDate = parsed.date;
   const [hour, minute] = parsed.time.split(':');
   const minutes = minuteOptions.includes(minute) ? minuteOptions : [...minuteOptions, minute].sort();
+  const minuteSelectOptions = minutes.map((item) => ({ value: item, label: item }));
 
   useEffect(() => setViewDate(parsed.date), [parsed.date.getFullYear(), parsed.date.getMonth()]);
 
@@ -88,7 +94,8 @@ export function DateTimePicker({ label, value, onChange, mode = 'datetime', requ
       <Icon name="calendar" size={18} />
       <strong>{display}</strong>
     </button>
-    {open && <div className="date-time-picker" role="dialog" aria-label={label}>
+    {open && <div className="modal-backdrop modal-backdrop--nested date-time-picker-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setOpen(false)}>
+      <section className="date-time-picker date-time-picker--modal" role="dialog" aria-modal="true" aria-label={label}>
       <header className="date-time-picker__header">
         <button type="button" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} aria-label="Попередній місяць"><Icon name="chevronLeft" size={18} /></button>
         <strong>{new Intl.DateTimeFormat('uk-UA', { month: 'long', year: 'numeric' }).format(viewDate)}</strong>
@@ -107,18 +114,15 @@ export function DateTimePicker({ label, value, onChange, mode = 'datetime', requ
       </div>
       {mode === 'datetime' && <div className="date-time-picker__time">
         <span>Час</span>
-        <select value={hour} onChange={(event) => setTime(event.target.value, minute)} aria-label="Година">
-          {Array.from({ length: 24 }, (_, index) => <option value={pad(index)} key={index}>{pad(index)}</option>)}
-        </select>
+        <StyledSelect compact value={hour} options={hourOptions} onChange={(nextHour) => setTime(nextHour, minute)} ariaLabel="Година" />
         <b>:</b>
-        <select value={minute} onChange={(event) => setTime(hour, event.target.value)} aria-label="Хвилини">
-          {minutes.map((item) => <option value={item} key={item}>{item}</option>)}
-        </select>
+        <StyledSelect compact value={minute} options={minuteSelectOptions} onChange={(nextMinute) => setTime(hour, nextMinute)} ariaLabel="Хвилини" />
       </div>}
       <footer className="date-time-picker__footer">
         <button className="button button--secondary button--small" type="button" onClick={() => emit(new Date())}>Сьогодні</button>
         <button className="button button--primary button--small" type="button" onClick={() => setOpen(false)}>Готово</button>
       </footer>
+      </section>
     </div>}
   </div>;
 }

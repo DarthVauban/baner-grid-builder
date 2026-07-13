@@ -6,6 +6,7 @@ import { taskTypeLabels, toLocalDate, toLocalDateTime } from '../lib/task';
 import type { ReminderSettings, Task, TaskInput, TaskType, UserSearchResult } from '../types/task';
 import { DateTimePicker } from './DateTimePicker';
 import { Icon } from './Icon';
+import { StyledSelect } from './StyledSelect';
 
 interface TaskFormModalProps {
   task?: Task | null;
@@ -18,6 +19,24 @@ function defaultDate(hoursFromNow: number): string {
   date.setMinutes(Math.ceil(date.getMinutes() / 15) * 15, 0, 0);
   return toLocalDateTime(date);
 }
+
+const remindBeforeOptions = [
+  { value: 5, label: 'За 5 хвилин' },
+  { value: 15, label: 'За 15 хвилин' },
+  { value: 30, label: 'За 30 хвилин' },
+  { value: 60, label: 'За 1 годину' },
+  { value: 180, label: 'За 3 години' },
+  { value: 1440, label: 'За 1 день' },
+  { value: 10080, label: 'За 1 тиждень' }
+];
+
+const repeatOptions = [
+  { value: '' as const, label: 'Не повторювати' },
+  { value: 15, label: 'Кожні 15 хвилин' },
+  { value: 30, label: 'Кожні 30 хвилин' },
+  { value: 60, label: 'Щогодини' },
+  { value: 1440, label: 'Щодня' }
+];
 
 export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
   const [type, setType] = useState<TaskType>(task?.type || 'general');
@@ -101,12 +120,10 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
         <form className="task-form" onSubmit={handleSubmit}>
           {error && <div className="form-message form-message--error task-form__wide" role="alert">{error}</div>}
 
-          <label className="field">
+          <div className="field">
             <span>Тип</span>
-            <select value={type} onChange={(event) => setType(event.target.value as TaskType)}>
-              {Object.entries(taskTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
+            <StyledSelect value={type} options={Object.entries(taskTypeLabels).map(([value, label]) => ({ value: value as TaskType, label }))} onChange={setType} ariaLabel="Тип справи" />
+          </div>
           <label className="field">
             <span>Назва</span>
             <input name="title" defaultValue={task?.title || ''} maxLength={160} placeholder="Що потрібно зробити?" required autoFocus />
@@ -180,28 +197,14 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
             </label>
             {reminderEnabled && (
               <div className="reminder-grid">
-                <label className="field">
+                <div className="field">
                   <span>Перше нагадування</span>
-                  <select value={remindBefore} onChange={(event) => setRemindBefore(Number(event.target.value))}>
-                    <option value={5}>За 5 хвилин</option>
-                    <option value={15}>За 15 хвилин</option>
-                    <option value={30}>За 30 хвилин</option>
-                    <option value={60}>За 1 годину</option>
-                    <option value={180}>За 3 години</option>
-                    <option value={1440}>За 1 день</option>
-                    <option value={10080}>За 1 тиждень</option>
-                  </select>
-                </label>
-                <label className="field">
+                  <StyledSelect value={remindBefore} options={remindBeforeOptions} onChange={setRemindBefore} ariaLabel="Перше нагадування" />
+                </div>
+                <div className="field">
                   <span>Повторювати до дедлайну</span>
-                  <select value={repeatEvery ?? ''} onChange={(event) => setRepeatEvery(event.target.value ? Number(event.target.value) : null)}>
-                    <option value="">Не повторювати</option>
-                    <option value={15}>Кожні 15 хвилин</option>
-                    <option value={30}>Кожні 30 хвилин</option>
-                    <option value={60}>Щогодини</option>
-                    <option value={1440}>Щодня</option>
-                  </select>
-                </label>
+                  <StyledSelect value={repeatEvery ?? ''} options={repeatOptions} onChange={(value) => setRepeatEvery(value === '' ? null : Number(value))} ariaLabel="Повторення нагадування" />
+                </div>
               </div>
             )}
           </section>

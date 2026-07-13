@@ -36,7 +36,7 @@ export const tools: ToolDefinition[] = [
     name: 'Конструктор форм',
     description: 'Форми, банки, поля, дизайн pop-up і скрипти кнопок для Хорошоп.',
     path: '/tools/forms',
-    icon: 'integrations'
+    icon: 'formBuilder'
   },
   {
     id: 'banner_grid',

@@ -6,6 +6,7 @@ import type { BlogPublication, PublicationInput, PublicationMaterial, Publicatio
 import { DateTimePicker } from './DateTimePicker';
 import { Icon } from './Icon';
 import { PublicationAssigneePicker } from './PublicationAssigneePicker';
+import { StyledSelect } from './StyledSelect';
 
 function defaultPublishAt() {
   const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -73,7 +74,7 @@ export function PublicationFormModal({ publication, onClose, onSubmit }: {
             <div className="publication-materials__add"><textarea value={materialInput} onChange={(event) => setMaterialInput(event.target.value)} rows={2} placeholder="Вставте одне або декілька HTTPS-посилань" /><button className="button button--secondary" type="button" onClick={addMaterials}><Icon name="add" size={17} /> Додати</button></div>
             {materials.length > 0 && <div className="publication-materials__list">{materials.map((material, index) => (
               <article key={`${material.url}-${index}`}>
-                <select value={material.type} onChange={(event) => setMaterials((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value as PublicationMaterialType } : item))}>{Object.entries(materialTypeLabels).map(([type, label]) => <option value={type} key={type}>{label}</option>)}</select>
+                <StyledSelect compact value={material.type} options={Object.entries(materialTypeLabels).map(([type, label]) => ({ value: type as PublicationMaterialType, label }))} onChange={(value) => setMaterials((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, type: value } : item))} ariaLabel="Тип матеріалу" />
                 <input value={material.label} maxLength={160} onChange={(event) => setMaterials((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} aria-label="Назва матеріалу" />
                 <a href={material.url} target="_blank" rel="noreferrer" title={material.url}><Icon name="openInNew" size={16} /></a>
                 <button type="button" onClick={() => setMaterials((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label="Видалити матеріал"><Icon name="delete" size={16} /></button>

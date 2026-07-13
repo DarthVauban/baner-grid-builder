@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { roleLabels } from '../lib/user';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { UserAvatar } from '../components/UserAvatar';
 import { UserToolAccessModal } from '../components/UserToolAccessModal';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
@@ -19,6 +20,25 @@ const statusLabels: Record<UserStatus, string> = {
   approved: 'Активний',
   rejected: 'Відхилений'
 };
+
+const roleOptions = [
+  { value: 'admin' as UserRole, label: 'Адміністратор' },
+  { value: 'editor' as UserRole, label: 'Редактор' },
+  { value: 'content_manager' as UserRole, label: 'Контент-менеджер' },
+  { value: 'manager' as UserRole, label: 'Менеджер' }
+];
+
+const statusFilterOptions = [
+  { value: '' as UserStatus | '', label: 'Усі статуси' },
+  { value: 'pending' as UserStatus, label: 'Очікують' },
+  { value: 'approved' as UserStatus, label: 'Активні' },
+  { value: 'rejected' as UserStatus, label: 'Відхилені' }
+];
+
+const roleFilterOptions = [
+  { value: '' as UserRole | '', label: 'Усі ролі' },
+  ...roleOptions
+];
 
 export function AdminUserRow({
   user,
@@ -57,9 +77,7 @@ export function AdminUserRow({
         {!canAdminister || isSelf ? (
           <span className="admin-role-static">{roleLabels[user.role]}</span>
         ) : (
-          <label className="admin-role-select"><span className="visually-hidden">Роль користувача {user.name}</span><select value={user.role} disabled={busy} onChange={(event) => onRole(user, event.target.value as UserRole)}>
-            <option value="admin">Адміністратор</option><option value="editor">Редактор</option><option value="content_manager">Контент-менеджер</option><option value="manager">Менеджер</option>
-          </select></label>
+          <div className="admin-role-select"><span className="visually-hidden">Роль користувача {user.name}</span><StyledSelect compact value={user.role} disabled={busy} options={roleOptions} onChange={(value) => onRole(user, value)} ariaLabel={`Роль користувача ${user.name}`} /></div>
         )}
         {canAdminister && user.status !== 'approved' && <button className="button button--primary button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'approved')}>Схвалити</button>}
         {canAdminister && !isSelf && user.status !== 'rejected' && <button className="button button--danger button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'rejected')}>Відхилити</button>}
@@ -188,8 +206,8 @@ export function AdminUsersPage() {
         <header className="admin-section__header"><div><p className="eyebrow">Облікові записи</p><h2>Каталог користувачів</h2></div><span>{directory.data ? `${directory.data.total} у вибірці` : 'Завантаження…'}</span></header>
         <div className="admin-filters">
           <label className="task-search admin-filters__search"><Icon name="search" size={18} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Ім’я або email" aria-label="Пошук користувачів" /></label>
-          <label className="admin-filter"><span>Статус</span><select value={status} onChange={(event) => { setStatus(event.target.value as UserStatus | ''); setPage(1); }}><option value="">Усі статуси</option><option value="pending">Очікують</option><option value="approved">Активні</option><option value="rejected">Відхилені</option></select></label>
-          <label className="admin-filter"><span>Роль</span><select value={role} onChange={(event) => { setRole(event.target.value as UserRole | ''); setPage(1); }}><option value="">Усі ролі</option><option value="admin">Адміністратор</option><option value="editor">Редактор</option><option value="content_manager">Контент-менеджер</option><option value="manager">Менеджер</option></select></label>
+          <label className="admin-filter"><span>Статус</span><StyledSelect compact value={status} options={statusFilterOptions} onChange={(value) => { setStatus(value); setPage(1); }} ariaLabel="Фільтр за статусом" /></label>
+          <label className="admin-filter"><span>Роль</span><StyledSelect compact value={role} options={roleFilterOptions} onChange={(value) => { setRole(value); setPage(1); }} ariaLabel="Фільтр за роллю" /></label>
         </div>
 
         <div className="admin-users-list">

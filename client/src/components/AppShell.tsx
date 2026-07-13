@@ -172,7 +172,6 @@ export function AppShell() {
           <NavLink aria-label="Справи" title="Справи" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tasks" onClick={closeSidebar}>
             <Icon name="tasks" />
             <span>Справи</span>
-            <span className="sidebar__new">Новий</span>
           </NavLink>
           {hasChatAccess && <NavLink aria-label="Чат" title="Чат" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/chat" onClick={closeSidebar}>
             <Icon name="chat" />
