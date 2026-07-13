@@ -125,7 +125,16 @@ test('form builder and applications list have separate access and process public
     buttonText: form.body.data.buttonText,
     successMessage: form.body.data.successMessage,
     settings: form.body.data.settings,
-    styles: { accentColor: '#172033', buttonBackgroundColor: '#172033', buttonTextColor: '#ffffff', borderRadius: '14px' },
+    styles: {
+      accentColor: '#172033',
+      buttonBackgroundColor: '#172033',
+      buttonTextColor: '#ffffff',
+      borderRadius: '14px',
+      numberBlockBackgroundColor: '#f6f4ff',
+      numberBlockBorderColor: '#d8d4ff',
+      numberBlockTextColor: '#172033',
+      numberBlockRadius: '18px'
+    },
     fields: [
       ...form.body.data.fields,
       {
@@ -157,7 +166,7 @@ test('form builder and applications list have separate access and process public
     selector: '.product__buy',
     insertPosition: 'after',
     text: 'Buy in credit',
-    styles: { backgroundColor: '#172033', color: '#ffffff' },
+    styles: { backgroundColor: '#172033', color: '#ffffff', fontWeight: '800' },
     cssClass: '',
     fullWidth: true,
     active: true,
@@ -177,6 +186,7 @@ test('form builder and applications list have separate access and process public
   assert.match(script.body.data.script, /gallery__photos-list/);
   assert.match(script.body.data.script, /img\[src\*='\/content\/images\/'\]/);
   assert.match(script.body.data.script, /data-href/);
+  assert.match(script.body.data.script, /fontWeight/);
 
   const published = await builder.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);
   assert.equal(published.body.data.status, 'published');
@@ -188,6 +198,8 @@ test('form builder and applications list have separate access and process public
   assert.match(loader.text, /\.mtf-submit\{width:100%/);
   assert.match(loader.text, /cursor:pointer/);
   assert.match(loader.text, /mtf-number/);
+  assert.match(loader.text, /--mtf-number-bg/);
+  assert.match(loader.text, /text-wrap:balance/);
 
   const preflight = await request(app)
     .options(`/api/public/application-forms/${form.body.data.publicId}/applications`)
@@ -199,6 +211,7 @@ test('form builder and applications list have separate access and process public
 
   const publicForm = await request(app).get(`/api/public/application-forms/${form.body.data.publicId}`).expect(200);
   assert.equal(publicForm.body.data.fields.find((field) => field.systemFieldType === 'bank').options[0].value, 'mono');
+  assert.equal(publicForm.body.data.styles.numberBlockRadius, '18px');
 
   const submitted = await request(app).post(`/api/public/application-forms/${form.body.data.publicId}/applications`).send({
     values: {

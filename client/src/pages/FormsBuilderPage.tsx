@@ -97,6 +97,7 @@ export function FormsBuilderPage() {
   const [buttonDraft, setButtonDraft] = useState<ApplicationButtonInput | null>(null);
   const [editingButtonId, setEditingButtonId] = useState<string | null>(null);
   const [script, setScript] = useState('');
+  const [activeTab, setActiveTab] = useState<'form' | 'button'>('form');
   const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
   const banks = useQuery({ queryKey: ['form-banks'], queryFn: api.forms.banks });
   const buttons = useQuery({ queryKey: ['form-buttons'], queryFn: api.forms.buttons });
@@ -126,7 +127,7 @@ export function FormsBuilderPage() {
       selector: '.product-order__row',
       insertPosition: 'end',
       text: selectedForm.buttonText,
-      styles: { backgroundColor: '#6d5dfc', color: '#ffffff', borderRadius: '12px', padding: '12px 18px' },
+      styles: { backgroundColor: '#6d5dfc', color: '#ffffff', borderRadius: '12px', padding: '12px 18px', fontWeight: '700' },
       cssClass: '',
       fullWidth: false,
       active: true,
@@ -169,6 +170,7 @@ export function FormsBuilderPage() {
     try {
       const form = await createForm.mutateAsync(emptyForm);
       setSelectedId(form.id);
+      setActiveTab('form');
       showToast('Форму створено.');
       await refresh();
     } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося створити форму.', 'error'); }
@@ -248,6 +250,7 @@ export function FormsBuilderPage() {
 
   function editButton(button: ApplicationButtonConfig) {
     setEditingButtonId(button.id);
+    setActiveTab('button');
     setButtonDraft({
       name: button.name,
       formId: button.formId,
@@ -356,8 +359,19 @@ export function FormsBuilderPage() {
 
       <div className="forms-editor">
         {!selectedForm || !draft ? <div className="task-list-state"><span className="task-list-state__icon"><Icon name="integrations" size={28} /></span><h2>Оберіть або створіть форму</h2></div> : <>
+          <section className="tool-panel forms-editor-tabs">
+            <header className="tool-panel__header">
+              <div><p className="eyebrow">Поточна форма</p><h2>{selectedForm.name}</h2></div>
+              <span>{statusText(selectedForm.status)}</span>
+            </header>
+            <div className="segmented" role="tablist" aria-label="Розділи конструктора">
+              <button className={activeTab === 'form' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'form'} onClick={() => setActiveTab('form')}>Редактор форми</button>
+              <button className={activeTab === 'button' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'button'} onClick={() => setActiveTab('button')}>Редактор кнопки</button>
+            </div>
+          </section>
+          {activeTab === 'form' ? <>
           <section className="tool-panel">
-            <header className="tool-panel__header"><div><p className="eyebrow">Форма</p><h2>{selectedForm.name}</h2></div><span>{statusText(selectedForm.status)}</span></header>
+            <header className="tool-panel__header"><div><p className="eyebrow">Форма</p><h2>Основні налаштування</h2></div></header>
             <div className="form-builder-grid">
               <label className="field"><span>Назва в адмінці</span><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} maxLength={160} /></label>
               <label className="field"><span>Заголовок pop-up</span><input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} maxLength={220} /></label>
@@ -368,6 +382,11 @@ export function FormsBuilderPage() {
               <label className="field"><span>Колір кнопки</span><input type="color" value={draftStyle('buttonBackgroundColor', '#6d5dfc')} onChange={(event) => updateDraftStyle('buttonBackgroundColor', event.target.value)} /></label>
               <label className="field"><span>Колір тексту кнопки</span><input type="color" value={draftStyle('buttonTextColor', '#ffffff')} onChange={(event) => updateDraftStyle('buttonTextColor', event.target.value)} /></label>
               <label className="field"><span>Заокруглення</span><input value={draftStyle('borderRadius', '12px')} onChange={(event) => updateDraftStyle('borderRadius', event.target.value)} placeholder="12px" /></label>
+              <div className="form-builder-section-title">Блок номера заявки</div>
+              <label className="field"><span>Фон блоку</span><input type="color" value={draftStyle('numberBlockBackgroundColor', '#f6f4ff')} onChange={(event) => updateDraftStyle('numberBlockBackgroundColor', event.target.value)} /></label>
+              <label className="field"><span>Рамка блоку</span><input type="color" value={draftStyle('numberBlockBorderColor', '#d8d4ff')} onChange={(event) => updateDraftStyle('numberBlockBorderColor', event.target.value)} /></label>
+              <label className="field"><span>Колір номера</span><input type="color" value={draftStyle('numberBlockTextColor', '#172033')} onChange={(event) => updateDraftStyle('numberBlockTextColor', event.target.value)} /></label>
+              <label className="field"><span>Заокруглення номера</span><input value={draftStyle('numberBlockRadius', '16px')} onChange={(event) => updateDraftStyle('numberBlockRadius', event.target.value)} placeholder="16px" /></label>
             </div>
             <footer className="form-builder-actions">
               <button className="button button--primary" type="button" disabled={busy} onClick={() => void saveForm()}><Icon name="save" size={17} /> Зберегти</button>
@@ -412,16 +431,25 @@ export function FormsBuilderPage() {
                 '--form-preview-accent': draftStyle('accentColor', '#6d5dfc'),
                 '--form-preview-button-bg': draftStyle('buttonBackgroundColor', '#6d5dfc'),
                 '--form-preview-button-color': draftStyle('buttonTextColor', '#ffffff'),
-                '--form-preview-radius': draftStyle('borderRadius', '12px')
+                '--form-preview-radius': draftStyle('borderRadius', '12px'),
+                '--form-preview-number-bg': draftStyle('numberBlockBackgroundColor', '#f6f4ff'),
+                '--form-preview-number-border': draftStyle('numberBlockBorderColor', '#d8d4ff'),
+                '--form-preview-number-color': draftStyle('numberBlockTextColor', '#172033'),
+                '--form-preview-number-radius': draftStyle('numberBlockRadius', '16px')
               } as CSSProperties}>
                 <h3>{draft.title}</h3>
                 {draft.description && <p>{draft.description}</p>}
                 {fields.filter((field) => field.active).map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>{field.type === 'textarea' ? <textarea rows={2} placeholder={field.placeholder} /> : field.type === 'select' ? <select><option>Оберіть</option></select> : field.type === 'radio' ? <div className="form-preview__choices">{(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => <small key={option.value}><input type="radio" name={`preview-${field.key}`} /> {option.label}</small>)}</div> : field.type === 'checkbox' ? <small className="form-preview__checkbox"><input type="checkbox" /> {field.placeholder || 'Так'}</small> : <input placeholder={field.placeholder} />}</label>)}
                 <button type="button">{draft.buttonText}</button>
+                <div className="form-preview__success">
+                  <strong>{draft.successMessage}</strong>
+                  <span><small>Номер заявки</small><b>00007</b></span>
+                </div>
               </div>
             </div>
           </section>
 
+          </> : <>
           <section className="tool-panel">
             <header className="tool-panel__header"><div><p className="eyebrow">Кнопки</p><h2>Скрипти для Хорошоп</h2></div></header>
             <div className="button-config-layout">
@@ -441,6 +469,7 @@ export function FormsBuilderPage() {
                 <div className="button-style-grid">
                   <label className="field"><span>Фон</span><input type="color" value={buttonStyle('backgroundColor', '#6d5dfc')} onChange={(event) => updateButtonStyle('backgroundColor', event.target.value)} /></label>
                   <label className="field"><span>Текст</span><input type="color" value={buttonStyle('color', '#ffffff')} onChange={(event) => updateButtonStyle('color', event.target.value)} /></label>
+                  <label className="field"><span>Жирність шрифту</span><select value={buttonStyle('fontWeight', '700')} onChange={(event) => updateButtonStyle('fontWeight', event.target.value)}><option value="400">Звичайний</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra bold</option></select></label>
                   <label className="field"><span>Заокруглення</span><input value={buttonStyle('borderRadius', '12px')} onChange={(event) => updateButtonStyle('borderRadius', event.target.value)} /></label>
                   <label className="field"><span>Відступи</span><input value={buttonStyle('padding', '12px 18px')} onChange={(event) => updateButtonStyle('padding', event.target.value)} /></label>
                 </div>
@@ -462,6 +491,7 @@ export function FormsBuilderPage() {
               <textarea value={script} readOnly rows={10} />
             </section>}
           </section>
+        </>}
         </>}
       </div>
     </section>

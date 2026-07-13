@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { applicationStatusLabels, customerName, formatApplicationDate } from '../lib/application';
+import { copyToClipboard } from '../lib/banner-generator';
+import { useToast } from '../toast/ToastContext';
 import type { ApplicationRecord, ApplicationStatus } from '../types/application';
 import { Icon } from './Icon';
 
@@ -31,7 +33,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteCode, setDeleteCode] = useState('');
   const [deleteError, setDeleteError] = useState('');
-  const [copiedProductField, setCopiedProductField] = useState<'title' | 'code' | ''>('');
+  const { showToast } = useToast();
 
   useEffect(() => setStatus(application.status), [application.status]);
   useEffect(() => {
@@ -49,25 +51,15 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
   const productCode = application.product?.productCode || '';
   const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
 
-  async function copyProductText(field: 'title' | 'code', value: string) {
+  async function copyProductText(label: string, value: string) {
     const text = value.trim();
     if (!text) return;
     try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
-      else throw new Error('Clipboard API is not available.');
+      await copyToClipboard(text);
+      showToast(`${label} скопійовано.`);
     } catch {
-      const input = document.createElement('textarea');
-      input.value = text;
-      input.setAttribute('readonly', 'true');
-      input.style.position = 'fixed';
-      input.style.left = '-9999px';
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      document.body.removeChild(input);
+      showToast(`Не вдалося скопіювати ${label.toLowerCase()}.`, 'error');
     }
-    setCopiedProductField(field);
-    window.setTimeout(() => setCopiedProductField((current) => current === field ? '' : current), 1500);
   }
 
   async function confirmDelete() {
@@ -101,7 +93,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
             </div>
             <div className="application-product-preview__title">
               <h3>{productTitle}</h3>
-              <button className="icon-button application-product-preview__copy" type="button" onClick={() => void copyProductText('title', productTitle)} aria-label="Скопіювати назву товару" title={copiedProductField === 'title' ? 'Назву скопійовано' : 'Скопіювати назву товару'}><Icon name="copy" size={15} /></button>
+              <button className="icon-button application-product-preview__copy" type="button" onClick={() => void copyProductText('Назву товару', productTitle)} aria-label="Скопіювати назву товару" title="Скопіювати назву товару"><Icon name="copy" size={15} /></button>
             </div>
             <dl>
               {application.product?.price && <><dt>Ціна</dt><dd>{application.product.price} {application.product.currency}</dd></>}
@@ -113,7 +105,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
             </dl>
             {(sourceUrl || productCode) && <div className="application-product-preview__actions">
               {sourceUrl && <a className="button button--secondary button--small" href={sourceUrl} target="_blank" rel="noreferrer">Перейти до товару <Icon name="openInNew" size={14} /></a>}
-              {productCode && <button className="button button--secondary button--small" type="button" onClick={() => void copyProductText('code', productCode)}><Icon name="copy" size={14} /> {copiedProductField === 'code' ? 'Код скопійовано' : 'Скопіювати код товару'}</button>}
+              {productCode && <button className="button button--secondary button--small" type="button" onClick={() => void copyProductText('Код товару', productCode)}><Icon name="copy" size={14} /> Скопіювати код товару</button>}
             </div>}
           </div>
         </section>

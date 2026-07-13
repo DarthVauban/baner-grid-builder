@@ -758,8 +758,8 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .application-details-modal { width: min(100%, 920px); }
 .application-details-modal__content { display: grid; gap: 20px; padding: 24px 28px; }
 .application-details-modal__badges { display: flex; flex-wrap: wrap; gap: 7px; }
-.application-product-preview { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 18px; border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: var(--surface-soft); }
-.application-product-preview > img, .application-product-preview > span { width: 100%; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 13px; color: var(--brand); background: var(--surface); object-fit: contain; }
+.application-product-preview { display: grid; grid-template-columns: 190px minmax(0,1fr); align-items: stretch; gap: 18px; border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: var(--surface-soft); }
+.application-product-preview > img, .application-product-preview > span { width: 100%; height: 100%; min-height: 144px; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 13px; color: var(--brand); background: var(--surface); object-fit: contain; }
 .application-product-preview__title { display: flex; align-items: flex-start; gap: 8px; }
 .application-product-preview__title h3 { min-width: 0; margin: 10px 0 12px; font-size: 19px; line-height: 1.3; letter-spacing: 0; }
 .application-product-preview__copy { flex: 0 0 30px; width: 30px; height: 30px; margin-top: 7px; }
@@ -803,9 +803,12 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .forms-list__item strong { font-size: 12px; }
 .forms-list__item small { color: var(--muted); font-size: 9px; }
 .forms-editor { min-width: 0; display: grid; gap: 18px; }
-.forms-editor > * + * { margin-top: 18px; }
+.forms-editor-tabs { display: grid; gap: 14px; }
+.forms-editor-tabs .tool-panel__header { margin-bottom: 0; }
+.forms-editor-tabs .segmented { width: fit-content; }
 .form-builder-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
 .form-builder-grid__wide { grid-column: 1 / -1; }
+.form-builder-section-title { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 14px; color: var(--ink); font-size: 12px; font-weight: 850; }
 .form-builder-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .form-fields-list { display: grid; gap: 12px; }
 .form-field-card { display: grid; gap: 13px; border: 1px solid var(--line); border-radius: 15px; padding: 14px; background: var(--surface-soft); }
@@ -831,6 +834,11 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .form-preview__choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .form-preview__choices small, .form-preview__checkbox { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
 .form-preview button { min-height: 42px; border: 0; border-radius: var(--form-preview-radius, 12px); color: var(--form-preview-button-color, #fff); background: var(--form-preview-button-bg, var(--brand)); font-weight: 850; }
+.form-preview__success { display: grid; justify-items: center; gap: 10px; border-top: 1px dashed var(--line); padding-top: 14px; text-align: center; }
+.form-preview__success strong { max-width: 330px; color: var(--ink); font-size: 15px; line-height: 1.3; text-wrap: balance; }
+.form-preview__success span { width: min(100%, 230px); display: grid; justify-items: center; gap: 5px; border: 1px solid var(--form-preview-number-border, #d8d4ff); border-radius: var(--form-preview-number-radius, 16px); padding: 12px 15px; color: var(--form-preview-number-color, #172033); background: var(--form-preview-number-bg, #f6f4ff); }
+.form-preview__success small { color: color-mix(in srgb, var(--form-preview-number-color, #172033) 58%, transparent); font-size: 10px; font-weight: 850; text-transform: uppercase; }
+.form-preview__success b { color: var(--form-preview-number-color, #172033); font-size: 25px; letter-spacing: .06em; }
 .button-config-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(260px,.75fr); align-items: start; gap: 18px; }
 .button-config-list { align-content: start; }
 .button-config-list article { grid-template-columns: minmax(0,1fr) auto auto 34px; align-self: start; }
