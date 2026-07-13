@@ -751,6 +751,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .application-status--closed { color: #08704d; background: #e3f7ee; }
 .application-row__product { display: flex; align-items: center; gap: 8px; }
 .application-row__product img { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px; object-fit: cover; background: #eef1f5; }
+.application-row__product > svg { flex: 0 0 auto; color: var(--brand); }
 .application-row__product b { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .application-pagination { display: flex; align-items: center; justify-content: space-between; gap: 15px; border-top: 1px solid var(--line); padding: 13px 16px; color: var(--muted); background: var(--surface-soft); font-size: 11px; font-weight: 750; }
 .application-pagination > div { display: flex; align-items: center; gap: 10px; }
@@ -777,9 +778,16 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .application-source-grid a { color: var(--brand-dark); text-decoration: none; }
 .application-utm-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .application-utm-list span { border-radius: 999px; padding: 5px 8px; color: var(--brand-dark); background: var(--brand-soft); font-size: 9px; font-weight: 800; }
-.application-status-editor > div, .application-comment-form { display: grid; grid-template-columns: 180px minmax(0,1fr) auto; align-items: end; gap: 10px; }
-.application-comment-form input { height: 44px; border: 1px solid #d8dee8; border-radius: 12px; padding: 0 13px; color: var(--ink); background: var(--surface); outline: 0; }
-.application-comment-form input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.application-status-editor > div { display: grid; grid-template-columns: 180px minmax(0,1fr) auto; align-items: end; gap: 10px; }
+.application-comment-form { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.application-comment-form textarea { min-height: 84px; border: 1px solid #d8dee8; border-radius: 12px; padding: 12px 13px; color: var(--ink); background: var(--surface); resize: vertical; outline: 0; }
+.application-comment-form textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.application-comment-form .button { width: 100%; justify-content: center; }
+.modal-backdrop--nested { z-index: 120; }
+.application-delete-modal { width: min(100%, 460px); }
+.application-delete-modal__content { display: grid; gap: 14px; padding: 22px 26px; }
+.application-delete-modal__content .form-message { margin: 0; }
+.application-delete-modal__footer { padding: 0 26px 24px; }
 
 .forms-workspace { display: grid; grid-template-columns: minmax(240px,300px) minmax(0,1fr); align-items: start; gap: 18px; }
 .forms-list { position: sticky; top: 86px; display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 18px; padding: 13px; background: var(--surface); }
@@ -1394,7 +1402,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 :root[data-theme="brand"] .form-preview select,
 :root[data-theme="brand"] .form-preview textarea,
 :root[data-theme="brand"] .bank-editor__new input,
-:root[data-theme="brand"] .application-comment-form input { border-color: var(--line); background: var(--surface); }
+:root[data-theme="brand"] .application-comment-form textarea { border-color: var(--line); background: var(--surface); }
 :root[data-theme="brand"] .application-table__head,
 :root[data-theme="brand"] .application-pagination,
 :root[data-theme="brand"] .application-row:hover,

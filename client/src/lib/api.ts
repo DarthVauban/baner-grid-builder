@@ -257,6 +257,11 @@ export const api = {
       request<ApplicationRecord>(`/api/applications/${encodeURIComponent(id)}/comments`, {
         method: 'POST',
         body: jsonBody({ text, expectedVersion })
+      }),
+    remove: (id: string, code: string) =>
+      request<void>(`/api/applications/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        body: jsonBody({ code })
       })
   },
   forms: {

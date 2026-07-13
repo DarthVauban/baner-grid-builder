@@ -6,6 +6,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
+import { isPrimaryAdmin, verifyUserTwoFactor } from '../auth/two-factor.service.js';
 import { publishChatUpdates } from '../chat/chat.events.js';
 import { createNotification } from '../notifications/notification.service.js';
 import { publishNotificationUpdates } from '../notifications/notification.events.js';
@@ -36,6 +37,9 @@ const statusSchema = z.object({
 const commentSchema = z.object({
   text: z.string().trim().min(1).max(3000),
   expectedVersion: z.number().int().min(1).optional()
+});
+const deleteSchema = z.object({
+  code: z.string().trim().min(6).max(20)
 });
 
 const sortSql = {
@@ -134,6 +138,50 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const application = await loadApplicationView(id, req.user);
   if (!application) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
   res.json({ data: application });
+}));
+
+router.delete('/:id', asyncHandler(async (req, res) => {
+  if (!isPrimaryAdmin(req.user)) {
+    throw new AppError(403, 'PRIMARY_ADMIN_REQUIRED', 'Лише головний адміністратор може видаляти заявки.');
+  }
+
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(deleteSchema, req.body);
+  const exists = await query('SELECT id FROM applications WHERE id = $1', [id]);
+  if (!exists.rows[0]) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
+
+  await verifyUserTwoFactor(req.user.id, input.code);
+
+  const client = await pool.connect();
+  let recipients = [];
+  let applicationNumber = '';
+  try {
+    await client.query('BEGIN');
+    const currentResult = await client.query(
+      'SELECT id, application_number FROM applications WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    const current = currentResult.rows[0];
+    if (!current) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
+    applicationNumber = current.application_number;
+    recipients = await getApplicationRecipientIds(client);
+    await client.query('DELETE FROM applications WHERE id = $1', [id]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  publishApplicationUpdates(recipients, {
+    type: 'deleted',
+    applicationId: id,
+    number: applicationNumber
+  });
+  publishNotificationUpdates(recipients);
+  publishChatUpdates(recipients, { type: 'entity', entityType: 'application', entityId: id, senderId: req.user.id });
+  res.status(204).end();
 }));
 
 router.patch('/:id/status', asyncHandler(async (req, res) => {

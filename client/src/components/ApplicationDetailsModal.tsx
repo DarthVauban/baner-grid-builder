@@ -10,23 +10,54 @@ interface Props {
   onShare: (application: ApplicationRecord) => void;
   onStatus: (application: ApplicationRecord, status: ApplicationStatus, comment: string) => void;
   onComment: (application: ApplicationRecord, text: string) => void;
+  canDelete?: boolean;
+  deleteBusy?: boolean;
+  onDelete?: (application: ApplicationRecord, code: string) => Promise<void> | void;
 }
 
-export function ApplicationDetailsModal({ application, busy, onClose, onShare, onStatus, onComment }: Props) {
+function ProductImagePreview({ src }: { src?: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => setFailed(false), [src]);
+
+  if (!src || failed) return <span><Icon name="productSelection" size={30} /></span>;
+  return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
+}
+
+export function ApplicationDetailsModal({ application, busy, onClose, onShare, onStatus, onComment, canDelete = false, deleteBusy = false, onDelete }: Props) {
   const [status, setStatus] = useState<ApplicationStatus>(application.status);
   const [statusComment, setStatusComment] = useState('');
   const [comment, setComment] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteCode, setDeleteCode] = useState('');
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => setStatus(application.status), [application.status]);
   useEffect(() => {
-    const close = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (deleteOpen) setDeleteOpen(false);
+      else onClose();
+    };
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
-  }, [onClose]);
+  }, [deleteOpen, onClose]);
 
   const productTitle = application.product?.title || application.pageTitle || 'Товар не визначено';
   const sourceUrl = application.product?.url || application.sourceUrl;
   const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
+
+  async function confirmDelete() {
+    if (!onDelete || !deleteCode.trim()) return;
+    setDeleteError('');
+    try {
+      await onDelete(application, deleteCode.trim());
+      setDeleteCode('');
+      setDeleteOpen(false);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Не вдалося видалити заявку.');
+    }
+  }
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <section className="modal application-details-modal" role="dialog" aria-modal="true" aria-labelledby="application-details-title">
@@ -40,7 +71,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
 
       <div className="application-details-modal__content">
         <section className="application-product-preview">
-          {application.product?.imageUrl ? <img src={application.product.imageUrl} alt="" loading="lazy" /> : <span><Icon name="productSelection" size={30} /></span>}
+          <ProductImagePreview src={application.product?.imageUrl} />
           <div>
             <div className="application-details-modal__badges">
               <span className={`application-status application-status--${application.status}`}>{application.statusLabel}</span>
@@ -103,7 +134,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
             {!application.comments.length && <p className="task-details-section__muted">Коментарів поки немає.</p>}
           </div>
           <form className="application-comment-form" onSubmit={(event) => { event.preventDefault(); if (comment.trim()) { onComment(application, comment.trim()); setComment(''); } }}>
-            <input value={comment} onChange={(event) => setComment(event.target.value)} maxLength={3000} placeholder="Додати внутрішній коментар" />
+            <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={3000} placeholder="Додати внутрішній коментар" rows={3} />
             <button className="button button--secondary" type="submit" disabled={busy || !comment.trim()}>Додати</button>
           </form>
         </section>
@@ -117,9 +148,33 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
       </div>
 
       <footer className="task-details-modal__footer">
+        {canDelete && <button className="button button--danger" type="button" disabled={busy || deleteBusy} onClick={() => { setDeleteCode(''); setDeleteError(''); setDeleteOpen(true); }}><Icon name="delete" size={17} /> Видалити заявку</button>}
         <button className="button button--secondary" type="button" onClick={() => onShare(application)}><Icon name="share" size={17} /> Поділитися</button>
         <button className="button button--secondary" type="button" onClick={onClose}>Закрити</button>
       </footer>
     </section>
+    {deleteOpen && <div className="modal-backdrop modal-backdrop--nested" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setDeleteOpen(false)}>
+      <section className="modal application-delete-modal" role="dialog" aria-modal="true" aria-labelledby="application-delete-title">
+        <header className="modal__header">
+          <div>
+            <p className="eyebrow">Видалення заявки №{application.number}</p>
+            <h2 id="application-delete-title">Підтвердіть дію</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={() => setDeleteOpen(false)} aria-label="Закрити"><Icon name="close" size={20} /></button>
+        </header>
+        <div className="application-delete-modal__content">
+          <div className="form-message form-message--error" role="alert">Заявку буде повністю видалено із системи. Цю дію неможливо скасувати.</div>
+          {deleteError && <div className="form-message form-message--error" role="alert">{deleteError}</div>}
+          <label className="field">
+            <span>Код із застосунку аутентифікатора</span>
+            <input value={deleteCode} onChange={(event) => setDeleteCode(event.target.value.replace(/\s/g, '').slice(0, 20))} inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="6-значний код" />
+          </label>
+        </div>
+        <footer className="modal__footer application-delete-modal__footer">
+          <button className="button button--secondary" type="button" disabled={deleteBusy} onClick={() => setDeleteOpen(false)}>Скасувати</button>
+          <button className="button button--danger" type="button" disabled={deleteBusy || deleteCode.trim().length < 6} onClick={() => void confirmDelete()}><Icon name="delete" size={17} /> Видалити назавжди</button>
+        </footer>
+      </section>
+    </div>}
   </div>;
 }

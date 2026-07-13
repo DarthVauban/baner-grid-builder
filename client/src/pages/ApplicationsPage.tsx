@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import { ApplicationDetailsModal } from '../components/ApplicationDetailsModal';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
@@ -20,9 +21,19 @@ function countFor(status: string, counts?: { all: number; new: number; inProgres
   return 0;
 }
 
+function ApplicationProductThumb({ src }: { src?: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => setFailed(false), [src]);
+
+  if (!src || failed) return <Icon name="productSelection" size={18} />;
+  return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
+}
+
 export function ApplicationsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<ApplicationStatus | 'all'>('all');
   const [draftSearch, setDraftSearch] = useState('');
@@ -57,7 +68,10 @@ export function ApplicationsPage() {
   const addComment = useMutation({
     mutationFn: ({ id, text, version }: { id: string; text: string; version: number }) => api.applications.addComment(id, text, version)
   });
-  const busy = setStatus.isPending || addComment.isPending;
+  const removeApplication = useMutation({
+    mutationFn: ({ id, code }: { id: string; code: string }) => api.applications.remove(id, code)
+  });
+  const busy = setStatus.isPending || addComment.isPending || removeApplication.isPending;
 
   useEffect(() => {
     if (sharedApplication.data) setDetails(sharedApplication.data);
@@ -117,6 +131,18 @@ export function ApplicationsPage() {
       await refresh();
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося додати коментар.', 'error');
+    }
+  }
+
+  async function deleteApplication(application: ApplicationRecord, code: string) {
+    try {
+      await removeApplication.mutateAsync({ id: application.id, code });
+      showToast('Заявку видалено.');
+      closeDetails();
+      await refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити заявку.', 'error');
+      throw error;
     }
   }
 
@@ -185,7 +211,7 @@ export function ApplicationsPage() {
         <span>{application.customer.phone || '—'}</span>
         <span>{application.customer.bankLabel || '—'}</span>
         <span>{application.formName}</span>
-        <span className="application-row__product">{application.product?.imageUrl ? <img src={application.product.imageUrl} alt="" loading="lazy" /> : <Icon name="productSelection" size={18} />}<b>{application.product?.title || application.pageTitle || 'Товар не визначено'}</b></span>
+        <span className="application-row__product"><ApplicationProductThumb src={application.product?.imageUrl} /><b>{application.product?.title || application.pageTitle || 'Товар не визначено'}</b></span>
         <time>{formatApplicationDate(application.createdAt)}</time>
         <time>{formatApplicationDate(application.updatedAt)}</time>
         <button className="button button--secondary button--small" type="button" onClick={() => void openDetails(application)}>Відкрити</button>
@@ -196,6 +222,6 @@ export function ApplicationsPage() {
       </footer>
     </section>}
 
-    {details && <ApplicationDetailsModal application={details} busy={busy} onClose={closeDetails} onShare={(item) => void shareApplication(item)} onStatus={(item, nextStatus, comment) => void changeStatus(item, nextStatus, comment)} onComment={(item, text) => void createComment(item, text)} />}
+    {details && <ApplicationDetailsModal application={details} busy={busy} canDelete={user?.isPrimaryAdmin === true} deleteBusy={removeApplication.isPending} onClose={closeDetails} onShare={(item) => void shareApplication(item)} onStatus={(item, nextStatus, comment) => void changeStatus(item, nextStatus, comment)} onComment={(item, text) => void createComment(item, text)} onDelete={(item, code) => deleteApplication(item, code)} />}
   </div>;
 }

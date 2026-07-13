@@ -1,5 +1,6 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -20,6 +21,7 @@ const builder = request.agent(app);
 const manager = request.agent(app);
 let builderId;
 let managerId;
+let adminTotpSecret;
 
 async function registerAndVerify(input) {
   const registration = await request(app).post('/api/auth/register').send(input).expect(202);
@@ -31,10 +33,50 @@ async function registerAndVerify(input) {
   return verified.body.data;
 }
 
+const base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Decode(secret) {
+  const normalized = secret.replace(/\s+/g, '').replace(/=+$/g, '').toUpperCase();
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+
+  for (const char of normalized) {
+    const index = base32Alphabet.indexOf(char);
+    assert.notEqual(index, -1);
+    value = (value << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+
+  return Buffer.from(bytes);
+}
+
+function currentTotpCode(secret) {
+  const counter = Math.floor(Date.now() / 1000 / 30);
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  counterBuffer.writeUInt32BE(counter >>> 0, 4);
+  const digest = crypto.createHmac('sha1', base32Decode(secret)).update(counterBuffer).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary = ((digest[offset] & 0x7f) << 24)
+    | ((digest[offset + 1] & 0xff) << 16)
+    | ((digest[offset + 2] & 0xff) << 8)
+    | (digest[offset + 3] & 0xff);
+
+  return String(binary % 1_000_000).padStart(6, '0');
+}
+
 before(async () => {
   await runMigrations();
   await ensureBootstrapAdmin();
   await admin.post('/api/auth/login').send({ email: 'applications-admin@test.local', password: 'AdminPassword123!' }).expect(200);
+  const adminTwoFactorSetup = await admin.post('/api/users/profile/2fa/setup').expect(200);
+  adminTotpSecret = adminTwoFactorSetup.body.data.manualKey.replace(/\s+/g, '');
+  await admin.post('/api/users/profile/2fa/confirm').send({ code: currentTotpCode(adminTotpSecret) }).expect(200);
   const formBuilder = await registerAndVerify({ name: 'Form Builder', email: 'form-builder@test.local', password: 'BuilderPassword123!' });
   const applicationManager = await registerAndVerify({ name: 'Application Manager', email: 'application-manager@test.local', password: 'ManagerPassword123!' });
   builderId = formBuilder.id;
@@ -140,6 +182,7 @@ test('form builder and applications list have separate access and process public
   assert.match(loader.headers['access-control-allow-origin'] || '', /\*/);
   assert.match(loader.text, /\+380 \(__\) ___-__-__/);
   assert.match(loader.text, /\.mtf-submit\{width:100%/);
+  assert.match(loader.text, /cursor:pointer/);
 
   const preflight = await request(app)
     .options(`/api/public/application-forms/${form.body.data.publicId}/applications`)
@@ -165,7 +208,7 @@ test('form builder and applications list have separate access and process public
       price: '12999',
       currency: 'UAH',
       sku: 'SKU-1',
-      imageUrl: 'https://example.com/phone.jpg'
+      imageUrl: '/content/images/phone.webp'
     },
     context: {
       sourceUrl: 'https://shop.example.com/products/smartphone-x',
@@ -190,6 +233,7 @@ test('form builder and applications list have separate access and process public
   assert.equal(feed.body.data.items[0].number, '00001');
   assert.equal(feed.body.data.items[0].customer.bankLabel, 'Mono Bank');
   assert.equal(feed.body.data.items[0].product.title, 'Smartphone X');
+  assert.equal(feed.body.data.items[0].product.imageUrl, 'https://shop.example.com/content/images/phone.webp');
   assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'credit_term').optionLabel, '12 months');
 
   const applicationId = feed.body.data.items[0].id;
@@ -216,4 +260,16 @@ test('form builder and applications list have separate access and process public
 
   const notifications = await manager.get('/api/notifications').expect(200);
   assert.ok(notifications.body.data.items.some((item) => item.type === 'application_created' && item.applicationId === applicationId));
+
+  await manager.delete(`/api/applications/${applicationId}`).send({ code: '000000' }).expect(403)
+    .expect((response) => assert.equal(response.body.error.code, 'PRIMARY_ADMIN_REQUIRED'));
+
+  const wrongTotpCode = currentTotpCode(adminTotpSecret) === '000000' ? '000001' : '000000';
+  await admin.delete(`/api/applications/${applicationId}`).send({ code: wrongTotpCode }).expect(401)
+    .expect((response) => assert.equal(response.body.error.code, 'INVALID_TWO_FACTOR_CODE'));
+
+  await admin.delete(`/api/applications/${applicationId}`).send({ code: currentTotpCode(adminTotpSecret) }).expect(204);
+  await manager.get(`/api/applications/${applicationId}`).expect(404);
+  const feedAfterDelete = await manager.get('/api/applications?search=1').expect(200);
+  assert.equal(feedAfterDelete.body.data.total, 0);
 });

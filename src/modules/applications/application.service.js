@@ -37,6 +37,24 @@ export function cleanUrl(value, max = 4000) {
   }
 }
 
+function isLikelyImagePath(pathname) {
+  return /\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i.test(pathname || '');
+}
+
+export function cleanImageUrl(value, baseUrl = '', max = 4000) {
+  const text = cleanText(value, max);
+  if (!text) return '';
+  try {
+    const url = new URL(text, baseUrl || undefined);
+    if (!['http:', 'https:'].includes(url.protocol)) return '';
+    if (!isLikelyImagePath(`${url.pathname}${url.search}`)) return '';
+    if (url.protocol === 'http:') url.protocol = 'https:';
+    return url.toString().slice(0, max);
+  } catch {
+    return '';
+  }
+}
+
 export function cleanDomain(value, max = 255) {
   const text = cleanText(value, max);
   if (text) return text;
@@ -397,7 +415,7 @@ export function buildSafeProductSnapshot(product = {}, context = {}) {
   const snapshot = {
     title: cleanText(product.title || context.productTitle || context.pageTitle || '', 500),
     url: cleanUrl(product.url || sourceUrl),
-    imageUrl: cleanUrl(product.imageUrl || product.image || ''),
+    imageUrl: cleanImageUrl(product.imageUrl || product.image || '', sourceUrl),
     price: cleanText(product.price, 120),
     oldPrice: cleanText(product.oldPrice, 120),
     currency: cleanText(product.currency, 20),
@@ -505,13 +523,13 @@ export function buildButtonScript(config, publicOrigin = '') {
         { selector: "meta[property='og:title']", source: "content" }
       ],
       imageUrl: [
+        { selector: "meta[property='og:image']", source: "content" },
         { selector: ".gallery__photo-img", source: "src" },
         { selector: ".gallery img[itemprop='image']", source: "src" },
         { selector: "img[itemprop='image']", source: "src" },
         { selector: ".product-gallery img", source: "src" },
         { selector: ".product-photo img", source: "src" },
-        { selector: ".product__gallery img", source: "src" },
-        { selector: "meta[property='og:image']", source: "content" }
+        { selector: ".product__gallery img", source: "src" }
       ],
       price: [
         { selector: ".product-price__item--new", source: "textContent" },
