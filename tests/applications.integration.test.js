@@ -138,6 +138,16 @@ test('form builder and applications list have separate access and process public
   const loader = await request(app).get('/api/public/application-forms/loader.js').expect(200);
   assert.match(loader.text, /new URL\("\/api\/public\/application-forms"/);
   assert.match(loader.headers['access-control-allow-origin'] || '', /\*/);
+  assert.match(loader.text, /\+380 \(__\) ___-__-__/);
+  assert.match(loader.text, /\.mtf-submit\{width:100%/);
+
+  const preflight = await request(app)
+    .options(`/api/public/application-forms/${form.body.data.publicId}/applications`)
+    .set('Origin', 'http://shop551651.horoshop.ua')
+    .set('Access-Control-Request-Method', 'POST')
+    .set('Access-Control-Request-Headers', 'Content-Type')
+    .expect(204);
+  assert.equal(preflight.headers['access-control-allow-origin'], '*');
 
   const publicForm = await request(app).get(`/api/public/application-forms/${form.body.data.publicId}`).expect(200);
   assert.equal(publicForm.body.data.fields.find((field) => field.systemFieldType === 'bank').options[0].value, 'mono');

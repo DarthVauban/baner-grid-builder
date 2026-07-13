@@ -111,6 +111,39 @@ function loaderScript() {
     catch (error) { return "/api/public/application-forms"; }
   })();
   function el(tag, className){ var node = document.createElement(tag); if (className) node.className = className; return node; }
+  function phoneDigits(value){
+    var digits = String(value || "").replace(/\\D/g, "");
+    if (digits.indexOf("380") === 0) digits = digits.slice(3);
+    if (digits.charAt(0) === "0") digits = digits.slice(1);
+    return digits.slice(0, 9);
+  }
+  function formatPhone(value){
+    var digits = phoneDigits(value);
+    if (!digits) return "";
+    var result = "+380";
+    if (digits.length > 0) result += " (" + digits.slice(0, 2);
+    if (digits.length >= 2) result += ")";
+    if (digits.length > 2) result += " " + digits.slice(2, 5);
+    if (digits.length > 5) result += "-" + digits.slice(5, 7);
+    if (digits.length > 7) result += "-" + digits.slice(7, 9);
+    return result;
+  }
+  function attachPhoneMask(input){
+    input.inputMode = "tel";
+    input.autocomplete = "tel";
+    input.placeholder = "+380 (__) ___-__-__";
+    input.pattern = "\\\\+380 \\\\([0-9]{2}\\\\) [0-9]{3}-[0-9]{2}-[0-9]{2}";
+    input.title = "Введіть номер у форматі +380 (__) ___-__-__";
+    input.addEventListener("focus", function(){ if (!input.value) input.value = "+380 "; });
+    input.addEventListener("input", function(){ input.value = formatPhone(input.value) || "+380 "; if (input.setSelectionRange) input.setSelectionRange(input.value.length, input.value.length); });
+    input.addEventListener("blur", function(){ if (!phoneDigits(input.value)) input.value = ""; });
+    if (input.value) input.value = formatPhone(input.value);
+  }
+  function errorMessage(error, fallback){
+    var message = error && error.message ? error.message : fallback;
+    if (/failed to fetch|networkerror/i.test(message || "")) return "Не вдалося з'єднатися з сервером. Спробуйте ще раз.";
+    return message || fallback;
+  }
   function fieldControl(field){
     var wrap = el(field.type === "radio" ? "div" : "label", "mtf-field");
     var label = el("span"); label.textContent = field.label + (field.required ? " *" : "");
@@ -147,6 +180,7 @@ function loaderScript() {
       input.placeholder = field.placeholder || "";
       if (field.type !== "checkbox") input.value = field.defaultValue || "";
       if (field.required) input.required = true;
+      if (field.type === "phone" || field.systemFieldType === "phone") attachPhoneMask(input);
     }
     wrap.appendChild(input);
     if (field.helpText) { var help = el("small"); help.textContent = field.helpText; wrap.appendChild(help); }
@@ -156,7 +190,7 @@ function loaderScript() {
     if (document.getElementById("mtf-styles")) return;
     var style = document.createElement("style");
     style.id = "mtf-styles";
-    style.textContent = ".mtf-backdrop{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.46)}.mtf-modal{width:min(520px,100%);max-height:min(760px,100%);overflow:auto;border-radius:var(--mtf-radius,18px);background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.24);font-family:Arial,sans-serif;color:#172033}.mtf-head{display:flex;gap:14px;justify-content:space-between;padding:22px 22px 12px}.mtf-head h2{margin:0;font-size:24px;line-height:1.2}.mtf-head p{margin:8px 0 0;color:#667085;line-height:1.45}.mtf-close{width:38px;height:38px;border:0;border-radius:10px;background:#f2f4f7;font-size:24px}.mtf-form{display:grid;gap:14px;padding:0 22px 22px}.mtf-field{display:grid;gap:7px}.mtf-field span{font-size:14px;font-weight:700}.mtf-field input,.mtf-field select,.mtf-field textarea{width:100%;border:1px solid #d8dee8;border-radius:var(--mtf-control-radius,12px);padding:12px 13px;font:inherit}.mtf-field input[type=checkbox],.mtf-field input[type=radio]{width:auto;padding:0}.mtf-choice-list{display:grid;gap:8px}.mtf-choice{display:flex;align-items:center;gap:8px;color:#344054;font-size:14px}.mtf-field small{color:#667085;font-size:12px}.mtf-actions{display:flex;gap:10px;justify-content:flex-end;align-items:center}.mtf-submit{min-height:44px;border:0;border-radius:var(--mtf-control-radius,12px);padding:10px 18px;color:var(--mtf-button-color,#fff);background:var(--mtf-button-bg,#6d5dfc);font-weight:800}.mtf-error{border:1px solid #ffd7df;border-radius:12px;padding:10px;color:#9f2940;background:#fff0f3}.mtf-success{display:grid;gap:12px;padding:22px}.mtf-success strong{font-size:20px}@media(max-width:560px){.mtf-backdrop{align-items:flex-end;padding:0}.mtf-modal{max-height:92vh;border-radius:18px 18px 0 0}.mtf-actions{display:grid}.mtf-submit{width:100%}}";
+    style.textContent = ".mtf-backdrop{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.46)}.mtf-modal{width:min(520px,100%);max-height:min(760px,100%);overflow:auto;border-radius:var(--mtf-radius,18px);background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.24);font-family:Arial,sans-serif;color:#172033}.mtf-head{display:flex;gap:14px;justify-content:space-between;padding:22px 22px 12px}.mtf-head h2{margin:0;font-size:24px;line-height:1.2}.mtf-head p{margin:8px 0 0;color:#667085;line-height:1.45}.mtf-close{width:38px;height:38px;border:0;border-radius:10px;background:#f2f4f7;font-size:24px}.mtf-form{display:grid;gap:14px;padding:0 22px 22px}.mtf-field{display:grid;gap:7px}.mtf-field span{font-size:14px;font-weight:700}.mtf-field input,.mtf-field select,.mtf-field textarea{width:100%;border:1px solid #d8dee8;border-radius:var(--mtf-control-radius,12px);padding:12px 13px;font:inherit}.mtf-field input[type=checkbox],.mtf-field input[type=radio]{width:auto;padding:0}.mtf-choice-list{display:grid;gap:8px}.mtf-choice{display:flex;align-items:center;gap:8px;color:#344054;font-size:14px}.mtf-field small{color:#667085;font-size:12px}.mtf-actions{display:grid;gap:10px;align-items:center}.mtf-submit{width:100%;min-height:44px;border:0;border-radius:var(--mtf-control-radius,12px);padding:10px 18px;color:var(--mtf-button-color,#fff);background:var(--mtf-button-bg,#6d5dfc);font-weight:800}.mtf-error{border:1px solid #ffd7df;border-radius:12px;padding:10px;color:#9f2940;background:#fff0f3}.mtf-success{display:grid;gap:12px;padding:22px}.mtf-success strong{font-size:20px}@media(max-width:560px){.mtf-backdrop{align-items:flex-end;padding:0}.mtf-modal{max-height:92vh;border-radius:18px 18px 0 0}}";
     document.head.appendChild(style);
   }
   function close(backdrop){ backdrop.remove(); document.documentElement.style.overflow = ""; }
@@ -222,11 +256,11 @@ function loaderScript() {
           var result = await sent.json();
           if (!sent.ok) throw new Error(result && result.error && result.error.message || "Не вдалося надіслати заявку.");
           modal.innerHTML = ""; var done = el("div", "mtf-success"); var strong = document.createElement("strong"); strong.textContent = form.successMessage || "Заявку надіслано."; var small = document.createElement("small"); small.textContent = "Номер заявки: " + result.data.number; var ok = el("button", "mtf-submit"); ok.type = "button"; ok.textContent = "Готово"; ok.addEventListener("click", function(){ close(backdrop); }); done.appendChild(strong); done.appendChild(small); done.appendChild(ok); modal.appendChild(done);
-        } catch (submitError) { error.textContent = submitError.message || "Не вдалося надіслати заявку."; error.hidden = false; submit.disabled = false; }
+        } catch (submitError) { error.textContent = errorMessage(submitError, "Не вдалося надіслати заявку."); error.hidden = false; submit.disabled = false; }
       });
       modal.appendChild(body);
     } catch (error) {
-      modal.innerHTML = ""; var failed = el("div", "mtf-success"); var message = document.createElement("strong"); message.textContent = error.message || "Не вдалося завантажити форму."; var button = el("button", "mtf-submit"); button.type = "button"; button.textContent = "Закрити"; button.addEventListener("click", function(){ close(backdrop); }); failed.appendChild(message); failed.appendChild(button); modal.appendChild(failed);
+      modal.innerHTML = ""; var failed = el("div", "mtf-success"); var message = document.createElement("strong"); message.textContent = errorMessage(error, "Не вдалося завантажити форму."); var button = el("button", "mtf-submit"); button.type = "button"; button.textContent = "Закрити"; button.addEventListener("click", function(){ close(backdrop); }); failed.appendChild(message); failed.appendChild(button); modal.appendChild(failed);
     }
   }
   window.MTApplicationForms = { open: open };

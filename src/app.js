@@ -53,7 +53,10 @@ app.use(helmet({
 }));
 
 if (env.APP_ORIGIN) {
-  app.use(cors({ origin: env.APP_ORIGIN, credentials: true }));
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/public/application-forms')) return next();
+    return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
+  });
 }
 
 const publicEmbedCors = cors({
