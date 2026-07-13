@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import type { PropsWithChildren } from 'react';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { emptyBanner, hasBannerContent, normalizeBanner } from '../lib/banner-generator';
 import type { BannerData, BannerDraft, SavedBanner, SavedGrid } from '../types/workspace';
 
@@ -14,7 +15,7 @@ interface BannerWorkspaceValue {
   updateBanner: (localId: string, patch: Partial<BannerData>) => void;
   addBanner: (banner?: Partial<BannerData>, savedBannerId?: string) => void;
   removeBanner: (localId: string) => void;
-  reset: (confirmLoss?: boolean) => boolean;
+  reset: (confirmLoss?: boolean) => Promise<boolean>;
   loadGrid: (grid: SavedGrid) => void;
   loadSavedBanner: (banner: SavedBanner) => void;
   addSavedBanner: (banner: SavedBanner) => void;
@@ -37,6 +38,7 @@ const draft = (value?: Partial<BannerData>, savedBannerId?: string): BannerDraft
 });
 
 export function BannerWorkspaceProvider({ children }: PropsWithChildren) {
+  const confirm = useConfirmDialog();
   const [gridName, setGridName] = useState('');
   const [shareDescription, setShareDescription] = useState('');
   const [editingGridId, setEditingGridId] = useState<string | null>(null);
@@ -57,8 +59,15 @@ export function BannerWorkspaceProvider({ children }: PropsWithChildren) {
       return [...current, next];
     }),
     removeBanner: (localId) => setBanners((current) => current.length <= 1 ? current : current.filter((item) => item.localId !== localId)),
-    reset: (confirmLoss = false) => {
-      if (confirmLoss && banners.some(hasBannerContent) && !window.confirm('Очистити поточну сітку та створити нову?')) return false;
+    reset: async (confirmLoss = false) => {
+      if (confirmLoss && banners.some(hasBannerContent)) {
+        const confirmed = await confirm({
+          title: 'Створити нову сітку?',
+          message: 'Поточна незбережена сітка буде очищена.',
+          confirmLabel: 'Створити нову'
+        });
+        if (!confirmed) return false;
+      }
       setGridName('');
       setShareDescription('');
       setEditingGridId(null);
@@ -83,7 +92,7 @@ export function BannerWorkspaceProvider({ children }: PropsWithChildren) {
       return [...current, next];
     }),
     markBannerSaved: (localId, savedBannerId) => setBanners((current) => current.map((item) => item.localId === localId ? { ...item, savedBannerId } : item))
-  }), [gridName, shareDescription, editingGridId, banners]);
+  }), [gridName, shareDescription, editingGridId, banners, confirm]);
 
   return <BannerWorkspaceContext.Provider value={value}>{children}</BannerWorkspaceContext.Provider>;
 }

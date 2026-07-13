@@ -24,7 +24,7 @@ router.use(requireAuth, requireToolAccess('applications'));
 const idSchema = z.string().uuid();
 const listSchema = z.object({
   filter: z.enum(['all', ...applicationStatuses]).default('all'),
-  search: z.string().trim().max(5).default(''),
+  search: z.string().trim().max(80).default(''),
   sort: z.enum(['created_desc', 'updated_desc', 'number_asc', 'number_desc']).default('created_desc'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(10).max(100).default(25)
@@ -43,10 +43,10 @@ const deleteSchema = z.object({
 });
 
 const sortSql = {
-  created_desc: 'created_at DESC',
-  updated_desc: 'updated_at DESC',
-  number_asc: 'application_number ASC',
-  number_desc: 'application_number DESC'
+  created_desc: 'app.created_at DESC',
+  updated_desc: 'app.updated_at DESC',
+  number_asc: 'app.application_number ASC',
+  number_desc: 'app.application_number DESC'
 };
 const maxProductImageBytes = 10 * 1024 * 1024;
 
@@ -144,22 +144,45 @@ router.get('/', asyncHandler(async (req, res) => {
   });
   const params = [];
   const where = [];
-  const search = input.search.replace(/\D/g, '');
-  if (input.search && !search) where.push('FALSE');
-  if (search) {
-    params.push(search.padStart(5, '0').slice(-5));
-    where.push(`application_number = $${params.length}`);
+  const searchTerms = input.search.toLowerCase().split(/\s+/).filter(Boolean);
+  if (searchTerms.length) {
+    const termClauses = searchTerms.map((term) => {
+      const clauses = [];
+      params.push(`%${term}%`);
+      const textParam = params.length;
+      clauses.push(`LOWER(app.application_number) LIKE $${textParam}`);
+      clauses.push(`app.id IN (
+        SELECT values.application_id
+        FROM application_values AS values
+        WHERE values.system_field_type IN ('first_name', 'last_name', 'phone')
+          AND LOWER(values.value) LIKE $${textParam}
+      )`);
+      const digits = term.replace(/\D/g, '');
+      if (digits) {
+        params.push(`%${digits}%`);
+        const digitParam = params.length;
+        clauses.push(`app.application_number LIKE $${digitParam}`);
+        clauses.push(`app.id IN (
+          SELECT values.application_id
+          FROM application_values AS values
+          WHERE values.system_field_type = 'phone'
+            AND values.value LIKE $${digitParam}
+        )`);
+      }
+      return `(${clauses.join(' OR ')})`;
+    });
+    where.push(`(${termClauses.join(' AND ')})`);
   }
   if (input.filter !== 'all') {
     params.push(input.filter);
-    where.push(`status = $${params.length}`);
+    where.push(`app.status = $${params.length}`);
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const totalResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM applications ${whereSql}`, params);
+  const totalResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM applications AS app ${whereSql}`, params);
   const offset = (input.page - 1) * input.pageSize;
   const result = await query(
-    `SELECT id
-     FROM applications
+    `SELECT app.id
+     FROM applications AS app
      ${whereSql}
      ORDER BY ${sortSql[input.sort]}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,

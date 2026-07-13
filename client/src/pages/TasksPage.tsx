@@ -8,6 +8,7 @@ import { TaskFormModal } from '../components/TaskFormModal';
 import { ReminderModal } from '../components/ReminderModal';
 import { TaskDetailsModal } from '../components/TaskDetailsModal';
 import { Icon } from '../components/Icon';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { useToast } from '../toast/ToastContext';
 import type { ReminderSettings, Task, TaskCounts, TaskInput, TaskStatus } from '../types/task';
 
@@ -36,6 +37,7 @@ function todayRange() {
 export function TasksPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const confirm = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState('active');
   const [search, setSearch] = useState('');
@@ -141,7 +143,13 @@ export function TasksPage() {
   }
 
   async function handleDelete(task: Task) {
-    if (!window.confirm(`Видалити справу «${task.title}»?`)) return;
+    const confirmed = await confirm({
+      title: 'Видалити справу?',
+      message: `Справу «${task.title}» буде видалено без можливості відновлення.`,
+      confirmLabel: 'Видалити',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     try {
       await removeTask.mutateAsync(task.id);
       showToast('Справу видалено.');

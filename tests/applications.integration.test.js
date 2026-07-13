@@ -255,6 +255,13 @@ test('form builder and applications list have separate access and process public
   assert.equal(feed.body.data.items[0].product.imageProxyUrl, `/api/applications/${feed.body.data.items[0].id}/product-image`);
   assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'credit_term').optionLabel, '12 months');
 
+  const nameFeed = await manager.get('/api/applications?search=Ivan').expect(200);
+  assert.equal(nameFeed.body.data.total, 1);
+  const fullNameFeed = await manager.get('/api/applications?search=Ivan%20Buyer').expect(200);
+  assert.equal(fullNameFeed.body.data.total, 1);
+  const phoneFeed = await manager.get('/api/applications?search=050111').expect(200);
+  assert.equal(phoneFeed.body.data.total, 1);
+
   const applicationId = feed.body.data.items[0].id;
   const inProgress = await manager.patch(`/api/applications/${applicationId}/status`).send({
     status: 'in_progress',

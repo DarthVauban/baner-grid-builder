@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { taskTypeLabels, toLocalDate, toLocalDateTime } from '../lib/task';
 import type { ReminderSettings, Task, TaskInput, TaskType, UserSearchResult } from '../types/task';
+import { DateTimePicker } from './DateTimePicker';
 import { Icon } from './Icon';
 
 interface TaskFormModalProps {
@@ -124,14 +125,8 @@ export function TaskFormModal({ task, onClose, onSubmit }: TaskFormModalProps) {
             }} />
             <span>Справа на весь день</span>
           </label>
-          <label className="field">
-            <span>Початок</span>
-            <input type={isAllDay ? 'date' : 'datetime-local'} value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>Завершення / дедлайн</span>
-            <input type={isAllDay ? 'date' : 'datetime-local'} value={dueAt} onChange={(event) => setDueAt(event.target.value)} required />
-          </label>
+          <DateTimePicker label="Початок" mode={isAllDay ? 'date' : 'datetime'} value={startsAt} onChange={setStartsAt} />
+          <DateTimePicker label="Завершення / дедлайн" mode={isAllDay ? 'date' : 'datetime'} value={dueAt} onChange={setDueAt} required />
 
           {(type === 'offline_meeting' || type === 'event') && (
             <label className="field task-form__wide">

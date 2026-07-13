@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -36,7 +35,6 @@ export function ApplicationsPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<ApplicationStatus | 'all'>('all');
-  const [draftSearch, setDraftSearch] = useState('');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('created_desc');
   const [page, setPage] = useState(1);
@@ -155,12 +153,6 @@ export function ApplicationsPage() {
     }
   }
 
-  function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSearch(draftSearch.replace(/\D/g, '').slice(0, 5));
-    setPage(1);
-  }
-
   const items = applications.data?.items || [];
 
   return <div className="applications-page">
@@ -181,21 +173,20 @@ export function ApplicationsPage() {
           </button>;
         })}
       </div>
-      <form className="task-toolbar__controls" onSubmit={submitSearch}>
+      <div className="task-toolbar__controls">
         <label className="application-sort"><span>Сортування</span><select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }}>
           <option value="created_desc">Нові спочатку</option>
           <option value="updated_desc">Оновлені спочатку</option>
           <option value="number_desc">Номер за спаданням</option>
           <option value="number_asc">Номер за зростанням</option>
         </select></label>
-        <div className="task-search"><Icon name="search" size={18} /><input inputMode="numeric" value={draftSearch} onChange={(event) => setDraftSearch(event.target.value.replace(/\D/g, '').slice(0, 5))} placeholder="Номер заявки" aria-label="Пошук за номером заявки" />{draftSearch && <button type="button" onClick={() => { setDraftSearch(''); setSearch(''); setPage(1); }} aria-label="Очистити пошук"><Icon name="close" size={16} /></button>}</div>
-        <button className="button button--secondary button--small" type="submit">Знайти</button>
-      </form>
+        <div className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Номер, імʼя або телефон" aria-label="Пошук заявки за номером, імʼям або телефоном" />{search && <button type="button" onClick={() => { setSearch(''); setPage(1); }} aria-label="Очистити пошук"><Icon name="close" size={16} /></button>}</div>
+      </div>
     </section>
 
     {applications.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо заявки...</p></div>}
     {applications.isError && <div className="task-list-state task-list-state--error"><p>{applications.error instanceof Error ? applications.error.message : 'Не вдалося завантажити заявки.'}</p><button className="button button--secondary" type="button" onClick={() => void applications.refetch()}>Спробувати ще</button></div>}
-    {!applications.isLoading && !applications.isError && items.length === 0 && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="tasks" size={28} /></span><h2>Заявок не знайдено</h2><p>{search ? 'Перевірте номер або очистіть пошук.' : 'Нові заявки зʼявляться тут автоматично після надсилання форми.'}</p></div>}
+    {!applications.isLoading && !applications.isError && items.length === 0 && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="tasks" size={28} /></span><h2>Заявок не знайдено</h2><p>{search ? 'Перевірте номер, імʼя або телефон і спробуйте інший запит.' : 'Нові заявки зʼявляться тут автоматично після надсилання форми.'}</p></div>}
 
     {items.length > 0 && <section className="application-table" aria-label="Список заявок">
       <div className="application-table__head"><span>№</span><span>Статус</span><span>Покупець</span><span>Телефон</span><span>Банк</span><span>Форма</span><span>Товар</span><span>Створено</span><span>Оновлено</span><span>Дії</span></div>

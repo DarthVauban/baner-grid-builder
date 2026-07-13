@@ -6,6 +6,7 @@ import { roleLabels } from '../lib/user';
 import { Icon } from '../components/Icon';
 import { UserAvatar } from '../components/UserAvatar';
 import { UserToolAccessModal } from '../components/UserToolAccessModal';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { useToast } from '../toast/ToastContext';
 import type {
   User,
@@ -70,6 +71,7 @@ export function AdminUserRow({
 
 export function AdminUsersPage() {
   const { showToast } = useToast();
+  const confirm = useConfirmDialog();
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useState('');
@@ -116,7 +118,15 @@ export function AdminUsersPage() {
   }
 
   async function changeStatus(target: User, value: UserStatus) {
-    if (value === 'rejected' && !window.confirm(`Відхилити доступ для ${target.name}?`)) return;
+    if (value === 'rejected') {
+      const confirmed = await confirm({
+        title: 'Відхилити доступ?',
+        message: `Користувач ${target.name} втратить доступ до порталу.`,
+        confirmLabel: 'Відхилити доступ',
+        tone: 'danger'
+      });
+      if (!confirmed) return;
+    }
     setBusyUserId(target.id);
     try {
       await setUserStatus.mutateAsync({ id: target.id, value });
@@ -143,7 +153,13 @@ export function AdminUsersPage() {
   }
 
   async function deleteUser(target: User) {
-    if (!window.confirm(`Повністю видалити обліковий запис ${target.name}? Цю дію не можна скасувати.`)) return;
+    const confirmed = await confirm({
+      title: 'Видалити обліковий запис?',
+      message: `Обліковий запис ${target.name} буде повністю видалено. Цю дію не можна скасувати.`,
+      confirmLabel: 'Видалити користувача',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     setBusyUserId(target.id);
     try {
       await removeUser.mutateAsync(target.id);

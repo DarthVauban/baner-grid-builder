@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -90,6 +91,7 @@ function statusText(status: ApplicationForm['status']) {
 export function FormsBuilderPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const confirm = useConfirmDialog();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ApplicationFormInput | null>(null);
   const [fields, setFields] = useState<ApplicationFormField[]>([]);
@@ -211,7 +213,14 @@ export function FormsBuilderPage() {
   }
 
   async function archiveSelected() {
-    if (!selectedForm || !window.confirm(`Архівувати форму «${selectedForm.name}»?`)) return;
+    if (!selectedForm) return;
+    const confirmed = await confirm({
+      title: 'Архівувати форму?',
+      message: `Форма «${selectedForm.name}» буде перенесена в архів.`,
+      confirmLabel: 'Архівувати',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     await archiveForm.mutateAsync(selectedForm.id);
     setSelectedId(null);
     showToast('Форму перенесено в архів.');

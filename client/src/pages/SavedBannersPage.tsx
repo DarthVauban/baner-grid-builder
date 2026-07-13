@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { LibraryCard } from '../components/LibraryCard';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { buildBannerHtml, copyToClipboard } from '../lib/banner-generator';
 import { useBannerWorkspace } from '../workspace/BannerWorkspaceContext';
@@ -14,10 +15,17 @@ export function SavedBannersPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient();
   const workspace = useBannerWorkspace();
   const { showToast } = useToast();
+  const confirm = useConfirmDialog();
   const banners = useQuery({ queryKey: ['saved-banners', search], queryFn: () => api.banners.list(search.trim()) });
 
   async function remove(id: string, name: string) {
-    if (!window.confirm(`Видалити банер «${name}»?`)) return;
+    const confirmed = await confirm({
+      title: 'Видалити банер?',
+      message: `Банер «${name}» буде видалено з бібліотеки.`,
+      confirmLabel: 'Видалити',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     try { await api.banners.remove(id); await queryClient.invalidateQueries({ queryKey: ['saved-banners'] }); showToast('Банер видалено.'); }
     catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося видалити банер.', 'error'); }
   }

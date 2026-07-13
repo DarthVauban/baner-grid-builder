@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toLocalDateTime } from '../lib/task';
 import type { PublicationInput, PublicationPerson } from '../types/publication';
+import { DateTimePicker } from './DateTimePicker';
 import { Icon } from './Icon';
 import { PublicationAssigneePicker } from './PublicationAssigneePicker';
 
@@ -50,7 +51,7 @@ export function PublicationBatchModal({ onClose, onSubmit }: {
             <div className="publication-batch-rows__head"><span>Назва</span><span>Дата й час</span><span /></div>
             {rows.map((row) => <div className="publication-batch-row" key={row.id}>
               <input value={row.title} maxLength={200} onChange={(event) => setRows((current) => current.map((item) => item.id === row.id ? { ...item, title: event.target.value } : item))} placeholder="Робоча назва статті" />
-              <input type="datetime-local" value={row.publishAt} onChange={(event) => setRows((current) => current.map((item) => item.id === row.id ? { ...item, publishAt: event.target.value } : item))} />
+              <DateTimePicker className="publication-batch-row__date" label="Дата й час" value={row.publishAt} onChange={(value) => setRows((current) => current.map((item) => item.id === row.id ? { ...item, publishAt: value } : item))} />
               <button type="button" disabled={rows.length === 1} onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} aria-label="Видалити рядок"><Icon name="delete" size={17} /></button>
             </div>)}
           </div>

@@ -8,6 +8,7 @@ import { PublicationCard } from '../components/PublicationCard';
 import { PublicationDetailsModal } from '../components/PublicationDetailsModal';
 import { PublicationFormModal } from '../components/PublicationFormModal';
 import { PublicationPublishModal } from '../components/PublicationPublishModal';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { copyShareLink } from '../lib/share';
 import { useToast } from '../toast/ToastContext';
@@ -31,6 +32,7 @@ function hasCount(value: string): value is keyof PublicationCounts {
 export function BlogPublicationsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState('active');
@@ -103,7 +105,15 @@ export function BlogPublicationsPage() {
   }
 
   async function applyStatus(publication: BlogPublication, status: PublicationStatus, publicationUrl = '') {
-    if (status === 'cancelled' && !window.confirm(`Скасувати публікацію «${publication.title}»?`)) return;
+    if (status === 'cancelled') {
+      const confirmed = await confirm({
+        title: 'Скасувати публікацію?',
+        message: `Публікацію «${publication.title}» буде переведено у статус скасованої.`,
+        confirmLabel: 'Скасувати публікацію',
+        tone: 'danger'
+      });
+      if (!confirmed) return;
+    }
     try {
       await setStatus.mutateAsync({ id: publication.id, status, publicationUrl });
       showToast(status === 'published' ? 'Публікацію завершено.' : status === 'ready' ? 'Матеріали позначено готовими.' : 'Статус публікації змінено.');

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { detectMaterial, materialTypeLabels } from '../lib/publication';
 import { toLocalDateTime } from '../lib/task';
 import type { BlogPublication, PublicationInput, PublicationMaterial, PublicationMaterialType, PublicationPerson } from '../types/publication';
+import { DateTimePicker } from './DateTimePicker';
 import { Icon } from './Icon';
 import { PublicationAssigneePicker } from './PublicationAssigneePicker';
 
@@ -64,7 +65,7 @@ export function PublicationFormModal({ publication, onClose, onSubmit }: {
           {error && <div className="form-message form-message--error publication-form__wide" role="alert">{error}</div>}
           <label className="field publication-form__wide"><span>Робоча назва</span><input name="title" defaultValue={publication?.title || ''} maxLength={200} required autoFocus placeholder="Наприклад, Огляд нової моделі" /></label>
           <label className="field publication-form__wide"><span>Опис та інструкції</span><textarea name="description" defaultValue={publication?.description || ''} rows={4} maxLength={5000} placeholder="Що важливо врахувати під час публікації" /></label>
-          <label className="field"><span>Дата й час публікації</span><input type="datetime-local" value={publishAt} onChange={(event) => setPublishAt(event.target.value)} required /></label>
+          <DateTimePicker label="Дата й час публікації" value={publishAt} onChange={setPublishAt} required />
           <div className="field"><span>Відповідальний</span><PublicationAssigneePicker value={assignee} onChange={setAssignee} /></div>
 
           <section className="publication-materials publication-form__wide">
