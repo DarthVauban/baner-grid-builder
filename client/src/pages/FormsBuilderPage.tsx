@@ -35,7 +35,7 @@ const productSelectorFields = [
 
 const productSelectorKeys = productSelectorFields.map(([key]) => key);
 
-const selectorSources = ['textContent', 'src', 'data-src', 'href', 'value', 'content'] as const;
+const selectorSources = ['textContent', 'src', 'data-src', 'data-href', 'href', 'value', 'content'] as const;
 
 function sanitizeProductSelectors(selectors: Record<string, unknown> = {}) {
   return productSelectorKeys.reduce<Record<string, unknown>>((result, key) => {
@@ -132,7 +132,7 @@ export function FormsBuilderPage() {
       active: true,
       productSelectors: {
         title: { selector: 'h1', source: 'textContent' },
-        imageUrl: { selector: '.gallery__photo-img', source: 'src' },
+        imageUrl: { selector: '.gallery__photos-list > li.gallery__item:first-child .gallery__link[data-href]', source: 'data-href' },
         price: { selector: '.product-price__item', source: 'textContent' },
         oldPrice: { selector: '.product-price__old-price', source: 'textContent' },
         productCode: { selector: '[data-product-code], .product-code', source: 'textContent' }

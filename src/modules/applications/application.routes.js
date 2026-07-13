@@ -39,7 +39,7 @@ const commentSchema = z.object({
   expectedVersion: z.number().int().min(1).optional()
 });
 const deleteSchema = z.object({
-  code: z.string().trim().min(6).max(20)
+  code: z.string().trim().regex(/^\d{6}$/, 'Вкажіть 6-значний код з застосунку аутентифікатора.')
 });
 
 const sortSql = {

@@ -98,7 +98,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const payload = await response.json().catch(() => ({})) as ApiSuccessPayload<T> & ApiErrorPayload;
   if (!response.ok) {
     const error = new ApiError(response.status, payload);
-    if (response.status === 401 && !path.endsWith('/login')) {
+    if (response.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
       window.dispatchEvent(new Event('mt:unauthorized'));
     }
     throw error;

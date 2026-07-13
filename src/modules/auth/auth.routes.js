@@ -43,7 +43,7 @@ const verifyRegistrationSchema = z.object({
 });
 const verifyLoginTwoFactorSchema = z.object({
   challengeToken: z.string().trim().min(20, 'Сесія перевірки 2FA недійсна.'),
-  code: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.')
+  code: z.string().trim().regex(/^\d{6}$/, 'Вкажіть 6-значний код 2FA.')
 });
 
 function setSessionCookie(res, token) {

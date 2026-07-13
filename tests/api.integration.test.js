@@ -303,6 +303,13 @@ test('approval flow and shared banner storage work through REST API', async () =
     .post('/api/auth/login/2fa')
     .send({
       challengeToken: secondUserChallenge.body.data.challengeToken,
+      code: `${currentTotpCode(secondUserTotpSecret)}1`
+    })
+    .expect(422);
+  await secondUser
+    .post('/api/auth/login/2fa')
+    .send({
+      challengeToken: secondUserChallenge.body.data.challengeToken,
       code: currentTotpCode(secondUserTotpSecret)
     })
     .expect(200)

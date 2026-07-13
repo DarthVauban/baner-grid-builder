@@ -489,6 +489,7 @@ export function buildButtonScript(config, publicOrigin = '') {
     if (source === "textContent") return (element.textContent || "").trim();
     if (source === "src") return absoluteUrl(element.currentSrc || element.src || element.getAttribute("src") || "");
     if (source === "data-src") return absoluteUrl(element.getAttribute("data-src") || "");
+    if (source === "data-href") return absoluteUrl(element.getAttribute("data-href") || "");
     if (source === "href") return absoluteUrl(element.href || element.getAttribute("href") || "");
     if (source === "value") return element.value || "";
     if (source === "content") return element.getAttribute("content") || "";
@@ -523,10 +524,20 @@ export function buildButtonScript(config, publicOrigin = '') {
         { selector: "meta[property='og:title']", source: "content" }
       ],
       imageUrl: [
-        { selector: "meta[property='og:image']", source: "content" },
+        { selector: ".gallery__photos-list > li.gallery__item.swiper-slide-active .gallery__link[data-href]", source: "data-href" },
+        { selector: ".gallery__photos-list > li.gallery__item.is-active .gallery__link[data-href]", source: "data-href" },
+        { selector: ".gallery__photos-list > li.gallery__item:first-child .gallery__link[data-href]", source: "data-href" },
+        { selector: ".gallery__thumbnails-list > li.gallery__thumb.is-active .gallery__thumb-link[data-href]", source: "data-href" },
+        { selector: ".gallery__photos-list .gallery__link[data-href]", source: "data-href" },
+        { selector: ".gallery__thumbnails-list .gallery__thumb-link[data-href]", source: "data-href" },
+        { selector: ".gallery__photos-list > li.gallery__item.swiper-slide-active .zoomPhoto", source: "href" },
+        { selector: ".gallery__photos-list > li.gallery__item:first-child .zoomPhoto", source: "href" },
+        { selector: ".gallery__photos-list > li.gallery__item.swiper-slide-active .gallery__photo-img", source: "src" },
+        { selector: ".gallery__photos-list > li.gallery__item:first-child .gallery__photo-img", source: "src" },
         { selector: ".gallery__photo-img", source: "src" },
         { selector: ".gallery img[itemprop='image']", source: "src" },
         { selector: "img[itemprop='image']", source: "src" },
+        { selector: "meta[property='og:image']", source: "content" },
         { selector: ".product-gallery img", source: "src" },
         { selector: ".product-photo img", source: "src" },
         { selector: ".product__gallery img", source: "src" }

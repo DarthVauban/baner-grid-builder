@@ -74,17 +74,17 @@ export function LoginPage() {
               name="twoFactorCode"
               type="text"
               value={twoFactorCode}
-              onChange={(event) => setTwoFactorCode(event.target.value.replace(/[^0-9a-z-]/gi, '').slice(0, 20).toUpperCase())}
+              onChange={(event) => setTwoFactorCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
               autoComplete="one-time-code"
               inputMode="numeric"
               placeholder="000000"
               minLength={6}
-              maxLength={20}
+              maxLength={6}
               required
               autoFocus
             />
           </label>
-          <button className="button button--primary button--wide" type="submit" disabled={pending || twoFactorCode.length < 6}>
+          <button className="button button--primary button--wide" type="submit" disabled={pending || twoFactorCode.length !== 6}>
             {pending ? 'Перевіряємо…' : 'Підтвердити вхід'}
           </button>
           <button className="button button--secondary button--wide" type="button" disabled={pending} onClick={() => { setChallenge(null); setError(''); }}>

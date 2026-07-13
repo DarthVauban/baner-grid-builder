@@ -167,12 +167,12 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
           {deleteError && <div className="form-message form-message--error" role="alert">{deleteError}</div>}
           <label className="field">
             <span>Код із застосунку аутентифікатора</span>
-            <input value={deleteCode} onChange={(event) => setDeleteCode(event.target.value.replace(/\s/g, '').slice(0, 20))} inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="6-значний код" />
+            <input value={deleteCode} onChange={(event) => setDeleteCode(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" minLength={6} maxLength={6} autoFocus placeholder="6-значний код" />
           </label>
         </div>
         <footer className="modal__footer application-delete-modal__footer">
           <button className="button button--secondary" type="button" disabled={deleteBusy} onClick={() => setDeleteOpen(false)}>Скасувати</button>
-          <button className="button button--danger" type="button" disabled={deleteBusy || deleteCode.trim().length < 6} onClick={() => void confirmDelete()}><Icon name="delete" size={17} /> Видалити назавжди</button>
+          <button className="button button--danger" type="button" disabled={deleteBusy || deleteCode.trim().length !== 6} onClick={() => void confirmDelete()}><Icon name="delete" size={17} /> Видалити назавжди</button>
         </footer>
       </section>
     </div>}
