@@ -9,7 +9,7 @@ import { api } from '../lib/api';
 import { applicationStatusOptions, customerName, formatApplicationDate } from '../lib/application';
 import { copyShareLink } from '../lib/share';
 import { useToast } from '../toast/ToastContext';
-import type { ApplicationRecord, ApplicationStatus } from '../types/application';
+import type { ApplicationCounts, ApplicationRecord, ApplicationStatus } from '../types/application';
 
 function countFor(status: string, counts?: { all: number; new: number; inProgress: number; rejected: number; closed: number }) {
   if (!counts) return 0;
@@ -40,6 +40,21 @@ const rowStatusOptions = applicationStatusOptions
   .filter(([value]) => value !== 'all')
   .map(([value, label]) => ({ value: value as ApplicationStatus, label }));
 
+const emptyStats = { all: 0, new: 0, inProgress: 0, rejected: 0, closed: 0 };
+
+function aggregateManagerStats(managerStats: ApplicationCounts['managerStats']) {
+  return managerStats.reduce(
+    (total, item) => ({
+      all: total.all + item.all,
+      new: total.new + item.new,
+      inProgress: total.inProgress + item.inProgress,
+      rejected: total.rejected + item.rejected,
+      closed: total.closed + item.closed
+    }),
+    emptyStats
+  );
+}
+
 export function ApplicationsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -50,6 +65,8 @@ export function ApplicationsPage() {
   const [sort, setSort] = useState('created_desc');
   const [page, setPage] = useState(1);
   const [details, setDetails] = useState<ApplicationRecord | null>(null);
+  const [view, setView] = useState<'list' | 'stats'>('list');
+  const [selectedStatsManagerId, setSelectedStatsManagerId] = useState('all');
   const sharedApplicationId = searchParams.get('application');
   const queryParams = useMemo(() => ({ filter, search, sort, page, pageSize: 25 }), [filter, page, search, sort]);
 
@@ -181,6 +198,24 @@ export function ApplicationsPage() {
   const items = applications.data?.items || [];
   const managerStats = counts.data?.managerStats || [];
   const unassignedStats = counts.data?.unassigned;
+  const managerTotals = useMemo(() => aggregateManagerStats(managerStats), [managerStats]);
+  const selectedManagerStats = selectedStatsManagerId === 'all' ? null : managerStats.find((item) => item.manager.id === selectedStatsManagerId) || null;
+  const activeStats = selectedManagerStats || managerTotals;
+  const activeStatsTitle = selectedManagerStats?.manager.name || 'Всі менеджери';
+  const maxStatusCount = Math.max(1, activeStats.new, activeStats.inProgress, activeStats.closed, activeStats.rejected);
+  const statusStats = [
+    { key: 'all', label: 'Усього', value: activeStats.all, hint: selectedManagerStats ? 'Закріплені за менеджером' : 'Закріплені за всіма менеджерами' },
+    { key: 'new', label: 'Нові', value: activeStats.new, hint: 'Ще не переведені в обробку' },
+    { key: 'inProgress', label: 'В роботі', value: activeStats.inProgress, hint: 'Активно обробляються' },
+    { key: 'closed', label: 'Закриті', value: activeStats.closed, hint: 'Завершені заявки' },
+    { key: 'rejected', label: 'Відхилені', value: activeStats.rejected, hint: 'Неуспішні звернення' }
+  ];
+  const breakdownStats = statusStats.filter((item) => item.key !== 'all');
+
+  useEffect(() => {
+    if (selectedStatsManagerId === 'all') return;
+    if (!managerStats.some((item) => item.manager.id === selectedStatsManagerId)) setSelectedStatsManagerId('all');
+  }, [managerStats, selectedStatsManagerId]);
 
   return <div className="applications-page">
     <header className="page-heading page-heading--row">
@@ -191,34 +226,18 @@ export function ApplicationsPage() {
       </div>
     </header>
 
-    <section className="application-dashboard" aria-label="Статистика заявок">
-      <article className="application-dashboard-card application-dashboard-card--accent">
-        <small>Доступні вам</small>
+    <nav className="application-view-tabs" aria-label="Режим перегляду заявок">
+      <button className={view === 'list' ? 'application-view-tab application-view-tab--active' : 'application-view-tab'} type="button" onClick={() => setView('list')}>
+        <span>Заявки</span>
         <strong>{counts.data?.all || 0}</strong>
-        <span>Нові: {counts.data?.new || 0} · В роботі: {counts.data?.inProgress || 0}</span>
-      </article>
-      <article className="application-dashboard-card">
-        <small>Без менеджера</small>
-        <strong>{unassignedStats?.all || 0}</strong>
-        <span>Очікують взяття: {unassignedStats?.new || 0}</span>
-      </article>
-      <article className="application-dashboard-card">
-        <small>Закриті</small>
-        <strong>{counts.data?.closed || 0}</strong>
-        <span>Відхилені: {counts.data?.rejected || 0}</span>
-      </article>
-      <div className="application-manager-stats">
-        <header><span>Менеджери</span><strong>{managerStats.length}</strong></header>
-        {managerStats.length ? managerStats.slice(0, 6).map((item) => <article key={item.manager.id}>
-          <span><strong>{item.manager.name}</strong><small>{item.all} заявок</small></span>
-          <b>{item.inProgress}</b>
-          <small>в роботі</small>
-          <b>{item.closed}</b>
-          <small>закриті</small>
-        </article>) : <p>Заявок у роботі ще немає.</p>}
-      </div>
-    </section>
+      </button>
+      <button className={view === 'stats' ? 'application-view-tab application-view-tab--active' : 'application-view-tab'} type="button" onClick={() => setView('stats')}>
+        <span>Статистика</span>
+        <strong>{managerStats.length}</strong>
+      </button>
+    </nav>
 
+    {view === 'list' && <>
     <section className="task-toolbar" aria-label="Фільтри заявок">
       <div className="task-filters">
         {applicationStatusOptions.map(([value, label]) => {
@@ -265,6 +284,60 @@ export function ApplicationsPage() {
         <span>{applications.data?.total || 0} заявок</span>
         <div><button className="button button--secondary button--small" type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Назад</button><span>{page} / {applications.data?.pageCount || 1}</span><button className="button button--secondary button--small" type="button" disabled={page >= (applications.data?.pageCount || 1)} onClick={() => setPage((value) => value + 1)}>Далі</button></div>
       </footer>
+    </section>}
+    </>}
+
+    {view === 'stats' && <section className="application-stats-workspace" aria-label="Статистика заявок">
+      <aside className="application-stats-sidebar" aria-label="Менеджери">
+        <button className={selectedStatsManagerId === 'all' ? 'application-stats-person application-stats-person--active' : 'application-stats-person'} type="button" onClick={() => setSelectedStatsManagerId('all')}>
+          <span><strong>Всі менеджери</strong><small>{managerTotals.all} заявок у роботі</small></span>
+          <b>{managerStats.length}</b>
+        </button>
+        {managerStats.length ? managerStats.map((item) => <button key={item.manager.id} className={selectedStatsManagerId === item.manager.id ? 'application-stats-person application-stats-person--active' : 'application-stats-person'} type="button" onClick={() => setSelectedStatsManagerId(item.manager.id)}>
+          <span><strong>{item.manager.name}</strong><small>{item.all} заявок</small></span>
+          <b>{item.inProgress}</b>
+        </button>) : <p>Менеджери ще не взяли заявки в роботу.</p>}
+      </aside>
+
+      <div className="application-stats-panel">
+        <header className="application-stats-panel__header">
+          <div>
+            <small>{selectedManagerStats ? 'Індивідуальна статистика' : 'Загальна статистика'}</small>
+            <h2>{activeStatsTitle}</h2>
+            <p>{selectedManagerStats ? 'Заявки, закріплені за обраним менеджером.' : 'Сумарні показники всіх менеджерів без розтягування основного списку.'}</p>
+          </div>
+          <span>{selectedManagerStats?.lastActivityAt ? `Остання активність: ${formatApplicationDate(selectedManagerStats.lastActivityAt)}` : `Менеджерів: ${managerStats.length}`}</span>
+        </header>
+
+        <div className="application-stats-grid">
+          {statusStats.map((item) => <article key={item.key} className={`application-stats-card application-stats-card--${item.key}`}>
+            <small>{item.label}</small>
+            <strong>{item.value}</strong>
+            <span>{item.hint}</span>
+          </article>)}
+        </div>
+
+        <div className="application-stats-support">
+          <article>
+            <small>Без менеджера</small>
+            <strong>{unassignedStats?.all || 0}</strong>
+            <span>Очікують взяття: {unassignedStats?.new || 0}</span>
+          </article>
+          <article>
+            <small>Доступні у вашому перегляді</small>
+            <strong>{counts.data?.all || 0}</strong>
+            <span>Нові: {counts.data?.new || 0} · В роботі: {counts.data?.inProgress || 0}</span>
+          </article>
+        </div>
+
+        <div className="application-stats-breakdown" aria-label="Розподіл за статусами">
+          {breakdownStats.map((item) => <div className="application-stats-bar" key={item.key}>
+            <span>{item.label}</span>
+            <div><i style={{ width: `${Math.round((item.value / maxStatusCount) * 100)}%` }} /></div>
+            <b>{item.value}</b>
+          </div>)}
+        </div>
+      </div>
     </section>}
 
     {details && <ApplicationDetailsModal application={details} busy={busy} canDelete={user?.isPrimaryAdmin === true} deleteBusy={removeApplication.isPending} onClose={closeDetails} onShare={(item) => void shareApplication(item)} onStatus={(item, nextStatus, comment) => void changeStatus(item, nextStatus, comment)} onClaim={(item) => void claim(item)} onComment={(item, text) => void createComment(item, text)} onDelete={(item, code) => deleteApplication(item, code)} />}
