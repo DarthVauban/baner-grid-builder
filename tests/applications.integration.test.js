@@ -125,6 +125,8 @@ test('form builder and applications list have separate access and process public
     }
   }).expect(201);
   const script = await builder.get(`/api/forms/buttons/${button.body.data.id}/script`).expect(200);
+  assert.match(script.body.data.script, /^<script>\s*/);
+  assert.match(script.body.data.script, /<\/script>$/);
   assert.match(script.body.data.script, /MTApplicationForms/);
   assert.doesNotMatch(script.body.data.script, /fetch\s*\(/);
   assert.doesNotMatch(script.body.data.script, /XMLHttpRequest/);
@@ -132,6 +134,10 @@ test('form builder and applications list have separate access and process public
 
   const published = await builder.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);
   assert.equal(published.body.data.status, 'published');
+
+  const loader = await request(app).get('/api/public/application-forms/loader.js').expect(200);
+  assert.match(loader.text, /new URL\("\/api\/public\/application-forms"/);
+  assert.match(loader.headers['access-control-allow-origin'] || '', /\*/);
 
   const publicForm = await request(app).get(`/api/public/application-forms/${form.body.data.publicId}`).expect(200);
   assert.equal(publicForm.body.data.fields.find((field) => field.systemFieldType === 'bank').options[0].value, 'mono');

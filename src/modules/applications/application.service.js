@@ -423,6 +423,10 @@ export function buildUtm(context = {}) {
     .filter(([, value]) => value));
 }
 
+function scriptJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003C');
+}
+
 export function buildButtonScript(config, publicOrigin = '') {
   const origin = cleanText(publicOrigin, 500).replace(/\/+$/, '');
   const loaderUrl = `${origin}/api/public/application-forms/loader.js`;
@@ -437,10 +441,11 @@ export function buildButtonScript(config, publicOrigin = '') {
     styles: config.styles || {},
     productSelectors: config.product_selectors || config.productSelectors || {}
   };
-  return `(function(){
+  return `<script>
+(function(){
   "use strict";
-  var config = ${JSON.stringify(payload)};
-  var loaderUrl = ${JSON.stringify(loaderUrl)};
+  var config = ${scriptJson(payload)};
+  var loaderUrl = ${scriptJson(loaderUrl)};
   var buttonNode = null;
   var pendingInsert = false;
   function warn(message){ if (window.console && console.warn) console.warn("[MT forms] " + message); }
@@ -677,5 +682,6 @@ export function buildButtonScript(config, publicOrigin = '') {
     }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready, { once: true }); else ready();
-})();`;
+})();
+</script>`;
 }

@@ -105,7 +105,11 @@ function loaderScript() {
   return `(function(){
   "use strict";
   if (window.MTApplicationForms) return;
-  var apiBase = "/api/public/application-forms";
+  var loaderScript = document.currentScript || document.querySelector('script[data-mt-application-loader="true"]');
+  var apiBase = (function(){
+    try { return new URL("/api/public/application-forms", loaderScript && loaderScript.src ? loaderScript.src : window.location.href).toString().replace(/\\/$/, ""); }
+    catch (error) { return "/api/public/application-forms"; }
+  })();
   function el(tag, className){ var node = document.createElement(tag); if (className) node.className = className; return node; }
   function fieldControl(field){
     var wrap = el(field.type === "radio" ? "div" : "label", "mtf-field");
@@ -171,11 +175,12 @@ function loaderScript() {
     backdrop.addEventListener("mousedown", function(event){ if (event.target === backdrop) close(backdrop); });
     try {
       var response = await fetch(apiBase + "/" + encodeURIComponent(formId), { credentials: "omit" });
-      var payload = await response.json();
+      var payload = await response.json().catch(function(){ return {}; });
       if (!response.ok) throw new Error(payload && payload.error && payload.error.message || "Форма недоступна.");
       var form = payload.data;
+      if (!form || typeof form !== "object") throw new Error("Форма недоступна. Перевірте URL скрипта.");
       modal.innerHTML = "";
-      var styles = form.styles || {};
+      var styles = form.styles && typeof form.styles === "object" ? form.styles : {};
       modal.style.setProperty("--mtf-button-bg", styles.buttonBackgroundColor || styles.accentColor || "#6d5dfc");
       modal.style.setProperty("--mtf-button-color", styles.buttonTextColor || "#ffffff");
       modal.style.setProperty("--mtf-radius", styles.borderRadius || "18px");

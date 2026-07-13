@@ -56,6 +56,12 @@ if (env.APP_ORIGIN) {
   app.use(cors({ origin: env.APP_ORIGIN, credentials: true }));
 }
 
+const publicEmbedCors = cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+});
+
 app.use(express.json({ limit: '25mb' }));
 app.use(cookieParser());
 
@@ -83,7 +89,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/forms', formRoutes);
-app.use('/api/public/application-forms', publicApplicationRoutes);
+app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
 app.use('/api', notFoundHandler);
 
 app.use(express.static(webDistDir, { index: false, maxAge: env.isProduction ? '1h' : 0 }));
