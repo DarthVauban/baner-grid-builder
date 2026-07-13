@@ -39,6 +39,17 @@ import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 import type { IntegrationSettings, MailtrapIntegration, MailtrapIntegrationInput } from '../types/integration';
+import type {
+  ApplicationBank,
+  ApplicationButtonConfig,
+  ApplicationButtonInput,
+  ApplicationCounts,
+  ApplicationFeed,
+  ApplicationForm,
+  ApplicationFormInput,
+  ApplicationRecord,
+  ApplicationStatus
+} from '../types/application';
 
 interface ApiErrorPayload {
   error?: {
@@ -231,6 +242,50 @@ export const api = {
       method: 'PATCH'
     }),
     markAllRead: () => request<void>('/api/notifications/read-all', { method: 'POST' })
+  },
+  applications: {
+    list: (params: { filter?: string; search?: string; sort?: string; page?: number; pageSize?: number }) =>
+      request<ApplicationFeed>(`/api/applications${queryString(params)}`),
+    counts: () => request<ApplicationCounts>('/api/applications/counts'),
+    get: (id: string) => request<ApplicationRecord>(`/api/applications/${encodeURIComponent(id)}`),
+    setStatus: (id: string, status: ApplicationStatus, expectedVersion: number, comment = '') =>
+      request<ApplicationRecord>(`/api/applications/${encodeURIComponent(id)}/status`, {
+        method: 'PATCH',
+        body: jsonBody({ status, expectedVersion, comment })
+      }),
+    addComment: (id: string, text: string, expectedVersion?: number) =>
+      request<ApplicationRecord>(`/api/applications/${encodeURIComponent(id)}/comments`, {
+        method: 'POST',
+        body: jsonBody({ text, expectedVersion })
+      })
+  },
+  forms: {
+    list: () => request<ApplicationForm[]>('/api/forms'),
+    get: (id: string) => request<ApplicationForm>(`/api/forms/${encodeURIComponent(id)}`),
+    create: (input: Omit<ApplicationFormInput, 'fields'>) =>
+      request<ApplicationForm>('/api/forms', { method: 'POST', body: jsonBody(input) }),
+    update: (id: string, input: ApplicationFormInput) =>
+      request<ApplicationForm>(`/api/forms/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    duplicate: (id: string) =>
+      request<ApplicationForm>(`/api/forms/${encodeURIComponent(id)}/duplicate`, { method: 'POST' }),
+    publish: (id: string) =>
+      request<ApplicationForm>(`/api/forms/${encodeURIComponent(id)}/publish`, { method: 'PATCH' }),
+    disable: (id: string) =>
+      request<ApplicationForm>(`/api/forms/${encodeURIComponent(id)}/disable`, { method: 'PATCH' }),
+    archive: (id: string) => request<void>(`/api/forms/${encodeURIComponent(id)}/archive`, { method: 'PATCH' }),
+    banks: () => request<ApplicationBank[]>('/api/forms/banks'),
+    createBank: (input: Pick<ApplicationBank, 'label' | 'value' | 'active' | 'sortOrder'>) =>
+      request<ApplicationBank>('/api/forms/banks', { method: 'POST', body: jsonBody(input) }),
+    updateBank: (id: string, input: Partial<Pick<ApplicationBank, 'label' | 'value' | 'active' | 'sortOrder'>>) =>
+      request<ApplicationBank>(`/api/forms/banks/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+    removeBank: (id: string) => request<void>(`/api/forms/banks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    buttons: () => request<ApplicationButtonConfig[]>('/api/forms/buttons/list'),
+    createButton: (input: ApplicationButtonInput) =>
+      request<ApplicationButtonConfig>('/api/forms/buttons', { method: 'POST', body: jsonBody(input) }),
+    updateButton: (id: string, input: ApplicationButtonInput) =>
+      request<ApplicationButtonConfig>(`/api/forms/buttons/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    archiveButton: (id: string) => request<void>(`/api/forms/buttons/${encodeURIComponent(id)}/archive`, { method: 'PATCH' }),
+    buttonScript: (id: string) => request<{ script: string }>(`/api/forms/buttons/${encodeURIComponent(id)}/script`)
   },
   admin: {
     directory: (params: {

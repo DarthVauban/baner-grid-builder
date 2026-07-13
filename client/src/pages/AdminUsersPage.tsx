@@ -57,7 +57,7 @@ export function AdminUserRow({
           <span className="admin-role-static">{roleLabels[user.role]}</span>
         ) : (
           <label className="admin-role-select"><span className="visually-hidden">Роль користувача {user.name}</span><select value={user.role} disabled={busy} onChange={(event) => onRole(user, event.target.value as UserRole)}>
-            <option value="admin">Адміністратор</option><option value="editor">Редактор</option><option value="content_manager">Контент-менеджер</option>
+            <option value="admin">Адміністратор</option><option value="editor">Редактор</option><option value="content_manager">Контент-менеджер</option><option value="manager">Менеджер</option>
           </select></label>
         )}
         {canAdminister && user.status !== 'approved' && <button className="button button--primary button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'approved')}>Схвалити</button>}
@@ -173,7 +173,7 @@ export function AdminUsersPage() {
         <div className="admin-filters">
           <label className="task-search admin-filters__search"><Icon name="search" size={18} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Ім’я або email" aria-label="Пошук користувачів" /></label>
           <label className="admin-filter"><span>Статус</span><select value={status} onChange={(event) => { setStatus(event.target.value as UserStatus | ''); setPage(1); }}><option value="">Усі статуси</option><option value="pending">Очікують</option><option value="approved">Активні</option><option value="rejected">Відхилені</option></select></label>
-          <label className="admin-filter"><span>Роль</span><select value={role} onChange={(event) => { setRole(event.target.value as UserRole | ''); setPage(1); }}><option value="">Усі ролі</option><option value="admin">Адміністратор</option><option value="editor">Редактор</option><option value="content_manager">Контент-менеджер</option></select></label>
+          <label className="admin-filter"><span>Роль</span><select value={role} onChange={(event) => { setRole(event.target.value as UserRole | ''); setPage(1); }}><option value="">Усі ролі</option><option value="admin">Адміністратор</option><option value="editor">Редактор</option><option value="content_manager">Контент-менеджер</option><option value="manager">Менеджер</option></select></label>
         </div>
 
         <div className="admin-users-list">

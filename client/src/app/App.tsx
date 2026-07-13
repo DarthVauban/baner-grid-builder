@@ -22,6 +22,12 @@ const ProductTablesPage = lazy(() => import('../pages/ProductTablesPage').then((
 const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({
   default: module.ChatPage
 })));
+const ApplicationsPage = lazy(() => import('../pages/ApplicationsPage').then((module) => ({
+  default: module.ApplicationsPage
+})));
+const FormsBuilderPage = lazy(() => import('../pages/FormsBuilderPage').then((module) => ({
+  default: module.FormsBuilderPage
+})));
 const ProfilePage = lazy(() => import('../pages/ProfilePage').then((module) => ({
   default: module.ProfilePage
 })));
@@ -88,6 +94,12 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="blog_publications" />}>
             <Route path="tools/blog-publications" element={<BlogPublicationsPage />} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="applications" />}>
+            <Route path="tools/applications" element={<Suspense fallback={<LoadingScreen />}><ApplicationsPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="form_builder" />}>
+            <Route path="tools/forms" element={<Suspense fallback={<LoadingScreen />}><FormsBuilderPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="chat" />}>
             <Route path="chat" element={<Suspense fallback={<LoadingScreen />}><ChatPage /></Suspense>} />

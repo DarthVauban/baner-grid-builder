@@ -51,11 +51,28 @@ export interface ChatPublicationPreview {
   publicationUrl: string;
 }
 
+export interface ChatApplicationPreview {
+  number: string;
+  status: string;
+  statusLabel: string;
+  formName: string;
+  customerName: string;
+  bankLabel: string;
+  productTitle: string;
+  productImageUrl: string;
+  sourceUrl: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ChatEntity =
   | { type: 'task'; id: string; available: false }
   | { type: 'task'; id: string; available: true; data: ChatTaskPreview }
   | { type: 'publication'; id: string; available: false }
-  | { type: 'publication'; id: string; available: true; data: ChatPublicationPreview };
+  | { type: 'publication'; id: string; available: true; data: ChatPublicationPreview }
+  | { type: 'application'; id: string; available: false }
+  | { type: 'application'; id: string; available: true; data: ChatApplicationPreview };
 
 export type ChatLinkPreview =
   | { type: 'image'; url: string; hostname: string }

@@ -29,6 +29,7 @@ export function AppShell() {
     refetchIntervalInBackground: true
   });
   const hasChatAccess = toolAccess.data?.includes('chat') === true;
+  const hasApplicationsAccess = toolAccess.data?.includes('applications') === true;
   const chatUnread = useQuery({
     queryKey: ['chat-unread-count'],
     queryFn: api.chat.unreadCount,
@@ -66,6 +67,25 @@ export function AppShell() {
     stream.addEventListener('chat', refresh);
     return () => { stream.removeEventListener('chat', refresh); stream.close(); sound.pause(); };
   }, [hasChatAccess, queryClient, userId]);
+
+  useEffect(() => {
+    if (!hasApplicationsAccess || !userId) return undefined;
+    const stream = new EventSource('/api/applications/stream');
+    const refresh = (event: Event) => {
+      let payload: { applicationId?: string } = {};
+      try { payload = JSON.parse((event as MessageEvent).data || '{}'); } catch { /* ignore malformed event data */ }
+      void queryClient.invalidateQueries({ queryKey: ['applications'] });
+      void queryClient.invalidateQueries({ queryKey: ['application-counts'] });
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      void queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+      if (payload.applicationId) {
+        void queryClient.invalidateQueries({ queryKey: ['application', payload.applicationId] });
+        void queryClient.invalidateQueries({ queryKey: ['shared-application', payload.applicationId] });
+      }
+    };
+    stream.addEventListener('applications', refresh);
+    return () => { stream.removeEventListener('applications', refresh); stream.close(); };
+  }, [hasApplicationsAccess, queryClient, userId]);
 
   const closeSidebar = () => setSidebarOpen(false);
   const toggleSidebar = () => {

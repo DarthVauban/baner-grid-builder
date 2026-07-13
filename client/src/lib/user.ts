@@ -3,7 +3,8 @@ import type { UserRole } from '../types/user';
 export const roleLabels: Record<UserRole, string> = {
   admin: 'Адміністратор',
   editor: 'Редактор',
-  content_manager: 'Контент-менеджер'
+  content_manager: 'Контент-менеджер',
+  manager: 'Менеджер'
 };
 
 export function getInitials(name: string): string {

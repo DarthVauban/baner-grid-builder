@@ -27,7 +27,7 @@ function accessManagerOnly(req, res, next) {
 
 const idSchema = z.string().uuid();
 const statusSchema = z.object({ status: z.enum(['pending', 'approved', 'rejected']) });
-const roleSchema = z.object({ role: z.enum(['admin', 'editor', 'content_manager']) });
+const roleSchema = z.object({ role: z.enum(['admin', 'editor', 'content_manager', 'manager']) });
 const toolAccessSchema = z.object({
   tools: z.array(z.enum(toolIds)).max(toolIds.length),
   canManageToolAccess: z.boolean().optional(),
@@ -46,7 +46,7 @@ const mailtrapIntegrationSchema = z.object({
 const directoryQuerySchema = z.object({
   search: z.string().trim().max(160).default(''),
   status: z.enum(['pending', 'approved', 'rejected']).optional(),
-  role: z.enum(['admin', 'editor', 'content_manager']).optional(),
+  role: z.enum(['admin', 'editor', 'content_manager', 'manager']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(10).max(100).default(25)
 });

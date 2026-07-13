@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { formatApplicationDate } from '../lib/application';
 import { formatPublicationDate, materialTypeLabels, publicationStatusLabels } from '../lib/publication';
 import { formatTaskDateValue, taskTypeLabels } from '../lib/task';
 import { useToast } from '../toast/ToastContext';
+import type { ApplicationRecord, ApplicationStatus } from '../types/application';
 import type { ChatEntity } from '../types/chat';
 import type { Task } from '../types/task';
 import type { BlogPublication } from '../types/publication';
+import { ApplicationDetailsModal } from './ApplicationDetailsModal';
 import { Icon } from './Icon';
 import { TaskDetailsModal } from './TaskDetailsModal';
 import { PublicationDetailsModal } from './PublicationDetailsModal';
@@ -16,9 +19,18 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
   const { showToast } = useToast();
   const [taskDetails, setTaskDetails] = useState<Task | null>(null);
   const [publicationDetails, setPublicationDetails] = useState<BlogPublication | null>(null);
+  const [applicationDetails, setApplicationDetails] = useState<ApplicationRecord | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const respond = useMutation({
     mutationFn: ({ id, response }: { id: string; response: 'accepted' | 'declined' }) => api.tasks.respond(id, response)
+  });
+  const setApplicationStatus = useMutation({
+    mutationFn: ({ id, status, version, comment }: { id: string; status: ApplicationStatus; version: number; comment: string }) =>
+      api.applications.setStatus(id, status, version, comment)
+  });
+  const addApplicationComment = useMutation({
+    mutationFn: ({ id, text, version }: { id: string; text: string; version: number }) =>
+      api.applications.addComment(id, text, version)
   });
 
   async function respondToTask(response: 'accepted' | 'declined') {
@@ -42,18 +54,59 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
     setLoadingDetails(true);
     try {
       if (entity.type === 'task') setTaskDetails(await api.tasks.get(entity.id));
-      else setPublicationDetails(await api.publications.get(entity.id));
+      else if (entity.type === 'publication') setPublicationDetails(await api.publications.get(entity.id));
+      else setApplicationDetails(await api.applications.get(entity.id));
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося відкрити картку.', 'error');
-    } finally { setLoadingDetails(false); }
+    } finally {
+      setLoadingDetails(false);
+    }
   }
 
-  async function shareEntity(type: 'task' | 'publication', id: string) {
-    const path = type === 'task' ? `/tasks?task=${encodeURIComponent(id)}` : `/tools/blog-publications?publication=${encodeURIComponent(id)}`;
+  async function shareEntity(type: 'task' | 'publication' | 'application', id: string) {
+    const path = type === 'task'
+      ? `/tasks?task=${encodeURIComponent(id)}`
+      : type === 'publication'
+        ? `/tools/blog-publications?publication=${encodeURIComponent(id)}`
+        : `/tools/applications?application=${encodeURIComponent(id)}`;
     try {
       await navigator.clipboard.writeText(`${window.location.origin}${path}`);
       showToast('Посилання скопійовано.');
-    } catch { showToast('Не вдалося скопіювати посилання.', 'error'); }
+    } catch {
+      showToast('Не вдалося скопіювати посилання.', 'error');
+    }
+  }
+
+  async function refreshApplication(application: ApplicationRecord) {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', conversationId] }),
+      queryClient.invalidateQueries({ queryKey: ['applications'] }),
+      queryClient.invalidateQueries({ queryKey: ['application-counts'] }),
+      queryClient.invalidateQueries({ queryKey: ['shared-application', application.id] }),
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    ]);
+  }
+
+  async function changeApplicationStatus(application: ApplicationRecord, status: ApplicationStatus, comment: string) {
+    try {
+      const updated = await setApplicationStatus.mutateAsync({ id: application.id, status, version: application.version, comment });
+      setApplicationDetails(updated);
+      await refreshApplication(updated);
+      showToast('Статус заявки змінено.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося змінити статус заявки.', 'error');
+    }
+  }
+
+  async function createApplicationComment(application: ApplicationRecord, text: string) {
+    try {
+      const updated = await addApplicationComment.mutateAsync({ id: application.id, text, version: application.version });
+      setApplicationDetails(updated);
+      await refreshApplication(updated);
+      showToast('Коментар додано.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося додати коментар.', 'error');
+    }
   }
 
   if (!entity.available) {
@@ -74,6 +127,26 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
         <button className="button button--secondary button--small" type="button" disabled={loadingDetails} onClick={() => void openDetails()}>Відкрити <Icon name="arrow" size={14} /></button>
       </footer>
     </article>{taskDetails && <TaskDetailsModal task={taskDetails} busy={respond.isPending} onClose={() => setTaskDetails(null)} onShare={(task) => void shareEntity('task', task.id)} onRespond={(_, response) => void respondToTask(response)} />}</>;
+  }
+
+  if (entity.type === 'application') {
+    const application = entity.data;
+    const title = application.customerName || application.productTitle || `Заявка №${application.number}`;
+    const applicationBusy = setApplicationStatus.isPending || addApplicationComment.isPending;
+    return <><article className="chat-entity chat-entity--application">
+      <header><span><Icon name="tasks" size={28} /></span><div><div className="chat-entity__kicker"><small>Заявка №{application.number}</small><b>{application.statusLabel}</b></div><strong>{title}</strong></div></header>
+      {application.productTitle && <p>{application.productTitle}</p>}
+      <div className="chat-entity__details">
+        <span><Icon name="calendar" size={18} /><span><small>Створено</small><strong>{formatApplicationDate(application.createdAt)}</strong></span></span>
+        <span><Icon name="publication" size={18} /><span><small>Форма</small><strong>{application.formName}</strong></span></span>
+        <span><Icon name="phone" size={18} /><span><small>Банк</small><strong>{application.bankLabel || 'Не вказано'}</strong></span></span>
+        <span><Icon name="productSelection" size={18} /><span><small>Товар</small><strong>{application.productTitle || 'Не визначено'}</strong></span></span>
+      </div>
+      <footer>
+        {application.sourceUrl && <a className="button button--secondary button--small" href={application.sourceUrl} target="_blank" rel="noreferrer">Товар <Icon name="openInNew" size={14} /></a>}
+        <button className="button button--secondary button--small" type="button" disabled={loadingDetails} onClick={() => void openDetails()}>Відкрити картку <Icon name="arrow" size={14} /></button>
+      </footer>
+    </article>{applicationDetails && <ApplicationDetailsModal application={applicationDetails} busy={applicationBusy} onClose={() => setApplicationDetails(null)} onShare={(item) => void shareEntity('application', item.id)} onStatus={(item, nextStatus, comment) => void changeApplicationStatus(item, nextStatus, comment)} onComment={(item, text) => void createApplicationComment(item, text)} />}</>;
   }
 
   const publication = entity.data;

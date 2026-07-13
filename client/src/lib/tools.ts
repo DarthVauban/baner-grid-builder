@@ -25,6 +25,20 @@ export const tools: ToolDefinition[] = [
     icon: 'blogPublications'
   },
   {
+    id: 'applications',
+    name: 'Заявки',
+    description: 'Обробка заявок з форм, статуси, коментарі, товарний snapshot і шерінг у чат.',
+    path: '/tools/applications',
+    icon: 'tasks'
+  },
+  {
+    id: 'form_builder',
+    name: 'Конструктор форм',
+    description: 'Форми, банки, поля, дизайн pop-up і скрипти кнопок для Хорошоп.',
+    path: '/tools/forms',
+    icon: 'integrations'
+  },
+  {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',

@@ -1,10 +1,11 @@
 import { copyToClipboard } from './banner-generator';
 
-export type ShareTarget = 'task' | 'publication';
+export type ShareTarget = 'task' | 'publication' | 'application';
 
 const shareRoutes: Record<ShareTarget, { path: string; parameter: string }> = {
   task: { path: '/tasks', parameter: 'task' },
-  publication: { path: '/tools/blog-publications', parameter: 'publication' }
+  publication: { path: '/tools/blog-publications', parameter: 'publication' },
+  application: { path: '/tools/applications', parameter: 'application' }
 };
 
 export function buildShareLink(target: ShareTarget, id: string, origin = window.location.origin): string {

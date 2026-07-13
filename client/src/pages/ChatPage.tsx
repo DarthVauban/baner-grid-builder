@@ -24,6 +24,7 @@ function isEntityUrl(value: string, entities: ChatEntity[]): boolean {
     return entities.some((entity) => (
       (entity.type === 'task' && url.pathname === '/tasks' && url.searchParams.get('task') === entity.id)
       || (entity.type === 'publication' && url.pathname === '/tools/blog-publications' && url.searchParams.get('publication') === entity.id)
+      || (entity.type === 'application' && url.pathname === '/tools/applications' && url.searchParams.get('application') === entity.id)
     ));
   } catch { return false; }
 }

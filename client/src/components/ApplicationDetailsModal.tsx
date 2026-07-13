@@ -1,0 +1,125 @@
+import { useEffect, useState } from 'react';
+import { applicationStatusLabels, customerName, formatApplicationDate } from '../lib/application';
+import type { ApplicationRecord, ApplicationStatus } from '../types/application';
+import { Icon } from './Icon';
+
+interface Props {
+  application: ApplicationRecord;
+  busy?: boolean;
+  onClose: () => void;
+  onShare: (application: ApplicationRecord) => void;
+  onStatus: (application: ApplicationRecord, status: ApplicationStatus, comment: string) => void;
+  onComment: (application: ApplicationRecord, text: string) => void;
+}
+
+export function ApplicationDetailsModal({ application, busy, onClose, onShare, onStatus, onComment }: Props) {
+  const [status, setStatus] = useState<ApplicationStatus>(application.status);
+  const [statusComment, setStatusComment] = useState('');
+  const [comment, setComment] = useState('');
+
+  useEffect(() => setStatus(application.status), [application.status]);
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [onClose]);
+
+  const productTitle = application.product?.title || application.pageTitle || 'Товар не визначено';
+  const sourceUrl = application.product?.url || application.sourceUrl;
+  const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <section className="modal application-details-modal" role="dialog" aria-modal="true" aria-labelledby="application-details-title">
+      <header className="modal__header">
+        <div>
+          <p className="eyebrow">Заявка №{application.number}</p>
+          <h2 id="application-details-title">{customerName(application.customer.firstName, application.customer.lastName)}</h2>
+        </div>
+        <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={20} /></button>
+      </header>
+
+      <div className="application-details-modal__content">
+        <section className="application-product-preview">
+          {application.product?.imageUrl ? <img src={application.product.imageUrl} alt="" loading="lazy" /> : <span><Icon name="productSelection" size={30} /></span>}
+          <div>
+            <div className="application-details-modal__badges">
+              <span className={`application-status application-status--${application.status}`}>{application.statusLabel}</span>
+              <span>v{application.version}</span>
+            </div>
+            <h3>{productTitle}</h3>
+            <dl>
+              {application.product?.price && <><dt>Ціна</dt><dd>{application.product.price} {application.product.currency}</dd></>}
+              {application.product?.oldPrice && <><dt>Стара ціна</dt><dd>{application.product.oldPrice}</dd></>}
+              {application.product?.sku && <><dt>SKU</dt><dd>{application.product.sku}</dd></>}
+              {application.product?.productCode && <><dt>Код</dt><dd>{application.product.productCode}</dd></>}
+              {application.product?.availability && <><dt>Наявність</dt><dd>{application.product.availability}</dd></>}
+              {application.product?.domain && <><dt>Домен</dt><dd>{application.product.domain}</dd></>}
+            </dl>
+            {sourceUrl && <a className="button button--secondary button--small" href={sourceUrl} target="_blank" rel="noreferrer">Перейти до товару <Icon name="openInNew" size={14} /></a>}
+          </div>
+        </section>
+
+        <section className="task-details-grid">
+          <div><Icon name="users" size={18} /><span><small>Покупець</small><strong>{customerName(application.customer.firstName, application.customer.lastName)}</strong></span></div>
+          <div><Icon name="phone" size={18} /><span><small>Телефон</small><strong>{application.customer.phone ? <a href={`tel:${application.customer.phone}`}>{application.customer.phone}</a> : 'Не вказано'}</strong></span></div>
+          <div><Icon name="publication" size={18} /><span><small>Банк</small><strong>{application.customer.bankLabel || 'Не вказано'}</strong></span></div>
+          <div><Icon name="schedule" size={18} /><span><small>Створено</small><strong>{formatApplicationDate(application.createdAt)}</strong></span></div>
+          <div><Icon name="edit" size={18} /><span><small>Форма</small><strong>{application.formName}</strong></span></div>
+          <div><Icon name="calendar" size={18} /><span><small>Оновлено</small><strong>{formatApplicationDate(application.updatedAt)}</strong></span></div>
+        </section>
+
+        <section className="task-details-section">
+          <h3>Джерело заявки</h3>
+          <div className="application-source-grid">
+            <article><small>Сторінка</small>{application.sourceUrl ? <a href={application.sourceUrl} target="_blank" rel="noreferrer">{application.sourceUrl}</a> : <strong>Не вказано</strong>}</article>
+            <article><small>Заголовок</small><strong>{application.pageTitle || 'Не вказано'}</strong></article>
+            <article><small>Referrer</small>{application.referrer ? <a href={application.referrer} target="_blank" rel="noreferrer">{application.referrer}</a> : <strong>Не вказано</strong>}</article>
+            <article><small>UTM</small>{utmEntries.length ? <div className="application-utm-list">{utmEntries.map(([key, value]) => <span key={key}>{key}: {value}</span>)}</div> : <strong>Не передано</strong>}</article>
+          </div>
+        </section>
+
+        {application.values.length > 0 && <section className="task-details-section">
+          <h3>Додаткові відповіді <span>{application.values.length}</span></h3>
+          <div className="application-answer-list">
+            {application.values.map((value) => <article key={value.id}><small>{value.label}</small><strong>{value.optionLabel || value.value || 'Не заповнено'}</strong></article>)}
+          </div>
+        </section>}
+
+        <section className="task-details-section application-status-editor">
+          <h3>Статус</h3>
+          <div>
+            <label className="field"><span>Новий статус</span><select value={status} onChange={(event) => setStatus(event.target.value as ApplicationStatus)}>
+              {Object.entries(applicationStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select></label>
+            <label className="field"><span>Коментар до зміни</span><input value={statusComment} onChange={(event) => setStatusComment(event.target.value)} maxLength={1000} placeholder="Необовʼязково" /></label>
+            <button className="button button--primary" type="button" disabled={busy || status === application.status} onClick={() => { onStatus(application, status, statusComment); setStatusComment(''); }}>Змінити статус</button>
+          </div>
+        </section>
+
+        <section className="task-details-section">
+          <h3>Внутрішні коментарі <span>{application.comments.length}</span></h3>
+          <div className="application-comments">
+            {application.comments.map((item) => <article key={item.id}><strong>{item.user.name}</strong><p>{item.text}</p><time>{formatApplicationDate(item.createdAt)}</time></article>)}
+            {!application.comments.length && <p className="task-details-section__muted">Коментарів поки немає.</p>}
+          </div>
+          <form className="application-comment-form" onSubmit={(event) => { event.preventDefault(); if (comment.trim()) { onComment(application, comment.trim()); setComment(''); } }}>
+            <input value={comment} onChange={(event) => setComment(event.target.value)} maxLength={3000} placeholder="Додати внутрішній коментар" />
+            <button className="button button--secondary" type="submit" disabled={busy || !comment.trim()}>Додати</button>
+          </form>
+        </section>
+
+        <section className="task-details-section">
+          <h3>Історія статусів</h3>
+          <div className="application-history">
+            {application.history.map((item) => <article key={item.id}><span>{item.newStatusLabel}</span><small>{formatApplicationDate(item.createdAt)}{item.changedBy?.name ? ` · ${item.changedBy.name}` : ''}</small>{item.comment && <p>{item.comment}</p>}</article>)}
+          </div>
+        </section>
+      </div>
+
+      <footer className="task-details-modal__footer">
+        <button className="button button--secondary" type="button" onClick={() => onShare(application)}><Icon name="share" size={17} /> Поділитися</button>
+        <button className="button button--secondary" type="button" onClick={onClose}>Закрити</button>
+      </footer>
+    </section>
+  </div>;
+}

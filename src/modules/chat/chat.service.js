@@ -1,12 +1,14 @@
 import { query } from '../../db/pool.js';
 import { getUserToolAccess } from '../access/access.service.js';
+import { loadApplicationChatPreview } from '../applications/application.service.js';
 import { loadPublication } from '../publications/publication.service.js';
 import { loadTaskView } from '../tasks/task.service.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const entityLinkMatchers = [
   { type: 'task', path: '/tasks', parameter: 'task' },
-  { type: 'publication', path: '/tools/blog-publications', parameter: 'publication' }
+  { type: 'publication', path: '/tools/blog-publications', parameter: 'publication' },
+  { type: 'application', path: '/tools/applications', parameter: 'application' }
 ];
 
 export function directConversationKey(firstUserId, secondUserId) {
@@ -116,9 +118,14 @@ async function hydratePublication(reference, viewer) {
   };
 }
 
+async function hydrateApplication(reference, viewer) {
+  return loadApplicationChatPreview(reference, viewer);
+}
+
 const entityHydrators = {
   task: hydrateTask,
-  publication: hydratePublication
+  publication: hydratePublication,
+  application: hydrateApplication
 };
 
 export async function hydrateEntityReferences(references, viewer) {

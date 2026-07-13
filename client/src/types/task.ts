@@ -73,6 +73,7 @@ export interface Notification {
   id: string;
   taskId: string | null;
   publicationId: string | null;
+  applicationId: string | null;
   type: string;
   title: string;
   message: string;
