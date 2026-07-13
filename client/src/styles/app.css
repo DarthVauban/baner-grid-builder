@@ -821,16 +821,19 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .form-preview__choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .form-preview__choices small, .form-preview__checkbox { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
 .form-preview button { min-height: 42px; border: 0; border-radius: var(--form-preview-radius, 12px); color: var(--form-preview-button-color, #fff); background: var(--form-preview-button-bg, var(--brand)); font-weight: 850; }
-.button-config-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(260px,.75fr); gap: 18px; }
-.button-config-list article { grid-template-columns: minmax(0,1fr) auto auto 34px; }
+.button-config-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(260px,.75fr); align-items: start; gap: 18px; }
+.button-config-list { align-content: start; }
+.button-config-list article { grid-template-columns: minmax(0,1fr) auto auto 34px; align-self: start; }
 .button-config-form { align-content: start; border: 1px dashed #d3d9e4; border-radius: 14px; padding: 14px; background: var(--surface-soft); }
 .button-config-checks { display: flex; flex-wrap: wrap; gap: 12px; }
 .button-style-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .button-selector-grid { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
 .button-selector-grid > strong { color: var(--ink); font-size: 12px; }
 .button-selector-row { display: grid; grid-template-columns: minmax(0,1fr) 130px; gap: 9px; }
-.generated-script { margin-top: 16px; }
-.generated-script textarea { min-height: 260px; color: #d5def0; background: #131925; font: 11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; }
+.generated-script { display: grid; gap: 10px; margin-top: 16px; }
+.generated-script header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.generated-script header span { color: var(--ink); font-size: 12px; font-weight: 850; }
+.generated-script textarea { width: 100%; min-height: 260px; border: 1px solid #263347; border-radius: 12px; padding: 12px; color: #d5def0; background: #131925; font: 11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; resize: vertical; }
 .chat-entity--application > header { background: linear-gradient(120deg, #28364e, #12332c); }
 
 /* Blog publications */

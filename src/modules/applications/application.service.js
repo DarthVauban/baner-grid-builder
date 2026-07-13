@@ -433,6 +433,7 @@ export function buildButtonScript(config, publicOrigin = '') {
     text: config.text,
     cssClass: config.css_class || config.cssClass || '',
     fullWidth: config.full_width === true || config.fullWidth === true,
+    active: config.active !== false,
     styles: config.styles || {},
     productSelectors: config.product_selectors || config.productSelectors || {}
   };
@@ -440,31 +441,97 @@ export function buildButtonScript(config, publicOrigin = '') {
   "use strict";
   var config = ${JSON.stringify(payload)};
   var loaderUrl = ${JSON.stringify(loaderUrl)};
-  var inserted = false;
+  var buttonNode = null;
+  var pendingInsert = false;
   function warn(message){ if (window.console && console.warn) console.warn("[MT forms] " + message); }
-  function read(selectorConfig){
-    if (!selectorConfig || !selectorConfig.selector) return "";
-    var element;
-    try { element = document.querySelector(selectorConfig.selector); } catch (error) { warn("Некоректний селектор: " + selectorConfig.selector); return ""; }
-    if (!element) return "";
-    var source = selectorConfig.source || "textContent";
+  function unique(list){
+    var seen = {};
+    return list.filter(function(item){
+      if (!item || !item.selector || seen[item.selector + "|" + (item.source || "")]) return false;
+      seen[item.selector + "|" + (item.source || "")] = true;
+      return true;
+    });
+  }
+  function normalizeConfig(value, fallbackSource){
+    if (!value) return null;
+    if (typeof value === "string") return { selector: value, source: fallbackSource || "textContent" };
+    if (typeof value === "object" && value.selector) return { selector: value.selector, source: value.source || fallbackSource || "textContent" };
+    return null;
+  }
+  function absoluteUrl(value){
+    if (!value) return "";
+    try { return new URL(value, window.location.href).toString(); } catch (error) { return value; }
+  }
+  function readElement(element, source){
     if (source === "textContent") return (element.textContent || "").trim();
-    if (source === "src") return element.currentSrc || element.src || "";
-    if (source === "data-src") return element.getAttribute("data-src") || "";
-    if (source === "href") return element.href || element.getAttribute("href") || "";
+    if (source === "src") return absoluteUrl(element.currentSrc || element.src || element.getAttribute("src") || "");
+    if (source === "data-src") return absoluteUrl(element.getAttribute("data-src") || "");
+    if (source === "href") return absoluteUrl(element.href || element.getAttribute("href") || "");
     if (source === "value") return element.value || "";
+    if (source === "content") return element.getAttribute("content") || "";
     return element.getAttribute(source) || "";
   }
+  function read(selectorConfig, fallbacks, validator){
+    var candidates = [];
+    var normalized = normalizeConfig(selectorConfig);
+    if (normalized) candidates.push(normalized);
+    (fallbacks || []).forEach(function(fallback){ var item = normalizeConfig(fallback); if (item) candidates.push(item); });
+    candidates = unique(candidates);
+    for (var i = 0; i < candidates.length; i += 1) {
+      var candidate = candidates[i];
+      var elements;
+      try { elements = document.querySelectorAll(candidate.selector); } catch (error) { warn("Некоректний селектор: " + candidate.selector); continue; }
+      for (var index = 0; index < elements.length; index += 1) {
+        var value = readElement(elements[index], candidate.source || "textContent").trim();
+        if (value && (!validator || validator(value))) return value;
+      }
+    }
+    return "";
+  }
+  function isImageUrl(value){ return /\\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i.test(value); }
   function collectProduct(){
     var selectors = config.productSelectors || {};
+    var fallbacks = {
+      title: [
+        { selector: "h1.product-title", source: "textContent" },
+        { selector: ".product-title", source: "textContent" },
+        { selector: ".product h1", source: "textContent" },
+        { selector: "h1", source: "textContent" },
+        { selector: "meta[property='og:title']", source: "content" }
+      ],
+      imageUrl: [
+        { selector: ".gallery__photo-img", source: "src" },
+        { selector: ".gallery img[itemprop='image']", source: "src" },
+        { selector: "img[itemprop='image']", source: "src" },
+        { selector: ".product-gallery img", source: "src" },
+        { selector: ".product-photo img", source: "src" },
+        { selector: ".product__gallery img", source: "src" },
+        { selector: "meta[property='og:image']", source: "content" }
+      ],
+      price: [
+        { selector: ".product-price__item--new", source: "textContent" },
+        { selector: ".product-price__item", source: "textContent" },
+        { selector: ".product-price__current", source: "textContent" },
+        { selector: "[itemprop='price']", source: "content" },
+        { selector: "meta[property='product:price:amount']", source: "content" }
+      ],
+      oldPrice: [
+        { selector: ".product-price__old-price", source: "textContent" },
+        { selector: ".product-price__item--old", source: "textContent" },
+        { selector: ".product__price-old", source: "textContent" }
+      ],
+      productCode: [
+        { selector: "[data-product-code]", source: "textContent" },
+        { selector: ".product-code", source: "textContent" },
+        { selector: "[itemprop='sku']", source: "content" }
+      ]
+    };
     return {
-      title: read(selectors.title),
-      imageUrl: read(selectors.imageUrl),
-      price: read(selectors.price),
-      oldPrice: read(selectors.oldPrice),
-      sku: read(selectors.sku),
-      productCode: read(selectors.productCode),
-      availability: read(selectors.availability),
+      title: read(selectors.title, fallbacks.title),
+      imageUrl: read(selectors.imageUrl, fallbacks.imageUrl, isImageUrl),
+      price: read(selectors.price, fallbacks.price),
+      oldPrice: read(selectors.oldPrice, fallbacks.oldPrice),
+      productCode: read(selectors.productCode, fallbacks.productCode),
       url: window.location.href,
       domain: window.location.hostname
     };
@@ -485,7 +552,19 @@ export function buildButtonScript(config, publicOrigin = '') {
     var button = document.createElement("button");
     button.type = "button";
     button.textContent = config.text || "Залишити заявку";
-    button.className = config.cssClass || "mt-application-button";
+    button.className = ((config.cssClass || "") + " mt-application-button").trim();
+    button.setAttribute("data-mt-application-button", "true");
+    button.setAttribute("data-mt-application-form-id", String(config.formId || ""));
+    button.style.display = config.fullWidth ? "flex" : "inline-flex";
+    button.style.alignItems = "center";
+    button.style.justifyContent = "center";
+    button.style.gap = "6px";
+    button.style.border = "0";
+    button.style.cursor = "pointer";
+    button.style.font = "inherit";
+    button.style.fontWeight = "700";
+    button.style.lineHeight = "1.2";
+    button.style.textDecoration = "none";
     if (config.fullWidth) button.style.width = "100%";
     var styles = config.styles || {};
     Object.keys(styles).forEach(function(key){ if (styles[key] !== "") button.style[key] = styles[key]; });
@@ -504,20 +583,99 @@ export function buildButtonScript(config, publicOrigin = '') {
     });
     return button;
   }
-  function insert(){
-    if (inserted || !config.selector || config.active === false) return;
-    var target;
-    try { target = document.querySelector(config.selector); } catch (error) { warn("Некоректний селектор контейнера."); return; }
-    if (!target || target.dataset.mtApplicationButton === "true") return;
-    var button = makeButton();
-    target.dataset.mtApplicationButton = "true";
-    if (config.insertPosition === "start") target.prepend(button);
-    else if (config.insertPosition === "end") target.append(button);
+  function isUsable(element){
+    if (!element || !document.documentElement.contains(element)) return false;
+    var rect = element.getBoundingClientRect();
+    var style = window.getComputedStyle ? window.getComputedStyle(element) : null;
+    return rect.width > 0 && rect.height > 0 && (!style || (style.display !== "none" && style.visibility !== "hidden"));
+  }
+  function hasBuyControl(element){
+    if (!element) return false;
+    if (element.querySelector(".j-buy-button-add, .product-order__block--buy, [data-qaid='product_buy_button'], [data-qaid='buy-button']")) return true;
+    return /купити|купить|buy/i.test(element.textContent || "");
+  }
+  function normalizeTarget(element){
+    if (!element) return null;
+    if (element.matches && element.matches(".j-buy-button-add, [data-qaid='product_buy_button'], [data-qaid='buy-button']")) {
+      return element.closest(".product-order__row, .product-order, .product__section--order, .product-actions, .product__actions") || element.parentElement;
+    }
+    return element;
+  }
+  function targetSelectors(){
+    return unique([
+      normalizeConfig(config.selector),
+      { selector: ".product-order__row" },
+      { selector: ".product-order" },
+      { selector: ".product__section--order" },
+      { selector: ".product-actions" },
+      { selector: ".product__actions" },
+      { selector: ".product-buttons" },
+      { selector: ".product__buttons" },
+      { selector: ".product-order__block--buy" },
+      { selector: ".j-buy-button-add" },
+      { selector: "[data-qaid='product_buy_button']" },
+      { selector: "[data-qaid='buy-button']" }
+    ]);
+  }
+  function findTarget(){
+    var targets = [];
+    targetSelectors().forEach(function(candidate){
+      var elements;
+      try { elements = document.querySelectorAll(candidate.selector); } catch (error) { warn("Некоректний селектор контейнера: " + candidate.selector); return; }
+      Array.prototype.forEach.call(elements, function(element){
+        var target = normalizeTarget(element);
+        if (target && targets.indexOf(target) === -1) targets.push(target);
+      });
+    });
+    for (var i = 0; i < targets.length; i += 1) if (isUsable(targets[i]) && hasBuyControl(targets[i])) return targets[i];
+    for (var j = 0; j < targets.length; j += 1) if (isUsable(targets[j])) return targets[j];
+    return targets[0] || null;
+  }
+  function existingButton(){
+    var formId = String(config.formId || "");
+    var buttons = document.querySelectorAll('[data-mt-application-button="true"]');
+    for (var i = 0; i < buttons.length; i += 1) {
+      if (buttons[i].getAttribute("data-mt-application-form-id") === formId) return buttons[i];
+    }
+    return null;
+  }
+  function isPlaced(button, target){
+    if (!button || !target || !document.documentElement.contains(button)) return false;
+    if (config.insertPosition === "start" || config.insertPosition === "end") return button.parentNode === target;
+    if (config.insertPosition === "before") return button.nextSibling === target;
+    return target.nextSibling === button;
+  }
+  function placeButton(target, button){
+    if (config.insertPosition === "start") target.insertBefore(button, target.firstChild);
+    else if (config.insertPosition === "end") target.appendChild(button);
     else if (config.insertPosition === "before") target.parentNode && target.parentNode.insertBefore(button, target);
     else target.parentNode && target.parentNode.insertBefore(button, target.nextSibling);
-    inserted = true;
   }
-  function ready(){ insert(); if (!inserted && window.MutationObserver) { var observer = new MutationObserver(insert); observer.observe(document.documentElement, { childList: true, subtree: true }); window.setTimeout(function(){ observer.disconnect(); }, 10000); } }
+  function insert(){
+    if (config.active === false) return false;
+    var target = findTarget();
+    if (!target) return false;
+    var button = existingButton() || buttonNode || makeButton();
+    buttonNode = button;
+    if (isPlaced(button, target)) return true;
+    placeButton(target, button);
+    return document.documentElement.contains(button);
+  }
+  function scheduleInsert(){
+    if (pendingInsert) return;
+    pendingInsert = true;
+    window.setTimeout(function(){ pendingInsert = false; insert(); }, 50);
+  }
+  function ready(){
+    insert();
+    window.setTimeout(insert, 500);
+    window.setTimeout(insert, 2000);
+    window.setTimeout(insert, 5000);
+    if (window.MutationObserver) {
+      var observer = new MutationObserver(scheduleInsert);
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready, { once: true }); else ready();
 })();`;
 }

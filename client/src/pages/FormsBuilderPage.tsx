@@ -30,12 +30,19 @@ const productSelectorFields = [
   ['imageUrl', 'Зображення'],
   ['price', 'Ціна'],
   ['oldPrice', 'Стара ціна'],
-  ['sku', 'SKU'],
-  ['productCode', 'Код товару'],
-  ['availability', 'Наявність']
+  ['productCode', 'Код товару']
 ] as const;
 
-const selectorSources = ['textContent', 'src', 'data-src', 'href', 'value'] as const;
+const productSelectorKeys = productSelectorFields.map(([key]) => key);
+
+const selectorSources = ['textContent', 'src', 'data-src', 'href', 'value', 'content'] as const;
+
+function sanitizeProductSelectors(selectors: Record<string, unknown> = {}) {
+  return productSelectorKeys.reduce<Record<string, unknown>>((result, key) => {
+    if (selectors[key]) result[key] = selectors[key];
+    return result;
+  }, {});
+}
 
 const emptyForm: Omit<ApplicationFormInput, 'fields'> = {
   name: 'Нова форма',
@@ -116,8 +123,8 @@ export function FormsBuilderPage() {
     setButtonDraft({
       name: `Кнопка ${selectedForm.name}`,
       formId: selectedForm.id,
-      selector: '.product__buy',
-      insertPosition: 'after',
+      selector: '.product-order__row',
+      insertPosition: 'end',
       text: selectedForm.buttonText,
       styles: { backgroundColor: '#6d5dfc', color: '#ffffff', borderRadius: '12px', padding: '12px 18px' },
       cssClass: '',
@@ -125,12 +132,10 @@ export function FormsBuilderPage() {
       active: true,
       productSelectors: {
         title: { selector: 'h1', source: 'textContent' },
-        imageUrl: { selector: 'img', source: 'src' },
-        price: { selector: '.price', source: 'textContent' },
-        oldPrice: { selector: '.old-price', source: 'textContent' },
-        sku: { selector: '[data-sku]', source: 'textContent' },
-        productCode: { selector: '[data-product-code]', source: 'textContent' },
-        availability: { selector: '.availability', source: 'textContent' }
+        imageUrl: { selector: '.gallery__photo-img', source: 'src' },
+        price: { selector: '.product-price__item', source: 'textContent' },
+        oldPrice: { selector: '.product-price__old-price', source: 'textContent' },
+        productCode: { selector: '[data-product-code], .product-code', source: 'textContent' }
       }
     });
     setEditingButtonId(null);
@@ -253,7 +258,7 @@ export function FormsBuilderPage() {
       cssClass: button.cssClass,
       fullWidth: button.fullWidth,
       active: button.active,
-      productSelectors: button.productSelectors
+      productSelectors: sanitizeProductSelectors(button.productSelectors)
     });
     setScript('');
   }
@@ -262,13 +267,36 @@ export function FormsBuilderPage() {
     if (!buttonDraft) return;
     try {
       const target = existing || buttons.data?.find((button) => button.id === editingButtonId);
-      const saved = target ? await updateButton.mutateAsync({ id: target.id, input: buttonDraft }) : await createButton.mutateAsync(buttonDraft);
+      const payload = { ...buttonDraft, productSelectors: sanitizeProductSelectors(buttonDraft.productSelectors) };
+      const saved = target ? await updateButton.mutateAsync({ id: target.id, input: payload }) : await createButton.mutateAsync(payload);
       setEditingButtonId(saved.id);
       showToast(target ? 'Кнопку оновлено.' : 'Кнопку створено.');
       const generated = await buttonScript.mutateAsync(saved.id);
       setScript(generated.script);
       await refresh();
     } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося зберегти кнопку.', 'error'); }
+  }
+
+  async function copyScript() {
+    if (!script) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(script);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = script;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+      }
+      showToast('Скрипт скопійовано.');
+    } catch {
+      showToast('Не вдалося скопіювати скрипт.', 'error');
+    }
   }
 
   function draftStyle(key: string, fallback = '') {
@@ -429,7 +457,10 @@ export function FormsBuilderPage() {
                 <button className="button button--primary" type="button" onClick={() => void saveButton()}>Зберегти і згенерувати код</button>
               </div>}
             </div>
-            {script && <label className="field generated-script"><span>Скрипт кнопки</span><textarea value={script} readOnly rows={10} /></label>}
+            {script && <section className="generated-script">
+              <header><span>Скрипт кнопки</span><button className="button button--secondary button--small" type="button" onClick={() => void copyScript()}><Icon name="copy" size={15} /> Копіювати</button></header>
+              <textarea value={script} readOnly rows={10} />
+            </section>}
           </section>
         </>}
       </div>
