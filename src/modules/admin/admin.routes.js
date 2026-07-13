@@ -7,6 +7,7 @@ import { serializeUser } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth, requireRole } from '../../middleware/auth.js';
 import { assignableRoles, savedDataResources, toolIds } from '../access/access.service.js';
+import { getAdminIntegrations, saveMailtrapIntegration } from '../integrations/integration.service.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -28,6 +29,11 @@ const permissionSchema = z.object({
   role: z.enum(['editor', 'content_manager']),
   resource: z.enum(['banner_grids', 'saved_banners', 'product_tables']),
   canViewAll: z.boolean()
+});
+const mailtrapIntegrationSchema = z.object({
+  senderEmail: z.string().trim().email('Вкажіть коректний email відправника.').max(255),
+  senderName: z.string().trim().min(2, 'Вкажіть назву відправника.').max(120),
+  token: z.string().trim().max(4000, 'Токен завеликий.').optional().default('')
 });
 const directoryQuerySchema = z.object({
   search: z.string().trim().max(160).default(''),
@@ -171,6 +177,24 @@ router.patch('/permissions', adminOnly, asyncHandler(async (req, res) => {
       updatedAt: row.updated_at
     }
   });
+}));
+
+router.get('/integrations', adminOnly, asyncHandler(async (req, res) => {
+  res.json({ data: await getAdminIntegrations() });
+}));
+
+router.put('/integrations/mailtrap', adminOnly, asyncHandler(async (req, res) => {
+  const input = parseInput(mailtrapIntegrationSchema, req.body);
+
+  try {
+    const data = await saveMailtrapIntegration(input, req.user.id);
+    res.json({ data });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'MAILTRAP_TOKEN_REQUIRED') {
+      throw new AppError(422, 'MAILTRAP_TOKEN_REQUIRED', 'Вкажіть Mailtrap API token для першого підключення.');
+    }
+    throw error;
+  }
 }));
 
 router.get('/users/:id/tool-access', accessManagerOnly, asyncHandler(async (req, res) => {

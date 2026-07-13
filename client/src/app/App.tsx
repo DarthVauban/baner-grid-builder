@@ -8,6 +8,7 @@ import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { TasksPage } from '../pages/TasksPage';
 import { AdminUsersPage } from '../pages/AdminUsersPage';
+import { AdminIntegrationsPage } from '../pages/AdminIntegrationsPage';
 import { BannerWorkspaceProvider } from '../workspace/BannerWorkspaceContext';
 import { BannerBuilderPage } from '../pages/BannerBuilderPage';
 import { ProductSelectionPage } from '../pages/ProductSelectionPage';
@@ -43,9 +44,15 @@ function AnonymousRoute() {
   return <Outlet />;
 }
 
-function AdminRoute() {
+function AccessManagementRoute() {
   const { user } = useAuth();
   if (user?.role !== 'admin' && !user?.canManageToolAccess) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+function AdminOnlyRoute() {
+  const { user } = useAuth();
+  if (user?.role !== 'admin') return <Navigate to="/" replace />;
   return <Outlet />;
 }
 
@@ -85,8 +92,11 @@ export function App() {
           <Route element={<ToolAccessRoute tool="chat" />}>
             <Route path="chat" element={<Suspense fallback={<LoadingScreen />}><ChatPage /></Suspense>} />
           </Route>
-          <Route element={<AdminRoute />}>
+          <Route element={<AccessManagementRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />
+          </Route>
+          <Route element={<AdminOnlyRoute />}>
+            <Route path="admin/integrations" element={<AdminIntegrationsPage />} />
           </Route>
         </Route>
       </Route>

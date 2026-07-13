@@ -67,6 +67,29 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.ok(directory.body.data.summary.total >= 2);
   assert.ok(directory.body.data.items.some((candidate) => candidate.email === 'admin@test.local'));
 
+  const initialIntegrations = await admin.get('/api/admin/integrations').expect(200);
+  assert.equal(initialIntegrations.body.data.mailtrap.configured, false);
+  await admin
+    .put('/api/admin/integrations/mailtrap')
+    .send({
+      senderEmail: 'hello@mt-panel.sbs',
+      senderName: 'MT Panel',
+      token: 'mailtrap_test_token_1234567890'
+    })
+    .expect(200)
+    .expect((response) => {
+      assert.equal(response.body.data.configured, true);
+      assert.equal(response.body.data.senderEmail, 'hello@mt-panel.sbs');
+      assert.equal(response.body.data.domain, 'mt-panel.sbs');
+      assert.equal(Object.hasOwn(response.body.data, 'token'), false);
+    });
+  const storedIntegration = await pool.query(
+    'SELECT public_config, secret_ciphertext FROM integration_settings WHERE key = $1',
+    ['mailtrap']
+  );
+  assert.equal(storedIntegration.rows[0].public_config.senderEmail, 'hello@mt-panel.sbs');
+  assert.notEqual(storedIntegration.rows[0].secret_ciphertext, 'mailtrap_test_token_1234567890');
+
   const users = await admin.get('/api/admin/users?status=pending').expect(200);
   const pendingUser = users.body.data.find((user) => user.email === 'user@test.local');
   assert.ok(pendingUser);
@@ -176,6 +199,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     canManageToolAccess: true
   }).expect(200);
   await secondUser.get('/api/admin/directory?page=1&pageSize=10').expect(200);
+  await secondUser.get('/api/admin/integrations').expect(403);
   await secondUser.patch(`/api/admin/users/${pendingUser.id}/role`).send({ role: 'editor' }).expect(403);
   await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({
     tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'],

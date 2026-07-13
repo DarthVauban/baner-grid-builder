@@ -160,10 +160,19 @@ export function AppShell() {
             {(chatUnread.data || 0) > 0 && <span className="sidebar__count">{(chatUnread.data || 0) > 99 ? '99+' : chatUnread.data}</span>}
           </NavLink>}
           {(user.role === 'admin' || user.canManageToolAccess) && (
-            <NavLink aria-label="Користувачі" title="Користувачі" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/users" onClick={closeSidebar}>
-              <Icon name="users" />
-              <span>Користувачі</span>
-            </NavLink>
+            <>
+              <p className="sidebar__label sidebar__label--spaced">Панель керування</p>
+              <NavLink aria-label="Користувачі" title="Користувачі" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/users" onClick={closeSidebar}>
+                <Icon name="users" />
+                <span>Користувачі</span>
+              </NavLink>
+              {user.role === 'admin' && (
+                <NavLink aria-label="Інтеграції" title="Інтеграції" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/integrations" onClick={closeSidebar}>
+                  <Icon name="integrations" />
+                  <span>Інтеграції</span>
+                </NavLink>
+              )}
+            </>
           )}
 
           <p className="sidebar__label sidebar__label--spaced">Інструменти</p>

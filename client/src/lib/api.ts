@@ -31,6 +31,7 @@ import type {
 import type { ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
+import type { IntegrationSettings, MailtrapIntegration, MailtrapIntegrationInput } from '../types/integration';
 
 interface ApiErrorPayload {
   error?: {
@@ -233,6 +234,11 @@ export const api = {
     setToolAccess: (id: string, tools: ToolId[], canManageToolAccess: boolean) => request<UserToolAccess>(
       `/api/admin/users/${encodeURIComponent(id)}/tool-access`,
       { method: 'PUT', body: jsonBody({ tools, canManageToolAccess }) }
+    ),
+    integrations: () => request<IntegrationSettings>('/api/admin/integrations'),
+    saveMailtrapIntegration: (input: MailtrapIntegrationInput) => request<MailtrapIntegration>(
+      '/api/admin/integrations/mailtrap',
+      { method: 'PUT', body: jsonBody(input) }
     )
   },
   grids: {

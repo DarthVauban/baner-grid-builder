@@ -632,6 +632,16 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .admin-role-select select { min-width: 165px; height: 36px; }
 .admin-list-state { min-height: 110px; display: flex; align-items: center; justify-content: center; border: 1px dashed #d9dee7; border-radius: 13px; padding: 24px; color: #8590a2; text-align: center; font-size: 12px; }
 .admin-list-state--error { color: var(--danger); }
+.integration-panel { max-width: 980px; }
+.integration-status { min-height: 34px; display: inline-flex; align-items: center; border-radius: 999px; padding: 0 11px; color: #76611c; background: #fff4c2; white-space: nowrap; font-size: 10px; font-weight: 850; }
+.integration-status--ready { color: #08704d; background: #e2f7ee; }
+.integration-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 17px; }
+.integration-form__wide { grid-column: 1 / -1; }
+.integration-meta { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.integration-meta > span { min-width: 0; display: grid; gap: 4px; border: 1px solid #e5e8ee; border-radius: 13px; padding: 12px 13px; background: #f8fafc; }
+.integration-meta strong { color: #3a4659; font-size: 11px; }
+.integration-meta small { overflow-wrap: anywhere; color: #7f899a; font-size: 10px; line-height: 1.45; }
+.integration-form__actions { display: flex; justify-content: flex-end; }
 .admin-pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; }
 .admin-pagination button { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #dce1e8; border-radius: 9px; padding: 6px 11px; color: #566175; background: #fff; font-size: 10px; font-weight: 700; cursor: pointer; }
 .admin-pagination button:disabled { opacity: .4; cursor: default; }
@@ -1215,6 +1225,10 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 :root[data-theme="brand"] .chat-entity--unavailable { background: var(--surface-soft); }
 :root[data-theme="brand"] .admin-role-static,
 :root[data-theme="brand"] .admin-status { color: #c5c5bf; background: #30302c; }
+:root[data-theme="brand"] .integration-status { color: #f2df72; background: rgba(255,225,1,.12); }
+:root[data-theme="brand"] .integration-status--ready { color: #80d7ad; background: rgba(85,201,151,.12); }
+:root[data-theme="brand"] .integration-meta > span { border-color: var(--line); background: var(--surface-soft); }
+:root[data-theme="brand"] .integration-meta strong { color: #d8d8d2; }
 :root[data-theme="brand"] .banner-tool-tabs,
 :root[data-theme="brand"] .segmented { border-color: var(--line); background: #181816; }
 :root[data-theme="brand"] .banner-tool-tabs button:hover { background: #292925; }
@@ -1368,6 +1382,10 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   .admin-section { padding: 17px; }
   .admin-section__header { flex-direction: column; }
   .admin-always-access { white-space: normal; }
+  .integration-form,
+  .integration-meta { grid-template-columns: 1fr; }
+  .integration-form__wide { grid-column: 1; }
+  .integration-form__actions .button { width: 100%; }
   .admin-filters { grid-template-columns: 1fr; }
   .admin-filters__search { grid-column: 1; }
   .admin-user-row { grid-template-columns: 1fr; }

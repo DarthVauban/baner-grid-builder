@@ -17,6 +17,7 @@ import FullscreenExitRounded from '@mui/icons-material/FullscreenExitRounded';
 import FullscreenRounded from '@mui/icons-material/FullscreenRounded';
 import GridViewRounded from '@mui/icons-material/GridViewRounded';
 import GroupRounded from '@mui/icons-material/GroupRounded';
+import SettingsInputComponentRounded from '@mui/icons-material/SettingsInputComponentRounded';
 import HomeRounded from '@mui/icons-material/HomeRounded';
 import ChecklistRounded from '@mui/icons-material/ChecklistRounded';
 import ChatBubbleOutlineRounded from '@mui/icons-material/ChatBubbleOutlineRounded';
@@ -74,6 +75,7 @@ export type IconName =
   | 'fullscreen'
   | 'fullscreenExit'
   | 'home'
+  | 'integrations'
   | 'logout'
   | 'menu'
   | 'location'
@@ -134,6 +136,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   fullscreen: FullscreenRounded,
   fullscreenExit: FullscreenExitRounded,
   home: HomeRounded,
+  integrations: SettingsInputComponentRounded,
   logout: LogoutRounded,
   menu: MenuRounded,
   location: LocationOnOutlined,
