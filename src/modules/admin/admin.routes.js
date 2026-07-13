@@ -6,7 +6,14 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { serializeUser } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth, requireRole } from '../../middleware/auth.js';
-import { assignableRoles, savedDataResources, toolIds } from '../access/access.service.js';
+import {
+  assignableRoles,
+  getToolSecurityRequirements,
+  savedDataResources,
+  setToolSecurityRequirements,
+  toolIds
+} from '../access/access.service.js';
+import { isPrimaryAdmin } from '../auth/two-factor.service.js';
 import { getAdminIntegrations, saveMailtrapIntegration } from '../integrations/integration.service.js';
 
 const router = Router();
@@ -23,7 +30,8 @@ const statusSchema = z.object({ status: z.enum(['pending', 'approved', 'rejected
 const roleSchema = z.object({ role: z.enum(['admin', 'editor', 'content_manager']) });
 const toolAccessSchema = z.object({
   tools: z.array(z.enum(toolIds)).max(toolIds.length),
-  canManageToolAccess: z.boolean().optional()
+  canManageToolAccess: z.boolean().optional(),
+  requiresTwoFactorTools: z.array(z.enum(toolIds)).max(toolIds.length).optional()
 });
 const permissionSchema = z.object({
   role: z.enum(['editor', 'content_manager']),
@@ -42,6 +50,29 @@ const directoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(10).max(100).default(25)
 });
+
+const userSelect = `id, name, first_name, last_name, email, department, position, avatar_mime,
+  role, status, can_manage_tool_access, two_factor_enabled, two_factor_confirmed_at,
+  approved_at, created_at, updated_at`;
+
+function serializeToolAccessPayload({
+  target,
+  tools,
+  canManageToolAccess,
+  requirements,
+  actor
+}) {
+  return {
+    tools,
+    canManageToolAccess,
+    twoFactorEnabled: target.two_factor_enabled === true,
+    requiresTwoFactorTools: requirements
+      .filter((requirement) => requirement.requiresTwoFactor)
+      .map((requirement) => requirement.toolId),
+    toolRequirements: requirements,
+    canManageToolRequirements: isPrimaryAdmin(actor)
+  };
+}
 
 router.get('/directory', accessManagerOnly, asyncHandler(async (req, res) => {
   const input = parseInput(directoryQuerySchema, {
@@ -71,16 +102,14 @@ router.get('/directory', accessManagerOnly, asyncHandler(async (req, res) => {
   const countResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM users ${whereSql}`, params);
   const total = countResult.rows[0]?.count || 0;
   const offset = (input.page - 1) * input.pageSize;
-  const listParams = [...params, input.pageSize, offset];
   const usersResult = await query(
-    `SELECT id, name, first_name, last_name, email, department, position, avatar_mime,
-            role, status, can_manage_tool_access, approved_at, created_at, updated_at
+    `SELECT ${userSelect}
      FROM users
      ${whereSql}
      ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
               lower(name), created_at DESC
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    listParams
+    [...params, input.pageSize, offset]
   );
   const summaryResult = await query(
     `SELECT status, COUNT(*)::INTEGER AS count
@@ -126,8 +155,7 @@ router.get('/users', accessManagerOnly, asyncHandler(async (req, res) => {
   }
 
   const result = await query(
-    `SELECT id, name, first_name, last_name, email, department, position, avatar_mime,
-            role, status, can_manage_tool_access, approved_at, created_at, updated_at
+    `SELECT ${userSelect}
      FROM users
      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
      ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC
@@ -199,10 +227,26 @@ router.put('/integrations/mailtrap', adminOnly, asyncHandler(async (req, res) =>
 
 router.get('/users/:id/tool-access', accessManagerOnly, asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
-  const userResult = await query('SELECT role, can_manage_tool_access FROM users WHERE id = $1', [id]);
-  if (!userResult.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
-  if (userResult.rows[0].role === 'admin') {
-    return res.json({ data: { tools: [...toolIds], canManageToolAccess: true } });
+  const userResult = await query(
+    `SELECT role, can_manage_tool_access, two_factor_enabled
+     FROM users
+     WHERE id = $1`,
+    [id]
+  );
+  const target = userResult.rows[0];
+  if (!target) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
+
+  const requirements = await getToolSecurityRequirements();
+  if (target.role === 'admin') {
+    return res.json({
+      data: serializeToolAccessPayload({
+        target,
+        tools: [...toolIds],
+        canManageToolAccess: true,
+        requirements,
+        actor: req.user
+      })
+    });
   }
 
   const result = await query(
@@ -210,10 +254,13 @@ router.get('/users/:id/tool-access', accessManagerOnly, asyncHandler(async (req,
     [id]
   );
   res.json({
-    data: {
+    data: serializeToolAccessPayload({
+      target,
       tools: result.rows.map((row) => row.tool_id),
-      canManageToolAccess: userResult.rows[0].can_manage_tool_access === true
-    }
+      canManageToolAccess: target.can_manage_tool_access === true,
+      requirements,
+      actor: req.user
+    })
   });
 }));
 
@@ -225,29 +272,59 @@ router.put('/users/:id/tool-access', accessManagerOnly, asyncHandler(async (req,
 
   try {
     await client.query('BEGIN');
-    const userResult = await client.query('SELECT role, can_manage_tool_access FROM users WHERE id = $1 FOR UPDATE', [id]);
-    if (!userResult.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
-    if (userResult.rows[0].role === 'admin') {
+    const userResult = await client.query(
+      `SELECT role, can_manage_tool_access, two_factor_enabled
+       FROM users
+       WHERE id = $1
+       FOR UPDATE`,
+      [id]
+    );
+    const target = userResult.rows[0];
+    if (!target) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
+
+    const changingRequirements = input.requiresTwoFactorTools !== undefined;
+    if (changingRequirements && !isPrimaryAdmin(req.user)) {
+      throw new AppError(403, 'PRIMARY_ADMIN_REQUIRED', 'Лише головний адміністратор може змінювати вимоги 2FA для інструментів.');
+    }
+
+    if (target.role === 'admin' && selectedTools.length !== toolIds.length) {
       throw new AppError(400, 'ADMIN_TOOL_ACCESS', 'Адміністратор завжди має доступ до всіх інструментів.');
     }
 
-    await client.query('DELETE FROM user_tool_access WHERE user_id = $1', [id]);
-    for (const toolId of selectedTools) {
+    let canManageToolAccess = true;
+    if (target.role !== 'admin') {
+      await client.query('DELETE FROM user_tool_access WHERE user_id = $1', [id]);
+      for (const toolId of selectedTools) {
+        await client.query(
+          `INSERT INTO user_tool_access (user_id, tool_id, granted_by)
+           VALUES ($1, $2, $3)`,
+          [id, toolId, req.user.id]
+        );
+      }
+      canManageToolAccess = req.user.role === 'admin'
+        ? Boolean(input.canManageToolAccess)
+        : target.can_manage_tool_access === true;
       await client.query(
-        `INSERT INTO user_tool_access (user_id, tool_id, granted_by)
-         VALUES ($1, $2, $3)`,
-        [id, toolId, req.user.id]
+        'UPDATE users SET can_manage_tool_access = $1, updated_at = NOW() WHERE id = $2',
+        [canManageToolAccess, id]
       );
     }
-    const canManageToolAccess = req.user.role === 'admin'
-      ? Boolean(input.canManageToolAccess)
-      : userResult.rows[0].can_manage_tool_access === true;
-    await client.query(
-      'UPDATE users SET can_manage_tool_access = $1, updated_at = NOW() WHERE id = $2',
-      [canManageToolAccess, id]
-    );
+
+    if (changingRequirements) {
+      await setToolSecurityRequirements([...new Set(input.requiresTwoFactorTools)], req.user.id, client);
+    }
+    const requirements = await getToolSecurityRequirements(client);
     await client.query('COMMIT');
-    res.json({ data: { tools: selectedTools, canManageToolAccess } });
+
+    res.json({
+      data: serializeToolAccessPayload({
+        target,
+        tools: target.role === 'admin' ? [...toolIds] : selectedTools,
+        canManageToolAccess,
+        requirements,
+        actor: req.user
+      })
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -270,8 +347,7 @@ router.patch('/users/:id/status', adminOnly, asyncHandler(async (req, res) => {
          approved_by = CASE WHEN $1::VARCHAR = 'approved' THEN $2::UUID ELSE NULL END,
          updated_at = NOW()
      WHERE id = $3::UUID
-     RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
-               role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
+     RETURNING ${userSelect}`,
     [status, req.user.id, id]
   );
   if (!result.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
@@ -334,8 +410,7 @@ router.patch('/users/:id/role', adminOnly, asyncHandler(async (req, res) => {
   const result = await query(
     `UPDATE users SET role = $1, updated_at = NOW()
      WHERE id = $2
-     RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
-               role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
+     RETURNING ${userSelect}`,
     [role, id]
   );
   if (!result.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');

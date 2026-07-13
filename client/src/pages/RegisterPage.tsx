@@ -72,10 +72,7 @@ export function RegisterPage() {
 
     try {
       await verifyRegistration({ email: registration?.email || email, code });
-      navigate('/login', {
-        replace: true,
-        state: { notice: 'Email підтверджено. Увійдіть зі своїм паролем.' }
-      });
+      navigate('/', { replace: true });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Не вдалося підтвердити код.');
     } finally {
@@ -151,8 +148,8 @@ export function RegisterPage() {
           <input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@company.com" required autoFocus />
         </label>
         <label className="field">
-          <span>Ім’я</span>
-          <input name="firstName" type="text" value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" minLength={2} maxLength={60} placeholder="Ім’я" required />
+          <span>Імʼя</span>
+          <input name="firstName" type="text" value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" minLength={2} maxLength={60} placeholder="Імʼя" required />
         </label>
         <label className="field">
           <span>Прізвище</span>

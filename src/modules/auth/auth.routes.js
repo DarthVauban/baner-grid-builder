@@ -1,15 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { env } from '../../config/env.js';
 import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
-import { createAccessToken } from '../../lib/jwt.js';
+import { createAccessToken, createTwoFactorLoginToken, verifyTwoFactorLoginToken } from '../../lib/jwt.js';
 import { serializeUser } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requestRegistrationVerification, verifyRegistrationCode } from './registration-verification.service.js';
-import bcrypt from 'bcryptjs';
+import { verifyUserTwoFactor } from './two-factor.service.js';
 
 const router = Router();
 
@@ -20,16 +21,16 @@ const avatarSchema = z.string().trim().max(1_500_000, 'Фото завелике
 
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
-  firstName: z.string().trim().min(2, 'Вкажіть ім’я.').max(60).optional(),
+  firstName: z.string().trim().min(2, 'Вкажіть імʼя.').max(60).optional(),
   lastName: z.string().trim().min(2, 'Вкажіть прізвище.').max(60).optional(),
   email: z.string().trim().email('Вкажіть коректний email.').max(255),
   password: z.string().min(10, 'Пароль має містити щонайменше 10 символів.').max(128),
   avatarDataUrl: avatarSchema.optional().default('')
 }).superRefine((input, context) => {
-  if (!input.name && !input.firstName) context.addIssue({ code: 'custom', path: ['firstName'], message: 'Вкажіть ім’я.' });
+  if (!input.name && !input.firstName) context.addIssue({ code: 'custom', path: ['firstName'], message: 'Вкажіть імʼя.' });
   if (!input.name && !input.lastName) context.addIssue({ code: 'custom', path: ['lastName'], message: 'Вкажіть прізвище.' });
   const fullName = input.name || `${input.firstName || ''} ${input.lastName || ''}`.trim();
-  if (fullName.length > 120) context.addIssue({ code: 'custom', path: ['lastName'], message: 'Ім’я та прізвище завеликі.' });
+  if (fullName.length > 120) context.addIssue({ code: 'custom', path: ['lastName'], message: 'Імʼя та прізвище завеликі.' });
 });
 
 const loginSchema = z.object({
@@ -39,6 +40,10 @@ const loginSchema = z.object({
 const verifyRegistrationSchema = z.object({
   email: z.string().trim().email('Вкажіть коректний email.'),
   code: z.string().trim().regex(/^\d{6}$/, 'Вкажіть 6-значний код.')
+});
+const verifyLoginTwoFactorSchema = z.object({
+  challengeToken: z.string().trim().min(20, 'Сесія перевірки 2FA недійсна.'),
+  code: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.')
 });
 
 function setSessionCookie(res, token) {
@@ -65,6 +70,7 @@ router.post('/register/verify', asyncHandler(async (req, res) => {
   const input = parseInput(verifyRegistrationSchema, req.body);
   const user = await verifyRegistrationCode(input.email, input.code);
 
+  setSessionCookie(res, createAccessToken(user));
   res.status(201).json({
     data: user,
     message: 'Email підтверджено. Обліковий запис активовано.'
@@ -86,7 +92,41 @@ router.post('/login', asyncHandler(async (req, res) => {
   if (user.status === 'rejected') {
     throw new AppError(403, 'ACCOUNT_REJECTED', 'Обліковий запис відхилено адміністратором.');
   }
+  if (user.two_factor_enabled === true) {
+    return res.status(202).json({
+      data: {
+        twoFactorRequired: true,
+        challengeToken: createTwoFactorLoginToken(user),
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        email: user.email
+      }
+    });
+  }
 
+  setSessionCookie(res, createAccessToken(user));
+  res.json({ data: serializeUser(user) });
+}));
+
+router.post('/login/2fa', asyncHandler(async (req, res) => {
+  const input = parseInput(verifyLoginTwoFactorSchema, req.body);
+  let payload;
+  try {
+    payload = verifyTwoFactorLoginToken(input.challengeToken);
+  } catch (error) {
+    throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Сесія перевірки 2FA недійсна або завершилась.');
+  }
+
+  const result = await query('SELECT * FROM users WHERE id = $1', [payload.sub]);
+  const user = result.rows[0];
+  if (!user) throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Користувача не знайдено.');
+  if (user.status !== 'approved') {
+    throw new AppError(403, 'ACCOUNT_NOT_APPROVED', 'Обліковий запис ще не активний.');
+  }
+  if (user.two_factor_enabled !== true) {
+    throw new AppError(400, 'TWO_FACTOR_NOT_ENABLED', '2FA не увімкнено для цього облікового запису.');
+  }
+
+  await verifyUserTwoFactor(user.id, input.code);
   setSessionCookie(res, createAccessToken(user));
   res.json({ data: serializeUser(user) });
 }));

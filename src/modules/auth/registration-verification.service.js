@@ -181,7 +181,8 @@ export async function verifyRegistrationCode(emailInput, codeInput) {
        )
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', NOW())
        RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
-                 role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
+                 role, status, can_manage_tool_access, two_factor_enabled,
+                 two_factor_confirmed_at, approved_at, created_at, updated_at`,
       [
         verification.name,
         verification.first_name,

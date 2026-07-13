@@ -15,6 +15,9 @@ const pendingUser: User = {
   avatarUrl: '',
   role: 'content_manager',
   status: 'pending',
+  twoFactorEnabled: false,
+  twoFactorConfirmedAt: null,
+  isPrimaryAdmin: false,
   approvedAt: null,
   createdAt: '2030-01-01T00:00:00.000Z',
   updatedAt: '2030-01-01T00:00:00.000Z'

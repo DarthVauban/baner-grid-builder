@@ -1,5 +1,6 @@
 import type {
   LoginInput,
+  LoginResponse,
   PermissionRole,
   PasswordChangeInput,
   RegisterInput,
@@ -10,6 +11,10 @@ import type {
   User,
   UserDirectory,
   ProfileInput,
+  TwoFactorConfirmResult,
+  TwoFactorLoginVerifyInput,
+  TwoFactorSetup,
+  TwoFactorStatus,
   UserRole,
   UserStatus
 } from '../types/user';
@@ -30,7 +35,7 @@ import type {
   SavedBanner,
   SavedGrid
 } from '../types/workspace';
-import type { ToolId, UserToolAccess } from '../types/tool';
+import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 import type { IntegrationSettings, MailtrapIntegration, MailtrapIntegrationInput } from '../types/integration';
@@ -107,7 +112,11 @@ function queryString(params: Record<string, string | number | undefined>): strin
 export const api = {
   auth: {
     me: () => request<User>('/api/auth/me'),
-    login: (input: LoginInput) => request<User>('/api/auth/login', {
+    login: (input: LoginInput) => request<LoginResponse>('/api/auth/login', {
+      method: 'POST',
+      body: jsonBody(input)
+    }),
+    verifyLoginTwoFactor: (input: TwoFactorLoginVerifyInput) => request<User>('/api/auth/login/2fa', {
       method: 'POST',
       body: jsonBody(input)
     }),
@@ -198,11 +207,20 @@ export const api = {
   users: {
     search: (search = '', excludeSelf = false) => request<UserSearchResult[]>(`/api/users/search${queryString({ search, excludeSelf: excludeSelf ? 'true' : undefined })}`),
     toolAccess: () => request<ToolId[]>('/api/users/tool-access'),
+    toolCatalog: () => request<ToolCatalog>('/api/users/tool-catalog'),
     updateProfile: (input: ProfileInput) => request<User>('/api/users/profile', {
       method: 'PUT', body: jsonBody(input)
     }),
     changePassword: (input: PasswordChangeInput) => request<void>('/api/users/profile/password', {
       method: 'PUT', body: jsonBody(input)
+    }),
+    twoFactorStatus: () => request<TwoFactorStatus>('/api/users/profile/2fa'),
+    startTwoFactorSetup: () => request<TwoFactorSetup>('/api/users/profile/2fa/setup', { method: 'POST' }),
+    confirmTwoFactorSetup: (code: string) => request<TwoFactorConfirmResult>('/api/users/profile/2fa/confirm', {
+      method: 'POST', body: jsonBody({ code })
+    }),
+    disableTwoFactor: (code: string) => request<User>('/api/users/profile/2fa/disable', {
+      method: 'POST', body: jsonBody({ code })
     })
   },
   notifications: {
@@ -237,9 +255,9 @@ export const api = {
       { method: 'PATCH', body: jsonBody({ role }) }
     ),
     toolAccess: (id: string) => request<UserToolAccess>(`/api/admin/users/${encodeURIComponent(id)}/tool-access`),
-    setToolAccess: (id: string, tools: ToolId[], canManageToolAccess: boolean) => request<UserToolAccess>(
+    setToolAccess: (id: string, tools: ToolId[], canManageToolAccess: boolean, requiresTwoFactorTools?: ToolId[]) => request<UserToolAccess>(
       `/api/admin/users/${encodeURIComponent(id)}/tool-access`,
-      { method: 'PUT', body: jsonBody({ tools, canManageToolAccess }) }
+      { method: 'PUT', body: jsonBody({ tools, canManageToolAccess, requiresTwoFactorTools }) }
     ),
     removeUser: (id: string) => request<void>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     integrations: () => request<IntegrationSettings>('/api/admin/integrations'),

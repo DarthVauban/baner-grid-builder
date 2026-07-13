@@ -2,17 +2,28 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { PropsWithChildren } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import type { LoginInput, ProfileInput, RegisterInput, RegistrationStart, RegistrationVerifyInput, User } from '../types/user';
+import type {
+  LoginInput,
+  ProfileInput,
+  RegisterInput,
+  RegistrationStart,
+  RegistrationVerifyInput,
+  TwoFactorLoginChallenge,
+  TwoFactorLoginVerifyInput,
+  User
+} from '../types/user';
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
 interface AuthContextValue {
   user: User | null;
   status: AuthStatus;
-  login: (input: LoginInput) => Promise<void>;
+  login: (input: LoginInput) => Promise<TwoFactorLoginChallenge | null>;
+  verifyLoginTwoFactor: (input: TwoFactorLoginVerifyInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<RegistrationStart>;
   verifyRegistration: (input: RegistrationVerifyInput) => Promise<User>;
   updateProfile: (input: ProfileInput) => Promise<User>;
+  refreshUser: () => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -52,21 +63,40 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [clearSession]);
 
   const login = useCallback(async (input: LoginInput) => {
-    const currentUser = await api.auth.login(input);
+    const result = await api.auth.login(input);
+    if ('twoFactorRequired' in result) return result;
+
+    setUser(result);
+    setStatus('authenticated');
+    return null;
+  }, []);
+
+  const verifyLoginTwoFactor = useCallback(async (input: TwoFactorLoginVerifyInput) => {
+    const currentUser = await api.auth.verifyLoginTwoFactor(input);
     setUser(currentUser);
     setStatus('authenticated');
   }, []);
 
   const register = useCallback((input: RegisterInput) => api.auth.register(input), []);
 
-  const verifyRegistration = useCallback((input: RegistrationVerifyInput) => (
-    api.auth.verifyRegistration(input)
-  ), []);
+  const verifyRegistration = useCallback(async (input: RegistrationVerifyInput) => {
+    const currentUser = await api.auth.verifyRegistration(input);
+    setUser(currentUser);
+    setStatus('authenticated');
+    return currentUser;
+  }, []);
 
   const updateProfile = useCallback(async (input: ProfileInput) => {
     const updatedUser = await api.users.updateProfile(input);
     setUser(updatedUser);
     return updatedUser;
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const currentUser = await api.auth.me();
+    setUser(currentUser);
+    setStatus('authenticated');
+    return currentUser;
   }, []);
 
   const logout = useCallback(async () => {
@@ -77,13 +107,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [clearSession]);
 
-  const value = useMemo(() => ({ user, status, login, register, verifyRegistration, updateProfile, logout }), [
+  const value = useMemo(() => ({
     user,
     status,
     login,
+    verifyLoginTwoFactor,
     register,
     verifyRegistration,
     updateProfile,
+    refreshUser,
+    logout
+  }), [
+    user,
+    status,
+    login,
+    verifyLoginTwoFactor,
+    register,
+    verifyRegistration,
+    updateProfile,
+    refreshUser,
     logout
   ]);
 

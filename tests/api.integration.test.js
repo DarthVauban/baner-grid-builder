@@ -1,5 +1,6 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -37,6 +38,43 @@ async function registerAndVerify(input) {
   return verified;
 }
 
+const base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Decode(secret) {
+  const normalized = secret.replace(/\s+/g, '').replace(/=+$/g, '').toUpperCase();
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+
+  for (const char of normalized) {
+    const index = base32Alphabet.indexOf(char);
+    assert.notEqual(index, -1);
+    value = (value << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+
+  return Buffer.from(bytes);
+}
+
+function currentTotpCode(secret) {
+  const counter = Math.floor(Date.now() / 1000 / 30);
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  counterBuffer.writeUInt32BE(counter >>> 0, 4);
+  const digest = crypto.createHmac('sha1', base32Decode(secret)).update(counterBuffer).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary = ((digest[offset] & 0x7f) << 24)
+    | ((digest[offset + 1] & 0xff) << 16)
+    | ((digest[offset + 2] & 0xff) << 8)
+    | (digest[offset + 3] & 0xff);
+
+  return String(binary % 1_000_000).padStart(6, '0');
+}
+
 test('approval flow and shared banner storage work through REST API', async () => {
   const registration = await registerAndVerify({
     firstName: 'Test', lastName: 'User', email: 'user@test.local',
@@ -47,6 +85,8 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.equal(registration.body.data.role, 'content_manager');
   assert.equal(registration.body.data.firstName, 'Test');
   assert.equal(registration.body.data.lastName, 'User');
+  assert.equal(registration.body.data.twoFactorEnabled, false);
+  assert.ok(registration.headers['set-cookie']?.some((cookie) => cookie.startsWith('mt_session=')));
   assert.match(registration.body.data.avatarUrl, /^\/api\/users\/.+\/avatar\?v=/);
 
   await request(app)
@@ -228,11 +268,45 @@ test('approval flow and shared banner storage work through REST API', async () =
   }).expect(200);
   await secondUser.get('/api/admin/directory?page=1&pageSize=10').expect(200);
   await secondUser.get('/api/admin/integrations').expect(403);
+  await secondUser.put(`/api/admin/users/${pendingUser.id}/tool-access`).send({
+    tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'],
+    requiresTwoFactorTools: ['banner_grid']
+  }).expect(403).expect((response) => assert.equal(response.body.error.code, 'PRIMARY_ADMIN_REQUIRED'));
   await secondUser.patch(`/api/admin/users/${pendingUser.id}/role`).send({ role: 'editor' }).expect(403);
   await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({
     tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'],
     canManageToolAccess: false
   }).expect(200);
+
+  const initialTwoFactorStatus = await secondUser.get('/api/users/profile/2fa').expect(200);
+  assert.equal(initialTwoFactorStatus.body.data.enabled, false);
+  const twoFactorSetup = await secondUser.post('/api/users/profile/2fa/setup').expect(200);
+  assert.match(twoFactorSetup.body.data.qrCodeDataUrl, /^data:image\/png;base64,/);
+  assert.equal(twoFactorSetup.body.data.issuer, 'MT Panel');
+  const secondUserTotpSecret = twoFactorSetup.body.data.manualKey.replace(/\s+/g, '');
+  const twoFactorConfirm = await secondUser
+    .post('/api/users/profile/2fa/confirm')
+    .send({ code: currentTotpCode(secondUserTotpSecret) })
+    .expect(200);
+  assert.equal(twoFactorConfirm.body.data.user.twoFactorEnabled, true);
+  assert.equal(twoFactorConfirm.body.data.recoveryCodes.length, 10);
+  const directoryAfterTwoFactor = await admin.get('/api/admin/directory?search=second@test.local').expect(200);
+  assert.equal(directoryAfterTwoFactor.body.data.items[0].twoFactorEnabled, true);
+
+  await secondUser.post('/api/auth/logout').expect(204);
+  const secondUserChallenge = await secondUser
+    .post('/api/auth/login')
+    .send({ email: 'second@test.local', password: 'SecondPassword123!' })
+    .expect(202);
+  assert.equal(secondUserChallenge.body.data.twoFactorRequired, true);
+  await secondUser
+    .post('/api/auth/login/2fa')
+    .send({
+      challengeToken: secondUserChallenge.body.data.challengeToken,
+      code: currentTotpCode(secondUserTotpSecret)
+    })
+    .expect(200)
+    .expect((response) => assert.equal(response.body.data.twoFactorEnabled, true));
 
   const privateGrids = await secondUser.get('/api/grids?search=Updated').expect(200);
   assert.equal(privateGrids.body.data.length, 0);
@@ -334,4 +408,22 @@ test('approval flow and shared banner storage work through REST API', async () =
   await user.delete(`/api/banners/${createdBanner.body.data.id}`).expect(204);
   await user.delete(`/api/product-tables/${tableId}`).expect(204);
   await user.get(`/api/product-tables/${tableId}`).expect(404);
+
+  const securityUpdate = await admin.put(`/api/admin/users/${pendingUser.id}/tool-access`).send({
+    tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'],
+    canManageToolAccess: false,
+    requiresTwoFactorTools: ['banner_grid']
+  }).expect(200);
+  assert.deepEqual(securityUpdate.body.data.requiresTwoFactorTools, ['banner_grid']);
+
+  const blockedCatalog = await user.get('/api/users/tool-catalog').expect(200);
+  const blockedBannerTool = blockedCatalog.body.data.tools.find((tool) => tool.toolId === 'banner_grid');
+  assert.equal(blockedBannerTool.granted, true);
+  assert.equal(blockedBannerTool.accessible, false);
+  assert.equal(blockedBannerTool.blockedByTwoFactor, true);
+  await user.get('/api/grids').expect(403)
+    .expect((response) => assert.equal(response.body.error.code, 'TOOL_2FA_REQUIRED'));
+  await admin.get('/api/grids').expect(403)
+    .expect((response) => assert.equal(response.body.error.code, 'TOOL_2FA_REQUIRED'));
+  await secondUser.get('/api/grids').expect(200);
 });

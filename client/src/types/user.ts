@@ -13,6 +13,9 @@ export interface User {
   role: UserRole;
   status: UserStatus;
   canManageToolAccess?: boolean;
+  twoFactorEnabled: boolean;
+  twoFactorConfirmedAt: string | null;
+  isPrimaryAdmin: boolean;
   approvedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -21,6 +24,20 @@ export interface User {
 export interface LoginInput {
   email: string;
   password: string;
+}
+
+export interface TwoFactorLoginChallenge {
+  twoFactorRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+  email: string;
+}
+
+export type LoginResponse = User | TwoFactorLoginChallenge;
+
+export interface TwoFactorLoginVerifyInput {
+  challengeToken: string;
+  code: string;
 }
 
 export interface RegisterInput extends LoginInput {
@@ -53,6 +70,26 @@ export interface ProfileInput {
 export interface PasswordChangeInput {
   currentPassword: string;
   newPassword: string;
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  confirmedAt: string | null;
+  recoveryCodesRemaining: number;
+}
+
+export interface TwoFactorSetup {
+  issuer: string;
+  accountName: string;
+  otpauthUrl: string;
+  qrCodeDataUrl: string;
+  manualKey: string;
+  expiresAt: string;
+}
+
+export interface TwoFactorConfirmResult {
+  user: User;
+  recoveryCodes: string[];
 }
 
 export type SavedDataResource = 'banner_grids' | 'saved_banners' | 'product_tables';

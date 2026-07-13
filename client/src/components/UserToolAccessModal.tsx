@@ -15,22 +15,27 @@ export function UserToolAccessModal({ user, onClose }: { user: User; onClose: ()
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<ToolId[]>([]);
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState<ToolId[]>([]);
   const [canManageToolAccess, setCanManageToolAccess] = useState(false);
   const access = useQuery({
     queryKey: ['admin-tool-access', user.id],
     queryFn: () => api.admin.toolAccess(user.id)
   });
   const saveAccess = useMutation({
-    mutationFn: ({ value, manageAccess }: { value: ToolId[]; manageAccess: boolean }) => (
-      api.admin.setToolAccess(user.id, value, manageAccess)
-    )
+    mutationFn: ({ value, manageAccess, requiredTools }: {
+      value: ToolId[];
+      manageAccess: boolean;
+      requiredTools?: ToolId[];
+    }) => api.admin.setToolAccess(user.id, value, manageAccess, requiredTools)
   });
   const isAdmin = user.role === 'admin';
+  const canManageRequirements = access.data?.canManageToolRequirements === true;
 
   useEffect(() => {
     if (access.data) {
       setSelected(access.data.tools);
       setCanManageToolAccess(access.data.canManageToolAccess);
+      setRequiresTwoFactor(access.data.requiresTwoFactorTools);
     }
   }, [access.data]);
 
@@ -48,12 +53,25 @@ export function UserToolAccessModal({ user, onClose }: { user: User; onClose: ()
       : current.filter((item) => item !== toolId));
   }
 
+  function toggleRequirement(toolId: ToolId, enabled: boolean) {
+    setRequiresTwoFactor((current) => enabled
+      ? [...new Set([...current, toolId])]
+      : current.filter((item) => item !== toolId));
+  }
+
   async function save() {
     try {
-      const updated = await saveAccess.mutateAsync({ value: selected, manageAccess: canManageToolAccess });
+      const updated = await saveAccess.mutateAsync({
+        value: isAdmin ? tools.map((tool) => tool.id) : selected,
+        manageAccess: canManageToolAccess,
+        requiredTools: canManageRequirements ? requiresTwoFactor : undefined
+      });
       setSelected(updated.tools);
       setCanManageToolAccess(updated.canManageToolAccess);
+      setRequiresTwoFactor(updated.requiresTwoFactorTools);
       await queryClient.invalidateQueries({ queryKey: ['admin-tool-access', user.id] });
+      await queryClient.invalidateQueries({ queryKey: ['tool-access'] });
+      await queryClient.invalidateQueries({ queryKey: ['tool-catalog'] });
       showToast('Доступи користувача оновлено.');
       onClose();
     } catch (error) {
@@ -74,9 +92,12 @@ export function UserToolAccessModal({ user, onClose }: { user: User; onClose: ()
             <UserAvatar name={user.name} avatarUrl={user.avatarUrl} />
             <span><strong>{user.name}</strong><small>{user.email}</small></span>
             <span className="admin-role-static">{roleLabels[user.role]}</span>
+            <span className={`two-factor-badge${user.twoFactorEnabled ? ' two-factor-badge--enabled' : ''}`}>
+              <Icon name="security" size={14} /> {user.twoFactorEnabled ? '2FA увімкнено' : '2FA вимкнено'}
+            </span>
           </article>
 
-          {isAdmin && <p className="user-access-modal__notice">Адміністратор завжди має доступ до всіх інструментів.</p>}
+          {isAdmin && <p className="user-access-modal__notice">Адміністратор завжди має доступ до всіх інструментів, але вимоги 2FA все одно можуть блокувати відкриття інструмента без підключеної 2FA.</p>}
           {access.isLoading && <div className="admin-list-state">Завантажуємо доступи…</div>}
           {access.isError && <div className="admin-list-state admin-list-state--error">Не вдалося завантажити доступи.</div>}
           {access.data && !isAdmin && currentUser?.role === 'admin' && (
@@ -87,20 +108,34 @@ export function UserToolAccessModal({ user, onClose }: { user: User; onClose: ()
           )}
           {access.data && (
             <div className="user-access-tools">
-              {tools.map((tool) => (
-                <label className="user-access-tool" key={tool.id}>
-                  <span className="user-access-tool__icon"><Icon name={tool.icon} size={22} /></span>
-                  <span><strong>{tool.name}</strong><small>{tool.description}</small></span>
-                  <input className="switch" type="checkbox" checked={isAdmin || selected.includes(tool.id)} disabled={isAdmin || saveAccess.isPending} onChange={(event) => toggle(tool.id, event.target.checked)} />
-                </label>
-              ))}
+              {tools.map((tool) => {
+                const hasAccess = isAdmin || selected.includes(tool.id);
+                const requires2fa = requiresTwoFactor.includes(tool.id);
+                const blockedForUser = hasAccess && requires2fa && !user.twoFactorEnabled;
+                return (
+                  <article className={`user-access-tool${blockedForUser ? ' user-access-tool--blocked' : ''}`} key={tool.id}>
+                    <span className="user-access-tool__icon"><Icon name={tool.icon} size={22} /></span>
+                    <span><strong>{tool.name}</strong><small>{blockedForUser ? 'Доступ буде заблоковано, доки користувач не увімкне 2FA.' : tool.description}</small></span>
+                    <label className="user-access-tool__switch">
+                      <span>Доступ</span>
+                      <input className="switch" type="checkbox" checked={hasAccess} disabled={isAdmin || saveAccess.isPending} onChange={(event) => toggle(tool.id, event.target.checked)} />
+                    </label>
+                    {canManageRequirements && (
+                      <label className="user-access-tool__switch user-access-tool__switch--security">
+                        <span>2FA</span>
+                        <input className="switch" type="checkbox" checked={requires2fa} disabled={saveAccess.isPending} onChange={(event) => toggleRequirement(tool.id, event.target.checked)} />
+                      </label>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>
 
         <footer className="user-access-modal__footer">
           <button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button>
-          {!isAdmin && <button className="button button--primary" type="button" disabled={access.isLoading || access.isError || saveAccess.isPending} onClick={() => void save()}>{saveAccess.isPending ? 'Зберігаємо…' : 'Зберегти доступи'}</button>}
+          {(!isAdmin || canManageRequirements) && <button className="button button--primary" type="button" disabled={access.isLoading || access.isError || saveAccess.isPending} onClick={() => void save()}>{saveAccess.isPending ? 'Зберігаємо…' : 'Зберегти доступи'}</button>}
         </footer>
       </section>
     </div>

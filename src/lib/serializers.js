@@ -1,8 +1,15 @@
+import { env } from '../config/env.js';
+
 export function serializeUser(row) {
   const nameParts = String(row.name || '').trim().split(/\s+/).filter(Boolean);
   const storedFirstName = String(row.first_name || '').trim();
   const storedLastName = String(row.last_name || '').trim();
   const hasStructuredName = Boolean(storedLastName || (storedFirstName && storedFirstName !== row.name));
+  const isPrimaryAdmin = Boolean(
+    row.role === 'admin'
+    && env.ADMIN_EMAIL
+    && String(row.email || '').toLowerCase() === env.ADMIN_EMAIL.toLowerCase()
+  );
   return {
     id: row.id,
     name: row.name,
@@ -15,6 +22,9 @@ export function serializeUser(row) {
     role: row.role,
     status: row.status,
     canManageToolAccess: row.can_manage_tool_access === true,
+    twoFactorEnabled: row.two_factor_enabled === true,
+    twoFactorConfirmedAt: row.two_factor_confirmed_at || null,
+    isPrimaryAdmin,
     approvedAt: row.approved_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at

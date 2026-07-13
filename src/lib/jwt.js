@@ -12,3 +12,20 @@ export function createAccessToken(user) {
 export function verifyAccessToken(token) {
   return jwt.verify(token, env.JWT_SECRET, { issuer: 'mt-banner-builder' });
 }
+
+export function createTwoFactorLoginToken(user) {
+  return jwt.sign(
+    { sub: user.id, purpose: 'login_2fa' },
+    env.JWT_SECRET,
+    { expiresIn: '5m', issuer: 'mt-banner-builder', audience: 'mt-login-2fa' }
+  );
+}
+
+export function verifyTwoFactorLoginToken(token) {
+  const payload = jwt.verify(token, env.JWT_SECRET, {
+    issuer: 'mt-banner-builder',
+    audience: 'mt-login-2fa'
+  });
+  if (payload.purpose !== 'login_2fa') throw new Error('Invalid token purpose');
+  return payload;
+}

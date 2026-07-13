@@ -50,11 +50,17 @@ import PasswordRounded from '@mui/icons-material/PasswordRounded';
 import ReplyRounded from '@mui/icons-material/ReplyRounded';
 import LinkRounded from '@mui/icons-material/LinkRounded';
 import AddReactionOutlined from '@mui/icons-material/AddReactionOutlined';
+import AndroidRounded from '@mui/icons-material/AndroidRounded';
+import Apple from '@mui/icons-material/Apple';
+import QrCode2Rounded from '@mui/icons-material/QrCode2Rounded';
+import SecurityRounded from '@mui/icons-material/SecurityRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
   | 'add'
   | 'alarm'
+  | 'android'
+  | 'apple'
   | 'arrow'
   | 'arrowLeft'
   | 'arrowRight'
@@ -88,9 +94,11 @@ export type IconName =
   | 'publication'
   | 'productSelection'
   | 'productTables'
+  | 'qrCode'
   | 'remove'
   | 'save'
   | 'search'
+  | 'security'
   | 'share'
   | 'schedule'
   | 'savedBanners'
@@ -116,6 +124,8 @@ interface IconProps {
 const icons: Record<IconName, SvgIconComponent> = {
   add: AddRounded,
   alarm: AlarmRounded,
+  android: AndroidRounded,
+  apple: Apple,
   arrow: ChevronRightRounded,
   arrowLeft: ArrowBackRounded,
   arrowRight: ArrowForwardRounded,
@@ -149,9 +159,11 @@ const icons: Record<IconName, SvgIconComponent> = {
   publication: PublishRounded,
   productSelection: Inventory2Outlined,
   productTables: TableChartOutlined,
+  qrCode: QrCode2Rounded,
   remove: RemoveRounded,
   save: SaveRounded,
   search: SearchRounded,
+  security: SecurityRounded,
   share: ShareRounded,
   schedule: AccessTimeRounded,
   savedBanners: ImageOutlined,

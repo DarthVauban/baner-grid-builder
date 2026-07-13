@@ -48,6 +48,7 @@ export function AdminUserRow({
       </div>
       <div className="admin-user-row__meta">
         <span className={`admin-status admin-status--${user.status}`}>{statusLabels[user.status]}</span>
+        <span className={`two-factor-badge${user.twoFactorEnabled ? ' two-factor-badge--enabled' : ''}`}><Icon name="security" size={14} /> {user.twoFactorEnabled ? '2FA' : 'Без 2FA'}</span>
         <time title="Дата реєстрації">{new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(user.createdAt))}</time>
       </div>
       <div className="admin-user-row__actions">
