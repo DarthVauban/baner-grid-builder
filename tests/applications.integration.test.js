@@ -186,6 +186,7 @@ test('form builder and applications list have separate access and process public
   assert.match(script.body.data.script, /gallery__photos-list/);
   assert.match(script.body.data.script, /img\[src\*='\/content\/images\/'\]/);
   assert.match(script.body.data.script, /data-href/);
+  assert.match(script.body.data.script, /fontFamily = "inherit"/);
   assert.match(script.body.data.script, /fontWeight/);
 
   const published = await builder.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);

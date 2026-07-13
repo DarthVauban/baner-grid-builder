@@ -906,8 +906,9 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .application-delete-modal__content .form-message { margin: 0; }
 .application-delete-modal__footer { padding: 0 26px 24px; }
 
-.forms-workspace { display: grid; grid-template-columns: minmax(240px,300px) minmax(0,1fr); align-items: start; gap: 18px; }
-.forms-list { position: sticky; top: 86px; display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 18px; padding: 13px; background: var(--surface); }
+.forms-workspace { display: grid; grid-template-columns: minmax(380px,520px) minmax(0,1fr); align-items: start; gap: 18px; }
+.forms-left-panel { max-height: calc(100vh - 102px); position: sticky; top: 86px; display: grid; align-content: start; gap: 18px; overflow-y: auto; padding-right: 2px; }
+.forms-list { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 18px; padding: 13px; background: var(--surface); }
 .forms-list > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 4px 9px; color: var(--ink); }
 .forms-list > header span { min-width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--brand); background: var(--brand-soft); font-size: 10px; font-weight: 850; }
 .forms-list__item { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) 20px; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 12px; padding: 11px; color: var(--ink); text-align: left; background: transparent; }
@@ -921,6 +922,8 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .forms-editor-tabs { display: grid; gap: 14px; }
 .forms-editor-tabs .tool-panel__header { margin-bottom: 0; }
 .forms-editor-tabs .segmented { width: fit-content; }
+.forms-live-preview-panel { min-width: 0; }
+.forms-live-preview-panel .tool-panel__header { margin-bottom: 14px; }
 .form-builder-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
 .form-builder-grid__wide { grid-column: 1 / -1; }
 .form-builder-section-title { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 14px; color: var(--ink); font-size: 12px; font-weight: 850; }
@@ -961,6 +964,10 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .button-config-form { align-content: start; border: 1px dashed #d3d9e4; border-radius: 14px; padding: 14px; background: var(--surface-soft); }
 .button-config-checks { display: flex; flex-wrap: wrap; gap: 12px; }
 .button-style-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.button-live-preview { display: grid; gap: 10px; }
+.button-live-preview__surface { min-height: 132px; display: flex; align-items: center; justify-content: center; border: 1px dashed #d8d4ff; border-radius: 16px; padding: 18px; background: linear-gradient(135deg, #fbfaff, #fff); }
+.button-live-preview__button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; cursor: pointer; line-height: 1.2; text-decoration: none; font-family: inherit; }
+.button-live-preview > small { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .button-selector-grid { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
 .button-selector-grid > strong { color: var(--ink); font-size: 12px; }
 .button-selector-row { display: grid; grid-template-columns: minmax(0,1fr) 130px; gap: 9px; }
@@ -1557,6 +1564,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 :root[data-theme="brand"] .form-preview input,
 :root[data-theme="brand"] .form-preview select,
 :root[data-theme="brand"] .form-preview textarea,
+:root[data-theme="brand"] .button-live-preview__surface,
 :root[data-theme="brand"] .bank-editor__new input,
 :root[data-theme="brand"] .application-comment-form textarea { border-color: var(--line); background: var(--surface); }
 :root[data-theme="brand"] .application-table__head,
@@ -1666,7 +1674,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
   .application-table { overflow-x: auto; }
   .application-table__head, .application-row { min-width: 1320px; }
   .forms-workspace, .forms-side-grid, .button-config-layout { grid-template-columns: 1fr; }
-  .forms-list { position: static; }
+  .forms-left-panel { max-height: none; position: static; overflow: visible; padding-right: 0; }
 }
 
 @media (max-width: 700px) {

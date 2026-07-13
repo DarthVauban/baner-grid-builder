@@ -367,6 +367,49 @@ export function FormsBuilderPage() {
     });
   }
 
+  function renderFormPreview() {
+    if (!draft) return null;
+    return <div className="form-preview" style={{
+      '--form-preview-accent': draftStyle('accentColor', '#6d5dfc'),
+      '--form-preview-button-bg': draftStyle('buttonBackgroundColor', '#6d5dfc'),
+      '--form-preview-button-color': draftStyle('buttonTextColor', '#ffffff'),
+      '--form-preview-radius': draftStyle('borderRadius', '12px'),
+      '--form-preview-number-bg': draftStyle('numberBlockBackgroundColor', '#f6f4ff'),
+      '--form-preview-number-border': draftStyle('numberBlockBorderColor', '#d8d4ff'),
+      '--form-preview-number-color': draftStyle('numberBlockTextColor', '#172033'),
+      '--form-preview-number-radius': draftStyle('numberBlockRadius', '16px')
+    } as CSSProperties}>
+      <h3>{draft.title}</h3>
+      {draft.description && <p>{draft.description}</p>}
+      {fields.filter((field) => field.active).map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>{field.type === 'textarea' ? <textarea rows={2} placeholder={field.placeholder} /> : field.type === 'select' ? <StyledSelect value="" options={[{ value: '', label: 'Оберіть' }, ...(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => ({ value: option.value, label: option.label }))]} onChange={() => undefined} ariaLabel={`Попередній перегляд ${field.label}`} /> : field.type === 'radio' ? <div className="form-preview__choices">{(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => <small key={option.value}><input type="radio" name={`preview-${field.key}`} /> {option.label}</small>)}</div> : field.type === 'checkbox' ? <small className="form-preview__checkbox"><input type="checkbox" /> {field.placeholder || 'Так'}</small> : <input placeholder={field.placeholder} />}</label>)}
+      <button type="button">{draft.buttonText}</button>
+      <div className="form-preview__success">
+        <strong>{draft.successMessage}</strong>
+        <span><small>Номер заявки</small><b>00007</b></span>
+      </div>
+    </div>;
+  }
+
+  function renderButtonPreview() {
+    if (!buttonDraft) return null;
+    const previewStyle = {
+      ...(buttonDraft.styles || {}),
+      backgroundColor: buttonStyle('backgroundColor', '#6d5dfc'),
+      color: buttonStyle('color', '#ffffff'),
+      borderRadius: buttonStyle('borderRadius', '12px'),
+      padding: buttonStyle('padding', '12px 18px'),
+      fontWeight: buttonStyle('fontWeight', '700'),
+      fontFamily: 'inherit'
+    } as CSSProperties;
+    if (buttonDraft.fullWidth) previewStyle.width = '100%';
+    return <div className="button-live-preview">
+      <div className="button-live-preview__surface">
+        <button className="button-live-preview__button" type="button" style={previewStyle}>{buttonDraft.text || 'Залишити заявку'}</button>
+      </div>
+      <small>На сайті кнопка автоматично прийме основний шрифт магазину.</small>
+    </div>;
+  }
+
   return <div className="forms-builder-page">
     <header className="page-heading page-heading--row">
       <div><p className="eyebrow">Хорошоп</p><h1>Конструктор форм</h1><p>Налаштовуйте pop-up форми, банки, поля, вигляд та скрипти кнопок для сторінок товарів.</p></div>
@@ -374,12 +417,18 @@ export function FormsBuilderPage() {
     </header>
 
     <section className="forms-workspace">
-      <aside className="forms-list">
-        <header><strong>Форми</strong><span>{forms.data?.length || 0}</span></header>
-        {forms.isLoading && <p>Завантажуємо...</p>}
-        {forms.data?.map((form) => <button className={form.id === selectedForm?.id ? 'forms-list__item forms-list__item--active' : 'forms-list__item'} type="button" key={form.id} onClick={() => { setSelectedId(form.id); setScript(''); }}>
-          <span><strong>{form.name}</strong><small>{statusText(form.status)} · {form.publicId}</small></span><Icon name="arrow" size={18} />
-        </button>)}
+      <aside className="forms-left-panel">
+        <section className="forms-list">
+          <header><strong>Форми</strong><span>{forms.data?.length || 0}</span></header>
+          {forms.isLoading && <p>Завантажуємо...</p>}
+          {forms.data?.map((form) => <button className={form.id === selectedForm?.id ? 'forms-list__item forms-list__item--active' : 'forms-list__item'} type="button" key={form.id} onClick={() => { setSelectedId(form.id); setScript(''); }}>
+            <span><strong>{form.name}</strong><small>{statusText(form.status)} · {form.publicId}</small></span><Icon name="arrow" size={18} />
+          </button>)}
+        </section>
+        {selectedForm && draft && <section className="tool-panel forms-live-preview-panel">
+          <header className="tool-panel__header"><div><p className="eyebrow">Live preview</p><h2>{activeTab === 'button' ? 'Кнопка на сайті' : 'Форма заявки'}</h2></div></header>
+          {activeTab === 'button' ? renderButtonPreview() : renderFormPreview()}
+        </section>}
       </aside>
 
       <div className="forms-editor">
@@ -441,37 +490,12 @@ export function FormsBuilderPage() {
             </div>
           </section>
 
-          <section className="forms-side-grid">
-            <div className="tool-panel">
+          <section className="tool-panel">
               <header className="tool-panel__header"><div><p className="eyebrow">Банки</p><h2>Варіанти банку</h2></div></header>
               <div className="bank-editor">
                 {(banks.data || []).map((bank) => <article key={bank.id}><span><strong>{bank.label}</strong><small>{bank.value}</small></span><label className="check-field"><input type="checkbox" checked={bank.active} onChange={(event) => void updateBank.mutateAsync({ id: bank.id, input: { active: event.target.checked } }).then(refresh)} /><span>Активний</span></label><button className="icon-button icon-button--danger" type="button" onClick={() => void removeBank.mutateAsync(bank.id).then(refresh)} aria-label="Видалити банк"><Icon name="delete" size={17} /></button></article>)}
                 <div className="bank-editor__new"><input value={bankDraft.label} onChange={(event) => setBankDraft({ ...bankDraft, label: event.target.value })} placeholder="Назва банку" /><input value={bankDraft.value} onChange={(event) => setBankDraft({ ...bankDraft, value: event.target.value })} placeholder="Технічне значення" /><button className="button button--secondary button--small" type="button" onClick={() => void addBank()}>Додати</button></div>
               </div>
-            </div>
-
-            <div className="tool-panel form-preview-panel">
-              <header className="tool-panel__header"><div><p className="eyebrow">Preview</p><h2>Попередній перегляд</h2></div></header>
-              <div className="form-preview" style={{
-                '--form-preview-accent': draftStyle('accentColor', '#6d5dfc'),
-                '--form-preview-button-bg': draftStyle('buttonBackgroundColor', '#6d5dfc'),
-                '--form-preview-button-color': draftStyle('buttonTextColor', '#ffffff'),
-                '--form-preview-radius': draftStyle('borderRadius', '12px'),
-                '--form-preview-number-bg': draftStyle('numberBlockBackgroundColor', '#f6f4ff'),
-                '--form-preview-number-border': draftStyle('numberBlockBorderColor', '#d8d4ff'),
-                '--form-preview-number-color': draftStyle('numberBlockTextColor', '#172033'),
-                '--form-preview-number-radius': draftStyle('numberBlockRadius', '16px')
-              } as CSSProperties}>
-                <h3>{draft.title}</h3>
-                {draft.description && <p>{draft.description}</p>}
-                {fields.filter((field) => field.active).map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>{field.type === 'textarea' ? <textarea rows={2} placeholder={field.placeholder} /> : field.type === 'select' ? <StyledSelect value="" options={[{ value: '', label: 'Оберіть' }, ...(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => ({ value: option.value, label: option.label }))]} onChange={() => undefined} ariaLabel={`Попередній перегляд ${field.label}`} /> : field.type === 'radio' ? <div className="form-preview__choices">{(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => <small key={option.value}><input type="radio" name={`preview-${field.key}`} /> {option.label}</small>)}</div> : field.type === 'checkbox' ? <small className="form-preview__checkbox"><input type="checkbox" /> {field.placeholder || 'Так'}</small> : <input placeholder={field.placeholder} />}</label>)}
-                <button type="button">{draft.buttonText}</button>
-                <div className="form-preview__success">
-                  <strong>{draft.successMessage}</strong>
-                  <span><small>Номер заявки</small><b>00007</b></span>
-                </div>
-              </div>
-            </div>
           </section>
 
           </> : <>
