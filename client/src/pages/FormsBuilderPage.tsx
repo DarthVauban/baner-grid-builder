@@ -132,7 +132,7 @@ export function FormsBuilderPage() {
       active: true,
       productSelectors: {
         title: { selector: 'h1', source: 'textContent' },
-        imageUrl: { selector: '.gallery__photos-list > li.gallery__item:first-child .gallery__link[data-href]', source: 'data-href' },
+        imageUrl: { selector: '.gallery__photos-list img[src*="/content/images/"]', source: 'src' },
         price: { selector: '.product-price__item', source: 'textContent' },
         oldPrice: { selector: '.product-price__old-price', source: 'textContent' },
         productCode: { selector: '[data-product-code], .product-code', source: 'textContent' }

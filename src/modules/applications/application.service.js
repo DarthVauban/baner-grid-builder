@@ -513,8 +513,33 @@ export function buildButtonScript(config, publicOrigin = '') {
     return "";
   }
   function isImageUrl(value){ return /\\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i.test(value); }
+  function readGalleryImage(){
+    var gallery = document.querySelector(".gallery");
+    if (!gallery) return "";
+    var candidates = [
+      { selector: ".gallery__photos-list img[src*='/content/images/']", source: "src" },
+      { selector: ".gallery__photos-list img[src]", source: "src" },
+      { selector: ".gallery__photos img.gallery__photo-img[src]", source: "src" },
+      { selector: "img.gallery__photo-img[src]", source: "src" },
+      { selector: "img[src*='/content/images/']", source: "src" },
+      { selector: ".gallery__link[data-href*='/content/images/']", source: "data-href" },
+      { selector: ".gallery__thumb-link[data-href*='/content/images/']", source: "data-href" }
+    ];
+    for (var i = 0; i < candidates.length; i += 1) {
+      var candidate = candidates[i];
+      var elements;
+      try { elements = gallery.querySelectorAll(candidate.selector); } catch (error) { continue; }
+      for (var index = 0; index < elements.length; index += 1) {
+        var value = readElement(elements[index], candidate.source).trim();
+        if (value && isImageUrl(value)) return value;
+      }
+    }
+    var match = String(gallery.innerHTML || "").match(/(?:https?:\\/\\/[^"'<>\\s]+|\\/content\\/images\\/[^"'<>\\s]+)\\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#][^"'<>\\s]*)?/i);
+    return match ? absoluteUrl(match[0]) : "";
+  }
   function collectProduct(){
     var selectors = config.productSelectors || {};
+    var galleryImageUrl = readGalleryImage();
     var fallbacks = {
       title: [
         { selector: "h1.product-title", source: "textContent" },
@@ -562,7 +587,7 @@ export function buildButtonScript(config, publicOrigin = '') {
     };
     return {
       title: read(selectors.title, fallbacks.title),
-      imageUrl: read(selectors.imageUrl, fallbacks.imageUrl, isImageUrl),
+      imageUrl: galleryImageUrl || read(selectors.imageUrl, fallbacks.imageUrl, isImageUrl),
       price: read(selectors.price, fallbacks.price),
       oldPrice: read(selectors.oldPrice, fallbacks.oldPrice),
       productCode: read(selectors.productCode, fallbacks.productCode),

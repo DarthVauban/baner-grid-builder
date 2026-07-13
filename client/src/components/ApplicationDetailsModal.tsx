@@ -31,6 +31,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteCode, setDeleteCode] = useState('');
   const [deleteError, setDeleteError] = useState('');
+  const [copiedProductField, setCopiedProductField] = useState<'title' | 'code' | ''>('');
 
   useEffect(() => setStatus(application.status), [application.status]);
   useEffect(() => {
@@ -45,7 +46,29 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
 
   const productTitle = application.product?.title || application.pageTitle || 'Товар не визначено';
   const sourceUrl = application.product?.url || application.sourceUrl;
+  const productCode = application.product?.productCode || '';
   const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
+
+  async function copyProductText(field: 'title' | 'code', value: string) {
+    const text = value.trim();
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else throw new Error('Clipboard API is not available.');
+    } catch {
+      const input = document.createElement('textarea');
+      input.value = text;
+      input.setAttribute('readonly', 'true');
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+    }
+    setCopiedProductField(field);
+    window.setTimeout(() => setCopiedProductField((current) => current === field ? '' : current), 1500);
+  }
 
   async function confirmDelete() {
     if (!onDelete || !deleteCode.trim()) return;
@@ -75,9 +98,11 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
           <div>
             <div className="application-details-modal__badges">
               <span className={`application-status application-status--${application.status}`}>{application.statusLabel}</span>
-              <span>v{application.version}</span>
             </div>
-            <h3>{productTitle}</h3>
+            <div className="application-product-preview__title">
+              <h3>{productTitle}</h3>
+              <button className="icon-button application-product-preview__copy" type="button" onClick={() => void copyProductText('title', productTitle)} aria-label="Скопіювати назву товару" title={copiedProductField === 'title' ? 'Назву скопійовано' : 'Скопіювати назву товару'}><Icon name="copy" size={15} /></button>
+            </div>
             <dl>
               {application.product?.price && <><dt>Ціна</dt><dd>{application.product.price} {application.product.currency}</dd></>}
               {application.product?.oldPrice && <><dt>Стара ціна</dt><dd>{application.product.oldPrice}</dd></>}
@@ -86,7 +111,10 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
               {application.product?.availability && <><dt>Наявність</dt><dd>{application.product.availability}</dd></>}
               {application.product?.domain && <><dt>Домен</dt><dd>{application.product.domain}</dd></>}
             </dl>
-            {sourceUrl && <a className="button button--secondary button--small" href={sourceUrl} target="_blank" rel="noreferrer">Перейти до товару <Icon name="openInNew" size={14} /></a>}
+            {(sourceUrl || productCode) && <div className="application-product-preview__actions">
+              {sourceUrl && <a className="button button--secondary button--small" href={sourceUrl} target="_blank" rel="noreferrer">Перейти до товару <Icon name="openInNew" size={14} /></a>}
+              {productCode && <button className="button button--secondary button--small" type="button" onClick={() => void copyProductText('code', productCode)}><Icon name="copy" size={14} /> {copiedProductField === 'code' ? 'Код скопійовано' : 'Скопіювати код товару'}</button>}
+            </div>}
           </div>
         </section>
 

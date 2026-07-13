@@ -173,7 +173,9 @@ test('form builder and applications list have separate access and process public
   assert.doesNotMatch(script.body.data.script, /fetch\s*\(/);
   assert.doesNotMatch(script.body.data.script, /XMLHttpRequest/);
   assert.match(script.body.data.script, new RegExp(form.body.data.publicId));
+  assert.match(script.body.data.script, /readGalleryImage/);
   assert.match(script.body.data.script, /gallery__photos-list/);
+  assert.match(script.body.data.script, /img\[src\*='\/content\/images\/'\]/);
   assert.match(script.body.data.script, /data-href/);
 
   const published = await builder.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);

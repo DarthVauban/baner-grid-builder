@@ -758,13 +758,15 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .application-details-modal { width: min(100%, 920px); }
 .application-details-modal__content { display: grid; gap: 20px; padding: 24px 28px; }
 .application-details-modal__badges { display: flex; flex-wrap: wrap; gap: 7px; }
-.application-details-modal__badges > span:last-child { display: inline-flex; align-items: center; border-radius: 999px; padding: 6px 9px; color: #667085; background: var(--surface-soft); font-size: 9px; font-weight: 850; }
 .application-product-preview { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 18px; border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: var(--surface-soft); }
 .application-product-preview > img, .application-product-preview > span { width: 100%; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 13px; color: var(--brand); background: var(--surface); object-fit: contain; }
-.application-product-preview h3 { margin: 10px 0 12px; font-size: 19px; line-height: 1.3; letter-spacing: -.02em; }
+.application-product-preview__title { display: flex; align-items: flex-start; gap: 8px; }
+.application-product-preview__title h3 { min-width: 0; margin: 10px 0 12px; font-size: 19px; line-height: 1.3; letter-spacing: 0; }
+.application-product-preview__copy { flex: 0 0 30px; width: 30px; height: 30px; margin-top: 7px; }
 .application-product-preview dl { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 6px 11px; margin: 0 0 14px; }
 .application-product-preview dt { color: #8a94a6; font-size: 10px; font-weight: 800; }
 .application-product-preview dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 11px; font-weight: 750; }
+.application-product-preview__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .application-answer-list, .application-comments, .application-history { display: grid; gap: 8px; }
 .application-answer-list article, .application-comments article, .application-history article { border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: var(--surface-soft); }
 .application-answer-list small, .application-comments time, .application-history small { color: #8b95a6; font-size: 9px; }
