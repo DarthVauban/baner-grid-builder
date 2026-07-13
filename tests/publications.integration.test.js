@@ -19,19 +19,33 @@ const { processPublicationReminders } = await import('../src/modules/publication
 const admin = request.agent(app);
 const creator = request.agent(app);
 const assignee = request.agent(app);
+let creatorId;
 let assigneeId;
+
+async function registerAndVerify(input) {
+  const registration = await request(app).post('/api/auth/register').send(input).expect(202);
+  assert.match(registration.body.data.devCode, /^\d{6}$/);
+  const verified = await request(app).post('/api/auth/register/verify').send({
+    email: input.email,
+    code: registration.body.data.devCode
+  }).expect(201);
+  return verified.body.data;
+}
 
 before(async () => {
   await runMigrations();
   await ensureBootstrapAdmin();
   await admin.post('/api/auth/login').send({ email: 'publication-admin@test.local', password: 'AdminPassword123!' }).expect(200);
-  for (const user of [
-    { name: 'Content Planner', email: 'planner@test.local', password: 'PlannerPassword123!' },
-    { name: 'Blog Publisher', email: 'publisher@test.local', password: 'PublisherPassword123!' }
-  ]) await request(app).post('/api/auth/register').send(user).expect(201);
-  const pending = await admin.get('/api/admin/users?status=pending').expect(200);
-  for (const user of pending.body.data) await admin.patch(`/api/admin/users/${user.id}/status`).send({ status: 'approved' }).expect(200);
-  assigneeId = pending.body.data.find((user) => user.email === 'publisher@test.local').id;
+  const creatorUser = await registerAndVerify({ name: 'Content Planner', email: 'planner@test.local', password: 'PlannerPassword123!' });
+  const assigneeUser = await registerAndVerify({ name: 'Blog Publisher', email: 'publisher@test.local', password: 'PublisherPassword123!' });
+  creatorId = creatorUser.id;
+  assigneeId = assigneeUser.id;
+  for (const userId of [creatorId, assigneeId]) {
+    await admin.put(`/api/admin/users/${userId}/tool-access`).send({
+      tools: ['blog_publications'],
+      canManageToolAccess: false
+    }).expect(200);
+  }
   await creator.post('/api/auth/login').send({ email: 'planner@test.local', password: 'PlannerPassword123!' }).expect(200);
   await assignee.post('/api/auth/login').send({ email: 'publisher@test.local', password: 'PublisherPassword123!' }).expect(200);
 });

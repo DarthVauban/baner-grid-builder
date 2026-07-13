@@ -25,6 +25,7 @@ export function AdminUserRow({
   busy,
   canAdminister,
   onAccess,
+  onDelete,
   onRole,
   onStatus
 }: {
@@ -33,6 +34,7 @@ export function AdminUserRow({
   busy: boolean;
   canAdminister: boolean;
   onAccess: (user: User) => void;
+  onDelete: (user: User) => void;
   onRole: (user: User, role: UserRole) => void;
   onStatus: (user: User, status: UserStatus) => void;
 }) {
@@ -59,6 +61,7 @@ export function AdminUserRow({
         )}
         {canAdminister && user.status !== 'approved' && <button className="button button--primary button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'approved')}>Схвалити</button>}
         {canAdminister && !isSelf && user.status !== 'rejected' && <button className="button button--danger button--small" type="button" disabled={busy} onClick={() => onStatus(user, 'rejected')}>Відхилити</button>}
+        {canAdminister && !isSelf && <button className="button button--danger button--small" type="button" disabled={busy} onClick={() => onDelete(user)}><Icon name="delete" size={16} /> Видалити</button>}
       </div>
     </article>
   );
@@ -97,6 +100,7 @@ export function AdminUsersPage() {
   });
   const setUserStatus = useMutation({ mutationFn: ({ id, value }: { id: string; value: UserStatus }) => api.admin.setStatus(id, value) });
   const setUserRole = useMutation({ mutationFn: ({ id, value }: { id: string; value: UserRole }) => api.admin.setRole(id, value) });
+  const removeUser = useMutation({ mutationFn: (id: string) => api.admin.removeUser(id) });
 
   const summary = directory.data?.summary;
   const summaryCards = useMemo(() => [
@@ -137,6 +141,20 @@ export function AdminUsersPage() {
     }
   }
 
+  async function deleteUser(target: User) {
+    if (!window.confirm(`Повністю видалити обліковий запис ${target.name}? Цю дію не можна скасувати.`)) return;
+    setBusyUserId(target.id);
+    try {
+      await removeUser.mutateAsync(target.id);
+      showToast('Користувача видалено.');
+      await refreshUsers();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити користувача.', 'error');
+    } finally {
+      setBusyUserId('');
+    }
+  }
+
   return (
     <div className="admin-page">
       <header className="page-heading admin-page__heading">
@@ -161,7 +179,7 @@ export function AdminUsersPage() {
           {directory.isLoading && <div className="admin-list-state">Завантажуємо користувачів…</div>}
           {directory.isError && <div className="admin-list-state admin-list-state--error">{directory.error instanceof Error ? directory.error.message : 'Не вдалося завантажити користувачів.'}</div>}
           {!directory.isLoading && !directory.data?.items.length && <div className="admin-list-state">Користувачів за цими умовами не знайдено.</div>}
-          {directory.data?.items.map((directoryUser) => <AdminUserRow key={directoryUser.id} user={directoryUser} currentUserId={currentUser?.id || ''} busy={busyUserId === directoryUser.id} canAdminister={canAdminister} onAccess={setAccessUser} onRole={(target, value) => void changeRole(target, value)} onStatus={(target, value) => void changeStatus(target, value)} />)}
+          {directory.data?.items.map((directoryUser) => <AdminUserRow key={directoryUser.id} user={directoryUser} currentUserId={currentUser?.id || ''} busy={busyUserId === directoryUser.id} canAdminister={canAdminister} onAccess={setAccessUser} onDelete={(target) => void deleteUser(target)} onRole={(target, value) => void changeRole(target, value)} onStatus={(target, value) => void changeStatus(target, value)} />)}
         </div>
 
         {directory.data && directory.data.pageCount > 1 && <nav className="admin-pagination" aria-label="Сторінки користувачів"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><Icon name="arrowLeft" size={17} /> Назад</button><span>Сторінка {page} із {directory.data.pageCount}</span><button type="button" disabled={page >= directory.data.pageCount} onClick={() => setPage((value) => value + 1)}>Далі <Icon name="arrowRight" size={17} /></button></nav>}

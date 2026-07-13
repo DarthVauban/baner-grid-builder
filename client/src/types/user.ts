@@ -29,6 +29,18 @@ export interface RegisterInput extends LoginInput {
   avatarDataUrl: string;
 }
 
+export interface RegistrationStart {
+  email: string;
+  expiresAt: string;
+  resendAvailableAt: string;
+  devCode?: string;
+}
+
+export interface RegistrationVerifyInput {
+  email: string;
+  code: string;
+}
+
 export interface ProfileInput {
   firstName: string;
   lastName: string;

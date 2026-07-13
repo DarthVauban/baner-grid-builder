@@ -3,6 +3,8 @@ import type {
   PermissionRole,
   PasswordChangeInput,
   RegisterInput,
+  RegistrationStart,
+  RegistrationVerifyInput,
   RolePermission,
   SavedDataResource,
   User,
@@ -109,7 +111,11 @@ export const api = {
       method: 'POST',
       body: jsonBody(input)
     }),
-    register: (input: RegisterInput) => request<User>('/api/auth/register', {
+    register: (input: RegisterInput) => request<RegistrationStart>('/api/auth/register', {
+      method: 'POST',
+      body: jsonBody(input)
+    }),
+    verifyRegistration: (input: RegistrationVerifyInput) => request<User>('/api/auth/register/verify', {
       method: 'POST',
       body: jsonBody(input)
     }),
@@ -235,6 +241,7 @@ export const api = {
       `/api/admin/users/${encodeURIComponent(id)}/tool-access`,
       { method: 'PUT', body: jsonBody({ tools, canManageToolAccess }) }
     ),
+    removeUser: (id: string) => request<void>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     integrations: () => request<IntegrationSettings>('/api/admin/integrations'),
     saveMailtrapIntegration: (input: MailtrapIntegrationInput) => request<MailtrapIntegration>(
       '/api/admin/integrations/mailtrap',

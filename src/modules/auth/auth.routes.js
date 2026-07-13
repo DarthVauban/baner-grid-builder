@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { query } from '../../db/pool.js';
@@ -9,8 +8,8 @@ import { createAccessToken } from '../../lib/jwt.js';
 import { serializeUser } from '../../lib/serializers.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { grantDefaultToolAccess } from '../access/access.service.js';
-import { parseAvatarDataUrl } from '../users/avatar.service.js';
+import { requestRegistrationVerification, verifyRegistrationCode } from './registration-verification.service.js';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 
@@ -37,6 +36,10 @@ const loginSchema = z.object({
   email: z.string().trim().email('Вкажіть коректний email.'),
   password: z.string().min(1, 'Вкажіть пароль.')
 });
+const verifyRegistrationSchema = z.object({
+  email: z.string().trim().email('Вкажіть коректний email.'),
+  code: z.string().trim().regex(/^\d{6}$/, 'Вкажіть 6-значний код.')
+});
 
 function setSessionCookie(res, token) {
   res.cookie(env.COOKIE_NAME, token, {
@@ -50,28 +53,21 @@ function setSessionCookie(res, token) {
 
 router.post('/register', asyncHandler(async (req, res) => {
   const input = parseInput(registerSchema, req.body);
-  const email = input.email.toLowerCase();
-  const exists = await query('SELECT 1 FROM users WHERE email = $1', [email]);
-  if (exists.rowCount) throw new AppError(409, 'EMAIL_EXISTS', 'Користувач із таким email уже існує.');
+  const data = await requestRegistrationVerification(input);
 
-  const passwordHash = await bcrypt.hash(input.password, 12);
-  const avatar = parseAvatarDataUrl(input.avatarDataUrl);
-  const legacyName = input.name?.trim() || '';
-  const firstName = input.firstName?.trim() || legacyName;
-  const lastName = input.lastName?.trim() || '';
-  const fullName = `${firstName} ${lastName}`.trim();
-  const result = await query(
-    `INSERT INTO users (name, first_name, last_name, email, password_hash, avatar_data, avatar_mime)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
-               role, status, can_manage_tool_access, approved_at, created_at, updated_at`,
-    [fullName, firstName, lastName, email, passwordHash, avatar.data, avatar.mime]
-  );
-  await grantDefaultToolAccess(result.rows[0].id);
+  res.status(202).json({
+    data,
+    message: 'Код підтвердження надіслано на email.'
+  });
+}));
+
+router.post('/register/verify', asyncHandler(async (req, res) => {
+  const input = parseInput(verifyRegistrationSchema, req.body);
+  const user = await verifyRegistrationCode(input.email, input.code);
 
   res.status(201).json({
-    data: serializeUser(result.rows[0]),
-    message: 'Реєстрацію завершено. Дочекайтеся схвалення адміністратора.'
+    data: user,
+    message: 'Email підтверджено. Обліковий запис активовано.'
   });
 }));
 

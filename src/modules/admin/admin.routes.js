@@ -278,6 +278,52 @@ router.patch('/users/:id/status', adminOnly, asyncHandler(async (req, res) => {
   res.json({ data: serializeUser(result.rows[0]) });
 }));
 
+router.delete('/users/:id', adminOnly, asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  if (id === req.user.id) {
+    throw new AppError(400, 'SELF_DELETE', 'Не можна видалити власний обліковий запис.');
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      'SELECT id, role FROM users WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    const target = userResult.rows[0];
+    if (!target) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
+
+    if (target.role === 'admin') {
+      const adminCount = await client.query(
+        'SELECT COUNT(*)::INTEGER AS count FROM users WHERE role = $1',
+        ['admin']
+      );
+      if ((adminCount.rows[0]?.count || 0) <= 1) {
+        throw new AppError(400, 'LAST_ADMIN_DELETE', 'Не можна видалити останнього адміністратора.');
+      }
+    }
+
+    await client.query('DELETE FROM chat_messages WHERE sender_id = $1', [id]);
+    await client.query('DELETE FROM blog_publications WHERE creator_id = $1', [id]);
+    await client.query('DELETE FROM users WHERE id = $1', [id]);
+    await client.query(
+      `DELETE FROM chat_conversations
+       WHERE id NOT IN (
+         SELECT conversation_id FROM chat_members
+       )`
+    );
+    await client.query('COMMIT');
+    res.status(204).end();
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
 router.patch('/users/:id/role', adminOnly, asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const { role } = parseInput(roleSchema, req.body);

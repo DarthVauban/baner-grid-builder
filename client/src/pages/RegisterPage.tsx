@@ -1,39 +1,62 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AuthLayout } from '../components/AuthLayout';
 import { PasswordField } from '../components/PasswordField';
 import { ProfilePhotoField } from '../components/ProfilePhotoField';
+import type { RegisterInput, RegistrationStart } from '../types/user';
 
 export function RegisterPage() {
-  const { register } = useAuth();
+  const { register, verifyRegistration } = useAuth();
   const navigate = useNavigate();
+  const [step, setStep] = useState<'details' | 'code'>('details');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [pending, setPending] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [avatarDataUrl, setAvatarDataUrl] = useState('');
+  const [code, setCode] = useState('');
+  const [registration, setRegistration] = useState<RegistrationStart | null>(null);
+  const [draft, setDraft] = useState<RegisterInput | null>(null);
+  const [resendSeconds, setResendSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!registration?.resendAvailableAt) {
+      setResendSeconds(0);
+      return undefined;
+    }
+
+    const refresh = () => {
+      setResendSeconds(Math.max(0, Math.ceil((new Date(registration.resendAvailableAt).getTime() - Date.now()) / 1000)));
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 1000);
+    return () => window.clearInterval(timer);
+  }, [registration?.resendAvailableAt]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    setNotice('');
     setPending(true);
-    const form = new FormData(event.currentTarget);
+    const input: RegisterInput = {
+      firstName,
+      lastName,
+      email,
+      password,
+      avatarDataUrl
+    };
 
     try {
-      await register({
-        firstName,
-        lastName,
-        email: String(form.get('email') || ''),
-        password,
-        avatarDataUrl
-      });
-      navigate('/login', {
-        replace: true,
-        state: { notice: 'Реєстрацію завершено. Після схвалення адміністратором ви зможете увійти.' }
-      });
+      const started = await register(input);
+      setDraft(input);
+      setRegistration(started);
+      setStep('code');
+      setNotice(`Код підтвердження надіслано на ${started.email}.`);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Не вдалося зареєструватися.');
     } finally {
@@ -41,14 +64,91 @@ export function RegisterPage() {
     }
   }
 
+  async function handleVerify(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    setPending(true);
+
+    try {
+      await verifyRegistration({ email: registration?.email || email, code });
+      navigate('/login', {
+        replace: true,
+        state: { notice: 'Email підтверджено. Увійдіть зі своїм паролем.' }
+      });
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Не вдалося підтвердити код.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function resendCode() {
+    if (!draft) return;
+    setError('');
+    setNotice('');
+    setPending(true);
+
+    try {
+      const started = await register(draft);
+      setRegistration(started);
+      setNotice(`Новий код надіслано на ${started.email}.`);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Не вдалося надіслати код повторно.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (step === 'code') {
+    return (
+      <AuthLayout title="Підтвердити email" description="Введіть 6-значний код із листа, щоб активувати обліковий запис." wide>
+        {notice && <div className="form-message form-message--success" role="status">{notice}</div>}
+        {error && <div className="form-message form-message--error" role="alert">{error}</div>}
+
+        <form className="auth-form" onSubmit={handleVerify}>
+          <label className="field">
+            <span>Код підтвердження</span>
+            <input
+              name="code"
+              type="text"
+              value={code}
+              onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              pattern="\d{6}"
+              minLength={6}
+              maxLength={6}
+              placeholder="000000"
+              required
+              autoFocus
+            />
+          </label>
+          <button className="button button--primary button--wide" type="submit" disabled={pending || code.length !== 6}>
+            {pending ? 'Перевіряємо…' : 'Підтвердити реєстрацію'}
+          </button>
+          <button className="button button--secondary button--wide" type="button" disabled={pending || resendSeconds > 0} onClick={() => void resendCode()}>
+            {resendSeconds > 0 ? `Надіслати повторно через ${resendSeconds} с` : 'Надіслати код повторно'}
+          </button>
+          <button className="button button--secondary button--wide" type="button" disabled={pending} onClick={() => { setStep('details'); setError(''); setNotice(''); }}>
+            Змінити дані
+          </button>
+        </form>
+
+        <p className="auth-card__switch">Вже маєте підтверджений обліковий запис? <Link to="/login">Увійти</Link></p>
+      </AuthLayout>
+    );
+  }
+
   return (
-    <AuthLayout title="Створити обліковий запис" description="Після реєстрації доступ має підтвердити адміністратор." wide>
+    <AuthLayout title="Створити обліковий запис" description="Після заповнення форми ми надішлемо код підтвердження на email." wide>
+      {notice && <div className="form-message form-message--success" role="status">{notice}</div>}
       {error && <div className="form-message form-message--error" role="alert">{error}</div>}
 
       <form className="auth-form auth-form--register" onSubmit={handleSubmit}>
         <label className="field auth-form__wide">
           <span>Email</span>
-          <input name="email" type="email" autoComplete="email" placeholder="name@company.com" required autoFocus />
+          <input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@company.com" required autoFocus />
         </label>
         <label className="field">
           <span>Ім’я</span>
@@ -69,7 +169,7 @@ export function RegisterPage() {
         </label>
         <div className="auth-form__wide"><ProfilePhotoField name={`${firstName} ${lastName}`.trim()} value={avatarDataUrl} onChange={setAvatarDataUrl} /></div>
         <button className="button button--primary button--wide auth-form__wide" type="submit" disabled={pending}>
-          {pending ? 'Створюємо…' : 'Створити обліковий запис'}
+          {pending ? 'Надсилаємо код…' : 'Надіслати код підтвердження'}
         </button>
       </form>
 

@@ -20,6 +20,15 @@ const admin = request.agent(app);
 const owner = request.agent(app);
 const participant = request.agent(app);
 
+async function registerAndVerify(input) {
+  const registration = await request(app).post('/api/auth/register').send(input).expect(202);
+  assert.match(registration.body.data.devCode, /^\d{6}$/);
+  await request(app).post('/api/auth/register/verify').send({
+    email: input.email,
+    code: registration.body.data.devCode
+  }).expect(201);
+}
+
 before(async () => {
   await runMigrations();
   await ensureBootstrapAdmin();
@@ -32,12 +41,7 @@ before(async () => {
     { name: 'Task Owner', email: 'owner@test.local', password: 'OwnerPassword123!' },
     { name: 'Task Participant', email: 'participant@test.local', password: 'ParticipantPassword123!' }
   ]) {
-    await request(app).post('/api/auth/register').send(user).expect(201);
-  }
-
-  const pending = await admin.get('/api/admin/users?status=pending').expect(200);
-  for (const user of pending.body.data) {
-    await admin.patch(`/api/admin/users/${user.id}/status`).send({ status: 'approved' }).expect(200);
+    await registerAndVerify(user);
   }
 
   await owner.post('/api/auth/login').send({

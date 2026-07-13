@@ -24,16 +24,26 @@ after(async () => {
   await pool.end();
 });
 
-test('approval flow and shared banner storage work through REST API', async () => {
+async function registerAndVerify(input) {
   const registration = await request(app)
     .post('/api/auth/register')
-    .send({
-      firstName: 'Test', lastName: 'User', email: 'user@test.local',
-      password: 'UserPassword123!', avatarDataUrl: 'data:image/png;base64,AA=='
-    })
+    .send(input)
+    .expect(202);
+  assert.match(registration.body.data.devCode, /^\d{6}$/);
+  const verified = await request(app)
+    .post('/api/auth/register/verify')
+    .send({ email: input.email, code: registration.body.data.devCode })
     .expect(201);
+  return verified;
+}
 
-  assert.equal(registration.body.data.status, 'pending');
+test('approval flow and shared banner storage work through REST API', async () => {
+  const registration = await registerAndVerify({
+    firstName: 'Test', lastName: 'User', email: 'user@test.local',
+    password: 'UserPassword123!', avatarDataUrl: 'data:image/png;base64,AA=='
+  });
+
+  assert.equal(registration.body.data.status, 'approved');
   assert.equal(registration.body.data.role, 'content_manager');
   assert.equal(registration.body.data.firstName, 'Test');
   assert.equal(registration.body.data.lastName, 'User');
@@ -42,8 +52,7 @@ test('approval flow and shared banner storage work through REST API', async () =
   await request(app)
     .post('/api/auth/login')
     .send({ email: 'user@test.local', password: 'UserPassword123!' })
-    .expect(403)
-    .expect((response) => assert.equal(response.body.error.code, 'ACCOUNT_PENDING'));
+    .expect(200);
 
   const admin = request.agent(app);
   const adminLogin = await admin
@@ -89,11 +98,33 @@ test('approval flow and shared banner storage work through REST API', async () =
   );
   assert.equal(storedIntegration.rows[0].public_config.senderEmail, 'hello@mt-panel.sbs');
   assert.notEqual(storedIntegration.rows[0].secret_ciphertext, 'mailtrap_test_token_1234567890');
+  await admin.delete(`/api/admin/users/${adminLogin.body.data.id}`).expect(400)
+    .expect((response) => assert.equal(response.body.error.code, 'SELF_DELETE'));
+  const disposable = await registerAndVerify({
+    name: 'Disposable User',
+    email: 'delete-me@test.local',
+    password: 'DeletePassword123!'
+  });
+  await admin.delete(`/api/admin/users/${disposable.body.data.id}`).expect(204);
+  await request(app)
+    .post('/api/auth/login')
+    .send({ email: 'delete-me@test.local', password: 'DeletePassword123!' })
+    .expect(401);
 
-  const users = await admin.get('/api/admin/users?status=pending').expect(200);
+  const users = await admin.get('/api/admin/users?status=approved').expect(200);
   const pendingUser = users.body.data.find((user) => user.email === 'user@test.local');
   assert.ok(pendingUser);
 
+  await admin
+    .patch(`/api/admin/users/${pendingUser.id}/status`)
+    .send({ status: 'rejected' })
+    .expect(200)
+    .expect((response) => assert.equal(response.body.data.status, 'rejected'));
+  await request(app)
+    .post('/api/auth/login')
+    .send({ email: 'user@test.local', password: 'UserPassword123!' })
+    .expect(403)
+    .expect((response) => assert.equal(response.body.error.code, 'ACCOUNT_REJECTED'));
   await admin
     .patch(`/api/admin/users/${pendingUser.id}/status`)
     .send({ status: 'approved' })
@@ -108,6 +139,10 @@ test('approval flow and shared banner storage work through REST API', async () =
   await admin
     .patch(`/api/admin/users/${pendingUser.id}/role`)
     .send({ role: 'content_manager' })
+    .expect(200);
+  await admin
+    .put(`/api/admin/users/${pendingUser.id}/tool-access`)
+    .send({ tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'] })
     .expect(200);
 
   const user = request.agent(app);
@@ -168,19 +203,12 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.equal(grids.body.data[0].isOwner, true);
   assert.equal(grids.body.data[0].owner.name, 'Test User');
 
-  await request(app)
-    .post('/api/auth/register')
-    .send({ name: 'Second User', email: 'second@test.local', password: 'SecondPassword123!' })
-    .expect(201);
+  const secondRegistration = await registerAndVerify({ name: 'Second User', email: 'second@test.local', password: 'SecondPassword123!' });
+  assert.equal(secondRegistration.body.data.status, 'approved');
 
-  const pendingUsers = await admin.get('/api/admin/users?status=pending').expect(200);
-  const secondPendingUser = pendingUsers.body.data.find((candidate) => candidate.email === 'second@test.local');
+  const approvedUsers = await admin.get('/api/admin/users?status=approved').expect(200);
+  const secondPendingUser = approvedUsers.body.data.find((candidate) => candidate.email === 'second@test.local');
   assert.ok(secondPendingUser);
-
-  await admin
-    .patch(`/api/admin/users/${secondPendingUser.id}/status`)
-    .send({ status: 'approved' })
-    .expect(200);
 
   const secondUser = request.agent(app);
   await secondUser
@@ -189,7 +217,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(200);
 
   const defaultToolAccess = await secondUser.get('/api/users/tool-access').expect(200);
-  assert.deepEqual(defaultToolAccess.body.data.sort(), ['banner_grid', 'blog_publications', 'product_selection', 'product_tables']);
+  assert.deepEqual(defaultToolAccess.body.data, []);
 
   await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({ tools: [] }).expect(200);
   await secondUser.get('/api/grids').expect(403)

@@ -26,21 +26,27 @@ let colleagueId;
 let adminId;
 let observerId;
 
+async function registerAndVerify(input) {
+  const registration = await request(app).post('/api/auth/register').send(input).expect(202);
+  assert.match(registration.body.data.devCode, /^\d{6}$/);
+  const verified = await request(app).post('/api/auth/register/verify').send({
+    email: input.email,
+    code: registration.body.data.devCode
+  }).expect(201);
+  return verified.body.data;
+}
+
 before(async () => {
   await runMigrations();
   await ensureBootstrapAdmin();
   const adminLogin = await admin.post('/api/auth/login').send({ email: 'chat-admin@test.local', password: 'AdminPassword123!' }).expect(200);
   adminId = adminLogin.body.data.id;
-  for (const user of [
-    { name: 'Chat Planner', email: 'chat-planner@test.local', password: 'PlannerPassword123!' },
-    { name: 'Chat Colleague', email: 'chat-colleague@test.local', password: 'ColleaguePassword123!' },
-    { name: 'Chat Observer', email: 'chat-observer@test.local', password: 'ObserverPassword123!' }
-  ]) await request(app).post('/api/auth/register').send(user).expect(201);
-  const pending = await admin.get('/api/admin/users?status=pending').expect(200);
-  for (const user of pending.body.data) await admin.patch(`/api/admin/users/${user.id}/status`).send({ status: 'approved' }).expect(200);
-  plannerId = pending.body.data.find((user) => user.email === 'chat-planner@test.local').id;
-  colleagueId = pending.body.data.find((user) => user.email === 'chat-colleague@test.local').id;
-  observerId = pending.body.data.find((user) => user.email === 'chat-observer@test.local').id;
+  const plannerUser = await registerAndVerify({ name: 'Chat Planner', email: 'chat-planner@test.local', password: 'PlannerPassword123!' });
+  const colleagueUser = await registerAndVerify({ name: 'Chat Colleague', email: 'chat-colleague@test.local', password: 'ColleaguePassword123!' });
+  const observerUser = await registerAndVerify({ name: 'Chat Observer', email: 'chat-observer@test.local', password: 'ObserverPassword123!' });
+  plannerId = plannerUser.id;
+  colleagueId = colleagueUser.id;
+  observerId = observerUser.id;
   await planner.post('/api/auth/login').send({ email: 'chat-planner@test.local', password: 'PlannerPassword123!' }).expect(200);
   await colleague.post('/api/auth/login').send({ email: 'chat-colleague@test.local', password: 'ColleaguePassword123!' }).expect(200);
   await observer.post('/api/auth/login').send({ email: 'chat-observer@test.local', password: 'ObserverPassword123!' }).expect(200);

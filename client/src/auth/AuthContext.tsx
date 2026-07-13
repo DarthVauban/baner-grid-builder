@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { PropsWithChildren } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import type { LoginInput, ProfileInput, RegisterInput, User } from '../types/user';
+import type { LoginInput, ProfileInput, RegisterInput, RegistrationStart, RegistrationVerifyInput, User } from '../types/user';
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
@@ -10,7 +10,8 @@ interface AuthContextValue {
   user: User | null;
   status: AuthStatus;
   login: (input: LoginInput) => Promise<void>;
-  register: (input: RegisterInput) => Promise<void>;
+  register: (input: RegisterInput) => Promise<RegistrationStart>;
+  verifyRegistration: (input: RegistrationVerifyInput) => Promise<User>;
   updateProfile: (input: ProfileInput) => Promise<User>;
   logout: () => Promise<void>;
 }
@@ -56,9 +57,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setStatus('authenticated');
   }, []);
 
-  const register = useCallback(async (input: RegisterInput) => {
-    await api.auth.register(input);
-  }, []);
+  const register = useCallback((input: RegisterInput) => api.auth.register(input), []);
+
+  const verifyRegistration = useCallback((input: RegistrationVerifyInput) => (
+    api.auth.verifyRegistration(input)
+  ), []);
 
   const updateProfile = useCallback(async (input: ProfileInput) => {
     const updatedUser = await api.users.updateProfile(input);
@@ -74,11 +77,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [clearSession]);
 
-  const value = useMemo(() => ({ user, status, login, register, updateProfile, logout }), [
+  const value = useMemo(() => ({ user, status, login, register, verifyRegistration, updateProfile, logout }), [
     user,
     status,
     login,
     register,
+    verifyRegistration,
     updateProfile,
     logout
   ]);
