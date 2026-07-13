@@ -42,6 +42,9 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Deploy via SSH
@@ -52,7 +55,11 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd ${{ secrets.APP_DIR }}
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo ${{ github.token }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull app
-            docker compose up -d --no-build app
+            docker compose up -d --no-build --force-recreate app
+            docker compose ps app
+            sleep 8
+            curl -fsS http://127.0.0.1:3000/api/health
+            curl -fsS http://127.0.0.1:3000/api/public/application-forms/loader.js | grep -q "MTApplicationForms"
             docker image prune -f
