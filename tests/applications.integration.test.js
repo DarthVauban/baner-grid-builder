@@ -185,6 +185,7 @@ test('form builder and applications list have separate access and process public
   assert.match(loader.text, /\+380 \(__\) ___-__-__/);
   assert.match(loader.text, /\.mtf-submit\{width:100%/);
   assert.match(loader.text, /cursor:pointer/);
+  assert.match(loader.text, /mtf-number/);
 
   const preflight = await request(app)
     .options(`/api/public/application-forms/${form.body.data.publicId}/applications`)
@@ -213,7 +214,7 @@ test('form builder and applications list have separate access and process public
       imageUrl: '/content/images/phone.webp'
     },
     context: {
-      sourceUrl: 'https://shop.example.com/products/smartphone-x',
+      sourceUrl: 'http://shop.example.com/products/smartphone-x',
       pageTitle: 'Smartphone X',
       utm_source: 'newsletter'
     },
@@ -235,7 +236,8 @@ test('form builder and applications list have separate access and process public
   assert.equal(feed.body.data.items[0].number, '00001');
   assert.equal(feed.body.data.items[0].customer.bankLabel, 'Mono Bank');
   assert.equal(feed.body.data.items[0].product.title, 'Smartphone X');
-  assert.equal(feed.body.data.items[0].product.imageUrl, 'https://shop.example.com/content/images/phone.webp');
+  assert.equal(feed.body.data.items[0].product.imageUrl, 'http://shop.example.com/content/images/phone.webp');
+  assert.equal(feed.body.data.items[0].product.imageProxyUrl, `/api/applications/${feed.body.data.items[0].id}/product-image`);
   assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'credit_term').optionLabel, '12 months');
 
   const applicationId = feed.body.data.items[0].id;

@@ -70,6 +70,7 @@ export interface ApplicationProductSnapshot {
   title: string;
   url: string;
   imageUrl: string;
+  imageProxyUrl: string;
   price: string;
   oldPrice: string;
   currency: string;

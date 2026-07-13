@@ -211,7 +211,7 @@ export function ApplicationsPage() {
         <span>{application.customer.phone || '—'}</span>
         <span>{application.customer.bankLabel || '—'}</span>
         <span>{application.formName}</span>
-        <span className="application-row__product"><ApplicationProductThumb src={application.product?.imageUrl} /><b>{application.product?.title || application.pageTitle || 'Товар не визначено'}</b></span>
+        <span className="application-row__product"><ApplicationProductThumb src={application.product?.imageProxyUrl || application.product?.imageUrl} /><b>{application.product?.title || application.pageTitle || 'Товар не визначено'}</b></span>
         <time>{formatApplicationDate(application.createdAt)}</time>
         <time>{formatApplicationDate(application.updatedAt)}</time>
         <button className="button button--secondary button--small" type="button" onClick={() => void openDetails(application)}>Відкрити</button>

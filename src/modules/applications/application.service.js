@@ -48,7 +48,6 @@ export function cleanImageUrl(value, baseUrl = '', max = 4000) {
     const url = new URL(text, baseUrl || undefined);
     if (!['http:', 'https:'].includes(url.protocol)) return '';
     if (!isLikelyImagePath(`${url.pathname}${url.search}`)) return '';
-    if (url.protocol === 'http:') url.protocol = 'https:';
     return url.toString().slice(0, max);
   } catch {
     return '';
@@ -311,6 +310,7 @@ export function serializeApplication(row, values = [], product = null, history =
       title: product.title,
       url: product.url,
       imageUrl: product.image_url,
+      imageProxyUrl: product.image_url ? `/api/applications/${row.id}/product-image` : '',
       price: product.price,
       oldPrice: product.old_price,
       currency: product.currency,
@@ -397,7 +397,7 @@ export async function loadApplicationChatPreview(reference, viewer, db = pool) {
       customerName: [application.customer.firstName, application.customer.lastName].filter(Boolean).join(' '),
       bankLabel: application.customer.bankLabel,
       productTitle: application.product?.title || application.pageTitle || 'Товар не визначено',
-      productImageUrl: application.product?.imageUrl || '',
+      productImageUrl: application.product?.imageProxyUrl || application.product?.imageUrl || '',
       sourceUrl: application.sourceUrl,
       version: application.version,
       createdAt: application.createdAt,

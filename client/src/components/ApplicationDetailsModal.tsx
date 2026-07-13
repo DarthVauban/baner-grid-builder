@@ -71,7 +71,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
 
       <div className="application-details-modal__content">
         <section className="application-product-preview">
-          <ProductImagePreview src={application.product?.imageUrl} />
+          <ProductImagePreview src={application.product?.imageProxyUrl || application.product?.imageUrl} />
           <div>
             <div className="application-details-modal__badges">
               <span className={`application-status application-status--${application.status}`}>{application.statusLabel}</span>

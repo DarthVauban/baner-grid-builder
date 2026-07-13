@@ -48,6 +48,49 @@ const sortSql = {
   number_asc: 'application_number ASC',
   number_desc: 'application_number DESC'
 };
+const maxProductImageBytes = 10 * 1024 * 1024;
+
+function isBlockedImageHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (!host || host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === '::1' || host === '0:0:0:0:0:0:0:1') return true;
+  if (/^(?:0|10|127|169\.254|192\.168)\./.test(host)) return true;
+  const match = host.match(/^172\.(\d+)\./);
+  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
+}
+
+function productImageCandidates(value) {
+  const parsed = new URL(value);
+  const candidates = [parsed.toString()];
+  if (parsed.protocol === 'https:') {
+    parsed.protocol = 'http:';
+    candidates.push(parsed.toString());
+  }
+  return candidates;
+}
+
+async function fetchProductImage(value) {
+  let lastError;
+  for (const candidate of productImageCandidates(value)) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      const response = await fetch(candidate, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) throw new Error(`Image request failed with ${response.status}`);
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType && !contentType.toLowerCase().startsWith('image/')) throw new Error('Remote resource is not an image');
+      const contentLength = Number(response.headers.get('content-length') || 0);
+      if (contentLength > maxProductImageBytes) throw new Error('Remote image is too large');
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length > maxProductImageBytes) throw new Error('Remote image is too large');
+      return { bytes, contentType: contentType || 'image/webp' };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Image unavailable');
+}
 
 async function notifyApplicationRecipients(db, applicationId, actorId, type, title, message) {
   const recipients = (await getApplicationRecipientIds(db)).filter((userId) => userId !== actorId);
@@ -138,6 +181,32 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const application = await loadApplicationView(id, req.user);
   if (!application) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
   res.json({ data: application });
+}));
+
+router.get('/:id/product-image', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const application = await loadApplicationView(id, req.user);
+  const imageUrl = application?.product?.imageUrl || '';
+  if (!application || !imageUrl) throw new AppError(404, 'PRODUCT_IMAGE_NOT_FOUND', 'Фото товару не знайдено.');
+
+  let parsed;
+  try {
+    parsed = new URL(imageUrl);
+  } catch {
+    throw new AppError(422, 'PRODUCT_IMAGE_INVALID', 'Посилання на фото товару некоректне.');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol) || isBlockedImageHost(parsed.hostname)) {
+    throw new AppError(422, 'PRODUCT_IMAGE_INVALID', 'Посилання на фото товару некоректне.');
+  }
+
+  try {
+    const image = await fetchProductImage(imageUrl);
+    res.setHeader('Cache-Control', 'private, max-age=1800');
+    res.setHeader('Content-Type', image.contentType);
+    res.send(image.bytes);
+  } catch {
+    throw new AppError(502, 'PRODUCT_IMAGE_UNAVAILABLE', 'Не вдалося завантажити фото товару.');
+  }
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {
