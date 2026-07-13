@@ -81,10 +81,15 @@ function TwoFactorSetupModal({ onClose, onEnabled }: { onClose: () => void; onEn
         if (active) setPending(false);
       });
 
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      active = false;
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose]);
