@@ -253,6 +253,18 @@ export async function canAccessApplications(user, db = { query }) {
   return (await getUserToolAccess(user, db)).includes('applications');
 }
 
+export function canViewApplicationRow(row, viewer) {
+  if (!row || !viewer) return false;
+  if (viewer.isPrimaryAdmin === true) return true;
+  return !row.assigned_to || row.assigned_to === viewer.id;
+}
+
+export function appendApplicationVisibility(where, params, viewer, alias = 'app') {
+  if (viewer?.isPrimaryAdmin === true) return;
+  params.push(viewer?.id || '');
+  where.push(`(${alias}.assigned_to IS NULL OR ${alias}.assigned_to = $${params.length})`);
+}
+
 export function mapApplicationValues(values) {
   const system = {};
   const additional = [];
@@ -304,6 +316,11 @@ export function serializeApplication(row, values = [], product = null, history =
       id: row.last_changed_by,
       name: row.last_changed_by_name || ''
     } : null,
+    assignedManager: row.assigned_to ? {
+      id: row.assigned_to,
+      name: row.assigned_to_name || '',
+      assignedAt: row.assigned_at || null
+    } : null,
     customer: mapped.customer,
     values: mapped.values,
     product: product ? {
@@ -346,14 +363,16 @@ export function serializeApplication(row, values = [], product = null, history =
 export async function loadApplicationView(applicationId, viewer, db = pool) {
   if (!await canAccessApplications(viewer, db)) return null;
   const result = await db.query(
-    `SELECT applications.*, changer.name AS last_changed_by_name
+    `SELECT applications.*, changer.name AS last_changed_by_name, assignee.name AS assigned_to_name
      FROM applications
      LEFT JOIN users AS changer ON changer.id = applications.last_changed_by
+     LEFT JOIN users AS assignee ON assignee.id = applications.assigned_to
      WHERE applications.id = $1`,
     [applicationId]
   );
   const application = result.rows[0];
   if (!application) return null;
+  if (!canViewApplicationRow(application, viewer)) return null;
   const [values, product, history, comments] = await Promise.all([
     db.query(
       `SELECT *

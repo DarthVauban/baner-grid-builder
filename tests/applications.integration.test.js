@@ -19,8 +19,10 @@ const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service
 const admin = request.agent(app);
 const builder = request.agent(app);
 const manager = request.agent(app);
+const otherManager = request.agent(app);
 let builderId;
 let managerId;
+let otherManagerId;
 let adminTotpSecret;
 
 async function registerAndVerify(input) {
@@ -79,9 +81,12 @@ before(async () => {
   await admin.post('/api/users/profile/2fa/confirm').send({ code: currentTotpCode(adminTotpSecret) }).expect(200);
   const formBuilder = await registerAndVerify({ name: 'Form Builder', email: 'form-builder@test.local', password: 'BuilderPassword123!' });
   const applicationManager = await registerAndVerify({ name: 'Application Manager', email: 'application-manager@test.local', password: 'ManagerPassword123!' });
+  const secondApplicationManager = await registerAndVerify({ name: 'Second Manager', email: 'second-manager@test.local', password: 'SecondManager123!' });
   builderId = formBuilder.id;
   managerId = applicationManager.id;
+  otherManagerId = secondApplicationManager.id;
   await admin.patch(`/api/admin/users/${managerId}/role`).send({ role: 'manager' }).expect(200);
+  await admin.patch(`/api/admin/users/${otherManagerId}/role`).send({ role: 'manager' }).expect(200);
   await admin.put(`/api/admin/users/${builderId}/tool-access`).send({
     tools: ['form_builder'],
     canManageToolAccess: false
@@ -90,8 +95,13 @@ before(async () => {
     tools: ['applications'],
     canManageToolAccess: false
   }).expect(200);
+  await admin.put(`/api/admin/users/${otherManagerId}/tool-access`).send({
+    tools: ['applications'],
+    canManageToolAccess: false
+  }).expect(200);
   await builder.post('/api/auth/login').send({ email: 'form-builder@test.local', password: 'BuilderPassword123!' }).expect(200);
   await manager.post('/api/auth/login').send({ email: 'application-manager@test.local', password: 'ManagerPassword123!' }).expect(200);
+  await otherManager.post('/api/auth/login').send({ email: 'second-manager@test.local', password: 'SecondManager123!' }).expect(200);
 });
 
 after(async () => pool.end());
@@ -266,6 +276,10 @@ test('form builder and applications list have separate access and process public
   assert.equal(feed.body.data.items[0].product.imageUrl, 'http://shop.example.com/content/images/phone.webp');
   assert.equal(feed.body.data.items[0].product.imageProxyUrl, `/api/applications/${feed.body.data.items[0].id}/product-image`);
   assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'credit_term').optionLabel, '12 months');
+  assert.equal(feed.body.data.items[0].assignedManager, null);
+
+  const otherInitialFeed = await otherManager.get('/api/applications?search=1').expect(200);
+  assert.equal(otherInitialFeed.body.data.total, 1);
 
   const nameFeed = await manager.get('/api/applications?search=Ivan').expect(200);
   assert.equal(nameFeed.body.data.total, 1);
@@ -275,13 +289,23 @@ test('form builder and applications list have separate access and process public
   assert.equal(phoneFeed.body.data.total, 1);
 
   const applicationId = feed.body.data.items[0].id;
-  const inProgress = await manager.patch(`/api/applications/${applicationId}/status`).send({
-    status: 'in_progress',
-    expectedVersion: feed.body.data.items[0].version,
-    comment: 'Manager started processing.'
+  const inProgress = await manager.post(`/api/applications/${applicationId}/claim`).send({
+    expectedVersion: feed.body.data.items[0].version
   }).expect(200);
   assert.equal(inProgress.body.data.status, 'in_progress');
+  assert.equal(inProgress.body.data.assignedManager.id, managerId);
+  assert.equal(inProgress.body.data.assignedManager.name, 'Application Manager');
   assert.equal(inProgress.body.data.version, 2);
+
+  const otherFeedAfterClaim = await otherManager.get('/api/applications?search=1').expect(200);
+  assert.equal(otherFeedAfterClaim.body.data.total, 0);
+  await otherManager.get(`/api/applications/${applicationId}`).expect(404);
+
+  const countsAfterClaim = await manager.get('/api/applications/counts').expect(200);
+  assert.equal(countsAfterClaim.body.data.inProgress, 1);
+  assert.equal(countsAfterClaim.body.data.unassigned.all, 0);
+  assert.equal(countsAfterClaim.body.data.managerStats[0].manager.id, managerId);
+  assert.equal(countsAfterClaim.body.data.managerStats[0].inProgress, 1);
 
   await manager.patch(`/api/applications/${applicationId}/status`).send({
     status: 'rejected',

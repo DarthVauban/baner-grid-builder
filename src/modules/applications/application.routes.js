@@ -11,8 +11,10 @@ import { publishChatUpdates } from '../chat/chat.events.js';
 import { createNotification } from '../notifications/notification.service.js';
 import { publishNotificationUpdates } from '../notifications/notification.events.js';
 import {
+  appendApplicationVisibility,
   applicationStatusLabels,
   applicationStatuses,
+  canViewApplicationRow,
   getApplicationRecipientIds,
   loadApplicationView
 } from './application.service.js';
@@ -33,6 +35,9 @@ const statusSchema = z.object({
   status: z.enum(applicationStatuses),
   expectedVersion: z.number().int().min(1),
   comment: z.string().trim().max(1000).default('')
+});
+const claimSchema = z.object({
+  expectedVersion: z.number().int().min(1)
 });
 const commentSchema = z.object({
   text: z.string().trim().min(1).max(3000),
@@ -115,22 +120,68 @@ router.get('/stream', (req, res) => {
 });
 
 router.get('/counts', asyncHandler(async (req, res) => {
+  const params = [];
+  const where = [];
+  appendApplicationVisibility(where, params, req.user);
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const result = await query(
     `SELECT
-       COUNT(*)::INTEGER AS all,
+       COUNT(*)::INTEGER AS total,
        COUNT(*) FILTER (WHERE status = 'new')::INTEGER AS new,
        COUNT(*) FILTER (WHERE status = 'in_progress')::INTEGER AS in_progress,
        COUNT(*) FILTER (WHERE status = 'rejected')::INTEGER AS rejected,
        COUNT(*) FILTER (WHERE status = 'closed')::INTEGER AS closed
-     FROM applications`
+     FROM applications AS app
+     ${whereSql}`,
+    params
   );
   const row = result.rows[0] || {};
+  const unassignedResult = await query(
+    `SELECT
+       COUNT(*)::INTEGER AS total,
+       COUNT(*) FILTER (WHERE status = 'new')::INTEGER AS new,
+       COUNT(*) FILTER (WHERE status = 'in_progress')::INTEGER AS in_progress,
+       COUNT(*) FILTER (WHERE status = 'rejected')::INTEGER AS rejected,
+       COUNT(*) FILTER (WHERE status = 'closed')::INTEGER AS closed
+     FROM applications
+     WHERE assigned_to IS NULL`
+  );
+  const managerResult = await query(
+    `SELECT users.id, users.name,
+       COUNT(app.id)::INTEGER AS total,
+       COUNT(app.id) FILTER (WHERE app.status = 'new')::INTEGER AS new,
+       COUNT(app.id) FILTER (WHERE app.status = 'in_progress')::INTEGER AS in_progress,
+       COUNT(app.id) FILTER (WHERE app.status = 'rejected')::INTEGER AS rejected,
+       COUNT(app.id) FILTER (WHERE app.status = 'closed')::INTEGER AS closed,
+       MAX(app.updated_at) AS last_activity_at
+     FROM applications AS app
+     JOIN users ON users.id = app.assigned_to
+     GROUP BY users.id, users.name
+     ORDER BY in_progress DESC, total DESC, lower(users.name)`
+  );
+  const unassigned = unassignedResult.rows[0] || {};
   res.json({ data: {
-    all: Number(row.all || 0),
+    all: Number(row.total || 0),
     new: Number(row.new || 0),
     inProgress: Number(row.in_progress || 0),
     rejected: Number(row.rejected || 0),
-    closed: Number(row.closed || 0)
+    closed: Number(row.closed || 0),
+    unassigned: {
+      all: Number(unassigned.total || 0),
+      new: Number(unassigned.new || 0),
+      inProgress: Number(unassigned.in_progress || 0),
+      rejected: Number(unassigned.rejected || 0),
+      closed: Number(unassigned.closed || 0)
+    },
+    managerStats: managerResult.rows.map((manager) => ({
+      manager: { id: manager.id, name: manager.name },
+      all: Number(manager.total || 0),
+      new: Number(manager.new || 0),
+      inProgress: Number(manager.in_progress || 0),
+      rejected: Number(manager.rejected || 0),
+      closed: Number(manager.closed || 0),
+      lastActivityAt: manager.last_activity_at || null
+    }))
   } });
 }));
 
@@ -144,6 +195,7 @@ router.get('/', asyncHandler(async (req, res) => {
   });
   const params = [];
   const where = [];
+  appendApplicationVisibility(where, params, req.user);
   const searchTerms = input.search.toLowerCase().split(/\s+/).filter(Boolean);
   if (searchTerms.length) {
     const termClauses = searchTerms.map((term) => {
@@ -276,6 +328,73 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   res.status(204).end();
 }));
 
+router.post('/:id/claim', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(claimSchema, req.body);
+  const client = await pool.connect();
+  let recipients = [];
+  let application;
+  try {
+    await client.query('BEGIN');
+    const currentResult = await client.query(
+      'SELECT id, application_number, status, version, assigned_to FROM applications WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    const current = currentResult.rows[0];
+    if (!current || !canViewApplicationRow(current, req.user)) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
+    if (current.version !== input.expectedVersion) {
+      throw new AppError(409, 'APPLICATION_VERSION_CONFLICT', 'Заявку вже оновлено іншим користувачем. Відкрийте актуальну версію.');
+    }
+    if (current.assigned_to && current.assigned_to !== req.user.id) {
+      throw new AppError(409, 'APPLICATION_ALREADY_ASSIGNED', 'Заявку вже взяв у роботу інший менеджер.');
+    }
+    await client.query(
+      `UPDATE applications
+       SET status = 'in_progress',
+           assigned_to = $1,
+           assigned_at = COALESCE(assigned_at, NOW()),
+           version = version + 1,
+           last_changed_by = $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [req.user.id, id]
+    );
+    await client.query(
+      `INSERT INTO application_status_history (
+         application_id, previous_status, new_status, changed_by, comment
+       ) VALUES ($1, $2, 'in_progress', $3, $4)`,
+      [id, current.status, req.user.id, 'Взято в роботу']
+    );
+    recipients = await notifyApplicationRecipients(
+      client,
+      id,
+      req.user.id,
+      'application_status_changed',
+      `Заявку №${current.application_number} взято в роботу`,
+      `${req.user.name} взяв(-ла) заявку в роботу.`
+    );
+    await client.query('COMMIT');
+    application = await loadApplicationView(id, req.user);
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const updateRecipients = [...new Set([...recipients, req.user.id])];
+  publishApplicationUpdates(updateRecipients, {
+    type: 'claimed',
+    applicationId: id,
+    status: application?.status,
+    version: application?.version,
+    updatedAt: application?.updatedAt
+  });
+  publishNotificationUpdates(recipients);
+  publishChatUpdates(updateRecipients, { type: 'entity', entityType: 'application', entityId: id, senderId: req.user.id });
+  res.json({ data: application });
+}));
+
 router.patch('/:id/status', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const input = parseInput(statusSchema, req.body);
@@ -285,20 +404,27 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
   try {
     await client.query('BEGIN');
     const currentResult = await client.query(
-      'SELECT id, application_number, status, version FROM applications WHERE id = $1 FOR UPDATE',
+      'SELECT id, application_number, status, version, assigned_to, assigned_at FROM applications WHERE id = $1 FOR UPDATE',
       [id]
     );
     const current = currentResult.rows[0];
-    if (!current) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
+    if (!current || !canViewApplicationRow(current, req.user)) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
     if (current.version !== input.expectedVersion) {
       throw new AppError(409, 'APPLICATION_VERSION_CONFLICT', 'Заявку вже оновлено іншим користувачем. Відкрийте актуальну версію.');
     }
     if (current.status !== input.status) {
+      const nextAssignedTo = input.status === 'new' ? null : (current.assigned_to || req.user.id);
+      const nextAssignedAt = input.status === 'new' ? null : (current.assigned_at || new Date());
       await client.query(
         `UPDATE applications
-         SET status = $1, version = version + 1, last_changed_by = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [input.status, req.user.id, id]
+         SET status = $1,
+             assigned_to = $2,
+             assigned_at = $3,
+             version = version + 1,
+             last_changed_by = $4,
+             updated_at = NOW()
+         WHERE id = $5`,
+        [input.status, nextAssignedTo, nextAssignedAt, req.user.id, id]
       );
       await client.query(
         `INSERT INTO application_status_history (
@@ -348,11 +474,11 @@ router.post('/:id/comments', asyncHandler(async (req, res) => {
   try {
     await client.query('BEGIN');
     const currentResult = await client.query(
-      'SELECT id, application_number, version FROM applications WHERE id = $1 FOR UPDATE',
+      'SELECT id, application_number, version, assigned_to FROM applications WHERE id = $1 FOR UPDATE',
       [id]
     );
     const current = currentResult.rows[0];
-    if (!current) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
+    if (!current || !canViewApplicationRow(current, req.user)) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Заявку не знайдено.');
     if (input.expectedVersion && current.version !== input.expectedVersion) {
       throw new AppError(409, 'APPLICATION_VERSION_CONFLICT', 'Заявку вже оновлено іншим користувачем. Відкрийте актуальну версію.');
     }

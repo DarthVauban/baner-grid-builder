@@ -253,6 +253,11 @@ export const api = {
         method: 'PATCH',
         body: jsonBody({ status, expectedVersion, comment })
       }),
+    claim: (id: string, expectedVersion: number) =>
+      request<ApplicationRecord>(`/api/applications/${encodeURIComponent(id)}/claim`, {
+        method: 'POST',
+        body: jsonBody({ expectedVersion })
+      }),
     addComment: (id: string, text: string, expectedVersion?: number) =>
       request<ApplicationRecord>(`/api/applications/${encodeURIComponent(id)}/comments`, {
         method: 'POST',

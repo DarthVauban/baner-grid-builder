@@ -12,6 +12,7 @@ interface Props {
   onClose: () => void;
   onShare: (application: ApplicationRecord) => void;
   onStatus: (application: ApplicationRecord, status: ApplicationStatus, comment: string) => void;
+  onClaim: (application: ApplicationRecord) => void;
   onComment: (application: ApplicationRecord, text: string) => void;
   canDelete?: boolean;
   deleteBusy?: boolean;
@@ -27,7 +28,7 @@ function ProductImagePreview({ src }: { src?: string }) {
   return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
 }
 
-export function ApplicationDetailsModal({ application, busy, onClose, onShare, onStatus, onComment, canDelete = false, deleteBusy = false, onDelete }: Props) {
+export function ApplicationDetailsModal({ application, busy, onClose, onShare, onStatus, onClaim, onComment, canDelete = false, deleteBusy = false, onDelete }: Props) {
   const [status, setStatus] = useState<ApplicationStatus>(application.status);
   const [statusComment, setStatusComment] = useState('');
   const [comment, setComment] = useState('');
@@ -51,6 +52,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
   const sourceUrl = application.product?.url || application.sourceUrl;
   const productCode = application.product?.productCode || '';
   const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
+  const canClaim = application.status === 'new' && !application.assignedManager;
 
   async function copyProductText(label: string, value: string) {
     const text = value.trim();
@@ -91,6 +93,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
           <div>
             <div className="application-details-modal__badges">
               <span className={`application-status application-status--${application.status}`}>{application.statusLabel}</span>
+              <span className={application.assignedManager ? 'application-manager-pill' : 'application-manager-pill application-manager-pill--empty'}>{application.assignedManager?.name || 'Не взято в роботу'}</span>
             </div>
             <div className="application-product-preview__title">
               <h3>{productTitle}</h3>
@@ -118,6 +121,8 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
           <div><Icon name="schedule" size={18} /><span><small>Створено</small><strong>{formatApplicationDate(application.createdAt)}</strong></span></div>
           <div><Icon name="edit" size={18} /><span><small>Форма</small><strong>{application.formName}</strong></span></div>
           <div><Icon name="calendar" size={18} /><span><small>Оновлено</small><strong>{formatApplicationDate(application.updatedAt)}</strong></span></div>
+          <div><Icon name="users" size={18} /><span><small>Менеджер</small><strong>{application.assignedManager ? application.assignedManager.name : 'Не взято в роботу'}</strong></span></div>
+          <div><Icon name="schedule" size={18} /><span><small>Взято в роботу</small><strong>{application.assignedManager?.assignedAt ? formatApplicationDate(application.assignedManager.assignedAt) : '—'}</strong></span></div>
         </section>
 
         <section className="task-details-section">
@@ -168,6 +173,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
 
       <footer className="task-details-modal__footer">
         {canDelete && <button className="button button--danger" type="button" disabled={busy || deleteBusy} onClick={() => { setDeleteCode(''); setDeleteError(''); setDeleteOpen(true); }}><Icon name="delete" size={17} /> Видалити заявку</button>}
+        {canClaim && <button className="button button--primary" type="button" disabled={busy} onClick={() => onClaim(application)}>Взяти в роботу</button>}
         <button className="button button--secondary" type="button" onClick={() => onShare(application)}><Icon name="share" size={17} /> Поділитися</button>
         <button className="button button--secondary" type="button" onClick={onClose}>Закрити</button>
       </footer>

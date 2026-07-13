@@ -36,6 +36,9 @@ const sortOptions = [
   { value: 'number_desc', label: 'Номер за спаданням' },
   { value: 'number_asc', label: 'Номер за зростанням' }
 ];
+const rowStatusOptions = applicationStatusOptions
+  .filter(([value]) => value !== 'all')
+  .map(([value, label]) => ({ value: value as ApplicationStatus, label }));
 
 export function ApplicationsPage() {
   const queryClient = useQueryClient();
@@ -71,13 +74,16 @@ export function ApplicationsPage() {
     mutationFn: ({ id, status, version, comment }: { id: string; status: ApplicationStatus; version: number; comment: string }) =>
       api.applications.setStatus(id, status, version, comment)
   });
+  const claimApplication = useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) => api.applications.claim(id, version)
+  });
   const addComment = useMutation({
     mutationFn: ({ id, text, version }: { id: string; text: string; version: number }) => api.applications.addComment(id, text, version)
   });
   const removeApplication = useMutation({
     mutationFn: ({ id, code }: { id: string; code: string }) => api.applications.remove(id, code)
   });
-  const busy = setStatus.isPending || addComment.isPending || removeApplication.isPending;
+  const busy = setStatus.isPending || claimApplication.isPending || addComment.isPending || removeApplication.isPending;
 
   useEffect(() => {
     if (sharedApplication.data) setDetails(sharedApplication.data);
@@ -121,11 +127,22 @@ export function ApplicationsPage() {
   async function changeStatus(application: ApplicationRecord, status: ApplicationStatus, comment: string) {
     try {
       const updated = await setStatus.mutateAsync({ id: application.id, status, version: application.version, comment });
-      setDetails(updated);
+      if (details?.id === updated.id) setDetails(updated);
       showToast('Статус заявки змінено.');
       await refresh();
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося змінити статус.', 'error');
+    }
+  }
+
+  async function claim(application: ApplicationRecord) {
+    try {
+      const updated = await claimApplication.mutateAsync({ id: application.id, version: application.version });
+      if (details?.id === updated.id) setDetails(updated);
+      showToast('Заявку взято в роботу.');
+      await refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося взяти заявку в роботу.', 'error');
     }
   }
 
@@ -162,6 +179,8 @@ export function ApplicationsPage() {
   }
 
   const items = applications.data?.items || [];
+  const managerStats = counts.data?.managerStats || [];
+  const unassignedStats = counts.data?.unassigned;
 
   return <div className="applications-page">
     <header className="page-heading page-heading--row">
@@ -171,6 +190,34 @@ export function ApplicationsPage() {
         <p>Обробляйте заявки з форм, контролюйте статуси, коментарі та товарний контекст без перезавантаження сторінки.</p>
       </div>
     </header>
+
+    <section className="application-dashboard" aria-label="Статистика заявок">
+      <article className="application-dashboard-card application-dashboard-card--accent">
+        <small>Доступні вам</small>
+        <strong>{counts.data?.all || 0}</strong>
+        <span>Нові: {counts.data?.new || 0} · В роботі: {counts.data?.inProgress || 0}</span>
+      </article>
+      <article className="application-dashboard-card">
+        <small>Без менеджера</small>
+        <strong>{unassignedStats?.all || 0}</strong>
+        <span>Очікують взяття: {unassignedStats?.new || 0}</span>
+      </article>
+      <article className="application-dashboard-card">
+        <small>Закриті</small>
+        <strong>{counts.data?.closed || 0}</strong>
+        <span>Відхилені: {counts.data?.rejected || 0}</span>
+      </article>
+      <div className="application-manager-stats">
+        <header><span>Менеджери</span><strong>{managerStats.length}</strong></header>
+        {managerStats.length ? managerStats.slice(0, 6).map((item) => <article key={item.manager.id}>
+          <span><strong>{item.manager.name}</strong><small>{item.all} заявок</small></span>
+          <b>{item.inProgress}</b>
+          <small>в роботі</small>
+          <b>{item.closed}</b>
+          <small>закриті</small>
+        </article>) : <p>Заявок у роботі ще немає.</p>}
+      </div>
+    </section>
 
     <section className="task-toolbar" aria-label="Фільтри заявок">
       <div className="task-filters">
@@ -192,28 +239,34 @@ export function ApplicationsPage() {
     {!applications.isLoading && !applications.isError && items.length === 0 && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="tasks" size={28} /></span><h2>Заявок не знайдено</h2><p>{search ? 'Перевірте номер, імʼя або телефон і спробуйте інший запит.' : 'Нові заявки зʼявляться тут автоматично після надсилання форми.'}</p></div>}
 
     {items.length > 0 && <section className="application-table" aria-label="Список заявок">
-      <div className="application-table__head"><span>№</span><span>Статус</span><span>Покупець</span><span>Телефон</span><span>Банк</span><span>Форма</span><span>Товар</span><span>Створено</span><span>Оновлено</span><span>Дії</span></div>
-      {items.map((application) => <article className="application-row" key={application.id}>
+      <div className="application-table__head"><span>№</span><span>Статус</span><span>Менеджер</span><span>Покупець</span><span>Телефон</span><span>Банк</span><span>Товар</span><span>Створено</span><span>Дії</span></div>
+      {items.map((application) => {
+        const canClaim = application.status === 'new' && !application.assignedManager;
+        const canChangeStatus = !canClaim && (application.assignedManager?.id === user?.id || user?.isPrimaryAdmin === true || !application.assignedManager);
+        return <article className="application-row" key={application.id}>
         <strong>{application.number}</strong>
-        <label className="application-row__status">
+        <div className="application-row__status">
           <span className={`application-status application-status--${application.status}`}>{application.statusLabel}</span>
-          <StyledSelect compact value={application.status} disabled={setStatus.isPending} options={applicationStatusOptions.filter(([value]) => value !== 'all').map(([value, label]) => ({ value: value as ApplicationStatus, label }))} onChange={(value) => void changeStatus(application, value, '')} ariaLabel={`Статус заявки ${application.number}`} />
-        </label>
-        <span>{customerName(application.customer.firstName, application.customer.lastName)}</span>
-        <span>{application.customer.phone || '—'}</span>
-        <span>{application.customer.bankLabel || '—'}</span>
-        <span>{application.formName}</span>
-        <span className="application-row__product"><ApplicationProductThumb src={application.product?.imageProxyUrl || application.product?.imageUrl} /><b>{application.product?.title || application.pageTitle || 'Товар не визначено'}</b></span>
-        <time>{formatApplicationDate(application.createdAt)}</time>
-        <time>{formatApplicationDate(application.updatedAt)}</time>
-        <button className="button button--secondary button--small" type="button" onClick={() => void openDetails(application)}>Відкрити</button>
-      </article>)}
+          {canChangeStatus ? <StyledSelect compact value={application.status} disabled={setStatus.isPending} options={rowStatusOptions} onChange={(value) => void changeStatus(application, value, '')} ariaLabel={`Статус заявки ${application.number}`} /> : <small>{canClaim ? 'Очікує менеджера' : 'Призначена'}</small>}
+        </div>
+        <span className={application.assignedManager ? 'application-manager-pill' : 'application-manager-pill application-manager-pill--empty'}>{application.assignedManager?.name || 'Не взято'}</span>
+        <span className="application-row__customer" data-label="Покупець">{customerName(application.customer.firstName, application.customer.lastName)}</span>
+        <span className="application-row__phone" data-label="Телефон">{application.customer.phone || '—'}</span>
+        <span className="application-row__bank" data-label="Банк">{application.customer.bankLabel || '—'}</span>
+        <span className="application-row__product" data-label="Товар"><ApplicationProductThumb src={application.product?.imageProxyUrl || application.product?.imageUrl} /><b>{application.product?.title || application.pageTitle || 'Товар не визначено'}</b></span>
+        <time className="application-row__date" data-label="Створено">{formatApplicationDate(application.createdAt)}</time>
+        <div className="application-row__actions">
+          {canClaim && <button className="button button--primary button--small" type="button" disabled={claimApplication.isPending} onClick={() => void claim(application)}>Взяти в роботу</button>}
+          <button className="button button--secondary button--small" type="button" onClick={() => void openDetails(application)}>Відкрити</button>
+        </div>
+      </article>;
+      })}
       <footer className="application-pagination">
         <span>{applications.data?.total || 0} заявок</span>
         <div><button className="button button--secondary button--small" type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Назад</button><span>{page} / {applications.data?.pageCount || 1}</span><button className="button button--secondary button--small" type="button" disabled={page >= (applications.data?.pageCount || 1)} onClick={() => setPage((value) => value + 1)}>Далі</button></div>
       </footer>
     </section>}
 
-    {details && <ApplicationDetailsModal application={details} busy={busy} canDelete={user?.isPrimaryAdmin === true} deleteBusy={removeApplication.isPending} onClose={closeDetails} onShare={(item) => void shareApplication(item)} onStatus={(item, nextStatus, comment) => void changeStatus(item, nextStatus, comment)} onComment={(item, text) => void createComment(item, text)} onDelete={(item, code) => deleteApplication(item, code)} />}
+    {details && <ApplicationDetailsModal application={details} busy={busy} canDelete={user?.isPrimaryAdmin === true} deleteBusy={removeApplication.isPending} onClose={closeDetails} onShare={(item) => void shareApplication(item)} onStatus={(item, nextStatus, comment) => void changeStatus(item, nextStatus, comment)} onClaim={(item) => void claim(item)} onComment={(item, text) => void createComment(item, text)} onDelete={(item, code) => deleteApplication(item, code)} />}
   </div>;
 }

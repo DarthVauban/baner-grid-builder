@@ -28,6 +28,9 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
     mutationFn: ({ id, status, version, comment }: { id: string; status: ApplicationStatus; version: number; comment: string }) =>
       api.applications.setStatus(id, status, version, comment)
   });
+  const claimApplication = useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) => api.applications.claim(id, version)
+  });
   const addApplicationComment = useMutation({
     mutationFn: ({ id, text, version }: { id: string; text: string; version: number }) =>
       api.applications.addComment(id, text, version)
@@ -98,6 +101,17 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
     }
   }
 
+  async function claimApplicationCard(application: ApplicationRecord) {
+    try {
+      const updated = await claimApplication.mutateAsync({ id: application.id, version: application.version });
+      setApplicationDetails(updated);
+      await refreshApplication(updated);
+      showToast('Заявку взято в роботу.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося взяти заявку в роботу.', 'error');
+    }
+  }
+
   async function createApplicationComment(application: ApplicationRecord, text: string) {
     try {
       const updated = await addApplicationComment.mutateAsync({ id: application.id, text, version: application.version });
@@ -132,7 +146,7 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
   if (entity.type === 'application') {
     const application = entity.data;
     const title = application.customerName || application.productTitle || `Заявка №${application.number}`;
-    const applicationBusy = setApplicationStatus.isPending || addApplicationComment.isPending;
+    const applicationBusy = setApplicationStatus.isPending || claimApplication.isPending || addApplicationComment.isPending;
     return <><article className="chat-entity chat-entity--application">
       <header><span><Icon name="tasks" size={28} /></span><div><div className="chat-entity__kicker"><small>Заявка №{application.number}</small><b>{application.statusLabel}</b></div><strong>{title}</strong></div></header>
       {application.productTitle && <p>{application.productTitle}</p>}
@@ -146,7 +160,7 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
         {application.sourceUrl && <a className="button button--secondary button--small" href={application.sourceUrl} target="_blank" rel="noreferrer">Товар <Icon name="openInNew" size={14} /></a>}
         <button className="button button--secondary button--small" type="button" disabled={loadingDetails} onClick={() => void openDetails()}>Відкрити картку <Icon name="arrow" size={14} /></button>
       </footer>
-    </article>{applicationDetails && <ApplicationDetailsModal application={applicationDetails} busy={applicationBusy} onClose={() => setApplicationDetails(null)} onShare={(item) => void shareEntity('application', item.id)} onStatus={(item, nextStatus, comment) => void changeApplicationStatus(item, nextStatus, comment)} onComment={(item, text) => void createApplicationComment(item, text)} />}</>;
+    </article>{applicationDetails && <ApplicationDetailsModal application={applicationDetails} busy={applicationBusy} onClose={() => setApplicationDetails(null)} onShare={(item) => void shareEntity('application', item.id)} onStatus={(item, nextStatus, comment) => void changeApplicationStatus(item, nextStatus, comment)} onClaim={(item) => void claimApplicationCard(item)} onComment={(item, text) => void createApplicationComment(item, text)} />}</>;
   }
 
   const publication = entity.data;

@@ -129,6 +129,7 @@ export interface ApplicationRecord {
   source: string;
   version: number;
   lastChangedBy: { id: string; name: string } | null;
+  assignedManager: { id: string; name: string; assignedAt: string | null } | null;
   customer: {
     firstName: string;
     lastName: string;
@@ -158,6 +159,22 @@ export interface ApplicationCounts {
   inProgress: number;
   rejected: number;
   closed: number;
+  unassigned: {
+    all: number;
+    new: number;
+    inProgress: number;
+    rejected: number;
+    closed: number;
+  };
+  managerStats: Array<{
+    manager: { id: string; name: string };
+    all: number;
+    new: number;
+    inProgress: number;
+    rejected: number;
+    closed: number;
+    lastActivityAt: string | null;
+  }>;
 }
 
 export interface ApplicationButtonConfig {
