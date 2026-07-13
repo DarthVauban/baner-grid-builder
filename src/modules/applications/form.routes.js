@@ -8,6 +8,7 @@ import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import {
   buildButtonScript,
+  buildCompactButtonScript,
   cleanText,
   ensureSystemFields,
   loadFields,
@@ -335,7 +336,10 @@ router.get('/buttons/:id/script', asyncHandler(async (req, res) => {
   );
   const config = result.rows[0];
   if (!config) throw new AppError(404, 'BUTTON_CONFIG_NOT_FOUND', 'Конфігурацію кнопки не знайдено.');
-  res.json({ data: { script: buildButtonScript(config, publicOrigin(req)) } });
+  res.json({ data: {
+    script: buildButtonScript(config, publicOrigin(req)),
+    compactScript: buildCompactButtonScript(config, publicOrigin(req))
+  } });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {

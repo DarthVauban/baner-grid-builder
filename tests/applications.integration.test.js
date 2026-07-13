@@ -166,7 +166,7 @@ test('form builder and applications list have separate access and process public
     selector: '.product__buy',
     insertPosition: 'after',
     text: 'Buy in credit',
-    styles: { backgroundColor: '#172033', color: '#ffffff', fontWeight: '800' },
+    styles: { backgroundColor: '#172033', color: '#ffffff', fontWeight: '800', fontSize: '15px' },
     cssClass: '',
     fullWidth: true,
     active: true,
@@ -188,6 +188,17 @@ test('form builder and applications list have separate access and process public
   assert.match(script.body.data.script, /data-href/);
   assert.match(script.body.data.script, /fontFamily = "inherit"/);
   assert.match(script.body.data.script, /fontWeight/);
+  assert.match(script.body.data.script, /fontSize/);
+  assert.match(script.body.data.compactScript, /^<script async src="/);
+  assert.match(script.body.data.compactScript, new RegExp(`/api/public/application-forms/buttons/${button.body.data.id}/embed\\.js`));
+  assert.doesNotMatch(script.body.data.compactScript, /Buy in credit/);
+
+  const compactEmbed = await request(app).get(`/api/public/application-forms/buttons/${button.body.data.id}/embed.js`).expect(200);
+  assert.match(compactEmbed.headers['content-type'] || '', /application\/javascript/);
+  assert.match(compactEmbed.headers['cache-control'] || '', /no-store/);
+  assert.doesNotMatch(compactEmbed.text, /^<script>/);
+  assert.match(compactEmbed.text, /Buy in credit/);
+  assert.match(compactEmbed.text, /fontSize/);
 
   const published = await builder.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);
   assert.equal(published.body.data.status, 'published');

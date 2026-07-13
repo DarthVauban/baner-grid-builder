@@ -10,6 +10,7 @@ import { createNotification } from '../notifications/notification.service.js';
 import { publishNotificationUpdates } from '../notifications/notification.events.js';
 import {
   buildSafeProductSnapshot,
+  buildButtonScriptBody,
   buildUtm,
   cleanText,
   cleanUrl,
@@ -22,6 +23,7 @@ import { publishApplicationUpdates } from './application.events.js';
 
 const router = Router();
 const publicIdSchema = z.string().uuid();
+const buttonIdSchema = z.string().uuid();
 const publicSubmissionSchema = z.object({
   values: z.record(z.string(), z.unknown()).default({}),
   product: z.record(z.string(), z.unknown()).default({}),
@@ -64,6 +66,13 @@ function publicFormPayload(form) {
         : field.options.filter((option) => option.active).map((option) => ({ label: option.label, value: option.value }))
     }))
   };
+}
+
+function publicOrigin(req) {
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim();
+  const candidate = forwardedHost ? `${forwardedProto}://${forwardedHost}` : `${req.protocol}://${req.get('host')}`;
+  try { return new URL(candidate).origin; } catch { return ''; }
 }
 
 function findOptionLabel(field, value) {
@@ -276,6 +285,22 @@ router.get('/loader.js', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.send(loaderScript());
 });
+
+router.get('/buttons/:id/embed.js', asyncHandler(async (req, res) => {
+  const id = parseInput(buttonIdSchema, req.params.id);
+  const result = await pool.query(
+    `SELECT config.*, form.public_id AS form_public_id
+     FROM application_button_configurations AS config
+     JOIN application_forms AS form ON form.id = config.form_id
+     WHERE config.id = $1 AND config.archived_at IS NULL`,
+    [id]
+  );
+  const config = result.rows[0];
+  if (!config) throw new AppError(404, 'BUTTON_CONFIG_NOT_FOUND', 'Конфігурацію кнопки не знайдено.');
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(buildButtonScriptBody(config, publicOrigin(req)));
+}));
 
 router.get('/:publicId', asyncHandler(async (req, res) => {
   const publicId = parseInput(publicIdSchema, req.params.publicId);

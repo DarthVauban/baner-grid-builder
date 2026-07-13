@@ -445,7 +445,14 @@ function scriptJson(value) {
   return JSON.stringify(value).replace(/</g, '\\u003C');
 }
 
-export function buildButtonScript(config, publicOrigin = '') {
+function htmlAttribute(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+export function buildButtonScriptBody(config, publicOrigin = '') {
   const origin = cleanText(publicOrigin, 500).replace(/\/+$/, '');
   const loaderUrl = `${origin}/api/public/application-forms/loader.js`;
   const payload = {
@@ -459,8 +466,7 @@ export function buildButtonScript(config, publicOrigin = '') {
     styles: config.styles || {},
     productSelectors: config.product_selectors || config.productSelectors || {}
   };
-  return `<script>
-(function(){
+  return `(function(){
   "use strict";
   var config = ${scriptJson(payload)};
   var loaderUrl = ${scriptJson(loaderUrl)};
@@ -739,5 +745,16 @@ export function buildButtonScript(config, publicOrigin = '') {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready, { once: true }); else ready();
 })();
-</script>`;
+`;
+}
+
+export function buildButtonScript(config, publicOrigin = '') {
+  return `<script>
+${buildButtonScriptBody(config, publicOrigin)}</script>`;
+}
+
+export function buildCompactButtonScript(config, publicOrigin = '') {
+  const origin = cleanText(publicOrigin, 500).replace(/\/+$/, '');
+  const url = `${origin}/api/public/application-forms/buttons/${encodeURIComponent(config.id)}/embed.js`;
+  return `<script async src="${htmlAttribute(url)}"></script>`;
 }

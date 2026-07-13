@@ -975,6 +975,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .generated-script header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .generated-script header span { color: var(--ink); font-size: 12px; font-weight: 850; }
 .generated-script textarea { width: 100%; min-height: 260px; border: 1px solid #263347; border-radius: 12px; padding: 12px; color: #d5def0; background: #131925; font: 11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; resize: vertical; }
+.generated-script--compact textarea { min-height: 82px; }
 .chat-entity--application > header { background: linear-gradient(120deg, #28364e, #12332c); }
 
 /* Blog publications */

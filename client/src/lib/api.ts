@@ -290,7 +290,7 @@ export const api = {
     updateButton: (id: string, input: ApplicationButtonInput) =>
       request<ApplicationButtonConfig>(`/api/forms/buttons/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
     archiveButton: (id: string) => request<void>(`/api/forms/buttons/${encodeURIComponent(id)}/archive`, { method: 'PATCH' }),
-    buttonScript: (id: string) => request<{ script: string }>(`/api/forms/buttons/${encodeURIComponent(id)}/script`)
+    buttonScript: (id: string) => request<{ script: string; compactScript: string }>(`/api/forms/buttons/${encodeURIComponent(id)}/script`)
   },
   admin: {
     directory: (params: {

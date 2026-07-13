@@ -115,6 +115,7 @@ export function FormsBuilderPage() {
   const [buttonDraft, setButtonDraft] = useState<ApplicationButtonInput | null>(null);
   const [editingButtonId, setEditingButtonId] = useState<string | null>(null);
   const [script, setScript] = useState('');
+  const [compactScript, setCompactScript] = useState('');
   const [activeTab, setActiveTab] = useState<'form' | 'button'>('form');
   const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
   const banks = useQuery({ queryKey: ['form-banks'], queryFn: api.forms.banks });
@@ -145,7 +146,7 @@ export function FormsBuilderPage() {
       selector: '.product-order__row',
       insertPosition: 'end',
       text: selectedForm.buttonText,
-      styles: { backgroundColor: '#6d5dfc', color: '#ffffff', borderRadius: '12px', padding: '12px 18px', fontWeight: '700' },
+      styles: { backgroundColor: '#6d5dfc', color: '#ffffff', borderRadius: '12px', padding: '12px 18px', fontWeight: '700', fontSize: 'inherit' },
       cssClass: '',
       fullWidth: false,
       active: true,
@@ -159,6 +160,7 @@ export function FormsBuilderPage() {
     });
     setEditingButtonId(null);
     setScript('');
+    setCompactScript('');
   }, [selectedForm]);
 
   const createForm = useMutation({ mutationFn: api.forms.create });
@@ -289,6 +291,7 @@ export function FormsBuilderPage() {
       productSelectors: sanitizeProductSelectors(button.productSelectors)
     });
     setScript('');
+    setCompactScript('');
   }
 
   async function saveButton(existing?: ApplicationButtonConfig) {
@@ -301,18 +304,19 @@ export function FormsBuilderPage() {
       showToast(target ? 'Кнопку оновлено.' : 'Кнопку створено.');
       const generated = await buttonScript.mutateAsync(saved.id);
       setScript(generated.script);
+      setCompactScript(generated.compactScript);
       await refresh();
     } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося зберегти кнопку.', 'error'); }
   }
 
-  async function copyScript() {
-    if (!script) return;
+  async function copyCode(value: string, successMessage = 'Скрипт скопійовано.') {
+    if (!value) return;
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(script);
+        await navigator.clipboard.writeText(value);
       } else {
         const textarea = document.createElement('textarea');
-        textarea.value = script;
+        textarea.value = value;
         textarea.setAttribute('readonly', '');
         textarea.style.position = 'fixed';
         textarea.style.left = '-9999px';
@@ -321,7 +325,7 @@ export function FormsBuilderPage() {
         document.execCommand('copy');
         textarea.remove();
       }
-      showToast('Скрипт скопійовано.');
+      showToast(successMessage);
     } catch {
       showToast('Не вдалося скопіювати скрипт.', 'error');
     }
@@ -399,6 +403,7 @@ export function FormsBuilderPage() {
       borderRadius: buttonStyle('borderRadius', '12px'),
       padding: buttonStyle('padding', '12px 18px'),
       fontWeight: buttonStyle('fontWeight', '700'),
+      fontSize: buttonStyle('fontSize', 'inherit'),
       fontFamily: 'inherit'
     } as CSSProperties;
     if (buttonDraft.fullWidth) previewStyle.width = '100%';
@@ -421,7 +426,7 @@ export function FormsBuilderPage() {
         <section className="forms-list">
           <header><strong>Форми</strong><span>{forms.data?.length || 0}</span></header>
           {forms.isLoading && <p>Завантажуємо...</p>}
-          {forms.data?.map((form) => <button className={form.id === selectedForm?.id ? 'forms-list__item forms-list__item--active' : 'forms-list__item'} type="button" key={form.id} onClick={() => { setSelectedId(form.id); setScript(''); }}>
+          {forms.data?.map((form) => <button className={form.id === selectedForm?.id ? 'forms-list__item forms-list__item--active' : 'forms-list__item'} type="button" key={form.id} onClick={() => { setSelectedId(form.id); setScript(''); setCompactScript(''); }}>
             <span><strong>{form.name}</strong><small>{statusText(form.status)} · {form.publicId}</small></span><Icon name="arrow" size={18} />
           </button>)}
         </section>
@@ -503,7 +508,7 @@ export function FormsBuilderPage() {
             <header className="tool-panel__header"><div><p className="eyebrow">Кнопки</p><h2>Скрипти для Хорошоп</h2></div></header>
             <div className="button-config-layout">
               <div className="button-config-list">
-                {(buttons.data || []).filter((button) => button.formId === selectedForm.id).map((button) => <article key={button.id}><span><strong>{button.name}</strong><small>{button.selector}</small></span><button className="button button--secondary button--small" type="button" onClick={() => editButton(button)}>Редагувати</button><button className="button button--secondary button--small" type="button" onClick={() => void buttonScript.mutateAsync(button.id).then((result) => setScript(result.script))}>Код</button><button className="icon-button icon-button--danger" type="button" onClick={() => void archiveButton.mutateAsync(button.id).then(refresh)} aria-label="Архівувати кнопку"><Icon name="delete" size={16} /></button></article>)}
+                {(buttons.data || []).filter((button) => button.formId === selectedForm.id).map((button) => <article key={button.id}><span><strong>{button.name}</strong><small>{button.selector}</small></span><button className="button button--secondary button--small" type="button" onClick={() => editButton(button)}>Редагувати</button><button className="button button--secondary button--small" type="button" onClick={() => void buttonScript.mutateAsync(button.id).then((result) => { setScript(result.script); setCompactScript(result.compactScript); })}>Код</button><button className="icon-button icon-button--danger" type="button" onClick={() => void archiveButton.mutateAsync(button.id).then(refresh)} aria-label="Архівувати кнопку"><Icon name="delete" size={16} /></button></article>)}
               </div>
               {buttonDraft && <div className="button-config-form">
                 <label className="field"><span>Назва</span><input value={buttonDraft.name} onChange={(event) => setButtonDraft({ ...buttonDraft, name: event.target.value })} /></label>
@@ -519,6 +524,7 @@ export function FormsBuilderPage() {
                   <label className="field"><span>Фон</span><input type="color" value={buttonStyle('backgroundColor', '#6d5dfc')} onChange={(event) => updateButtonStyle('backgroundColor', event.target.value)} /></label>
                   <label className="field"><span>Текст</span><input type="color" value={buttonStyle('color', '#ffffff')} onChange={(event) => updateButtonStyle('color', event.target.value)} /></label>
                   <div className="field"><span>Жирність шрифту</span><StyledSelect value={buttonStyle('fontWeight', '700')} options={fontWeightOptions} onChange={(value) => updateButtonStyle('fontWeight', value)} ariaLabel="Жирність шрифту кнопки" /></div>
+                  <label className="field"><span>Розмір шрифту</span><input value={buttonStyle('fontSize', 'inherit')} onChange={(event) => updateButtonStyle('fontSize', event.target.value)} placeholder="16px або inherit" /></label>
                   <label className="field"><span>Заокруглення</span><input value={buttonStyle('borderRadius', '12px')} onChange={(event) => updateButtonStyle('borderRadius', event.target.value)} /></label>
                   <label className="field"><span>Відступи</span><input value={buttonStyle('padding', '12px 18px')} onChange={(event) => updateButtonStyle('padding', event.target.value)} /></label>
                 </div>
@@ -536,8 +542,12 @@ export function FormsBuilderPage() {
               </div>}
             </div>
             {script && <section className="generated-script">
-              <header><span>Скрипт кнопки</span><button className="button button--secondary button--small" type="button" onClick={() => void copyScript()}><Icon name="copy" size={15} /> Копіювати</button></header>
+              <header><span>Скрипт кнопки</span><button className="button button--secondary button--small" type="button" onClick={() => void copyCode(script)}><Icon name="copy" size={15} /> Копіювати</button></header>
               <textarea value={script} readOnly rows={10} />
+            </section>}
+            {compactScript && <section className="generated-script generated-script--compact">
+              <header><span>Компактний скрипт з автооновленням</span><button className="button button--secondary button--small" type="button" onClick={() => void copyCode(compactScript, 'Компактний скрипт скопійовано.')}><Icon name="copy" size={15} /> Копіювати</button></header>
+              <textarea value={compactScript} readOnly rows={3} />
             </section>}
           </section>
         </>}
