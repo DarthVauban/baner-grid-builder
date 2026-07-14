@@ -992,11 +992,12 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .form-preview { display: grid; gap: 11px; border: 1px solid var(--form-preview-accent, var(--line)); border-radius: var(--form-preview-radius, 18px); padding: 20px; background: var(--surface); box-shadow: inset 0 0 0 8px var(--surface-soft); }
 .form-preview h3 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
 .form-preview p { margin: -4px 0 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.form-preview label { display: grid; gap: 6px; color: #344054; font-size: 11px; font-weight: 750; }
+.form-preview label, .form-preview__field { display: grid; gap: 6px; color: #344054; font-size: 11px; font-weight: 750; }
 .form-preview input, .form-preview select, .form-preview textarea { width: 100%; border: 1px solid #d8dee8; border-radius: 11px; padding: 10px 11px; background-color: #fff; }
 .form-preview .custom-select__button { min-height: 42px; border-radius: 11px; padding: 10px 11px; }
-.form-preview__choices { display: flex; flex-wrap: wrap; gap: 8px; }
-.form-preview__choices small { display: inline-flex; align-items: center; gap: 6px; color: var(--form-preview-choice-text, var(--muted)); font-size: 11px; }
+.form-preview__choices { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.form-preview__choice { width: fit-content; max-width: 100%; display: inline-flex !important; align-items: center; grid-template-columns: none; gap: 6px; color: var(--form-preview-choice-text, var(--muted)); font-size: 11px; cursor: pointer; }
+.form-preview__choice span { min-width: 0; overflow-wrap: anywhere; }
 .form-preview__choices input[type="checkbox"], .form-preview__choices input[type="radio"] { width: 18px; height: 18px; flex: 0 0 18px; border-color: var(--form-preview-choice-border, #cfd6e3); padding: 0; background-color: var(--form-preview-choice-bg, #fff); }
 .form-preview__choices input[type="checkbox"] { border-radius: var(--form-preview-checkbox-radius, 5px); }
 .form-preview__choices input[type="radio"] { border-radius: 999px; }

@@ -253,6 +253,8 @@ test('form builder and applications list have separate access and process public
   assert.match(loader.text, /--mtf-number-bg/);
   assert.match(loader.text, /mtf-choice input\[type=checkbox\]/);
   assert.match(loader.text, /--mtf-choice-accent/);
+  assert.match(loader.text, /justify-items:start/);
+  assert.match(loader.text, /mtf-choice__text/);
   assert.match(loader.text, /type='checkbox'/);
   assert.match(loader.text, /text-wrap:balance/);
 

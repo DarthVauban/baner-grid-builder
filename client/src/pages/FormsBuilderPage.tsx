@@ -470,7 +470,7 @@ export function FormsBuilderPage() {
     }
     if (field.type === 'radio' || field.type === 'checkbox') {
       return <div className={`form-preview__choices form-preview__choices--${field.type}`}>
-        {previewOptions(field).map((option) => <small key={option.value}><input type={field.type} name={`preview-${field.key}`} /> {option.label}</small>)}
+        {previewOptions(field).map((option) => <label className="form-preview__choice" key={option.value}><input type={field.type} name={`preview-${field.key}`} /> <span>{option.label}</span></label>)}
       </div>;
     }
     return <input placeholder={field.placeholder} />;
@@ -495,7 +495,12 @@ export function FormsBuilderPage() {
     } as CSSProperties}>
       <h3>{draft.title}</h3>
       {draft.description && <p>{draft.description}</p>}
-      {fields.filter((field) => field.active).map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>{renderPreviewControl(field)}</label>)}
+      {fields.filter((field) => field.active).map((field) => {
+        const content = <><span>{field.label}{field.required ? ' *' : ''}</span>{renderPreviewControl(field)}</>;
+        return field.type === 'radio' || field.type === 'checkbox'
+          ? <div className="form-preview__field" key={field.key}>{content}</div>
+          : <label key={field.key}>{content}</label>;
+      })}
       <button type="button">{draft.buttonText}</button>
       <div className="form-preview__success">
         <strong>{draft.successMessage}</strong>
