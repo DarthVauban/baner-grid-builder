@@ -620,6 +620,25 @@ export function buildButtonScriptBody(config, publicOrigin = '') {
       domain: window.location.hostname
     };
   }
+  function parsePrice(value){
+    var raw = String(value || "").replace(/[\\s\\u00a0]+/g, "").replace(/[^0-9,.-]/g, "");
+    if (!raw) return NaN;
+    var comma = raw.lastIndexOf(",");
+    var dot = raw.lastIndexOf(".");
+    if (comma > -1 && dot > -1) raw = comma > dot ? raw.replace(/\\./g, "").replace(",", ".") : raw.replace(/,/g, "");
+    else if (comma > -1) raw = raw.replace(",", ".");
+    else if (dot > -1 && /^-?\\d{1,3}(\\.\\d{3})+$/.test(raw)) raw = raw.replace(/\\./g, "");
+    raw = raw.replace(/(?!^)-/g, "");
+    return Number(raw);
+  }
+  function shouldShowButton(){
+    var condition = (config.productSelectors || {}).priceCondition || {};
+    if (!condition || condition.enabled !== true) return true;
+    var minimum = parsePrice(condition.minPrice);
+    if (!isFinite(minimum) || minimum <= 0) return true;
+    var productPrice = parsePrice(collectProduct().price);
+    return isFinite(productPrice) && productPrice >= minimum;
+  }
   function ensureLoader(callback){
     if (window.MTApplicationForms && typeof window.MTApplicationForms.open === "function") { callback(); return; }
     var existing = document.querySelector('script[data-mt-application-loader="true"]');
@@ -725,6 +744,10 @@ export function buildButtonScriptBody(config, publicOrigin = '') {
     }
     return null;
   }
+  function removeButton(){
+    var button = existingButton() || buttonNode;
+    if (button && button.parentNode) button.parentNode.removeChild(button);
+  }
   function isPlaced(button, target){
     if (!button || !target || !document.documentElement.contains(button)) return false;
     if (config.insertPosition === "start" || config.insertPosition === "end") return button.parentNode === target;
@@ -738,7 +761,8 @@ export function buildButtonScriptBody(config, publicOrigin = '') {
     else target.parentNode && target.parentNode.insertBefore(button, target.nextSibling);
   }
   function insert(){
-    if (config.active === false) return false;
+    if (config.active === false) { removeButton(); return false; }
+    if (!shouldShowButton()) { removeButton(); return false; }
     var target = findTarget();
     if (!target) return false;
     var button = existingButton() || buttonNode || makeButton();

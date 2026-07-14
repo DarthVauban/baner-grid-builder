@@ -36,6 +36,7 @@ const productSelectorFields = [
 ] as const;
 
 const productSelectorKeys = productSelectorFields.map(([key]) => key);
+const priceConditionKey = 'priceCondition';
 
 const selectorSources = ['textContent', 'src', 'data-src', 'data-href', 'href', 'value', 'content'] as const;
 const fieldTypeOptions = Object.entries(fieldTypeLabels).map(([value, label]) => ({ value: value as ApplicationFieldType, label }));
@@ -55,10 +56,19 @@ const fontWeightOptions = [
 const selectorSourceOptions = selectorSources.map((source) => ({ value: source, label: source }));
 
 function sanitizeProductSelectors(selectors: Record<string, unknown> = {}) {
-  return productSelectorKeys.reduce<Record<string, unknown>>((result, key) => {
+  const sanitized = productSelectorKeys.reduce<Record<string, unknown>>((result, key) => {
     if (selectors[key]) result[key] = selectors[key];
     return result;
   }, {});
+  const condition = selectors[priceConditionKey];
+  if (condition && typeof condition === 'object') {
+    const value = condition as { enabled?: unknown; minPrice?: unknown };
+    sanitized[priceConditionKey] = {
+      enabled: value.enabled === true,
+      minPrice: typeof value.minPrice === 'string' ? value.minPrice.trim() : value.minPrice == null ? '' : String(value.minPrice).trim()
+    };
+  }
+  return sanitized;
 }
 
 const emptyForm: Omit<ApplicationFormInput, 'fields'> = {
@@ -155,7 +165,8 @@ export function FormsBuilderPage() {
         imageUrl: { selector: '.gallery__photos-list img[src*="/content/images/"]', source: 'src' },
         price: { selector: '.product-price__item', source: 'textContent' },
         oldPrice: { selector: '.product-price__old-price', source: 'textContent' },
-        productCode: { selector: '[data-product-code], .product-code', source: 'textContent' }
+        productCode: { selector: '[data-product-code], .product-code', source: 'textContent' },
+        [priceConditionKey]: { enabled: false, minPrice: '' }
       }
     });
     setEditingButtonId(null);
@@ -371,6 +382,27 @@ export function FormsBuilderPage() {
     });
   }
 
+  function priceCondition() {
+    const config = buttonDraft?.productSelectors?.[priceConditionKey];
+    if (!config || typeof config !== 'object') return { enabled: false, minPrice: '' };
+    const value = config as { enabled?: unknown; minPrice?: unknown };
+    return {
+      enabled: value.enabled === true,
+      minPrice: typeof value.minPrice === 'string' ? value.minPrice : value.minPrice == null ? '' : String(value.minPrice)
+    };
+  }
+
+  function updatePriceCondition(patch: { enabled?: boolean; minPrice?: string }) {
+    if (!buttonDraft) return;
+    setButtonDraft({
+      ...buttonDraft,
+      productSelectors: {
+        ...buttonDraft.productSelectors,
+        [priceConditionKey]: { ...priceCondition(), ...patch }
+      }
+    });
+  }
+
   function renderFormPreview() {
     if (!draft) return null;
     return <div className="form-preview" style={{
@@ -414,6 +446,8 @@ export function FormsBuilderPage() {
       <small>На сайті кнопка автоматично прийме основний шрифт магазину.</small>
     </div>;
   }
+
+  const currentPriceCondition = priceCondition();
 
   return <div className="forms-builder-page">
     <header className="page-heading page-heading--row">
@@ -527,6 +561,15 @@ export function FormsBuilderPage() {
                   <label className="field"><span>Розмір шрифту</span><input value={buttonStyle('fontSize', 'inherit')} onChange={(event) => updateButtonStyle('fontSize', event.target.value)} placeholder="16px або inherit" /></label>
                   <label className="field"><span>Заокруглення</span><input value={buttonStyle('borderRadius', '12px')} onChange={(event) => updateButtonStyle('borderRadius', event.target.value)} /></label>
                   <label className="field"><span>Відступи</span><input value={buttonStyle('padding', '12px 18px')} onChange={(event) => updateButtonStyle('padding', event.target.value)} /></label>
+                </div>
+                <div className="button-price-condition">
+                  <header>
+                    <strong>Умова показу</strong>
+                    <small>Кнопка не вставлятиметься, якщо ціна товару нижча за вказану суму.</small>
+                  </header>
+                  <label className="check-field"><input type="checkbox" checked={currentPriceCondition.enabled} onChange={(event) => updatePriceCondition({ enabled: event.target.checked })} /><span>Показувати тільки для товарів від певної ціни</span></label>
+                  <label className="field"><span>Мінімальна ціна</span><input value={currentPriceCondition.minPrice} inputMode="decimal" disabled={!currentPriceCondition.enabled} onChange={(event) => updatePriceCondition({ minPrice: event.target.value })} placeholder="Наприклад, 10000" /></label>
+                  <small>Ціна читається з селектора товару “Ціна”, за замовчуванням .product-price__item.</small>
                 </div>
                 <div className="button-selector-grid">
                   <strong>Селектори товару</strong>

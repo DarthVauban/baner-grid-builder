@@ -182,7 +182,9 @@ test('form builder and applications list have separate access and process public
     active: true,
     productSelectors: {
       title: { selector: 'h1', source: 'textContent' },
-      imageUrl: { selector: '.product img', source: 'src' }
+      imageUrl: { selector: '.product img', source: 'src' },
+      price: { selector: '.product-price__item', source: 'textContent' },
+      priceCondition: { enabled: true, minPrice: '10000' }
     }
   }).expect(201);
   const script = await builder.get(`/api/forms/buttons/${button.body.data.id}/script`).expect(200);
@@ -199,6 +201,9 @@ test('form builder and applications list have separate access and process public
   assert.match(script.body.data.script, /fontFamily = "inherit"/);
   assert.match(script.body.data.script, /fontWeight/);
   assert.match(script.body.data.script, /fontSize/);
+  assert.match(script.body.data.script, /priceCondition/);
+  assert.match(script.body.data.script, /parsePrice/);
+  assert.match(script.body.data.script, /productPrice >= minimum/);
   assert.match(script.body.data.compactScript, /^<script async src="/);
   assert.match(script.body.data.compactScript, new RegExp(`/api/public/application-forms/buttons/${button.body.data.id}/embed\\.js`));
   assert.doesNotMatch(script.body.data.compactScript, /Buy in credit/);
@@ -209,6 +214,7 @@ test('form builder and applications list have separate access and process public
   assert.doesNotMatch(compactEmbed.text, /^<script>/);
   assert.match(compactEmbed.text, /Buy in credit/);
   assert.match(compactEmbed.text, /fontSize/);
+  assert.match(compactEmbed.text, /priceCondition/);
 
   const published = await builder.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);
   assert.equal(published.body.data.status, 'published');

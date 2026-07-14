@@ -1008,6 +1008,10 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .button-live-preview__surface { min-height: 132px; display: flex; align-items: center; justify-content: center; border: 1px dashed #d8d4ff; border-radius: 16px; padding: 18px; background: linear-gradient(135deg, #fbfaff, #fff); }
 .button-live-preview__button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; cursor: pointer; line-height: 1.2; text-decoration: none; font-family: inherit; }
 .button-live-preview > small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.button-price-condition { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 13px; padding: 12px; background: var(--surface); }
+.button-price-condition header { display: grid; gap: 3px; }
+.button-price-condition strong { color: var(--ink); font-size: 12px; }
+.button-price-condition small { color: var(--muted); font-size: 10px; line-height: 1.45; }
 .button-selector-grid { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
 .button-selector-grid > strong { color: var(--ink); font-size: 12px; }
 .button-selector-row { display: grid; grid-template-columns: minmax(0,1fr) 130px; gap: 9px; }
@@ -1612,6 +1616,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 :root[data-theme="brand"] .form-preview textarea,
 :root[data-theme="brand"] .button-live-preview__surface,
 :root[data-theme="brand"] .bank-editor__new input,
+:root[data-theme="brand"] .button-price-condition,
 :root[data-theme="brand"] .application-comment-form textarea { border-color: var(--line); background: var(--surface); }
 :root[data-theme="brand"] .application-table__head,
 :root[data-theme="brand"] .application-pagination,
