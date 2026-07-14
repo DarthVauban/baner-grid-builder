@@ -80,8 +80,21 @@ function findOptionLabel(field, value) {
     const bank = field.options.find((option) => option.value === value);
     return bank?.label || '';
   }
+  if (field.type === 'checkbox' && field.options.length) {
+    return String(value || '')
+      .split(/\s*,\s*/)
+      .filter(Boolean)
+      .map((item) => field.options.find((option) => option.value === item)?.label || '')
+      .filter(Boolean)
+      .join(', ');
+  }
   const option = field.options.find((item) => item.value === value);
   return option?.label || '';
+}
+
+function checkboxValues(raw) {
+  const list = Array.isArray(raw) ? raw : typeof raw === 'boolean' ? (raw ? ['true'] : []) : [raw];
+  return list.map((item) => cleanText(item, 300)).filter(Boolean);
 }
 
 function validateSubmission(form, rawValues) {
@@ -90,6 +103,19 @@ function validateSubmission(form, rawValues) {
   for (const field of form.fields) {
     if (!field.active) continue;
     const raw = rawValues[field.key];
+    if (field.type === 'checkbox') {
+      const selected = checkboxValues(raw);
+      const activeOptions = field.options.filter((option) => option.active !== false);
+      if (field.required && selected.length === 0) errors.push({ field: field.key, message: `Заповніть поле «${field.label}».` });
+      if (activeOptions.length) {
+        const available = new Set(activeOptions.map((option) => option.value));
+        if (selected.some((item) => !available.has(item))) errors.push({ field: field.key, message: `Обране значення поля «${field.label}» недоступне.` });
+        values.set(field.key, selected.join(', '));
+      } else {
+        values.set(field.key, selected.some((item) => item && item !== 'false') ? 'true' : '');
+      }
+      continue;
+    }
     const value = typeof raw === 'boolean' ? String(raw) : cleanText(raw, 3000);
     if (field.required && !value) errors.push({ field: field.key, message: `Заповніть поле «${field.label}».` });
     if (field.systemFieldType === 'bank' && value && !field.options.some((option) => option.value === value)) {
@@ -153,8 +179,15 @@ function loaderScript() {
     if (/failed to fetch|networkerror/i.test(message || "")) return "Не вдалося з'єднатися з сервером. Спробуйте ще раз.";
     return message || fallback;
   }
+  function choiceOptions(field){
+    var options = field.options && field.options.length ? field.options : [];
+    if (options.length) return options;
+    if (field.type === "checkbox") return [{ label: field.placeholder || "Так", value: "true" }];
+    return [{ label: "Варіант", value: "option" }];
+  }
   function fieldControl(field){
-    var wrap = el(field.type === "radio" ? "div" : "label", "mtf-field");
+    var isChoice = field.type === "radio" || field.type === "checkbox";
+    var wrap = el(isChoice ? "div" : "label", "mtf-field");
     var label = el("span"); label.textContent = field.label + (field.required ? " *" : "");
     wrap.appendChild(label);
     var input;
@@ -163,31 +196,27 @@ function loaderScript() {
       input = document.createElement("select");
       var empty = document.createElement("option"); empty.value = ""; empty.textContent = "Оберіть"; input.appendChild(empty);
       (field.options || []).forEach(function(option){ var item = document.createElement("option"); item.value = option.value; item.textContent = option.label; input.appendChild(item); });
-    } else if (field.type === "radio") {
-      input = el("div", "mtf-choice-list");
-      (field.options || []).forEach(function(option, index){
-        var choice = el("label", "mtf-choice");
-        var radio = document.createElement("input");
-        radio.type = "radio";
-        radio.name = field.key;
-        radio.value = option.value;
-        if (field.required && index === 0) radio.required = true;
-        choice.appendChild(radio);
+    } else if (isChoice) {
+      input = el("div", "mtf-choice-list mtf-choice-list--" + field.type);
+      choiceOptions(field).forEach(function(option, index){
+        var choice = el("label", "mtf-choice mtf-choice--" + field.type);
+        var control = document.createElement("input");
+        control.type = field.type;
+        control.name = field.key;
+        control.value = option.value;
+        if (field.type === "radio" && field.required && index === 0) control.required = true;
+        choice.appendChild(control);
         choice.appendChild(document.createTextNode(option.label));
         input.appendChild(choice);
       });
-    } else if (field.type === "checkbox") {
-      input = document.createElement("input");
-      input.type = "checkbox";
-      input.value = "true";
     } else {
       input = document.createElement("input");
       input.type = field.type === "phone" ? "tel" : field.type === "email" ? "email" : field.type === "number" ? "number" : "text";
     }
-    if (field.type !== "radio") {
+    if (!isChoice) {
       input.name = field.key;
       input.placeholder = field.placeholder || "";
-      if (field.type !== "checkbox") input.value = field.defaultValue || "";
+      input.value = field.defaultValue || "";
       if (field.required) input.required = true;
       if (field.type === "phone" || field.systemFieldType === "phone") attachPhoneMask(input);
     }
@@ -199,7 +228,7 @@ function loaderScript() {
     if (document.getElementById("mtf-styles")) return;
     var style = document.createElement("style");
     style.id = "mtf-styles";
-    style.textContent = ".mtf-backdrop{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.46)}.mtf-modal{width:min(520px,100%);max-height:min(760px,100%);overflow:auto;border-radius:var(--mtf-radius,18px);background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.24);font-family:Arial,sans-serif;color:#172033}.mtf-head{display:flex;gap:14px;justify-content:space-between;padding:22px 22px 12px}.mtf-head h2{margin:0;font-size:24px;line-height:1.2}.mtf-head p{margin:8px 0 0;color:#667085;line-height:1.45}.mtf-close{width:38px;height:38px;border:0;border-radius:10px;background:#f2f4f7;font-size:24px}.mtf-form{display:grid;gap:14px;padding:0 22px 22px}.mtf-field{display:grid;gap:7px}.mtf-field span{font-size:14px;font-weight:700}.mtf-field input,.mtf-field select,.mtf-field textarea{width:100%;border:1px solid #d8dee8;border-radius:var(--mtf-control-radius,12px);padding:12px 13px;font:inherit}.mtf-field input[type=checkbox],.mtf-field input[type=radio]{width:auto;padding:0}.mtf-choice-list{display:grid;gap:8px}.mtf-choice{display:flex;align-items:center;gap:8px;color:#344054;font-size:14px}.mtf-field small{color:#667085;font-size:12px}.mtf-actions{display:grid;gap:10px;align-items:center}.mtf-submit{width:100%;min-height:44px;border:0;border-radius:var(--mtf-control-radius,12px);padding:10px 18px;color:var(--mtf-button-color,#fff);background:var(--mtf-button-bg,#6d5dfc);font-weight:800;cursor:pointer}.mtf-submit:disabled{cursor:not-allowed;opacity:.7}.mtf-error{border:1px solid #ffd7df;border-radius:12px;padding:10px;color:#9f2940;background:#fff0f3}.mtf-success{display:grid;justify-items:center;gap:16px;padding:28px 22px 24px;text-align:center}.mtf-success strong{max-width:420px;font-size:21px;line-height:1.28;text-wrap:balance}.mtf-success small{color:#667085}.mtf-number{width:min(100%,292px);display:grid;justify-items:center;gap:7px;border:1px solid var(--mtf-number-border,#d8d4ff);border-radius:var(--mtf-number-radius,16px);padding:16px 20px;color:var(--mtf-number-color,#172033);background:var(--mtf-number-bg,#f6f4ff)}.mtf-number span{color:var(--mtf-number-label-color,#667085);font-size:12px;font-weight:800;text-transform:uppercase}.mtf-number b{font-size:34px;letter-spacing:.06em;color:var(--mtf-number-color,var(--mtf-button-bg,#6d5dfc))}@media(max-width:560px){.mtf-backdrop{align-items:flex-end;padding:0}.mtf-modal{max-height:92vh;border-radius:18px 18px 0 0}}";
+    style.textContent = ".mtf-backdrop{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.46)}.mtf-modal{width:min(520px,100%);max-height:min(760px,100%);overflow:auto;border-radius:var(--mtf-radius,18px);background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.24);font-family:Arial,sans-serif;color:#172033}.mtf-head{display:flex;gap:14px;justify-content:space-between;padding:22px 22px 12px}.mtf-head h2{margin:0;font-size:24px;line-height:1.2}.mtf-head p{margin:8px 0 0;color:#667085;line-height:1.45}.mtf-close{width:38px;height:38px;border:0;border-radius:10px;background:#f2f4f7;font-size:24px}.mtf-form{display:grid;gap:14px;padding:0 22px 22px}.mtf-field{display:grid;gap:7px}.mtf-field span{font-size:14px;font-weight:700}.mtf-field input:not([type=checkbox]):not([type=radio]),.mtf-field select,.mtf-field textarea{width:100%;border:1px solid #d8dee8;border-radius:var(--mtf-control-radius,12px);padding:12px 13px;font:inherit}.mtf-choice-list{display:grid;gap:8px}.mtf-choice{display:flex;align-items:center;gap:8px;color:var(--mtf-choice-color,#344054);font-size:14px;cursor:pointer}.mtf-choice input{appearance:none;width:18px;height:18px;flex:0 0 18px;border:1.5px solid var(--mtf-choice-border,#cfd6e3);background:var(--mtf-choice-bg,#fff);cursor:pointer;transition:border 140ms ease,background 140ms ease,box-shadow 140ms ease}.mtf-choice input[type=checkbox]{border-radius:var(--mtf-checkbox-radius,5px)}.mtf-choice input[type=radio]{border-radius:999px}.mtf-choice input[type=checkbox]:checked{border-color:var(--mtf-choice-accent,#6d5dfc);background-color:var(--mtf-choice-accent,#6d5dfc);background-image:url('data:image/svg+xml,%3Csvg width=%2218%22 height=%2218%22 viewBox=%220 0 18 18%22 fill=%22none%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cpath d=%22M4.5 9.2L7.3 12L13.8 5.8%22 stroke=%22white%22 stroke-width=%222.1%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E');background-position:center;background-repeat:no-repeat;background-size:16px}.mtf-choice input[type=radio]:checked{border-color:var(--mtf-choice-accent,#6d5dfc);background-color:var(--mtf-choice-accent,#6d5dfc);box-shadow:inset 0 0 0 4px var(--mtf-choice-bg,#fff)}.mtf-choice input:focus-visible{outline:0;box-shadow:0 0 0 4px rgba(109,93,252,.16)}.mtf-field small{color:#667085;font-size:12px}.mtf-actions{display:grid;gap:10px;align-items:center}.mtf-submit{width:100%;min-height:44px;border:0;border-radius:var(--mtf-control-radius,12px);padding:10px 18px;color:var(--mtf-button-color,#fff);background:var(--mtf-button-bg,#6d5dfc);font-weight:800;cursor:pointer}.mtf-submit:disabled{cursor:not-allowed;opacity:.7}.mtf-error{border:1px solid #ffd7df;border-radius:12px;padding:10px;color:#9f2940;background:#fff0f3}.mtf-success{display:grid;justify-items:center;gap:16px;padding:28px 22px 24px;text-align:center}.mtf-success strong{max-width:420px;font-size:21px;line-height:1.28;text-wrap:balance}.mtf-success small{color:#667085}.mtf-number{width:min(100%,292px);display:grid;justify-items:center;gap:7px;border:1px solid var(--mtf-number-border,#d8d4ff);border-radius:var(--mtf-number-radius,16px);padding:16px 20px;color:var(--mtf-number-color,#172033);background:var(--mtf-number-bg,#f6f4ff)}.mtf-number span{color:var(--mtf-number-label-color,#667085);font-size:12px;font-weight:800;text-transform:uppercase}.mtf-number b{font-size:34px;letter-spacing:.06em;color:var(--mtf-number-color,var(--mtf-button-bg,#6d5dfc))}@media(max-width:560px){.mtf-backdrop{align-items:flex-end;padding:0}.mtf-modal{max-height:92vh;border-radius:18px 18px 0 0}}";
     document.head.appendChild(style);
   }
   function close(backdrop){ backdrop.remove(); document.documentElement.style.overflow = ""; }
@@ -228,6 +257,11 @@ function loaderScript() {
       modal.style.setProperty("--mtf-button-color", styles.buttonTextColor || "#ffffff");
       modal.style.setProperty("--mtf-radius", styles.borderRadius || "18px");
       modal.style.setProperty("--mtf-control-radius", styles.controlRadius || styles.borderRadius || "12px");
+      modal.style.setProperty("--mtf-choice-accent", styles.choiceAccentColor || styles.accentColor || "#6d5dfc");
+      modal.style.setProperty("--mtf-choice-border", styles.choiceBorderColor || "#cfd6e3");
+      modal.style.setProperty("--mtf-choice-bg", styles.choiceBackgroundColor || "#ffffff");
+      modal.style.setProperty("--mtf-choice-color", styles.choiceTextColor || "#344054");
+      modal.style.setProperty("--mtf-checkbox-radius", styles.checkboxRadius || "5px");
       modal.style.setProperty("--mtf-number-bg", styles.numberBlockBackgroundColor || "#f6f4ff");
       modal.style.setProperty("--mtf-number-border", styles.numberBlockBorderColor || "#d8d4ff");
       modal.style.setProperty("--mtf-number-color", styles.numberBlockTextColor || "#172033");
@@ -251,7 +285,13 @@ function loaderScript() {
         (form.fields || []).forEach(function(field){
           var control = body.elements[field.key];
           if (!control) return;
-          if (field.type === "checkbox") values[field.key] = control.checked ? "true" : "";
+          if (field.type === "checkbox") {
+            var checked = [];
+            Array.prototype.forEach.call(body.querySelectorAll("input[type='checkbox']"), function(item){
+              if (item.name === field.key && item.checked) checked.push(item.value);
+            });
+            values[field.key] = checked;
+          }
           else values[field.key] = control.value || "";
         });
         try {

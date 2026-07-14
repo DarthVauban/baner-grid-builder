@@ -37,6 +37,7 @@ const productSelectorFields = [
 
 const productSelectorKeys = productSelectorFields.map(([key]) => key);
 const priceConditionKey = 'priceCondition';
+const choiceFieldTypes = ['select', 'radio', 'checkbox'] as const;
 
 const selectorSources = ['textContent', 'src', 'data-src', 'data-href', 'href', 'value', 'content'] as const;
 const fieldTypeOptions = Object.entries(fieldTypeLabels).map(([value, label]) => ({ value: value as ApplicationFieldType, label }));
@@ -54,6 +55,24 @@ const fontWeightOptions = [
   { value: '800', label: 'Extra bold' }
 ];
 const selectorSourceOptions = selectorSources.map((source) => ({ value: source, label: source }));
+
+function isChoiceFieldType(type: ApplicationFieldType) {
+  return choiceFieldTypes.includes(type as typeof choiceFieldTypes[number]);
+}
+
+function optionValueFromLabel(label: string, index: number) {
+  const normalized = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return normalized || `option_${index + 1}`;
+}
+
+function newOption(index: number) {
+  return {
+    label: `Варіант ${index + 1}`,
+    value: `option_${index + 1}`,
+    sortOrder: index,
+    active: true
+  };
+}
 
 function sanitizeProductSelectors(selectors: Record<string, unknown> = {}) {
   const sanitized = productSelectorKeys.reduce<Record<string, unknown>>((result, key) => {
@@ -266,14 +285,50 @@ export function FormsBuilderPage() {
     } : field));
   }
 
-  function setFieldOptions(index: number, value: string) {
-    const options = value.split('\n').map((line, optionIndex) => line.trim()).filter(Boolean).map((label, optionIndex) => ({
-      label,
-      value: label.toLowerCase().replace(/[^a-z0-9]+/g, '_') || `option_${optionIndex + 1}`,
-      sortOrder: optionIndex,
-      active: true
+  function updateFieldType(index: number, type: ApplicationFieldType) {
+    setFields((current) => current.map((field, fieldIndex) => {
+      if (fieldIndex !== index) return field;
+      const options = isChoiceFieldType(type) && field.options.length === 0 ? [newOption(0)] : field.options;
+      return {
+        ...field,
+        type: field.systemFieldType === 'bank' ? 'select' : field.systemFieldType === 'phone' ? 'phone' : type,
+        options
+      };
     }));
-    updateField(index, { options });
+  }
+
+  function updateFieldOption(index: number, optionIndex: number, label: string) {
+    setFields((current) => current.map((field, fieldIndex) => {
+      if (fieldIndex !== index) return field;
+      const baseOptions = field.options.length ? field.options : [newOption(0)];
+      return {
+        ...field,
+        options: baseOptions.map((option, itemIndex) => itemIndex === optionIndex ? {
+          ...option,
+          label,
+          value: optionValueFromLabel(label, itemIndex),
+          sortOrder: itemIndex
+        } : option)
+      };
+    }));
+  }
+
+  function addFieldOption(index: number) {
+    setFields((current) => current.map((field, fieldIndex) => {
+      if (fieldIndex !== index) return field;
+      return { ...field, options: [...field.options, newOption(field.options.length)] };
+    }));
+  }
+
+  function removeFieldOption(index: number, optionIndex: number) {
+    setFields((current) => current.map((field, fieldIndex) => {
+      if (fieldIndex !== index) return field;
+      const options = field.options.filter((_, itemIndex) => itemIndex !== optionIndex).map((option, itemIndex) => ({
+        ...option,
+        sortOrder: itemIndex
+      }));
+      return { ...field, options };
+    }));
   }
 
   async function addBank() {
@@ -403,6 +458,24 @@ export function FormsBuilderPage() {
     });
   }
 
+  function previewOptions(field: ApplicationFormField) {
+    if (field.options.length > 0) return field.options;
+    return [{ label: field.type === 'checkbox' ? field.placeholder || 'Так' : 'Варіант', value: 'option', sortOrder: 0, active: true }];
+  }
+
+  function renderPreviewControl(field: ApplicationFormField) {
+    if (field.type === 'textarea') return <textarea rows={2} placeholder={field.placeholder} />;
+    if (field.type === 'select') {
+      return <StyledSelect value="" options={[{ value: '', label: 'Оберіть' }, ...previewOptions(field).map((option) => ({ value: option.value, label: option.label }))]} onChange={() => undefined} ariaLabel={`Попередній перегляд ${field.label}`} />;
+    }
+    if (field.type === 'radio' || field.type === 'checkbox') {
+      return <div className={`form-preview__choices form-preview__choices--${field.type}`}>
+        {previewOptions(field).map((option) => <small key={option.value}><input type={field.type} name={`preview-${field.key}`} /> {option.label}</small>)}
+      </div>;
+    }
+    return <input placeholder={field.placeholder} />;
+  }
+
   function renderFormPreview() {
     if (!draft) return null;
     return <div className="form-preview" style={{
@@ -410,6 +483,11 @@ export function FormsBuilderPage() {
       '--form-preview-button-bg': draftStyle('buttonBackgroundColor', '#6d5dfc'),
       '--form-preview-button-color': draftStyle('buttonTextColor', '#ffffff'),
       '--form-preview-radius': draftStyle('borderRadius', '12px'),
+      '--form-preview-choice-accent': draftStyle('choiceAccentColor', draftStyle('accentColor', '#6d5dfc')),
+      '--form-preview-choice-border': draftStyle('choiceBorderColor', '#cfd6e3'),
+      '--form-preview-choice-bg': draftStyle('choiceBackgroundColor', '#ffffff'),
+      '--form-preview-choice-text': draftStyle('choiceTextColor', '#344054'),
+      '--form-preview-checkbox-radius': draftStyle('checkboxRadius', '5px'),
       '--form-preview-number-bg': draftStyle('numberBlockBackgroundColor', '#f6f4ff'),
       '--form-preview-number-border': draftStyle('numberBlockBorderColor', '#d8d4ff'),
       '--form-preview-number-color': draftStyle('numberBlockTextColor', '#172033'),
@@ -417,7 +495,7 @@ export function FormsBuilderPage() {
     } as CSSProperties}>
       <h3>{draft.title}</h3>
       {draft.description && <p>{draft.description}</p>}
-      {fields.filter((field) => field.active).map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>{field.type === 'textarea' ? <textarea rows={2} placeholder={field.placeholder} /> : field.type === 'select' ? <StyledSelect value="" options={[{ value: '', label: 'Оберіть' }, ...(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => ({ value: option.value, label: option.label }))]} onChange={() => undefined} ariaLabel={`Попередній перегляд ${field.label}`} /> : field.type === 'radio' ? <div className="form-preview__choices">{(field.options.length ? field.options : [{ label: 'Варіант', value: 'option', sortOrder: 0, active: true }]).map((option) => <small key={option.value}><input type="radio" name={`preview-${field.key}`} /> {option.label}</small>)}</div> : field.type === 'checkbox' ? <small className="form-preview__checkbox"><input type="checkbox" /> {field.placeholder || 'Так'}</small> : <input placeholder={field.placeholder} />}</label>)}
+      {fields.filter((field) => field.active).map((field) => <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span>{renderPreviewControl(field)}</label>)}
       <button type="button">{draft.buttonText}</button>
       <div className="form-preview__success">
         <strong>{draft.successMessage}</strong>
@@ -495,6 +573,12 @@ export function FormsBuilderPage() {
               <label className="field"><span>Колір кнопки</span><input type="color" value={draftStyle('buttonBackgroundColor', '#6d5dfc')} onChange={(event) => updateDraftStyle('buttonBackgroundColor', event.target.value)} /></label>
               <label className="field"><span>Колір тексту кнопки</span><input type="color" value={draftStyle('buttonTextColor', '#ffffff')} onChange={(event) => updateDraftStyle('buttonTextColor', event.target.value)} /></label>
               <label className="field"><span>Заокруглення</span><input value={draftStyle('borderRadius', '12px')} onChange={(event) => updateDraftStyle('borderRadius', event.target.value)} placeholder="12px" /></label>
+              <div className="form-builder-section-title">Чекбокси та радіокнопки</div>
+              <label className="field"><span>Колір вибору</span><input type="color" value={draftStyle('choiceAccentColor', draftStyle('accentColor', '#6d5dfc'))} onChange={(event) => updateDraftStyle('choiceAccentColor', event.target.value)} /></label>
+              <label className="field"><span>Колір рамки</span><input type="color" value={draftStyle('choiceBorderColor', '#cfd6e3')} onChange={(event) => updateDraftStyle('choiceBorderColor', event.target.value)} /></label>
+              <label className="field"><span>Фон контролу</span><input type="color" value={draftStyle('choiceBackgroundColor', '#ffffff')} onChange={(event) => updateDraftStyle('choiceBackgroundColor', event.target.value)} /></label>
+              <label className="field"><span>Колір тексту</span><input type="color" value={draftStyle('choiceTextColor', '#344054')} onChange={(event) => updateDraftStyle('choiceTextColor', event.target.value)} /></label>
+              <label className="field"><span>Заокруглення чекбокса</span><input value={draftStyle('checkboxRadius', '5px')} onChange={(event) => updateDraftStyle('checkboxRadius', event.target.value)} placeholder="5px" /></label>
               <div className="form-builder-section-title">Блок номера заявки</div>
               <label className="field"><span>Фон блоку</span><input type="color" value={draftStyle('numberBlockBackgroundColor', '#f6f4ff')} onChange={(event) => updateDraftStyle('numberBlockBackgroundColor', event.target.value)} /></label>
               <label className="field"><span>Рамка блоку</span><input type="color" value={draftStyle('numberBlockBorderColor', '#d8d4ff')} onChange={(event) => updateDraftStyle('numberBlockBorderColor', event.target.value)} /></label>
@@ -517,10 +601,16 @@ export function FormsBuilderPage() {
                 <header><strong>{field.label}</strong><span>{field.system ? 'Системне' : fieldTypeLabels[field.type]}</span></header>
                 <div className="form-builder-grid">
                   <label className="field"><span>Назва</span><input value={field.label} onChange={(event) => updateField(index, { label: event.target.value })} /></label>
-                  <div className="field"><span>Тип</span><StyledSelect value={field.type} disabled={field.system} options={fieldTypeOptions} onChange={(value) => updateField(index, { type: value })} ariaLabel={`Тип поля ${field.label}`} /></div>
+                  <div className="field"><span>Тип</span><StyledSelect value={field.type} disabled={field.system} options={fieldTypeOptions} onChange={(value) => updateFieldType(index, value)} ariaLabel={`Тип поля ${field.label}`} /></div>
                   <label className="field"><span>Placeholder</span><input value={field.placeholder} onChange={(event) => updateField(index, { placeholder: event.target.value })} /></label>
                   <label className="field"><span>Підказка</span><input value={field.helpText} onChange={(event) => updateField(index, { helpText: event.target.value })} /></label>
-                  {['select', 'radio'].includes(field.type) && !field.system && <label className="field form-builder-grid__wide"><span>Варіанти, кожен з нового рядка</span><textarea value={field.options.map((option) => option.label).join('\n')} onChange={(event) => setFieldOptions(index, event.target.value)} rows={3} /></label>}
+                  {isChoiceFieldType(field.type) && !field.system && <div className="form-options-editor form-builder-grid__wide">
+                    <div><strong>Варіанти вибору</strong><button className="button button--secondary button--small" type="button" onClick={() => addFieldOption(index)}><Icon name="add" size={15} /> Додати варіант</button></div>
+                    {(field.options.length ? field.options : [newOption(0)]).map((option, optionIndex) => <div className="form-option-row" key={`${option.value}-${optionIndex}`}>
+                      <input value={option.label} onChange={(event) => updateFieldOption(index, optionIndex, event.target.value)} placeholder={`Варіант ${optionIndex + 1}`} />
+                      <button className="icon-button icon-button--danger" type="button" disabled={field.options.length <= 1} onClick={() => removeFieldOption(index, optionIndex)} aria-label="Видалити варіант"><Icon name="delete" size={16} /></button>
+                    </div>)}
+                  </div>}
                   <label className="check-field"><input type="checkbox" checked={field.required} disabled={field.system} onChange={(event) => updateField(index, { required: event.target.checked })} /><span>Обовʼязкове</span></label>
                   <label className="check-field"><input type="checkbox" checked={field.active} disabled={field.system} onChange={(event) => updateField(index, { active: event.target.checked })} /><span>Активне</span></label>
                 </div>

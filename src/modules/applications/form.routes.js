@@ -134,7 +134,7 @@ async function replaceEditableFields(db, formId, fields = []) {
       ]
     );
     const fieldId = inserted.rows[0].id;
-    if (['select', 'radio'].includes(field.type)) {
+    if (['select', 'radio', 'checkbox'].includes(field.type)) {
       for (const [optionIndex, option] of field.options.entries()) {
         await db.query(
           `INSERT INTO application_form_field_options (

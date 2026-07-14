@@ -143,7 +143,12 @@ test('form builder and applications list have separate access and process public
       numberBlockBackgroundColor: '#f6f4ff',
       numberBlockBorderColor: '#d8d4ff',
       numberBlockTextColor: '#172033',
-      numberBlockRadius: '18px'
+      numberBlockRadius: '18px',
+      choiceAccentColor: '#172033',
+      choiceBorderColor: '#98a2b3',
+      choiceBackgroundColor: '#ffffff',
+      choiceTextColor: '#101828',
+      checkboxRadius: '6px'
     },
     fields: [
       ...form.body.data.fields,
@@ -164,11 +169,30 @@ test('form builder and applications list have separate access and process public
           { label: '12 months', value: '12_months', sortOrder: 0, active: true },
           { label: '24 months', value: '24_months', sortOrder: 1, active: true }
         ]
+      },
+      {
+        key: 'addons',
+        label: 'Additional services',
+        type: 'checkbox',
+        placeholder: '',
+        helpText: '',
+        defaultValue: '',
+        required: false,
+        active: true,
+        system: false,
+        systemFieldType: null,
+        sortOrder: 110,
+        validation: {},
+        options: [
+          { label: 'Screen protection', value: 'screen_protection', sortOrder: 0, active: true },
+          { label: 'Extended warranty', value: 'extended_warranty', sortOrder: 1, active: true }
+        ]
       }
     ]
   };
   const configuredForm = await builder.put(`/api/forms/${form.body.data.id}`).send(formInput).expect(200);
   assert.equal(configuredForm.body.data.fields.some((field) => field.key === 'credit_term'), true);
+  assert.equal(configuredForm.body.data.fields.find((field) => field.key === 'addons').options.length, 2);
 
   const button = await builder.post('/api/forms/buttons').send({
     name: 'Product page button',
@@ -227,6 +251,9 @@ test('form builder and applications list have separate access and process public
   assert.match(loader.text, /cursor:pointer/);
   assert.match(loader.text, /mtf-number/);
   assert.match(loader.text, /--mtf-number-bg/);
+  assert.match(loader.text, /mtf-choice input\[type=checkbox\]/);
+  assert.match(loader.text, /--mtf-choice-accent/);
+  assert.match(loader.text, /type='checkbox'/);
   assert.match(loader.text, /text-wrap:balance/);
 
   const preflight = await request(app)
@@ -240,6 +267,7 @@ test('form builder and applications list have separate access and process public
   const publicForm = await request(app).get(`/api/public/application-forms/${form.body.data.publicId}`).expect(200);
   assert.equal(publicForm.body.data.fields.find((field) => field.systemFieldType === 'bank').options[0].value, 'mono');
   assert.equal(publicForm.body.data.styles.numberBlockRadius, '18px');
+  assert.equal(publicForm.body.data.fields.find((field) => field.key === 'addons').options[1].value, 'extended_warranty');
 
   const submitted = await request(app).post(`/api/public/application-forms/${form.body.data.publicId}/applications`).send({
     values: {
@@ -247,7 +275,8 @@ test('form builder and applications list have separate access and process public
       last_name: 'Buyer',
       phone: '+380501112233',
       bank: 'mono',
-      credit_term: '12_months'
+      credit_term: '12_months',
+      addons: ['screen_protection', 'extended_warranty']
     },
     product: {
       title: 'Smartphone X',
@@ -282,6 +311,7 @@ test('form builder and applications list have separate access and process public
   assert.equal(feed.body.data.items[0].product.imageUrl, 'http://shop.example.com/content/images/phone.webp');
   assert.equal(feed.body.data.items[0].product.imageProxyUrl, `/api/applications/${feed.body.data.items[0].id}/product-image`);
   assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'credit_term').optionLabel, '12 months');
+  assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'addons').optionLabel, 'Screen protection, Extended warranty');
   assert.equal(feed.body.data.items[0].assignedManager, null);
 
   const otherInitialFeed = await otherManager.get('/api/applications?search=1').expect(200);
