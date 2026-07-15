@@ -349,7 +349,10 @@ export async function loadProductModificationSet(productId, db = { query }, { pu
     });
     const fallbackMatch = products.find((product) => (valuesByProduct.get(product.id) || new Map()).get(parameterKey)?.displayValue === displayValue);
     const match = currentMatch || strictMatch || fallbackMatch;
-    return match ? serializeModificationProduct(match, { publicOnly }) : null;
+    return {
+      product: match ? serializeModificationProduct(match, { publicOnly }) : null,
+      compatible: Boolean(currentMatch || strictMatch)
+    };
   };
 
   const parameters = [...parametersByKey.values()]
@@ -363,13 +366,17 @@ export async function loadProductModificationSet(productId, db = { query }, { pu
           optionValues.set(value.displayValue, value);
         }
       });
-      const options = [...optionValues.values()].map((option) => ({
-        id: `${parameter.key}:${option.displayValue}`,
-        value: String(option.value ?? option.displayValue),
-        label: option.displayValue,
-        selected: current?.displayValue === option.displayValue,
-        product: findVariantForOption(parameter.key, option.displayValue)
-      }));
+      const options = [...optionValues.values()].map((option) => {
+        const variant = findVariantForOption(parameter.key, option.displayValue);
+        return {
+          id: `${parameter.key}:${option.displayValue}`,
+          value: String(option.value ?? option.displayValue),
+          label: option.displayValue,
+          selected: current?.displayValue === option.displayValue,
+          compatible: variant.compatible,
+          product: variant.product
+        };
+      });
       return {
         id: parameter.key,
         key: parameter.key,

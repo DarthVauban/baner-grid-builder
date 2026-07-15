@@ -130,6 +130,7 @@ export interface CatalogProductModificationOption {
   value: string;
   label: string;
   selected: boolean;
+  compatible: boolean;
   product: Pick<CatalogProduct, 'id' | 'productCode' | 'name' | 'slug' | 'publicPath' | 'priceLabel' | 'availability' | 'mainImageUrl'> | null;
 }
 

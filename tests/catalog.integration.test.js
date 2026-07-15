@@ -128,7 +128,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     fields: [
       { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, isModifier: true, sortOrder: 0 },
       { key: 'battery_health', label: 'Battery health', type: 'number', unit: '%', options: [], required: false, filterable: true, sortOrder: 1 },
-      { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Blue'], required: false, filterable: true, isModifier: true, sortOrder: 2 },
+      { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Green', 'Blue'], required: false, filterable: true, isModifier: true, sortOrder: 2 },
       { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 3 }
     ]
   }).expect(201);
@@ -166,7 +166,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   );
 
   const variant = await admin.post('/api/catalog/products').send({
-    name: 'iPhone 13 256GB Midnight',
+    name: 'iPhone 13 256GB Green',
     condition: 'USED',
     stockCount: 1,
     incomingCount: 0,
@@ -196,7 +196,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     values: {
       storage: '256',
       battery_health: 88,
-      colors: ['Midnight'],
+      colors: ['Green'],
       face_id: true
     }
   }).expect(200);
@@ -222,18 +222,19 @@ test('catalog products publish to storefront, import stock updates, and create a
   const publicStorageParameter = publicProductWithModifications.body.data.modifications.parameters.find((parameter) => parameter.key === 'storage');
   assert.ok(publicStorageParameter);
   assert.deepEqual(
-    publicStorageParameter.options.map((option) => [option.label, option.selected, option.product?.slug || null]),
+    publicStorageParameter.options.map((option) => [option.label, option.selected, option.compatible, option.product?.slug || null]),
     [
-      ['128 GB', true, updated.body.data.slug],
-      ['256 GB', false, variant.body.data.slug]
+      ['128 GB', true, true, updated.body.data.slug],
+      ['256 GB', false, false, variant.body.data.slug]
     ]
   );
   const publicColorParameter = publicProductWithModifications.body.data.modifications.parameters.find((parameter) => parameter.key === 'colors');
   assert.ok(publicColorParameter);
   assert.deepEqual(
-    publicColorParameter.options.map((option) => [option.label, option.selected, option.product?.slug || null, option.product?.mainImageUrl || null]),
+    publicColorParameter.options.map((option) => [option.label, option.selected, option.compatible, option.product?.slug || null, option.product?.mainImageUrl || null]),
     [
-      ['Midnight', true, updated.body.data.slug, 'https://example.com/iphone-13.webp']
+      ['Midnight', true, true, updated.body.data.slug, 'https://example.com/iphone-13.webp'],
+      ['Green', false, false, variant.body.data.slug, 'https://example.com/iphone-13-256.webp']
     ]
   );
 
@@ -243,10 +244,19 @@ test('catalog products publish to storefront, import stock updates, and create a
   const publicDraftStorageParameter = publicDraftChildVariant.body.data.modifications.parameters.find((parameter) => parameter.key === 'storage');
   assert.ok(publicDraftStorageParameter);
   assert.deepEqual(
-    publicDraftStorageParameter.options.map((option) => [option.label, option.selected, option.product?.slug || null]),
+    publicDraftStorageParameter.options.map((option) => [option.label, option.selected, option.compatible, option.product?.slug || null]),
     [
-      ['128 GB', false, updated.body.data.slug],
-      ['256 GB', true, variant.body.data.slug]
+      ['128 GB', false, false, updated.body.data.slug],
+      ['256 GB', true, true, variant.body.data.slug]
+    ]
+  );
+  const publicDraftColorParameter = publicDraftChildVariant.body.data.modifications.parameters.find((parameter) => parameter.key === 'colors');
+  assert.ok(publicDraftColorParameter);
+  assert.deepEqual(
+    publicDraftColorParameter.options.map((option) => [option.label, option.selected, option.compatible, option.product?.slug || null]),
+    [
+      ['Midnight', false, false, updated.body.data.slug],
+      ['Green', true, true, variant.body.data.slug]
     ]
   );
 

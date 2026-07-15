@@ -590,6 +590,10 @@ function ProductEditorScreen({
         <h1>{product ? 'Редактор картки товару' : 'Новий смартфон'}</h1>
       </div>
       <div className="catalog-editor-actions">
+        <label className="catalog-editor-status">
+          <span>Статус</span>
+          <StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} ariaLabel="Статус публікації" compact />
+        </label>
         {product?.publicPath && <a className="button button--secondary" href={catalogPreviewPath(product)} target="_blank" rel="noreferrer"><Icon name="openInNew" size={17} /> Перегляд</a>}
         <button className="button button--secondary" type="button" disabled={busy} onClick={() => void submitAndPreview()}><Icon name="visibility" size={17} /> Зберегти і переглянути</button>
         <button className="button button--primary" type="submit" disabled={busy}><Icon name="save" size={17} /> Зберегти</button>
@@ -616,7 +620,6 @@ function ProductEditorScreen({
           <div className="catalog-editor-grid">
             <label className="field catalog-editor-grid__wide"><span>Назва</span><input value={draft.name} onChange={(event) => setField('name', event.target.value)} required maxLength={240} /></label>
             <label className="field"><span>Стан</span><StyledSelect value={draft.condition} options={catalogConditionOptions} onChange={(value) => setField('condition', value as CatalogCondition)} /></label>
-            <label className="field"><span>Статус публікації</span><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} /></label>
             <label className="field"><span>Бренд</span><StyledSelect value={draft.brandId || ''} options={[{ value: '', label: 'Без бренду' }, ...brands.map((brand) => ({ value: brand.id, label: brand.label }))]} onChange={(value) => setField('brandId', value ? String(value) : null)} /></label>
             <label className="field"><span>Slug</span><input value={draft.slug} onChange={(event) => setField('slug', event.target.value)} placeholder="iphone-13-used" maxLength={260} /></label>
           </div>

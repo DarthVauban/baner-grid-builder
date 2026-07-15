@@ -207,7 +207,7 @@ function StorefrontModifications({ product, preview }: { product: CatalogProduct
         <span className="storefront-modification__label">{parameter.label}</span>
         <div className={`storefront-modification__options${colorParameter ? ' storefront-modification__options--swatches' : ''}`}>
           {parameter.options.map((option) => {
-            const className = `storefront-modification__option${colorParameter ? ' storefront-modification__option--swatch' : ''}${option.selected ? ' storefront-modification__option--active' : ''}${option.product ? '' : ' storefront-modification__option--disabled'}`;
+            const className = `storefront-modification__option${colorParameter ? ' storefront-modification__option--swatch' : ''}${option.selected ? ' storefront-modification__option--active' : ''}${option.compatible === false && !option.selected ? ' storefront-modification__option--unavailable' : ''}${option.product ? '' : ' storefront-modification__option--disabled'}`;
             if (option.selected) {
               return <button className={className} type="button" disabled key={option.id}>{modificationOptionContent(parameter, option)}</button>;
             }
