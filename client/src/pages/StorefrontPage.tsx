@@ -35,9 +35,13 @@ function ProductImage({ product }: { product: CatalogProduct }) {
   </span>;
 }
 
-function productLink(product: CatalogProduct, preview: boolean) {
-  const slug = encodeURIComponent(product.slug);
-  return preview ? `/catalog/preview/storefront/smartphones/${slug}` : `/storefront/smartphones/${slug}`;
+function productPath(slug: string, preview: boolean) {
+  const encodedSlug = encodeURIComponent(slug);
+  return preview ? `/catalog/preview/storefront/smartphones/${encodedSlug}` : `/storefront/smartphones/${encodedSlug}`;
+}
+
+function productLink(product: Pick<CatalogProduct, 'slug'>, preview: boolean) {
+  return productPath(product.slug, preview);
 }
 
 function StorefrontDescription({ product }: { product: CatalogProduct }) {
@@ -79,6 +83,28 @@ function StorefrontCharacteristics({ product }: { product: CatalogProduct }) {
   </section>;
 }
 
+function StorefrontModifications({ product, preview }: { product: CatalogProduct; preview: boolean }) {
+  const parameters = (product.modifications?.parameters || []).filter((parameter) => parameter.options.length);
+  if (!parameters.length) return null;
+  return <div className="storefront-modifications" aria-label="Модифікації товару">
+    {parameters.map((parameter) => <div className="storefront-modification" key={parameter.id}>
+      <span className="storefront-modification__label">{parameter.label}</span>
+      <div className="storefront-modification__options">
+        {parameter.options.map((option) => {
+          const className = `storefront-modification__option${option.selected ? ' storefront-modification__option--active' : ''}${option.product ? '' : ' storefront-modification__option--disabled'}`;
+          if (option.selected) {
+            return <button className={className} type="button" disabled key={option.id}>{option.label}</button>;
+          }
+          if (option.product) {
+            return <Link className={className} to={productLink(option.product, preview)} key={option.id}>{option.label}</Link>;
+          }
+          return <span className={className} key={option.id}>{option.label}</span>;
+        })}
+      </div>
+    </div>)}
+  </div>;
+}
+
 function schemaAvailability(status: CatalogAvailabilityStatus) {
   if (status === 'in_stock') return 'https://schema.org/InStock';
   if (status === 'incoming') return 'https://schema.org/PreOrder';
@@ -104,6 +130,12 @@ function StorefrontProductJsonLd({ product }: { product: CatalogProduct }) {
         propertyID: item.key,
         value: item.displayValue,
         unitText: item.unit || undefined
+      })),
+      ...(product.modifications?.parameters || []).filter((parameter) => parameter.currentValueLabel).map((parameter) => ({
+        '@type': 'PropertyValue',
+        name: parameter.label,
+        propertyID: parameter.key,
+        value: parameter.currentValueLabel
       }))
     ];
     return {
@@ -319,7 +351,10 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
     {slug ? productData ? <>
     <StorefrontProductJsonLd product={productData} />
     <section className="storefront-detail">
-      <div className="storefront-detail__media"><ProductImage product={productData} /></div>
+      <div className="storefront-detail__media">
+        <ProductImage product={productData} />
+        <StorefrontDescription product={productData} />
+      </div>
       <div className="storefront-detail__main">
       <article className="storefront-detail__info">
         <Link to={basePath} className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>
@@ -330,11 +365,11 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
         <dl className="storefront-specs">
           {baseSpecItems(productData).map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}
         </dl>
+        <StorefrontModifications product={productData} preview={preview} />
         <button className="button button--primary" type="button" disabled={!canRequestProduct} onClick={() => setRequestOpen(true)}>
           {preview ? 'Preview без заявки' : productData.availability.status === 'unavailable' ? 'Немає в наявності' : form.data ? 'Оформити заявку' : 'Заявка недоступна'} <Icon name="arrowRight" size={16} />
         </button>
       </article>
-      <StorefrontDescription product={productData} />
       <StorefrontCharacteristics product={productData} />
       </div>
     </section>

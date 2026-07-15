@@ -22,6 +22,7 @@ import {
   generateProductCode,
   getCatalogRecipientIds,
   loadCatalogProduct,
+  loadProductModificationSet,
   loadPreviewProduct,
   logCatalogAudit,
   makeUniqueSlug,
@@ -109,6 +110,27 @@ const characteristicTemplateSchema = z.object({
 const productCharacteristicsSchema = z.object({
   templateId: z.string().uuid(),
   values: z.record(z.string(), z.unknown()).default({}),
+  expectedVersion: z.coerce.number().int().min(1)
+});
+const modificationValueSchema = z.object({
+  id: z.string().uuid().optional(),
+  value: z.string().trim().max(160).default(''),
+  label: z.string().trim().min(1).max(180),
+  active: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0)
+});
+const modificationParameterSchema = z.object({
+  key: z.string().trim().max(120).default(''),
+  label: z.string().trim().min(1).max(180),
+  active: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0),
+  values: z.array(modificationValueSchema).max(120).default([])
+});
+const productModificationsSchema = z.object({
+  groupId: z.string().uuid().nullable().optional(),
+  groupLabel: z.string().trim().max(240).default(''),
+  parameterIds: z.array(z.string().uuid()).max(12).default([]),
+  values: z.record(z.string(), z.string()).default({}),
   expectedVersion: z.coerce.number().int().min(1)
 });
 const importPreviewSchema = z.object({
@@ -357,6 +379,180 @@ function characteristicValueForField(field, values) {
   }
   if (field.type === 'multiselect') return Array.isArray(raw) ? raw.map(String) : [];
   return raw == null ? '' : String(raw);
+}
+
+function normalizeModificationKey(value, fallback) {
+  return String(value || fallback || 'parameter')
+    .normalize('NFKC')
+    .toLocaleLowerCase('uk-UA')
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120) || `parameter_${Date.now()}`;
+}
+
+function normalizeModificationValue(value, fallback) {
+  return String(value || fallback || 'value')
+    .normalize('NFKC')
+    .toLocaleLowerCase('uk-UA')
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 160) || `value_${Date.now()}`;
+}
+
+function normalizeGroupSlug(value, fallback = 'group') {
+  return String(value || fallback)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+    .slice(0, 180) || 'group';
+}
+
+async function makeUniqueGroupSlug(value, excludeId, db) {
+  const base = normalizeGroupSlug(value, 'product-group');
+  let candidate = base;
+  for (let index = 2; index < 1000; index += 1) {
+    const result = excludeId
+      ? await db.query('SELECT id FROM used_smartphone_product_groups WHERE slug = $1 AND id <> $2', [candidate, excludeId])
+      : await db.query('SELECT id FROM used_smartphone_product_groups WHERE slug = $1', [candidate]);
+    if (!result.rows[0]) return candidate;
+    candidate = `${base}-${index}`;
+  }
+  throw new AppError(409, 'CATALOG_GROUP_SLUG_UNAVAILABLE', 'Не вдалося підібрати унікальний slug групи модифікацій.');
+}
+
+function serializeModificationValue(row) {
+  return {
+    id: row.id,
+    parameterId: row.parameter_id,
+    value: row.value,
+    label: row.label,
+    active: row.active === true,
+    sortOrder: Number(row.sort_order || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function serializeModificationParameter(row, values = []) {
+  return {
+    id: row.id,
+    key: row.key,
+    label: row.label,
+    active: row.active === true,
+    sortOrder: Number(row.sort_order || 0),
+    values,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function serializeProductGroup(row, parameterIds = []) {
+  return {
+    id: row.id,
+    label: row.label,
+    slug: row.slug,
+    active: row.active === true,
+    parameterIds,
+    itemCount: Number(row.item_count || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+async function loadModificationParameter(parameterId, db = { query }) {
+  const parameter = await db.query('SELECT * FROM used_smartphone_modification_parameters WHERE id = $1', [parameterId]);
+  if (!parameter.rows[0]) return null;
+  const values = await db.query(
+    `SELECT *
+     FROM used_smartphone_modification_values
+     WHERE parameter_id = $1
+     ORDER BY sort_order, lower(label)`,
+    [parameterId]
+  );
+  return serializeModificationParameter(parameter.rows[0], values.rows.map(serializeModificationValue));
+}
+
+async function replaceModificationValues(db, parameterId, values) {
+  const keptIds = [];
+  const seen = new Set();
+  for (const [index, value] of values.entries()) {
+    const normalized = normalizeModificationValue(value.value, value.label);
+    if (seen.has(normalized)) {
+      throw new AppError(422, 'CATALOG_MODIFICATION_VALUE_DUPLICATE', `Дубль значення "${normalized}" у параметрі.`);
+    }
+    seen.add(normalized);
+    if (value.id) {
+      const updated = await db.query(
+        `UPDATE used_smartphone_modification_values
+         SET value = $1,
+             label = $2,
+             active = $3,
+             sort_order = $4,
+             updated_at = NOW()
+         WHERE id = $5 AND parameter_id = $6
+         RETURNING id`,
+        [normalized, value.label, value.active, value.sortOrder || index, value.id, parameterId]
+      );
+      if (!updated.rows[0]) throw new AppError(404, 'CATALOG_MODIFICATION_VALUE_NOT_FOUND', 'Значення модифікації не знайдено.');
+      keptIds.push(value.id);
+    } else {
+      const inserted = await db.query(
+        `INSERT INTO used_smartphone_modification_values (parameter_id, value, label, active, sort_order)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [parameterId, normalized, value.label, value.active, value.sortOrder || index]
+      );
+      keptIds.push(inserted.rows[0].id);
+    }
+  }
+  if (keptIds.length) {
+    const placeholders = keptIds.map((_, index) => `$${index + 2}`).join(', ');
+    await db.query(
+      `DELETE FROM used_smartphone_modification_values
+       WHERE parameter_id = $1 AND id NOT IN (${placeholders})`,
+      [parameterId, ...keptIds]
+    );
+  } else {
+    await db.query('DELETE FROM used_smartphone_modification_values WHERE parameter_id = $1', [parameterId]);
+  }
+}
+
+async function syncProductModifications(db, productId, groupId, parameterIds, values, actorId) {
+  await db.query('DELETE FROM used_smartphone_product_modification_values WHERE product_id = $1', [productId]);
+  await db.query('DELETE FROM used_smartphone_product_group_items WHERE product_id = $1', [productId]);
+  if (!groupId) return;
+  await db.query(
+    `INSERT INTO used_smartphone_product_group_items (group_id, product_id)
+     VALUES ($1, $2)
+     ON CONFLICT (group_id, product_id) DO NOTHING`,
+    [groupId, productId]
+  );
+  await db.query('DELETE FROM used_smartphone_product_group_parameters WHERE group_id = $1', [groupId]);
+  for (const [index, parameterId] of parameterIds.entries()) {
+    await db.query(
+      `INSERT INTO used_smartphone_product_group_parameters (group_id, parameter_id, sort_order)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (group_id, parameter_id) DO UPDATE SET sort_order = EXCLUDED.sort_order`,
+      [groupId, parameterId, index]
+    );
+    const valueId = values[parameterId];
+    if (!valueId) continue;
+    const valid = await db.query(
+      'SELECT id FROM used_smartphone_modification_values WHERE id = $1 AND parameter_id = $2',
+      [valueId, parameterId]
+    );
+    if (!valid.rows[0]) throw new AppError(422, 'CATALOG_MODIFICATION_VALUE_INVALID', 'Значення модифікації не належить вибраному параметру.');
+    await db.query(
+      `INSERT INTO used_smartphone_product_modification_values (product_id, parameter_id, value_id, updated_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (product_id, parameter_id)
+       DO UPDATE SET value_id = EXCLUDED.value_id, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+      [productId, parameterId, valueId, actorId]
+    );
+  }
 }
 
 async function syncProductMedia(db, productId, input, actorId) {
@@ -649,6 +845,116 @@ router.put('/characteristic-templates/:id', asyncHandler(async (req, res) => {
   res.json({ data: template });
 }));
 
+router.get('/modification-parameters', asyncHandler(async (req, res) => {
+  const parameters = await query(
+    `SELECT *
+     FROM used_smartphone_modification_parameters
+     ORDER BY active DESC, sort_order, lower(label)`
+  );
+  const values = await query(
+    `SELECT *
+     FROM used_smartphone_modification_values
+     ORDER BY sort_order, lower(label)`
+  );
+  const grouped = new Map();
+  values.rows.forEach((row) => {
+    const list = grouped.get(row.parameter_id) || [];
+    list.push(serializeModificationValue(row));
+    grouped.set(row.parameter_id, list);
+  });
+  res.json({ data: parameters.rows.map((row) => serializeModificationParameter(row, grouped.get(row.id) || [])) });
+}));
+
+router.post('/modification-parameters', asyncHandler(async (req, res) => {
+  const input = parseInput(modificationParameterSchema, req.body);
+  const client = await pool.connect();
+  let parameter;
+  try {
+    await client.query('BEGIN');
+    const created = await client.query(
+      `INSERT INTO used_smartphone_modification_parameters (key, label, active, sort_order, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $5)
+       RETURNING *`,
+      [normalizeModificationKey(input.key, input.label), input.label, input.active, input.sortOrder, req.user.id]
+    );
+    await replaceModificationValues(client, created.rows[0].id, input.values);
+    await logCatalogAudit(client, {
+      actorId: req.user.id,
+      action: 'modification_parameter_create',
+      changes: { parameterId: created.rows[0].id, label: input.label, values: input.values.length }
+    });
+    parameter = await loadModificationParameter(created.rows[0].id, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_MODIFICATION_PARAMETER_EXISTS', 'Параметр модифікації з таким ключем уже існує.');
+    throw error;
+  } finally {
+    client.release();
+  }
+  res.status(201).json({ data: parameter });
+}));
+
+router.put('/modification-parameters/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(modificationParameterSchema, req.body);
+  const client = await pool.connect();
+  let parameter;
+  try {
+    await client.query('BEGIN');
+    const updated = await client.query(
+      `UPDATE used_smartphone_modification_parameters
+       SET key = $1,
+           label = $2,
+           active = $3,
+           sort_order = $4,
+           updated_by = $5,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [normalizeModificationKey(input.key, input.label), input.label, input.active, input.sortOrder, req.user.id, id]
+    );
+    if (!updated.rows[0]) throw new AppError(404, 'CATALOG_MODIFICATION_PARAMETER_NOT_FOUND', 'Параметр модифікації не знайдено.');
+    await replaceModificationValues(client, id, input.values);
+    await logCatalogAudit(client, {
+      actorId: req.user.id,
+      action: 'modification_parameter_update',
+      changes: { parameterId: id, label: input.label, values: input.values.length }
+    });
+    parameter = await loadModificationParameter(id, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_MODIFICATION_PARAMETER_EXISTS', 'Параметр або значення модифікації вже існує.');
+    throw error;
+  } finally {
+    client.release();
+  }
+  res.json({ data: parameter });
+}));
+
+router.get('/product-groups', asyncHandler(async (req, res) => {
+  const groups = await query(
+    `SELECT groups.*, COUNT(items.product_id)::INTEGER AS item_count
+     FROM used_smartphone_product_groups AS groups
+     LEFT JOIN used_smartphone_product_group_items AS items ON items.group_id = groups.id
+     GROUP BY groups.id, groups.label, groups.slug, groups.active, groups.created_by, groups.updated_by, groups.created_at, groups.updated_at
+     ORDER BY groups.active DESC, lower(groups.label)`
+  );
+  const parameters = await query(
+    `SELECT *
+     FROM used_smartphone_product_group_parameters
+     ORDER BY sort_order`
+  );
+  const grouped = new Map();
+  parameters.rows.forEach((row) => {
+    const list = grouped.get(row.group_id) || [];
+    list.push(row.parameter_id);
+    grouped.set(row.group_id, list);
+  });
+  res.json({ data: groups.rows.map((row) => serializeProductGroup(row, grouped.get(row.id) || [])) });
+}));
+
 router.get('/products', asyncHandler(async (req, res) => {
   const input = parseInput(listSchema, {
     search: String(req.query.search || ''),
@@ -815,6 +1121,94 @@ router.put('/products/:id/characteristics', asyncHandler(async (req, res) => {
   }
   publishCatalogUpdates(recipients, { type: 'characteristics_updated', productId: id });
   if (product.publicationStatus === 'PUBLISHED') publishPublicCatalogUpdate({ type: 'characteristics_updated', productId: id });
+  res.json({ data: product });
+}));
+
+router.get('/products/:id/modifications', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const product = await query('SELECT id FROM used_smartphone_products WHERE id = $1', [id]);
+  if (!product.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+  res.json({ data: await loadProductModificationSet(id) });
+}));
+
+router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(productModificationsSchema, req.body);
+  const client = await pool.connect();
+  let product;
+  let recipients = [];
+  try {
+    await client.query('BEGIN');
+    const current = await client.query('SELECT * FROM used_smartphone_products WHERE id = $1 FOR UPDATE', [id]);
+    if (!current.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+    if (Number(current.rows[0].version) !== input.expectedVersion) {
+      throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
+    }
+
+    let groupId = input.groupId || null;
+    if (!groupId && (input.groupLabel || input.parameterIds.length)) {
+      const label = input.groupLabel || current.rows[0].name;
+      const slug = await makeUniqueGroupSlug(label, null, client);
+      const created = await client.query(
+        `INSERT INTO used_smartphone_product_groups (label, slug, active, created_by, updated_by)
+         VALUES ($1, $2, TRUE, $3, $3)
+         RETURNING id`,
+        [label, slug, req.user.id]
+      );
+      groupId = created.rows[0].id;
+    } else if (groupId) {
+      const existing = await client.query('SELECT * FROM used_smartphone_product_groups WHERE id = $1 FOR UPDATE', [groupId]);
+      if (!existing.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_GROUP_NOT_FOUND', 'Групу модифікацій не знайдено.');
+      if (input.groupLabel && input.groupLabel !== existing.rows[0].label) {
+        const slug = await makeUniqueGroupSlug(input.groupLabel, groupId, client);
+        await client.query(
+          `UPDATE used_smartphone_product_groups
+           SET label = $1, slug = $2, updated_by = $3, updated_at = NOW()
+           WHERE id = $4`,
+          [input.groupLabel, slug, req.user.id, groupId]
+        );
+      }
+    }
+
+    if (groupId && input.parameterIds.length) {
+      const uniqueParameterIds = [...new Set(input.parameterIds)];
+      const placeholders = uniqueParameterIds.map((_, index) => `$${index + 1}`).join(', ');
+      const parameters = await client.query(
+        `SELECT id FROM used_smartphone_modification_parameters WHERE id IN (${placeholders})`,
+        uniqueParameterIds
+      );
+      if (parameters.rows.length !== uniqueParameterIds.length) {
+        throw new AppError(422, 'CATALOG_MODIFICATION_PARAMETER_INVALID', 'Один або кілька параметрів модифікацій не знайдено.');
+      }
+    }
+
+    await syncProductModifications(client, id, groupId, [...new Set(input.parameterIds)], input.values, req.user.id);
+    await client.query(
+      `UPDATE used_smartphone_products
+       SET updated_by = $1,
+           updated_at = NOW(),
+           version = version + 1
+       WHERE id = $2`,
+      [req.user.id, id]
+    );
+    await logCatalogAudit(client, {
+      productId: id,
+      actorId: req.user.id,
+      action: 'modifications_update',
+      changes: { groupId, parameters: input.parameterIds.length }
+    });
+    recipients = await getCatalogRecipientIds(client);
+    product = await loadCatalogProduct(id, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_MODIFICATION_CONFLICT', 'Таку модифікацію вже налаштовано.');
+    throw error;
+  } finally {
+    client.release();
+  }
+  publishCatalogUpdates(recipients, { type: 'modifications_updated', productId: id });
+  if (product.publicationStatus === 'PUBLISHED') publishPublicCatalogUpdate({ type: 'modifications_updated', productId: id });
   res.json({ data: product });
 }));
 

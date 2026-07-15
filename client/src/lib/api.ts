@@ -57,8 +57,12 @@ import type {
   CatalogFeed,
   CatalogImportPreview,
   CatalogMediaAsset,
+  CatalogModificationParameter,
+  CatalogModificationParameterInput,
   CatalogProduct,
   CatalogProductCharacteristics,
+  CatalogProductGroup,
+  CatalogProductModificationSet,
   CatalogProductInput,
   CatalogPublicationStatus,
   CatalogStorefrontSettings,
@@ -314,6 +318,12 @@ export const api = {
         request<CatalogCharacteristicTemplate>('/api/catalog/characteristic-templates', { method: 'POST', body: jsonBody(input) }),
       updateCharacteristicTemplate: (id: string, input: CatalogCharacteristicTemplateInput) =>
         request<CatalogCharacteristicTemplate>(`/api/catalog/characteristic-templates/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+      modificationParameters: () => request<CatalogModificationParameter[]>('/api/catalog/modification-parameters'),
+      createModificationParameter: (input: CatalogModificationParameterInput) =>
+        request<CatalogModificationParameter>('/api/catalog/modification-parameters', { method: 'POST', body: jsonBody(input) }),
+      updateModificationParameter: (id: string, input: CatalogModificationParameterInput) =>
+        request<CatalogModificationParameter>(`/api/catalog/modification-parameters/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+      productGroups: () => request<CatalogProductGroup[]>('/api/catalog/product-groups'),
       list: (params: { search?: string; condition?: string; status?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
         request<CatalogFeed>(`/api/catalog/products${queryString(params)}`),
     get: (id: string) => request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`),
@@ -330,6 +340,10 @@ export const api = {
         request<CatalogProductCharacteristics>(`/api/catalog/products/${encodeURIComponent(id)}/characteristics`),
       updateProductCharacteristics: (id: string, input: { templateId: string; values: Record<string, unknown>; expectedVersion: number }) =>
         request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/characteristics`, { method: 'PUT', body: jsonBody(input) }),
+      productModifications: (id: string) =>
+        request<CatalogProductModificationSet>(`/api/catalog/products/${encodeURIComponent(id)}/modifications`),
+      updateProductModifications: (id: string, input: { groupId?: string | null; groupLabel?: string; parameterIds: string[]; values: Record<string, string>; expectedVersion: number }) =>
+        request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/modifications`, { method: 'PUT', body: jsonBody(input) }),
     uploadMedia: async (file: Blob, fileName: string, originalFile?: File) => {
       const response = await fetch('/api/catalog/media', {
         method: 'POST',

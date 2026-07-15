@@ -165,6 +165,77 @@ test('catalog products publish to storefront, import stock updates, and create a
     ]
   );
 
+  const storageModification = await admin.post('/api/catalog/modification-parameters').send({
+    key: 'storage',
+    label: 'Storage',
+    active: true,
+    sortOrder: 1,
+    values: [
+      { label: '128 GB', value: '128gb', active: true, sortOrder: 0 },
+      { label: '256 GB', value: '256gb', active: true, sortOrder: 1 }
+    ]
+  }).expect(201);
+  assert.equal(storageModification.body.data.values.length, 2);
+
+  const variant = await admin.post('/api/catalog/products').send({
+    name: 'iPhone 13 256GB Midnight',
+    condition: 'USED',
+    stockCount: 1,
+    incomingCount: 0,
+    priceUah: 20999,
+    publicationStatus: 'PUBLISHED',
+    slug: '',
+    brandId: null,
+    mainImageUrl: 'https://example.com/iphone-13-256.webp',
+    gallery: [],
+    shortDescription: 'Storage variant.',
+    description: '',
+    seoTitle: '',
+    seoDescription: '',
+    socialDescription: '',
+    bodyCondition: '',
+    displayCondition: '',
+    batteryHealth: '',
+    warranty: '',
+    includedAccessories: '',
+    diagnostics: {},
+    internalNotes: ''
+  }).expect(201);
+
+  const storageParameterId = storageModification.body.data.id;
+  const storage128Id = storageModification.body.data.values[0].id;
+  const storage256Id = storageModification.body.data.values[1].id;
+  const productWithModifications = await admin.put(`/api/catalog/products/${created.body.data.id}/modifications`).send({
+    groupId: null,
+    groupLabel: 'iPhone 13 Midnight',
+    parameterIds: [storageParameterId],
+    values: { [storageParameterId]: storage128Id },
+    expectedVersion: productWithCharacteristics.body.data.version
+  }).expect(200);
+  assert.equal(productWithModifications.body.data.version, 4);
+
+  const savedModifications = await admin.get(`/api/catalog/products/${created.body.data.id}/modifications`).expect(200);
+  assert.equal(savedModifications.body.data.groupLabel, 'iPhone 13 Midnight');
+  assert.equal(savedModifications.body.data.parameters[0].currentValueLabel, '128 GB');
+
+  await admin.put(`/api/catalog/products/${variant.body.data.id}/modifications`).send({
+    groupId: savedModifications.body.data.groupId,
+    groupLabel: 'iPhone 13 Midnight',
+    parameterIds: [storageParameterId],
+    values: { [storageParameterId]: storage256Id },
+    expectedVersion: variant.body.data.version
+  }).expect(200);
+
+  const publicProductWithModifications = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
+  assert.equal(publicProductWithModifications.body.data.modifications.groupLabel, 'iPhone 13 Midnight');
+  assert.deepEqual(
+    publicProductWithModifications.body.data.modifications.parameters[0].options.map((option) => [option.label, option.selected, option.product?.slug || null]),
+    [
+      ['128 GB', true, updated.body.data.slug],
+      ['256 GB', false, variant.body.data.slug]
+    ]
+  );
+
   const duplicatePreview = await admin.post('/api/catalog/imports/preview').send({
     rows: [
       { 'Назва': 'iPhone 13 128GB Midnight', 'Статус': 'Вживаний', 'Залишок': 2, 'В дорозі': 1, 'Ціна': 17999 },

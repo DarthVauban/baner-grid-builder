@@ -220,6 +220,140 @@ export async function loadProductCharacteristicSet(productId, db = { query }) {
   };
 }
 
+function serializeModificationProduct(row) {
+  return {
+    id: row.product_code,
+    productCode: row.product_code,
+    name: row.name,
+    slug: row.slug,
+    publicPath: `/storefront/smartphones/${encodeURIComponent(row.slug)}`,
+    priceLabel: formatMoney(row.price_uah),
+    availability: availabilityForCounts(row.stock_count, row.incoming_count)
+  };
+}
+
+export async function loadProductModificationSet(productId, db = { query }, { publicOnly = false } = {}) {
+  const groupResult = await db.query(
+    `SELECT groups.*
+     FROM used_smartphone_product_groups AS groups
+     INNER JOIN used_smartphone_product_group_items AS items ON items.group_id = groups.id
+     WHERE items.product_id = $1
+     ORDER BY groups.updated_at DESC
+     LIMIT 1`,
+    [productId]
+  );
+  const group = groupResult.rows[0];
+  if (!group || (publicOnly && group.active !== true)) {
+    return { groupId: null, groupLabel: '', groupSlug: '', parameters: [] };
+  }
+
+  const parametersResult = await db.query(
+    `SELECT parameters.*
+     FROM used_smartphone_product_group_parameters AS group_parameters
+     INNER JOIN used_smartphone_modification_parameters AS parameters ON parameters.id = group_parameters.parameter_id
+     WHERE group_parameters.group_id = $1
+       AND ($2::BOOLEAN = FALSE OR parameters.active = TRUE)
+     ORDER BY group_parameters.sort_order, parameters.sort_order, lower(parameters.label)`,
+    [group.id, publicOnly]
+  );
+  const productFilter = publicOnly
+    ? "AND product.publication_status = 'PUBLISHED'"
+    : "AND product.publication_status <> 'ARCHIVED'";
+  const productsResult = await db.query(
+    `${productSelect}
+     INNER JOIN used_smartphone_product_group_items AS group_items ON group_items.product_id = product.id
+     WHERE group_items.group_id = $1
+       ${productFilter}
+     ORDER BY group_items.sort_order, lower(product.name)`,
+    [group.id]
+  );
+  const products = productsResult.rows;
+  const productIds = products.map((row) => row.id);
+  const parameterIds = parametersResult.rows.map((row) => row.id);
+  if (!productIds.length || !parametersResult.rows.length) {
+    return { groupId: group.id, groupLabel: group.label, groupSlug: group.slug, parameters: [] };
+  }
+
+  const productIdPlaceholders = productIds.map((_, index) => `$${index + 1}`).join(', ');
+  const publicOnlyProductParam = productIds.length + 1;
+  const valuesResult = await db.query(
+    `SELECT product_values.product_id,
+            product_values.parameter_id,
+            values.id AS value_id,
+            values.value,
+            values.label,
+            values.active,
+            values.sort_order
+     FROM used_smartphone_product_modification_values AS product_values
+     INNER JOIN used_smartphone_modification_values AS values ON values.id = product_values.value_id
+     WHERE product_values.product_id IN (${productIdPlaceholders})
+       AND ($${publicOnlyProductParam}::BOOLEAN = FALSE OR values.active = TRUE)
+     ORDER BY values.sort_order, lower(values.label)`,
+    [...productIds, publicOnly]
+  );
+  const parameterIdPlaceholders = parameterIds.map((_, index) => `$${index + 1}`).join(', ');
+  const publicOnlyParameterParam = parameterIds.length + 1;
+  const allOptionsResult = await db.query(
+    `SELECT *
+     FROM used_smartphone_modification_values
+     WHERE parameter_id IN (${parameterIdPlaceholders})
+       AND ($${publicOnlyParameterParam}::BOOLEAN = FALSE OR active = TRUE)
+     ORDER BY sort_order, lower(label)`,
+    [...parameterIds, publicOnly]
+  );
+
+  const valuesByProduct = new Map();
+  valuesResult.rows.forEach((row) => {
+    const map = valuesByProduct.get(row.product_id) || new Map();
+    map.set(row.parameter_id, row);
+    valuesByProduct.set(row.product_id, map);
+  });
+  const optionsByParameter = new Map();
+  allOptionsResult.rows.forEach((row) => {
+    const list = optionsByParameter.get(row.parameter_id) || [];
+    list.push(row);
+    optionsByParameter.set(row.parameter_id, list);
+  });
+  const currentValues = valuesByProduct.get(productId) || new Map();
+
+  const findVariantForOption = (parameterId, valueId) => {
+    const strict = products.find((product) => {
+      const values = valuesByProduct.get(product.id) || new Map();
+      if (values.get(parameterId)?.value_id !== valueId) return false;
+      return parametersResult.rows.every((parameter) => (
+        parameter.id === parameterId
+          || !currentValues.get(parameter.id)?.value_id
+          || values.get(parameter.id)?.value_id === currentValues.get(parameter.id)?.value_id
+      ));
+    });
+    const fallback = strict || products.find((product) => (valuesByProduct.get(product.id) || new Map()).get(parameterId)?.value_id === valueId);
+    return fallback ? serializeModificationProduct(fallback) : null;
+  };
+
+  return {
+    groupId: group.id,
+    groupLabel: group.label,
+    groupSlug: group.slug,
+    parameters: parametersResult.rows.map((parameter) => {
+      const current = currentValues.get(parameter.id);
+      return {
+        id: parameter.id,
+        key: parameter.key,
+        label: parameter.label,
+        currentValueId: current?.value_id || null,
+        currentValueLabel: current?.label || '',
+        options: (optionsByParameter.get(parameter.id) || []).map((option) => ({
+          id: option.id,
+          value: option.value,
+          label: option.label,
+          selected: current?.value_id === option.id,
+          product: findVariantForOption(parameter.id, option.id)
+        }))
+      };
+    })
+  };
+}
+
 export function serializePublicCatalogProduct(row, { detail = false } = {}) {
   const availability = availabilityForCounts(row.stock_count, row.incoming_count);
   const product = {
@@ -316,6 +450,7 @@ export async function loadPublicProduct(identifier, db = { query }) {
   if (!row) return null;
   const product = serializePublicCatalogProduct(row, { detail: true });
   product.characteristics = await loadProductCharacteristicSet(row.id, db);
+  product.modifications = await loadProductModificationSet(row.id, db, { publicOnly: true });
   return product;
 }
 
@@ -331,6 +466,7 @@ export async function loadPreviewProduct(identifier, db = { query }) {
   if (!row) return null;
   const product = serializePublicCatalogProduct(row, { detail: true });
   product.characteristics = await loadProductCharacteristicSet(row.id, db);
+  product.modifications = await loadProductModificationSet(row.id, db, { publicOnly: false });
   return product;
 }
 

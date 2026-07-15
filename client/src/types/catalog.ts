@@ -97,6 +97,71 @@ export interface CatalogProductCharacteristicSet {
   items: CatalogProductCharacteristicItem[];
 }
 
+export interface CatalogModificationValue {
+  id?: string;
+  parameterId?: string;
+  value: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CatalogModificationParameter {
+  id: string;
+  key: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+  values: CatalogModificationValue[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CatalogModificationParameterInput {
+  key: string;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+  values: CatalogModificationValue[];
+}
+
+export interface CatalogProductGroup {
+  id: string;
+  label: string;
+  slug: string;
+  active: boolean;
+  parameterIds: string[];
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CatalogProductModificationOption {
+  id: string;
+  value: string;
+  label: string;
+  selected: boolean;
+  product: Pick<CatalogProduct, 'id' | 'productCode' | 'name' | 'slug' | 'publicPath' | 'priceLabel' | 'availability'> | null;
+}
+
+export interface CatalogProductModificationParameter {
+  id: string;
+  key: string;
+  label: string;
+  currentValueId: string | null;
+  currentValueLabel: string;
+  options: CatalogProductModificationOption[];
+}
+
+export interface CatalogProductModificationSet {
+  groupId: string | null;
+  groupLabel: string;
+  groupSlug: string;
+  parameters: CatalogProductModificationParameter[];
+}
+
 export interface CatalogProduct {
   id: string;
   productCode: string;
@@ -123,6 +188,7 @@ export interface CatalogProduct {
   descriptionJs?: string;
   descriptionHasJs?: boolean;
   characteristics?: CatalogProductCharacteristicSet;
+  modifications?: CatalogProductModificationSet;
   seoTitle: string;
   seoDescription: string;
   socialDescription: string;

@@ -24,7 +24,9 @@ import type {
   CatalogCondition,
   CatalogFeed,
   CatalogImportPreview,
+  CatalogModificationParameter,
   CatalogProduct,
+  CatalogProductGroup,
   CatalogProductInput,
   CatalogPublicationStatus,
   CatalogSummary
@@ -95,6 +97,7 @@ const editorTabs: Array<{ id: CatalogEditorTab; label: string }> = [
   { id: 'seo', label: 'SEO' },
   { id: 'internal', label: 'Внутрішнє' }
 ];
+const newModificationGroupId = '__new__';
 
 function diagnosticText(diagnostics: Record<string, unknown>, key: string) {
   const value = diagnostics[key];
@@ -301,10 +304,22 @@ function ProductEditorScreen({
   const { showToast } = useToast();
   const [selectedCharacteristicTemplateId, setSelectedCharacteristicTemplateId] = useState('');
   const [characteristicValues, setCharacteristicValues] = useState<Record<string, unknown>>({});
+  const [selectedModificationGroupId, setSelectedModificationGroupId] = useState('');
+  const [modificationGroupLabel, setModificationGroupLabel] = useState('');
+  const [selectedModificationParameterIds, setSelectedModificationParameterIds] = useState<string[]>([]);
+  const [modificationValues, setModificationValues] = useState<Record<string, string>>({});
 
   const characteristicTemplates = useQuery<CatalogCharacteristicTemplate[]>({
     queryKey: ['catalog-characteristic-templates'],
     queryFn: api.catalog.characteristicTemplates
+  });
+  const modificationParameters = useQuery<CatalogModificationParameter[]>({
+    queryKey: ['catalog-modification-parameters'],
+    queryFn: api.catalog.modificationParameters
+  });
+  const productGroups = useQuery<CatalogProductGroup[]>({
+    queryKey: ['catalog-product-groups'],
+    queryFn: api.catalog.productGroups
   });
   const productCharacteristics = useQuery({
     queryKey: ['catalog-product-characteristics', product?.id],
@@ -312,9 +327,25 @@ function ProductEditorScreen({
     enabled: Boolean(product?.id),
     retry: false
   });
+  const productModifications = useQuery({
+    queryKey: ['catalog-product-modifications', product?.id],
+    queryFn: () => api.catalog.productModifications(product!.id),
+    enabled: Boolean(product?.id),
+    retry: false
+  });
   const selectedCharacteristicTemplate = useMemo(
     () => (characteristicTemplates.data || []).find((template) => template.id === selectedCharacteristicTemplateId) || null,
     [characteristicTemplates.data, selectedCharacteristicTemplateId]
+  );
+  const selectedModificationParameters = useMemo(
+    () => selectedModificationParameterIds
+      .map((parameterId) => (modificationParameters.data || []).find((parameter) => parameter.id === parameterId))
+      .filter((parameter): parameter is CatalogModificationParameter => Boolean(parameter)),
+    [modificationParameters.data, selectedModificationParameterIds]
+  );
+  const selectedModificationGroup = useMemo(
+    () => (productGroups.data || []).find((group) => group.id === selectedModificationGroupId) || null,
+    [productGroups.data, selectedModificationGroupId]
   );
   const saveCharacteristics = useMutation({
     mutationFn: () => {
@@ -327,10 +358,31 @@ function ProductEditorScreen({
       });
     }
   });
+  const saveModifications = useMutation({
+    mutationFn: () => {
+      if (!product) throw new Error('Спершу збережіть товар, щоб додати модифікації.');
+      const groupId = selectedModificationGroupId && selectedModificationGroupId !== newModificationGroupId
+        ? selectedModificationGroupId
+        : null;
+      if (!groupId && !modificationGroupLabel.trim()) throw new Error('Вкажіть назву групи модифікацій.');
+      if (!selectedModificationParameterIds.length) throw new Error('Оберіть хоча б один параметр модифікації.');
+      return api.catalog.updateProductModifications(product.id, {
+        groupId,
+        groupLabel: modificationGroupLabel,
+        parameterIds: selectedModificationParameterIds,
+        values: modificationValues,
+        expectedVersion: product.version
+      });
+    }
+  });
 
   useEffect(() => {
     setSelectedCharacteristicTemplateId('');
     setCharacteristicValues({});
+    setSelectedModificationGroupId(newModificationGroupId);
+    setModificationGroupLabel(product?.name || '');
+    setSelectedModificationParameterIds([]);
+    setModificationValues({});
   }, [product?.id]);
 
   useEffect(() => {
@@ -338,6 +390,17 @@ function ProductEditorScreen({
     setSelectedCharacteristicTemplateId(productCharacteristics.data.templateId || '');
     setCharacteristicValues(productCharacteristics.data.values || {});
   }, [productCharacteristics.data]);
+
+  useEffect(() => {
+    if (!productModifications.data) return;
+    setSelectedModificationGroupId(productModifications.data.groupId || newModificationGroupId);
+    setModificationGroupLabel(productModifications.data.groupLabel || product?.name || '');
+    setSelectedModificationParameterIds(productModifications.data.parameters.map((parameter) => parameter.id));
+    setModificationValues(productModifications.data.parameters.reduce<Record<string, string>>((accumulator, parameter) => {
+      if (parameter.currentValueId) accumulator[parameter.id] = parameter.currentValueId;
+      return accumulator;
+    }, {}));
+  }, [product?.name, productModifications.data]);
 
   useEffect(() => {
     if (!product || selectedCharacteristicTemplateId || productCharacteristics.isLoading) return;
@@ -386,6 +449,38 @@ function ProductEditorScreen({
     setCharacteristicValues((current) => ({ ...current, [key]: value }));
   }
 
+  function chooseModificationGroup(groupId: string) {
+    setSelectedModificationGroupId(groupId);
+    setModificationValues({});
+    if (groupId === newModificationGroupId) {
+      setModificationGroupLabel(product?.name || '');
+      setSelectedModificationParameterIds([]);
+      return;
+    }
+    const group = (productGroups.data || []).find((item) => item.id === groupId);
+    setModificationGroupLabel(group?.label || '');
+    setSelectedModificationParameterIds(group?.parameterIds || []);
+  }
+
+  function toggleModificationParameter(parameterId: string, enabled: boolean) {
+    setSelectedModificationParameterIds((current) => (
+      enabled
+        ? [...current, parameterId].filter((id, index, list) => list.indexOf(id) === index)
+        : current.filter((id) => id !== parameterId)
+    ));
+    if (!enabled) {
+      setModificationValues((current) => {
+        const next = { ...current };
+        delete next[parameterId];
+        return next;
+      });
+    }
+  }
+
+  function setModificationValue(parameterId: string, valueId: string) {
+    setModificationValues((current) => ({ ...current, [parameterId]: valueId }));
+  }
+
   async function submitCharacteristics() {
     try {
       const saved = await saveCharacteristics.mutateAsync();
@@ -398,6 +493,22 @@ function ProductEditorScreen({
       await onProductUpdated(saved);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося зберегти характеристики.', 'error');
+    }
+  }
+
+  async function submitModifications() {
+    try {
+      const saved = await saveModifications.mutateAsync();
+      showToast('Модифікації товару збережено.');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['catalog-product-modifications', product?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-product-groups'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-products'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-summary'] })
+      ]);
+      await onProductUpdated(saved);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти модифікації товару.', 'error');
     }
   }
 
@@ -631,6 +742,92 @@ function ProductEditorScreen({
         </section>}
 
         {activeTab === 'modifications' && <section className="catalog-editor-section">
+          <header>
+            <h2>Модифікації</h2>
+            <div className="catalog-editor-header-actions">
+              <button
+                className="button button--primary button--small"
+                type="button"
+                disabled={!product || !selectedModificationParameterIds.length || saveModifications.isPending}
+                onClick={() => void submitModifications()}
+              >
+                <Icon name="save" size={15} /> {saveModifications.isPending ? 'Збереження...' : 'Зберегти модифікації'}
+              </button>
+            </div>
+          </header>
+          {!product && <div className="catalog-editor-notice">Спершу збережіть товар. Після створення картки можна буде прив'язати її до групи модифікацій.</div>}
+          {product && <div className="catalog-editor-grid">
+            <label className="field catalog-editor-grid__wide">
+              <span>Група товарів</span>
+              <StyledSelect
+                value={selectedModificationGroupId}
+                disabled={productGroups.isLoading}
+                options={[
+                  { value: '', label: productGroups.isLoading ? 'Завантаження груп...' : 'Без групи модифікацій' },
+                  { value: newModificationGroupId, label: 'Нова група модифікацій' },
+                  ...(productGroups.data || []).map((group) => ({
+                    value: group.id,
+                    label: `${group.label} · ${group.itemCount} товарів`
+                  }))
+                ]}
+                onChange={(value) => chooseModificationGroup(String(value))}
+              />
+            </label>
+            {(selectedModificationGroupId || modificationGroupLabel) && <label className="field">
+              <span>Назва групи</span>
+              <input value={modificationGroupLabel} onChange={(event) => setModificationGroupLabel(event.target.value)} maxLength={240} placeholder="iPhone 13 Midnight" />
+            </label>}
+            {selectedModificationGroup && <div className="catalog-editor-notice">
+              У групі зараз {selectedModificationGroup.itemCount} товарів. Зміна параметрів групи вплине на перемикачі всіх товарів цієї групи.
+            </div>}
+            <div className="catalog-modification-picker catalog-editor-grid__wide">
+              <div className="catalog-characteristics-form__heading">
+                <strong>Параметри перемикачів</strong>
+                <span>{selectedModificationParameterIds.length} вибрано</span>
+              </div>
+              {!modificationParameters.isLoading && !modificationParameters.data?.length && <div className="catalog-editor-notice">
+                Параметрів модифікацій ще немає. Створіть їх у розділі "Модифікації" сайдбару каталогу.
+              </div>}
+              <div className="catalog-modification-options">
+                {(modificationParameters.data || []).map((parameter) => <label className="catalog-modification-checkbox" key={parameter.id}>
+                  <input
+                    type="checkbox"
+                    checked={selectedModificationParameterIds.includes(parameter.id)}
+                    onChange={(event) => toggleModificationParameter(parameter.id, event.target.checked)}
+                  />
+                  <span>
+                    <strong>{parameter.label}</strong>
+                    <small>{parameter.values.length} значень{parameter.active ? '' : ' · вимкнено'}</small>
+                  </span>
+                </label>)}
+              </div>
+            </div>
+            {!!selectedModificationParameters.length && <div className="catalog-characteristics-form catalog-editor-grid__wide">
+              <div className="catalog-characteristics-form__heading">
+                <strong>Значення поточного товару</strong>
+                <span>{selectedModificationParameters.length} параметрів</span>
+              </div>
+              <div className="catalog-editor-grid">
+                {selectedModificationParameters.map((parameter) => <label className="field" key={parameter.id}>
+                  <span>{parameter.label}</span>
+                  <StyledSelect
+                    value={modificationValues[parameter.id] || ''}
+                    options={[
+                      { value: '', label: 'Не обрано' },
+                      ...parameter.values.map((value) => ({
+                        value: value.id || value.value,
+                        label: `${value.label}${value.active ? '' : ' (вимкнено)'}`
+                      }))
+                    ]}
+                    onChange={(value) => setModificationValue(parameter.id, String(value))}
+                  />
+                </label>)}
+              </div>
+            </div>}
+          </div>}
+        </section>}
+
+        {/* Legacy modification stub kept as migration context.
           <header><h2>Модифікації</h2><span>Очікує модуль шаблонів</span></header>
           <div className="catalog-editor-grid catalog-template-stub">
             <label className="field">
@@ -646,6 +843,8 @@ function ProductEditorScreen({
             </div>
           </div>
         </section>}
+
+        */}
 
         {activeTab === 'seo' && <section className="catalog-editor-section">
           <header><h2>SEO і соцмережі</h2></header>
