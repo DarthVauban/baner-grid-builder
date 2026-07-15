@@ -171,7 +171,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     stockCount: 1,
     incomingCount: 0,
     priceUah: 20999,
-    publicationStatus: 'PUBLISHED',
+    publicationStatus: 'DRAFT',
     slug: '',
     brandId: null,
     mainImageUrl: 'https://example.com/iphone-13-256.webp',
@@ -226,6 +226,10 @@ test('catalog products publish to storefront, import stock updates, and create a
       ['256 GB', false, variant.body.data.slug]
     ]
   );
+
+  const publicDraftChildVariant = await request(app).get(`/api/storefront/products/${variant.body.data.slug}`).expect(200);
+  assert.equal(publicDraftChildVariant.body.data.productCode, 'SM-000002');
+  assert.equal(publicDraftChildVariant.body.data.modifications.mainProductId, created.body.data.id);
 
   const groupedCatalogList = await admin.get('/api/catalog/products?search=iPhone&pageSize=25').expect(200);
   const groupedMain = groupedCatalogList.body.data.items.find((item) => item.id === created.body.data.id);

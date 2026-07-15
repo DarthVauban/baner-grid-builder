@@ -121,6 +121,11 @@ function mediaAltFromFile(file: File) {
     .slice(0, 240);
 }
 
+function catalogPreviewPath(product: Pick<CatalogProduct, 'slug' | 'publicPath'>) {
+  if (!product.slug && product.publicPath) return product.publicPath;
+  return `/catalog/preview/storefront/smartphones/${encodeURIComponent(product.slug)}`;
+}
+
 function isChildModification(product: CatalogProduct) {
   return Boolean(product.modificationGroup && !product.modificationGroup.isMain && product.modificationGroup.mainProductId);
 }
@@ -574,7 +579,7 @@ function ProductEditorScreen({
 
   async function submitAndPreview() {
     const saved = await onSubmit(draft, product);
-    if (saved?.publicPath) window.open(saved.publicPath, '_blank', 'noopener,noreferrer');
+    if (saved?.publicPath) window.open(catalogPreviewPath(saved), '_blank', 'noopener,noreferrer');
   }
 
   return <form className="catalog-editor-screen" onSubmit={(event) => void submit(event)}>
@@ -585,7 +590,7 @@ function ProductEditorScreen({
         <h1>{product ? 'Редактор картки товару' : 'Новий смартфон'}</h1>
       </div>
       <div className="catalog-editor-actions">
-        {product?.publicPath && <a className="button button--secondary" href={product.publicPath} target="_blank" rel="noreferrer"><Icon name="openInNew" size={17} /> Перегляд</a>}
+        {product?.publicPath && <a className="button button--secondary" href={catalogPreviewPath(product)} target="_blank" rel="noreferrer"><Icon name="openInNew" size={17} /> Перегляд</a>}
         <button className="button button--secondary" type="button" disabled={busy} onClick={() => void submitAndPreview()}><Icon name="visibility" size={17} /> Зберегти і переглянути</button>
         <button className="button button--primary" type="submit" disabled={busy}><Icon name="save" size={17} /> Зберегти</button>
       </div>
@@ -637,30 +642,23 @@ function ProductEditorScreen({
             </div>
           </header>
           {mediaError && <p className="form-message form-message--error">{mediaError}</p>}
-          <div className="catalog-editor-grid">
-            <div className="catalog-media-upload catalog-editor-grid__wide">
-              <span className="catalog-media-upload__preview">{draft.mainImageUrl ? <img src={draft.mainImageUrl} alt="" /> : <Icon name="phone" size={30} />}</span>
-              <div>
-                <strong>Головне фото</strong>
-                <small>Перше завантажене фото стане головним. Далі головне можна змінити у списку нижче.</small>
-                {draft.mainImageUrl && <button className="button button--danger button--small" type="button" onClick={() => setField('mainImageUrl', '')}>Видалити</button>}
-              </div>
-            </div>
-          </div>
           <div className="catalog-gallery-editor">
-            {draft.gallery.map((item, index) => <div className="catalog-gallery-row" key={index}>
-              <div className="catalog-gallery-row__upload">
-                <span>{item.url ? <img src={item.url} alt="" /> : <Icon name="savedBanners" size={22} />}</span>
-              </div>
-              <label className="field"><span>Alt</span><input value={item.alt} onChange={(event) => setGalleryItem(index, 'alt', event.target.value)} maxLength={240} /></label>
-              <div className="catalog-gallery-row__actions">
-                <button className="icon-button" type="button" disabled={index === 0} onClick={() => moveGalleryItem(index, -1)} aria-label="Підняти фото"><Icon name="arrowUp" /></button>
-                <button className="icon-button" type="button" disabled={index === draft.gallery.length - 1} onClick={() => moveGalleryItem(index, 1)} aria-label="Опустити фото"><Icon name="arrowDown" /></button>
-                <button className="icon-button" type="button" onClick={() => setField('mainImageUrl', item.url)} disabled={!item.url} aria-label="Зробити головним"><Icon name="visibility" /></button>
-                <button className="icon-button" type="button" onClick={() => removeGalleryItem(index)} aria-label="Видалити фото"><Icon name="delete" /></button>
-              </div>
-            </div>)}
-            {!draft.gallery.length && <p className="catalog-editor-muted">Додаткових фото ще немає.</p>}
+            <div className="catalog-gallery-grid">
+              {draft.gallery.map((item, index) => {
+                const isMain = Boolean(item.url && draft.mainImageUrl === item.url);
+                return <article className={`catalog-gallery-tile${isMain ? ' catalog-gallery-tile--main' : ''}`} key={index}>
+                  <span className="catalog-gallery-tile__image">{item.url ? <img src={item.url} alt="" /> : <Icon name="savedBanners" size={22} />}</span>
+                  <label className="catalog-gallery-tile__main"><input type="checkbox" checked={isMain} disabled={!item.url} onChange={(event) => setField('mainImageUrl', event.target.checked ? item.url : '')} /> Головне фото</label>
+                  <label className="field"><span>Alt</span><input value={item.alt} onChange={(event) => setGalleryItem(index, 'alt', event.target.value)} maxLength={240} /></label>
+                  <div className="catalog-gallery-row__actions">
+                    <button className="icon-button" type="button" disabled={index === 0} onClick={() => moveGalleryItem(index, -1)} aria-label="Підняти фото"><Icon name="arrowUp" /></button>
+                    <button className="icon-button" type="button" disabled={index === draft.gallery.length - 1} onClick={() => moveGalleryItem(index, 1)} aria-label="Опустити фото"><Icon name="arrowDown" /></button>
+                    <button className="icon-button icon-button--danger" type="button" onClick={() => removeGalleryItem(index)} aria-label="Видалити фото"><Icon name="delete" /></button>
+                  </div>
+                </article>;
+              })}
+            </div>
+            {!draft.gallery.length && <p className="catalog-editor-muted">Доданих фото ще немає.</p>}
           </div>
         </section>}
 
@@ -861,21 +859,23 @@ function CatalogRow({
   }
 
   return <article className="catalog-row">
-    <button className="catalog-row__main" type="button" onClick={() => onOpen(product)}>
-      <ProductThumb product={product} />
-      <span><strong>{product.name}</strong><small>{product.productCode} · {product.conditionLabel}</small></span>
-    </button>
+    <div className={`catalog-row__product${childrenCount > 0 ? ' catalog-row__product--expandable' : ''}`}>
+      {childrenCount > 0 && <button className="icon-button catalog-row__expand" type="button" title="Розгорнути модифікації" aria-label="Розгорнути модифікації" onClick={onToggleChildren}>
+        <Icon name={expanded ? 'arrowDown' : 'arrowRight'} />
+      </button>}
+      <button className="catalog-row__main" type="button" onClick={() => onOpen(product)}>
+        <ProductThumb product={product} />
+        <span><strong>{product.name}</strong><small>{product.productCode} · {product.conditionLabel}</small></span>
+      </button>
+    </div>
     <label className="field"><span>Ціна</span><input type="number" min={0} step="0.01" value={draft.priceUah} onChange={(event) => setField('priceUah', Number(event.target.value || 0))} /></label>
     <label className="field"><span>Залишок</span><input type="number" min={0} step={1} value={draft.stockCount} onChange={(event) => setField('stockCount', Number(event.target.value || 0))} /></label>
     <label className="field"><span>В дорозі</span><input type="number" min={0} step={1} value={draft.incomingCount} onChange={(event) => setField('incomingCount', Number(event.target.value || 0))} /></label>
     <div className="catalog-row__status"><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} compact /></div>
     <span className={`catalog-availability catalog-availability--${product.availability.status}`}>{product.availability.label}</span>
     <div className="catalog-row__actions">
-      {childrenCount > 0 && <button className="icon-button" type="button" title="Модифікації" aria-label="Модифікації" onClick={onToggleChildren}>
-        <Icon name={expanded ? 'arrowDown' : 'arrowRight'} />
-      </button>}
       {onModifications && <button className="button button--secondary button--small catalog-row__modifications" type="button" disabled={busy} onClick={() => onModifications(product)}>
-        <Icon name="phone" size={15} /> Модифікації
+        <Icon name="variants" size={15} /> Модифікації
       </button>}
       <button className="icon-button" type="button" title="Поділитися" aria-label="Поділитися" onClick={() => onShare(product)}><Icon name="share" /></button>
       <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label="Видалити" disabled={busy} onClick={() => onDelete(product)}><Icon name="delete" /></button>
@@ -942,11 +942,11 @@ function ModificationManagerModal({
   }, [currentProduct.id, currentProduct.modificationChildren, modifications.data]);
 
   const saveVariants = useMutation({
-    mutationFn: () => api.catalog.updateProductModifications(currentProduct.id, {
+    mutationFn: (variantIds: string[] = selectedIds) => api.catalog.updateProductModifications(currentProduct.id, {
       groupId: currentGroupId,
       groupLabel: modifications.data?.groupLabel || currentProduct.name,
       mainProductId: currentProduct.id,
-      productIds: [currentProduct.id, ...selectedIds],
+      productIds: [currentProduct.id, ...variantIds],
       expectedVersion: currentProduct.version
     })
   });
@@ -966,7 +966,7 @@ function ModificationManagerModal({
       return;
     }
     try {
-      const saved = await saveVariants.mutateAsync();
+      const saved = await saveVariants.mutateAsync(selectedIds);
       setCurrentProduct(saved);
       setAddMode(false);
       showToast('Модифікації товару оновлено.');
@@ -979,6 +979,25 @@ function ModificationManagerModal({
       ]);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося оновити модифікації.', 'error');
+    }
+  }
+
+  async function removeVariant(variantId: string) {
+    const nextIds = selectedIds.filter((id) => id !== variantId);
+    try {
+      const saved = await saveVariants.mutateAsync(nextIds);
+      setSelectedIds(nextIds);
+      setCurrentProduct(saved);
+      showToast('Модифікацію видалено з групи.');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['catalog-products'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-product'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-product-modifications', currentProduct.id] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-product-groups'] }),
+        Promise.resolve(onSaved(saved))
+      ]);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити модифікацію.', 'error');
     }
   }
 
@@ -1008,6 +1027,7 @@ function ModificationManagerModal({
               <strong>{item.name}</strong>
               <small>{item.productCode} · {item.priceLabel} · {item.availability.label}</small>
             </span>
+            <button className="icon-button icon-button--danger" type="button" disabled={saveVariants.isPending} onClick={() => void removeVariant(item.id)} aria-label="Видалити модифікацію"><Icon name="close" size={22} /></button>
           </article>)}
         </div>
         {!modifications.isLoading && !existingVariants.length && <div className="catalog-editor-notice">
@@ -1414,7 +1434,6 @@ export function UsedSmartphonesCatalogPage() {
               onQuickSave={quickSave}
               onShare={(item) => void shareProduct(item)}
               onDelete={(item) => void deleteCatalogProduct(item)}
-              onModifications={!isChildModification(child) ? setModificationProduct : undefined}
             />)}
           </div>}
         </div>;

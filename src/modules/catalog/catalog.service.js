@@ -244,9 +244,11 @@ function serializeModificationProduct(row, { publicOnly = false, includeInventor
 
 export async function loadProductModificationSet(productId, db = { query }, { publicOnly = false } = {}) {
   const groupResult = await db.query(
-    `SELECT groups.*
+    `SELECT groups.*,
+            main_product.publication_status AS main_publication_status
      FROM used_smartphone_product_groups AS groups
      INNER JOIN used_smartphone_product_group_items AS items ON items.group_id = groups.id
+     LEFT JOIN used_smartphone_products AS main_product ON main_product.id = groups.main_product_id
      WHERE items.product_id = $1
      ORDER BY groups.updated_at DESC
      LIMIT 1`,
@@ -257,9 +259,11 @@ export async function loadProductModificationSet(productId, db = { query }, { pu
     return { groupId: null, groupLabel: '', groupSlug: '', mainProductId: null, isMain: false, items: [], parameters: [] };
   }
 
-  const productFilter = publicOnly
-    ? "AND product.publication_status = 'PUBLISHED'"
-    : "AND product.publication_status <> 'ARCHIVED'";
+  const productFilter = publicOnly && group.main_publication_status === 'PUBLISHED'
+    ? "AND product.publication_status <> 'ARCHIVED'"
+    : publicOnly
+      ? "AND product.publication_status = 'PUBLISHED'"
+      : "AND product.publication_status <> 'ARCHIVED'";
   const productsResult = await db.query(
     `SELECT group_items.group_id,
             group_items.sort_order AS group_sort_order,
@@ -525,7 +529,18 @@ export async function loadCatalogProduct(productId, db = { query }) {
 export async function loadPublicProduct(identifier, db = { query }) {
   const result = await db.query(
     `${productSelect}
-     WHERE product.publication_status = 'PUBLISHED'
+     WHERE product.publication_status <> 'ARCHIVED'
+       AND (
+         product.publication_status = 'PUBLISHED'
+         OR product.id IN (
+           SELECT public_group_items.product_id
+           FROM used_smartphone_product_group_items AS public_group_items
+           INNER JOIN used_smartphone_product_groups AS public_groups ON public_groups.id = public_group_items.group_id
+           INNER JOIN used_smartphone_products AS public_main ON public_main.id = public_groups.main_product_id
+           WHERE public_groups.active = TRUE
+             AND public_main.publication_status = 'PUBLISHED'
+         )
+       )
        AND (product.slug = $1 OR lower(product.product_code) = lower($1))
      LIMIT 1`,
     [identifier]

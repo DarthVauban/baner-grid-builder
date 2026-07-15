@@ -1,5 +1,6 @@
 import AddRounded from '@mui/icons-material/AddRounded';
 import AccessTimeRounded from '@mui/icons-material/AccessTimeRounded';
+import AccountTreeRounded from '@mui/icons-material/AccountTreeRounded';
 import AlarmRounded from '@mui/icons-material/AlarmRounded';
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import KeyboardArrowDownRounded from '@mui/icons-material/KeyboardArrowDownRounded';
@@ -113,6 +114,7 @@ export type IconName =
   | 'tools'
   | 'upload'
   | 'users'
+  | 'variants'
   | 'viewGrid'
   | 'viewList'
   | 'visibility'
@@ -181,6 +183,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   tools: GridViewRounded,
   upload: UploadFileRounded,
   users: GroupRounded,
+  variants: AccountTreeRounded,
   viewGrid: GridViewRounded,
   viewList: ViewAgendaOutlined,
   visibility: VisibilityOutlined,
