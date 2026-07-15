@@ -591,18 +591,18 @@ function ProductEditorScreen({
       <button className="button button--secondary" type="button" onClick={onClose}><Icon name="arrowLeft" size={17} /> До списку</button>
       <div className="catalog-editor-heading">
         <p className="eyebrow">{editorCode}</p>
-        <div className="catalog-editor-title-row">
-          <h1 className="catalog-editor-title" data-full-title={editorTitle}><span>{editorTitle}</span></h1>
-          <label className="catalog-editor-status">
-            <span>Статус</span>
-            <StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} ariaLabel="Статус публікації" compact />
-          </label>
-        </div>
+        <h1 className="catalog-editor-title" data-full-title={editorTitle}><span>{editorTitle}</span></h1>
       </div>
-      <div className="catalog-editor-actions">
-        {product?.publicPath && <a className="button button--secondary" href={catalogPreviewPath(product)} target="_blank" rel="noreferrer"><Icon name="openInNew" size={17} /> Перегляд</a>}
-        <button className="button button--secondary" type="button" disabled={editorBusy} onClick={() => void submitAndPreview()}><Icon name="visibility" size={17} /> Зберегти і переглянути</button>
-        <button className="button button--primary" type="submit" disabled={editorBusy}><Icon name="save" size={17} /> Зберегти</button>
+      <div className="catalog-editor-controls">
+        <label className="catalog-editor-status">
+          <span>Статус</span>
+          <StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} ariaLabel="Статус публікації" compact />
+        </label>
+        <div className="catalog-editor-actions">
+          {product?.publicPath && <a className="button button--secondary" href={catalogPreviewPath(product)} target="_blank" rel="noreferrer"><Icon name="openInNew" size={17} /> Перегляд</a>}
+          <button className="button button--secondary" type="button" disabled={editorBusy} onClick={() => void submitAndPreview()}><Icon name="visibility" size={17} /> Зберегти і переглянути</button>
+          <button className="button button--primary" type="submit" disabled={editorBusy}><Icon name="save" size={17} /> Зберегти</button>
+        </div>
       </div>
     </header>
 
