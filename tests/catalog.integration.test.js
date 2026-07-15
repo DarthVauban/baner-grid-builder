@@ -42,6 +42,15 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.match(media.body.data.url, /^\/media\/catalog\/.+\.webp$/);
   assert.equal(media.body.data.mimeType, 'image/webp');
 
+  const jsonMedia = await admin.post('/api/catalog/media').send({
+    webpBase64: tinyWebp.toString('base64'),
+    webpName: 'catalog-json.webp',
+    originalName: 'catalog-json.png',
+    originalMimeType: 'image/png'
+  }).expect(201);
+  assert.match(jsonMedia.body.data.url, /^\/media\/catalog\/.+\.webp$/);
+  assert.equal(jsonMedia.body.data.originalUrl, '');
+
   const tooLargeWebp = Buffer.concat([Buffer.from('524946460000000057454250', 'hex'), Buffer.alloc((3 * 1024 * 1024) + 1)]);
   const mediaTooLarge = await admin.post('/api/catalog/media')
     .set('Content-Type', 'image/webp')
@@ -143,6 +152,18 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(savedCharacteristics.body.data.values.battery_health, 91);
   assert.deepEqual(savedCharacteristics.body.data.values.colors, ['Midnight', 'Blue']);
   assert.equal(savedCharacteristics.body.data.values.face_id, true);
+
+  const publicProductWithCharacteristics = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
+  assert.equal(publicProductWithCharacteristics.body.data.characteristics.templateId, template.body.data.id);
+  assert.deepEqual(
+    publicProductWithCharacteristics.body.data.characteristics.items.map((item) => [item.key, item.displayValue]),
+    [
+      ['storage', '128 GB'],
+      ['battery_health', '91 %'],
+      ['colors', 'Midnight, Blue'],
+      ['face_id', 'Так']
+    ]
+  );
 
   const duplicatePreview = await admin.post('/api/catalog/imports/preview').send({
     rows: [

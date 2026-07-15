@@ -169,6 +169,57 @@ function descriptionPayload(row) {
   };
 }
 
+function productCharacteristicValue(row) {
+  const json = normalizeJsonObject(row.value_json);
+  if (Object.hasOwn(json, 'value')) return json.value;
+  if (row.type === 'number' && row.value_number !== null && row.value_number !== undefined) return Number(row.value_number);
+  if (row.type === 'boolean' && row.value_boolean !== null && row.value_boolean !== undefined) return row.value_boolean === true;
+  return row.value_text || '';
+}
+
+function characteristicDisplayValue(value, unit = '') {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean).join(', ');
+  if (typeof value === 'boolean') return value ? 'Так' : 'Ні';
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  if (!text) return '';
+  return unit ? `${text} ${unit}` : text;
+}
+
+export async function loadProductCharacteristicSet(productId, db = { query }) {
+  const result = await db.query(
+    `SELECT characteristics.*,
+            COALESCE(fields.type, 'text') AS type,
+            COALESCE(fields.unit, '') AS unit,
+            COALESCE(fields.filterable, FALSE) AS filterable,
+            templates.label AS template_label
+     FROM used_smartphone_product_characteristics AS characteristics
+     LEFT JOIN used_smartphone_characteristic_template_fields AS fields ON fields.id = characteristics.field_id
+     LEFT JOIN used_smartphone_characteristic_templates AS templates ON templates.id = characteristics.template_id
+     WHERE characteristics.product_id = $1
+     ORDER BY characteristics.sort_order, lower(characteristics.label)`,
+    [productId]
+  );
+  const first = result.rows[0];
+  return {
+    templateId: first?.template_id || null,
+    templateLabel: first?.template_label || '',
+    items: result.rows.map((row) => {
+      const value = productCharacteristicValue(row);
+      return {
+        key: row.key,
+        label: row.label,
+        type: row.type,
+        value,
+        displayValue: characteristicDisplayValue(value, row.unit || ''),
+        unit: row.unit || '',
+        filterable: row.filterable === true,
+        sortOrder: Number(row.sort_order || 0)
+      };
+    }).filter((item) => item.displayValue)
+  };
+}
+
 export function serializePublicCatalogProduct(row, { detail = false } = {}) {
   const availability = availabilityForCounts(row.stock_count, row.incoming_count);
   const product = {
@@ -262,7 +313,10 @@ export async function loadPublicProduct(identifier, db = { query }) {
     [identifier]
   );
   const row = result.rows[0];
-  return row ? serializePublicCatalogProduct(row, { detail: true }) : null;
+  if (!row) return null;
+  const product = serializePublicCatalogProduct(row, { detail: true });
+  product.characteristics = await loadProductCharacteristicSet(row.id, db);
+  return product;
 }
 
 export async function loadPreviewProduct(identifier, db = { query }) {
@@ -274,7 +328,10 @@ export async function loadPreviewProduct(identifier, db = { query }) {
     [identifier]
   );
   const row = result.rows[0];
-  return row ? serializePublicCatalogProduct(row, { detail: true }) : null;
+  if (!row) return null;
+  const product = serializePublicCatalogProduct(row, { detail: true });
+  product.characteristics = await loadProductCharacteristicSet(row.id, db);
+  return product;
 }
 
 export function validatePublicationReady(input) {

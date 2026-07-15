@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AppError } from '../../lib/app-error.js';
 
 const maxCatalogImageBytes = 3 * 1024 * 1024;
 const allowedOriginalTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(currentDir, '../../..');
 
-export const catalogMediaDir = path.resolve(process.cwd(), process.env.CATALOG_MEDIA_DIR || path.join('storage', 'catalog-media'));
+export const catalogMediaDir = process.env.CATALOG_MEDIA_DIR
+  ? path.resolve(projectRoot, process.env.CATALOG_MEDIA_DIR)
+  : path.join(projectRoot, 'storage', 'catalog-media');
 
 function safeName(value) {
   return String(value || 'photo')
@@ -34,8 +39,15 @@ function extensionForMime(type) {
 
 async function saveBuffer(buffer, folder, filename) {
   const dir = path.join(catalogMediaDir, folder);
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, filename), buffer, { flag: 'wx' });
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, filename), buffer, { flag: 'wx' });
+  } catch (error) {
+    if (['EACCES', 'EPERM', 'ENOENT', 'ENOSPC', 'EROFS'].includes(error?.code)) {
+      throw new AppError(507, 'CATALOG_MEDIA_STORAGE_UNAVAILABLE', 'Не вдалося записати фото у сховище. Перевірте доступність директорії медіа.');
+    }
+    throw error;
+  }
   return folder ? `/media/catalog/${folder}/${filename}` : `/media/catalog/${filename}`;
 }
 

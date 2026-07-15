@@ -80,6 +80,23 @@ export interface CatalogProductCharacteristics {
   values: Record<string, unknown>;
 }
 
+export interface CatalogProductCharacteristicItem {
+  key: string;
+  label: string;
+  type: CatalogCharacteristicFieldType;
+  value: unknown;
+  displayValue: string;
+  unit: string;
+  filterable: boolean;
+  sortOrder: number;
+}
+
+export interface CatalogProductCharacteristicSet {
+  templateId: string | null;
+  templateLabel: string;
+  items: CatalogProductCharacteristicItem[];
+}
+
 export interface CatalogProduct {
   id: string;
   productCode: string;
@@ -105,6 +122,7 @@ export interface CatalogProduct {
   descriptionCss?: string;
   descriptionJs?: string;
   descriptionHasJs?: boolean;
+  characteristics?: CatalogProductCharacteristicSet;
   seoTitle: string;
   seoDescription: string;
   socialDescription: string;

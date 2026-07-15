@@ -56,6 +56,79 @@ function StorefrontDescription({ product }: { product: CatalogProduct }) {
   return <section className="storefront-description" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+function baseSpecItems(product: CatalogProduct) {
+  return [
+    { label: 'Корпус', value: product.bodyCondition },
+    { label: 'Дисплей', value: product.displayCondition },
+    { label: 'Акумулятор', value: product.batteryHealth },
+    { label: 'Гарантія', value: product.warranty }
+  ].filter((item) => item.value);
+}
+
+function StorefrontCharacteristics({ product }: { product: CatalogProduct }) {
+  const items = product.characteristics?.items || [];
+  if (!items.length) return null;
+  return <section className="storefront-characteristics">
+    <h2>Характеристики</h2>
+    <dl>
+      {items.map((item) => <div key={item.key}>
+        <dt>{item.label}</dt>
+        <dd>{item.displayValue}</dd>
+      </div>)}
+    </dl>
+  </section>;
+}
+
+function schemaAvailability(status: CatalogAvailabilityStatus) {
+  if (status === 'in_stock') return 'https://schema.org/InStock';
+  if (status === 'incoming') return 'https://schema.org/PreOrder';
+  return 'https://schema.org/OutOfStock';
+}
+
+function schemaCondition(condition: CatalogCondition) {
+  return condition === 'REFURBISHED' ? 'https://schema.org/RefurbishedCondition' : 'https://schema.org/UsedCondition';
+}
+
+function StorefrontProductJsonLd({ product }: { product: CatalogProduct }) {
+  const json = useMemo(() => {
+    const url = typeof window !== 'undefined' ? window.location.href : product.publicPath;
+    const additionalProperty = [
+      ...baseSpecItems(product).map((item) => ({
+        '@type': 'PropertyValue',
+        name: item.label,
+        value: item.value
+      })),
+      ...(product.characteristics?.items || []).map((item) => ({
+        '@type': 'PropertyValue',
+        name: item.label,
+        propertyID: item.key,
+        value: item.displayValue,
+        unitText: item.unit || undefined
+      }))
+    ];
+    return {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.name,
+      sku: product.productCode,
+      image: [product.mainImageUrl, ...(product.gallery || []).map((item) => item.url)].filter(Boolean),
+      description: product.seoDescription || product.shortDescription || product.name,
+      brand: product.brand?.label ? { '@type': 'Brand', name: product.brand.label } : undefined,
+      itemCondition: schemaCondition(product.condition),
+      additionalProperty,
+      offers: {
+        '@type': 'Offer',
+        url,
+        priceCurrency: 'UAH',
+        price: product.priceUah,
+        availability: schemaAvailability(product.availability.status),
+        itemCondition: schemaCondition(product.condition)
+      }
+    };
+  }, [product]);
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(json) }} />;
+}
+
 function fieldValue(values: Record<string, unknown>, field: PublicField) {
   const value = values[field.key];
   if (field.type === 'checkbox') return Array.isArray(value) ? value.map(String) : [];
@@ -138,6 +211,38 @@ function StorefrontApplicationForm({
   </form>;
 }
 
+function StorefrontApplicationModal({
+  product,
+  form,
+  onClose
+}: {
+  product: CatalogProduct;
+  form: PublicForm | undefined;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [onClose]);
+
+  return <div className="storefront-modal" role="dialog" aria-modal="true" aria-label="Оформлення заявки" onMouseDown={(event) => {
+    if (event.target === event.currentTarget) onClose();
+  }}>
+    <div className="storefront-modal__panel">
+      <button className="storefront-modal__close" type="button" aria-label="Закрити форму" onClick={onClose}>×</button>
+      <StorefrontApplicationForm product={product} form={form} />
+    </div>
+  </div>;
+}
+
 export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   const { slug } = useParams();
   const queryClient = useQueryClient();
@@ -211,7 +316,9 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
     </header>
     {preview && <div className="storefront-preview-banner">Preview магазину · сторінка закрита від індексації</div>}
 
-    {slug ? productData ? <section className="storefront-detail">
+    {slug ? productData ? <>
+    <StorefrontProductJsonLd product={productData} />
+    <section className="storefront-detail">
       <div className="storefront-detail__media"><ProductImage product={productData} /></div>
       <div className="storefront-detail__main">
       <article className="storefront-detail__info">
@@ -221,19 +328,18 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
         <div className="storefront-detail__badges"><span>{productData.availability.label}</span><span>{productData.priceLabel}</span></div>
         {productData.shortDescription && <p>{productData.shortDescription}</p>}
         <dl className="storefront-specs">
-          {productData.bodyCondition && <><dt>Корпус</dt><dd>{productData.bodyCondition}</dd></>}
-          {productData.displayCondition && <><dt>Дисплей</dt><dd>{productData.displayCondition}</dd></>}
-          {productData.batteryHealth && <><dt>Акумулятор</dt><dd>{productData.batteryHealth}</dd></>}
-          {productData.warranty && <><dt>Гарантія</dt><dd>{productData.warranty}</dd></>}
+          {baseSpecItems(productData).map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}
         </dl>
         <button className="button button--primary" type="button" disabled={!canRequestProduct} onClick={() => setRequestOpen(true)}>
           {preview ? 'Preview без заявки' : productData.availability.status === 'unavailable' ? 'Немає в наявності' : form.data ? 'Оформити заявку' : 'Заявка недоступна'} <Icon name="arrowRight" size={16} />
         </button>
       </article>
       <StorefrontDescription product={productData} />
-      {requestOpen && productData.availability.status !== 'unavailable' && <StorefrontApplicationForm product={productData} form={form.data} />}
+      <StorefrontCharacteristics product={productData} />
       </div>
-    </section> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
+    </section>
+    {requestOpen && canRequestProduct && <StorefrontApplicationModal product={productData} form={form.data} onClose={() => setRequestOpen(false)} />}
+    </> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
       <div className="storefront-hero">
         <p className="eyebrow">Used & refurbished</p>
         <h1>Смартфони з перевіреним станом</h1>

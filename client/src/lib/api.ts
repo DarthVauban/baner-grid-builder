@@ -339,7 +339,6 @@ export const api = {
         body: jsonBody({
           webpBase64: await blobToBase64(file),
           webpName: fileName,
-          originalBase64: originalFile ? await blobToBase64(originalFile) : '',
           originalName: originalFile?.name || fileName,
           originalMimeType: imageMimeFromFile(originalFile)
         }),
