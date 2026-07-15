@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { accessSync, constants, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { mkdir, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { AppError } from '../../lib/app-error.js';
 
@@ -8,10 +10,31 @@ const maxCatalogImageBytes = 3 * 1024 * 1024;
 const allowedOriginalTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDir, '../../..');
+const storageUnavailableCodes = new Set(['EACCES', 'EPERM', 'ENOENT', 'ENOSPC', 'EROFS']);
 
-export const catalogMediaDir = process.env.CATALOG_MEDIA_DIR
-  ? path.resolve(projectRoot, process.env.CATALOG_MEDIA_DIR)
-  : path.join(projectRoot, 'storage', 'catalog-media');
+function canUseMediaDir(dir) {
+  try {
+    mkdirSync(dir, { recursive: true });
+    accessSync(dir, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveCatalogMediaDir() {
+  const configured = process.env.CATALOG_MEDIA_DIR
+    ? path.resolve(projectRoot, process.env.CATALOG_MEDIA_DIR)
+    : '';
+  const candidates = [
+    configured,
+    path.join(projectRoot, 'storage', 'catalog-media'),
+    path.join(os.tmpdir(), 'mt-panel-catalog-media')
+  ].filter(Boolean);
+  return candidates.find(canUseMediaDir) || candidates[0];
+}
+
+export const catalogMediaDir = resolveCatalogMediaDir();
 
 function safeName(value) {
   return String(value || 'photo')
@@ -43,7 +66,7 @@ async function saveBuffer(buffer, folder, filename) {
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, filename), buffer, { flag: 'wx' });
   } catch (error) {
-    if (['EACCES', 'EPERM', 'ENOENT', 'ENOSPC', 'EROFS'].includes(error?.code)) {
+    if (storageUnavailableCodes.has(error?.code)) {
       throw new AppError(507, 'CATALOG_MEDIA_STORAGE_UNAVAILABLE', 'Не вдалося записати фото у сховище. Перевірте доступність директорії медіа.');
     }
     throw error;

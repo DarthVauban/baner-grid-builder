@@ -233,6 +233,18 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(groupedMain.modificationGroup.childCount, 1);
   assert.equal(groupedMain.modificationChildren[0].id, variant.body.data.id);
 
+  await admin.delete(`/api/catalog/products/${variant.body.data.id}`).send({
+    expectedVersion: variantWithCharacteristics.body.data.version
+  }).expect(204);
+
+  const archivedVariant = await admin.get(`/api/catalog/products/${variant.body.data.id}`).expect(200);
+  assert.equal(archivedVariant.body.data.publicationStatus, 'ARCHIVED');
+
+  const catalogAfterVariantDelete = await admin.get('/api/catalog/products?search=iPhone&pageSize=25').expect(200);
+  assert.equal(catalogAfterVariantDelete.body.data.items.some((item) => item.id === variant.body.data.id), false);
+  const mainAfterVariantDelete = catalogAfterVariantDelete.body.data.items.find((item) => item.id === created.body.data.id);
+  assert.equal(mainAfterVariantDelete.modificationGroup.childCount, 0);
+
   const duplicatePreview = await admin.post('/api/catalog/imports/preview').send({
     rows: [
       { 'Назва': 'iPhone 13 128GB Midnight', 'Статус': 'Вживаний', 'Залишок': 2, 'В дорозі': 1, 'Ціна': 17999 },

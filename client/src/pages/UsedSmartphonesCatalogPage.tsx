@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import {
   catalogConditionOptions,
@@ -25,6 +26,8 @@ import type {
   CatalogFeed,
   CatalogImportPreview,
   CatalogProduct,
+  CatalogProductGroupItem,
+  CatalogProductModificationSet,
   CatalogProductGroup,
   CatalogProductInput,
   CatalogPublicationStatus,
@@ -73,14 +76,18 @@ function importActionLabel(row: CatalogImportPreview['rows'][number]) {
   return 'Помилка';
 }
 
-function ProductThumb({ product }: { product: CatalogProduct }) {
+function CatalogMiniThumb({ imageUrl, className = 'catalog-thumb' }: { imageUrl: string; className?: string }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [product.mainImageUrl]);
-  return <span className="catalog-thumb">
-    {product.mainImageUrl && !failed
-      ? <img src={product.mainImageUrl} alt="" loading="lazy" onError={() => setFailed(true)} />
+  useEffect(() => setFailed(false), [imageUrl]);
+  return <span className={className}>
+    {imageUrl && !failed
+      ? <img src={imageUrl} alt="" loading="lazy" onError={() => setFailed(true)} />
       : <Icon name="phone" size={20} />}
   </span>;
+}
+
+function ProductThumb({ product }: { product: CatalogProduct }) {
+  return <CatalogMiniThumb imageUrl={product.mainImageUrl} />;
 }
 
 type CatalogEditorTab = 'main' | 'availability' | 'media' | 'description' | 'condition' | 'characteristics' | 'modifications' | 'seo' | 'internal';
@@ -112,6 +119,10 @@ function mediaAltFromFile(file: File) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 240);
+}
+
+function isChildModification(product: CatalogProduct) {
+  return Boolean(product.modificationGroup && !product.modificationGroup.isMain && product.modificationGroup.mainProductId);
 }
 
 function splitLooseDescriptionCss(source: string) {
@@ -826,6 +837,8 @@ function CatalogRow({
   onOpen,
   onQuickSave,
   onShare,
+  onDelete,
+  onModifications,
   onToggleChildren
 }: {
   product: CatalogProduct;
@@ -835,6 +848,8 @@ function CatalogRow({
   onOpen: (product: CatalogProduct) => void;
   onQuickSave: (product: CatalogProduct, input: CatalogProductInput) => Promise<void>;
   onShare: (product: CatalogProduct) => void;
+  onDelete: (product: CatalogProduct) => void;
+  onModifications?: (product: CatalogProduct) => void;
   onToggleChildren?: () => void;
 }) {
   const [draft, setDraft] = useState(() => productToInput(product));
@@ -859,10 +874,189 @@ function CatalogRow({
       {childrenCount > 0 && <button className="icon-button" type="button" title="Модифікації" aria-label="Модифікації" onClick={onToggleChildren}>
         <Icon name={expanded ? 'arrowDown' : 'arrowRight'} />
       </button>}
+      {onModifications && <button className="button button--secondary button--small catalog-row__modifications" type="button" disabled={busy} onClick={() => onModifications(product)}>
+        <Icon name="phone" size={15} /> Модифікації
+      </button>}
       <button className="icon-button" type="button" title="Поділитися" aria-label="Поділитися" onClick={() => onShare(product)}><Icon name="share" /></button>
+      <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label="Видалити" disabled={busy} onClick={() => onDelete(product)}><Icon name="delete" /></button>
       <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => void onQuickSave(product, draft)}><Icon name="save" size={15} /> Save</button>
     </div>
   </article>;
+}
+
+function ModificationManagerModal({
+  product,
+  onClose,
+  onSaved
+}: {
+  product: CatalogProduct;
+  onClose: () => void;
+  onSaved: (product: CatalogProduct) => Promise<void> | void;
+}) {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [currentProduct, setCurrentProduct] = useState(product);
+  const [addMode, setAddMode] = useState(false);
+  const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setCurrentProduct(product);
+    setAddMode(false);
+    setSearch('');
+  }, [product]);
+
+  const modifications = useQuery<CatalogProductModificationSet>({
+    queryKey: ['catalog-product-modifications', currentProduct.id],
+    queryFn: () => api.catalog.productModifications(currentProduct.id),
+    retry: false
+  });
+  const currentGroupId = modifications.data?.groupId || currentProduct.modificationGroup?.groupId || null;
+  const picker = useQuery<CatalogFeed>({
+    queryKey: ['catalog-modification-picker', currentProduct.id, search],
+    queryFn: () => api.catalog.list({
+      search,
+      page: 1,
+      pageSize: 100,
+      sort: 'name_asc',
+      status: 'all',
+      condition: 'all',
+      availability: 'all'
+    }),
+    enabled: addMode
+  });
+
+  const fallbackItems: Array<CatalogProduct | CatalogProductGroupItem> = useMemo(
+    () => [currentProduct, ...(currentProduct.modificationChildren || [])],
+    [currentProduct]
+  );
+  const currentItems = modifications.data?.items.length ? modifications.data.items : fallbackItems;
+  const existingVariants = currentItems.filter((item) => item.id !== currentProduct.id);
+
+  useEffect(() => {
+    if (modifications.data) {
+      setSelectedIds(modifications.data.items.filter((item) => item.id !== currentProduct.id).map((item) => item.id));
+      return;
+    }
+    setSelectedIds((current) => current.length ? current : (currentProduct.modificationChildren || []).map((item) => item.id));
+  }, [currentProduct.id, currentProduct.modificationChildren, modifications.data]);
+
+  const saveVariants = useMutation({
+    mutationFn: () => api.catalog.updateProductModifications(currentProduct.id, {
+      groupId: currentGroupId,
+      groupLabel: modifications.data?.groupLabel || currentProduct.name,
+      mainProductId: currentProduct.id,
+      productIds: [currentProduct.id, ...selectedIds],
+      expectedVersion: currentProduct.version
+    })
+  });
+
+  function toggleCandidate(id: string, checked: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return [...next];
+    });
+  }
+
+  async function applySelection() {
+    if (!selectedIds.length && !currentGroupId) {
+      showToast('Оберіть хоча б один товар для модифікацій.', 'error');
+      return;
+    }
+    try {
+      const saved = await saveVariants.mutateAsync();
+      setCurrentProduct(saved);
+      setAddMode(false);
+      showToast('Модифікації товару оновлено.');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['catalog-products'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-product'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-product-modifications', currentProduct.id] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-product-groups'] }),
+        Promise.resolve(onSaved(saved))
+      ]);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося оновити модифікації.', 'error');
+    }
+  }
+
+  const candidateRows = (picker.data?.items || []).filter((candidate) => candidate.id !== currentProduct.id);
+
+  return <div className="modal-backdrop" role="presentation">
+    <section className={`modal catalog-modifications-modal${addMode ? ' catalog-modifications-modal--picker' : ''}`} role="dialog" aria-modal="true" aria-labelledby="catalog-modifications-title">
+      <header className="modal__header">
+        <div>
+          <p className="eyebrow">Групований товар</p>
+          <h2 id="catalog-modifications-title">Модифікації</h2>
+          <p>{currentProduct.name}</p>
+        </div>
+        <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={20} /></button>
+      </header>
+
+      {!addMode ? <div className="catalog-modifications-modal__content">
+        <article className="catalog-modification-primary">
+          <CatalogMiniThumb imageUrl={currentProduct.mainImageUrl} className="catalog-modification-primary__thumb" />
+          <span><small>Основний товар</small><strong>{currentProduct.name}</strong><em>{currentProduct.productCode} · {currentProduct.priceLabel}</em></span>
+        </article>
+
+        <div className="catalog-modifications-list">
+          {existingVariants.map((item) => <article className="catalog-modification-compact" key={item.id}>
+            <CatalogMiniThumb imageUrl={item.mainImageUrl} className="catalog-modification-compact__thumb" />
+            <span>
+              <strong>{item.name}</strong>
+              <small>{item.productCode} · {item.priceLabel} · {item.availability.label}</small>
+            </span>
+          </article>)}
+        </div>
+        {!modifications.isLoading && !existingVariants.length && <div className="catalog-editor-notice">
+          У цього товару ще немає вкладених модифікацій. Додайте товари-варіанти, щоб вони зʼявились у перемикачах на сторінці товару.
+        </div>}
+      </div> : <div className="catalog-modification-picker-panel">
+        <div className="catalog-modification-picker-panel__bar">
+          <label className="field">
+            <span>Пошук</span>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Назва, код або slug" autoFocus />
+          </label>
+          <span>Обрано {selectedIds.length}</span>
+        </div>
+
+        <div className="catalog-modification-card-grid">
+          {candidateRows.map((candidate) => {
+            const belongsToCurrentGroup = Boolean(currentGroupId && candidate.modificationGroup?.groupId === currentGroupId);
+            const belongsToOtherGroup = Boolean(candidate.modificationGroup?.groupId && candidate.modificationGroup.groupId !== currentGroupId);
+            const locked = belongsToOtherGroup && !belongsToCurrentGroup;
+            const checked = selectedIds.includes(candidate.id);
+            return <label className={`catalog-modification-card${checked ? ' catalog-modification-card--selected' : ''}${locked ? ' catalog-modification-card--locked' : ''}`} key={candidate.id}>
+              <input type="checkbox" checked={checked} disabled={locked || saveVariants.isPending} onChange={(event) => toggleCandidate(candidate.id, event.target.checked)} />
+              <CatalogMiniThumb imageUrl={candidate.mainImageUrl} className="catalog-modification-card__thumb" />
+              <span>
+                <strong>{candidate.name}</strong>
+                <small>{candidate.productCode} · {candidate.conditionLabel} · {candidate.priceLabel}</small>
+                {locked && <em>Вже належить до іншої групи</em>}
+              </span>
+            </label>;
+          })}
+          {!picker.isLoading && !candidateRows.length && <div className="empty-state catalog-modification-empty">
+            <div className="empty-state__icon"><Icon name="phone" size={26} /></div>
+            <h2>Нічого не знайдено</h2>
+            <p>Спробуйте змінити пошуковий запит.</p>
+          </div>}
+        </div>
+      </div>}
+
+      <footer className="modal__footer">
+        {addMode ? <>
+          <button className="button button--secondary" type="button" disabled={saveVariants.isPending} onClick={() => setAddMode(false)}>Назад</button>
+          <button className="button button--primary" type="button" disabled={saveVariants.isPending} onClick={() => void applySelection()}><Icon name="save" size={17} /> Зберегти вибір</button>
+        </> : <>
+          <button className="button button--secondary" type="button" onClick={onClose}>Закрити</button>
+          <button className="button button--primary" type="button" onClick={() => setAddMode(true)}><Icon name="add" size={17} /> Додати варіанти</button>
+        </>}
+      </footer>
+    </section>
+  </div>;
 }
 
 function ImportModal({
@@ -937,6 +1131,7 @@ function ImportModal({
 export function UsedSmartphonesCatalogPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const confirm = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [condition, setCondition] = useState<CatalogCondition | 'all'>('all');
@@ -950,6 +1145,7 @@ export function UsedSmartphonesCatalogPage() {
   const [settingsFormId, setSettingsFormId] = useState('');
   const [settingsOrigin, setSettingsOrigin] = useState('');
   const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>([]);
+  const [modificationProduct, setModificationProduct] = useState<CatalogProduct | null>(null);
   const sharedProductId = searchParams.get('product');
   const queryParams = useMemo(() => ({ search, condition, status, availability, sort, page, pageSize: 25 }), [availability, condition, page, search, sort, status]);
 
@@ -976,13 +1172,16 @@ export function UsedSmartphonesCatalogPage() {
         : api.catalog.create(input)
     )
   });
+  const removeProduct = useMutation({
+    mutationFn: (product: CatalogProduct) => api.catalog.remove(product.id, product.version)
+  });
   const previewImport = useMutation({ mutationFn: api.catalog.previewImport });
   const commitImport = useMutation({
     mutationFn: ({ rows, options }: { rows: Array<Record<string, unknown>>; options: { importNew: boolean; updateExisting: boolean } }) =>
       api.catalog.commitImport(rows, options)
   });
   const updateSettings = useMutation({ mutationFn: api.catalog.updateStorefrontSettings });
-  const busy = saveProduct.isPending || commitImport.isPending || updateSettings.isPending;
+  const busy = saveProduct.isPending || removeProduct.isPending || commitImport.isPending || updateSettings.isPending;
 
   useEffect(() => {
     if (!storefrontSettings.data) return;
@@ -1007,6 +1206,8 @@ export function UsedSmartphonesCatalogPage() {
       queryClient.invalidateQueries({ queryKey: ['catalog-products'] }),
       queryClient.invalidateQueries({ queryKey: ['catalog-summary'] }),
       queryClient.invalidateQueries({ queryKey: ['catalog-product'] }),
+      queryClient.invalidateQueries({ queryKey: ['catalog-product-modifications'] }),
+      queryClient.invalidateQueries({ queryKey: ['catalog-product-groups'] }),
       queryClient.invalidateQueries({ queryKey: ['chat-messages'] })
     ]);
   }
@@ -1049,6 +1250,25 @@ export function UsedSmartphonesCatalogPage() {
       showToast('Посилання на товар скопійовано.');
     } catch {
       showToast('Не вдалося скопіювати посилання.', 'error');
+    }
+  }
+
+  async function deleteCatalogProduct(product: CatalogProduct) {
+    const confirmed = await confirm({
+      title: 'Видалити товар?',
+      message: `Товар "${product.name}" буде перенесено в архів і зникне з активного каталогу.`,
+      confirmLabel: 'Видалити',
+      cancelLabel: 'Скасувати',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
+    try {
+      await removeProduct.mutateAsync(product);
+      showToast('Товар видалено з каталогу.');
+      if (modificationProduct?.id === product.id) setModificationProduct(null);
+      await refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити товар.', 'error');
     }
   }
 
@@ -1173,7 +1393,7 @@ export function UsedSmartphonesCatalogPage() {
         return <div className="catalog-row-group" key={product.id}>
           <CatalogRow
             product={product}
-            busy={saveProduct.isPending}
+            busy={busy}
             childrenCount={children.length}
             expanded={expanded}
             onToggleChildren={() => setExpandedGroupIds((current) => (
@@ -1182,15 +1402,19 @@ export function UsedSmartphonesCatalogPage() {
             onOpen={openProduct}
             onQuickSave={quickSave}
             onShare={(item) => void shareProduct(item)}
+            onDelete={(item) => void deleteCatalogProduct(item)}
+            onModifications={!isChildModification(product) ? setModificationProduct : undefined}
           />
           {expanded && children.length > 0 && <div className="catalog-row-children">
             {children.map((child) => <CatalogRow
               key={child.id}
               product={child}
-              busy={saveProduct.isPending}
+              busy={busy}
               onOpen={openProduct}
               onQuickSave={quickSave}
               onShare={(item) => void shareProduct(item)}
+              onDelete={(item) => void deleteCatalogProduct(item)}
+              onModifications={!isChildModification(child) ? setModificationProduct : undefined}
             />)}
           </div>}
         </div>;
@@ -1214,6 +1438,13 @@ export function UsedSmartphonesCatalogPage() {
       onClose={() => setImportOpen(false)}
       onPreview={runPreview}
       onCommit={runCommit}
+    />}
+    {modificationProduct && <ModificationManagerModal
+      product={modificationProduct}
+      onClose={() => setModificationProduct(null)}
+      onSaved={async () => {
+        await refresh();
+      }}
     />}
   </div>;
 }

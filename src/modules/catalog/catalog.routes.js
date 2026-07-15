@@ -86,6 +86,9 @@ const statusSchema = z.object({
   status: z.enum(publicationStatuses),
   expectedVersion: z.coerce.number().int().min(1)
 });
+const deleteProductSchema = z.object({
+  expectedVersion: z.coerce.number().int().min(1)
+});
 const brandInputSchema = z.object({
   label: z.string().trim().min(1).max(160),
   active: z.boolean().default(true),
@@ -593,6 +596,49 @@ async function syncProductGroupModifications(db, groupId, mainProductId, product
   }
 }
 
+async function detachProductFromModificationGroups(db, productId) {
+  const groups = await db.query(
+    `SELECT DISTINCT groups.id, groups.main_product_id
+     FROM used_smartphone_product_groups AS groups
+     LEFT JOIN used_smartphone_product_group_items AS items ON items.group_id = groups.id
+     WHERE groups.main_product_id = $1 OR items.product_id = $1`,
+    [productId]
+  );
+  if (!groups.rows.length) return [];
+
+  await db.query('DELETE FROM used_smartphone_product_group_items WHERE product_id = $1', [productId]);
+
+  for (const group of groups.rows) {
+    if (group.main_product_id !== productId) continue;
+    const nextMain = await db.query(
+      `SELECT product.id
+       FROM used_smartphone_product_group_items AS items
+       INNER JOIN used_smartphone_products AS product ON product.id = items.product_id
+       WHERE items.group_id = $1 AND product.publication_status <> 'ARCHIVED'
+       ORDER BY items.sort_order, lower(product.name)
+       LIMIT 1`,
+      [group.id]
+    );
+    if (nextMain.rows[0]) {
+      await db.query(
+        `UPDATE used_smartphone_product_groups
+         SET main_product_id = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [nextMain.rows[0].id, group.id]
+      );
+    } else {
+      await db.query(
+        `UPDATE used_smartphone_product_groups
+         SET main_product_id = NULL, active = FALSE, updated_at = NOW()
+         WHERE id = $1`,
+        [group.id]
+      );
+    }
+  }
+
+  return groups.rows.map((group) => group.id);
+}
+
 async function syncProductMedia(db, productId, input, actorId) {
   const items = [];
   if (input.mainImageUrl) items.push({ url: input.mainImageUrl, alt: input.name || '', role: 'main', sortOrder: 0 });
@@ -638,6 +684,8 @@ function buildProductFilters(input) {
   if (input.status !== 'all') {
     params.push(input.status);
     where.push(`product.publication_status = $${params.length}`);
+  } else {
+    where.push("product.publication_status <> 'ARCHIVED'");
   }
   if (input.availability === 'in_stock') where.push('product.stock_count > 0');
   if (input.availability === 'incoming') where.push('product.stock_count = 0 AND product.incoming_count > 0');
@@ -1379,6 +1427,52 @@ router.delete('/products/:id/media/:mediaId', asyncHandler(async (req, res) => {
   }
   publishCatalogUpdates(recipients, { type: 'media_deleted', productId: id });
   if (product.publicationStatus === 'PUBLISHED') publishPublicCatalogUpdate({ type: 'media_deleted', productId: id });
+  res.status(204).end();
+}));
+
+router.delete('/products/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(deleteProductSchema, req.body || {});
+  const client = await pool.connect();
+  let previousStatus = '';
+  let recipients = [];
+  let touchedGroups = [];
+  try {
+    await client.query('BEGIN');
+    const currentResult = await client.query('SELECT * FROM used_smartphone_products WHERE id = $1 FOR UPDATE', [id]);
+    const current = currentResult.rows[0];
+    if (!current) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+    if (Number(current.version) !== input.expectedVersion) {
+      throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
+    }
+    previousStatus = current.publication_status;
+    touchedGroups = await detachProductFromModificationGroups(client, id);
+    await client.query(
+      `UPDATE used_smartphone_products
+       SET publication_status = 'ARCHIVED',
+           updated_by = $1,
+           updated_at = NOW(),
+           version = version + 1
+       WHERE id = $2`,
+      [req.user.id, id]
+    );
+    await logCatalogAudit(client, {
+      productId: id,
+      actorId: req.user.id,
+      action: 'archive',
+      changes: { previousStatus, groups: touchedGroups }
+    });
+    recipients = await getCatalogRecipientIds(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+  publishCatalogUpdates(recipients, { type: 'product_archived', productId: id, groupIds: touchedGroups });
+  publishChatUpdates(recipients, { type: 'entity', entityType: 'catalog_product', entityId: id, senderId: req.user.id });
+  if (previousStatus === 'PUBLISHED') publishPublicCatalogUpdate({ type: 'product_archived', productId: id });
   res.status(204).end();
 }));
 
