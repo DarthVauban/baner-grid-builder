@@ -315,6 +315,7 @@ function ProductEditorScreen({
   const [activeTab, setActiveTab] = useState<CatalogEditorTab>('main');
   const [mediaBusy, setMediaBusy] = useState('');
   const [mediaError, setMediaError] = useState('');
+  const [linkedSaveBusy, setLinkedSaveBusy] = useState(false);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [selectedCharacteristicTemplateId, setSelectedCharacteristicTemplateId] = useState('');
@@ -357,35 +358,7 @@ function ProductEditorScreen({
     () => (productGroups.data || []).find((group) => group.id === selectedModificationGroupId) || null,
     [productGroups.data, selectedModificationGroupId]
   );
-  const saveCharacteristics = useMutation({
-    mutationFn: () => {
-      if (!product) throw new Error('Спершу збережіть товар, щоб додати характеристики.');
-      if (!selectedCharacteristicTemplateId) throw new Error('Оберіть шаблон характеристик.');
-      return api.catalog.updateProductCharacteristics(product.id, {
-        templateId: selectedCharacteristicTemplateId,
-        values: characteristicValues,
-        expectedVersion: product.version
-      });
-    }
-  });
-  const saveModifications = useMutation({
-    mutationFn: () => {
-      if (!product) throw new Error('Спершу збережіть товар, щоб додати модифікації.');
-      const groupId = selectedModificationGroupId && selectedModificationGroupId !== newModificationGroupId
-        ? selectedModificationGroupId
-        : null;
-      if (!groupId && !modificationGroupLabel.trim()) throw new Error('Вкажіть назву групи модифікацій.');
-      const productIds = [...new Set([product.id, ...selectedModificationProductIds])];
-      if (productIds.length < 2) throw new Error('Оберіть хоча б один вкладений товар-модифікацію.');
-      return api.catalog.updateProductModifications(product.id, {
-        groupId,
-        groupLabel: modificationGroupLabel,
-        mainProductId: mainModificationProductId || product.id,
-        productIds,
-        expectedVersion: product.version
-      });
-    }
-  });
+  const editorBusy = busy || linkedSaveBusy;
 
   useEffect(() => {
     setSelectedCharacteristicTemplateId('');
@@ -481,35 +454,49 @@ function ProductEditorScreen({
     if (!enabled && mainModificationProductId === productId) setMainModificationProductId(product?.id || '');
   }
 
-  async function submitCharacteristics() {
-    try {
-      const saved = await saveCharacteristics.mutateAsync();
-      showToast('Характеристики товару збережено.');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['catalog-product-characteristics', product?.id] }),
-        queryClient.invalidateQueries({ queryKey: ['catalog-products'] }),
-        queryClient.invalidateQueries({ queryKey: ['catalog-summary'] })
-      ]);
-      await onProductUpdated(saved);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти характеристики.', 'error');
-    }
-  }
+  async function saveLinkedProductData(savedProduct: CatalogProduct) {
+    let current = savedProduct;
+    const invalidationKeys: Array<readonly unknown[]> = [];
 
-  async function submitModifications() {
-    try {
-      const saved = await saveModifications.mutateAsync();
-      showToast('Модифікації товару збережено.');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['catalog-product-modifications', product?.id] }),
-        queryClient.invalidateQueries({ queryKey: ['catalog-product-groups'] }),
-        queryClient.invalidateQueries({ queryKey: ['catalog-products'] }),
-        queryClient.invalidateQueries({ queryKey: ['catalog-summary'] })
-      ]);
-      await onProductUpdated(saved);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти модифікації товару.', 'error');
+    if (selectedCharacteristicTemplateId) {
+      current = await api.catalog.updateProductCharacteristics(current.id, {
+        templateId: selectedCharacteristicTemplateId,
+        values: characteristicValues,
+        expectedVersion: current.version
+      });
+      invalidationKeys.push(
+        ['catalog-product-characteristics', current.id],
+        ['catalog-products'],
+        ['catalog-summary']
+      );
     }
+
+    const productIds = [...new Set([current.id, ...selectedModificationProductIds])];
+    if (productIds.length >= 2) {
+      const groupId = selectedModificationGroupId && selectedModificationGroupId !== newModificationGroupId
+        ? selectedModificationGroupId
+        : null;
+      if (!groupId && !modificationGroupLabel.trim()) throw new Error('Вкажіть назву групи модифікацій.');
+      current = await api.catalog.updateProductModifications(current.id, {
+        groupId,
+        groupLabel: modificationGroupLabel,
+        mainProductId: mainModificationProductId || current.id,
+        productIds,
+        expectedVersion: current.version
+      });
+      invalidationKeys.push(
+        ['catalog-product-modifications', current.id],
+        ['catalog-product-groups'],
+        ['catalog-products'],
+        ['catalog-summary']
+      );
+    }
+
+    if (invalidationKeys.length) {
+      await Promise.all(invalidationKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+      await onProductUpdated(current);
+    }
+    return current;
   }
 
   function setGalleryItem(index: number, key: 'url' | 'alt', value: string) {
@@ -572,31 +559,47 @@ function ProductEditorScreen({
     }
   }
 
+  async function submitAll() {
+    setLinkedSaveBusy(true);
+    try {
+      const savedProduct = await onSubmit(draft, product);
+      if (!savedProduct) return null;
+      return await saveLinkedProductData(savedProduct);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти всі дані товару.', 'error');
+      return null;
+    } finally {
+      setLinkedSaveBusy(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await onSubmit(draft, product);
+    await submitAll();
   }
 
   async function submitAndPreview() {
-    const saved = await onSubmit(draft, product);
+    const saved = await submitAll();
     if (saved?.publicPath) window.open(catalogPreviewPath(saved), '_blank', 'noopener,noreferrer');
   }
 
   return <form className="catalog-editor-screen" onSubmit={(event) => void submit(event)}>
     <header className="catalog-editor-screen__topbar">
       <button className="button button--secondary" type="button" onClick={onClose}><Icon name="arrowLeft" size={17} /> До списку</button>
-      <div>
+      <div className="catalog-editor-heading">
         <p className="eyebrow">{product ? product.productCode : 'Новий товар'}</p>
-        <h1>{product ? 'Редактор картки товару' : 'Новий смартфон'}</h1>
+        <div className="catalog-editor-title-row">
+          <h1>{product ? 'Редактор картки товару' : 'Новий смартфон'}</h1>
+          <label className="catalog-editor-status">
+            <span>Статус</span>
+            <StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} ariaLabel="Статус публікації" compact />
+          </label>
+        </div>
       </div>
       <div className="catalog-editor-actions">
-        <label className="catalog-editor-status">
-          <span>Статус</span>
-          <StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} ariaLabel="Статус публікації" compact />
-        </label>
         {product?.publicPath && <a className="button button--secondary" href={catalogPreviewPath(product)} target="_blank" rel="noreferrer"><Icon name="openInNew" size={17} /> Перегляд</a>}
-        <button className="button button--secondary" type="button" disabled={busy} onClick={() => void submitAndPreview()}><Icon name="visibility" size={17} /> Зберегти і переглянути</button>
-        <button className="button button--primary" type="submit" disabled={busy}><Icon name="save" size={17} /> Зберегти</button>
+        <button className="button button--secondary" type="button" disabled={editorBusy} onClick={() => void submitAndPreview()}><Icon name="visibility" size={17} /> Зберегти і переглянути</button>
+        <button className="button button--primary" type="submit" disabled={editorBusy}><Icon name="save" size={17} /> Зберегти</button>
       </div>
     </header>
 
@@ -688,16 +691,6 @@ function ProductEditorScreen({
         {activeTab === 'characteristics' && <section className="catalog-editor-section">
           <header>
             <h2>Характеристики</h2>
-            <div className="catalog-editor-header-actions">
-              <button
-                className="button button--primary button--small"
-                type="button"
-                disabled={!product || !selectedCharacteristicTemplateId || saveCharacteristics.isPending}
-                onClick={() => void submitCharacteristics()}
-              >
-                <Icon name="save" size={15} /> {saveCharacteristics.isPending ? 'Збереження...' : 'Зберегти характеристики'}
-              </button>
-            </div>
           </header>
           {!product && <div className="catalog-editor-notice">Спершу збережіть товар. Після створення картки можна буде прив'язати її до шаблону характеристик.</div>}
           {product && <div className="catalog-editor-grid">
@@ -740,16 +733,6 @@ function ProductEditorScreen({
         {activeTab === 'modifications' && <section className="catalog-editor-section">
           <header>
             <h2>Модифікації</h2>
-            <div className="catalog-editor-header-actions">
-              <button
-                className="button button--primary button--small"
-                type="button"
-                disabled={!product || selectedModificationProductIds.length < 2 || saveModifications.isPending}
-                onClick={() => void submitModifications()}
-              >
-                <Icon name="save" size={15} /> {saveModifications.isPending ? 'Збереження...' : 'Зберегти модифікації'}
-              </button>
-            </div>
           </header>
           {!product && <div className="catalog-editor-notice">Спершу збережіть товар. Після створення картки можна буде прив'язати її до групи модифікацій.</div>}
           {product && <div className="catalog-editor-grid">
@@ -863,7 +846,7 @@ function CatalogRow({
 
   return <article className="catalog-row">
     <div className={`catalog-row__product${childrenCount > 0 ? ' catalog-row__product--expandable' : ''}`}>
-      {childrenCount > 0 && <button className="icon-button catalog-row__expand" type="button" title="Розгорнути модифікації" aria-label="Розгорнути модифікації" onClick={onToggleChildren}>
+      {childrenCount > 0 && <button className="icon-button catalog-row__expand" type="button" title="Розгорнути модифікації" aria-label="Розгорнути модифікації" onClick={(event) => { event.stopPropagation(); onToggleChildren?.(); }}>
         <Icon name={expanded ? 'arrowDown' : 'arrowRight'} />
       </button>}
       <button className="catalog-row__main" type="button" onClick={() => onOpen(product)}>
@@ -877,12 +860,12 @@ function CatalogRow({
     <div className="catalog-row__status"><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} compact /></div>
     <span className={`catalog-availability catalog-availability--${product.availability.status}`}>{product.availability.label}</span>
     <div className="catalog-row__actions">
-      {onModifications && <button className="button button--secondary button--small catalog-row__modifications" type="button" disabled={busy} onClick={() => onModifications(product)}>
+      {onModifications && <button className="button button--secondary button--small catalog-row__modifications" type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); onModifications(product); }}>
         <Icon name="variants" size={15} /> Модифікації
       </button>}
-      <button className="icon-button" type="button" title="Поділитися" aria-label="Поділитися" onClick={() => onShare(product)}><Icon name="share" /></button>
-      <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label="Видалити" disabled={busy} onClick={() => onDelete(product)}><Icon name="delete" /></button>
-      <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => void onQuickSave(product, draft)}><Icon name="save" size={15} /> Save</button>
+      <button className="icon-button" type="button" title="Поділитися" aria-label="Поділитися" onClick={(event) => { event.stopPropagation(); onShare(product); }}><Icon name="share" /></button>
+      <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label="Видалити" disabled={busy} onClick={(event) => { event.stopPropagation(); onDelete(product); }}><Icon name="delete" /></button>
+      <button className="button button--secondary button--small" type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void onQuickSave(product, draft); }}><Icon name="save" size={15} /> Save</button>
     </div>
   </article>;
 }
@@ -1264,7 +1247,13 @@ export function UsedSmartphonesCatalogPage() {
   }
 
   async function quickSave(product: CatalogProduct, input: CatalogProductInput) {
-    await submitProduct(input, product);
+    try {
+      await saveProduct.mutateAsync({ product, input });
+      showToast('Товар оновлено.');
+      await refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти товар.', 'error');
+    }
   }
 
   async function shareProduct(product: CatalogProduct) {

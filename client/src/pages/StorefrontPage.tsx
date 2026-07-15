@@ -88,7 +88,9 @@ function StorefrontGalleryLightbox({
     <button className="storefront-gallery-lightbox__close" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={24} /></button>
     {images.length > 1 && <button className="storefront-gallery-lightbox__arrow storefront-gallery-lightbox__arrow--prev" type="button" onClick={() => onIndex((index - 1 + images.length) % images.length)} aria-label="Попереднє фото"><Icon name="chevronLeft" size={34} /></button>}
     <figure>
-      <img src={current.url} alt={current.alt} />
+      <span className="storefront-gallery-lightbox__image">
+        <img src={current.url} alt={current.alt} />
+      </span>
       {images.length > 1 && <figcaption>{index + 1} / {images.length}</figcaption>}
     </figure>
     {images.length > 1 && <button className="storefront-gallery-lightbox__arrow storefront-gallery-lightbox__arrow--next" type="button" onClick={() => onIndex((index + 1) % images.length)} aria-label="Наступне фото"><Icon name="chevronRight" size={34} /></button>}
