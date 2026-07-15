@@ -131,6 +131,16 @@ function queryString(params: Record<string, string | number | undefined>): strin
   return result ? `?${result}` : '';
 }
 
+function imageMimeFromFile(file: File | undefined, fallback = 'image/webp') {
+  const type = file?.type?.toLowerCase();
+  if (type === 'image/png' || type === 'image/jpeg' || type === 'image/webp') return type;
+  const extension = file?.name.toLowerCase().split('.').pop();
+  if (extension === 'png') return 'image/png';
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'webp') return 'image/webp';
+  return fallback;
+}
+
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -319,7 +329,7 @@ export const api = {
           webpName: fileName,
           originalBase64: originalFile ? await blobToBase64(originalFile) : '',
           originalName: originalFile?.name || fileName,
-          originalMimeType: originalFile?.type || 'image/webp'
+          originalMimeType: imageMimeFromFile(originalFile)
         }),
         credentials: 'same-origin'
       });

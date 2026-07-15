@@ -101,6 +101,15 @@ function diagnosticText(diagnostics: Record<string, unknown>, key: string) {
   return '';
 }
 
+function mediaAltFromFile(file: File) {
+  return file.name
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
 function RichTextEditor({
   value,
   onChange,
@@ -273,6 +282,30 @@ function ProductEditorScreen({
     }
   }
 
+  async function uploadGalleryFiles(files: FileList | null) {
+    const selected = Array.from(files || []).slice(0, Math.max(0, 20 - draft.gallery.length));
+    if (!selected.length) return;
+    try {
+      setMediaError('');
+      setMediaBusy('gallery-batch');
+      const uploaded: Array<{ url: string; alt: string }> = [];
+      for (const file of selected) {
+        const webp = await convertCatalogImageToWebp(file);
+        const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'), file);
+        uploaded.push({ url: media.url, alt: mediaAltFromFile(file) });
+      }
+      setDraft((current) => ({
+        ...current,
+        mainImageUrl: current.mainImageUrl || uploaded[0]?.url || '',
+        gallery: [...current.gallery, ...uploaded].slice(0, 20)
+      }));
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : 'Не вдалося завантажити фото.');
+    } finally {
+      setMediaBusy('');
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     await onSubmit(draft, product);
@@ -333,7 +366,16 @@ function ProductEditorScreen({
         </section>}
 
         {activeTab === 'media' && <section className="catalog-editor-section">
-          <header><h2>Медіа</h2><button className="button button--secondary button--small" type="button" onClick={addGalleryItem} disabled={draft.gallery.length >= 20}><Icon name="add" size={15} /> Фото</button></header>
+          <header>
+            <h2>Медіа</h2>
+            <div className="catalog-editor-header-actions">
+              <label className="button button--secondary button--small">
+                <Icon name="upload" size={15} /> {mediaBusy === 'gallery-batch' ? 'Завантаження...' : 'Кілька фото'}
+                <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple disabled={Boolean(mediaBusy) || draft.gallery.length >= 20} onChange={(event) => { void uploadGalleryFiles(event.target.files); event.currentTarget.value = ''; }} />
+              </label>
+              <button className="button button--secondary button--small" type="button" onClick={addGalleryItem} disabled={draft.gallery.length >= 20}><Icon name="add" size={15} /> Порожній слот</button>
+            </div>
+          </header>
           {mediaError && <p className="form-message form-message--error">{mediaError}</p>}
           <div className="catalog-editor-grid">
             <div className="catalog-media-upload catalog-editor-grid__wide">
@@ -341,8 +383,8 @@ function ProductEditorScreen({
               <div>
                 <strong>Головне фото</strong>
                 <label className="button button--secondary button--small">
-                  <Icon name="upload" size={15} /> {mediaBusy === 'main' ? 'Завантаження...' : 'Завантажити WebP'}
-                  <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], 'main', (url) => setField('mainImageUrl', url)); event.currentTarget.value = ''; }} />
+                  <Icon name="upload" size={15} /> {mediaBusy === 'main' ? 'Завантаження...' : 'Завантажити фото'}
+                  <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], 'main', (url) => setField('mainImageUrl', url)); event.currentTarget.value = ''; }} />
                 </label>
                 {draft.mainImageUrl && <button className="button button--danger button--small" type="button" onClick={() => setField('mainImageUrl', '')}>Видалити</button>}
               </div>
@@ -354,7 +396,7 @@ function ProductEditorScreen({
                 <span>{item.url ? <img src={item.url} alt="" /> : <Icon name="savedBanners" size={22} />}</span>
                 <label className="button button--secondary button--small">
                   <Icon name="upload" size={15} /> {mediaBusy === `gallery-${index}` ? 'Завантаження...' : 'Фото'}
-                  <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], `gallery-${index}`, (url) => setGalleryItem(index, 'url', url)); event.currentTarget.value = ''; }} />
+                  <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], `gallery-${index}`, (url) => setGalleryItem(index, 'url', url)); event.currentTarget.value = ''; }} />
                 </label>
               </div>
               <label className="field"><span>Alt</span><input value={item.alt} onChange={(event) => setGalleryItem(index, 'alt', event.target.value)} maxLength={240} /></label>
@@ -390,17 +432,32 @@ function ProductEditorScreen({
         </section>}
 
         {activeTab === 'characteristics' && <section className="catalog-editor-section">
-          <header><h2>Характеристики</h2></header>
-          <div className="catalog-editor-grid">
-            <label className="field catalog-editor-grid__wide"><span>Публічні характеристики</span><textarea value={diagnosticText(draft.diagnostics, 'characteristicsText')} onChange={(event) => setDiagnostic('characteristicsText', event.target.value)} maxLength={6000} /></label>
+          <header><h2>Характеристики</h2><span>Очікує модуль шаблонів</span></header>
+          <div className="catalog-editor-grid catalog-template-stub">
+            <label className="field catalog-editor-grid__wide">
+              <span>Шаблон характеристик</span>
+              <StyledSelect value="" disabled options={[{ value: '', label: 'Шаблони характеристик ще не налаштовані' }]} onChange={() => {}} />
+            </label>
+            <div className="catalog-editor-notice catalog-editor-grid__wide">
+              Поля характеристик будуть доступні після запуску конструктора шаблонів. Значення товару мають створюватися тільки на основі вибраного шаблону.
+            </div>
           </div>
         </section>}
 
         {activeTab === 'modifications' && <section className="catalog-editor-section">
-          <header><h2>Модифікації</h2></header>
-          <div className="catalog-editor-grid">
-            <label className="field"><span>Група</span><input value={diagnosticText(draft.diagnostics, 'modificationGroup')} onChange={(event) => setDiagnostic('modificationGroup', event.target.value)} placeholder="Пам'ять / Колір" maxLength={160} /></label>
-            <label className="field catalog-editor-grid__wide"><span>Варіанти</span><textarea value={diagnosticText(draft.diagnostics, 'modificationValues')} onChange={(event) => setDiagnostic('modificationValues', event.target.value)} maxLength={3000} /></label>
+          <header><h2>Модифікації</h2><span>Очікує модуль шаблонів</span></header>
+          <div className="catalog-editor-grid catalog-template-stub">
+            <label className="field">
+              <span>Шаблон модифікацій</span>
+              <StyledSelect value="" disabled options={[{ value: '', label: 'Шаблони модифікацій ще не налаштовані' }]} onChange={() => {}} />
+            </label>
+            <label className="field">
+              <span>Група товарів</span>
+              <StyledSelect value="" disabled options={[{ value: '', label: 'Групи будуть доступні після запуску модуля' }]} onChange={() => {}} />
+            </label>
+            <div className="catalog-editor-notice catalog-editor-grid__wide">
+              Параметри, значення та перемикання варіантів будуть прив'язані до шаблонів модифікацій. Ручне текстове введення тут тимчасово вимкнене, щоб не створювати несумісні дані.
+            </div>
           </div>
         </section>}
 
