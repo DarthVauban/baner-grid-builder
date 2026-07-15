@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -13,6 +13,7 @@ import {
   formatCatalogDate,
   productToInput
 } from '../lib/catalog';
+import { convertCatalogImageToWebp } from '../lib/catalog-media';
 import { copyShareLink } from '../lib/share';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -100,6 +101,62 @@ function diagnosticText(diagnostics: Record<string, unknown>, key: string) {
   return '';
 }
 
+function RichTextEditor({
+  value,
+  onChange,
+  maxLength = 12000
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  maxLength?: number;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [mode, setMode] = useState<'visual' | 'source'>('visual');
+
+  useEffect(() => {
+    if (mode !== 'visual' || !editorRef.current) return;
+    if (editorRef.current.innerHTML !== value) editorRef.current.innerHTML = value;
+  }, [mode, value]);
+
+  function applyFormat(command: string, argument?: string) {
+    editorRef.current?.focus();
+    document.execCommand(command, false, argument);
+    onChange(editorRef.current?.innerHTML || '');
+  }
+
+  function addLink() {
+    const url = window.prompt('URL');
+    if (!url) return;
+    applyFormat('createLink', url);
+  }
+
+  return <div className="rich-editor">
+    <div className="rich-editor__toolbar">
+      <div className="segmented rich-editor__mode">
+        <button className={mode === 'visual' ? 'active' : ''} type="button" onClick={() => setMode('visual')}>Візуально</button>
+        <button className={mode === 'source' ? 'active' : ''} type="button" onClick={() => setMode('source')}>Джерело</button>
+      </div>
+      <button className="icon-button" type="button" title="Bold" aria-label="Bold" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('bold')}><strong>B</strong></button>
+      <button className="icon-button" type="button" title="Italic" aria-label="Italic" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('italic')}><em>I</em></button>
+      <button className="icon-button" type="button" title="Список" aria-label="Список" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('insertUnorderedList')}>•</button>
+      <button className="icon-button" type="button" title="Нумерація" aria-label="Нумерація" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('insertOrderedList')}>1.</button>
+      <button className="icon-button" type="button" title="Посилання" aria-label="Посилання" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={addLink}><Icon name="link" size={18} /></button>
+      <button className="icon-button" type="button" title="Очистити формат" aria-label="Очистити формат" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('removeFormat')}><Icon name="remove" size={18} /></button>
+    </div>
+    {mode === 'visual'
+      ? <div
+        className="rich-editor__surface"
+        ref={editorRef}
+        contentEditable
+        role="textbox"
+        aria-multiline="true"
+        suppressContentEditableWarning
+        onInput={(event) => onChange(event.currentTarget.innerHTML)}
+      />
+      : <textarea className="rich-editor__source" value={value} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} spellCheck={false} />}
+  </div>;
+}
+
 function ProductEditorScreen({
   product,
   brands,
@@ -117,6 +174,8 @@ function ProductEditorScreen({
     product ? productToInput(product) : { ...emptyCatalogProductInput }
   ));
   const [activeTab, setActiveTab] = useState<CatalogEditorTab>('main');
+  const [mediaBusy, setMediaBusy] = useState('');
+  const [mediaError, setMediaError] = useState('');
 
   const publishBlockers = useMemo(() => {
     const blockers = [];
@@ -166,6 +225,21 @@ function ProductEditorScreen({
 
   function removeGalleryItem(index: number) {
     setDraft((current) => ({ ...current, gallery: current.gallery.filter((_, itemIndex) => itemIndex !== index) }));
+  }
+
+  async function uploadMedia(file: File | undefined, key: string, onUploaded: (url: string) => void) {
+    if (!file) return;
+    try {
+      setMediaError('');
+      setMediaBusy(key);
+      const webp = await convertCatalogImageToWebp(file);
+      const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'));
+      onUploaded(media.url);
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : 'Не вдалося завантажити фото.');
+    } finally {
+      setMediaBusy('');
+    }
   }
 
   async function submit(event: FormEvent) {
@@ -229,11 +303,30 @@ function ProductEditorScreen({
 
         {activeTab === 'media' && <section className="catalog-editor-section">
           <header><h2>Медіа</h2><button className="button button--secondary button--small" type="button" onClick={addGalleryItem} disabled={draft.gallery.length >= 20}><Icon name="add" size={15} /> Фото</button></header>
+          {mediaError && <p className="form-message form-message--error">{mediaError}</p>}
           <div className="catalog-editor-grid">
-            <label className="field catalog-editor-grid__wide"><span>Головне фото</span><input value={draft.mainImageUrl} onChange={(event) => setField('mainImageUrl', event.target.value)} placeholder="https://..." maxLength={4000} /></label>
+            <div className="catalog-media-upload catalog-editor-grid__wide">
+              <span className="catalog-media-upload__preview">{draft.mainImageUrl ? <img src={draft.mainImageUrl} alt="" /> : <Icon name="phone" size={30} />}</span>
+              <div>
+                <strong>Головне фото</strong>
+                <label className="button button--secondary button--small">
+                  <Icon name="upload" size={15} /> {mediaBusy === 'main' ? 'Завантаження...' : 'Завантажити WebP'}
+                  <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], 'main', (url) => setField('mainImageUrl', url)); event.currentTarget.value = ''; }} />
+                </label>
+                {draft.mainImageUrl && <button className="button button--danger button--small" type="button" onClick={() => setField('mainImageUrl', '')}>Видалити</button>}
+              </div>
+            </div>
+            <label className="field catalog-editor-grid__wide"><span>URL головного фото</span><input value={draft.mainImageUrl} onChange={(event) => setField('mainImageUrl', event.target.value)} placeholder="/media/catalog/photo.webp" maxLength={4000} /></label>
           </div>
           <div className="catalog-gallery-editor">
             {draft.gallery.map((item, index) => <div className="catalog-gallery-row" key={index}>
+              <div className="catalog-gallery-row__upload">
+                <span>{item.url ? <img src={item.url} alt="" /> : <Icon name="savedBanners" size={22} />}</span>
+                <label className="button button--secondary button--small">
+                  <Icon name="upload" size={15} /> {mediaBusy === `gallery-${index}` ? 'Завантаження...' : 'Фото'}
+                  <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], `gallery-${index}`, (url) => setGalleryItem(index, 'url', url)); event.currentTarget.value = ''; }} />
+                </label>
+              </div>
               <label className="field"><span>URL</span><input value={item.url} onChange={(event) => setGalleryItem(index, 'url', event.target.value)} maxLength={4000} /></label>
               <label className="field"><span>Alt</span><input value={item.alt} onChange={(event) => setGalleryItem(index, 'alt', event.target.value)} maxLength={240} /></label>
               <button className="icon-button" type="button" onClick={() => removeGalleryItem(index)} aria-label="Видалити фото"><Icon name="delete" /></button>
@@ -246,7 +339,7 @@ function ProductEditorScreen({
           <header><h2>Опис</h2></header>
           <div className="catalog-editor-grid">
             <label className="field catalog-editor-grid__wide"><span>Короткий опис</span><textarea value={draft.shortDescription} onChange={(event) => setField('shortDescription', event.target.value)} maxLength={1200} /></label>
-            <label className="field catalog-editor-grid__wide"><span>Повний опис</span><textarea value={draft.description} onChange={(event) => setField('description', event.target.value)} maxLength={12000} /></label>
+            <label className="field catalog-editor-grid__wide"><span>Повний опис</span><RichTextEditor value={draft.description} onChange={(value) => setField('description', value)} maxLength={12000} /></label>
           </div>
         </section>}
 

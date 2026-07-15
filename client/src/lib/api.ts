@@ -298,6 +298,26 @@ export const api = {
         method: 'PATCH',
         body: jsonBody({ status, expectedVersion })
       }),
+    uploadMedia: async (file: Blob, fileName: string) => {
+      const response = await fetch('/api/catalog/media', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'image/webp',
+          'X-File-Name': fileName
+        },
+        body: file,
+        credentials: 'same-origin'
+      });
+      const payload = await response.json().catch(() => ({})) as ApiSuccessPayload<{ url: string; filename: string; size: number; mimeType: string }> & ApiErrorPayload;
+      if (!response.ok) {
+        const error = new ApiError(response.status, payload);
+        if (response.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
+          window.dispatchEvent(new Event('mt:unauthorized'));
+        }
+        throw error;
+      }
+      return payload.data;
+    },
     previewImport: (rows: Array<Record<string, unknown>>) =>
       request<CatalogImportPreview>('/api/catalog/imports/preview', { method: 'POST', body: jsonBody({ rows }) }),
     commitImport: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) =>

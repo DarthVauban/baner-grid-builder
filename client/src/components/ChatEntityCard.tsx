@@ -74,7 +74,7 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
         ? `/tools/blog-publications?publication=${encodeURIComponent(id)}`
         : type === 'application'
           ? `/tools/applications?application=${encodeURIComponent(id)}`
-          : `/tools/used-smartphones?product=${encodeURIComponent(id)}`;
+          : `/catalog/products?product=${encodeURIComponent(id)}`;
     try {
       await navigator.clipboard.writeText(`${window.location.origin}${path}`);
       showToast('Посилання скопійовано.');
@@ -176,7 +176,7 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
         <span><Icon name="calendar" size={18} /><span><small>Оновлено</small><strong>{formatCatalogDate(product.updatedAt)}</strong></span></span>
       </div>
       <footer>
-        <a className="button button--secondary button--small" href={`/tools/used-smartphones?product=${encodeURIComponent(entity.id)}`}>Відкрити <Icon name="arrow" size={14} /></a>
+        <a className="button button--secondary button--small" href={`/catalog/products?product=${encodeURIComponent(entity.id)}`}>Відкрити <Icon name="arrow" size={14} /></a>
         <button className="button button--secondary button--small" type="button" onClick={() => void shareEntity('catalog_product', entity.id)}>Копіювати <Icon name="copy" size={14} /></button>
       </footer>
     </article>;

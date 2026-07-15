@@ -34,6 +34,12 @@ const FormsBuilderPage = lazy(() => import('../pages/FormsBuilderPage').then((mo
 const UsedSmartphonesCatalogPage = lazy(() => import('../pages/UsedSmartphonesCatalogPage').then((module) => ({
   default: module.UsedSmartphonesCatalogPage
 })));
+const CatalogWorkspacePage = lazy(() => import('../pages/CatalogWorkspacePage').then((module) => ({
+  default: module.CatalogWorkspacePage
+})));
+const CatalogPlaceholderPage = lazy(() => import('../pages/CatalogWorkspacePage').then((module) => ({
+  default: module.CatalogPlaceholderPage
+})));
 const ProfilePage = lazy(() => import('../pages/ProfilePage').then((module) => ({
   default: module.ProfilePage
 })));
@@ -72,6 +78,11 @@ function WorkspaceShell() {
   return <BannerWorkspaceProvider><AppShell /></BannerWorkspaceProvider>;
 }
 
+function CatalogLegacyRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/catalog/products${location.search}`} replace />;
+}
+
 export function App() {
   return (
     <Routes>
@@ -84,6 +95,21 @@ export function App() {
       </Route>
 
       <Route element={<ProtectedRoute />}>
+        <Route element={<ToolAccessRoute tool="used_smartphones_catalog" />}>
+          <Route path="tools/used-smartphones" element={<CatalogLegacyRedirect />} />
+          <Route path="catalog" element={<Suspense fallback={<LoadingScreen />}><CatalogWorkspacePage /></Suspense>}>
+            <Route index element={<Navigate to="products" replace />} />
+            <Route path="products" element={<Suspense fallback={<LoadingScreen />}><UsedSmartphonesCatalogPage /></Suspense>} />
+            <Route path="imports" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Імпорт XLSX" /></Suspense>} />
+            <Route path="brands" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Бренди" /></Suspense>} />
+            <Route path="characteristics" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Характеристики" /></Suspense>} />
+            <Route path="filters" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Фільтри" /></Suspense>} />
+            <Route path="modifications" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Модифікації" /></Suspense>} />
+            <Route path="storefront" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Налаштування вітрини" /></Suspense>} />
+            <Route path="preview" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Preview магазину" /></Suspense>} />
+            <Route path="audit" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Історія змін" /></Suspense>} />
+          </Route>
+        </Route>
         <Route element={<WorkspaceShell />}>
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
@@ -109,9 +135,6 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="form_builder" />}>
             <Route path="tools/forms" element={<Suspense fallback={<LoadingScreen />}><FormsBuilderPage /></Suspense>} />
-          </Route>
-          <Route element={<ToolAccessRoute tool="used_smartphones_catalog" />}>
-            <Route path="tools/used-smartphones" element={<Suspense fallback={<LoadingScreen />}><UsedSmartphonesCatalogPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="chat" />}>
             <Route path="chat" element={<Suspense fallback={<LoadingScreen />}><ChatPage /></Suspense>} />

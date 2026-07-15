@@ -10,6 +10,7 @@ const entityLinkMatchers = [
   { type: 'task', path: '/tasks', parameter: 'task' },
   { type: 'publication', path: '/tools/blog-publications', parameter: 'publication' },
   { type: 'application', path: '/tools/applications', parameter: 'application' },
+  { type: 'catalog_product', path: '/catalog/products', parameter: 'product' },
   { type: 'catalog_product', path: '/tools/used-smartphones', parameter: 'product' }
 ];
 

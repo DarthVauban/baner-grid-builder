@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, raw } from 'express';
 import { z } from 'zod';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
@@ -12,6 +12,7 @@ import {
   publishPublicCatalogUpdate,
   subscribeToCatalogUpdates
 } from './catalog.events.js';
+import { saveCatalogWebpImage } from './catalog.media.js';
 import {
   analyzeImportRows,
   catalogToolId,
@@ -197,6 +198,15 @@ router.get('/stream', (req, res) => {
   res.write('event: connected\ndata: {}\n\n');
   req.on('close', () => { clearInterval(heartbeat); unsubscribe(); });
 });
+
+router.post('/media', raw({ type: 'image/webp', limit: '8mb' }), asyncHandler(async (req, res) => {
+  const contentType = String(req.get('content-type') || '').toLowerCase();
+  if (!contentType.startsWith('image/webp')) {
+    throw new AppError(415, 'CATALOG_MEDIA_UNSUPPORTED_TYPE', 'Завантажуйте фото у форматі WebP.');
+  }
+  const media = await saveCatalogWebpImage(req.body, req.get('x-file-name') || 'catalog-photo');
+  res.status(201).json({ data: media });
+}));
 
 router.get('/summary', asyncHandler(async (req, res) => {
   const result = await query(

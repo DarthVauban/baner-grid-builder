@@ -13,4 +13,10 @@ describe('buildShareLink', () => {
       'https://workspace.example/tools/blog-publications?publication=publication-id'
     );
   });
+
+  it('builds a deep link to a catalog product card', () => {
+    expect(buildShareLink('catalog_product', 'product-id', 'https://workspace.example')).toBe(
+      'https://workspace.example/catalog/products?product=product-id'
+    );
+  });
 });

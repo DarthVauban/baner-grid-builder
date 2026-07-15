@@ -1,11 +1,14 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'pg-mem://catalog-tests';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.COOKIE_SECURE = 'false';
+process.env.CATALOG_MEDIA_DIR = path.join(os.tmpdir(), 'mt-catalog-media-tests');
 process.env.ADMIN_NAME = 'Catalog Admin';
 process.env.ADMIN_EMAIL = 'catalog-admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
@@ -29,6 +32,14 @@ test('catalog products publish to storefront, import stock updates, and create a
   const catalog = await admin.get('/api/users/tool-catalog').expect(200);
   const catalogTool = catalog.body.data.tools.find((item) => item.toolId === 'used_smartphones_catalog');
   assert.equal(catalogTool.accessible, true);
+
+  const media = await admin.post('/api/catalog/media')
+    .set('Content-Type', 'image/webp')
+    .set('X-File-Name', 'catalog-test.png')
+    .send(Buffer.from('webp-test-image'))
+    .expect(201);
+  assert.match(media.body.data.url, /^\/media\/catalog\/.+\.webp$/);
+  assert.equal(media.body.data.mimeType, 'image/webp');
 
   const created = await admin.post('/api/catalog/products').send({
     name: 'iPhone 13 128GB Midnight',

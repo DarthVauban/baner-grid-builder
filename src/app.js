@@ -21,6 +21,7 @@ import formRoutes from './modules/applications/form.routes.js';
 import publicApplicationRoutes from './modules/applications/public.routes.js';
 import catalogRoutes from './modules/catalog/catalog.routes.js';
 import storefrontRoutes from './modules/catalog/storefront.routes.js';
+import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { env } from './config/env.js';
 import { query } from './db/pool.js';
 import { asyncHandler } from './lib/async-handler.js';
@@ -100,6 +101,11 @@ app.use('/api/storefront', publicEmbedCors, storefrontRoutes);
 app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
 app.use('/api', notFoundHandler);
 
+app.use('/media/catalog', express.static(catalogMediaDir, {
+  index: false,
+  immutable: true,
+  maxAge: env.isProduction ? '30d' : 0
+}));
 app.use(express.static(webDistDir, { index: false, maxAge: env.isProduction ? '1h' : 0 }));
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();
