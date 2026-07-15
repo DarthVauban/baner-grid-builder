@@ -19,6 +19,8 @@ import chatRoutes from './modules/chat/chat.routes.js';
 import applicationRoutes from './modules/applications/application.routes.js';
 import formRoutes from './modules/applications/form.routes.js';
 import publicApplicationRoutes from './modules/applications/public.routes.js';
+import catalogRoutes from './modules/catalog/catalog.routes.js';
+import storefrontRoutes from './modules/catalog/storefront.routes.js';
 import { env } from './config/env.js';
 import { query } from './db/pool.js';
 import { asyncHandler } from './lib/async-handler.js';
@@ -55,6 +57,7 @@ app.use(helmet({
 if (env.APP_ORIGIN) {
   app.use((req, res, next) => {
     if (req.path.startsWith('/api/public/application-forms')) return next();
+    if (req.path.startsWith('/api/storefront')) return next();
     return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
   });
 }
@@ -92,6 +95,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/forms', formRoutes);
+app.use('/api/catalog', catalogRoutes);
+app.use('/api/storefront', publicEmbedCors, storefrontRoutes);
 app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
 app.use('/api', notFoundHandler);
 

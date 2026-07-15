@@ -25,6 +25,7 @@ function isEntityUrl(value: string, entities: ChatEntity[]): boolean {
       (entity.type === 'task' && url.pathname === '/tasks' && url.searchParams.get('task') === entity.id)
       || (entity.type === 'publication' && url.pathname === '/tools/blog-publications' && url.searchParams.get('publication') === entity.id)
       || (entity.type === 'application' && url.pathname === '/tools/applications' && url.searchParams.get('application') === entity.id)
+      || (entity.type === 'catalog_product' && url.pathname === '/tools/used-smartphones' && url.searchParams.get('product') === entity.id)
     ));
   } catch { return false; }
 }

@@ -351,18 +351,25 @@ router.get('/:publicId', asyncHandler(async (req, res) => {
   res.json({ data: publicFormPayload(form) });
 }));
 
-router.post('/:publicId/applications', submitLimiter, asyncHandler(async (req, res) => {
-  const publicId = parseInput(publicIdSchema, req.params.publicId);
-  const input = parseInput(publicSubmissionSchema, req.body);
-  if (input.honeypot) return res.status(204).end();
+export async function createPublicApplication({
+  publicId,
+  input,
+  req,
+  productOverride = null,
+  contextOverride = {},
+  source = 'public_form',
+  historyComment = 'Заявку створено з публічної форми'
+}) {
+  if (input.honeypot) return { status: 204, data: null };
   const form = await loadPublishedForm(publicId);
   if (!form) throw new AppError(404, 'FORM_NOT_FOUND', 'Форма недоступна.');
   if (!form.banks.length) throw new AppError(422, 'BANK_REQUIRED', 'Оберіть банк.');
   const bankField = form.fields.find((field) => field.systemFieldType === 'bank');
   if (bankField) bankField.options = form.banks.map((bank) => ({ label: bank.label, value: bank.value }));
   const values = validateSubmission(form, input.values);
-  const context = input.context || {};
-  const product = buildSafeProductSnapshot(input.product || {}, context);
+  const context = { ...(input.context || {}), ...contextOverride };
+  const productInput = productOverride ? { ...(input.product || {}), ...productOverride } : (input.product || {});
+  const product = buildSafeProductSnapshot(productInput, context);
   const client = await pool.connect();
   let applicationId;
   let applicationNumber;
@@ -379,11 +386,11 @@ router.post('/:publicId/applications', submitLimiter, asyncHandler(async (req, r
       );
       if (existing.rows[0]) {
         await client.query('COMMIT');
-        return res.status(200).json({ data: {
+        return { status: 200, data: {
           id: existing.rows[0].id,
           number: existing.rows[0].application_number,
           duplicate: true
-        } });
+        } };
       }
     }
 
@@ -392,8 +399,8 @@ router.post('/:publicId/applications', submitLimiter, asyncHandler(async (req, r
       `INSERT INTO applications (
          application_number, form_id, form_public_id, form_name_snapshot,
          source_url, canonical_url, page_title, referrer, utm, user_agent,
-         idempotency_key
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11)
+         source, idempotency_key
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11, $12)
        RETURNING id`,
       [
         applicationNumber,
@@ -406,6 +413,7 @@ router.post('/:publicId/applications', submitLimiter, asyncHandler(async (req, r
         cleanUrl(context.referrer || ''),
         JSON.stringify(buildUtm(context)),
         cleanText(req.get('user-agent') || '', 500),
+        cleanText(source, 80) || 'public_form',
         input.idempotencyKey || null
       ]
     );
@@ -457,6 +465,14 @@ router.post('/:publicId/applications', submitLimiter, asyncHandler(async (req, r
        VALUES ($1, NULL, 'new', 'Заявку створено з публічної форми')`,
       [applicationId]
     );
+    if (historyComment) {
+      await client.query(
+        `UPDATE application_status_history
+         SET comment = $1
+         WHERE application_id = $2 AND previous_status IS NULL AND new_status = 'new'`,
+        [historyComment, applicationId]
+      );
+    }
     recipients = await getApplicationRecipientIds(client);
     for (const userId of recipients) {
       await createNotification(client, {
@@ -486,11 +502,19 @@ router.post('/:publicId/applications', submitLimiter, asyncHandler(async (req, r
   const application = recipients[0]
     ? await loadApplicationView(applicationId, { id: recipients[0], role: 'admin' })
     : null;
-  res.status(201).json({ data: {
+  return { status: 201, data: {
     id: applicationId,
     number: applicationNumber,
     status: application?.status || 'new'
-  } });
+  } };
+}
+
+router.post('/:publicId/applications', submitLimiter, asyncHandler(async (req, res) => {
+  const publicId = parseInput(publicIdSchema, req.params.publicId);
+  const input = parseInput(publicSubmissionSchema, req.body);
+  const result = await createPublicApplication({ publicId, input, req });
+  if (result.status === 204) return res.status(204).end();
+  res.status(result.status).json({ data: result.data });
 }));
 
 export default router;

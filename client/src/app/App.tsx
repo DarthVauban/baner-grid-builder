@@ -25,8 +25,14 @@ const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({
 const ApplicationsPage = lazy(() => import('../pages/ApplicationsPage').then((module) => ({
   default: module.ApplicationsPage
 })));
+const StorefrontPage = lazy(() => import('../pages/StorefrontPage').then((module) => ({
+  default: module.StorefrontPage
+})));
 const FormsBuilderPage = lazy(() => import('../pages/FormsBuilderPage').then((module) => ({
   default: module.FormsBuilderPage
+})));
+const UsedSmartphonesCatalogPage = lazy(() => import('../pages/UsedSmartphonesCatalogPage').then((module) => ({
+  default: module.UsedSmartphonesCatalogPage
 })));
 const ProfilePage = lazy(() => import('../pages/ProfilePage').then((module) => ({
   default: module.ProfilePage
@@ -69,6 +75,9 @@ function WorkspaceShell() {
 export function App() {
   return (
     <Routes>
+      <Route path="/storefront" element={<Suspense fallback={<LoadingScreen />}><StorefrontPage /></Suspense>} />
+      <Route path="/storefront/smartphones/:slug" element={<Suspense fallback={<LoadingScreen />}><StorefrontPage /></Suspense>} />
+
       <Route element={<AnonymousRoute />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -100,6 +109,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="form_builder" />}>
             <Route path="tools/forms" element={<Suspense fallback={<LoadingScreen />}><FormsBuilderPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="used_smartphones_catalog" />}>
+            <Route path="tools/used-smartphones" element={<Suspense fallback={<LoadingScreen />}><UsedSmartphonesCatalogPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="chat" />}>
             <Route path="chat" element={<Suspense fallback={<LoadingScreen />}><ChatPage /></Suspense>} />

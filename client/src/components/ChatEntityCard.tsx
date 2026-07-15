@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { formatApplicationDate } from '../lib/application';
+import { formatCatalogDate } from '../lib/catalog';
 import { formatPublicationDate, materialTypeLabels, publicationStatusLabels } from '../lib/publication';
 import { formatTaskDateValue, taskTypeLabels } from '../lib/task';
 import { useToast } from '../toast/ToastContext';
@@ -58,7 +59,7 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
     try {
       if (entity.type === 'task') setTaskDetails(await api.tasks.get(entity.id));
       else if (entity.type === 'publication') setPublicationDetails(await api.publications.get(entity.id));
-      else setApplicationDetails(await api.applications.get(entity.id));
+      else if (entity.type === 'application') setApplicationDetails(await api.applications.get(entity.id));
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося відкрити картку.', 'error');
     } finally {
@@ -66,12 +67,14 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
     }
   }
 
-  async function shareEntity(type: 'task' | 'publication' | 'application', id: string) {
+  async function shareEntity(type: 'task' | 'publication' | 'application' | 'catalog_product', id: string) {
     const path = type === 'task'
       ? `/tasks?task=${encodeURIComponent(id)}`
       : type === 'publication'
         ? `/tools/blog-publications?publication=${encodeURIComponent(id)}`
-        : `/tools/applications?application=${encodeURIComponent(id)}`;
+        : type === 'application'
+          ? `/tools/applications?application=${encodeURIComponent(id)}`
+          : `/tools/used-smartphones?product=${encodeURIComponent(id)}`;
     try {
       await navigator.clipboard.writeText(`${window.location.origin}${path}`);
       showToast('Посилання скопійовано.');
@@ -161,6 +164,22 @@ export function ChatEntityCard({ entity, conversationId }: { entity: ChatEntity;
         <button className="button button--secondary button--small" type="button" disabled={loadingDetails} onClick={() => void openDetails()}>Відкрити картку <Icon name="arrow" size={14} /></button>
       </footer>
     </article>{applicationDetails && <ApplicationDetailsModal application={applicationDetails} busy={applicationBusy} onClose={() => setApplicationDetails(null)} onShare={(item) => void shareEntity('application', item.id)} onStatus={(item, nextStatus, comment) => void changeApplicationStatus(item, nextStatus, comment)} onClaim={(item) => void claimApplicationCard(item)} onComment={(item, text) => void createApplicationComment(item, text)} />}</>;
+  }
+
+  if (entity.type === 'catalog_product') {
+    const product = entity.data;
+    return <article className="chat-entity chat-entity--catalog-product">
+      <header><span>{product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <Icon name="phone" size={28} />}</span><div><div className="chat-entity__kicker"><small>{product.productCode} · {product.conditionLabel}</small><b>{product.publicationStatusLabel}</b></div><strong>{product.name}</strong></div></header>
+      <div className="chat-entity__details">
+        <span><Icon name="publication" size={18} /><span><small>Ціна</small><strong>{product.priceLabel}</strong></span></span>
+        <span><Icon name="productSelection" size={18} /><span><small>Наявність</small><strong>{product.availabilityLabel}</strong></span></span>
+        <span><Icon name="calendar" size={18} /><span><small>Оновлено</small><strong>{formatCatalogDate(product.updatedAt)}</strong></span></span>
+      </div>
+      <footer>
+        <a className="button button--secondary button--small" href={`/tools/used-smartphones?product=${encodeURIComponent(entity.id)}`}>Відкрити <Icon name="arrow" size={14} /></a>
+        <button className="button button--secondary button--small" type="button" onClick={() => void shareEntity('catalog_product', entity.id)}>Копіювати <Icon name="copy" size={14} /></button>
+      </footer>
+    </article>;
   }
 
   const publication = entity.data;

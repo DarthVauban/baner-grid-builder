@@ -66,13 +66,27 @@ export interface ChatApplicationPreview {
   updatedAt: string;
 }
 
+export interface ChatCatalogProductPreview {
+  name: string;
+  productCode: string;
+  conditionLabel: string;
+  publicationStatusLabel: string;
+  availabilityLabel: string;
+  priceLabel: string;
+  imageUrl: string;
+  publicPath: string;
+  updatedAt: string;
+}
+
 export type ChatEntity =
   | { type: 'task'; id: string; available: false }
   | { type: 'task'; id: string; available: true; data: ChatTaskPreview }
   | { type: 'publication'; id: string; available: false }
   | { type: 'publication'; id: string; available: true; data: ChatPublicationPreview }
   | { type: 'application'; id: string; available: false }
-  | { type: 'application'; id: string; available: true; data: ChatApplicationPreview };
+  | { type: 'application'; id: string; available: true; data: ChatApplicationPreview }
+  | { type: 'catalog_product'; id: string; available: false }
+  | { type: 'catalog_product'; id: string; available: true; data: ChatCatalogProductPreview };
 
 export type ChatLinkPreview =
   | { type: 'image'; url: string; hostname: string }

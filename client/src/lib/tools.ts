@@ -39,6 +39,13 @@ export const tools: ToolDefinition[] = [
     icon: 'formBuilder'
   },
   {
+    id: 'used_smartphones_catalog',
+    name: 'Каталог смартфонів',
+    description: 'Корпоративний каталог вживаних і відновлених смартфонів із залишками, імпортом, публікацією та заявками з вітрини.',
+    path: '/tools/used-smartphones',
+    icon: 'phone'
+  },
+  {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',

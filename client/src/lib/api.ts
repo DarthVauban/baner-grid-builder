@@ -50,6 +50,16 @@ import type {
   ApplicationRecord,
   ApplicationStatus
 } from '../types/application';
+import type {
+  CatalogBrand,
+  CatalogFeed,
+  CatalogImportPreview,
+  CatalogProduct,
+  CatalogProductInput,
+  CatalogPublicationStatus,
+  CatalogStorefrontSettings,
+  CatalogSummary
+} from '../types/catalog';
 
 interface ApiErrorPayload {
   error?: {
@@ -267,6 +277,62 @@ export const api = {
       request<void>(`/api/applications/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         body: jsonBody({ code })
+      })
+  },
+  catalog: {
+    summary: () => request<CatalogSummary>('/api/catalog/summary'),
+    brands: () => request<CatalogBrand[]>('/api/catalog/brands'),
+    createBrand: (input: Pick<CatalogBrand, 'label' | 'active' | 'sortOrder'>) =>
+      request<CatalogBrand>('/api/catalog/brands', { method: 'POST', body: jsonBody(input) }),
+    updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'label' | 'active' | 'sortOrder'>>) =>
+      request<CatalogBrand>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+    list: (params: { search?: string; condition?: string; status?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
+      request<CatalogFeed>(`/api/catalog/products${queryString(params)}`),
+    get: (id: string) => request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`),
+    create: (input: CatalogProductInput) =>
+      request<CatalogProduct>('/api/catalog/products', { method: 'POST', body: jsonBody(input) }),
+    update: (id: string, input: CatalogProductInput & { expectedVersion: number }) =>
+      request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    setPublicationStatus: (id: string, status: CatalogPublicationStatus, expectedVersion: number) =>
+      request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/publication-status`, {
+        method: 'PATCH',
+        body: jsonBody({ status, expectedVersion })
+      }),
+    previewImport: (rows: Array<Record<string, unknown>>) =>
+      request<CatalogImportPreview>('/api/catalog/imports/preview', { method: 'POST', body: jsonBody({ rows }) }),
+    commitImport: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) =>
+      request<CatalogImportPreview>('/api/catalog/imports/commit', { method: 'POST', body: jsonBody({ rows, ...options }) }),
+    storefrontSettings: () => request<CatalogStorefrontSettings>('/api/catalog/storefront-settings'),
+    updateStorefrontSettings: (input: Pick<CatalogStorefrontSettings, 'selectedFormPublicId' | 'publicOrigin'>) =>
+      request<CatalogStorefrontSettings>('/api/catalog/storefront-settings', { method: 'PATCH', body: jsonBody(input) })
+  },
+  storefront: {
+    settings: () => request<CatalogStorefrontSettings>('/api/storefront/settings'),
+    list: (params: { search?: string; condition?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
+      request<CatalogFeed>(`/api/storefront/products${queryString(params)}`),
+    get: (identifier: string) => request<CatalogProduct>(`/api/storefront/products/${encodeURIComponent(identifier)}`),
+    form: (publicId: string) => request<{
+      id: string;
+      title: string;
+      description: string;
+      buttonText: string;
+      successMessage: string;
+      fields: Array<{
+        key: string;
+        label: string;
+        type: string;
+        placeholder: string;
+        helpText: string;
+        defaultValue: string;
+        required: boolean;
+        systemFieldType: string | null;
+        options: Array<{ label: string; value: string }>;
+      }>;
+    }>(`/api/public/application-forms/${encodeURIComponent(publicId)}`),
+    submitApplication: (identifier: string, input: { values: Record<string, unknown>; context: Record<string, unknown>; idempotencyKey: string; honeypot?: string }) =>
+      request<{ id: string; number: string; status: string; duplicate?: boolean }>(`/api/storefront/products/${encodeURIComponent(identifier)}/applications`, {
+        method: 'POST',
+        body: jsonBody(input)
       })
   },
   forms: {

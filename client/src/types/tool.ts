@@ -1,4 +1,4 @@
-export type ToolId = 'banner_grid' | 'product_selection' | 'product_tables' | 'blog_publications' | 'chat' | 'applications' | 'form_builder';
+export type ToolId = 'banner_grid' | 'product_selection' | 'product_tables' | 'blog_publications' | 'chat' | 'applications' | 'form_builder' | 'used_smartphones_catalog';
 
 export interface UserToolAccess {
   tools: ToolId[];

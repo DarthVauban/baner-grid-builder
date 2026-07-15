@@ -30,6 +30,7 @@ export function AppShell() {
   });
   const hasChatAccess = toolAccess.data?.includes('chat') === true;
   const hasApplicationsAccess = toolAccess.data?.includes('applications') === true;
+  const hasCatalogAccess = toolAccess.data?.includes('used_smartphones_catalog') === true;
   const chatUnread = useQuery({
     queryKey: ['chat-unread-count'],
     queryFn: api.chat.unreadCount,
@@ -86,6 +87,22 @@ export function AppShell() {
     stream.addEventListener('applications', refresh);
     return () => { stream.removeEventListener('applications', refresh); stream.close(); };
   }, [hasApplicationsAccess, queryClient, userId]);
+
+  useEffect(() => {
+    if (!hasCatalogAccess || !userId) return undefined;
+    const stream = new EventSource('/api/catalog/stream');
+    const refresh = (event: Event) => {
+      let payload: { productId?: string } = {};
+      try { payload = JSON.parse((event as MessageEvent).data || '{}'); } catch { /* ignore malformed event data */ }
+      void queryClient.invalidateQueries({ queryKey: ['catalog-products'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-imports'] });
+      void queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+      if (payload.productId) void queryClient.invalidateQueries({ queryKey: ['catalog-product', payload.productId] });
+    };
+    stream.addEventListener('catalog', refresh);
+    return () => { stream.removeEventListener('catalog', refresh); stream.close(); };
+  }, [hasCatalogAccess, queryClient, userId]);
 
   const closeSidebar = () => setSidebarOpen(false);
   const toggleSidebar = () => {

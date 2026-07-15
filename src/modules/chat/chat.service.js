@@ -1,6 +1,7 @@
 import { query } from '../../db/pool.js';
 import { getUserToolAccess } from '../access/access.service.js';
 import { loadApplicationChatPreview } from '../applications/application.service.js';
+import { loadCatalogChatPreview } from '../catalog/catalog.service.js';
 import { loadPublication } from '../publications/publication.service.js';
 import { loadTaskView } from '../tasks/task.service.js';
 
@@ -8,7 +9,8 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const entityLinkMatchers = [
   { type: 'task', path: '/tasks', parameter: 'task' },
   { type: 'publication', path: '/tools/blog-publications', parameter: 'publication' },
-  { type: 'application', path: '/tools/applications', parameter: 'application' }
+  { type: 'application', path: '/tools/applications', parameter: 'application' },
+  { type: 'catalog_product', path: '/tools/used-smartphones', parameter: 'product' }
 ];
 
 export function directConversationKey(firstUserId, secondUserId) {
@@ -122,10 +124,15 @@ async function hydrateApplication(reference, viewer) {
   return loadApplicationChatPreview(reference, viewer);
 }
 
+async function hydrateCatalogProduct(reference, viewer) {
+  return loadCatalogChatPreview(reference, viewer);
+}
+
 const entityHydrators = {
   task: hydrateTask,
   publication: hydratePublication,
-  application: hydrateApplication
+  application: hydrateApplication,
+  catalog_product: hydrateCatalogProduct
 };
 
 export async function hydrateEntityReferences(references, viewer) {

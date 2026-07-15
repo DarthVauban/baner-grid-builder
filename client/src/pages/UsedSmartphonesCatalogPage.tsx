@@ -1,0 +1,473 @@
+import { useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
+import { api } from '../lib/api';
+import {
+  catalogConditionOptions,
+  catalogPublicationStatusOptions,
+  emptyCatalogProductInput,
+  formatCatalogDate,
+  productToInput
+} from '../lib/catalog';
+import { copyShareLink } from '../lib/share';
+import { useToast } from '../toast/ToastContext';
+import type {
+  CatalogAvailabilityStatus,
+  CatalogBrand,
+  CatalogCondition,
+  CatalogFeed,
+  CatalogImportPreview,
+  CatalogProduct,
+  CatalogProductInput,
+  CatalogPublicationStatus,
+  CatalogSummary
+} from '../types/catalog';
+
+const conditionFilterOptions = [
+  { value: 'all', label: 'Усі стани' },
+  ...catalogConditionOptions
+];
+const statusFilterOptions = [
+  { value: 'all', label: 'Усі статуси' },
+  ...catalogPublicationStatusOptions
+];
+const availabilityFilterOptions: Array<{ value: CatalogAvailabilityStatus | 'all'; label: string }> = [
+  { value: 'all', label: 'Уся наявність' },
+  { value: 'in_stock', label: 'В наявності' },
+  { value: 'incoming', label: 'В дорозі' },
+  { value: 'unavailable', label: 'Немає' }
+];
+const sortOptions = [
+  { value: 'updated_desc', label: 'Оновлені спочатку' },
+  { value: 'name_asc', label: 'Назва А-Я' },
+  { value: 'price_asc', label: 'Ціна зростає' },
+  { value: 'price_desc', label: 'Ціна спадає' },
+  { value: 'stock_desc', label: 'Більше залишків' },
+  { value: 'stock_asc', label: 'Менше залишків' }
+];
+
+function summaryCards(summary?: CatalogSummary) {
+  return [
+    { label: 'Усього', value: summary?.total || 0, tone: '' },
+    { label: 'Опубліковано', value: summary?.byStatus.published || 0, tone: 'success' },
+    { label: 'Чернетки', value: summary?.byStatus.draft || 0, tone: 'warning' },
+    { label: 'Немає в наявності', value: summary?.byAvailability.unavailable || 0, tone: 'danger' }
+  ];
+}
+
+function importActionLabel(row: CatalogImportPreview['rows'][number]) {
+  if (row.result === 'created') return 'Створено';
+  if (row.result === 'updated') return 'Оновлено';
+  if (row.action === 'create') return 'Новий';
+  if (row.action === 'update') return 'Оновити';
+  if (row.action === 'conflict') return 'Конфлікт';
+  if (row.action === 'skipped') return 'Пропущено';
+  return 'Помилка';
+}
+
+function ProductThumb({ product }: { product: CatalogProduct }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [product.mainImageUrl]);
+  return <span className="catalog-thumb">
+    {product.mainImageUrl && !failed
+      ? <img src={product.mainImageUrl} alt="" loading="lazy" onError={() => setFailed(true)} />
+      : <Icon name="phone" size={20} />}
+  </span>;
+}
+
+function ProductEditorModal({
+  product,
+  brands,
+  busy,
+  onClose,
+  onSubmit
+}: {
+  product: CatalogProduct | null;
+  brands: CatalogBrand[];
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (input: CatalogProductInput, product: CatalogProduct | null) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<CatalogProductInput>(() => (
+    product ? productToInput(product) : { ...emptyCatalogProductInput }
+  ));
+
+  function setField<K extends keyof CatalogProductInput>(key: K, value: CatalogProductInput[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    await onSubmit(draft, product);
+  }
+
+  return <div className="modal-backdrop" role="presentation">
+    <section className="modal catalog-editor-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-editor-title">
+      <header className="modal__header">
+        <div><p className="eyebrow">{product ? product.productCode : 'Новий товар'}</p><h2 id="catalog-editor-title">{product ? 'Редагування товару' : 'Новий смартфон'}</h2></div>
+        <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" /></button>
+      </header>
+      <form className="catalog-editor-modal__content" onSubmit={(event) => void submit(event)}>
+        <div className="catalog-form-grid">
+          <label className="field catalog-form-grid__wide"><span>Назва</span><input value={draft.name} onChange={(event) => setField('name', event.target.value)} required maxLength={240} /></label>
+          <label className="field"><span>Стан</span><StyledSelect value={draft.condition} options={catalogConditionOptions} onChange={(value) => setField('condition', value as CatalogCondition)} /></label>
+          <label className="field"><span>Статус публікації</span><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} /></label>
+          <label className="field"><span>Ціна, грн</span><input type="number" min={0} step="0.01" value={draft.priceUah} onChange={(event) => setField('priceUah', Number(event.target.value || 0))} /></label>
+          <label className="field"><span>Залишок</span><input type="number" min={0} step={1} value={draft.stockCount} onChange={(event) => setField('stockCount', Number(event.target.value || 0))} /></label>
+          <label className="field"><span>В дорозі</span><input type="number" min={0} step={1} value={draft.incomingCount} onChange={(event) => setField('incomingCount', Number(event.target.value || 0))} /></label>
+          <label className="field"><span>Бренд</span><StyledSelect value={draft.brandId || ''} options={[{ value: '', label: 'Без бренду' }, ...brands.map((brand) => ({ value: brand.id, label: brand.label }))]} onChange={(value) => setField('brandId', value ? String(value) : null)} /></label>
+          <label className="field"><span>Slug</span><input value={draft.slug} onChange={(event) => setField('slug', event.target.value)} placeholder="iphone-13-used" maxLength={260} /></label>
+          <label className="field catalog-form-grid__wide"><span>Головне фото</span><input value={draft.mainImageUrl} onChange={(event) => setField('mainImageUrl', event.target.value)} placeholder="https://..." maxLength={4000} /></label>
+          <label className="field catalog-form-grid__wide"><span>Короткий опис</span><textarea value={draft.shortDescription} onChange={(event) => setField('shortDescription', event.target.value)} maxLength={1200} /></label>
+          <label className="field catalog-form-grid__wide"><span>Опис</span><textarea value={draft.description} onChange={(event) => setField('description', event.target.value)} maxLength={12000} /></label>
+          <label className="field"><span>Корпус</span><input value={draft.bodyCondition} onChange={(event) => setField('bodyCondition', event.target.value)} maxLength={120} /></label>
+          <label className="field"><span>Дисплей</span><input value={draft.displayCondition} onChange={(event) => setField('displayCondition', event.target.value)} maxLength={120} /></label>
+          <label className="field"><span>Акумулятор</span><input value={draft.batteryHealth} onChange={(event) => setField('batteryHealth', event.target.value)} maxLength={120} /></label>
+          <label className="field"><span>Гарантія</span><input value={draft.warranty} onChange={(event) => setField('warranty', event.target.value)} maxLength={160} /></label>
+          <label className="field catalog-form-grid__wide"><span>Комплектація</span><textarea value={draft.includedAccessories} onChange={(event) => setField('includedAccessories', event.target.value)} maxLength={3000} /></label>
+          <label className="field"><span>SEO title</span><input value={draft.seoTitle} onChange={(event) => setField('seoTitle', event.target.value)} maxLength={240} /></label>
+          <label className="field"><span>SEO description</span><input value={draft.seoDescription} onChange={(event) => setField('seoDescription', event.target.value)} maxLength={500} /></label>
+          <label className="field catalog-form-grid__wide"><span>Внутрішні нотатки</span><textarea value={draft.internalNotes} onChange={(event) => setField('internalNotes', event.target.value)} maxLength={6000} /></label>
+        </div>
+        <footer className="modal__footer">
+          <button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button>
+          <button className="button button--primary" type="submit" disabled={busy}><Icon name="save" size={17} /> Зберегти</button>
+        </footer>
+      </form>
+    </section>
+  </div>;
+}
+
+function CatalogRow({
+  product,
+  busy,
+  onOpen,
+  onQuickSave,
+  onShare
+}: {
+  product: CatalogProduct;
+  busy: boolean;
+  onOpen: (product: CatalogProduct) => void;
+  onQuickSave: (product: CatalogProduct, input: CatalogProductInput) => Promise<void>;
+  onShare: (product: CatalogProduct) => void;
+}) {
+  const [draft, setDraft] = useState(() => productToInput(product));
+
+  useEffect(() => setDraft(productToInput(product)), [product]);
+
+  function setField<K extends keyof CatalogProductInput>(key: K, value: CatalogProductInput[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  return <article className="catalog-row">
+    <button className="catalog-row__main" type="button" onClick={() => onOpen(product)}>
+      <ProductThumb product={product} />
+      <span><strong>{product.name}</strong><small>{product.productCode} · {product.conditionLabel}</small></span>
+    </button>
+    <label className="field"><span>Ціна</span><input type="number" min={0} step="0.01" value={draft.priceUah} onChange={(event) => setField('priceUah', Number(event.target.value || 0))} /></label>
+    <label className="field"><span>Залишок</span><input type="number" min={0} step={1} value={draft.stockCount} onChange={(event) => setField('stockCount', Number(event.target.value || 0))} /></label>
+    <label className="field"><span>В дорозі</span><input type="number" min={0} step={1} value={draft.incomingCount} onChange={(event) => setField('incomingCount', Number(event.target.value || 0))} /></label>
+    <div className="catalog-row__status"><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} compact /></div>
+    <span className={`catalog-availability catalog-availability--${product.availability.status}`}>{product.availability.label}</span>
+    <div className="catalog-row__actions">
+      <button className="icon-button" type="button" title="Поділитися" aria-label="Поділитися" onClick={() => onShare(product)}><Icon name="share" /></button>
+      <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => void onQuickSave(product, draft)}><Icon name="save" size={15} /> Save</button>
+    </div>
+  </article>;
+}
+
+function ImportModal({
+  busy,
+  preview,
+  onClose,
+  onPreview,
+  onCommit
+}: {
+  busy: boolean;
+  preview: CatalogImportPreview | null;
+  onClose: () => void;
+  onPreview: (rows: Array<Record<string, unknown>>) => Promise<void>;
+  onCommit: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) => Promise<void>;
+}) {
+  const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
+  const [importNew, setImportNew] = useState(true);
+  const [updateExisting, setUpdateExisting] = useState(true);
+  const [fileName, setFileName] = useState('');
+
+  async function readFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const firstSheet = workbook.SheetNames[0];
+    const sheet = firstSheet ? workbook.Sheets[firstSheet] : null;
+    const parsed = sheet ? XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }) : [];
+    setRows(parsed);
+    await onPreview(parsed);
+  }
+
+  return <div className="modal-backdrop" role="presentation">
+    <section className="modal catalog-import-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-import-title">
+      <header className="modal__header">
+        <div><p className="eyebrow">XLSX</p><h2 id="catalog-import-title">Імпорт залишків</h2></div>
+        <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" /></button>
+      </header>
+      <div className="catalog-import-modal__content">
+        <label className="field"><span>Файл</span><input type="file" accept=".xlsx,.xls" onChange={(event) => void readFile(event)} /></label>
+        {fileName && <p className="catalog-import-modal__file">{fileName} · {rows.length} рядків</p>}
+        <div className="catalog-import-options">
+          <label><input type="checkbox" checked={importNew} onChange={(event) => setImportNew(event.target.checked)} /> Створювати нові товари</label>
+          <label><input type="checkbox" checked={updateExisting} onChange={(event) => setUpdateExisting(event.target.checked)} /> Оновлювати наявні товари</label>
+        </div>
+        {preview && <div className="catalog-import-summary">
+          <span>Нові <strong>{preview.summary.create}</strong></span>
+          <span>Оновити <strong>{preview.summary.update}</strong></span>
+          <span>Конфлікти <strong>{preview.summary.conflict}</strong></span>
+          <span>Помилки <strong>{preview.summary.error}</strong></span>
+        </div>}
+        {preview?.rows.length ? <div className="catalog-import-table">
+          {preview.rows.slice(0, 80).map((row) => <div className={`catalog-import-table__row catalog-import-table__row--${row.action}`} key={`${row.rowNumber}-${row.name}`}>
+            <span>{row.rowNumber}</span>
+            <strong>{row.name || 'Без назви'}</strong>
+            <span>{row.conditionLabel || row.condition || '-'}</span>
+            <span>{row.stockCount ?? '-'}/{row.incomingCount ?? '-'}</span>
+            <span>{row.priceUah ?? '-'}</span>
+            <b>{importActionLabel(row)}</b>
+            {row.reason && <small>{row.reason}</small>}
+          </div>)}
+        </div> : null}
+      </div>
+      <footer className="modal__footer">
+        <button className="button button--secondary" type="button" onClick={onClose}>Закрити</button>
+        <button className="button button--primary" type="button" disabled={busy || !rows.length} onClick={() => void onCommit(rows, { importNew, updateExisting })}><Icon name="upload" size={17} /> Застосувати імпорт</button>
+      </footer>
+    </section>
+  </div>;
+}
+
+export function UsedSmartphonesCatalogPage() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState('');
+  const [condition, setCondition] = useState<CatalogCondition | 'all'>('all');
+  const [status, setStatus] = useState<CatalogPublicationStatus | 'all'>('all');
+  const [availability, setAvailability] = useState<CatalogAvailabilityStatus | 'all'>('all');
+  const [sort, setSort] = useState('updated_desc');
+  const [page, setPage] = useState(1);
+  const [editorProduct, setEditorProduct] = useState<CatalogProduct | null | undefined>(undefined);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<CatalogImportPreview | null>(null);
+  const [settingsFormId, setSettingsFormId] = useState('');
+  const [settingsOrigin, setSettingsOrigin] = useState('');
+  const sharedProductId = searchParams.get('product');
+  const queryParams = useMemo(() => ({ search, condition, status, availability, sort, page, pageSize: 25 }), [availability, condition, page, search, sort, status]);
+
+  const products = useQuery<CatalogFeed>({
+    queryKey: ['catalog-products', queryParams],
+    queryFn: () => api.catalog.list(queryParams),
+    refetchOnMount: 'always'
+  });
+  const summary = useQuery({ queryKey: ['catalog-summary'], queryFn: api.catalog.summary });
+  const brands = useQuery({ queryKey: ['catalog-brands'], queryFn: api.catalog.brands });
+  const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
+  const storefrontSettings = useQuery({ queryKey: ['catalog-storefront-settings'], queryFn: api.catalog.storefrontSettings });
+  const sharedProduct = useQuery({
+    queryKey: ['catalog-product', sharedProductId],
+    queryFn: () => api.catalog.get(sharedProductId!),
+    enabled: Boolean(sharedProductId),
+    retry: false
+  });
+
+  const saveProduct = useMutation({
+    mutationFn: ({ product, input }: { product: CatalogProduct | null; input: CatalogProductInput }) => (
+      product
+        ? api.catalog.update(product.id, { ...input, expectedVersion: product.version })
+        : api.catalog.create(input)
+    )
+  });
+  const previewImport = useMutation({ mutationFn: api.catalog.previewImport });
+  const commitImport = useMutation({
+    mutationFn: ({ rows, options }: { rows: Array<Record<string, unknown>>; options: { importNew: boolean; updateExisting: boolean } }) =>
+      api.catalog.commitImport(rows, options)
+  });
+  const updateSettings = useMutation({ mutationFn: api.catalog.updateStorefrontSettings });
+  const busy = saveProduct.isPending || commitImport.isPending || updateSettings.isPending;
+
+  useEffect(() => {
+    if (!storefrontSettings.data) return;
+    setSettingsFormId(storefrontSettings.data.selectedFormPublicId || '');
+    setSettingsOrigin(storefrontSettings.data.publicOrigin || '');
+  }, [storefrontSettings.data]);
+
+  useEffect(() => {
+    if (sharedProduct.data) setEditorProduct(sharedProduct.data);
+  }, [sharedProduct.data]);
+
+  useEffect(() => {
+    if (!sharedProductId || !sharedProduct.error) return;
+    showToast(sharedProduct.error instanceof Error ? sharedProduct.error.message : 'Не вдалося відкрити товар за посиланням.', 'error');
+    const next = new URLSearchParams(searchParams);
+    next.delete('product');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, sharedProduct.error, sharedProductId, showToast]);
+
+  async function refresh() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['catalog-products'] }),
+      queryClient.invalidateQueries({ queryKey: ['catalog-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['catalog-product'] }),
+      queryClient.invalidateQueries({ queryKey: ['chat-messages'] })
+    ]);
+  }
+
+  function openProduct(product: CatalogProduct) {
+    setEditorProduct(product);
+    const next = new URLSearchParams(searchParams);
+    next.set('product', product.id);
+    setSearchParams(next, { replace: true });
+  }
+
+  function closeEditor() {
+    setEditorProduct(undefined);
+    if (!searchParams.has('product')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('product');
+    setSearchParams(next, { replace: true });
+  }
+
+  async function submitProduct(input: CatalogProductInput, product: CatalogProduct | null) {
+    try {
+      const saved = await saveProduct.mutateAsync({ product, input });
+      showToast(product ? 'Товар оновлено.' : 'Товар створено.');
+      setEditorProduct(saved);
+      await refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти товар.', 'error');
+    }
+  }
+
+  async function quickSave(product: CatalogProduct, input: CatalogProductInput) {
+    await submitProduct(input, product);
+  }
+
+  async function shareProduct(product: CatalogProduct) {
+    try {
+      await copyShareLink('catalog_product', product.id);
+      showToast('Посилання на товар скопійовано.');
+    } catch {
+      showToast('Не вдалося скопіювати посилання.', 'error');
+    }
+  }
+
+  async function runPreview(rows: Array<Record<string, unknown>>) {
+    try {
+      setImportPreview(await previewImport.mutateAsync(rows));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося перевірити імпорт.', 'error');
+    }
+  }
+
+  async function runCommit(rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) {
+    try {
+      const result = await commitImport.mutateAsync({ rows, options });
+      setImportPreview(result);
+      showToast('Імпорт застосовано.');
+      await refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося застосувати імпорт.', 'error');
+    }
+  }
+
+  async function saveSettings() {
+    try {
+      await updateSettings.mutateAsync({ selectedFormPublicId: settingsFormId || null, publicOrigin: settingsOrigin });
+      showToast('Налаштування вітрини збережено.');
+      await queryClient.invalidateQueries({ queryKey: ['catalog-storefront-settings'] });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти налаштування вітрини.', 'error');
+    }
+  }
+
+  const rows = products.data?.items || [];
+  const publishedForms = (forms.data || []).filter((form) => form.status === 'published');
+
+  return <div className="catalog-page">
+    <section className="task-toolbar">
+      <div>
+        <p className="eyebrow">Storefront catalog</p>
+        <h1>Каталог смартфонів</h1>
+      </div>
+      <div className="task-toolbar__controls">
+        <button className="button button--secondary" type="button" onClick={() => { setImportPreview(null); setImportOpen(true); }}><Icon name="upload" /> Імпорт XLSX</button>
+        <button className="button button--primary" type="button" onClick={() => setEditorProduct(null)}><Icon name="add" /> Новий товар</button>
+      </div>
+    </section>
+
+    <section className="catalog-summary">
+      {summaryCards(summary.data).map((card) => <article className={`admin-summary__card${card.tone ? ` admin-summary__card--${card.tone}` : ''}`} key={card.label}>
+        <span>{card.label}</span>
+        <strong>{card.value}</strong>
+      </article>)}
+    </section>
+
+    <section className="catalog-storefront-settings">
+      <label className="field"><span>Форма заявок вітрини</span><StyledSelect value={settingsFormId} options={[{ value: '', label: 'Не обрано' }, ...publishedForms.map((form) => ({ value: form.publicId, label: form.name }))]} onChange={(value) => setSettingsFormId(String(value))} /></label>
+      <label className="field"><span>Публічний origin</span><input value={settingsOrigin} onChange={(event) => setSettingsOrigin(event.target.value)} placeholder="https://example.com" /></label>
+      <button className="button button--secondary" type="button" disabled={busy} onClick={() => void saveSettings()}><Icon name="save" size={16} /> Зберегти</button>
+    </section>
+
+    <section className="catalog-filters">
+      <label className="field"><span>Пошук</span><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Назва, код або slug" /></label>
+      <StyledSelect value={condition} options={conditionFilterOptions} onChange={(value) => { setCondition(value as CatalogCondition | 'all'); setPage(1); }} />
+      <StyledSelect value={status} options={statusFilterOptions} onChange={(value) => { setStatus(value as CatalogPublicationStatus | 'all'); setPage(1); }} />
+      <StyledSelect value={availability} options={availabilityFilterOptions} onChange={(value) => { setAvailability(value as CatalogAvailabilityStatus | 'all'); setPage(1); }} />
+      <StyledSelect value={sort} options={sortOptions} onChange={(value) => setSort(String(value))} />
+    </section>
+
+    <section className="catalog-table">
+      <div className="catalog-table__head">
+        <span>Товар</span><span>Ціна</span><span>Залишок</span><span>В дорозі</span><span>Статус</span><span>Наявність</span><span>Дії</span>
+      </div>
+      {rows.map((product) => <CatalogRow
+        key={product.id}
+        product={product}
+        busy={saveProduct.isPending}
+        onOpen={openProduct}
+        onQuickSave={quickSave}
+        onShare={(item) => void shareProduct(item)}
+      />)}
+      {!products.isLoading && !rows.length && <div className="empty-state">
+        <div className="empty-state__icon"><Icon name="phone" size={28} /></div>
+        <h2>Каталог поки порожній</h2>
+        <p>Створіть товар вручну або завантажте XLSX з колонками Назва, Статус, Залишок, В дорозі, Ціна.</p>
+      </div>}
+      <div className="task-list__summary">
+        <span>{products.data ? `${products.data.total} товарів · сторінка ${products.data.page} з ${products.data.pageCount}` : 'Завантаження...'}</span>
+        <div className="catalog-pagination">
+          <button className="button button--secondary button--small" type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><Icon name="arrowLeft" size={14} /> Назад</button>
+          <button className="button button--secondary button--small" type="button" disabled={!products.data || page >= products.data.pageCount} onClick={() => setPage((current) => current + 1)}>Далі <Icon name="arrowRight" size={14} /></button>
+        </div>
+      </div>
+    </section>
+
+    {editorProduct !== undefined && <ProductEditorModal
+      product={editorProduct}
+      brands={brands.data || []}
+      busy={saveProduct.isPending}
+      onClose={closeEditor}
+      onSubmit={submitProduct}
+    />}
+    {importOpen && <ImportModal
+      busy={previewImport.isPending || commitImport.isPending}
+      preview={importPreview}
+      onClose={() => setImportOpen(false)}
+      onPreview={runPreview}
+      onCommit={runCommit}
+    />}
+  </div>;
+}
