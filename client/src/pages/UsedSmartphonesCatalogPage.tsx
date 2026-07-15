@@ -13,12 +13,14 @@ import {
   formatCatalogDate,
   productToInput
 } from '../lib/catalog';
-import { convertCatalogImageToWebp } from '../lib/catalog-media';
+import { convertCatalogImageToWebp, validateCatalogImageFile } from '../lib/catalog-media';
 import { copyShareLink } from '../lib/share';
 import { useToast } from '../toast/ToastContext';
 import type {
   CatalogAvailabilityStatus,
   CatalogBrand,
+  CatalogCharacteristicField,
+  CatalogCharacteristicTemplate,
   CatalogCondition,
   CatalogFeed,
   CatalogImportPreview,
@@ -110,6 +112,18 @@ function mediaAltFromFile(file: File) {
     .slice(0, 240);
 }
 
+function splitLooseDescriptionCss(source: string) {
+  const firstTagIndex = source.search(/<[a-zA-Z!/]/);
+  const prefix = firstTagIndex >= 0 ? source.slice(0, firstTagIndex) : source;
+  const looksLikeCss = prefix.includes('{') && prefix.includes('}')
+    && /(^|\s)(\.|#|@media\b|@supports\b|@keyframes\b|[a-z][a-z0-9_-]*[\s.#:[>+~,{])/i.test(prefix.trim());
+  if (!looksLikeCss) return { html: source, css: '' };
+  return {
+    html: firstTagIndex >= 0 ? source.slice(firstTagIndex) : '',
+    css: prefix
+  };
+}
+
 function RichTextEditor({
   value,
   onChange,
@@ -141,7 +155,10 @@ function RichTextEditor({
   }
 
   function previewSrcDoc() {
-    return `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><style>body{margin:0;padding:18px;font:15px/1.6 Arial,sans-serif;color:#111827;background:#fff}img{max-width:100%;height:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #e5e7eb;padding:8px}a{color:#0f766e}</style></head><body>${value.replace(/<\/script/gi, '<\\/script').replace(/<\/style/gi, '<\\/style')}</body></html>`;
+    const source = splitLooseDescriptionCss(value);
+    const css = source.css.replace(/<\/style/gi, '<\\/style');
+    const html = source.html.replace(/<\/script/gi, '<\\/script').replace(/<\/style/gi, '<\\/style');
+    return `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><style>body{margin:0;padding:18px;font:15px/1.6 Arial,sans-serif;color:#111827;background:#fff}img{max-width:100%;height:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #e5e7eb;padding:8px}a{color:#0f766e}${css}</style></head><body>${html}</body></html>`;
   }
 
   return <div className="rich-editor">
@@ -186,18 +203,93 @@ function RichTextEditor({
   </div>;
 }
 
+function characteristicStringValue(value: unknown) {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
+function characteristicArrayValue(value: unknown) {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === 'string' && value.trim()) return value.split(',').map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
+function CharacteristicFieldControl({
+  field,
+  value,
+  onChange
+}: {
+  field: CatalogCharacteristicField;
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  const unit = field.unit ? <small>{field.unit}</small> : null;
+  if (field.type === 'boolean') {
+    return <label className="catalog-characteristic-toggle">
+      <input type="checkbox" checked={value === true || value === 'true'} onChange={(event) => onChange(event.target.checked)} />
+      <span>{field.label}{field.required ? ' *' : ''}</span>
+    </label>;
+  }
+  if (field.type === 'select') {
+    return <label className="field catalog-characteristic-field">
+      <span>{field.label}{field.required ? ' *' : ''}</span>
+      <StyledSelect
+        value={characteristicStringValue(value)}
+        options={[{ value: '', label: 'Не обрано' }, ...field.options.map((option) => ({ value: option, label: option }))]}
+        onChange={onChange}
+      />
+      {unit}
+    </label>;
+  }
+  if (field.type === 'multiselect') {
+    const selected = new Set(characteristicArrayValue(value));
+    return <div className="catalog-characteristic-field catalog-characteristic-field--multi">
+      <span>{field.label}{field.required ? ' *' : ''}</span>
+      <div className="catalog-characteristic-options">
+        {field.options.map((option) => <label key={option}>
+          <input
+            type="checkbox"
+            checked={selected.has(option)}
+            onChange={(event) => {
+              const next = new Set(selected);
+              if (event.target.checked) next.add(option);
+              else next.delete(option);
+              onChange(Array.from(next));
+            }}
+          />
+          <span>{option}</span>
+        </label>)}
+        {!field.options.length && <small>Додайте опції у шаблоні характеристик.</small>}
+      </div>
+      {unit}
+    </div>;
+  }
+  return <label className="field catalog-characteristic-field">
+    <span>{field.label}{field.required ? ' *' : ''}</span>
+    <input
+      type={field.type === 'number' ? 'number' : 'text'}
+      value={characteristicStringValue(value)}
+      onChange={(event) => onChange(event.target.value)}
+    />
+    {unit}
+  </label>;
+}
+
 function ProductEditorScreen({
   product,
   brands,
   busy,
   onClose,
-  onSubmit
+  onSubmit,
+  onProductUpdated
 }: {
   product: CatalogProduct | null;
   brands: CatalogBrand[];
   busy: boolean;
   onClose: () => void;
   onSubmit: (input: CatalogProductInput, product: CatalogProduct | null) => Promise<CatalogProduct | null>;
+  onProductUpdated: (product: CatalogProduct) => Promise<void> | void;
 }) {
   const [draft, setDraft] = useState<CatalogProductInput>(() => (
     product ? productToInput(product) : { ...emptyCatalogProductInput }
@@ -205,6 +297,53 @@ function ProductEditorScreen({
   const [activeTab, setActiveTab] = useState<CatalogEditorTab>('main');
   const [mediaBusy, setMediaBusy] = useState('');
   const [mediaError, setMediaError] = useState('');
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [selectedCharacteristicTemplateId, setSelectedCharacteristicTemplateId] = useState('');
+  const [characteristicValues, setCharacteristicValues] = useState<Record<string, unknown>>({});
+
+  const characteristicTemplates = useQuery<CatalogCharacteristicTemplate[]>({
+    queryKey: ['catalog-characteristic-templates'],
+    queryFn: api.catalog.characteristicTemplates
+  });
+  const productCharacteristics = useQuery({
+    queryKey: ['catalog-product-characteristics', product?.id],
+    queryFn: () => api.catalog.productCharacteristics(product!.id),
+    enabled: Boolean(product?.id),
+    retry: false
+  });
+  const selectedCharacteristicTemplate = useMemo(
+    () => (characteristicTemplates.data || []).find((template) => template.id === selectedCharacteristicTemplateId) || null,
+    [characteristicTemplates.data, selectedCharacteristicTemplateId]
+  );
+  const saveCharacteristics = useMutation({
+    mutationFn: () => {
+      if (!product) throw new Error('Спершу збережіть товар, щоб додати характеристики.');
+      if (!selectedCharacteristicTemplateId) throw new Error('Оберіть шаблон характеристик.');
+      return api.catalog.updateProductCharacteristics(product.id, {
+        templateId: selectedCharacteristicTemplateId,
+        values: characteristicValues,
+        expectedVersion: product.version
+      });
+    }
+  });
+
+  useEffect(() => {
+    setSelectedCharacteristicTemplateId('');
+    setCharacteristicValues({});
+  }, [product?.id]);
+
+  useEffect(() => {
+    if (!productCharacteristics.data) return;
+    setSelectedCharacteristicTemplateId(productCharacteristics.data.templateId || '');
+    setCharacteristicValues(productCharacteristics.data.values || {});
+  }, [productCharacteristics.data]);
+
+  useEffect(() => {
+    if (!product || selectedCharacteristicTemplateId || productCharacteristics.isLoading) return;
+    const firstTemplate = characteristicTemplates.data?.find((template) => template.active) || characteristicTemplates.data?.[0];
+    if (firstTemplate) setSelectedCharacteristicTemplateId(firstTemplate.id);
+  }, [characteristicTemplates.data, product, productCharacteristics.isLoading, selectedCharacteristicTemplateId]);
 
   const publishBlockers = useMemo(() => {
     const blockers = [];
@@ -238,6 +377,30 @@ function ProductEditorScreen({
     setDraft((current) => ({ ...current, diagnostics: { ...current.diagnostics, [key]: value } }));
   }
 
+  function chooseCharacteristicTemplate(templateId: string) {
+    setSelectedCharacteristicTemplateId(templateId);
+    setCharacteristicValues({});
+  }
+
+  function setCharacteristicValue(key: string, value: unknown) {
+    setCharacteristicValues((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitCharacteristics() {
+    try {
+      const saved = await saveCharacteristics.mutateAsync();
+      showToast('Характеристики товару збережено.');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['catalog-product-characteristics', product?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-products'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-summary'] })
+      ]);
+      await onProductUpdated(saved);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти характеристики.', 'error');
+    }
+  }
+
   function setGalleryItem(index: number, key: 'url' | 'alt', value: string) {
     setDraft((current) => ({
       ...current,
@@ -245,15 +408,16 @@ function ProductEditorScreen({
     }));
   }
 
-  function addGalleryItem() {
-    setDraft((current) => current.gallery.length >= 20 ? current : ({
-      ...current,
-      gallery: [...current.gallery, { url: '', alt: '' }]
-    }));
-  }
-
   function removeGalleryItem(index: number) {
-    setDraft((current) => ({ ...current, gallery: current.gallery.filter((_, itemIndex) => itemIndex !== index) }));
+    setDraft((current) => {
+      const removed = current.gallery[index];
+      const gallery = current.gallery.filter((_, itemIndex) => itemIndex !== index);
+      return {
+        ...current,
+        gallery,
+        mainImageUrl: removed?.url && current.mainImageUrl === removed.url ? gallery[0]?.url || '' : current.mainImageUrl
+      };
+    });
   }
 
   function moveGalleryItem(index: number, direction: -1 | 1) {
@@ -267,27 +431,15 @@ function ProductEditorScreen({
     });
   }
 
-  async function uploadMedia(file: File | undefined, key: string, onUploaded: (url: string) => void) {
-    if (!file) return;
-    try {
-      setMediaError('');
-      setMediaBusy(key);
-      const webp = await convertCatalogImageToWebp(file);
-      const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'), file);
-      onUploaded(media.url);
-    } catch (error) {
-      setMediaError(error instanceof Error ? error.message : 'Не вдалося завантажити фото.');
-    } finally {
-      setMediaBusy('');
-    }
-  }
-
-  async function uploadGalleryFiles(files: FileList | null) {
-    const selected = Array.from(files || []).slice(0, Math.max(0, 20 - draft.gallery.length));
+  async function uploadProductPhotos(files: FileList | null) {
+    const allFiles = Array.from(files || []);
+    const remainingSlots = Math.max(0, 20 - draft.gallery.length);
+    const selected = allFiles.slice(0, remainingSlots);
     if (!selected.length) return;
     try {
       setMediaError('');
       setMediaBusy('gallery-batch');
+      selected.forEach(validateCatalogImageFile);
       const uploaded: Array<{ url: string; alt: string }> = [];
       for (const file of selected) {
         const webp = await convertCatalogImageToWebp(file);
@@ -299,6 +451,9 @@ function ProductEditorScreen({
         mainImageUrl: current.mainImageUrl || uploaded[0]?.url || '',
         gallery: [...current.gallery, ...uploaded].slice(0, 20)
       }));
+      if (allFiles.length > selected.length) {
+        setMediaError(`Додано ${selected.length} фото з ${allFiles.length}. Максимум у галереї: 20 фото.`);
+      }
     } catch (error) {
       setMediaError(error instanceof Error ? error.message : 'Не вдалося завантажити фото.');
     } finally {
@@ -370,10 +525,9 @@ function ProductEditorScreen({
             <h2>Медіа</h2>
             <div className="catalog-editor-header-actions">
               <label className="button button--secondary button--small">
-                <Icon name="upload" size={15} /> {mediaBusy === 'gallery-batch' ? 'Завантаження...' : 'Кілька фото'}
-                <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple disabled={Boolean(mediaBusy) || draft.gallery.length >= 20} onChange={(event) => { void uploadGalleryFiles(event.target.files); event.currentTarget.value = ''; }} />
+                <Icon name="upload" size={15} /> {mediaBusy === 'gallery-batch' ? 'Завантаження...' : 'Завантажити фото'}
+                <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple disabled={Boolean(mediaBusy) || draft.gallery.length >= 20} onChange={(event) => { void uploadProductPhotos(event.target.files); event.currentTarget.value = ''; }} />
               </label>
-              <button className="button button--secondary button--small" type="button" onClick={addGalleryItem} disabled={draft.gallery.length >= 20}><Icon name="add" size={15} /> Порожній слот</button>
             </div>
           </header>
           {mediaError && <p className="form-message form-message--error">{mediaError}</p>}
@@ -382,10 +536,7 @@ function ProductEditorScreen({
               <span className="catalog-media-upload__preview">{draft.mainImageUrl ? <img src={draft.mainImageUrl} alt="" /> : <Icon name="phone" size={30} />}</span>
               <div>
                 <strong>Головне фото</strong>
-                <label className="button button--secondary button--small">
-                  <Icon name="upload" size={15} /> {mediaBusy === 'main' ? 'Завантаження...' : 'Завантажити фото'}
-                  <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], 'main', (url) => setField('mainImageUrl', url)); event.currentTarget.value = ''; }} />
-                </label>
+                <small>Перше завантажене фото стане головним. Далі головне можна змінити у списку нижче.</small>
                 {draft.mainImageUrl && <button className="button button--danger button--small" type="button" onClick={() => setField('mainImageUrl', '')}>Видалити</button>}
               </div>
             </div>
@@ -394,10 +545,6 @@ function ProductEditorScreen({
             {draft.gallery.map((item, index) => <div className="catalog-gallery-row" key={index}>
               <div className="catalog-gallery-row__upload">
                 <span>{item.url ? <img src={item.url} alt="" /> : <Icon name="savedBanners" size={22} />}</span>
-                <label className="button button--secondary button--small">
-                  <Icon name="upload" size={15} /> {mediaBusy === `gallery-${index}` ? 'Завантаження...' : 'Фото'}
-                  <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], `gallery-${index}`, (url) => setGalleryItem(index, 'url', url)); event.currentTarget.value = ''; }} />
-                </label>
               </div>
               <label className="field"><span>Alt</span><input value={item.alt} onChange={(event) => setGalleryItem(index, 'alt', event.target.value)} maxLength={240} /></label>
               <div className="catalog-gallery-row__actions">
@@ -432,16 +579,55 @@ function ProductEditorScreen({
         </section>}
 
         {activeTab === 'characteristics' && <section className="catalog-editor-section">
-          <header><h2>Характеристики</h2><span>Очікує модуль шаблонів</span></header>
-          <div className="catalog-editor-grid catalog-template-stub">
+          <header>
+            <h2>Характеристики</h2>
+            <div className="catalog-editor-header-actions">
+              <button
+                className="button button--primary button--small"
+                type="button"
+                disabled={!product || !selectedCharacteristicTemplateId || saveCharacteristics.isPending}
+                onClick={() => void submitCharacteristics()}
+              >
+                <Icon name="save" size={15} /> {saveCharacteristics.isPending ? 'Збереження...' : 'Зберегти характеристики'}
+              </button>
+            </div>
+          </header>
+          {!product && <div className="catalog-editor-notice">Спершу збережіть товар. Після створення картки можна буде прив'язати її до шаблону характеристик.</div>}
+          {product && <div className="catalog-editor-grid">
             <label className="field catalog-editor-grid__wide">
               <span>Шаблон характеристик</span>
-              <StyledSelect value="" disabled options={[{ value: '', label: 'Шаблони характеристик ще не налаштовані' }]} onChange={() => {}} />
+              <StyledSelect
+                value={selectedCharacteristicTemplateId}
+                disabled={characteristicTemplates.isLoading}
+                options={[
+                  { value: '', label: characteristicTemplates.isLoading ? 'Завантаження шаблонів...' : 'Оберіть шаблон' },
+                  ...(characteristicTemplates.data || []).map((template) => ({
+                    value: template.id,
+                    label: `${template.label}${template.active ? '' : ' (вимкнений)'}`
+                  }))
+                ]}
+                onChange={(value) => chooseCharacteristicTemplate(String(value))}
+              />
             </label>
-            <div className="catalog-editor-notice catalog-editor-grid__wide">
-              Поля характеристик будуть доступні після запуску конструктора шаблонів. Значення товару мають створюватися тільки на основі вибраного шаблону.
-            </div>
-          </div>
+            {!characteristicTemplates.isLoading && !characteristicTemplates.data?.length && <div className="catalog-editor-notice catalog-editor-grid__wide">
+              Шаблонів ще немає. Створіть перший шаблон у розділі “Характеристики” сайдбару каталогу.
+            </div>}
+            {selectedCharacteristicTemplate && <div className="catalog-characteristics-form catalog-editor-grid__wide">
+              <div className="catalog-characteristics-form__heading">
+                <strong>{selectedCharacteristicTemplate.label}</strong>
+                <span>{selectedCharacteristicTemplate.fields.length} полів</span>
+              </div>
+              {selectedCharacteristicTemplate.description && <p>{selectedCharacteristicTemplate.description}</p>}
+              <div className="catalog-editor-grid">
+                {selectedCharacteristicTemplate.fields.map((field) => <CharacteristicFieldControl
+                  key={field.id || field.key}
+                  field={field}
+                  value={characteristicValues[field.key]}
+                  onChange={(value) => setCharacteristicValue(field.key, value)}
+                />)}
+              </div>
+            </div>}
+          </div>}
         </section>}
 
         {activeTab === 'modifications' && <section className="catalog-editor-section">
@@ -768,6 +954,10 @@ export function UsedSmartphonesCatalogPage() {
       busy={saveProduct.isPending}
       onClose={closeEditor}
       onSubmit={submitProduct}
+      onProductUpdated={async (saved) => {
+        setEditorProduct(saved);
+        await refresh();
+      }}
     />;
   }
 

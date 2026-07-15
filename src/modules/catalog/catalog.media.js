@@ -3,8 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AppError } from '../../lib/app-error.js';
 
-const maxCatalogImageBytes = 8 * 1024 * 1024;
-const maxOriginalImageBytes = 12 * 1024 * 1024;
+const maxCatalogImageBytes = 3 * 1024 * 1024;
 const allowedOriginalTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 export const catalogMediaDir = path.resolve(process.cwd(), process.env.CATALOG_MEDIA_DIR || path.join('storage', 'catalog-media'));
@@ -45,7 +44,7 @@ export async function saveCatalogWebpImage(buffer, originalName = '') {
     throw new AppError(422, 'CATALOG_MEDIA_EMPTY', 'Файл зображення порожній.');
   }
   if (buffer.length > maxCatalogImageBytes) {
-    throw new AppError(413, 'CATALOG_MEDIA_TOO_LARGE', 'Фото має бути меншим за 8 МБ.');
+    throw new AppError(413, 'CATALOG_MEDIA_TOO_LARGE', 'Кожне фото має бути до 3 МБ.');
   }
   assertWebp(buffer);
   const filename = `${Date.now()}-${safeName(originalName)}-${randomUUID()}.webp`;
@@ -65,19 +64,17 @@ export async function saveCatalogMediaAsset({
   originalName = '',
   originalMimeType = ''
 }) {
+  if (originalBuffer && originalBuffer.length > maxCatalogImageBytes) {
+    throw new AppError(413, 'CATALOG_ORIGINAL_MEDIA_TOO_LARGE', 'Кожне фото має бути до 3 МБ.');
+  }
+  if (originalBuffer && !allowedOriginalTypes.has(originalMimeType)) {
+    throw new AppError(415, 'CATALOG_ORIGINAL_MEDIA_UNSUPPORTED_TYPE', 'Оригінал має бути PNG, JPG або WebP.');
+  }
+
   const optimized = await saveCatalogWebpImage(webpBuffer, webpName);
   let original = null;
 
   if (originalBuffer) {
-    if (!Buffer.isBuffer(originalBuffer) || !originalBuffer.length) {
-      throw new AppError(422, 'CATALOG_ORIGINAL_MEDIA_EMPTY', 'Оригінальний файл зображення порожній.');
-    }
-    if (originalBuffer.length > maxOriginalImageBytes) {
-      throw new AppError(413, 'CATALOG_ORIGINAL_MEDIA_TOO_LARGE', 'Оригінальне фото має бути меншим за 12 МБ.');
-    }
-    if (!allowedOriginalTypes.has(originalMimeType)) {
-      throw new AppError(415, 'CATALOG_ORIGINAL_MEDIA_UNSUPPORTED_TYPE', 'Оригінал має бути PNG, JPEG або WebP.');
-    }
     const extension = extensionForMime(originalMimeType);
     const filename = `${Date.now()}-${safeName(originalName || webpName)}-${randomUUID()}.${extension}`;
     const url = await saveBuffer(originalBuffer, 'originals', filename);

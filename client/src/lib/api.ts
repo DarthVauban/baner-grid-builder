@@ -52,10 +52,13 @@ import type {
 } from '../types/application';
 import type {
   CatalogBrand,
+  CatalogCharacteristicTemplate,
+  CatalogCharacteristicTemplateInput,
   CatalogFeed,
   CatalogImportPreview,
   CatalogMediaAsset,
   CatalogProduct,
+  CatalogProductCharacteristics,
   CatalogProductInput,
   CatalogPublicationStatus,
   CatalogStorefrontSettings,
@@ -304,20 +307,29 @@ export const api = {
     brands: () => request<CatalogBrand[]>('/api/catalog/brands'),
     createBrand: (input: Pick<CatalogBrand, 'label' | 'active' | 'sortOrder'>) =>
       request<CatalogBrand>('/api/catalog/brands', { method: 'POST', body: jsonBody(input) }),
-    updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'label' | 'active' | 'sortOrder'>>) =>
-      request<CatalogBrand>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
-    list: (params: { search?: string; condition?: string; status?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
-      request<CatalogFeed>(`/api/catalog/products${queryString(params)}`),
+      updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'label' | 'active' | 'sortOrder'>>) =>
+        request<CatalogBrand>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+      characteristicTemplates: () => request<CatalogCharacteristicTemplate[]>('/api/catalog/characteristic-templates'),
+      createCharacteristicTemplate: (input: CatalogCharacteristicTemplateInput) =>
+        request<CatalogCharacteristicTemplate>('/api/catalog/characteristic-templates', { method: 'POST', body: jsonBody(input) }),
+      updateCharacteristicTemplate: (id: string, input: CatalogCharacteristicTemplateInput) =>
+        request<CatalogCharacteristicTemplate>(`/api/catalog/characteristic-templates/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+      list: (params: { search?: string; condition?: string; status?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
+        request<CatalogFeed>(`/api/catalog/products${queryString(params)}`),
     get: (id: string) => request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`),
     create: (input: CatalogProductInput) =>
       request<CatalogProduct>('/api/catalog/products', { method: 'POST', body: jsonBody(input) }),
     update: (id: string, input: CatalogProductInput & { expectedVersion: number }) =>
       request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
-    setPublicationStatus: (id: string, status: CatalogPublicationStatus, expectedVersion: number) =>
-      request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/publication-status`, {
-        method: 'PATCH',
-        body: jsonBody({ status, expectedVersion })
-      }),
+      setPublicationStatus: (id: string, status: CatalogPublicationStatus, expectedVersion: number) =>
+        request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/publication-status`, {
+          method: 'PATCH',
+          body: jsonBody({ status, expectedVersion })
+        }),
+      productCharacteristics: (id: string) =>
+        request<CatalogProductCharacteristics>(`/api/catalog/products/${encodeURIComponent(id)}/characteristics`),
+      updateProductCharacteristics: (id: string, input: { templateId: string; values: Record<string, unknown>; expectedVersion: number }) =>
+        request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/characteristics`, { method: 'PUT', body: jsonBody(input) }),
     uploadMedia: async (file: Blob, fileName: string, originalFile?: File) => {
       const response = await fetch('/api/catalog/media', {
         method: 'POST',

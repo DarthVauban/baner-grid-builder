@@ -42,6 +42,14 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.match(media.body.data.url, /^\/media\/catalog\/.+\.webp$/);
   assert.equal(media.body.data.mimeType, 'image/webp');
 
+  const tooLargeWebp = Buffer.concat([Buffer.from('524946460000000057454250', 'hex'), Buffer.alloc((3 * 1024 * 1024) + 1)]);
+  const mediaTooLarge = await admin.post('/api/catalog/media')
+    .set('Content-Type', 'image/webp')
+    .set('X-File-Name', 'too-large.webp')
+    .send(tooLargeWebp)
+    .expect(413);
+  assert.match(mediaTooLarge.body.error.message, /3/);
+
   const created = await admin.post('/api/catalog/products').send({
     name: 'iPhone 13 128GB Midnight',
     condition: 'USED',
@@ -79,7 +87,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     brandId: null,
     mainImageUrl: 'https://example.com/iphone-13.webp',
     gallery: [],
-    description: '<h2 onclick="alert(1)">Specs</h2><style>.note{color:red}</style><p><a href="javascript:alert(1)">bad link</a></p><script>window.__catalogTest = true;</script>',
+    description: '.tab .content{color:blue}<h2 onclick="alert(1)">Specs</h2><style>.note{color:red}</style><p><a href="javascript:alert(1)">bad link</a></p><script>window.__catalogTest = true;</script>',
     publicationStatus: 'PUBLISHED',
     expectedVersion: created.body.data.version
   }).expect(200);
@@ -96,10 +104,45 @@ test('catalog products publish to storefront, import stock updates, and create a
   const publicProduct = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
   assert.equal(publicProduct.body.data.name, 'iPhone 13 128GB Midnight');
   assert.match(publicProduct.body.data.descriptionHtml, /Specs/);
+  assert.doesNotMatch(publicProduct.body.data.descriptionHtml, /\.tab \.content/);
   assert.doesNotMatch(publicProduct.body.data.descriptionHtml, /script|onclick|javascript:/i);
+  assert.match(publicProduct.body.data.descriptionCss, /\.tab \.content/);
   assert.match(publicProduct.body.data.descriptionCss, /color:red/);
   assert.match(publicProduct.body.data.descriptionJs, /__catalogTest/);
   assert.equal(Object.hasOwn(publicProduct.body.data, 'internalNotes'), false);
+
+  const template = await admin.post('/api/catalog/characteristic-templates').send({
+    label: 'Smartphone basics',
+    description: 'Core buyer-facing specs',
+    active: true,
+    sortOrder: 1,
+    fields: [
+      { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, sortOrder: 0 },
+      { key: 'battery_health', label: 'Battery health', type: 'number', unit: '%', options: [], required: false, filterable: true, sortOrder: 1 },
+      { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Blue'], required: false, filterable: true, sortOrder: 2 },
+      { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 3 }
+    ]
+  }).expect(201);
+  assert.equal(template.body.data.fields.length, 4);
+
+  const productWithCharacteristics = await admin.put(`/api/catalog/products/${created.body.data.id}/characteristics`).send({
+    templateId: template.body.data.id,
+    expectedVersion: updated.body.data.version,
+    values: {
+      storage: '128',
+      battery_health: 91,
+      colors: ['Midnight', 'Blue'],
+      face_id: true
+    }
+  }).expect(200);
+  assert.equal(productWithCharacteristics.body.data.version, 3);
+
+  const savedCharacteristics = await admin.get(`/api/catalog/products/${created.body.data.id}/characteristics`).expect(200);
+  assert.equal(savedCharacteristics.body.data.templateId, template.body.data.id);
+  assert.equal(savedCharacteristics.body.data.values.storage, '128');
+  assert.equal(savedCharacteristics.body.data.values.battery_health, 91);
+  assert.deepEqual(savedCharacteristics.body.data.values.colors, ['Midnight', 'Blue']);
+  assert.equal(savedCharacteristics.body.data.values.face_id, true);
 
   const duplicatePreview = await admin.post('/api/catalog/imports/preview').send({
     rows: [

@@ -7,6 +7,18 @@ export function notFoundHandler(req, res, next) {
 export function errorHandler(error, req, res, next) {
   if (res.headersSent) return next(error);
 
+  if (error?.type === 'entity.too.large' || error?.status === 413 || error?.statusCode === 413) {
+    return res.status(413).json({
+      error: { code: 'PAYLOAD_TOO_LARGE', message: 'Файл або запит завеликий. Кожне фото має бути до 3 МБ.' }
+    });
+  }
+
+  if (error instanceof SyntaxError && 'body' in error) {
+    return res.status(400).json({
+      error: { code: 'INVALID_JSON', message: 'Некоректний JSON у запиті.' }
+    });
+  }
+
   if (error instanceof AppError) {
     return res.status(error.status).json({
       error: {

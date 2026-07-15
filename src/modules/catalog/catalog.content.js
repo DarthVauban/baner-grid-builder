@@ -59,6 +59,23 @@ function extractBlocks(source, tag) {
   return { html, blocks };
 }
 
+function isLikelyCss(value) {
+  const text = String(value || '').trim();
+  if (!text || !text.includes('{') || !text.includes('}')) return false;
+  return /(^|\s)(\.|#|@media\b|@supports\b|@keyframes\b|[a-z][a-z0-9_-]*[\s.#:[>+~,{])/i.test(text);
+}
+
+function extractLooseCss(source) {
+  const text = String(source || '');
+  const firstTagIndex = text.search(/<[a-zA-Z!/]/);
+  const prefix = firstTagIndex >= 0 ? text.slice(0, firstTagIndex) : text;
+  if (!isLikelyCss(prefix)) return { html: text, blocks: [] };
+  return {
+    html: firstTagIndex >= 0 ? text.slice(firstTagIndex) : '',
+    blocks: [prefix]
+  };
+}
+
 function sanitizeAttributes(tag, rawAttrs) {
   const allowed = new Set([...(tagAttrs[tag] || []), ...globalAttrs]);
   const attrs = [];
@@ -100,10 +117,11 @@ function sanitizeHtml(html) {
 export function prepareCatalogDescription(source) {
   const styleExtract = extractBlocks(source, 'style');
   const scriptExtract = extractBlocks(styleExtract.html, 'script');
-  const css = sanitizeCss(styleExtract.blocks.join('\n\n'));
+  const looseCssExtract = extractLooseCss(scriptExtract.html);
+  const css = sanitizeCss([...styleExtract.blocks, ...looseCssExtract.blocks].join('\n\n'));
   const js = scriptExtract.blocks.join('\n\n').slice(0, 30000);
   return {
-    safeHtml: sanitizeHtml(scriptExtract.html),
+    safeHtml: sanitizeHtml(looseCssExtract.html),
     css,
     js,
     hasJs: js.trim().length > 0

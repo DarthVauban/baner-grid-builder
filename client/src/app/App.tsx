@@ -31,6 +31,9 @@ const FormsBuilderPage = lazy(() => import('../pages/FormsBuilderPage').then((mo
 const UsedSmartphonesCatalogPage = lazy(() => import('../pages/UsedSmartphonesCatalogPage').then((module) => ({
   default: module.UsedSmartphonesCatalogPage
 })));
+const CatalogCharacteristicsPage = lazy(() => import('../pages/CatalogCharacteristicsPage').then((module) => ({
+  default: module.CatalogCharacteristicsPage
+})));
 const CatalogWorkspacePage = lazy(() => import('../pages/CatalogWorkspacePage').then((module) => ({
   default: module.CatalogWorkspacePage
 })));
@@ -96,7 +99,7 @@ export function App() {
             <Route path="products" element={<Suspense fallback={<LoadingScreen />}><UsedSmartphonesCatalogPage /></Suspense>} />
             <Route path="imports" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Імпорт XLSX" /></Suspense>} />
             <Route path="brands" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Бренди" /></Suspense>} />
-            <Route path="characteristics" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Характеристики" /></Suspense>} />
+            <Route path="characteristics" element={<Suspense fallback={<LoadingScreen />}><CatalogCharacteristicsPage /></Suspense>} />
             <Route path="filters" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Фільтри" /></Suspense>} />
             <Route path="modifications" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Модифікації" /></Suspense>} />
             <Route path="storefront" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Налаштування вітрини" /></Suspense>} />

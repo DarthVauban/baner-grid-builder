@@ -89,6 +89,28 @@ const brandInputSchema = z.object({
   active: z.boolean().default(true),
   sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0)
 });
+const characteristicFieldSchema = z.object({
+  key: z.string().trim().max(120).default(''),
+  label: z.string().trim().min(1).max(180),
+  type: z.enum(['text', 'number', 'select', 'multiselect', 'boolean']).default('text'),
+  unit: z.string().trim().max(40).default(''),
+  options: z.array(z.string().trim().min(1).max(160)).max(80).default([]),
+  required: z.boolean().default(false),
+  filterable: z.boolean().default(false),
+  sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0)
+});
+const characteristicTemplateSchema = z.object({
+  label: z.string().trim().min(1).max(180),
+  description: z.string().trim().max(2000).default(''),
+  active: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0),
+  fields: z.array(characteristicFieldSchema).max(100).default([])
+});
+const productCharacteristicsSchema = z.object({
+  templateId: z.string().uuid(),
+  values: z.record(z.string(), z.unknown()).default({}),
+  expectedVersion: z.coerce.number().int().min(1)
+});
 const importPreviewSchema = z.object({
   rows: z.array(z.record(z.string(), z.unknown())).max(5000).default([])
 });
@@ -211,6 +233,132 @@ function normalizeGalleryValue(value) {
   return [];
 }
 
+function normalizeJsonArrayValue(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function normalizeJsonObjectValue(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function normalizeTemplateFieldKey(value, fallback) {
+  return String(value || fallback || 'field')
+    .normalize('NFKC')
+    .toLocaleLowerCase('uk-UA')
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120) || `field_${Date.now()}`;
+}
+
+function serializeCharacteristicField(row) {
+  return {
+    id: row.id,
+    templateId: row.template_id,
+    key: row.key,
+    label: row.label,
+    type: row.type,
+    unit: row.unit || '',
+    options: normalizeJsonArrayValue(row.options),
+    required: row.required === true,
+    filterable: row.filterable === true,
+    sortOrder: Number(row.sort_order || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function serializeCharacteristicTemplate(row, fields = []) {
+  return {
+    id: row.id,
+    label: row.label,
+    description: row.description || '',
+    active: row.active === true,
+    sortOrder: Number(row.sort_order || 0),
+    fields,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function assertUniqueFieldKeys(fields) {
+  const seen = new Set();
+  for (const field of fields) {
+    const key = normalizeTemplateFieldKey(field.key, field.label);
+    if (seen.has(key)) {
+      throw new AppError(422, 'CATALOG_TEMPLATE_FIELD_DUPLICATE', `Дубль ключа поля "${key}" у шаблоні.`);
+    }
+    seen.add(key);
+  }
+}
+
+async function loadCharacteristicTemplate(templateId, db = { query }) {
+  const template = await db.query(
+    'SELECT * FROM used_smartphone_characteristic_templates WHERE id = $1',
+    [templateId]
+  );
+  if (!template.rows[0]) return null;
+  const fields = await db.query(
+    `SELECT *
+     FROM used_smartphone_characteristic_template_fields
+     WHERE template_id = $1
+     ORDER BY sort_order, created_at`,
+    [templateId]
+  );
+  return serializeCharacteristicTemplate(template.rows[0], fields.rows.map(serializeCharacteristicField));
+}
+
+async function replaceCharacteristicFields(db, templateId, fields) {
+  assertUniqueFieldKeys(fields);
+  await db.query('DELETE FROM used_smartphone_characteristic_template_fields WHERE template_id = $1', [templateId]);
+  for (const [index, field] of fields.entries()) {
+    await db.query(
+      `INSERT INTO used_smartphone_characteristic_template_fields (
+         template_id, key, label, type, unit, options, required, filterable, sort_order
+       ) VALUES ($1, $2, $3, $4, $5, $6::JSONB, $7, $8, $9)`,
+      [
+        templateId,
+        normalizeTemplateFieldKey(field.key, field.label),
+        field.label,
+        field.type,
+        field.unit,
+        JSON.stringify(field.options),
+        field.required,
+        field.filterable,
+        field.sortOrder || index
+      ]
+    );
+  }
+}
+
+function characteristicValueForField(field, values) {
+  const raw = values[field.key];
+  if (field.type === 'boolean') return raw === true || raw === 'true';
+  if (field.type === 'number') {
+    const number = Number(raw);
+    return Number.isFinite(number) ? number : null;
+  }
+  if (field.type === 'multiselect') return Array.isArray(raw) ? raw.map(String) : [];
+  return raw == null ? '' : String(raw);
+}
+
 async function syncProductMedia(db, productId, input, actorId) {
   const items = [];
   if (input.mainImageUrl) items.push({ url: input.mainImageUrl, alt: input.name || '', role: 'main', sortOrder: 0 });
@@ -295,7 +443,7 @@ router.get('/stream', (req, res) => {
   req.on('close', () => { clearInterval(heartbeat); unsubscribe(); });
 });
 
-router.post('/media', raw({ type: 'image/webp', limit: '8mb' }), asyncHandler(async (req, res) => {
+router.post('/media', raw({ type: 'image/webp', limit: '3mb' }), asyncHandler(async (req, res) => {
   const contentType = String(req.get('content-type') || '').toLowerCase();
   let asset;
   if (contentType.startsWith('image/webp')) {
@@ -412,6 +560,95 @@ router.patch('/brands/:id', asyncHandler(async (req, res) => {
   }
 }));
 
+router.get('/characteristic-templates', asyncHandler(async (req, res) => {
+  const templates = await query(
+    `SELECT *
+     FROM used_smartphone_characteristic_templates
+     ORDER BY active DESC, sort_order, lower(label)`
+  );
+  const fields = await query(
+    `SELECT *
+     FROM used_smartphone_characteristic_template_fields
+     ORDER BY sort_order, created_at`
+  );
+  const grouped = new Map();
+  fields.rows.forEach((row) => {
+    const list = grouped.get(row.template_id) || [];
+    list.push(serializeCharacteristicField(row));
+    grouped.set(row.template_id, list);
+  });
+  res.json({ data: templates.rows.map((row) => serializeCharacteristicTemplate(row, grouped.get(row.id) || [])) });
+}));
+
+router.post('/characteristic-templates', asyncHandler(async (req, res) => {
+  const input = parseInput(characteristicTemplateSchema, req.body);
+  const client = await pool.connect();
+  let template;
+  try {
+    await client.query('BEGIN');
+    const created = await client.query(
+      `INSERT INTO used_smartphone_characteristic_templates (
+         label, description, active, sort_order, created_by, updated_by
+       ) VALUES ($1, $2, $3, $4, $5, $5)
+       RETURNING *`,
+      [input.label, input.description, input.active, input.sortOrder, req.user.id]
+    );
+    await replaceCharacteristicFields(client, created.rows[0].id, input.fields);
+    await logCatalogAudit(client, {
+      actorId: req.user.id,
+      action: 'characteristic_template_create',
+      changes: { templateId: created.rows[0].id, label: input.label, fields: input.fields.length }
+    });
+    template = await loadCharacteristicTemplate(created.rows[0].id, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_TEMPLATE_EXISTS', 'Шаблон з такою назвою вже існує.');
+    throw error;
+  } finally {
+    client.release();
+  }
+  res.status(201).json({ data: template });
+}));
+
+router.put('/characteristic-templates/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(characteristicTemplateSchema, req.body);
+  const client = await pool.connect();
+  let template;
+  try {
+    await client.query('BEGIN');
+    const updated = await client.query(
+      `UPDATE used_smartphone_characteristic_templates
+       SET label = $1,
+           description = $2,
+           active = $3,
+           sort_order = $4,
+           updated_by = $5,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [input.label, input.description, input.active, input.sortOrder, req.user.id, id]
+    );
+    if (!updated.rows[0]) throw new AppError(404, 'CATALOG_TEMPLATE_NOT_FOUND', 'Шаблон характеристик не знайдено.');
+    await replaceCharacteristicFields(client, id, input.fields);
+    await logCatalogAudit(client, {
+      actorId: req.user.id,
+      action: 'characteristic_template_update',
+      changes: { templateId: id, label: input.label, fields: input.fields.length }
+    });
+    template = await loadCharacteristicTemplate(id, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_TEMPLATE_EXISTS', 'Шаблон з такою назвою вже існує.');
+    throw error;
+  } finally {
+    client.release();
+  }
+  res.json({ data: template });
+}));
+
 router.get('/products', asyncHandler(async (req, res) => {
   const input = parseInput(listSchema, {
     search: String(req.query.search || ''),
@@ -490,6 +727,94 @@ router.get('/products/:id', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const product = await loadCatalogProduct(id);
   if (!product) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+  res.json({ data: product });
+}));
+
+router.get('/products/:id/characteristics', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const product = await query('SELECT id FROM used_smartphone_products WHERE id = $1', [id]);
+  if (!product.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+  const result = await query(
+    `SELECT characteristics.*, fields.type, fields.options, fields.unit, fields.required, fields.filterable
+     FROM used_smartphone_product_characteristics AS characteristics
+     LEFT JOIN used_smartphone_characteristic_template_fields AS fields ON fields.id = characteristics.field_id
+     WHERE characteristics.product_id = $1
+     ORDER BY characteristics.sort_order, characteristics.updated_at`,
+    [id]
+  );
+  const values = {};
+  let templateId = null;
+  result.rows.forEach((row) => {
+    templateId ||= row.template_id || null;
+    const json = normalizeJsonObjectValue(row.value_json);
+    values[row.key] = Object.hasOwn(json, 'value') ? json.value : row.value_text;
+  });
+  res.json({ data: { templateId, values } });
+}));
+
+router.put('/products/:id/characteristics', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(productCharacteristicsSchema, req.body);
+  const client = await pool.connect();
+  let product;
+  let recipients = [];
+  try {
+    await client.query('BEGIN');
+    const current = await client.query('SELECT * FROM used_smartphone_products WHERE id = $1 FOR UPDATE', [id]);
+    if (!current.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+    if (Number(current.rows[0].version) !== input.expectedVersion) {
+      throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
+    }
+    const template = await loadCharacteristicTemplate(input.templateId, client);
+    if (!template) throw new AppError(404, 'CATALOG_TEMPLATE_NOT_FOUND', 'Шаблон характеристик не знайдено.');
+    await client.query('DELETE FROM used_smartphone_product_characteristics WHERE product_id = $1', [id]);
+    for (const [index, field] of template.fields.entries()) {
+      const value = characteristicValueForField(field, input.values);
+      await client.query(
+        `INSERT INTO used_smartphone_product_characteristics (
+           product_id, template_id, field_id, key, label, value_text,
+           value_number, value_boolean, value_json, sort_order, updated_by
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11)`,
+        [
+          id,
+          template.id,
+          field.id,
+          field.key,
+          field.label,
+          Array.isArray(value) ? value.join(', ') : value == null ? '' : String(value),
+          typeof value === 'number' ? value : null,
+          typeof value === 'boolean' ? value : null,
+          JSON.stringify({ value }),
+          field.sortOrder || index,
+          req.user.id
+        ]
+      );
+    }
+    await client.query(
+      `UPDATE used_smartphone_products
+       SET updated_by = $1,
+           updated_at = NOW(),
+           version = version + 1
+       WHERE id = $2`,
+      [req.user.id, id]
+    );
+    await logCatalogAudit(client, {
+      productId: id,
+      actorId: req.user.id,
+      action: 'characteristics_update',
+      changes: { templateId: template.id, fields: template.fields.length }
+    });
+    recipients = await getCatalogRecipientIds(client);
+    product = await loadCatalogProduct(id, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+  publishCatalogUpdates(recipients, { type: 'characteristics_updated', productId: id });
+  if (product.publicationStatus === 'PUBLISHED') publishPublicCatalogUpdate({ type: 'characteristics_updated', productId: id });
   res.json({ data: product });
 }));
 

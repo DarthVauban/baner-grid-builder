@@ -1,5 +1,5 @@
 const allowedCatalogImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const maxCatalogImageBytes = 12 * 1024 * 1024;
+const maxCatalogImageBytes = 3 * 1024 * 1024;
 const maxCatalogImageSide = 2200;
 
 function normalizedImageType(file: File) {
@@ -16,7 +16,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Не вдалося прочитати фото.'));
+    image.onerror = () => reject(new Error('Не вдалося прочитати фото. Перевірте, що файл не пошкоджений.'));
     image.src = url;
   });
 }
@@ -42,10 +42,15 @@ function isImageBitmap(value: ImageBitmap | HTMLImageElement): value is ImageBit
   return typeof ImageBitmap !== 'undefined' && value instanceof ImageBitmap;
 }
 
-export async function convertCatalogImageToWebp(file: File): Promise<Blob> {
+export function validateCatalogImageFile(file: File) {
   const type = normalizedImageType(file);
   if (!allowedCatalogImageTypes.has(type)) throw new Error('Оберіть PNG, JPG або WebP.');
-  if (file.size > maxCatalogImageBytes) throw new Error('Фото має бути меншим за 12 МБ.');
+  if (file.size > maxCatalogImageBytes) throw new Error('Кожне фото має бути до 3 МБ.');
+}
+
+export async function convertCatalogImageToWebp(file: File): Promise<Blob> {
+  const type = normalizedImageType(file);
+  validateCatalogImageFile(file);
 
   if (type === 'image/webp') return file;
 
@@ -64,7 +69,8 @@ export async function convertCatalogImageToWebp(file: File): Promise<Blob> {
   context.drawImage(image, 0, 0, width, height);
   if (bitmap) image.close();
 
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.86));
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.84));
   if (!blob) throw new Error('Браузер не підтримує конвертацію у WebP.');
+  if (blob.size > maxCatalogImageBytes) throw new Error('Після конвертації фото все ще більше 3 МБ. Зменште розмір файлу.');
   return blob;
 }

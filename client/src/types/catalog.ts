@@ -39,6 +39,47 @@ export interface CatalogMediaAsset {
   updatedAt: string;
 }
 
+export type CatalogCharacteristicFieldType = 'text' | 'number' | 'select' | 'multiselect' | 'boolean';
+
+export interface CatalogCharacteristicField {
+  id?: string;
+  templateId?: string;
+  key: string;
+  label: string;
+  type: CatalogCharacteristicFieldType;
+  unit: string;
+  options: string[];
+  required: boolean;
+  filterable: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CatalogCharacteristicTemplate {
+  id: string;
+  label: string;
+  description: string;
+  active: boolean;
+  sortOrder: number;
+  fields: CatalogCharacteristicField[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CatalogCharacteristicTemplateInput {
+  label: string;
+  description: string;
+  active: boolean;
+  sortOrder: number;
+  fields: CatalogCharacteristicField[];
+}
+
+export interface CatalogProductCharacteristics {
+  templateId: string | null;
+  values: Record<string, unknown>;
+}
+
 export interface CatalogProduct {
   id: string;
   productCode: string;
