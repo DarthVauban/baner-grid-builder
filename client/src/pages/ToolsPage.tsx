@@ -14,6 +14,7 @@ export function ToolsPage() {
   const accessByTool = new Map(catalog.data?.tools.map((item) => [item.toolId, item]));
   const visibleTools = tools
     .filter((tool) => tool.id !== 'chat')
+    .filter((tool) => tool.showInTools !== false)
     .filter((tool) => accessByTool.get(tool.id)?.granted);
 
   return (

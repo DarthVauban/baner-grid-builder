@@ -79,7 +79,28 @@ function ProductThumb({ product }: { product: CatalogProduct }) {
   </span>;
 }
 
-function ProductEditorModal({
+type CatalogEditorTab = 'main' | 'availability' | 'media' | 'description' | 'condition' | 'characteristics' | 'modifications' | 'seo' | 'internal';
+
+const editorTabs: Array<{ id: CatalogEditorTab; label: string }> = [
+  { id: 'main', label: 'Основне' },
+  { id: 'availability', label: 'Ціна і наявність' },
+  { id: 'media', label: 'Медіа' },
+  { id: 'description', label: 'Опис' },
+  { id: 'condition', label: 'Стан' },
+  { id: 'characteristics', label: 'Характеристики' },
+  { id: 'modifications', label: 'Модифікації' },
+  { id: 'seo', label: 'SEO' },
+  { id: 'internal', label: 'Внутрішнє' }
+];
+
+function diagnosticText(diagnostics: Record<string, unknown>, key: string) {
+  const value = diagnostics[key];
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(String).join('\n');
+  return '';
+}
+
+function ProductEditorScreen({
   product,
   brands,
   busy,
@@ -90,14 +111,61 @@ function ProductEditorModal({
   brands: CatalogBrand[];
   busy: boolean;
   onClose: () => void;
-  onSubmit: (input: CatalogProductInput, product: CatalogProduct | null) => Promise<void>;
+  onSubmit: (input: CatalogProductInput, product: CatalogProduct | null) => Promise<CatalogProduct | null>;
 }) {
   const [draft, setDraft] = useState<CatalogProductInput>(() => (
     product ? productToInput(product) : { ...emptyCatalogProductInput }
   ));
+  const [activeTab, setActiveTab] = useState<CatalogEditorTab>('main');
+
+  const publishBlockers = useMemo(() => {
+    const blockers = [];
+    if (!draft.name.trim()) blockers.push('Назва');
+    if (!draft.condition) blockers.push('Стан');
+    if (Number(draft.priceUah || 0) <= 0) blockers.push('Ціна більше 0');
+    if (!draft.mainImageUrl.trim()) blockers.push('Головне фото');
+    if (!draft.slug.trim()) blockers.push('Slug');
+    return blockers;
+  }, [draft.condition, draft.mainImageUrl, draft.name, draft.priceUah, draft.slug]);
+
+  const recommendations = useMemo(() => {
+    const items = [];
+    if (!draft.shortDescription.trim()) items.push('Короткий опис');
+    if (!draft.description.trim()) items.push('Повний опис');
+    if (!draft.bodyCondition.trim() || !draft.displayCondition.trim() || !draft.batteryHealth.trim()) items.push('Деталі стану');
+    if (!draft.seoDescription.trim()) items.push('SEO description');
+    return items;
+  }, [draft.batteryHealth, draft.bodyCondition, draft.description, draft.displayCondition, draft.seoDescription, draft.shortDescription]);
+
+  const availabilityLabel = draft.stockCount > 0 ? 'В наявності' : draft.incomingCount > 0 ? 'В дорозі' : 'Немає в наявності';
+  const importIdentityChanged = Boolean(product && (
+    draft.name.trim() !== product.name || draft.condition !== product.condition
+  ));
 
   function setField<K extends keyof CatalogProductInput>(key: K, value: CatalogProductInput[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function setDiagnostic(key: string, value: string) {
+    setDraft((current) => ({ ...current, diagnostics: { ...current.diagnostics, [key]: value } }));
+  }
+
+  function setGalleryItem(index: number, key: 'url' | 'alt', value: string) {
+    setDraft((current) => ({
+      ...current,
+      gallery: current.gallery.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item))
+    }));
+  }
+
+  function addGalleryItem() {
+    setDraft((current) => current.gallery.length >= 20 ? current : ({
+      ...current,
+      gallery: [...current.gallery, { url: '', alt: '' }]
+    }));
+  }
+
+  function removeGalleryItem(index: number) {
+    setDraft((current) => ({ ...current, gallery: current.gallery.filter((_, itemIndex) => itemIndex !== index) }));
   }
 
   async function submit(event: FormEvent) {
@@ -105,41 +173,129 @@ function ProductEditorModal({
     await onSubmit(draft, product);
   }
 
-  return <div className="modal-backdrop" role="presentation">
-    <section className="modal catalog-editor-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-editor-title">
-      <header className="modal__header">
-        <div><p className="eyebrow">{product ? product.productCode : 'Новий товар'}</p><h2 id="catalog-editor-title">{product ? 'Редагування товару' : 'Новий смартфон'}</h2></div>
-        <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" /></button>
-      </header>
-      <form className="catalog-editor-modal__content" onSubmit={(event) => void submit(event)}>
-        <div className="catalog-form-grid">
-          <label className="field catalog-form-grid__wide"><span>Назва</span><input value={draft.name} onChange={(event) => setField('name', event.target.value)} required maxLength={240} /></label>
-          <label className="field"><span>Стан</span><StyledSelect value={draft.condition} options={catalogConditionOptions} onChange={(value) => setField('condition', value as CatalogCondition)} /></label>
-          <label className="field"><span>Статус публікації</span><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} /></label>
-          <label className="field"><span>Ціна, грн</span><input type="number" min={0} step="0.01" value={draft.priceUah} onChange={(event) => setField('priceUah', Number(event.target.value || 0))} /></label>
-          <label className="field"><span>Залишок</span><input type="number" min={0} step={1} value={draft.stockCount} onChange={(event) => setField('stockCount', Number(event.target.value || 0))} /></label>
-          <label className="field"><span>В дорозі</span><input type="number" min={0} step={1} value={draft.incomingCount} onChange={(event) => setField('incomingCount', Number(event.target.value || 0))} /></label>
-          <label className="field"><span>Бренд</span><StyledSelect value={draft.brandId || ''} options={[{ value: '', label: 'Без бренду' }, ...brands.map((brand) => ({ value: brand.id, label: brand.label }))]} onChange={(value) => setField('brandId', value ? String(value) : null)} /></label>
-          <label className="field"><span>Slug</span><input value={draft.slug} onChange={(event) => setField('slug', event.target.value)} placeholder="iphone-13-used" maxLength={260} /></label>
-          <label className="field catalog-form-grid__wide"><span>Головне фото</span><input value={draft.mainImageUrl} onChange={(event) => setField('mainImageUrl', event.target.value)} placeholder="https://..." maxLength={4000} /></label>
-          <label className="field catalog-form-grid__wide"><span>Короткий опис</span><textarea value={draft.shortDescription} onChange={(event) => setField('shortDescription', event.target.value)} maxLength={1200} /></label>
-          <label className="field catalog-form-grid__wide"><span>Опис</span><textarea value={draft.description} onChange={(event) => setField('description', event.target.value)} maxLength={12000} /></label>
-          <label className="field"><span>Корпус</span><input value={draft.bodyCondition} onChange={(event) => setField('bodyCondition', event.target.value)} maxLength={120} /></label>
-          <label className="field"><span>Дисплей</span><input value={draft.displayCondition} onChange={(event) => setField('displayCondition', event.target.value)} maxLength={120} /></label>
-          <label className="field"><span>Акумулятор</span><input value={draft.batteryHealth} onChange={(event) => setField('batteryHealth', event.target.value)} maxLength={120} /></label>
-          <label className="field"><span>Гарантія</span><input value={draft.warranty} onChange={(event) => setField('warranty', event.target.value)} maxLength={160} /></label>
-          <label className="field catalog-form-grid__wide"><span>Комплектація</span><textarea value={draft.includedAccessories} onChange={(event) => setField('includedAccessories', event.target.value)} maxLength={3000} /></label>
-          <label className="field"><span>SEO title</span><input value={draft.seoTitle} onChange={(event) => setField('seoTitle', event.target.value)} maxLength={240} /></label>
-          <label className="field"><span>SEO description</span><input value={draft.seoDescription} onChange={(event) => setField('seoDescription', event.target.value)} maxLength={500} /></label>
-          <label className="field catalog-form-grid__wide"><span>Внутрішні нотатки</span><textarea value={draft.internalNotes} onChange={(event) => setField('internalNotes', event.target.value)} maxLength={6000} /></label>
+  async function submitAndPreview() {
+    const saved = await onSubmit(draft, product);
+    if (saved?.publicPath) window.open(saved.publicPath, '_blank', 'noopener,noreferrer');
+  }
+
+  return <form className="catalog-editor-screen" onSubmit={(event) => void submit(event)}>
+    <header className="catalog-editor-screen__topbar">
+      <button className="button button--secondary" type="button" onClick={onClose}><Icon name="arrowLeft" size={17} /> До списку</button>
+      <div>
+        <p className="eyebrow">{product ? product.productCode : 'Новий товар'}</p>
+        <h1>{product ? 'Редактор картки товару' : 'Новий смартфон'}</h1>
+      </div>
+      <div className="catalog-editor-actions">
+        {product?.publicPath && <a className="button button--secondary" href={product.publicPath} target="_blank" rel="noreferrer"><Icon name="openInNew" size={17} /> Перегляд</a>}
+        <button className="button button--secondary" type="button" disabled={busy} onClick={() => void submitAndPreview()}><Icon name="visibility" size={17} /> Зберегти і переглянути</button>
+        <button className="button button--primary" type="submit" disabled={busy}><Icon name="save" size={17} /> Зберегти</button>
+      </div>
+    </header>
+
+    <div className="catalog-editor-screen__layout">
+      <aside className="catalog-editor-tabs" aria-label="Розділи редактора">
+        {editorTabs.map((tab) => <button className={activeTab === tab.id ? 'active' : ''} type="button" key={tab.id} onClick={() => setActiveTab(tab.id)}>
+          {tab.label}
+        </button>)}
+        <div className={`catalog-readiness${publishBlockers.length ? ' catalog-readiness--warning' : ' catalog-readiness--ready'}`}>
+          <span>{publishBlockers.length ? 'Не готово до публікації' : 'Готово до публікації'}</span>
+          {publishBlockers.length > 0 && <ul>{publishBlockers.map((item) => <li key={item}>{item}</li>)}</ul>}
+          {!publishBlockers.length && recommendations.length > 0 && <ul>{recommendations.map((item) => <li key={item}>{item}</li>)}</ul>}
         </div>
-        <footer className="modal__footer">
-          <button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button>
-          <button className="button button--primary" type="submit" disabled={busy}><Icon name="save" size={17} /> Зберегти</button>
-        </footer>
-      </form>
-    </section>
-  </div>;
+      </aside>
+
+      <section className="catalog-editor-panel">
+        {importIdentityChanged && <p className="form-message form-message--error">Назва і стан є ключем імпорту. Їх зміна може створити окрему позицію під час наступного XLSX-імпорту.</p>}
+
+        {activeTab === 'main' && <section className="catalog-editor-section">
+          <header><h2>Основна інформація</h2><span>{product ? product.productCode : 'Код буде створено після збереження'}</span></header>
+          <div className="catalog-editor-grid">
+            <label className="field catalog-editor-grid__wide"><span>Назва</span><input value={draft.name} onChange={(event) => setField('name', event.target.value)} required maxLength={240} /></label>
+            <label className="field"><span>Стан</span><StyledSelect value={draft.condition} options={catalogConditionOptions} onChange={(value) => setField('condition', value as CatalogCondition)} /></label>
+            <label className="field"><span>Статус публікації</span><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} /></label>
+            <label className="field"><span>Бренд</span><StyledSelect value={draft.brandId || ''} options={[{ value: '', label: 'Без бренду' }, ...brands.map((brand) => ({ value: brand.id, label: brand.label }))]} onChange={(value) => setField('brandId', value ? String(value) : null)} /></label>
+            <label className="field"><span>Slug</span><input value={draft.slug} onChange={(event) => setField('slug', event.target.value)} placeholder="iphone-13-used" maxLength={260} /></label>
+          </div>
+        </section>}
+
+        {activeTab === 'availability' && <section className="catalog-editor-section">
+          <header><h2>Ціна і наявність</h2><span>{availabilityLabel}</span></header>
+          <div className="catalog-editor-grid">
+            <label className="field"><span>Ціна, грн</span><input type="number" min={0} step="0.01" value={draft.priceUah} onChange={(event) => setField('priceUah', Number(event.target.value || 0))} /></label>
+            <label className="field"><span>Залишок</span><input type="number" min={0} step={1} value={draft.stockCount} onChange={(event) => setField('stockCount', Number(event.target.value || 0))} /></label>
+            <label className="field"><span>В дорозі</span><input type="number" min={0} step={1} value={draft.incomingCount} onChange={(event) => setField('incomingCount', Number(event.target.value || 0))} /></label>
+          </div>
+        </section>}
+
+        {activeTab === 'media' && <section className="catalog-editor-section">
+          <header><h2>Медіа</h2><button className="button button--secondary button--small" type="button" onClick={addGalleryItem} disabled={draft.gallery.length >= 20}><Icon name="add" size={15} /> Фото</button></header>
+          <div className="catalog-editor-grid">
+            <label className="field catalog-editor-grid__wide"><span>Головне фото</span><input value={draft.mainImageUrl} onChange={(event) => setField('mainImageUrl', event.target.value)} placeholder="https://..." maxLength={4000} /></label>
+          </div>
+          <div className="catalog-gallery-editor">
+            {draft.gallery.map((item, index) => <div className="catalog-gallery-row" key={index}>
+              <label className="field"><span>URL</span><input value={item.url} onChange={(event) => setGalleryItem(index, 'url', event.target.value)} maxLength={4000} /></label>
+              <label className="field"><span>Alt</span><input value={item.alt} onChange={(event) => setGalleryItem(index, 'alt', event.target.value)} maxLength={240} /></label>
+              <button className="icon-button" type="button" onClick={() => removeGalleryItem(index)} aria-label="Видалити фото"><Icon name="delete" /></button>
+            </div>)}
+            {!draft.gallery.length && <p className="catalog-editor-muted">Додаткових фото ще немає.</p>}
+          </div>
+        </section>}
+
+        {activeTab === 'description' && <section className="catalog-editor-section">
+          <header><h2>Опис</h2></header>
+          <div className="catalog-editor-grid">
+            <label className="field catalog-editor-grid__wide"><span>Короткий опис</span><textarea value={draft.shortDescription} onChange={(event) => setField('shortDescription', event.target.value)} maxLength={1200} /></label>
+            <label className="field catalog-editor-grid__wide"><span>Повний опис</span><textarea value={draft.description} onChange={(event) => setField('description', event.target.value)} maxLength={12000} /></label>
+          </div>
+        </section>}
+
+        {activeTab === 'condition' && <section className="catalog-editor-section">
+          <header><h2>Стан пристрою</h2></header>
+          <div className="catalog-editor-grid">
+            <label className="field"><span>Корпус</span><input value={draft.bodyCondition} onChange={(event) => setField('bodyCondition', event.target.value)} maxLength={120} /></label>
+            <label className="field"><span>Дисплей</span><input value={draft.displayCondition} onChange={(event) => setField('displayCondition', event.target.value)} maxLength={120} /></label>
+            <label className="field"><span>Акумулятор</span><input value={draft.batteryHealth} onChange={(event) => setField('batteryHealth', event.target.value)} maxLength={120} /></label>
+            <label className="field"><span>Гарантія</span><input value={draft.warranty} onChange={(event) => setField('warranty', event.target.value)} maxLength={160} /></label>
+            <label className="field catalog-editor-grid__wide"><span>Комплектація</span><textarea value={draft.includedAccessories} onChange={(event) => setField('includedAccessories', event.target.value)} maxLength={3000} /></label>
+            <label className="field catalog-editor-grid__wide"><span>Дефекти</span><textarea value={diagnosticText(draft.diagnostics, 'defectsText')} onChange={(event) => setDiagnostic('defectsText', event.target.value)} maxLength={3000} /></label>
+          </div>
+        </section>}
+
+        {activeTab === 'characteristics' && <section className="catalog-editor-section">
+          <header><h2>Характеристики</h2></header>
+          <div className="catalog-editor-grid">
+            <label className="field catalog-editor-grid__wide"><span>Публічні характеристики</span><textarea value={diagnosticText(draft.diagnostics, 'characteristicsText')} onChange={(event) => setDiagnostic('characteristicsText', event.target.value)} maxLength={6000} /></label>
+          </div>
+        </section>}
+
+        {activeTab === 'modifications' && <section className="catalog-editor-section">
+          <header><h2>Модифікації</h2></header>
+          <div className="catalog-editor-grid">
+            <label className="field"><span>Група</span><input value={diagnosticText(draft.diagnostics, 'modificationGroup')} onChange={(event) => setDiagnostic('modificationGroup', event.target.value)} placeholder="Пам'ять / Колір" maxLength={160} /></label>
+            <label className="field catalog-editor-grid__wide"><span>Варіанти</span><textarea value={diagnosticText(draft.diagnostics, 'modificationValues')} onChange={(event) => setDiagnostic('modificationValues', event.target.value)} maxLength={3000} /></label>
+          </div>
+        </section>}
+
+        {activeTab === 'seo' && <section className="catalog-editor-section">
+          <header><h2>SEO і соцмережі</h2></header>
+          <div className="catalog-editor-grid">
+            <label className="field"><span>SEO title</span><input value={draft.seoTitle} onChange={(event) => setField('seoTitle', event.target.value)} maxLength={240} /></label>
+            <label className="field"><span>SEO description</span><input value={draft.seoDescription} onChange={(event) => setField('seoDescription', event.target.value)} maxLength={500} /></label>
+            <label className="field catalog-editor-grid__wide"><span>Social description</span><textarea value={draft.socialDescription} onChange={(event) => setField('socialDescription', event.target.value)} maxLength={500} /></label>
+          </div>
+        </section>}
+
+        {activeTab === 'internal' && <section className="catalog-editor-section">
+          <header><h2>Внутрішнє</h2></header>
+          <div className="catalog-editor-grid">
+            <label className="field"><span>Серійний номер / IMEI</span><input value={diagnosticText(draft.diagnostics, 'privateSerial')} onChange={(event) => setDiagnostic('privateSerial', event.target.value)} maxLength={240} /></label>
+            <label className="field catalog-editor-grid__wide"><span>Внутрішні нотатки</span><textarea value={draft.internalNotes} onChange={(event) => setField('internalNotes', event.target.value)} maxLength={6000} /></label>
+          </div>
+        </section>}
+      </section>
+    </div>
+  </form>;
 }
 
 function CatalogRow({
@@ -346,8 +502,10 @@ export function UsedSmartphonesCatalogPage() {
       showToast(product ? 'Товар оновлено.' : 'Товар створено.');
       setEditorProduct(saved);
       await refresh();
+      return saved;
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося зберегти товар.', 'error');
+      return null;
     }
   }
 
@@ -362,6 +520,29 @@ export function UsedSmartphonesCatalogPage() {
     } catch {
       showToast('Не вдалося скопіювати посилання.', 'error');
     }
+  }
+
+  function downloadImportTemplate() {
+    const headers = ['Назва', 'Статус', 'Залишок', 'В дорозі', 'Ціна'];
+    const rows = [
+      { 'Назва': 'iPhone 13 128GB Midnight', 'Статус': 'Вживаний', 'Залишок': 1, 'В дорозі': 0, 'Ціна': 18999 },
+      { 'Назва': 'Samsung Galaxy S22 128GB Black', 'Статус': 'Відновлений', 'Залишок': 0, 'В дорозі': 3, 'Ціна': 20999 }
+    ];
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+    sheet['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Імпорт');
+    const help = XLSX.utils.aoa_to_sheet([
+      ['Колонка', 'Правило'],
+      ['Назва', 'Назва товару або моделі. Разом зі статусом використовується для пошуку наявного товару.'],
+      ['Статус', 'Вживаний або Відновлений. Також можна USED або REFURBISHED.'],
+      ['Залишок', 'Ціле число 0 або більше.'],
+      ['В дорозі', 'Ціле число 0 або більше.'],
+      ['Ціна', 'Число 0 або більше у гривнях.']
+    ]);
+    help['!cols'] = [{ wch: 18 }, { wch: 78 }];
+    XLSX.utils.book_append_sheet(workbook, help, 'Довідка');
+    XLSX.writeFile(workbook, 'used-smartphones-import-template.xlsx');
   }
 
   async function runPreview(rows: Array<Record<string, unknown>>) {
@@ -396,6 +577,16 @@ export function UsedSmartphonesCatalogPage() {
   const rows = products.data?.items || [];
   const publishedForms = (forms.data || []).filter((form) => form.status === 'published');
 
+  if (editorProduct !== undefined) {
+    return <ProductEditorScreen
+      product={editorProduct}
+      brands={brands.data || []}
+      busy={saveProduct.isPending}
+      onClose={closeEditor}
+      onSubmit={submitProduct}
+    />;
+  }
+
   return <div className="catalog-page">
     <section className="task-toolbar">
       <div>
@@ -403,6 +594,7 @@ export function UsedSmartphonesCatalogPage() {
         <h1>Каталог смартфонів</h1>
       </div>
       <div className="task-toolbar__controls">
+        <button className="button button--secondary" type="button" onClick={downloadImportTemplate}><Icon name="productTables" /> Шаблон XLSX</button>
         <button className="button button--secondary" type="button" onClick={() => { setImportPreview(null); setImportOpen(true); }}><Icon name="upload" /> Імпорт XLSX</button>
         <button className="button button--primary" type="button" onClick={() => setEditorProduct(null)}><Icon name="add" /> Новий товар</button>
       </div>
@@ -454,14 +646,6 @@ export function UsedSmartphonesCatalogPage() {
         </div>
       </div>
     </section>
-
-    {editorProduct !== undefined && <ProductEditorModal
-      product={editorProduct}
-      brands={brands.data || []}
-      busy={saveProduct.isPending}
-      onClose={closeEditor}
-      onSubmit={submitProduct}
-    />}
     {importOpen && <ImportModal
       busy={previewImport.isPending || commitImport.isPending}
       preview={importPreview}

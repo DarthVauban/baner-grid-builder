@@ -125,6 +125,7 @@ export function StorefrontPage() {
   const [condition, setCondition] = useState<CatalogCondition | 'all'>('all');
   const [availability, setAvailability] = useState<CatalogAvailabilityStatus | 'all'>('all');
   const [sort, setSort] = useState('updated_desc');
+  const [requestOpen, setRequestOpen] = useState(false);
   const params = useMemo(() => ({ search, condition, availability, sort, page: 1, pageSize: 24 }), [availability, condition, search, sort]);
   const settings = useQuery({ queryKey: ['storefront-settings'], queryFn: api.storefront.settings });
   const products = useQuery({ queryKey: ['storefront-products', params], queryFn: () => api.storefront.list(params), enabled: !slug });
@@ -146,6 +147,10 @@ export function StorefrontPage() {
     return () => { stream.removeEventListener('storefront', refresh); stream.close(); };
   }, [queryClient]);
 
+  useEffect(() => {
+    setRequestOpen(false);
+  }, [slug]);
+
   function updateSearch(event: ChangeEvent<HTMLInputElement>) {
     setSearch(event.target.value);
     const next = new URLSearchParams(searchParams);
@@ -155,6 +160,8 @@ export function StorefrontPage() {
   }
 
   const items = products.data?.items || [];
+  const productData = product.data;
+  const canRequestProduct = Boolean(productData && productData.availability.status !== 'unavailable' && form.data);
 
   return <main className="storefront-page">
     <header className="storefront-header">
@@ -162,23 +169,28 @@ export function StorefrontPage() {
       <a className="button button--secondary button--small" href="/login">У робочий простір</a>
     </header>
 
-    {slug && product.data ? <section className="storefront-detail">
-      <div className="storefront-detail__media"><ProductImage product={product.data} /></div>
+    {slug ? productData ? <section className="storefront-detail">
+      <div className="storefront-detail__media"><ProductImage product={productData} /></div>
+      <div className="storefront-detail__main">
       <article className="storefront-detail__info">
         <Link to="/storefront" className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>
-        <p className="eyebrow">{product.data.productCode} · {product.data.conditionLabel}</p>
-        <h1>{product.data.name}</h1>
-        <div className="storefront-detail__badges"><span>{product.data.availability.label}</span><span>{product.data.priceLabel}</span></div>
-        {product.data.shortDescription && <p>{product.data.shortDescription}</p>}
+        <p className="eyebrow">{productData.productCode} · {productData.conditionLabel}</p>
+        <h1>{productData.name}</h1>
+        <div className="storefront-detail__badges"><span>{productData.availability.label}</span><span>{productData.priceLabel}</span></div>
+        {productData.shortDescription && <p>{productData.shortDescription}</p>}
         <dl className="storefront-specs">
-          {product.data.bodyCondition && <><dt>Корпус</dt><dd>{product.data.bodyCondition}</dd></>}
-          {product.data.displayCondition && <><dt>Дисплей</dt><dd>{product.data.displayCondition}</dd></>}
-          {product.data.batteryHealth && <><dt>Акумулятор</dt><dd>{product.data.batteryHealth}</dd></>}
-          {product.data.warranty && <><dt>Гарантія</dt><dd>{product.data.warranty}</dd></>}
+          {productData.bodyCondition && <><dt>Корпус</dt><dd>{productData.bodyCondition}</dd></>}
+          {productData.displayCondition && <><dt>Дисплей</dt><dd>{productData.displayCondition}</dd></>}
+          {productData.batteryHealth && <><dt>Акумулятор</dt><dd>{productData.batteryHealth}</dd></>}
+          {productData.warranty && <><dt>Гарантія</dt><dd>{productData.warranty}</dd></>}
         </dl>
+        <button className="button button--primary" type="button" disabled={!canRequestProduct} onClick={() => setRequestOpen(true)}>
+          {productData.availability.status === 'unavailable' ? 'Немає в наявності' : form.data ? 'Оформити заявку' : 'Заявка недоступна'} <Icon name="arrowRight" size={16} />
+        </button>
       </article>
-      <StorefrontApplicationForm product={product.data} form={form.data} />
-    </section> : <section className="storefront-catalog">
+      {requestOpen && productData.availability.status !== 'unavailable' && <StorefrontApplicationForm product={productData} form={form.data} />}
+      </div>
+    </section> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
       <div className="storefront-hero">
         <p className="eyebrow">Used & refurbished</p>
         <h1>Смартфони з перевіреним станом</h1>

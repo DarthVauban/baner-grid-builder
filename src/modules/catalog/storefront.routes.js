@@ -152,6 +152,9 @@ router.post('/products/:identifier/applications', submitLimiter, asyncHandler(as
     loadPublicProduct(identifier)
   ]);
   if (!product) throw new AppError(404, 'STOREFRONT_PRODUCT_NOT_FOUND', 'Товар не знайдено або не опубліковано.');
+  if (product.availability.status === 'unavailable') {
+    throw new AppError(409, 'STOREFRONT_PRODUCT_UNAVAILABLE', 'Товар зараз недоступний для заявки.');
+  }
   if (!settings.selectedFormPublicId) {
     throw new AppError(422, 'STOREFRONT_FORM_NOT_CONFIGURED', 'Для вітрини ще не обрано форму заявок.');
   }

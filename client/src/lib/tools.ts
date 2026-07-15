@@ -7,6 +7,7 @@ export interface ToolDefinition {
   description: string;
   path: string;
   icon: IconName;
+  showInTools?: boolean;
 }
 
 export const tools: ToolDefinition[] = [
@@ -43,7 +44,8 @@ export const tools: ToolDefinition[] = [
     name: 'Каталог смартфонів',
     description: 'Корпоративний каталог вживаних і відновлених смартфонів із залишками, імпортом, публікацією та заявками з вітрини.',
     path: '/tools/used-smartphones',
-    icon: 'phone'
+    icon: 'phone',
+    showInTools: false
   },
   {
     id: 'banner_grid',

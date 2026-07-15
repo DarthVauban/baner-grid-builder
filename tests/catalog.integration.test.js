@@ -148,4 +148,27 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(applications.body.data.items[0].product.title, 'iPhone 13 128GB Midnight');
   assert.equal(applications.body.data.items[0].product.productCode, 'SM-000001');
   assert.equal(applications.body.data.items[0].product.externalProductId, created.body.data.id);
+
+  const unavailable = await admin.put(`/api/catalog/products/${created.body.data.id}`).send({
+    ...productAfterImport.body.data,
+    brandId: null,
+    gallery: productAfterImport.body.data.gallery || [],
+    stockCount: 0,
+    incomingCount: 0,
+    expectedVersion: productAfterImport.body.data.version
+  }).expect(200);
+  assert.equal(unavailable.body.data.availability.status, 'unavailable');
+
+  await request(app).post(`/api/storefront/products/${unavailable.body.data.slug}/applications`).send({
+    values: {
+      first_name: 'Olena',
+      last_name: 'Buyer',
+      phone: '+380501112233',
+      bank: 'mono'
+    },
+    context: {
+      sourceUrl: `https://storefront.test${unavailable.body.data.publicPath}`
+    },
+    idempotencyKey: 'catalog-product-unavailable-application'
+  }).expect(409);
 });
