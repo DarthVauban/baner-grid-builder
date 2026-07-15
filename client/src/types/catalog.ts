@@ -130,7 +130,7 @@ export interface CatalogProductModificationOption {
   value: string;
   label: string;
   selected: boolean;
-  product: Pick<CatalogProduct, 'id' | 'productCode' | 'name' | 'slug' | 'publicPath' | 'priceLabel' | 'availability'> | null;
+  product: Pick<CatalogProduct, 'id' | 'productCode' | 'name' | 'slug' | 'publicPath' | 'priceLabel' | 'availability' | 'mainImageUrl'> | null;
 }
 
 export interface CatalogProductModificationParameter {

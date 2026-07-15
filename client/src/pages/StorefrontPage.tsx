@@ -6,7 +6,13 @@ import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import { catalogConditionOptions } from '../lib/catalog';
-import type { CatalogAvailabilityStatus, CatalogCondition, CatalogProduct } from '../types/catalog';
+import type {
+  CatalogAvailabilityStatus,
+  CatalogCondition,
+  CatalogProduct,
+  CatalogProductModificationOption,
+  CatalogProductModificationParameter
+} from '../types/catalog';
 
 type PublicForm = Awaited<ReturnType<typeof api.storefront.form>>;
 type PublicField = PublicForm['fields'][number];
@@ -174,25 +180,45 @@ function StorefrontCharacteristics({ product }: { product: CatalogProduct }) {
   </section>;
 }
 
+function isColorModification(parameter: Pick<CatalogProductModificationParameter, 'key' | 'label'>) {
+  const marker = `${parameter.key} ${parameter.label}`.toLocaleLowerCase('uk-UA');
+  return ['color', 'colour', 'kolir', '\u043a\u043e\u043b\u0456\u0440', '\u0446\u0432\u0435\u0442'].some((value) => marker.includes(value));
+}
+
+function modificationOptionContent(parameter: CatalogProductModificationParameter, option: CatalogProductModificationOption) {
+  if (!isColorModification(parameter)) return option.label;
+  return <>
+    <span className="storefront-modification__thumb" aria-hidden="true">
+      {option.product?.mainImageUrl
+        ? <img src={option.product.mainImageUrl} alt="" loading="lazy" />
+        : <Icon name="phone" size={20} />}
+    </span>
+    <span className="storefront-modification__thumb-label">{option.label}</span>
+  </>;
+}
+
 function StorefrontModifications({ product, preview }: { product: CatalogProduct; preview: boolean }) {
   const parameters = (product.modifications?.parameters || []).filter((parameter) => parameter.options.length);
   if (!parameters.length) return null;
   return <div className="storefront-modifications" aria-label="Модифікації товару">
-    {parameters.map((parameter) => <div className="storefront-modification" key={parameter.id}>
-      <span className="storefront-modification__label">{parameter.label}</span>
-      <div className="storefront-modification__options">
-        {parameter.options.map((option) => {
-          const className = `storefront-modification__option${option.selected ? ' storefront-modification__option--active' : ''}${option.product ? '' : ' storefront-modification__option--disabled'}`;
-          if (option.selected) {
-            return <button className={className} type="button" disabled key={option.id}>{option.label}</button>;
-          }
-          if (option.product) {
-            return <Link className={className} to={productLink(option.product, preview)} key={option.id}>{option.label}</Link>;
-          }
-          return <span className={className} key={option.id}>{option.label}</span>;
-        })}
-      </div>
-    </div>)}
+    {parameters.map((parameter) => {
+      const colorParameter = isColorModification(parameter);
+      return <div className="storefront-modification" key={parameter.id}>
+        <span className="storefront-modification__label">{parameter.label}</span>
+        <div className={`storefront-modification__options${colorParameter ? ' storefront-modification__options--swatches' : ''}`}>
+          {parameter.options.map((option) => {
+            const className = `storefront-modification__option${colorParameter ? ' storefront-modification__option--swatch' : ''}${option.selected ? ' storefront-modification__option--active' : ''}${option.product ? '' : ' storefront-modification__option--disabled'}`;
+            if (option.selected) {
+              return <button className={className} type="button" disabled key={option.id}>{modificationOptionContent(parameter, option)}</button>;
+            }
+            if (option.product) {
+              return <Link className={className} to={productLink(option.product, preview)} key={option.id}>{modificationOptionContent(parameter, option)}</Link>;
+            }
+            return <span className={className} key={option.id}>{modificationOptionContent(parameter, option)}</span>;
+          })}
+        </div>
+      </div>;
+    })}
   </div>;
 }
 

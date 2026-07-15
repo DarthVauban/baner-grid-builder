@@ -331,24 +331,45 @@ export async function loadProductModificationSet(productId, db = { query }, { pu
   });
 
   const currentValues = valuesByProduct.get(productId) || new Map();
+  const currentProduct = products.find((product) => product.id === productId) || null;
+
+  const findVariantForOption = (parameterKey, displayValue) => {
+    const currentMatch = currentProduct && (valuesByProduct.get(currentProduct.id) || new Map()).get(parameterKey)?.displayValue === displayValue
+      ? currentProduct
+      : null;
+    const strictMatch = products.find((product) => {
+      const values = valuesByProduct.get(product.id) || new Map();
+      if (values.get(parameterKey)?.displayValue !== displayValue) return false;
+      return [...parametersByKey.keys()].every((key) => {
+        if (key === parameterKey) return true;
+        const current = currentValues.get(key);
+        if (!current?.displayValue) return true;
+        return values.get(key)?.displayValue === current.displayValue;
+      });
+    });
+    const fallbackMatch = products.find((product) => (valuesByProduct.get(product.id) || new Map()).get(parameterKey)?.displayValue === displayValue);
+    const match = currentMatch || strictMatch || fallbackMatch;
+    return match ? serializeModificationProduct(match, { publicOnly }) : null;
+  };
 
   const parameters = [...parametersByKey.values()]
     .sort((left, right) => left.sortOrder - right.sortOrder || left.label.localeCompare(right.label))
     .map((parameter) => {
       const current = currentValues.get(parameter.key);
-      const options = products
-        .map((product) => ({
-          product,
-          value: (valuesByProduct.get(product.id) || new Map()).get(parameter.key)
-        }))
-        .filter((option) => option.value)
-        .map((option) => ({
-          id: `${parameter.key}:${option.product.id}`,
-          value: String(option.value.value ?? option.value.displayValue),
-          label: option.value.displayValue,
-          selected: option.product.id === productId,
-          product: serializeModificationProduct(option.product, { publicOnly })
-        }));
+      const optionValues = new Map();
+      products.forEach((product) => {
+        const value = (valuesByProduct.get(product.id) || new Map()).get(parameter.key);
+        if (value && !optionValues.has(value.displayValue)) {
+          optionValues.set(value.displayValue, value);
+        }
+      });
+      const options = [...optionValues.values()].map((option) => ({
+        id: `${parameter.key}:${option.displayValue}`,
+        value: String(option.value ?? option.displayValue),
+        label: option.displayValue,
+        selected: current?.displayValue === option.displayValue,
+        product: findVariantForOption(parameter.key, option.displayValue)
+      }));
       return {
         id: parameter.key,
         key: parameter.key,

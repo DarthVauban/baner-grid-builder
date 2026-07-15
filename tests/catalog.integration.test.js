@@ -128,7 +128,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     fields: [
       { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, isModifier: true, sortOrder: 0 },
       { key: 'battery_health', label: 'Battery health', type: 'number', unit: '%', options: [], required: false, filterable: true, sortOrder: 1 },
-      { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Blue'], required: false, filterable: true, sortOrder: 2 },
+      { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Blue'], required: false, filterable: true, isModifier: true, sortOrder: 2 },
       { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 3 }
     ]
   }).expect(201);
@@ -140,7 +140,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     values: {
       storage: '128',
       battery_health: 91,
-      colors: ['Midnight', 'Blue'],
+      colors: ['Midnight'],
       face_id: true
     }
   }).expect(200);
@@ -150,7 +150,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(savedCharacteristics.body.data.templateId, template.body.data.id);
   assert.equal(savedCharacteristics.body.data.values.storage, '128');
   assert.equal(savedCharacteristics.body.data.values.battery_health, 91);
-  assert.deepEqual(savedCharacteristics.body.data.values.colors, ['Midnight', 'Blue']);
+  assert.deepEqual(savedCharacteristics.body.data.values.colors, ['Midnight']);
   assert.equal(savedCharacteristics.body.data.values.face_id, true);
 
   const publicProductWithCharacteristics = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
@@ -160,7 +160,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     [
       ['storage', '128 GB'],
       ['battery_health', '91 %'],
-      ['colors', 'Midnight, Blue'],
+      ['colors', 'Midnight'],
       ['face_id', 'Так']
     ]
   );
@@ -219,19 +219,31 @@ test('catalog products publish to storefront, import stock updates, and create a
 
   const publicProductWithModifications = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
   assert.equal(publicProductWithModifications.body.data.modifications.groupLabel, 'iPhone 13 Midnight');
+  const publicStorageParameter = publicProductWithModifications.body.data.modifications.parameters.find((parameter) => parameter.key === 'storage');
+  assert.ok(publicStorageParameter);
   assert.deepEqual(
-    publicProductWithModifications.body.data.modifications.parameters[0].options.map((option) => [option.label, option.selected, option.product?.slug || null]),
+    publicStorageParameter.options.map((option) => [option.label, option.selected, option.product?.slug || null]),
     [
       ['128 GB', true, updated.body.data.slug],
       ['256 GB', false, variant.body.data.slug]
+    ]
+  );
+  const publicColorParameter = publicProductWithModifications.body.data.modifications.parameters.find((parameter) => parameter.key === 'colors');
+  assert.ok(publicColorParameter);
+  assert.deepEqual(
+    publicColorParameter.options.map((option) => [option.label, option.selected, option.product?.slug || null, option.product?.mainImageUrl || null]),
+    [
+      ['Midnight', true, updated.body.data.slug, 'https://example.com/iphone-13.webp']
     ]
   );
 
   const publicDraftChildVariant = await request(app).get(`/api/storefront/products/${variant.body.data.slug}`).expect(200);
   assert.equal(publicDraftChildVariant.body.data.productCode, 'SM-000002');
   assert.equal(publicDraftChildVariant.body.data.modifications.mainProductId, created.body.data.id);
+  const publicDraftStorageParameter = publicDraftChildVariant.body.data.modifications.parameters.find((parameter) => parameter.key === 'storage');
+  assert.ok(publicDraftStorageParameter);
   assert.deepEqual(
-    publicDraftChildVariant.body.data.modifications.parameters[0].options.map((option) => [option.label, option.selected, option.product?.slug || null]),
+    publicDraftStorageParameter.options.map((option) => [option.label, option.selected, option.product?.slug || null]),
     [
       ['128 GB', false, updated.body.data.slug],
       ['256 GB', true, variant.body.data.slug]
