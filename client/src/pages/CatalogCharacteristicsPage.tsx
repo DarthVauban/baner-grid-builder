@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
@@ -50,6 +51,10 @@ function parseOptions(value: string) {
     .filter(Boolean);
 }
 
+function normalizeFieldOrder(fields: CatalogCharacteristicField[]) {
+  return fields.map((field, sortOrder) => ({ ...field, sortOrder }));
+}
+
 function templateToInput(template: CatalogCharacteristicTemplate): CatalogCharacteristicTemplateInput {
   return {
     label: template.label,
@@ -65,6 +70,7 @@ export function CatalogCharacteristicsPage() {
   const { showToast } = useToast();
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<CatalogCharacteristicTemplateInput>(() => emptyTemplate());
+  const [draggedFieldIndex, setDraggedFieldIndex] = useState<number | null>(null);
 
   const templates = useQuery({
     queryKey: ['catalog-characteristic-templates'],
@@ -91,11 +97,13 @@ export function CatalogCharacteristicsPage() {
   function selectTemplate(template: CatalogCharacteristicTemplate) {
     setSelectedId(template.id);
     setDraft(templateToInput(template));
+    setDraggedFieldIndex(null);
   }
 
   function newTemplate() {
     setSelectedId('');
     setDraft(emptyTemplate());
+    setDraggedFieldIndex(null);
   }
 
   function setField<K extends keyof CatalogCharacteristicTemplateInput>(key: K, value: CatalogCharacteristicTemplateInput[K]) {
@@ -119,8 +127,32 @@ export function CatalogCharacteristicsPage() {
   function removeField(index: number) {
     setDraft((current) => ({
       ...current,
-      fields: current.fields.length <= 1 ? current.fields : current.fields.filter((_, fieldIndex) => fieldIndex !== index)
+      fields: current.fields.length <= 1 ? current.fields : normalizeFieldOrder(current.fields.filter((_, fieldIndex) => fieldIndex !== index))
     }));
+  }
+
+  function reorderField(fromIndex: number, toIndex: number) {
+    setDraft((current) => {
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= current.fields.length || toIndex >= current.fields.length) return current;
+      const fields = [...current.fields];
+      const [field] = fields.splice(fromIndex, 1);
+      fields.splice(toIndex, 0, field);
+      return { ...current, fields: normalizeFieldOrder(fields) };
+    });
+  }
+
+  function startFieldDrag(event: DragEvent<HTMLElement>, index: number) {
+    setDraggedFieldIndex(index);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+  }
+
+  function dropField(event: DragEvent<HTMLElement>, index: number) {
+    event.preventDefault();
+    const rawIndex = event.dataTransfer.getData('text/plain');
+    const fromIndex = draggedFieldIndex ?? Number(rawIndex);
+    if (Number.isInteger(fromIndex)) reorderField(fromIndex, index);
+    setDraggedFieldIndex(null);
   }
 
   async function submit() {
@@ -175,7 +207,17 @@ export function CatalogCharacteristicsPage() {
             <h3>Поля шаблону</h3>
             <button className="button button--secondary button--small" type="button" onClick={addField}><Icon name="add" size={15} /> Поле</button>
           </div>
-          {draft.fields.map((field, index) => <article className="catalog-template-field" key={index}>
+          {draft.fields.map((field, index) => <article
+            className={`catalog-template-field${draggedFieldIndex === index ? ' catalog-template-field--dragging' : ''}`}
+            key={index}
+            onDragOver={(event) => { if (draggedFieldIndex !== null && draggedFieldIndex !== index) event.preventDefault(); }}
+            onDrop={(event) => dropField(event, index)}
+            onDragEnd={() => setDraggedFieldIndex(null)}
+          >
+            <div className="catalog-template-field__bar">
+              <span className="catalog-drag-handle" draggable={draft.fields.length > 1} aria-disabled={draft.fields.length <= 1} title="Перетягнути поле" onDragStart={(event) => startFieldDrag(event, index)}><Icon name="menu" size={18} /> Поле {index + 1}</span>
+              <button className="icon-button" type="button" onClick={() => removeField(index)} aria-label="Видалити поле"><Icon name="delete" /></button>
+            </div>
             <div className="catalog-editor-grid">
               <label className="field"><span>Назва поля</span><input value={field.label} onChange={(event) => setTemplateField(index, { label: event.target.value })} maxLength={180} /></label>
               <label className="field"><span>Ключ</span><input value={field.key} onChange={(event) => setTemplateField(index, { key: event.target.value })} placeholder="auto якщо порожньо" maxLength={120} /></label>
@@ -186,7 +228,6 @@ export function CatalogCharacteristicsPage() {
               <label className="toggle-row"><input type="checkbox" checked={field.filterable} onChange={(event) => setTemplateField(index, { filterable: event.target.checked })} /> Для фільтрів</label>
               <label className="toggle-row"><input type="checkbox" checked={field.isModifier} onChange={(event) => setTemplateField(index, { isModifier: event.target.checked })} /> Модифікований параметр</label>
             </div>
-            <button className="icon-button" type="button" onClick={() => removeField(index)} aria-label="Видалити поле"><Icon name="delete" /></button>
           </article>)}
         </div>
       </section>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, FormEvent } from 'react';
+import type { ChangeEvent, DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -315,6 +315,7 @@ function ProductEditorScreen({
   const [activeTab, setActiveTab] = useState<CatalogEditorTab>('main');
   const [mediaBusy, setMediaBusy] = useState('');
   const [mediaError, setMediaError] = useState('');
+  const [draggedGalleryIndex, setDraggedGalleryIndex] = useState<number | null>(null);
   const [linkedSaveBusy, setLinkedSaveBusy] = useState(false);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -518,15 +519,28 @@ function ProductEditorScreen({
     });
   }
 
-  function moveGalleryItem(index: number, direction: -1 | 1) {
+  function reorderGalleryItem(fromIndex: number, toIndex: number) {
     setDraft((current) => {
-      const nextIndex = index + direction;
-      if (nextIndex < 0 || nextIndex >= current.gallery.length) return current;
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= current.gallery.length || toIndex >= current.gallery.length) return current;
       const gallery = [...current.gallery];
-      const [item] = gallery.splice(index, 1);
-      gallery.splice(nextIndex, 0, item);
+      const [item] = gallery.splice(fromIndex, 1);
+      gallery.splice(toIndex, 0, item);
       return { ...current, gallery };
     });
+  }
+
+  function startGalleryDrag(event: DragEvent<HTMLElement>, index: number) {
+    setDraggedGalleryIndex(index);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+  }
+
+  function dropGalleryItem(event: DragEvent<HTMLElement>, index: number) {
+    event.preventDefault();
+    const rawIndex = event.dataTransfer.getData('text/plain');
+    const fromIndex = draggedGalleryIndex ?? Number(rawIndex);
+    if (Number.isInteger(fromIndex)) reorderGalleryItem(fromIndex, index);
+    setDraggedGalleryIndex(null);
   }
 
   async function uploadProductPhotos(files: FileList | null) {
@@ -655,13 +669,18 @@ function ProductEditorScreen({
             <div className="catalog-gallery-grid">
               {draft.gallery.map((item, index) => {
                 const isMain = Boolean(item.url && draft.mainImageUrl === item.url);
-                return <article className={`catalog-gallery-tile${isMain ? ' catalog-gallery-tile--main' : ''}`} key={index}>
+                return <article
+                  className={`catalog-gallery-tile${isMain ? ' catalog-gallery-tile--main' : ''}${draggedGalleryIndex === index ? ' catalog-gallery-tile--dragging' : ''}`}
+                  key={index}
+                  onDragOver={(event) => { if (draggedGalleryIndex !== null && draggedGalleryIndex !== index) event.preventDefault(); }}
+                  onDrop={(event) => dropGalleryItem(event, index)}
+                  onDragEnd={() => setDraggedGalleryIndex(null)}
+                >
                   <span className="catalog-gallery-tile__image">{item.url ? <img src={item.url} alt="" /> : <Icon name="savedBanners" size={22} />}</span>
                   <label className="catalog-gallery-tile__main"><input type="checkbox" checked={isMain} disabled={!item.url} onChange={(event) => setField('mainImageUrl', event.target.checked ? item.url : '')} /> Головне фото</label>
                   <label className="field"><span>Alt</span><input value={item.alt} onChange={(event) => setGalleryItem(index, 'alt', event.target.value)} maxLength={240} /></label>
                   <div className="catalog-gallery-row__actions">
-                    <button className="icon-button" type="button" disabled={index === 0} onClick={() => moveGalleryItem(index, -1)} aria-label="Підняти фото"><Icon name="arrowUp" /></button>
-                    <button className="icon-button" type="button" disabled={index === draft.gallery.length - 1} onClick={() => moveGalleryItem(index, 1)} aria-label="Опустити фото"><Icon name="arrowDown" /></button>
+                    <span className="catalog-drag-handle catalog-drag-handle--icon" draggable={draft.gallery.length > 1} aria-disabled={draft.gallery.length <= 1} title="Перетягнути фото" onDragStart={(event) => startGalleryDrag(event, index)}><Icon name="menu" size={18} /></span>
                     <button className="icon-button icon-button--danger" type="button" onClick={() => removeGalleryItem(index)} aria-label="Видалити фото"><Icon name="delete" /></button>
                   </div>
                 </article>;
