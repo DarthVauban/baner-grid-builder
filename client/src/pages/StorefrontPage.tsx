@@ -10,6 +10,7 @@ import type { CatalogAvailabilityStatus, CatalogCondition, CatalogProduct } from
 
 type PublicForm = Awaited<ReturnType<typeof api.storefront.form>>;
 type PublicField = PublicForm['fields'][number];
+type StorefrontGalleryImage = { url: string; alt: string };
 
 const availabilityOptions: Array<{ value: CatalogAvailabilityStatus | 'all'; label: string }> = [
   { value: 'all', label: 'Уся наявність' },
@@ -33,6 +34,96 @@ function ProductImage({ product }: { product: CatalogProduct }) {
       ? <img src={product.mainImageUrl} alt={product.name} loading="lazy" onError={() => setFailed(true)} />
       : <Icon name="phone" size={34} />}
   </span>;
+}
+
+function productGalleryImages(product: CatalogProduct): StorefrontGalleryImage[] {
+  const images: StorefrontGalleryImage[] = [];
+  if (product.mainImageUrl) images.push({ url: product.mainImageUrl, alt: product.name });
+  (product.gallery || []).forEach((item) => {
+    if (!item.url || images.some((image) => image.url === item.url)) return;
+    images.push({ url: item.url, alt: item.alt || product.name });
+  });
+  return images;
+}
+
+function StorefrontGalleryLightbox({
+  images,
+  index,
+  onIndex,
+  onClose
+}: {
+  images: StorefrontGalleryImage[];
+  index: number;
+  onIndex: (index: number) => void;
+  onClose: () => void;
+}) {
+  const current = images[index] || images[0];
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowLeft') onIndex((index - 1 + images.length) % images.length);
+      if (event.key === 'ArrowRight') onIndex((index + 1) % images.length);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [images.length, index, onClose, onIndex]);
+
+  if (!current) return null;
+
+  return <div className="storefront-gallery-lightbox" role="dialog" aria-modal="true" aria-label="Перегляд фото" onMouseDown={(event) => {
+    if (event.target === event.currentTarget) onClose();
+  }}>
+    <button className="storefront-gallery-lightbox__close" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={24} /></button>
+    {images.length > 1 && <button className="storefront-gallery-lightbox__arrow storefront-gallery-lightbox__arrow--prev" type="button" onClick={() => onIndex((index - 1 + images.length) % images.length)} aria-label="Попереднє фото"><Icon name="chevronLeft" size={34} /></button>}
+    <figure>
+      <img src={current.url} alt={current.alt} />
+      {images.length > 1 && <figcaption>{index + 1} / {images.length}</figcaption>}
+    </figure>
+    {images.length > 1 && <button className="storefront-gallery-lightbox__arrow storefront-gallery-lightbox__arrow--next" type="button" onClick={() => onIndex((index + 1) % images.length)} aria-label="Наступне фото"><Icon name="chevronRight" size={34} /></button>}
+  </div>;
+}
+
+function ProductGallery({ product }: { product: CatalogProduct }) {
+  const images = useMemo(() => productGalleryImages(product), [product]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const active = images[activeIndex] || images[0];
+
+  useEffect(() => {
+    setActiveIndex(0);
+    setLightboxIndex(null);
+  }, [product.productCode]);
+
+  if (!active) return <span className="storefront-product-image storefront-product-image--gallery"><Icon name="phone" size={34} /></span>;
+
+  function move(delta: -1 | 1) {
+    setActiveIndex((current) => (current + delta + images.length) % images.length);
+  }
+
+  return <div className="storefront-gallery">
+    <div className="storefront-gallery__stage-wrap">
+      <button className="storefront-gallery__stage" type="button" onClick={() => setLightboxIndex(activeIndex)} aria-label="Відкрити фото на весь екран">
+        <img src={active.url} alt={active.alt} loading="lazy" />
+      </button>
+      {images.length > 1 && <>
+        <button className="storefront-gallery__arrow storefront-gallery__arrow--prev" type="button" onClick={() => move(-1)} aria-label="Попереднє фото"><Icon name="chevronLeft" size={24} /></button>
+        <button className="storefront-gallery__arrow storefront-gallery__arrow--next" type="button" onClick={() => move(1)} aria-label="Наступне фото"><Icon name="chevronRight" size={24} /></button>
+        <span className="storefront-gallery__count">{activeIndex + 1} / {images.length}</span>
+      </>}
+    </div>
+    {images.length > 1 && <div className="storefront-gallery__thumbs" aria-label="Фото товару">
+      {images.map((image, index) => <button className={index === activeIndex ? 'active' : ''} type="button" onClick={() => setActiveIndex(index)} key={`${image.url}-${index}`} aria-label={`Фото ${index + 1}`}>
+        <img src={image.url} alt="" loading="lazy" />
+      </button>)}
+    </div>}
+    {lightboxIndex !== null && <StorefrontGalleryLightbox images={images} index={lightboxIndex} onIndex={setLightboxIndex} onClose={() => setLightboxIndex(null)} />}
+  </div>;
 }
 
 function productPath(slug: string, preview: boolean) {
@@ -352,7 +443,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
     <StorefrontProductJsonLd product={productData} />
     <section className="storefront-detail">
       <div className="storefront-detail__media">
-        <ProductImage product={productData} />
+        <ProductGallery product={productData} />
         <StorefrontDescription product={productData} />
       </div>
       <div className="storefront-detail__main">

@@ -230,6 +230,13 @@ test('catalog products publish to storefront, import stock updates, and create a
   const publicDraftChildVariant = await request(app).get(`/api/storefront/products/${variant.body.data.slug}`).expect(200);
   assert.equal(publicDraftChildVariant.body.data.productCode, 'SM-000002');
   assert.equal(publicDraftChildVariant.body.data.modifications.mainProductId, created.body.data.id);
+  assert.deepEqual(
+    publicDraftChildVariant.body.data.modifications.parameters[0].options.map((option) => [option.label, option.selected, option.product?.slug || null]),
+    [
+      ['128 GB', false, updated.body.data.slug],
+      ['256 GB', true, variant.body.data.slug]
+    ]
+  );
 
   const groupedCatalogList = await admin.get('/api/catalog/products?search=iPhone&pageSize=25').expect(200);
   const groupedMain = groupedCatalogList.body.data.items.find((item) => item.id === created.body.data.id);
