@@ -583,13 +583,16 @@ function ProductEditorScreen({
     if (saved?.publicPath) window.open(catalogPreviewPath(saved), '_blank', 'noopener,noreferrer');
   }
 
+  const editorTitle = draft.name.trim() || product?.name || 'Новий смартфон';
+  const editorCode = product ? product.productCode : 'Новий товар';
+
   return <form className="catalog-editor-screen" onSubmit={(event) => void submit(event)}>
     <header className="catalog-editor-screen__topbar">
       <button className="button button--secondary" type="button" onClick={onClose}><Icon name="arrowLeft" size={17} /> До списку</button>
       <div className="catalog-editor-heading">
-        <p className="eyebrow">{product ? product.productCode : 'Новий товар'}</p>
+        <p className="eyebrow">{editorCode}</p>
         <div className="catalog-editor-title-row">
-          <h1>{product ? 'Редактор картки товару' : 'Новий смартфон'}</h1>
+          <h1 className="catalog-editor-title" data-full-title={editorTitle}><span>{editorTitle}</span></h1>
           <label className="catalog-editor-status">
             <span>Статус</span>
             <StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} ariaLabel="Статус публікації" compact />
