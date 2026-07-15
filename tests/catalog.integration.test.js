@@ -126,7 +126,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     active: true,
     sortOrder: 1,
     fields: [
-      { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, sortOrder: 0 },
+      { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, isModifier: true, sortOrder: 0 },
       { key: 'battery_health', label: 'Battery health', type: 'number', unit: '%', options: [], required: false, filterable: true, sortOrder: 1 },
       { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Blue'], required: false, filterable: true, sortOrder: 2 },
       { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 3 }
@@ -165,18 +165,6 @@ test('catalog products publish to storefront, import stock updates, and create a
     ]
   );
 
-  const storageModification = await admin.post('/api/catalog/modification-parameters').send({
-    key: 'storage',
-    label: 'Storage',
-    active: true,
-    sortOrder: 1,
-    values: [
-      { label: '128 GB', value: '128gb', active: true, sortOrder: 0 },
-      { label: '256 GB', value: '256gb', active: true, sortOrder: 1 }
-    ]
-  }).expect(201);
-  assert.equal(storageModification.body.data.values.length, 2);
-
   const variant = await admin.post('/api/catalog/products').send({
     name: 'iPhone 13 256GB Midnight',
     condition: 'USED',
@@ -202,29 +190,32 @@ test('catalog products publish to storefront, import stock updates, and create a
     internalNotes: ''
   }).expect(201);
 
-  const storageParameterId = storageModification.body.data.id;
-  const storage128Id = storageModification.body.data.values[0].id;
-  const storage256Id = storageModification.body.data.values[1].id;
+  const variantWithCharacteristics = await admin.put(`/api/catalog/products/${variant.body.data.id}/characteristics`).send({
+    templateId: template.body.data.id,
+    expectedVersion: variant.body.data.version,
+    values: {
+      storage: '256',
+      battery_health: 88,
+      colors: ['Midnight'],
+      face_id: true
+    }
+  }).expect(200);
+  assert.equal(variantWithCharacteristics.body.data.version, 2);
+
   const productWithModifications = await admin.put(`/api/catalog/products/${created.body.data.id}/modifications`).send({
     groupId: null,
     groupLabel: 'iPhone 13 Midnight',
-    parameterIds: [storageParameterId],
-    values: { [storageParameterId]: storage128Id },
+    mainProductId: created.body.data.id,
+    productIds: [created.body.data.id, variant.body.data.id],
     expectedVersion: productWithCharacteristics.body.data.version
   }).expect(200);
   assert.equal(productWithModifications.body.data.version, 4);
 
   const savedModifications = await admin.get(`/api/catalog/products/${created.body.data.id}/modifications`).expect(200);
   assert.equal(savedModifications.body.data.groupLabel, 'iPhone 13 Midnight');
+  assert.equal(savedModifications.body.data.mainProductId, created.body.data.id);
+  assert.deepEqual(savedModifications.body.data.items.map((item) => item.id), [created.body.data.id, variant.body.data.id]);
   assert.equal(savedModifications.body.data.parameters[0].currentValueLabel, '128 GB');
-
-  await admin.put(`/api/catalog/products/${variant.body.data.id}/modifications`).send({
-    groupId: savedModifications.body.data.groupId,
-    groupLabel: 'iPhone 13 Midnight',
-    parameterIds: [storageParameterId],
-    values: { [storageParameterId]: storage256Id },
-    expectedVersion: variant.body.data.version
-  }).expect(200);
 
   const publicProductWithModifications = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
   assert.equal(publicProductWithModifications.body.data.modifications.groupLabel, 'iPhone 13 Midnight');
@@ -235,6 +226,12 @@ test('catalog products publish to storefront, import stock updates, and create a
       ['256 GB', false, variant.body.data.slug]
     ]
   );
+
+  const groupedCatalogList = await admin.get('/api/catalog/products?search=iPhone&pageSize=25').expect(200);
+  const groupedMain = groupedCatalogList.body.data.items.find((item) => item.id === created.body.data.id);
+  assert.equal(groupedMain.modificationGroup.isMain, true);
+  assert.equal(groupedMain.modificationGroup.childCount, 1);
+  assert.equal(groupedMain.modificationChildren[0].id, variant.body.data.id);
 
   const duplicatePreview = await admin.post('/api/catalog/imports/preview').send({
     rows: [

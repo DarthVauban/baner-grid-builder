@@ -192,6 +192,7 @@ export async function loadProductCharacteristicSet(productId, db = { query }) {
             COALESCE(fields.type, 'text') AS type,
             COALESCE(fields.unit, '') AS unit,
             COALESCE(fields.filterable, FALSE) AS filterable,
+            COALESCE(fields.is_modifier, FALSE) AS is_modifier,
             templates.label AS template_label
      FROM used_smartphone_product_characteristics AS characteristics
      LEFT JOIN used_smartphone_characteristic_template_fields AS fields ON fields.id = characteristics.field_id
@@ -214,22 +215,31 @@ export async function loadProductCharacteristicSet(productId, db = { query }) {
         displayValue: characteristicDisplayValue(value, row.unit || ''),
         unit: row.unit || '',
         filterable: row.filterable === true,
+        isModifier: row.is_modifier === true,
         sortOrder: Number(row.sort_order || 0)
       };
     }).filter((item) => item.displayValue)
   };
 }
 
-function serializeModificationProduct(row) {
-  return {
-    id: row.product_code,
+function serializeModificationProduct(row, { publicOnly = false, includeInventory = false } = {}) {
+  const product = {
+    id: publicOnly ? row.product_code : row.id,
     productCode: row.product_code,
     name: row.name,
     slug: row.slug,
     publicPath: `/storefront/smartphones/${encodeURIComponent(row.slug)}`,
+    conditionLabel: conditionLabels[row.condition] || row.condition,
+    priceUah: Number(row.price_uah || 0),
     priceLabel: formatMoney(row.price_uah),
-    availability: availabilityForCounts(row.stock_count, row.incoming_count)
+    availability: availabilityForCounts(row.stock_count, row.incoming_count),
+    mainImageUrl: row.main_image_url || ''
   };
+  if (includeInventory) {
+    product.stockCount = Number(row.stock_count || 0);
+    product.incomingCount = Number(row.incoming_count || 0);
+  }
+  return product;
 }
 
 export async function loadProductModificationSet(productId, db = { query }, { publicOnly = false } = {}) {
@@ -244,113 +254,126 @@ export async function loadProductModificationSet(productId, db = { query }, { pu
   );
   const group = groupResult.rows[0];
   if (!group || (publicOnly && group.active !== true)) {
-    return { groupId: null, groupLabel: '', groupSlug: '', parameters: [] };
+    return { groupId: null, groupLabel: '', groupSlug: '', mainProductId: null, isMain: false, items: [], parameters: [] };
   }
 
-  const parametersResult = await db.query(
-    `SELECT parameters.*
-     FROM used_smartphone_product_group_parameters AS group_parameters
-     INNER JOIN used_smartphone_modification_parameters AS parameters ON parameters.id = group_parameters.parameter_id
-     WHERE group_parameters.group_id = $1
-       AND ($2::BOOLEAN = FALSE OR parameters.active = TRUE)
-     ORDER BY group_parameters.sort_order, parameters.sort_order, lower(parameters.label)`,
-    [group.id, publicOnly]
-  );
   const productFilter = publicOnly
     ? "AND product.publication_status = 'PUBLISHED'"
     : "AND product.publication_status <> 'ARCHIVED'";
   const productsResult = await db.query(
-    `${productSelect}
-     INNER JOIN used_smartphone_product_group_items AS group_items ON group_items.product_id = product.id
+    `SELECT group_items.group_id,
+            group_items.sort_order AS group_sort_order,
+            product.*,
+            brand.label AS brand_label,
+            creator.name AS created_by_name,
+            updater.name AS updated_by_name
+     FROM used_smartphone_product_group_items AS group_items
+     INNER JOIN used_smartphone_products AS product ON product.id = group_items.product_id
+     LEFT JOIN used_smartphone_brands AS brand ON brand.id = product.brand_id
+     LEFT JOIN users AS creator ON creator.id = product.created_by
+     LEFT JOIN users AS updater ON updater.id = product.updated_by
      WHERE group_items.group_id = $1
        ${productFilter}
-     ORDER BY group_items.sort_order, lower(product.name)`,
-    [group.id]
+     ORDER BY (product.id = $2) DESC, group_items.sort_order, lower(product.name)`,
+    [group.id, group.main_product_id || productId]
   );
   const products = productsResult.rows;
   const productIds = products.map((row) => row.id);
-  const parameterIds = parametersResult.rows.map((row) => row.id);
-  if (!productIds.length || !parametersResult.rows.length) {
-    return { groupId: group.id, groupLabel: group.label, groupSlug: group.slug, parameters: [] };
+  const items = products.map((row) => serializeModificationProduct(row, { publicOnly, includeInventory: !publicOnly }));
+  if (!productIds.length) {
+    return {
+      groupId: group.id,
+      groupLabel: group.label,
+      groupSlug: group.slug,
+      mainProductId: group.main_product_id || null,
+      isMain: group.main_product_id === productId,
+      items,
+      parameters: []
+    };
   }
 
-  const productIdPlaceholders = productIds.map((_, index) => `$${index + 1}`).join(', ');
-  const publicOnlyProductParam = productIds.length + 1;
-  const valuesResult = await db.query(
-    `SELECT product_values.product_id,
-            product_values.parameter_id,
-            values.id AS value_id,
-            values.value,
-            values.label,
-            values.active,
-            values.sort_order
-     FROM used_smartphone_product_modification_values AS product_values
-     INNER JOIN used_smartphone_modification_values AS values ON values.id = product_values.value_id
-     WHERE product_values.product_id IN (${productIdPlaceholders})
-       AND ($${publicOnlyProductParam}::BOOLEAN = FALSE OR values.active = TRUE)
-     ORDER BY values.sort_order, lower(values.label)`,
-    [...productIds, publicOnly]
-  );
-  const parameterIdPlaceholders = parameterIds.map((_, index) => `$${index + 1}`).join(', ');
-  const publicOnlyParameterParam = parameterIds.length + 1;
-  const allOptionsResult = await db.query(
-    `SELECT *
-     FROM used_smartphone_modification_values
-     WHERE parameter_id IN (${parameterIdPlaceholders})
-       AND ($${publicOnlyParameterParam}::BOOLEAN = FALSE OR active = TRUE)
-     ORDER BY sort_order, lower(label)`,
-    [...parameterIds, publicOnly]
+  const placeholders = productIds.map((_, index) => `$${index + 1}`).join(', ');
+  const characteristicsResult = await db.query(
+    `SELECT characteristics.*,
+            COALESCE(fields.type, 'text') AS type,
+            COALESCE(fields.unit, '') AS unit,
+            COALESCE(fields.is_modifier, FALSE) AS is_modifier
+     FROM used_smartphone_product_characteristics AS characteristics
+     LEFT JOIN used_smartphone_characteristic_template_fields AS fields ON fields.id = characteristics.field_id
+     WHERE characteristics.product_id IN (${placeholders})
+       AND COALESCE(fields.is_modifier, FALSE) = TRUE
+     ORDER BY characteristics.sort_order, lower(characteristics.label)`,
+    productIds
   );
 
   const valuesByProduct = new Map();
-  valuesResult.rows.forEach((row) => {
-    const map = valuesByProduct.get(row.product_id) || new Map();
-    map.set(row.parameter_id, row);
-    valuesByProduct.set(row.product_id, map);
+  const parametersByKey = new Map();
+  characteristicsResult.rows.forEach((row) => {
+    const value = productCharacteristicValue(row);
+    const displayValue = characteristicDisplayValue(value, row.unit || '');
+    if (!displayValue) return;
+    const item = {
+      key: row.key,
+      label: row.label,
+      value,
+      displayValue,
+      unit: row.unit || '',
+      sortOrder: Number(row.sort_order || 0)
+    };
+    const productValues = valuesByProduct.get(row.product_id) || new Map();
+    productValues.set(row.key, item);
+    valuesByProduct.set(row.product_id, productValues);
+    if (!parametersByKey.has(row.key)) parametersByKey.set(row.key, { key: row.key, label: row.label, sortOrder: Number(row.sort_order || 0) });
   });
-  const optionsByParameter = new Map();
-  allOptionsResult.rows.forEach((row) => {
-    const list = optionsByParameter.get(row.parameter_id) || [];
-    list.push(row);
-    optionsByParameter.set(row.parameter_id, list);
-  });
-  const currentValues = valuesByProduct.get(productId) || new Map();
 
-  const findVariantForOption = (parameterId, valueId) => {
+  const currentValues = valuesByProduct.get(productId) || new Map();
+  const findVariantForOption = (parameterKey, displayValue) => {
     const strict = products.find((product) => {
       const values = valuesByProduct.get(product.id) || new Map();
-      if (values.get(parameterId)?.value_id !== valueId) return false;
-      return parametersResult.rows.every((parameter) => (
-        parameter.id === parameterId
-          || !currentValues.get(parameter.id)?.value_id
-          || values.get(parameter.id)?.value_id === currentValues.get(parameter.id)?.value_id
+      if (values.get(parameterKey)?.displayValue !== displayValue) return false;
+      return [...parametersByKey.keys()].every((key) => (
+        key === parameterKey
+          || !currentValues.get(key)?.displayValue
+          || values.get(key)?.displayValue === currentValues.get(key)?.displayValue
       ));
     });
-    const fallback = strict || products.find((product) => (valuesByProduct.get(product.id) || new Map()).get(parameterId)?.value_id === valueId);
-    return fallback ? serializeModificationProduct(fallback) : null;
+    const fallback = strict || products.find((product) => (valuesByProduct.get(product.id) || new Map()).get(parameterKey)?.displayValue === displayValue);
+    return fallback ? serializeModificationProduct(fallback, { publicOnly }) : null;
   };
+
+  const parameters = [...parametersByKey.values()]
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.label.localeCompare(right.label))
+    .map((parameter) => {
+      const optionValues = new Map();
+      products.forEach((product) => {
+        const value = (valuesByProduct.get(product.id) || new Map()).get(parameter.key);
+        if (value && !optionValues.has(value.displayValue)) optionValues.set(value.displayValue, value);
+      });
+      const current = currentValues.get(parameter.key);
+      return {
+        id: parameter.key,
+        key: parameter.key,
+        label: parameter.label,
+        currentValueId: current?.displayValue || null,
+        currentValueLabel: current?.displayValue || '',
+        options: [...optionValues.values()].map((option) => ({
+          id: `${parameter.key}:${option.displayValue}`,
+          value: String(option.value ?? option.displayValue),
+          label: option.displayValue,
+          selected: current?.displayValue === option.displayValue,
+          product: findVariantForOption(parameter.key, option.displayValue)
+        }))
+      };
+    });
 
   return {
     groupId: group.id,
     groupLabel: group.label,
     groupSlug: group.slug,
-    parameters: parametersResult.rows.map((parameter) => {
-      const current = currentValues.get(parameter.id);
-      return {
-        id: parameter.id,
-        key: parameter.key,
-        label: parameter.label,
-        currentValueId: current?.value_id || null,
-        currentValueLabel: current?.label || '',
-        options: (optionsByParameter.get(parameter.id) || []).map((option) => ({
-          id: option.id,
-          value: option.value,
-          label: option.label,
-          selected: current?.value_id === option.id,
-          product: findVariantForOption(parameter.id, option.id)
-        }))
-      };
-    })
+    mainProductId: group.main_product_id || null,
+    isMain: group.main_product_id === productId,
+    items,
+    parameters
   };
 }
 
@@ -430,6 +453,67 @@ export function serializeCatalogProduct(row) {
     createdBy: row.created_by ? { id: row.created_by, name: row.created_by_name || '' } : null,
     updatedBy: row.updated_by ? { id: row.updated_by, name: row.updated_by_name || '' } : null
   };
+}
+
+export async function attachCatalogProductGroups(products, db = { query }) {
+  const productIds = products.map((product) => product.id).filter(Boolean);
+  if (!productIds.length) return products;
+  const placeholders = productIds.map((_, index) => `$${index + 1}`).join(', ');
+  const groupsResult = await db.query(
+    `SELECT DISTINCT groups.*
+     FROM used_smartphone_product_groups AS groups
+     LEFT JOIN used_smartphone_product_group_items AS items ON items.group_id = groups.id
+     WHERE groups.main_product_id IN (${placeholders})
+        OR items.product_id IN (${placeholders})`,
+    productIds
+  );
+  const groups = groupsResult.rows;
+  const groupIds = groups.map((group) => group.id);
+  if (!groupIds.length) return products;
+  const groupPlaceholders = groupIds.map((_, index) => `$${index + 1}`).join(', ');
+  const itemsResult = await db.query(
+    `SELECT group_items.group_id,
+            group_items.sort_order AS group_sort_order,
+            product.*,
+            brand.label AS brand_label,
+            creator.name AS created_by_name,
+            updater.name AS updated_by_name
+     FROM used_smartphone_product_group_items AS group_items
+     INNER JOIN used_smartphone_products AS product ON product.id = group_items.product_id
+     LEFT JOIN used_smartphone_brands AS brand ON brand.id = product.brand_id
+     LEFT JOIN users AS creator ON creator.id = product.created_by
+     LEFT JOIN users AS updater ON updater.id = product.updated_by
+     WHERE group_items.group_id IN (${groupPlaceholders})
+       AND product.publication_status <> 'ARCHIVED'
+     ORDER BY group_items.sort_order, lower(product.name)`,
+    groupIds
+  );
+  const groupsById = new Map(groups.map((group) => [group.id, group]));
+  const itemsByGroup = new Map();
+  const groupByProduct = new Map();
+  itemsResult.rows.forEach((row) => {
+    const list = itemsByGroup.get(row.group_id) || [];
+    list.push(row);
+    itemsByGroup.set(row.group_id, list);
+    groupByProduct.set(row.id, groupsById.get(row.group_id));
+  });
+  products.forEach((product) => {
+    const group = groupByProduct.get(product.id);
+    if (!group) return;
+    const rows = itemsByGroup.get(group.id) || [];
+    const childRows = rows.filter((row) => row.id !== group.main_product_id);
+    product.modificationGroup = {
+      groupId: group.id,
+      groupLabel: group.label,
+      mainProductId: group.main_product_id || null,
+      isMain: group.main_product_id === product.id,
+      childCount: childRows.length
+    };
+    product.modificationChildren = group.main_product_id === product.id
+      ? childRows.map((row) => serializeCatalogProduct(row))
+      : [];
+  });
+  return products;
 }
 
 export async function loadCatalogProduct(productId, db = { query }) {

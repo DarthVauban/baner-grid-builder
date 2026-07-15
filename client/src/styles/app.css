@@ -1727,6 +1727,9 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .catalog-table__head, .catalog-row { display: grid; grid-template-columns: minmax(260px,1.45fr) 105px 92px 92px 150px 130px 148px; align-items: center; gap: 10px; }
 .catalog-table__head { border: 1px solid var(--line); border-radius: 14px; padding: 11px 14px; color: #8a94a6; background: var(--surface-soft); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .catalog-row { min-height: 86px; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--surface); box-shadow: 0 8px 22px rgba(22,30,50,.04); }
+.catalog-row-group { display: grid; gap: 8px; }
+.catalog-row-children { display: grid; gap: 8px; margin-left: 28px; padding-left: 16px; border-left: 2px solid #dfe5ee; }
+.catalog-row-children .catalog-row { background: #fbfcfe; }
 .catalog-row .field { gap: 4px; }
 .catalog-row .field > span { color: #929baa; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
 .catalog-row .field input { height: 38px; border-radius: 10px; padding: 8px 10px; font-size: 12px; }

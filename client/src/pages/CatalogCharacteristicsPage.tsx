@@ -27,6 +27,7 @@ const emptyField = (): CatalogCharacteristicField => ({
   options: [],
   required: false,
   filterable: false,
+  isModifier: false,
   sortOrder: 0
 });
 
@@ -183,6 +184,7 @@ export function CatalogCharacteristicsPage() {
               {(field.type === 'select' || field.type === 'multiselect') && <label className="field catalog-editor-grid__wide"><span>Опції</span><textarea value={optionsText(field)} onChange={(event) => setTemplateField(index, { options: parseOptions(event.target.value) })} placeholder="Кожна опція з нового рядка" /></label>}
               <label className="toggle-row"><input type="checkbox" checked={field.required} onChange={(event) => setTemplateField(index, { required: event.target.checked })} /> Обов'язкове</label>
               <label className="toggle-row"><input type="checkbox" checked={field.filterable} onChange={(event) => setTemplateField(index, { filterable: event.target.checked })} /> Для фільтрів</label>
+              <label className="toggle-row"><input type="checkbox" checked={field.isModifier} onChange={(event) => setTemplateField(index, { isModifier: event.target.checked })} /> Модифікований параметр</label>
             </div>
             <button className="icon-button" type="button" onClick={() => removeField(index)} aria-label="Видалити поле"><Icon name="delete" /></button>
           </article>)}

@@ -24,7 +24,6 @@ import type {
   CatalogCondition,
   CatalogFeed,
   CatalogImportPreview,
-  CatalogModificationParameter,
   CatalogProduct,
   CatalogProductGroup,
   CatalogProductInput,
@@ -306,20 +305,21 @@ function ProductEditorScreen({
   const [characteristicValues, setCharacteristicValues] = useState<Record<string, unknown>>({});
   const [selectedModificationGroupId, setSelectedModificationGroupId] = useState('');
   const [modificationGroupLabel, setModificationGroupLabel] = useState('');
-  const [selectedModificationParameterIds, setSelectedModificationParameterIds] = useState<string[]>([]);
-  const [modificationValues, setModificationValues] = useState<Record<string, string>>({});
+  const [selectedModificationProductIds, setSelectedModificationProductIds] = useState<string[]>([]);
+  const [mainModificationProductId, setMainModificationProductId] = useState('');
 
   const characteristicTemplates = useQuery<CatalogCharacteristicTemplate[]>({
     queryKey: ['catalog-characteristic-templates'],
     queryFn: api.catalog.characteristicTemplates
   });
-  const modificationParameters = useQuery<CatalogModificationParameter[]>({
-    queryKey: ['catalog-modification-parameters'],
-    queryFn: api.catalog.modificationParameters
-  });
   const productGroups = useQuery<CatalogProductGroup[]>({
     queryKey: ['catalog-product-groups'],
     queryFn: api.catalog.productGroups
+  });
+  const modificationCandidates = useQuery<CatalogFeed>({
+    queryKey: ['catalog-modification-candidates'],
+    queryFn: () => api.catalog.list({ page: 1, pageSize: 100, sort: 'name_asc', status: 'all', condition: 'all', availability: 'all' }),
+    enabled: Boolean(product?.id)
   });
   const productCharacteristics = useQuery({
     queryKey: ['catalog-product-characteristics', product?.id],
@@ -336,12 +336,6 @@ function ProductEditorScreen({
   const selectedCharacteristicTemplate = useMemo(
     () => (characteristicTemplates.data || []).find((template) => template.id === selectedCharacteristicTemplateId) || null,
     [characteristicTemplates.data, selectedCharacteristicTemplateId]
-  );
-  const selectedModificationParameters = useMemo(
-    () => selectedModificationParameterIds
-      .map((parameterId) => (modificationParameters.data || []).find((parameter) => parameter.id === parameterId))
-      .filter((parameter): parameter is CatalogModificationParameter => Boolean(parameter)),
-    [modificationParameters.data, selectedModificationParameterIds]
   );
   const selectedModificationGroup = useMemo(
     () => (productGroups.data || []).find((group) => group.id === selectedModificationGroupId) || null,
@@ -365,12 +359,13 @@ function ProductEditorScreen({
         ? selectedModificationGroupId
         : null;
       if (!groupId && !modificationGroupLabel.trim()) throw new Error('Вкажіть назву групи модифікацій.');
-      if (!selectedModificationParameterIds.length) throw new Error('Оберіть хоча б один параметр модифікації.');
+      const productIds = [...new Set([product.id, ...selectedModificationProductIds])];
+      if (productIds.length < 2) throw new Error('Оберіть хоча б один вкладений товар-модифікацію.');
       return api.catalog.updateProductModifications(product.id, {
         groupId,
         groupLabel: modificationGroupLabel,
-        parameterIds: selectedModificationParameterIds,
-        values: modificationValues,
+        mainProductId: mainModificationProductId || product.id,
+        productIds,
         expectedVersion: product.version
       });
     }
@@ -381,8 +376,8 @@ function ProductEditorScreen({
     setCharacteristicValues({});
     setSelectedModificationGroupId(newModificationGroupId);
     setModificationGroupLabel(product?.name || '');
-    setSelectedModificationParameterIds([]);
-    setModificationValues({});
+    setSelectedModificationProductIds(product?.id ? [product.id] : []);
+    setMainModificationProductId(product?.id || '');
   }, [product?.id]);
 
   useEffect(() => {
@@ -395,12 +390,11 @@ function ProductEditorScreen({
     if (!productModifications.data) return;
     setSelectedModificationGroupId(productModifications.data.groupId || newModificationGroupId);
     setModificationGroupLabel(productModifications.data.groupLabel || product?.name || '');
-    setSelectedModificationParameterIds(productModifications.data.parameters.map((parameter) => parameter.id));
-    setModificationValues(productModifications.data.parameters.reduce<Record<string, string>>((accumulator, parameter) => {
-      if (parameter.currentValueId) accumulator[parameter.id] = parameter.currentValueId;
-      return accumulator;
-    }, {}));
-  }, [product?.name, productModifications.data]);
+    setSelectedModificationProductIds(productModifications.data.items.length
+      ? productModifications.data.items.map((item) => item.id)
+      : product?.id ? [product.id] : []);
+    setMainModificationProductId(productModifications.data.mainProductId || product?.id || '');
+  }, [product?.id, product?.name, productModifications.data]);
 
   useEffect(() => {
     if (!product || selectedCharacteristicTemplateId || productCharacteristics.isLoading) return;
@@ -451,34 +445,24 @@ function ProductEditorScreen({
 
   function chooseModificationGroup(groupId: string) {
     setSelectedModificationGroupId(groupId);
-    setModificationValues({});
+    setSelectedModificationProductIds(product?.id ? [product.id] : []);
+    setMainModificationProductId(product?.id || '');
     if (groupId === newModificationGroupId) {
       setModificationGroupLabel(product?.name || '');
-      setSelectedModificationParameterIds([]);
       return;
     }
     const group = (productGroups.data || []).find((item) => item.id === groupId);
     setModificationGroupLabel(group?.label || '');
-    setSelectedModificationParameterIds(group?.parameterIds || []);
+    setMainModificationProductId(group?.mainProductId || product?.id || '');
   }
 
-  function toggleModificationParameter(parameterId: string, enabled: boolean) {
-    setSelectedModificationParameterIds((current) => (
+  function toggleModificationProduct(productId: string, enabled: boolean) {
+    setSelectedModificationProductIds((current) => (
       enabled
-        ? [...current, parameterId].filter((id, index, list) => list.indexOf(id) === index)
-        : current.filter((id) => id !== parameterId)
+        ? [...current, productId].filter((id, index, list) => list.indexOf(id) === index)
+        : current.filter((id) => id !== productId)
     ));
-    if (!enabled) {
-      setModificationValues((current) => {
-        const next = { ...current };
-        delete next[parameterId];
-        return next;
-      });
-    }
-  }
-
-  function setModificationValue(parameterId: string, valueId: string) {
-    setModificationValues((current) => ({ ...current, [parameterId]: valueId }));
+    if (!enabled && mainModificationProductId === productId) setMainModificationProductId(product?.id || '');
   }
 
   async function submitCharacteristics() {
@@ -748,7 +732,7 @@ function ProductEditorScreen({
               <button
                 className="button button--primary button--small"
                 type="button"
-                disabled={!product || !selectedModificationParameterIds.length || saveModifications.isPending}
+                disabled={!product || selectedModificationProductIds.length < 2 || saveModifications.isPending}
                 onClick={() => void submitModifications()}
               >
                 <Icon name="save" size={15} /> {saveModifications.isPending ? 'Збереження...' : 'Зберегти модифікації'}
@@ -783,68 +767,35 @@ function ProductEditorScreen({
             <div className="catalog-modification-picker catalog-editor-grid__wide">
               <div className="catalog-characteristics-form__heading">
                 <strong>Параметри перемикачів</strong>
-                <span>{selectedModificationParameterIds.length} вибрано</span>
+                <span>{selectedModificationProductIds.length} вибрано</span>
               </div>
-              {!modificationParameters.isLoading && !modificationParameters.data?.length && <div className="catalog-editor-notice">
+              {!modificationCandidates.isLoading && !modificationCandidates.data?.items.length && <div className="catalog-editor-notice">
                 Параметрів модифікацій ще немає. Створіть їх у розділі "Модифікації" сайдбару каталогу.
               </div>}
               <div className="catalog-modification-options">
-                {(modificationParameters.data || []).map((parameter) => <label className="catalog-modification-checkbox" key={parameter.id}>
+                {(modificationCandidates.data?.items || []).map((candidate) => <label className="catalog-modification-checkbox" key={candidate.id}>
                   <input
                     type="checkbox"
-                    checked={selectedModificationParameterIds.includes(parameter.id)}
-                    onChange={(event) => toggleModificationParameter(parameter.id, event.target.checked)}
+                    checked={selectedModificationProductIds.includes(candidate.id)}
+                    disabled={candidate.id === product.id}
+                    onChange={(event) => toggleModificationProduct(candidate.id, event.target.checked)}
                   />
                   <span>
-                    <strong>{parameter.label}</strong>
-                    <small>{parameter.values.length} значень{parameter.active ? '' : ' · вимкнено'}</small>
+                    <strong>{candidate.name}</strong>
+                    <small>{candidate.productCode} · {candidate.priceLabel} · {candidate.availability.label}</small>
                   </span>
-                </label>)}
-              </div>
-            </div>
-            {!!selectedModificationParameters.length && <div className="catalog-characteristics-form catalog-editor-grid__wide">
-              <div className="catalog-characteristics-form__heading">
-                <strong>Значення поточного товару</strong>
-                <span>{selectedModificationParameters.length} параметрів</span>
-              </div>
-              <div className="catalog-editor-grid">
-                {selectedModificationParameters.map((parameter) => <label className="field" key={parameter.id}>
-                  <span>{parameter.label}</span>
-                  <StyledSelect
-                    value={modificationValues[parameter.id] || ''}
-                    options={[
-                      { value: '', label: 'Не обрано' },
-                      ...parameter.values.map((value) => ({
-                        value: value.id || value.value,
-                        label: `${value.label}${value.active ? '' : ' (вимкнено)'}`
-                      }))
-                    ]}
-                    onChange={(value) => setModificationValue(parameter.id, String(value))}
+                  <input
+                    type="radio"
+                    name="mainModificationProduct"
+                    checked={mainModificationProductId === candidate.id}
+                    disabled={!selectedModificationProductIds.includes(candidate.id)}
+                    onChange={() => setMainModificationProductId(candidate.id)}
                   />
                 </label>)}
               </div>
-            </div>}
+            </div>
           </div>}
         </section>}
-
-        {/* Legacy modification stub kept as migration context.
-          <header><h2>Модифікації</h2><span>Очікує модуль шаблонів</span></header>
-          <div className="catalog-editor-grid catalog-template-stub">
-            <label className="field">
-              <span>Шаблон модифікацій</span>
-              <StyledSelect value="" disabled options={[{ value: '', label: 'Шаблони модифікацій ще не налаштовані' }]} onChange={() => {}} />
-            </label>
-            <label className="field">
-              <span>Група товарів</span>
-              <StyledSelect value="" disabled options={[{ value: '', label: 'Групи будуть доступні після запуску модуля' }]} onChange={() => {}} />
-            </label>
-            <div className="catalog-editor-notice catalog-editor-grid__wide">
-              Параметри, значення та перемикання варіантів будуть прив'язані до шаблонів модифікацій. Ручне текстове введення тут тимчасово вимкнене, щоб не створювати несумісні дані.
-            </div>
-          </div>
-        </section>}
-
-        */}
 
         {activeTab === 'seo' && <section className="catalog-editor-section">
           <header><h2>SEO і соцмережі</h2></header>
@@ -870,15 +821,21 @@ function ProductEditorScreen({
 function CatalogRow({
   product,
   busy,
+  childrenCount = 0,
+  expanded = false,
   onOpen,
   onQuickSave,
-  onShare
+  onShare,
+  onToggleChildren
 }: {
   product: CatalogProduct;
   busy: boolean;
+  childrenCount?: number;
+  expanded?: boolean;
   onOpen: (product: CatalogProduct) => void;
   onQuickSave: (product: CatalogProduct, input: CatalogProductInput) => Promise<void>;
   onShare: (product: CatalogProduct) => void;
+  onToggleChildren?: () => void;
 }) {
   const [draft, setDraft] = useState(() => productToInput(product));
 
@@ -899,6 +856,9 @@ function CatalogRow({
     <div className="catalog-row__status"><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} compact /></div>
     <span className={`catalog-availability catalog-availability--${product.availability.status}`}>{product.availability.label}</span>
     <div className="catalog-row__actions">
+      {childrenCount > 0 && <button className="icon-button" type="button" title="Модифікації" aria-label="Модифікації" onClick={onToggleChildren}>
+        <Icon name={expanded ? 'arrowDown' : 'arrowRight'} />
+      </button>}
       <button className="icon-button" type="button" title="Поділитися" aria-label="Поділитися" onClick={() => onShare(product)}><Icon name="share" /></button>
       <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => void onQuickSave(product, draft)}><Icon name="save" size={15} /> Save</button>
     </div>
@@ -989,6 +949,7 @@ export function UsedSmartphonesCatalogPage() {
   const [importPreview, setImportPreview] = useState<CatalogImportPreview | null>(null);
   const [settingsFormId, setSettingsFormId] = useState('');
   const [settingsOrigin, setSettingsOrigin] = useState('');
+  const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>([]);
   const sharedProductId = searchParams.get('product');
   const queryParams = useMemo(() => ({ search, condition, status, availability, sort, page, pageSize: 25 }), [availability, condition, page, search, sort, status]);
 
@@ -1144,6 +1105,13 @@ export function UsedSmartphonesCatalogPage() {
   }
 
   const rows = products.data?.items || [];
+  const rowIds = new Set(rows.map((product) => product.id));
+  const topRows = rows.filter((product) => (
+    !product.modificationGroup
+    || product.modificationGroup.isMain
+    || !product.modificationGroup.mainProductId
+    || !rowIds.has(product.modificationGroup.mainProductId)
+  ));
   const publishedForms = (forms.data || []).filter((form) => form.status === 'published');
 
   if (editorProduct !== undefined) {
@@ -1198,14 +1166,35 @@ export function UsedSmartphonesCatalogPage() {
       <div className="catalog-table__head">
         <span>Товар</span><span>Ціна</span><span>Залишок</span><span>В дорозі</span><span>Статус</span><span>Наявність</span><span>Дії</span>
       </div>
-      {rows.map((product) => <CatalogRow
-        key={product.id}
-        product={product}
-        busy={saveProduct.isPending}
-        onOpen={openProduct}
-        onQuickSave={quickSave}
-        onShare={(item) => void shareProduct(item)}
-      />)}
+      {topRows.map((product) => {
+        const groupId = product.modificationGroup?.groupId || '';
+        const children = product.modificationChildren || [];
+        const expanded = Boolean(groupId && expandedGroupIds.includes(groupId));
+        return <div className="catalog-row-group" key={product.id}>
+          <CatalogRow
+            product={product}
+            busy={saveProduct.isPending}
+            childrenCount={children.length}
+            expanded={expanded}
+            onToggleChildren={() => setExpandedGroupIds((current) => (
+              current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
+            ))}
+            onOpen={openProduct}
+            onQuickSave={quickSave}
+            onShare={(item) => void shareProduct(item)}
+          />
+          {expanded && children.length > 0 && <div className="catalog-row-children">
+            {children.map((child) => <CatalogRow
+              key={child.id}
+              product={child}
+              busy={saveProduct.isPending}
+              onOpen={openProduct}
+              onQuickSave={quickSave}
+              onShare={(item) => void shareProduct(item)}
+            />)}
+          </div>}
+        </div>;
+      })}
       {!products.isLoading && !rows.length && <div className="empty-state">
         <div className="empty-state__icon"><Icon name="phone" size={28} /></div>
         <h2>Каталог поки порожній</h2>

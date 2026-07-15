@@ -51,6 +51,7 @@ export interface CatalogCharacteristicField {
   options: string[];
   required: boolean;
   filterable: boolean;
+  isModifier: boolean;
   sortOrder: number;
   createdAt?: string;
   updatedAt?: string;
@@ -88,6 +89,7 @@ export interface CatalogProductCharacteristicItem {
   displayValue: string;
   unit: string;
   filterable: boolean;
+  isModifier: boolean;
   sortOrder: number;
 }
 
@@ -97,45 +99,30 @@ export interface CatalogProductCharacteristicSet {
   items: CatalogProductCharacteristicItem[];
 }
 
-export interface CatalogModificationValue {
-  id?: string;
-  parameterId?: string;
-  value: string;
-  label: string;
-  active: boolean;
-  sortOrder: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface CatalogModificationParameter {
-  id: string;
-  key: string;
-  label: string;
-  active: boolean;
-  sortOrder: number;
-  values: CatalogModificationValue[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CatalogModificationParameterInput {
-  key: string;
-  label: string;
-  active: boolean;
-  sortOrder: number;
-  values: CatalogModificationValue[];
-}
-
 export interface CatalogProductGroup {
   id: string;
   label: string;
   slug: string;
   active: boolean;
-  parameterIds: string[];
+  mainProductId: string | null;
   itemCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CatalogProductGroupItem {
+  id: string;
+  productCode: string;
+  name: string;
+  slug: string;
+  publicPath: string;
+  conditionLabel: string;
+  priceUah: number;
+  priceLabel: string;
+  stockCount?: number;
+  incomingCount?: number;
+  availability: CatalogAvailability;
+  mainImageUrl: string;
 }
 
 export interface CatalogProductModificationOption {
@@ -159,7 +146,18 @@ export interface CatalogProductModificationSet {
   groupId: string | null;
   groupLabel: string;
   groupSlug: string;
+  mainProductId: string | null;
+  isMain: boolean;
+  items: CatalogProductGroupItem[];
   parameters: CatalogProductModificationParameter[];
+}
+
+export interface CatalogProductGroupSummary {
+  groupId: string;
+  groupLabel: string;
+  mainProductId: string | null;
+  isMain: boolean;
+  childCount: number;
 }
 
 export interface CatalogProduct {
@@ -189,6 +187,8 @@ export interface CatalogProduct {
   descriptionHasJs?: boolean;
   characteristics?: CatalogProductCharacteristicSet;
   modifications?: CatalogProductModificationSet;
+  modificationGroup?: CatalogProductGroupSummary | null;
+  modificationChildren?: CatalogProduct[];
   seoTitle: string;
   seoDescription: string;
   socialDescription: string;

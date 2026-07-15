@@ -16,6 +16,7 @@ import {
 import { saveCatalogMediaAsset } from './catalog.media.js';
 import {
   analyzeImportRows,
+  attachCatalogProductGroups,
   catalogToolId,
   commitImportRows,
   conditionLabels,
@@ -98,6 +99,7 @@ const characteristicFieldSchema = z.object({
   options: z.array(z.string().trim().min(1).max(160)).max(80).default([]),
   required: z.boolean().default(false),
   filterable: z.boolean().default(false),
+  isModifier: z.boolean().default(false),
   sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0)
 });
 const characteristicTemplateSchema = z.object({
@@ -129,8 +131,8 @@ const modificationParameterSchema = z.object({
 const productModificationsSchema = z.object({
   groupId: z.string().uuid().nullable().optional(),
   groupLabel: z.string().trim().max(240).default(''),
-  parameterIds: z.array(z.string().uuid()).max(12).default([]),
-  values: z.record(z.string(), z.string()).default({}),
+  mainProductId: z.string().uuid().nullable().optional(),
+  productIds: z.array(z.string().uuid()).max(80).default([]),
   expectedVersion: z.coerce.number().int().min(1)
 });
 const importPreviewSchema = z.object({
@@ -301,6 +303,7 @@ function serializeCharacteristicField(row) {
     options: normalizeJsonArrayValue(row.options),
     required: row.required === true,
     filterable: row.filterable === true,
+    isModifier: row.is_modifier === true,
     sortOrder: Number(row.sort_order || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -353,8 +356,8 @@ async function replaceCharacteristicFields(db, templateId, fields) {
   for (const [index, field] of fields.entries()) {
     await db.query(
       `INSERT INTO used_smartphone_characteristic_template_fields (
-         template_id, key, label, type, unit, options, required, filterable, sort_order
-       ) VALUES ($1, $2, $3, $4, $5, $6::JSONB, $7, $8, $9)`,
+         template_id, key, label, type, unit, options, required, filterable, is_modifier, sort_order
+       ) VALUES ($1, $2, $3, $4, $5, $6::JSONB, $7, $8, $9, $10)`,
       [
         templateId,
         normalizeTemplateFieldKey(field.key, field.label),
@@ -364,6 +367,7 @@ async function replaceCharacteristicFields(db, templateId, fields) {
         JSON.stringify(field.options),
         field.required,
         field.filterable,
+        field.isModifier,
         field.sortOrder || index
       ]
     );
@@ -455,6 +459,7 @@ function serializeProductGroup(row, parameterIds = []) {
     label: row.label,
     slug: row.slug,
     active: row.active === true,
+    mainProductId: row.main_product_id || null,
     parameterIds,
     itemCount: Number(row.item_count || 0),
     createdAt: row.created_at,
@@ -551,6 +556,39 @@ async function syncProductModifications(db, productId, groupId, parameterIds, va
        ON CONFLICT (product_id, parameter_id)
        DO UPDATE SET value_id = EXCLUDED.value_id, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
       [productId, parameterId, valueId, actorId]
+    );
+  }
+}
+
+async function syncProductGroupModifications(db, groupId, mainProductId, productIds) {
+  const uniqueProductIds = [...new Set(productIds)].filter(Boolean);
+  if (!groupId) {
+    if (!uniqueProductIds.length) return;
+    const placeholders = uniqueProductIds.map((_, index) => `$${index + 1}`).join(', ');
+    await db.query(`DELETE FROM used_smartphone_product_group_items WHERE product_id IN (${placeholders})`, uniqueProductIds);
+    await db.query(`UPDATE used_smartphone_product_groups SET main_product_id = NULL WHERE main_product_id IN (${placeholders})`, uniqueProductIds);
+    return;
+  }
+  if (!uniqueProductIds.length) return;
+  const placeholders = uniqueProductIds.map((_, index) => `$${index + 1}`).join(', ');
+  await db.query(
+    `DELETE FROM used_smartphone_product_group_items
+     WHERE product_id IN (${placeholders}) AND group_id <> $${uniqueProductIds.length + 1}`,
+    [...uniqueProductIds, groupId]
+  );
+  await db.query(
+    `UPDATE used_smartphone_product_groups
+     SET main_product_id = NULL
+     WHERE main_product_id IN (${placeholders}) AND id <> $${uniqueProductIds.length + 1}`,
+    [...uniqueProductIds, groupId]
+  );
+  await db.query('DELETE FROM used_smartphone_product_group_items WHERE group_id = $1', [groupId]);
+  for (const [index, itemId] of uniqueProductIds.entries()) {
+    await db.query(
+      `INSERT INTO used_smartphone_product_group_items (group_id, product_id, sort_order)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (group_id, product_id) DO UPDATE SET sort_order = EXCLUDED.sort_order`,
+      [groupId, itemId, itemId === mainProductId ? 0 : index + 1]
     );
   }
 }
@@ -938,7 +976,7 @@ router.get('/product-groups', asyncHandler(async (req, res) => {
     `SELECT groups.*, COUNT(items.product_id)::INTEGER AS item_count
      FROM used_smartphone_product_groups AS groups
      LEFT JOIN used_smartphone_product_group_items AS items ON items.group_id = groups.id
-     GROUP BY groups.id, groups.label, groups.slug, groups.active, groups.created_by, groups.updated_by, groups.created_at, groups.updated_at
+     GROUP BY groups.id, groups.label, groups.slug, groups.active, groups.main_product_id, groups.created_by, groups.updated_by, groups.created_at, groups.updated_at
      ORDER BY groups.active DESC, lower(groups.label)`
   );
   const parameters = await query(
@@ -976,8 +1014,9 @@ router.get('/products', asyncHandler(async (req, res) => {
     [...params, input.pageSize, offset]
   );
   const total = Number(totalResult.rows[0]?.count || 0);
+  const items = await attachCatalogProductGroups(products.rows.map((row) => serializeCatalogProduct(row)));
   res.json({ data: {
-    items: products.rows.map((row) => serializeCatalogProduct(row)),
+    items,
     total,
     page: input.page,
     pageSize: input.pageSize,
@@ -1041,7 +1080,7 @@ router.get('/products/:id/characteristics', asyncHandler(async (req, res) => {
   const product = await query('SELECT id FROM used_smartphone_products WHERE id = $1', [id]);
   if (!product.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
   const result = await query(
-    `SELECT characteristics.*, fields.type, fields.options, fields.unit, fields.required, fields.filterable
+    `SELECT characteristics.*, fields.type, fields.options, fields.unit, fields.required, fields.filterable, fields.is_modifier
      FROM used_smartphone_product_characteristics AS characteristics
      LEFT JOIN used_smartphone_characteristic_template_fields AS fields ON fields.id = characteristics.field_id
      WHERE characteristics.product_id = $1
@@ -1145,15 +1184,28 @@ router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
       throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
     }
 
+    const uniqueProductIds = [...new Set([id, ...input.productIds])];
+    const mainProductId = input.mainProductId && uniqueProductIds.includes(input.mainProductId) ? input.mainProductId : id;
+    if (uniqueProductIds.length) {
+      const productPlaceholders = uniqueProductIds.map((_, index) => `$${index + 1}`).join(', ');
+      const products = await client.query(
+        `SELECT id FROM used_smartphone_products WHERE id IN (${productPlaceholders}) AND publication_status <> 'ARCHIVED'`,
+        uniqueProductIds
+      );
+      if (products.rows.length !== uniqueProductIds.length) {
+        throw new AppError(422, 'CATALOG_GROUP_PRODUCT_INVALID', 'Один або кілька товарів групи не знайдено або вони архівовані.');
+      }
+    }
+
     let groupId = input.groupId || null;
-    if (!groupId && (input.groupLabel || input.parameterIds.length)) {
+    if (!groupId && (input.groupLabel || uniqueProductIds.length > 1)) {
       const label = input.groupLabel || current.rows[0].name;
       const slug = await makeUniqueGroupSlug(label, null, client);
       const created = await client.query(
-        `INSERT INTO used_smartphone_product_groups (label, slug, active, created_by, updated_by)
-         VALUES ($1, $2, TRUE, $3, $3)
+        `INSERT INTO used_smartphone_product_groups (label, slug, active, main_product_id, created_by, updated_by)
+         VALUES ($1, $2, TRUE, $3, $4, $4)
          RETURNING id`,
-        [label, slug, req.user.id]
+        [label, slug, mainProductId, req.user.id]
       );
       groupId = created.rows[0].id;
     } else if (groupId) {
@@ -1163,14 +1215,21 @@ router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
         const slug = await makeUniqueGroupSlug(input.groupLabel, groupId, client);
         await client.query(
           `UPDATE used_smartphone_product_groups
-           SET label = $1, slug = $2, updated_by = $3, updated_at = NOW()
-           WHERE id = $4`,
-          [input.groupLabel, slug, req.user.id, groupId]
+           SET label = $1, slug = $2, main_product_id = $3, updated_by = $4, updated_at = NOW()
+           WHERE id = $5`,
+          [input.groupLabel, slug, mainProductId, req.user.id, groupId]
+        );
+      } else {
+        await client.query(
+          `UPDATE used_smartphone_product_groups
+           SET main_product_id = $1, updated_by = $2, updated_at = NOW()
+           WHERE id = $3`,
+          [mainProductId, req.user.id, groupId]
         );
       }
     }
 
-    if (groupId && input.parameterIds.length) {
+    if (false && groupId && input.parameterIds?.length) {
       const uniqueParameterIds = [...new Set(input.parameterIds)];
       const placeholders = uniqueParameterIds.map((_, index) => `$${index + 1}`).join(', ');
       const parameters = await client.query(
@@ -1182,7 +1241,7 @@ router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
       }
     }
 
-    await syncProductModifications(client, id, groupId, [...new Set(input.parameterIds)], input.values, req.user.id);
+    await syncProductGroupModifications(client, groupId, mainProductId, uniqueProductIds);
     await client.query(
       `UPDATE used_smartphone_products
        SET updated_by = $1,
@@ -1195,7 +1254,7 @@ router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
       productId: id,
       actorId: req.user.id,
       action: 'modifications_update',
-      changes: { groupId, parameters: input.parameterIds.length }
+      changes: { groupId, mainProductId, products: uniqueProductIds.length }
     });
     recipients = await getCatalogRecipientIds(client);
     product = await loadCatalogProduct(id, client);
