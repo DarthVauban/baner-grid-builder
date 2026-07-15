@@ -260,6 +260,43 @@ test('catalog products publish to storefront, import stock updates, and create a
     ]
   );
 
+  await admin.put(`/api/catalog/characteristic-templates/${template.body.data.id}`).send({
+    label: 'Smartphone basics',
+    description: 'Core buyer-facing specs',
+    active: true,
+    sortOrder: 1,
+    fields: [
+      { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Green', 'Blue'], required: false, filterable: true, isModifier: true, sortOrder: 0 },
+      { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, isModifier: true, sortOrder: 1 },
+      { key: 'battery_health', label: 'Battery health', type: 'number', unit: '%', options: [], required: false, filterable: true, sortOrder: 2 },
+      { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 3 }
+    ]
+  }).expect(200);
+
+  const publicAfterTemplateReorder = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
+  assert.deepEqual(
+    publicAfterTemplateReorder.body.data.characteristics.items.map((item) => item.key),
+    ['colors', 'storage', 'battery_health', 'face_id']
+  );
+  const storageAfterTemplateReorder = publicAfterTemplateReorder.body.data.modifications.parameters.find((parameter) => parameter.key === 'storage');
+  assert.ok(storageAfterTemplateReorder);
+  assert.deepEqual(
+    storageAfterTemplateReorder.options.map((option) => [option.label, option.product?.slug || null]),
+    [
+      ['128 GB', updated.body.data.slug],
+      ['256 GB', variant.body.data.slug]
+    ]
+  );
+  const colorAfterTemplateReorder = publicAfterTemplateReorder.body.data.modifications.parameters.find((parameter) => parameter.key === 'colors');
+  assert.ok(colorAfterTemplateReorder);
+  assert.deepEqual(
+    colorAfterTemplateReorder.options.map((option) => [option.label, option.product?.slug || null]),
+    [
+      ['Midnight', updated.body.data.slug],
+      ['Green', variant.body.data.slug]
+    ]
+  );
+
   const groupedCatalogList = await admin.get('/api/catalog/products?search=iPhone&pageSize=25').expect(200);
   const groupedMain = groupedCatalogList.body.data.items.find((item) => item.id === created.body.data.id);
   assert.equal(groupedMain.modificationGroup.isMain, true);

@@ -189,16 +189,21 @@ function characteristicDisplayValue(value, unit = '') {
 export async function loadProductCharacteristicSet(productId, db = { query }) {
   const result = await db.query(
     `SELECT characteristics.*,
-            COALESCE(fields.type, 'text') AS type,
-            COALESCE(fields.unit, '') AS unit,
-            COALESCE(fields.filterable, FALSE) AS filterable,
-            COALESCE(fields.is_modifier, FALSE) AS is_modifier,
+            COALESCE(fields_by_id.label, fields_by_key.label, characteristics.label) AS field_label,
+            COALESCE(fields_by_id.type, fields_by_key.type, 'text') AS type,
+            COALESCE(fields_by_id.unit, fields_by_key.unit, '') AS unit,
+            COALESCE(fields_by_id.filterable, fields_by_key.filterable, FALSE) AS filterable,
+            COALESCE(fields_by_id.is_modifier, fields_by_key.is_modifier, FALSE) AS is_modifier,
+            COALESCE(fields_by_id.sort_order, fields_by_key.sort_order, characteristics.sort_order) AS field_sort_order,
             templates.label AS template_label
      FROM used_smartphone_product_characteristics AS characteristics
-     LEFT JOIN used_smartphone_characteristic_template_fields AS fields ON fields.id = characteristics.field_id
+     LEFT JOIN used_smartphone_characteristic_template_fields AS fields_by_id ON fields_by_id.id = characteristics.field_id
+     LEFT JOIN used_smartphone_characteristic_template_fields AS fields_by_key
+       ON fields_by_key.template_id = characteristics.template_id AND fields_by_key.key = characteristics.key
      LEFT JOIN used_smartphone_characteristic_templates AS templates ON templates.id = characteristics.template_id
      WHERE characteristics.product_id = $1
-     ORDER BY characteristics.sort_order, lower(characteristics.label)`,
+     ORDER BY COALESCE(fields_by_id.sort_order, fields_by_key.sort_order, characteristics.sort_order),
+              lower(COALESCE(fields_by_id.label, fields_by_key.label, characteristics.label))`,
     [productId]
   );
   const first = result.rows[0];
@@ -209,14 +214,14 @@ export async function loadProductCharacteristicSet(productId, db = { query }) {
       const value = productCharacteristicValue(row);
       return {
         key: row.key,
-        label: row.label,
+        label: row.field_label || row.label,
         type: row.type,
         value,
         displayValue: characteristicDisplayValue(value, row.unit || ''),
         unit: row.unit || '',
         filterable: row.filterable === true,
         isModifier: row.is_modifier === true,
-        sortOrder: Number(row.sort_order || 0)
+        sortOrder: Number(row.field_sort_order || row.sort_order || 0)
       };
     }).filter((item) => item.displayValue)
   };
@@ -299,14 +304,19 @@ export async function loadProductModificationSet(productId, db = { query }, { pu
   const placeholders = productIds.map((_, index) => `$${index + 1}`).join(', ');
   const characteristicsResult = await db.query(
     `SELECT characteristics.*,
-            COALESCE(fields.type, 'text') AS type,
-            COALESCE(fields.unit, '') AS unit,
-            COALESCE(fields.is_modifier, FALSE) AS is_modifier
+            COALESCE(fields_by_id.label, fields_by_key.label, characteristics.label) AS field_label,
+            COALESCE(fields_by_id.type, fields_by_key.type, 'text') AS type,
+            COALESCE(fields_by_id.unit, fields_by_key.unit, '') AS unit,
+            COALESCE(fields_by_id.is_modifier, fields_by_key.is_modifier, FALSE) AS is_modifier,
+            COALESCE(fields_by_id.sort_order, fields_by_key.sort_order, characteristics.sort_order) AS field_sort_order
      FROM used_smartphone_product_characteristics AS characteristics
-     LEFT JOIN used_smartphone_characteristic_template_fields AS fields ON fields.id = characteristics.field_id
+     LEFT JOIN used_smartphone_characteristic_template_fields AS fields_by_id ON fields_by_id.id = characteristics.field_id
+     LEFT JOIN used_smartphone_characteristic_template_fields AS fields_by_key
+       ON fields_by_key.template_id = characteristics.template_id AND fields_by_key.key = characteristics.key
      WHERE characteristics.product_id IN (${placeholders})
-       AND COALESCE(fields.is_modifier, FALSE) = TRUE
-     ORDER BY characteristics.sort_order, lower(characteristics.label)`,
+       AND COALESCE(fields_by_id.is_modifier, fields_by_key.is_modifier, FALSE) = TRUE
+     ORDER BY COALESCE(fields_by_id.sort_order, fields_by_key.sort_order, characteristics.sort_order),
+              lower(COALESCE(fields_by_id.label, fields_by_key.label, characteristics.label))`,
     productIds
   );
 
@@ -318,16 +328,16 @@ export async function loadProductModificationSet(productId, db = { query }, { pu
     if (!displayValue) return;
     const item = {
       key: row.key,
-      label: row.label,
+      label: row.field_label || row.label,
       value,
       displayValue,
       unit: row.unit || '',
-      sortOrder: Number(row.sort_order || 0)
+      sortOrder: Number(row.field_sort_order || row.sort_order || 0)
     };
     const productValues = valuesByProduct.get(row.product_id) || new Map();
     productValues.set(row.key, item);
     valuesByProduct.set(row.product_id, productValues);
-    if (!parametersByKey.has(row.key)) parametersByKey.set(row.key, { key: row.key, label: row.label, sortOrder: Number(row.sort_order || 0) });
+    if (!parametersByKey.has(row.key)) parametersByKey.set(row.key, { key: row.key, label: row.field_label || row.label, sortOrder: Number(row.field_sort_order || row.sort_order || 0) });
   });
 
   const currentValues = valuesByProduct.get(productId) || new Map();

@@ -355,24 +355,79 @@ async function loadCharacteristicTemplate(templateId, db = { query }) {
 
 async function replaceCharacteristicFields(db, templateId, fields) {
   assertUniqueFieldKeys(fields);
-  await db.query('DELETE FROM used_smartphone_characteristic_template_fields WHERE template_id = $1', [templateId]);
+  const existing = await db.query('SELECT * FROM used_smartphone_characteristic_template_fields WHERE template_id = $1', [templateId]);
+  const existingByKey = new Map(existing.rows.map((row) => [row.key, row]));
+  const activeKeys = new Set();
   for (const [index, field] of fields.entries()) {
+    const key = normalizeTemplateFieldKey(field.key, field.label);
+    const sortOrder = field.sortOrder ?? index;
+    activeKeys.add(key);
+    const existingField = existingByKey.get(key);
+    if (existingField) {
+      await db.query(
+        `UPDATE used_smartphone_characteristic_template_fields
+         SET label = $1,
+             type = $2,
+             unit = $3,
+             options = $4::JSONB,
+             required = $5,
+             filterable = $6,
+             is_modifier = $7,
+             sort_order = $8,
+             updated_at = NOW()
+         WHERE id = $9`,
+        [
+          field.label,
+          field.type,
+          field.unit,
+          JSON.stringify(field.options),
+          field.required,
+          field.filterable,
+          field.isModifier,
+          sortOrder,
+          existingField.id
+        ]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO used_smartphone_characteristic_template_fields (
+           template_id, key, label, type, unit, options, required, filterable, is_modifier, sort_order
+         ) VALUES ($1, $2, $3, $4, $5, $6::JSONB, $7, $8, $9, $10)`,
+        [
+          templateId,
+          key,
+          field.label,
+          field.type,
+          field.unit,
+          JSON.stringify(field.options),
+          field.required,
+          field.filterable,
+          field.isModifier,
+          sortOrder
+        ]
+      );
+    }
+  }
+  for (const row of existing.rows) {
+    if (!activeKeys.has(row.key)) {
+      await db.query('DELETE FROM used_smartphone_characteristic_template_fields WHERE id = $1', [row.id]);
+    }
+  }
+  const refreshed = await db.query(
+    `SELECT id, key, label, sort_order
+     FROM used_smartphone_characteristic_template_fields
+     WHERE template_id = $1`,
+    [templateId]
+  );
+  for (const field of refreshed.rows) {
     await db.query(
-      `INSERT INTO used_smartphone_characteristic_template_fields (
-         template_id, key, label, type, unit, options, required, filterable, is_modifier, sort_order
-       ) VALUES ($1, $2, $3, $4, $5, $6::JSONB, $7, $8, $9, $10)`,
-      [
-        templateId,
-        normalizeTemplateFieldKey(field.key, field.label),
-        field.label,
-        field.type,
-        field.unit,
-        JSON.stringify(field.options),
-        field.required,
-        field.filterable,
-        field.isModifier,
-        field.sortOrder || index
-      ]
+      `UPDATE used_smartphone_product_characteristics
+       SET field_id = $1,
+           label = $2,
+           sort_order = $3,
+           updated_at = NOW()
+       WHERE template_id = $4 AND key = $5`,
+      [field.id, field.label, field.sort_order, templateId, field.key]
     );
   }
 }
@@ -898,6 +953,7 @@ router.put('/characteristic-templates/:id', asyncHandler(async (req, res) => {
   const input = parseInput(characteristicTemplateSchema, req.body);
   const client = await pool.connect();
   let template;
+  let recipients = [];
   try {
     await client.query('BEGIN');
     const updated = await client.query(
@@ -920,6 +976,7 @@ router.put('/characteristic-templates/:id', asyncHandler(async (req, res) => {
       changes: { templateId: id, label: input.label, fields: input.fields.length }
     });
     template = await loadCharacteristicTemplate(id, client);
+    recipients = await getCatalogRecipientIds(client);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -928,6 +985,8 @@ router.put('/characteristic-templates/:id', asyncHandler(async (req, res) => {
   } finally {
     client.release();
   }
+  publishCatalogUpdates(recipients, { type: 'characteristic_template_updated', templateId: id });
+  publishPublicCatalogUpdate({ type: 'characteristic_template_updated', templateId: id });
   res.json({ data: template });
 }));
 
