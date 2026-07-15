@@ -2,6 +2,8 @@ import AddRounded from '@mui/icons-material/AddRounded';
 import AccessTimeRounded from '@mui/icons-material/AccessTimeRounded';
 import AlarmRounded from '@mui/icons-material/AlarmRounded';
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
+import KeyboardArrowDownRounded from '@mui/icons-material/KeyboardArrowDownRounded';
+import KeyboardArrowUpRounded from '@mui/icons-material/KeyboardArrowUpRounded';
 import ArrowForwardRounded from '@mui/icons-material/ArrowForwardRounded';
 import CalendarMonthRounded from '@mui/icons-material/CalendarMonthRounded';
 import CheckRounded from '@mui/icons-material/CheckRounded';
@@ -65,6 +67,8 @@ export type IconName =
   | 'arrow'
   | 'arrowLeft'
   | 'arrowRight'
+  | 'arrowUp'
+  | 'arrowDown'
   | 'bell'
   | 'bannerGrid'
   | 'blogPublications'
@@ -131,6 +135,8 @@ const icons: Record<IconName, SvgIconComponent> = {
   arrow: ChevronRightRounded,
   arrowLeft: ArrowBackRounded,
   arrowRight: ArrowForwardRounded,
+  arrowUp: KeyboardArrowUpRounded,
+  arrowDown: KeyboardArrowDownRounded,
   bell: NotificationsNoneRounded,
   bannerGrid: DashboardCustomizeRounded,
   blogPublications: ArticleOutlined,

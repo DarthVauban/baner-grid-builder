@@ -7,7 +7,13 @@ export default defineConfig({
   build: {
     outDir: '../dist/web',
     emptyOutDir: true,
-    assetsDir: 'web-assets'
+    assetsDir: 'web-assets',
+    rollupOptions: {
+      input: {
+        workspace: 'client/index.html',
+        storefront: 'client/storefront.html'
+      }
+    }
   },
   server: {
     port: 5173,

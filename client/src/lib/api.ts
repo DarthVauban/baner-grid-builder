@@ -54,6 +54,7 @@ import type {
   CatalogBrand,
   CatalogFeed,
   CatalogImportPreview,
+  CatalogMediaAsset,
   CatalogProduct,
   CatalogProductInput,
   CatalogPublicationStatus,
@@ -128,6 +129,15 @@ function queryString(params: Record<string, string | number | undefined>): strin
   });
   const result = search.toString();
   return result ? `?${result}` : '';
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',').pop() || '');
+    reader.onerror = () => reject(reader.error || new Error('Не вдалося прочитати файл.'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 export const api = {
@@ -298,17 +308,22 @@ export const api = {
         method: 'PATCH',
         body: jsonBody({ status, expectedVersion })
       }),
-    uploadMedia: async (file: Blob, fileName: string) => {
+    uploadMedia: async (file: Blob, fileName: string, originalFile?: File) => {
       const response = await fetch('/api/catalog/media', {
         method: 'POST',
         headers: {
-          'Content-Type': 'image/webp',
-          'X-File-Name': fileName
+          'Content-Type': 'application/json'
         },
-        body: file,
+        body: jsonBody({
+          webpBase64: await blobToBase64(file),
+          webpName: fileName,
+          originalBase64: originalFile ? await blobToBase64(originalFile) : '',
+          originalName: originalFile?.name || fileName,
+          originalMimeType: originalFile?.type || 'image/webp'
+        }),
         credentials: 'same-origin'
       });
-      const payload = await response.json().catch(() => ({})) as ApiSuccessPayload<{ url: string; filename: string; size: number; mimeType: string }> & ApiErrorPayload;
+      const payload = await response.json().catch(() => ({})) as ApiSuccessPayload<CatalogMediaAsset> & ApiErrorPayload;
       if (!response.ok) {
         const error = new ApiError(response.status, payload);
         if (response.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
@@ -331,6 +346,10 @@ export const api = {
     list: (params: { search?: string; condition?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
       request<CatalogFeed>(`/api/storefront/products${queryString(params)}`),
     get: (identifier: string) => request<CatalogProduct>(`/api/storefront/products/${encodeURIComponent(identifier)}`),
+    previewSettings: () => request<CatalogStorefrontSettings & { preview: true }>('/api/catalog/preview/settings'),
+    previewList: (params: { search?: string; condition?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
+      request<CatalogFeed>(`/api/catalog/preview/products${queryString(params)}`),
+    previewGet: (identifier: string) => request<CatalogProduct>(`/api/catalog/preview/products/${encodeURIComponent(identifier)}`),
     form: (publicId: string) => request<{
       id: string;
       title: string;

@@ -22,14 +22,18 @@ import publicApplicationRoutes from './modules/applications/public.routes.js';
 import catalogRoutes from './modules/catalog/catalog.routes.js';
 import storefrontRoutes from './modules/catalog/storefront.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
+import { catalogToolId } from './modules/catalog/catalog.service.js';
 import { env } from './config/env.js';
 import { query } from './db/pool.js';
 import { asyncHandler } from './lib/async-handler.js';
+import { requireAuth } from './middleware/auth.js';
+import { requireToolAccess } from './modules/access/access.service.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const webDistDir = path.resolve(currentDir, '../dist/web');
 const webIndex = path.join(webDistDir, 'index.html');
+const storefrontIndex = path.join(webDistDir, 'storefront.html');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -107,12 +111,25 @@ app.use('/media/catalog', express.static(catalogMediaDir, {
   maxAge: env.isProduction ? '30d' : 0
 }));
 app.use(express.static(webDistDir, { index: false, maxAge: env.isProduction ? '1h' : 0 }));
+
+function sendBuiltHtml(res, file, label) {
+  if (!existsSync(file)) {
+    return res.status(503).send(`${label} is not built. Run npm run build first.`);
+  }
+  return res.sendFile(file);
+}
+
+app.get(/^\/catalog\/preview\/storefront(?:\/.*)?$/, requireAuth, requireToolAccess(catalogToolId), (req, res) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Cache-Control', 'no-store');
+  return sendBuiltHtml(res, storefrontIndex, 'Storefront preview');
+});
+
+app.get(/^\/storefront(?:\/.*)?$/, (req, res) => sendBuiltHtml(res, storefrontIndex, 'Storefront'));
+
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();
-  if (!existsSync(webIndex)) {
-    return res.status(503).send('Web application is not built. Run npm run build first.');
-  }
-  return res.sendFile(webIndex);
+  return sendBuiltHtml(res, webIndex, 'Web application');
 });
 
 app.use(errorHandler);

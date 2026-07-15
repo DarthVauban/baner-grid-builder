@@ -19,6 +19,7 @@ const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
 
 const admin = request.agent(app);
+const tinyWebp = Buffer.from('524946460000000057454250', 'hex');
 
 before(async () => {
   await runMigrations();
@@ -36,7 +37,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   const media = await admin.post('/api/catalog/media')
     .set('Content-Type', 'image/webp')
     .set('X-File-Name', 'catalog-test.png')
-    .send(Buffer.from('webp-test-image'))
+    .send(tinyWebp)
     .expect(201);
   assert.match(media.body.data.url, /^\/media\/catalog\/.+\.webp$/);
   assert.equal(media.body.data.mimeType, 'image/webp');
@@ -78,6 +79,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     brandId: null,
     mainImageUrl: 'https://example.com/iphone-13.webp',
     gallery: [],
+    description: '<h2 onclick="alert(1)">Specs</h2><style>.note{color:red}</style><p><a href="javascript:alert(1)">bad link</a></p><script>window.__catalogTest = true;</script>',
     publicationStatus: 'PUBLISHED',
     expectedVersion: created.body.data.version
   }).expect(200);
@@ -87,10 +89,17 @@ test('catalog products publish to storefront, import stock updates, and create a
   const publicList = await request(app).get('/api/storefront/products?search=iPhone').expect(200);
   assert.equal(publicList.body.data.total, 1);
   assert.equal(publicList.body.data.items[0].productCode, 'SM-000001');
+  assert.equal(Object.hasOwn(publicList.body.data.items[0], 'stockCount'), false);
+  assert.equal(Object.hasOwn(publicList.body.data.items[0], 'descriptionHtml'), false);
   assert.equal(Object.hasOwn(publicList.body.data.items[0], 'internalNotes'), false);
 
   const publicProduct = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
   assert.equal(publicProduct.body.data.name, 'iPhone 13 128GB Midnight');
+  assert.match(publicProduct.body.data.descriptionHtml, /Specs/);
+  assert.doesNotMatch(publicProduct.body.data.descriptionHtml, /script|onclick|javascript:/i);
+  assert.match(publicProduct.body.data.descriptionCss, /color:red/);
+  assert.match(publicProduct.body.data.descriptionJs, /__catalogTest/);
+  assert.equal(Object.hasOwn(publicProduct.body.data, 'internalNotes'), false);
 
   const duplicatePreview = await admin.post('/api/catalog/imports/preview').send({
     rows: [

@@ -15,7 +15,7 @@ import {
   loadPublicProduct,
   productConditions,
   productSelect,
-  serializeCatalogProduct
+  serializePublicCatalogProduct
 } from './catalog.service.js';
 
 const router = Router();
@@ -129,7 +129,7 @@ router.get('/products', asyncHandler(async (req, res) => {
   );
   const total = Number(totalResult.rows[0]?.count || 0);
   res.json({ data: {
-    items: result.rows.map((row) => serializeCatalogProduct(row, { publicOnly: true })),
+    items: result.rows.map((row) => serializePublicCatalogProduct(row)),
     total,
     page: input.page,
     pageSize: input.pageSize,

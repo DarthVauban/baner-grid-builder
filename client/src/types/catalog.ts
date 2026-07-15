@@ -21,6 +21,24 @@ export interface CatalogGalleryItem {
   alt: string;
 }
 
+export interface CatalogMediaAsset {
+  id: string;
+  productId: string | null;
+  url: string;
+  originalUrl: string;
+  mimeType: string;
+  originalMimeType: string;
+  size: number;
+  originalSize: number;
+  width: number | null;
+  height: number | null;
+  alt: string;
+  role: 'main' | 'gallery';
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CatalogProduct {
   id: string;
   productCode: string;
@@ -42,6 +60,10 @@ export interface CatalogProduct {
   gallery: CatalogGalleryItem[];
   shortDescription: string;
   description: string;
+  descriptionHtml?: string;
+  descriptionCss?: string;
+  descriptionJs?: string;
+  descriptionHasJs?: boolean;
   seoTitle: string;
   seoDescription: string;
   socialDescription: string;

@@ -25,9 +25,6 @@ const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({
 const ApplicationsPage = lazy(() => import('../pages/ApplicationsPage').then((module) => ({
   default: module.ApplicationsPage
 })));
-const StorefrontPage = lazy(() => import('../pages/StorefrontPage').then((module) => ({
-  default: module.StorefrontPage
-})));
 const FormsBuilderPage = lazy(() => import('../pages/FormsBuilderPage').then((module) => ({
   default: module.FormsBuilderPage
 })));
@@ -86,9 +83,6 @@ function CatalogLegacyRedirect() {
 export function App() {
   return (
     <Routes>
-      <Route path="/storefront" element={<Suspense fallback={<LoadingScreen />}><StorefrontPage /></Suspense>} />
-      <Route path="/storefront/smartphones/:slug" element={<Suspense fallback={<LoadingScreen />}><StorefrontPage /></Suspense>} />
-
       <Route element={<AnonymousRoute />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

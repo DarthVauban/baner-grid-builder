@@ -111,7 +111,8 @@ function RichTextEditor({
   maxLength?: number;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<'visual' | 'source'>('visual');
+  const [mode, setMode] = useState<'visual' | 'source' | 'preview'>('visual');
+  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
 
   useEffect(() => {
     if (mode !== 'visual' || !editorRef.current) return;
@@ -130,18 +131,33 @@ function RichTextEditor({
     applyFormat('createLink', url);
   }
 
+  function previewSrcDoc() {
+    return `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><style>body{margin:0;padding:18px;font:15px/1.6 Arial,sans-serif;color:#111827;background:#fff}img{max-width:100%;height:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #e5e7eb;padding:8px}a{color:#0f766e}</style></head><body>${value.replace(/<\/script/gi, '<\\/script').replace(/<\/style/gi, '<\\/style')}</body></html>`;
+  }
+
   return <div className="rich-editor">
     <div className="rich-editor__toolbar">
       <div className="segmented rich-editor__mode">
         <button className={mode === 'visual' ? 'active' : ''} type="button" onClick={() => setMode('visual')}>Візуально</button>
         <button className={mode === 'source' ? 'active' : ''} type="button" onClick={() => setMode('source')}>Джерело</button>
+        <button className={mode === 'preview' ? 'active' : ''} type="button" onClick={() => setMode('preview')}>Preview</button>
       </div>
+      <button className="icon-button" type="button" title="Заголовок H2" aria-label="Заголовок H2" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('formatBlock', 'h2')}>H2</button>
+      <button className="icon-button" type="button" title="Заголовок H3" aria-label="Заголовок H3" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('formatBlock', 'h3')}>H3</button>
+      <button className="icon-button" type="button" title="Абзац" aria-label="Абзац" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('formatBlock', 'p')}>P</button>
       <button className="icon-button" type="button" title="Bold" aria-label="Bold" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('bold')}><strong>B</strong></button>
       <button className="icon-button" type="button" title="Italic" aria-label="Italic" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('italic')}><em>I</em></button>
+      <button className="icon-button" type="button" title="Underline" aria-label="Underline" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('underline')}><u>U</u></button>
       <button className="icon-button" type="button" title="Список" aria-label="Список" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('insertUnorderedList')}>•</button>
       <button className="icon-button" type="button" title="Нумерація" aria-label="Нумерація" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('insertOrderedList')}>1.</button>
       <button className="icon-button" type="button" title="Посилання" aria-label="Посилання" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={addLink}><Icon name="link" size={18} /></button>
+      <button className="icon-button" type="button" title="Undo" aria-label="Undo" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('undo')}><Icon name="reply" size={18} /></button>
+      <button className="icon-button" type="button" title="Redo" aria-label="Redo" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('redo')}><Icon name="arrowRight" size={18} /></button>
       <button className="icon-button" type="button" title="Очистити формат" aria-label="Очистити формат" disabled={mode !== 'visual'} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat('removeFormat')}><Icon name="remove" size={18} /></button>
+      {mode === 'preview' && <div className="segmented rich-editor__device">
+        <button className={previewDevice === 'desktop' ? 'active' : ''} type="button" onClick={() => setPreviewDevice('desktop')}>Desktop</button>
+        <button className={previewDevice === 'mobile' ? 'active' : ''} type="button" onClick={() => setPreviewDevice('mobile')}>Mobile</button>
+      </div>}
     </div>
     {mode === 'visual'
       ? <div
@@ -153,7 +169,11 @@ function RichTextEditor({
         suppressContentEditableWarning
         onInput={(event) => onChange(event.currentTarget.innerHTML)}
       />
-      : <textarea className="rich-editor__source" value={value} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} spellCheck={false} />}
+      : mode === 'source'
+        ? <textarea className="rich-editor__source" value={value} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} spellCheck={false} />
+        : <div className={`rich-editor__preview rich-editor__preview--${previewDevice}`}>
+          <iframe title="Preview опису" sandbox="allow-scripts" srcDoc={previewSrcDoc()} />
+        </div>}
   </div>;
 }
 
@@ -227,13 +247,24 @@ function ProductEditorScreen({
     setDraft((current) => ({ ...current, gallery: current.gallery.filter((_, itemIndex) => itemIndex !== index) }));
   }
 
+  function moveGalleryItem(index: number, direction: -1 | 1) {
+    setDraft((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.gallery.length) return current;
+      const gallery = [...current.gallery];
+      const [item] = gallery.splice(index, 1);
+      gallery.splice(nextIndex, 0, item);
+      return { ...current, gallery };
+    });
+  }
+
   async function uploadMedia(file: File | undefined, key: string, onUploaded: (url: string) => void) {
     if (!file) return;
     try {
       setMediaError('');
       setMediaBusy(key);
       const webp = await convertCatalogImageToWebp(file);
-      const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'));
+      const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'), file);
       onUploaded(media.url);
     } catch (error) {
       setMediaError(error instanceof Error ? error.message : 'Не вдалося завантажити фото.');
@@ -316,7 +347,6 @@ function ProductEditorScreen({
                 {draft.mainImageUrl && <button className="button button--danger button--small" type="button" onClick={() => setField('mainImageUrl', '')}>Видалити</button>}
               </div>
             </div>
-            <label className="field catalog-editor-grid__wide"><span>URL головного фото</span><input value={draft.mainImageUrl} onChange={(event) => setField('mainImageUrl', event.target.value)} placeholder="/media/catalog/photo.webp" maxLength={4000} /></label>
           </div>
           <div className="catalog-gallery-editor">
             {draft.gallery.map((item, index) => <div className="catalog-gallery-row" key={index}>
@@ -327,9 +357,13 @@ function ProductEditorScreen({
                   <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { void uploadMedia(event.target.files?.[0], `gallery-${index}`, (url) => setGalleryItem(index, 'url', url)); event.currentTarget.value = ''; }} />
                 </label>
               </div>
-              <label className="field"><span>URL</span><input value={item.url} onChange={(event) => setGalleryItem(index, 'url', event.target.value)} maxLength={4000} /></label>
               <label className="field"><span>Alt</span><input value={item.alt} onChange={(event) => setGalleryItem(index, 'alt', event.target.value)} maxLength={240} /></label>
-              <button className="icon-button" type="button" onClick={() => removeGalleryItem(index)} aria-label="Видалити фото"><Icon name="delete" /></button>
+              <div className="catalog-gallery-row__actions">
+                <button className="icon-button" type="button" disabled={index === 0} onClick={() => moveGalleryItem(index, -1)} aria-label="Підняти фото"><Icon name="arrowUp" /></button>
+                <button className="icon-button" type="button" disabled={index === draft.gallery.length - 1} onClick={() => moveGalleryItem(index, 1)} aria-label="Опустити фото"><Icon name="arrowDown" /></button>
+                <button className="icon-button" type="button" onClick={() => setField('mainImageUrl', item.url)} disabled={!item.url} aria-label="Зробити головним"><Icon name="visibility" /></button>
+                <button className="icon-button" type="button" onClick={() => removeGalleryItem(index)} aria-label="Видалити фото"><Icon name="delete" /></button>
+              </div>
             </div>)}
             {!draft.gallery.length && <p className="catalog-editor-muted">Додаткових фото ще немає.</p>}
           </div>

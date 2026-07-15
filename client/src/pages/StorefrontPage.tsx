@@ -35,6 +35,27 @@ function ProductImage({ product }: { product: CatalogProduct }) {
   </span>;
 }
 
+function productLink(product: CatalogProduct, preview: boolean) {
+  const slug = encodeURIComponent(product.slug);
+  return preview ? `/catalog/preview/storefront/smartphones/${slug}` : `/storefront/smartphones/${slug}`;
+}
+
+function StorefrontDescription({ product }: { product: CatalogProduct }) {
+  const html = product.descriptionHtml || '';
+  if (!html) return null;
+  const css = product.descriptionCss || '';
+  const js = product.descriptionJs || '';
+  if (css || js || product.descriptionHasJs) {
+    const safeCss = css.replace(/<\/style/gi, '<\\/style');
+    const safeJs = js.replace(/<\/script/gi, '<\\/script');
+    const srcDoc = `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><style>body{margin:0;padding:20px;font:15px/1.65 Arial,sans-serif;color:#111827;background:#fff}img{max-width:100%;height:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #e5e7eb;padding:8px}a{color:#0f766e}${safeCss}</style></head><body>${html}<script>${safeJs}</script></body></html>`;
+    return <section className="storefront-description storefront-description--sandbox">
+      <iframe title="Опис товару" sandbox="allow-scripts" srcDoc={srcDoc} />
+    </section>;
+  }
+  return <section className="storefront-description" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 function fieldValue(values: Record<string, unknown>, field: PublicField) {
   const value = values[field.key];
   if (field.type === 'checkbox') return Array.isArray(value) ? value.map(String) : [];
@@ -117,7 +138,7 @@ function StorefrontApplicationForm({
   </form>;
 }
 
-export function StorefrontPage() {
+export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   const { slug } = useParams();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -127,25 +148,43 @@ export function StorefrontPage() {
   const [sort, setSort] = useState('updated_desc');
   const [requestOpen, setRequestOpen] = useState(false);
   const params = useMemo(() => ({ search, condition, availability, sort, page: 1, pageSize: 24 }), [availability, condition, search, sort]);
-  const settings = useQuery({ queryKey: ['storefront-settings'], queryFn: api.storefront.settings });
-  const products = useQuery({ queryKey: ['storefront-products', params], queryFn: () => api.storefront.list(params), enabled: !slug });
-  const product = useQuery({ queryKey: ['storefront-product', slug], queryFn: () => api.storefront.get(slug!), enabled: Boolean(slug), retry: false });
+  const basePath = preview ? '/catalog/preview/storefront' : '/storefront';
+  const settings = useQuery({
+    queryKey: [preview ? 'storefront-preview-settings' : 'storefront-settings'],
+    queryFn: preview ? api.storefront.previewSettings : api.storefront.settings
+  });
+  const products = useQuery({
+    queryKey: [preview ? 'storefront-preview-products' : 'storefront-products', params],
+    queryFn: () => preview ? api.storefront.previewList(params) : api.storefront.list(params),
+    enabled: !slug
+  });
+  const product = useQuery({
+    queryKey: [preview ? 'storefront-preview-product' : 'storefront-product', slug],
+    queryFn: () => preview ? api.storefront.previewGet(slug!) : api.storefront.get(slug!),
+    enabled: Boolean(slug),
+    retry: false
+  });
   const form = useQuery({
     queryKey: ['storefront-form', settings.data?.selectedFormPublicId],
     queryFn: () => api.storefront.form(settings.data!.selectedFormPublicId!),
-    enabled: Boolean(settings.data?.selectedFormPublicId),
+    enabled: !preview && Boolean(settings.data?.selectedFormPublicId),
     retry: false
   });
 
   useEffect(() => {
-    const stream = new EventSource('/api/storefront/stream');
+    const stream = new EventSource(preview ? '/api/catalog/stream' : '/api/storefront/stream');
     const refresh = () => {
-      void queryClient.invalidateQueries({ queryKey: ['storefront-products'] });
-      void queryClient.invalidateQueries({ queryKey: ['storefront-product'] });
+      void queryClient.invalidateQueries({ queryKey: [preview ? 'storefront-preview-products' : 'storefront-products'] });
+      void queryClient.invalidateQueries({ queryKey: [preview ? 'storefront-preview-product' : 'storefront-product'] });
     };
     stream.addEventListener('storefront', refresh);
-    return () => { stream.removeEventListener('storefront', refresh); stream.close(); };
-  }, [queryClient]);
+    stream.addEventListener('catalog', refresh);
+    return () => {
+      stream.removeEventListener('storefront', refresh);
+      stream.removeEventListener('catalog', refresh);
+      stream.close();
+    };
+  }, [preview, queryClient]);
 
   useEffect(() => {
     setRequestOpen(false);
@@ -161,19 +200,22 @@ export function StorefrontPage() {
 
   const items = products.data?.items || [];
   const productData = product.data;
-  const canRequestProduct = Boolean(productData && productData.availability.status !== 'unavailable' && form.data);
+  const canRequestProduct = Boolean(!preview && productData && productData.availability.status !== 'unavailable' && form.data);
 
   return <main className="storefront-page">
     <header className="storefront-header">
-      <Link to="/storefront" className="storefront-brand"><span>MT</span><strong>Mobile Trend</strong></Link>
-      <a className="button button--secondary button--small" href="/login">У робочий простір</a>
+      <Link to={basePath} className="storefront-brand"><span>MT</span><strong>Mobile Trend</strong></Link>
+      {preview
+        ? <a className="button button--secondary button--small" href="/catalog/products">До каталогу</a>
+        : <a className="button button--secondary button--small" href="/login">У робочий простір</a>}
     </header>
+    {preview && <div className="storefront-preview-banner">Preview магазину · сторінка закрита від індексації</div>}
 
     {slug ? productData ? <section className="storefront-detail">
       <div className="storefront-detail__media"><ProductImage product={productData} /></div>
       <div className="storefront-detail__main">
       <article className="storefront-detail__info">
-        <Link to="/storefront" className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>
+        <Link to={basePath} className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>
         <p className="eyebrow">{productData.productCode} · {productData.conditionLabel}</p>
         <h1>{productData.name}</h1>
         <div className="storefront-detail__badges"><span>{productData.availability.label}</span><span>{productData.priceLabel}</span></div>
@@ -185,9 +227,10 @@ export function StorefrontPage() {
           {productData.warranty && <><dt>Гарантія</dt><dd>{productData.warranty}</dd></>}
         </dl>
         <button className="button button--primary" type="button" disabled={!canRequestProduct} onClick={() => setRequestOpen(true)}>
-          {productData.availability.status === 'unavailable' ? 'Немає в наявності' : form.data ? 'Оформити заявку' : 'Заявка недоступна'} <Icon name="arrowRight" size={16} />
+          {preview ? 'Preview без заявки' : productData.availability.status === 'unavailable' ? 'Немає в наявності' : form.data ? 'Оформити заявку' : 'Заявка недоступна'} <Icon name="arrowRight" size={16} />
         </button>
       </article>
+      <StorefrontDescription product={productData} />
       {requestOpen && productData.availability.status !== 'unavailable' && <StorefrontApplicationForm product={productData} form={form.data} />}
       </div>
     </section> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
@@ -202,7 +245,7 @@ export function StorefrontPage() {
         <StyledSelect value={sort} options={sortOptions} onChange={(value) => setSort(String(value))} />
       </div>
       <div className="storefront-grid">
-        {items.map((item) => <Link to={item.publicPath} className="storefront-card" key={item.id}>
+        {items.map((item) => <Link to={productLink(item, preview)} className="storefront-card" key={item.productCode}>
           <ProductImage product={item} />
           <span>{item.conditionLabel}</span>
           <strong>{item.name}</strong>

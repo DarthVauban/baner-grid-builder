@@ -7,12 +7,13 @@ import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { publishChatUpdates } from '../chat/chat.events.js';
+import { canSaveCatalogSourceJs, prepareCatalogDescription } from './catalog.content.js';
 import {
   publishCatalogUpdates,
   publishPublicCatalogUpdate,
   subscribeToCatalogUpdates
 } from './catalog.events.js';
-import { saveCatalogWebpImage } from './catalog.media.js';
+import { saveCatalogMediaAsset } from './catalog.media.js';
 import {
   analyzeImportRows,
   catalogToolId,
@@ -21,6 +22,7 @@ import {
   generateProductCode,
   getCatalogRecipientIds,
   loadCatalogProduct,
+  loadPreviewProduct,
   logCatalogAudit,
   makeUniqueSlug,
   normalizeProductName,
@@ -30,6 +32,7 @@ import {
   publicationStatusLabels,
   serializeBrand,
   serializeCatalogProduct,
+  serializePublicCatalogProduct,
   validatePublicationReady
 } from './catalog.service.js';
 
@@ -97,6 +100,18 @@ const settingsSchema = z.object({
   selectedFormPublicId: z.string().uuid().nullable().optional(),
   publicOrigin: z.string().trim().max(500).default('')
 });
+const mediaUploadSchema = z.object({
+  webpBase64: z.string().min(1),
+  webpName: z.string().trim().max(240).default('catalog-photo.webp'),
+  originalBase64: z.string().optional().default(''),
+  originalName: z.string().trim().max(240).optional().default(''),
+  originalMimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional().default('image/webp')
+});
+const mediaPatchSchema = z.object({
+  mainImageUrl: z.string().trim().max(4000).default(''),
+  gallery: z.array(galleryItemSchema).max(20).default([]),
+  expectedVersion: z.coerce.number().int().min(1)
+});
 
 const sortSql = {
   updated_desc: 'product.updated_at DESC',
@@ -111,7 +126,7 @@ function uniqueViolation(error) {
   return error?.code === '23505' || /duplicate key/i.test(String(error?.message || ''));
 }
 
-function productParams(input, normalizedName, slug, userId) {
+function productParams(input, normalizedName, slug, userId, descriptionContent) {
   return [
     input.name,
     normalizedName,
@@ -126,6 +141,10 @@ function productParams(input, normalizedName, slug, userId) {
     JSON.stringify(input.gallery),
     input.shortDescription,
     input.description,
+    descriptionContent.safeHtml,
+    descriptionContent.css,
+    descriptionContent.js,
+    descriptionContent.hasJs,
     input.seoTitle,
     input.seoDescription,
     input.socialDescription,
@@ -142,6 +161,83 @@ function productParams(input, normalizedName, slug, userId) {
 
 function assertPublishable(input) {
   if (input.publicationStatus === 'PUBLISHED') validatePublicationReady(input);
+}
+
+function prepareProductDescription(input, user, previousDescription = '') {
+  const descriptionContent = prepareCatalogDescription(input.description || '');
+  const sourceChanged = String(input.description || '') !== String(previousDescription || '');
+  if (sourceChanged && descriptionContent.hasJs && !canSaveCatalogSourceJs(user)) {
+    throw new AppError(403, 'CATALOG_SOURCE_JS_FORBIDDEN', 'Збереження JavaScript у джерелі опису доступне лише адміністратору каталогу.');
+  }
+  return { ...descriptionContent, sourceChanged };
+}
+
+function bufferFromBase64(value) {
+  const source = String(value || '');
+  const base64 = source.includes(',') ? source.split(',').pop() : source;
+  return Buffer.from(base64 || '', 'base64');
+}
+
+function serializeMedia(row) {
+  return {
+    id: row.id,
+    productId: row.product_id || null,
+    url: row.url,
+    originalUrl: row.original_url || '',
+    mimeType: row.mime_type || 'image/webp',
+    originalMimeType: row.original_mime_type || '',
+    size: Number(row.size_bytes || 0),
+    originalSize: Number(row.original_size_bytes || 0),
+    width: row.width == null ? null : Number(row.width),
+    height: row.height == null ? null : Number(row.height),
+    alt: row.alt || '',
+    role: row.role || 'gallery',
+    sortOrder: Number(row.sort_order || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function normalizeGalleryValue(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+async function syncProductMedia(db, productId, input, actorId) {
+  const items = [];
+  if (input.mainImageUrl) items.push({ url: input.mainImageUrl, alt: input.name || '', role: 'main', sortOrder: 0 });
+  input.gallery.forEach((item, index) => {
+    if (item.url) items.push({ url: item.url, alt: item.alt || '', role: 'gallery', sortOrder: index + 1 });
+  });
+  await db.query('DELETE FROM used_smartphone_product_media WHERE product_id = $1', [productId]);
+  for (const item of items) {
+    const updated = await db.query(
+      `UPDATE used_smartphone_product_media
+       SET product_id = $2,
+           alt = $3,
+           role = $4,
+           sort_order = $5,
+           updated_at = NOW()
+       WHERE url = $1 AND product_id IS NULL
+       RETURNING *`,
+      [item.url, productId, item.alt, item.role, item.sortOrder]
+    );
+    if (updated.rows[0]) continue;
+    await db.query(
+      `INSERT INTO used_smartphone_product_media (
+         product_id, url, alt, role, sort_order, created_by
+       ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [productId, item.url, item.alt, item.role, item.sortOrder, actorId]
+    );
+  }
 }
 
 function buildProductFilters(input) {
@@ -201,11 +297,43 @@ router.get('/stream', (req, res) => {
 
 router.post('/media', raw({ type: 'image/webp', limit: '8mb' }), asyncHandler(async (req, res) => {
   const contentType = String(req.get('content-type') || '').toLowerCase();
-  if (!contentType.startsWith('image/webp')) {
+  let asset;
+  if (contentType.startsWith('image/webp')) {
+    asset = await saveCatalogMediaAsset({
+      webpBuffer: req.body,
+      webpName: req.get('x-file-name') || 'catalog-photo.webp'
+    });
+  } else if (contentType.startsWith('application/json')) {
+    const input = parseInput(mediaUploadSchema, req.body);
+    asset = await saveCatalogMediaAsset({
+      webpBuffer: bufferFromBase64(input.webpBase64),
+      webpName: input.webpName,
+      originalBuffer: input.originalBase64 ? bufferFromBase64(input.originalBase64) : null,
+      originalName: input.originalName,
+      originalMimeType: input.originalMimeType
+    });
+  } else {
     throw new AppError(415, 'CATALOG_MEDIA_UNSUPPORTED_TYPE', 'Завантажуйте фото у форматі WebP.');
   }
-  const media = await saveCatalogWebpImage(req.body, req.get('x-file-name') || 'catalog-photo');
-  res.status(201).json({ data: media });
+  const inserted = await query(
+    `INSERT INTO used_smartphone_product_media (
+       url, original_url, storage_key, original_storage_key, mime_type,
+       original_mime_type, size_bytes, original_size_bytes, created_by
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING *`,
+    [
+      asset.url,
+      asset.originalUrl,
+      asset.filename,
+      asset.originalFilename,
+      asset.mimeType,
+      asset.originalMimeType,
+      asset.size,
+      asset.originalSize,
+      req.user.id
+    ]
+  );
+  res.status(201).json({ data: serializeMedia(inserted.rows[0]) });
 }));
 
 router.get('/summary', asyncHandler(async (req, res) => {
@@ -314,11 +442,166 @@ router.get('/products', asyncHandler(async (req, res) => {
   } });
 }));
 
+router.get('/preview/settings', asyncHandler(async (req, res) => {
+  res.json({ data: { ...await loadSettings(), preview: true } });
+}));
+
+router.get('/preview/products', asyncHandler(async (req, res) => {
+  const input = parseInput(listSchema, {
+    search: String(req.query.search || ''),
+    condition: req.query.condition || 'all',
+    status: req.query.status || 'all',
+    availability: req.query.availability || 'all',
+    sort: req.query.sort || 'updated_desc',
+    page: req.query.page || 1,
+    pageSize: req.query.pageSize || 25
+  });
+  const filters = buildProductFilters(input);
+  const whereSql = filters.whereSql
+    ? `${filters.whereSql} AND product.publication_status <> 'ARCHIVED'`
+    : "WHERE product.publication_status <> 'ARCHIVED'";
+  const totalResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM used_smartphone_products AS product ${whereSql}`, filters.params);
+  const offset = (input.page - 1) * input.pageSize;
+  const result = await query(
+    `${productSelect}
+     ${whereSql}
+     ORDER BY ${sortSql[input.sort]}
+     LIMIT $${filters.params.length + 1} OFFSET $${filters.params.length + 2}`,
+    [...filters.params, input.pageSize, offset]
+  );
+  const total = Number(totalResult.rows[0]?.count || 0);
+  res.json({ data: {
+    items: result.rows.map((row) => serializePublicCatalogProduct(row)),
+    total,
+    page: input.page,
+    pageSize: input.pageSize,
+    pageCount: Math.max(1, Math.ceil(total / input.pageSize))
+  } });
+}));
+
+router.get('/preview/products/:identifier', asyncHandler(async (req, res) => {
+  const identifier = parseInput(z.string().trim().min(1).max(260), req.params.identifier);
+  const product = await loadPreviewProduct(identifier);
+  if (!product) throw new AppError(404, 'CATALOG_PREVIEW_PRODUCT_NOT_FOUND', 'Товар не знайдено або він архівований.');
+  res.json({ data: product });
+}));
+
 router.get('/products/:id', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const product = await loadCatalogProduct(id);
   if (!product) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
   res.json({ data: product });
+}));
+
+router.get('/products/:id/media', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const product = await query('SELECT id FROM used_smartphone_products WHERE id = $1', [id]);
+  if (!product.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+  const result = await query(
+    `SELECT *
+     FROM used_smartphone_product_media
+     WHERE product_id = $1
+     ORDER BY role = 'main' DESC, sort_order, created_at`,
+    [id]
+  );
+  res.json({ data: result.rows.map(serializeMedia) });
+}));
+
+router.patch('/products/:id/media', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(mediaPatchSchema, req.body);
+  const client = await pool.connect();
+  let product;
+  let recipients = [];
+  try {
+    await client.query('BEGIN');
+    const current = await client.query('SELECT * FROM used_smartphone_products WHERE id = $1 FOR UPDATE', [id]);
+    if (!current.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+    if (Number(current.rows[0].version) !== input.expectedVersion) {
+      throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
+    }
+    await client.query(
+      `UPDATE used_smartphone_products
+       SET main_image_url = $1,
+           gallery = $2::JSONB,
+           updated_by = $3,
+           updated_at = NOW(),
+           version = version + 1
+       WHERE id = $4`,
+      [input.mainImageUrl, JSON.stringify(input.gallery), req.user.id, id]
+    );
+    await syncProductMedia(client, id, {
+      name: current.rows[0].name,
+      mainImageUrl: input.mainImageUrl,
+      gallery: input.gallery
+    }, req.user.id);
+    await logCatalogAudit(client, {
+      productId: id,
+      actorId: req.user.id,
+      action: 'media_update',
+      changes: { galleryCount: input.gallery.length, hasMainImage: Boolean(input.mainImageUrl) }
+    });
+    recipients = await getCatalogRecipientIds(client);
+    product = await loadCatalogProduct(id, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+  publishCatalogUpdates(recipients, { type: 'media_updated', productId: id });
+  if (product.publicationStatus === 'PUBLISHED') publishPublicCatalogUpdate({ type: 'media_updated', productId: id });
+  res.json({ data: product });
+}));
+
+router.delete('/products/:id/media/:mediaId', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const mediaId = parseInput(idSchema, req.params.mediaId);
+  const client = await pool.connect();
+  let product;
+  let recipients = [];
+  try {
+    await client.query('BEGIN');
+    const media = await client.query(
+      'SELECT * FROM used_smartphone_product_media WHERE id = $1 AND product_id = $2 FOR UPDATE',
+      [mediaId, id]
+    );
+    if (!media.rows[0]) throw new AppError(404, 'CATALOG_MEDIA_NOT_FOUND', 'Медіа не знайдено.');
+    const current = await client.query('SELECT * FROM used_smartphone_products WHERE id = $1 FOR UPDATE', [id]);
+    if (!current.rows[0]) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+    const gallery = normalizeGalleryValue(current.rows[0].gallery);
+    const nextGallery = gallery.filter((item) => item?.url !== media.rows[0].url);
+    const nextMainImageUrl = current.rows[0].main_image_url === media.rows[0].url ? '' : current.rows[0].main_image_url;
+    await client.query(
+      `UPDATE used_smartphone_products
+       SET main_image_url = $1,
+           gallery = $2::JSONB,
+           updated_by = $3,
+           updated_at = NOW(),
+           version = version + 1
+       WHERE id = $4`,
+      [nextMainImageUrl, JSON.stringify(nextGallery), req.user.id, id]
+    );
+    await client.query('DELETE FROM used_smartphone_product_media WHERE id = $1', [mediaId]);
+    await logCatalogAudit(client, {
+      productId: id,
+      actorId: req.user.id,
+      action: 'media_delete',
+      changes: { url: media.rows[0].url }
+    });
+    recipients = await getCatalogRecipientIds(client);
+    product = await loadCatalogProduct(id, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+  publishCatalogUpdates(recipients, { type: 'media_deleted', productId: id });
+  if (product.publicationStatus === 'PUBLISHED') publishPublicCatalogUpdate({ type: 'media_deleted', productId: id });
+  res.status(204).end();
 }));
 
 router.post('/products', asyncHandler(async (req, res) => {
@@ -332,28 +615,41 @@ router.post('/products', asyncHandler(async (req, res) => {
     await client.query('BEGIN');
     const productCode = await generateProductCode(client);
     const slug = await makeUniqueSlug(input.slug || input.name, null, client, productCode.toLowerCase());
+    const descriptionContent = prepareProductDescription(input, req.user);
     assertPublishable({ ...input, slug });
     const created = await client.query(
       `INSERT INTO used_smartphone_products (
          product_code, name, normalized_name, condition, stock_count, incoming_count,
          price_uah, publication_status, slug, brand_id, main_image_url, gallery,
-         short_description, description, seo_title, seo_description, social_description,
+         short_description, description, description_safe_html, description_css, description_js,
+         description_has_js, description_source_updated_at, description_source_updated_by,
+         seo_title, seo_description, social_description,
          body_condition, display_condition, battery_health, warranty, included_accessories,
          diagnostics, internal_notes, created_by, updated_by
        ) VALUES (
-         $25, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::JSONB,
-         $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
-         $22::JSONB, $23, $24, $24
+         $29, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::JSONB,
+         $12, $13, $14, $15, $16, $17, NOW(), $28,
+         $18, $19, $20, $21, $22, $23, $24, $25,
+         $26::JSONB, $27, $28, $28
        )
        RETURNING id`,
-      [...productParams(input, normalizedName, slug, req.user.id), productCode]
+      [...productParams(input, normalizedName, slug, req.user.id, descriptionContent), productCode]
     );
+    await syncProductMedia(client, created.rows[0].id, input, req.user.id);
     await logCatalogAudit(client, {
       productId: created.rows[0].id,
       actorId: req.user.id,
       action: 'create',
       changes: { name: input.name, condition: input.condition, publicationStatus: input.publicationStatus }
     });
+    if (input.description) {
+      await logCatalogAudit(client, {
+        productId: created.rows[0].id,
+        actorId: req.user.id,
+        action: 'description_source_create',
+        changes: { hasJs: descriptionContent.hasJs, hasCss: Boolean(descriptionContent.css) }
+      });
+    }
     recipients = await getCatalogRecipientIds(client);
     product = await loadCatalogProduct(created.rows[0].id, client);
     await client.query('COMMIT');
@@ -388,6 +684,7 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
       throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
     }
     const slug = await makeUniqueSlug(input.slug || input.name, id, client, current.product_code.toLowerCase());
+    const descriptionContent = prepareProductDescription(input, req.user, current.description);
     assertPublishable({ ...input, slug });
     await client.query(
       `UPDATE used_smartphone_products
@@ -404,28 +701,43 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
            gallery = $11::JSONB,
            short_description = $12,
            description = $13,
-           seo_title = $14,
-           seo_description = $15,
-           social_description = $16,
-           body_condition = $17,
-           display_condition = $18,
-           battery_health = $19,
-           warranty = $20,
-           included_accessories = $21,
-           diagnostics = $22::JSONB,
-           internal_notes = $23,
-           updated_by = $24,
+           description_safe_html = $14,
+           description_css = $15,
+           description_js = $16,
+           description_has_js = $17,
+           description_source_updated_at = CASE WHEN $29 THEN NOW() ELSE description_source_updated_at END,
+           description_source_updated_by = CASE WHEN $29 THEN $28 ELSE description_source_updated_by END,
+           seo_title = $18,
+           seo_description = $19,
+           social_description = $20,
+           body_condition = $21,
+           display_condition = $22,
+           battery_health = $23,
+           warranty = $24,
+           included_accessories = $25,
+           diagnostics = $26::JSONB,
+           internal_notes = $27,
+           updated_by = $28,
            updated_at = NOW(),
            version = version + 1
-       WHERE id = $25`,
-      [...productParams(input, normalizedName, slug, req.user.id), id]
+       WHERE id = $30`,
+      [...productParams(input, normalizedName, slug, req.user.id, descriptionContent), descriptionContent.sourceChanged, id]
     );
+    await syncProductMedia(client, id, input, req.user.id);
     await logCatalogAudit(client, {
       productId: id,
       actorId: req.user.id,
       action: 'update',
       changes: { previousStatus, publicationStatus: input.publicationStatus }
     });
+    if (descriptionContent.sourceChanged) {
+      await logCatalogAudit(client, {
+        productId: id,
+        actorId: req.user.id,
+        action: 'description_source_update',
+        changes: { hasJs: descriptionContent.hasJs, hasCss: Boolean(descriptionContent.css) }
+      });
+    }
     recipients = await getCatalogRecipientIds(client);
     product = await loadCatalogProduct(id, client);
     await client.query('COMMIT');

@@ -2,6 +2,7 @@ import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { getUserToolAccess } from '../access/access.service.js';
 import { cleanText, cleanUrl } from '../applications/application.service.js';
+import { prepareCatalogDescription } from './catalog.content.js';
 
 export const catalogToolId = 'used_smartphones_catalog';
 export const productConditions = ['USED', 'REFURBISHED'];
@@ -150,9 +151,63 @@ function normalizeJsonObject(value) {
   return {};
 }
 
-export function serializeCatalogProduct(row, { publicOnly = false } = {}) {
+function descriptionPayload(row) {
+  if (row.description_safe_html || row.description_css || row.description_js) {
+    return {
+      descriptionHtml: row.description_safe_html || '',
+      descriptionCss: row.description_css || '',
+      descriptionJs: row.description_js || '',
+      descriptionHasJs: row.description_has_js === true
+    };
+  }
+  const prepared = prepareCatalogDescription(row.description || '');
+  return {
+    descriptionHtml: prepared.safeHtml,
+    descriptionCss: prepared.css,
+    descriptionJs: prepared.js,
+    descriptionHasJs: prepared.hasJs
+  };
+}
+
+export function serializePublicCatalogProduct(row, { detail = false } = {}) {
   const availability = availabilityForCounts(row.stock_count, row.incoming_count);
-  const base = {
+  const product = {
+    id: row.product_code,
+    productCode: row.product_code,
+    name: row.name,
+    condition: row.condition,
+    conditionLabel: conditionLabels[row.condition] || row.condition,
+    availability,
+    priceUah: Number(row.price_uah || 0),
+    priceLabel: formatMoney(row.price_uah),
+    slug: row.slug,
+    publicPath: `/storefront/smartphones/${encodeURIComponent(row.slug)}`,
+    brand: row.brand_id ? { id: row.brand_id, label: row.brand_label || '' } : null,
+    mainImageUrl: row.main_image_url || '',
+    shortDescription: row.short_description || ''
+  };
+  Object.defineProperty(product, 'internalId', { value: row.id, enumerable: false });
+  if (!detail) return product;
+  const detailed = {
+    ...product,
+    gallery: normalizeJsonArray(row.gallery),
+    ...descriptionPayload(row),
+    bodyCondition: row.body_condition || '',
+    displayCondition: row.display_condition || '',
+    batteryHealth: row.battery_health || '',
+    warranty: row.warranty || '',
+    includedAccessories: row.included_accessories || '',
+    seoTitle: row.seo_title || '',
+    seoDescription: row.seo_description || '',
+    socialDescription: row.social_description || ''
+  };
+  Object.defineProperty(detailed, 'internalId', { value: row.id, enumerable: false });
+  return detailed;
+}
+
+export function serializeCatalogProduct(row) {
+  const availability = availabilityForCounts(row.stock_count, row.incoming_count);
+  return {
     id: row.id,
     productCode: row.product_code,
     name: row.name,
@@ -172,6 +227,7 @@ export function serializeCatalogProduct(row, { publicOnly = false } = {}) {
     gallery: normalizeJsonArray(row.gallery),
     shortDescription: row.short_description || '',
     description: row.description || '',
+    ...descriptionPayload(row),
     seoTitle: row.seo_title || '',
     seoDescription: row.seo_description || '',
     socialDescription: row.social_description || '',
@@ -183,11 +239,7 @@ export function serializeCatalogProduct(row, { publicOnly = false } = {}) {
     diagnostics: normalizeJsonObject(row.diagnostics),
     version: Number(row.version || 1),
     createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-  if (publicOnly) return base;
-  return {
-    ...base,
+    updatedAt: row.updated_at,
     normalizedName: row.normalized_name,
     internalNotes: row.internal_notes || '',
     createdBy: row.created_by ? { id: row.created_by, name: row.created_by_name || '' } : null,
@@ -210,7 +262,19 @@ export async function loadPublicProduct(identifier, db = { query }) {
     [identifier]
   );
   const row = result.rows[0];
-  return row ? serializeCatalogProduct(row, { publicOnly: true }) : null;
+  return row ? serializePublicCatalogProduct(row, { detail: true }) : null;
+}
+
+export async function loadPreviewProduct(identifier, db = { query }) {
+  const result = await db.query(
+    `${productSelect}
+     WHERE product.publication_status <> 'ARCHIVED'
+       AND (product.slug = $1 OR lower(product.product_code) = lower($1))
+     LIMIT 1`,
+    [identifier]
+  );
+  const row = result.rows[0];
+  return row ? serializePublicCatalogProduct(row, { detail: true }) : null;
 }
 
 export function validatePublicationReady(input) {
@@ -500,7 +564,7 @@ export function catalogProductSnapshot(product, context = {}) {
     sku: product.productCode,
     productCode: product.productCode,
     availability: product.availability.label,
-    externalProductId: product.id,
+    externalProductId: product.internalId || product.id,
     domain: context.domain || '',
     id: product.id,
     condition: product.condition,
