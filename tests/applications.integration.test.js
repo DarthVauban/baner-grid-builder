@@ -128,6 +128,52 @@ test('form builder and applications list have separate access and process public
     styles: {}
   }).expect(201);
   assert.equal(form.body.data.fields.length, 4);
+
+  const flexibleForm = await builder.post('/api/forms').send({
+    name: 'Flexible request',
+    title: 'Flexible request',
+    description: '',
+    buttonText: 'Send',
+    successMessage: 'Done.',
+    settings: {},
+    styles: {}
+  }).expect(201);
+  const phoneField = flexibleForm.body.data.fields.find((field) => field.systemFieldType === 'phone');
+  assert.ok(phoneField);
+  const flexibleConfigured = await builder.put(`/api/forms/${flexibleForm.body.data.id}`).send({
+    name: flexibleForm.body.data.name,
+    title: flexibleForm.body.data.title,
+    description: flexibleForm.body.data.description,
+    buttonText: flexibleForm.body.data.buttonText,
+    successMessage: flexibleForm.body.data.successMessage,
+    settings: flexibleForm.body.data.settings,
+    styles: flexibleForm.body.data.styles,
+    fields: [
+      {
+        key: 'comment',
+        label: 'Comment',
+        type: 'textarea',
+        placeholder: '',
+        helpText: '',
+        defaultValue: '',
+        required: false,
+        active: true,
+        system: false,
+        systemFieldType: null,
+        sortOrder: 0,
+        validation: {},
+        options: []
+      },
+      { ...phoneField, sortOrder: 1 }
+    ]
+  }).expect(200);
+  assert.deepEqual(flexibleConfigured.body.data.fields.map((field) => field.key), ['comment', 'phone']);
+  assert.equal(flexibleConfigured.body.data.fields.some((field) => field.systemFieldType === 'first_name'), false);
+  await builder.patch(`/api/forms/${flexibleForm.body.data.id}/publish`).expect(200);
+  const flexiblePublic = await request(app).get(`/api/public/application-forms/${flexibleForm.body.data.publicId}`).expect(200);
+  assert.deepEqual(flexiblePublic.body.data.fields.map((field) => field.key), ['comment', 'phone']);
+  assert.equal(flexiblePublic.body.data.fields.some((field) => field.systemFieldType === 'bank'), false);
+
   const formInput = {
     name: form.body.data.name,
     title: form.body.data.title,

@@ -994,11 +994,18 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .form-builder-section-title { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 14px; color: var(--ink); font-size: 12px; font-weight: 850; }
 .form-builder-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .form-fields-list { display: grid; gap: 12px; }
-.form-field-card { display: grid; gap: 13px; border: 1px solid var(--line); border-radius: 15px; padding: 14px; background: var(--surface-soft); }
+.form-field-card { position: relative; display: grid; gap: 13px; border: 1px solid var(--line); border-radius: 15px; padding: 14px; background: var(--surface-soft); }
 .form-field-card--system { border-color: #d8d4ff; background: #fbfaff; }
 .form-field-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .form-field-card > header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.form-field-card > header span { flex: 0 0 auto; border-radius: 999px; padding: 5px 8px; color: #69758a; background: #eef1f5; font-size: 9px; font-weight: 800; }
+.form-field-card__bar { min-width: 0; }
+.form-field-card__title { min-width: 0; display: grid; gap: 4px; }
+.form-field-card__title > span { width: fit-content; border-radius: 999px; padding: 5px 8px; color: #69758a; background: #eef1f5; font-size: 9px; font-weight: 800; }
+.form-field-card--dragging { opacity: .58; border-color: rgba(109,93,252,.65); box-shadow: 0 12px 30px rgba(109,93,252,.13); transform: scale(.992); }
+.form-field-card--drop-before::before,
+.form-field-card--drop-after::after { content: ""; position: absolute; left: 12px; right: 12px; z-index: 3; height: 3px; border-radius: 999px; background: var(--brand); box-shadow: 0 0 0 4px var(--brand-soft); pointer-events: none; }
+.form-field-card--drop-before::before { top: -6px; }
+.form-field-card--drop-after::after { bottom: -6px; }
 .form-field-card footer { display: flex; justify-content: flex-end; }
 .form-options-editor { display: grid; gap: 8px; border: 1px dashed #d3d9e4; border-radius: 13px; padding: 12px; background: var(--surface); }
 .form-options-editor > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

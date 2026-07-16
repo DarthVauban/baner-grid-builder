@@ -82,59 +82,44 @@ function publicOrigin(req) {
 }
 
 async function replaceEditableFields(db, formId, fields = []) {
-  await ensureSystemFields(db, formId);
-  const seenKeys = new Set(['first_name', 'last_name', 'phone', 'bank']);
-
-  for (const field of fields.filter((item) => item.system && item.systemFieldType)) {
-    const type = field.systemFieldType === 'bank' ? 'select' : field.systemFieldType === 'phone' ? 'phone' : 'text';
-    await db.query(
-      `UPDATE application_form_fields
-       SET label = $1, type = $2, placeholder = $3, help_text = $4,
-           required = TRUE, active = TRUE, updated_at = NOW()
-       WHERE form_id = $5 AND system_field_type = $6`,
-      [
-        field.label,
-        type,
-        field.placeholder,
-        field.helpText,
-        formId,
-        field.systemFieldType
-      ]
-    );
-  }
-
   await db.query(
     `DELETE FROM application_form_fields
-     WHERE form_id = $1 AND system = FALSE`,
+     WHERE form_id = $1`,
     [formId]
   );
 
-  for (const [index, field] of fields.filter((item) => !item.system).entries()) {
-    let key = normalizeSlug(field.key || field.label, `field_${index + 1}`);
+  const seenKeys = new Set();
+  for (const [index, field] of fields.entries()) {
+    const systemFieldType = field.system ? field.systemFieldType || null : null;
+    const system = Boolean(systemFieldType);
+    const type = systemFieldType === 'bank' ? 'select' : systemFieldType === 'phone' ? 'phone' : systemFieldType ? 'text' : field.type;
+    let key = normalizeSlug(field.key || systemFieldType || field.label, `field_${index + 1}`);
     while (seenKeys.has(key)) key = `${key}_${randomSuffix()}`;
     seenKeys.add(key);
     const inserted = await db.query(
       `INSERT INTO application_form_fields (
          form_id, key, label, type, placeholder, help_text, default_value,
          required, active, system, system_field_type, sort_order, validation
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, NULL, $10, $11::JSONB)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::JSONB)
        RETURNING id`,
       [
         formId,
         key,
         field.label,
-        field.type,
+        type,
         field.placeholder,
         field.helpText,
         field.defaultValue,
         field.required,
         field.active,
-        field.sortOrder || 100 + index,
+        system,
+        systemFieldType,
+        index,
         JSON.stringify(field.validation || {})
       ]
     );
     const fieldId = inserted.rows[0].id;
-    if (['select', 'radio', 'checkbox'].includes(field.type)) {
+    if (['select', 'radio', 'checkbox'].includes(type)) {
       for (const [optionIndex, option] of field.options.entries()) {
         await db.query(
           `INSERT INTO application_form_field_options (
@@ -144,7 +129,7 @@ async function replaceEditableFields(db, formId, fields = []) {
             fieldId,
             option.label,
             option.value || normalizeSlug(option.label, `option_${optionIndex + 1}`),
-            option.sortOrder || optionIndex,
+            optionIndex,
             option.active
           ]
         );
@@ -461,11 +446,13 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
 
 router.patch('/:id/publish', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
-  const activeBanks = await query('SELECT COUNT(*)::INTEGER AS count FROM application_banks WHERE active = TRUE');
-  if ((activeBanks.rows[0]?.count || 0) < 1) {
-    throw new AppError(422, 'ACTIVE_BANK_REQUIRED', 'Додайте хоча б один активний банк перед публікацією форми.');
+  const fields = await loadFields(id);
+  if (fields.some((field) => field.active && field.systemFieldType === 'bank')) {
+    const activeBanks = await query('SELECT COUNT(*)::INTEGER AS count FROM application_banks WHERE active = TRUE');
+    if ((activeBanks.rows[0]?.count || 0) < 1) {
+      throw new AppError(422, 'ACTIVE_BANK_REQUIRED', 'Додайте хоча б один активний банк перед публікацією форми.');
+    }
   }
-  await ensureSystemFields({ query }, id);
   const result = await query(
     `UPDATE application_forms
      SET status = 'published', updated_at = NOW()

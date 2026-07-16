@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
@@ -126,6 +126,10 @@ function newField(index: number): ApplicationFormField {
   };
 }
 
+function normalizeFormFieldOrder(fields: ApplicationFormField[]) {
+  return fields.map((field, sortOrder) => ({ ...field, sortOrder }));
+}
+
 function statusText(status: ApplicationForm['status']) {
   if (status === 'published') return 'Опублікована';
   if (status === 'disabled') return 'Вимкнена';
@@ -146,6 +150,8 @@ export function FormsBuilderPage() {
   const [script, setScript] = useState('');
   const [compactScript, setCompactScript] = useState('');
   const [activeTab, setActiveTab] = useState<'form' | 'button'>('form');
+  const [draggedFieldIndex, setDraggedFieldIndex] = useState<number | null>(null);
+  const [fieldDropTarget, setFieldDropTarget] = useState<{ index: number; placement: 'before' | 'after' } | null>(null);
   const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
   const banks = useQuery({ queryKey: ['form-banks'], queryFn: api.forms.banks });
   const buttons = useQuery({ queryKey: ['form-buttons'], queryFn: api.forms.buttons });
@@ -189,6 +195,8 @@ export function FormsBuilderPage() {
       }
     });
     setEditingButtonId(null);
+    setDraggedFieldIndex(null);
+    setFieldDropTarget(null);
     setScript('');
     setCompactScript('');
   }, [selectedForm]);
@@ -229,7 +237,7 @@ export function FormsBuilderPage() {
   async function saveForm() {
     if (!selectedForm || !draft) return;
     try {
-      const saved = await updateForm.mutateAsync({ id: selectedForm.id, input: { ...draft, fields } });
+      const saved = await updateForm.mutateAsync({ id: selectedForm.id, input: { ...draft, fields: normalizeFormFieldOrder(fields) } });
       setSelectedId(saved.id);
       showToast('Форму збережено.');
       await refresh();
@@ -329,6 +337,47 @@ export function FormsBuilderPage() {
       }));
       return { ...field, options };
     }));
+  }
+
+  function removeField(index: number) {
+    setFields((current) => normalizeFormFieldOrder(current.filter((_, itemIndex) => itemIndex !== index)));
+  }
+
+  function reorderField(fromIndex: number, toIndex: number) {
+    setFields((current) => {
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= current.length || toIndex >= current.length) return current;
+      const next = [...current];
+      const [field] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, field);
+      return normalizeFormFieldOrder(next);
+    });
+  }
+
+  function startFieldDrag(event: DragEvent<HTMLElement>, index: number) {
+    setDraggedFieldIndex(index);
+    setFieldDropTarget(null);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+  }
+
+  function overField(event: DragEvent<HTMLElement>, index: number) {
+    if (draggedFieldIndex === null || draggedFieldIndex === index) return;
+    event.preventDefault();
+    setFieldDropTarget({ index, placement: draggedFieldIndex < index ? 'after' : 'before' });
+  }
+
+  function dropField(event: DragEvent<HTMLElement>, index: number) {
+    event.preventDefault();
+    const rawIndex = event.dataTransfer.getData('text/plain');
+    const fromIndex = draggedFieldIndex ?? Number(rawIndex);
+    const targetIndex = fieldDropTarget?.index === index && fieldDropTarget.placement === 'after' && fromIndex > index
+      ? index + 1
+      : fieldDropTarget?.index === index && fieldDropTarget.placement === 'before' && fromIndex < index
+        ? index - 1
+        : index;
+    if (Number.isInteger(fromIndex)) reorderField(fromIndex, targetIndex);
+    setDraggedFieldIndex(null);
+    setFieldDropTarget(null);
   }
 
   async function addBank() {
@@ -600,10 +649,19 @@ export function FormsBuilderPage() {
           </section>
 
           <section className="tool-panel">
-            <header className="tool-panel__header"><div><p className="eyebrow">Поля</p><h2>Структура форми</h2></div><button className="button button--secondary button--small" type="button" onClick={() => setFields((current) => [...current, newField(current.length)])}><Icon name="add" size={15} /> Поле</button></header>
+            <header className="tool-panel__header"><div><p className="eyebrow">Поля</p><h2>Структура форми</h2></div><button className="button button--secondary button--small" type="button" onClick={() => setFields((current) => normalizeFormFieldOrder([...current, newField(current.length)]))}><Icon name="add" size={15} /> Поле</button></header>
             <div className="form-fields-list">
-              {fields.map((field, index) => <article className={field.system ? 'form-field-card form-field-card--system' : 'form-field-card'} key={`${field.key}-${index}`}>
-                <header><strong>{field.label}</strong><span>{field.system ? 'Системне' : fieldTypeLabels[field.type]}</span></header>
+              {fields.map((field, index) => <article
+                className={`${field.system ? 'form-field-card form-field-card--system' : 'form-field-card'}${draggedFieldIndex === index ? ' form-field-card--dragging' : ''}${fieldDropTarget?.index === index ? ` form-field-card--drop-${fieldDropTarget.placement}` : ''}`}
+                key={field.id || `${field.key}-${index}`}
+                onDragOver={(event) => overField(event, index)}
+                onDrop={(event) => dropField(event, index)}
+                onDragEnd={() => { setDraggedFieldIndex(null); setFieldDropTarget(null); }}
+              >
+                <header className="form-field-card__bar">
+                  <div className="form-field-card__title"><strong>{field.label}</strong><span>{field.system ? 'Системне' : fieldTypeLabels[field.type]}</span></div>
+                  <span className="catalog-drag-handle" draggable={fields.length > 1} aria-disabled={fields.length <= 1} title="Перетягнути поле" onDragStart={(event) => startFieldDrag(event, index)}><Icon name="menu" size={18} /> Поле {index + 1}</span>
+                </header>
                 <div className="form-builder-grid">
                   <label className="field"><span>Назва</span><input value={field.label} onChange={(event) => updateField(index, { label: event.target.value })} /></label>
                   <div className="field"><span>Тип</span><StyledSelect value={field.type} disabled={field.system} options={fieldTypeOptions} onChange={(value) => updateFieldType(index, value)} ariaLabel={`Тип поля ${field.label}`} /></div>
@@ -619,7 +677,7 @@ export function FormsBuilderPage() {
                   <label className="check-field"><input type="checkbox" checked={field.required} disabled={field.system} onChange={(event) => updateField(index, { required: event.target.checked })} /><span>Обовʼязкове</span></label>
                   <label className="check-field"><input type="checkbox" checked={field.active} disabled={field.system} onChange={(event) => updateField(index, { active: event.target.checked })} /><span>Активне</span></label>
                 </div>
-                {!field.system && <footer><button className="button button--danger button--small" type="button" onClick={() => setFields((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Icon name="delete" size={15} /> Видалити</button></footer>}
+                <footer><button className="button button--danger button--small" type="button" onClick={() => removeField(index)}><Icon name="delete" size={15} /> Видалити</button></footer>
               </article>)}
             </div>
           </section>
