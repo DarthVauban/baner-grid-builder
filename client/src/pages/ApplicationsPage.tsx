@@ -9,7 +9,7 @@ import { api } from '../lib/api';
 import { applicationStatusOptions, customerName, formatApplicationDate } from '../lib/application';
 import { copyShareLink } from '../lib/share';
 import { useToast } from '../toast/ToastContext';
-import type { ApplicationCounts, ApplicationRecord, ApplicationStatus } from '../types/application';
+import type { ApplicationCounts, ApplicationFormSummary, ApplicationRecord, ApplicationStatus } from '../types/application';
 
 function countFor(status: string, counts?: { all: number; new: number; inProgress: number; rejected: number; closed: number }) {
   if (!counts) return 0;
@@ -19,6 +19,13 @@ function countFor(status: string, counts?: { all: number; new: number; inProgres
   if (status === 'rejected') return counts.rejected;
   if (status === 'closed') return counts.closed;
   return 0;
+}
+
+function formStatusText(status: ApplicationFormSummary['status']) {
+  if (status === 'published') return 'Опублікована';
+  if (status === 'disabled') return 'Вимкнена';
+  if (status === 'archived') return 'Архівна';
+  return 'Чернетка';
 }
 
 function ApplicationProductThumb({ src }: { src?: string }) {
@@ -61,6 +68,7 @@ export function ApplicationsPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<ApplicationStatus | 'all'>('all');
+  const [selectedFormId, setSelectedFormId] = useState('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('created_desc');
   const [page, setPage] = useState(1);
@@ -68,12 +76,25 @@ export function ApplicationsPage() {
   const [view, setView] = useState<'list' | 'stats'>('list');
   const [selectedStatsManagerId, setSelectedStatsManagerId] = useState('all');
   const sharedApplicationId = searchParams.get('application');
-  const queryParams = useMemo(() => ({ filter, search, sort, page, pageSize: 25 }), [filter, page, search, sort]);
+  const queryParams = useMemo(() => ({
+    filter,
+    formId: selectedFormId === 'all' ? undefined : selectedFormId,
+    search,
+    sort,
+    page,
+    pageSize: 25
+  }), [filter, page, search, selectedFormId, sort]);
 
   const applications = useQuery({
     queryKey: ['applications', queryParams],
     queryFn: () => api.applications.list(queryParams),
     refetchOnMount: 'always'
+  });
+  const applicationForms = useQuery({
+    queryKey: ['application-form-filters'],
+    queryFn: api.applications.forms,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true
   });
   const counts = useQuery({
     queryKey: ['application-counts'],
@@ -118,6 +139,7 @@ export function ApplicationsPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['applications'] }),
       queryClient.invalidateQueries({ queryKey: ['application-counts'] }),
+      queryClient.invalidateQueries({ queryKey: ['application-form-filters'] }),
       queryClient.invalidateQueries({ queryKey: ['notifications'] }),
       queryClient.invalidateQueries({ queryKey: ['chat-messages'] })
     ]);
@@ -196,6 +218,9 @@ export function ApplicationsPage() {
   }
 
   const items = applications.data?.items || [];
+  const formFilters = applicationForms.data || [];
+  const selectedForm = selectedFormId === 'all' ? null : formFilters.find((form) => form.id === selectedFormId) || null;
+  const formFilterTotal = formFilters.reduce((total, form) => total + form.all, 0);
   const managerStats = counts.data?.managerStats || [];
   const unassignedStats = counts.data?.unassigned;
   const managerTotals = useMemo(() => aggregateManagerStats(managerStats), [managerStats]);
@@ -217,6 +242,11 @@ export function ApplicationsPage() {
     if (!managerStats.some((item) => item.manager.id === selectedStatsManagerId)) setSelectedStatsManagerId('all');
   }, [managerStats, selectedStatsManagerId]);
 
+  useEffect(() => {
+    if (selectedFormId === 'all' || applicationForms.isLoading) return;
+    if (!formFilters.some((form) => form.id === selectedFormId)) setSelectedFormId('all');
+  }, [applicationForms.isLoading, formFilters, selectedFormId]);
+
   return <div className="applications-page">
     <header className="page-heading page-heading--row">
       <div>
@@ -237,6 +267,30 @@ export function ApplicationsPage() {
       </button>
     </nav>
 
+    <section className="application-form-filter" aria-label="Фільтр заявок за формою">
+      <header>
+        <span><Icon name="formBuilder" size={18} /> Форми</span>
+        <small>{selectedForm ? `Показуємо заявки з форми: ${selectedForm.name}` : 'Показуємо заявки з усіх форм'}</small>
+      </header>
+      <div className="application-form-filter__list">
+        <button className={selectedFormId === 'all' ? 'application-form-filter__item application-form-filter__item--active' : 'application-form-filter__item'} type="button" onClick={() => { setSelectedFormId('all'); setPage(1); }}>
+          <span><strong>Усі форми</strong><small>Загальний потік заявок</small></span>
+          <b>{counts.data?.all || formFilterTotal}</b>
+        </button>
+        {formFilters.map((form) => <button
+          className={selectedFormId === form.id ? 'application-form-filter__item application-form-filter__item--active' : 'application-form-filter__item'}
+          type="button"
+          key={form.id}
+          onClick={() => { setSelectedFormId(form.id); setPage(1); }}
+        >
+          <span><strong>{form.name}</strong><small>{formStatusText(form.status)}</small></span>
+          <b>{form.all}</b>
+        </button>)}
+        {applicationForms.isLoading && <span className="application-form-filter__loading">Завантажуємо форми...</span>}
+        {!applicationForms.isLoading && !formFilters.length && <span className="application-form-filter__loading">Форми ще не створені</span>}
+      </div>
+    </section>
+
     {view === 'list' && <>
     <section className="task-toolbar" aria-label="Фільтри заявок">
       <div className="task-filters">
@@ -255,7 +309,7 @@ export function ApplicationsPage() {
 
     {applications.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо заявки...</p></div>}
     {applications.isError && <div className="task-list-state task-list-state--error"><p>{applications.error instanceof Error ? applications.error.message : 'Не вдалося завантажити заявки.'}</p><button className="button button--secondary" type="button" onClick={() => void applications.refetch()}>Спробувати ще</button></div>}
-    {!applications.isLoading && !applications.isError && items.length === 0 && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="tasks" size={28} /></span><h2>Заявок не знайдено</h2><p>{search ? 'Перевірте номер, імʼя або телефон і спробуйте інший запит.' : 'Нові заявки зʼявляться тут автоматично після надсилання форми.'}</p></div>}
+    {!applications.isLoading && !applications.isError && items.length === 0 && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="tasks" size={28} /></span><h2>Заявок не знайдено</h2><p>{search ? 'Перевірте номер, імʼя або телефон і спробуйте інший запит.' : selectedForm ? 'У цій формі поки немає заявок з обраним статусом.' : 'Нові заявки зʼявляться тут автоматично після надсилання форми.'}</p></div>}
 
     {items.length > 0 && <section className="application-table" aria-label="Список заявок">
       <div className="application-table__head"><span>№</span><span>Статус</span><span>Менеджер</span><span>Покупець</span><span>Телефон</span><span>Банк</span><span>Товар</span><span>Створено</span><span>Дії</span></div>

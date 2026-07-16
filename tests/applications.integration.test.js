@@ -362,6 +362,20 @@ test('form builder and applications list have separate access and process public
   assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'addons').optionLabel, 'Screen protection, Extended warranty');
   assert.equal(feed.body.data.items[0].assignedManager, null);
 
+  const formFilters = await manager.get('/api/applications/forms').expect(200);
+  const creditFormFilter = formFilters.body.data.find((item) => item.id === form.body.data.id);
+  const flexibleFormFilter = formFilters.body.data.find((item) => item.id === flexibleForm.body.data.id);
+  assert.ok(creditFormFilter);
+  assert.ok(flexibleFormFilter);
+  assert.equal(creditFormFilter.all, 1);
+  assert.equal(creditFormFilter.new, 1);
+  assert.equal(flexibleFormFilter.all, 0);
+  const creditFormFeed = await manager.get(`/api/applications?formId=${form.body.data.id}`).expect(200);
+  assert.equal(creditFormFeed.body.data.total, 1);
+  assert.equal(creditFormFeed.body.data.items[0].formId, form.body.data.id);
+  const flexibleFormFeed = await manager.get(`/api/applications?formId=${flexibleForm.body.data.id}`).expect(200);
+  assert.equal(flexibleFormFeed.body.data.total, 0);
+
   const otherInitialFeed = await otherManager.get('/api/applications?search=1').expect(200);
   assert.equal(otherInitialFeed.body.data.total, 1);
 

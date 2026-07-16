@@ -153,6 +153,18 @@ export interface ApplicationFeed {
   pageCount: number;
 }
 
+export interface ApplicationFormSummary {
+  id: string;
+  publicId: string;
+  name: string;
+  status: ApplicationFormStatus;
+  all: number;
+  new: number;
+  inProgress: number;
+  rejected: number;
+  closed: number;
+}
+
 export interface ApplicationCounts {
   all: number;
   new: number;

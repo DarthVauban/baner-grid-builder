@@ -26,6 +26,7 @@ router.use(requireAuth, requireToolAccess('applications'));
 const idSchema = z.string().uuid();
 const listSchema = z.object({
   filter: z.enum(['all', ...applicationStatuses]).default('all'),
+  formId: z.string().uuid().optional(),
   search: z.string().trim().max(80).default(''),
   sort: z.enum(['created_desc', 'updated_desc', 'number_asc', 'number_desc']).default('created_desc'),
   page: z.coerce.number().int().min(1).default(1),
@@ -185,9 +186,45 @@ router.get('/counts', asyncHandler(async (req, res) => {
   } });
 }));
 
+router.get('/forms', asyncHandler(async (req, res) => {
+  const params = [];
+  const join = ['app.form_id = form.id'];
+  appendApplicationVisibility(join, params, req.user);
+  const result = await query(
+    `SELECT
+       form.id,
+       form.public_id,
+       form.name,
+       form.status,
+       COUNT(app.id)::INTEGER AS total,
+       COUNT(app.id) FILTER (WHERE app.status = 'new')::INTEGER AS new,
+       COUNT(app.id) FILTER (WHERE app.status = 'in_progress')::INTEGER AS in_progress,
+       COUNT(app.id) FILTER (WHERE app.status = 'rejected')::INTEGER AS rejected,
+       COUNT(app.id) FILTER (WHERE app.status = 'closed')::INTEGER AS closed
+     FROM application_forms AS form
+     LEFT JOIN applications AS app ON ${join.join(' AND ')}
+     WHERE form.status <> 'archived' OR app.id IS NOT NULL
+     GROUP BY form.id, form.public_id, form.name, form.status
+     ORDER BY COUNT(app.id) DESC, lower(form.name)`,
+    params
+  );
+  res.json({ data: result.rows.map((form) => ({
+    id: form.id,
+    publicId: form.public_id,
+    name: form.name,
+    status: form.status,
+    all: Number(form.total || 0),
+    new: Number(form.new || 0),
+    inProgress: Number(form.in_progress || 0),
+    rejected: Number(form.rejected || 0),
+    closed: Number(form.closed || 0)
+  })) });
+}));
+
 router.get('/', asyncHandler(async (req, res) => {
   const input = parseInput(listSchema, {
     filter: req.query.filter || 'all',
+    formId: req.query.formId || undefined,
     search: String(req.query.search || ''),
     sort: req.query.sort || 'created_desc',
     page: req.query.page || 1,
@@ -228,6 +265,10 @@ router.get('/', asyncHandler(async (req, res) => {
   if (input.filter !== 'all') {
     params.push(input.filter);
     where.push(`app.status = $${params.length}`);
+  }
+  if (input.formId) {
+    params.push(input.formId);
+    where.push(`app.form_id = $${params.length}`);
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const totalResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM applications AS app ${whereSql}`, params);

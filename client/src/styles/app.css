@@ -879,6 +879,21 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .application-view-tab:hover { color: var(--ink); border-color: #d8d4ff; box-shadow: 0 8px 20px rgba(22,30,50,.04); }
 .application-view-tab strong { min-width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--brand); background: var(--brand-soft); font-size: 10px; }
 .application-view-tab--active { color: var(--brand-dark); border-color: #cfc8ff; background: #fbfaff; box-shadow: 0 0 0 3px rgba(112,85,246,.12); }
+.application-form-filter { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 16px; margin: -6px 0 18px; padding: 12px; background: var(--surface); box-shadow: 0 10px 28px rgba(22,30,50,.04); }
+.application-form-filter > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 2px; }
+.application-form-filter > header span { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-size: 12px; font-weight: 900; }
+.application-form-filter > header small { min-width: 0; overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.application-form-filter__list { min-width: 0; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 3px; scrollbar-width: thin; }
+.application-form-filter__item { flex: 0 0 min(260px,80vw); min-height: 58px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; border: 1px solid #e3e7ee; border-radius: 13px; padding: 10px 12px; color: var(--ink); background: var(--surface-soft); text-align: left; cursor: pointer; transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease; }
+.application-form-filter__item:hover { border-color: #d8d4ff; background: #fbfaff; }
+.application-form-filter__item--active { border-color: #cfc8ff; background: #fbfaff; box-shadow: inset 0 0 0 1px rgba(112,85,246,.15); }
+.application-form-filter__item span { min-width: 0; display: grid; gap: 4px; }
+.application-form-filter__item strong, .application-form-filter__item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.application-form-filter__item strong { font-size: 12px; font-weight: 900; }
+.application-form-filter__item small { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.application-form-filter__item b { min-width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--brand); background: var(--brand-soft); font-size: 11px; font-weight: 900; }
+.application-form-filter__item--active b { color: #fff; background: var(--brand); }
+.application-form-filter__loading { flex: 0 0 auto; min-height: 42px; display: inline-flex; align-items: center; border: 1px dashed #d9dee7; border-radius: 12px; padding: 0 13px; color: var(--muted); font-size: 10px; font-weight: 800; }
 .application-stats-workspace { display: grid; grid-template-columns: 250px minmax(0,1fr); align-items: start; gap: 16px; }
 .application-stats-sidebar, .application-stats-panel { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 10px 28px rgba(22,30,50,.04); }
 .application-stats-sidebar { max-height: 560px; display: grid; gap: 8px; overflow: auto; padding: 10px; }
@@ -1545,6 +1560,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 :root[data-theme="brand"] .task-filter--active { color: var(--brand); border-color: rgba(255,225,1,.28); background: var(--brand-soft); }
 :root[data-theme="brand"] .task-filter__count { color: #d7d7d2; background: #343430; }
 :root[data-theme="brand"] .task-filter--active .task-filter__count { color: #080808; background: var(--brand); }
+:root[data-theme="brand"] .application-form-filter__item--active b { color: #080808; }
 :root[data-theme="brand"] .task-card__time small { color: #8f8f89; }
 :root[data-theme="brand"] .task-card__time strong { color: #e0e0db; }
 :root[data-theme="brand"] .task-view-switch { border-color: var(--line); background: var(--surface); }
@@ -1648,6 +1664,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 :root[data-theme="brand"] .application-table,
 :root[data-theme="brand"] .application-row,
 :root[data-theme="brand"] .application-view-tab,
+:root[data-theme="brand"] .application-form-filter,
 :root[data-theme="brand"] .application-stats-sidebar,
 :root[data-theme="brand"] .application-stats-panel,
 :root[data-theme="brand"] .application-stats-card,
@@ -1666,6 +1683,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 :root[data-theme="brand"] .application-table__head,
 :root[data-theme="brand"] .application-pagination,
 :root[data-theme="brand"] .application-row:hover,
+:root[data-theme="brand"] .application-form-filter__item,
 :root[data-theme="brand"] .application-stats-person,
 :root[data-theme="brand"] .application-stats-panel__header > span,
 :root[data-theme="brand"] .application-stats-bar > div,
@@ -1680,6 +1698,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 :root[data-theme="brand"] .form-field-card--system,
 :root[data-theme="brand"] .forms-list__item--active,
 :root[data-theme="brand"] .application-view-tab--active,
+:root[data-theme="brand"] .application-form-filter__item--active,
 :root[data-theme="brand"] .application-stats-person--active,
 :root[data-theme="brand"] .application-stats-card--all { border-color: rgba(255,225,1,.28); background: rgba(255,225,1,.08); }
 :root[data-theme="brand"] .application-manager-pill { color: #d8d8d2; background: #30302c; }

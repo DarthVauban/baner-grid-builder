@@ -77,6 +77,7 @@ export function AppShell() {
       try { payload = JSON.parse((event as MessageEvent).data || '{}'); } catch { /* ignore malformed event data */ }
       void queryClient.invalidateQueries({ queryKey: ['applications'] });
       void queryClient.invalidateQueries({ queryKey: ['application-counts'] });
+      void queryClient.invalidateQueries({ queryKey: ['application-form-filters'] });
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
       void queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
       if (payload.applicationId) {

@@ -46,6 +46,7 @@ import type {
   ApplicationCounts,
   ApplicationFeed,
   ApplicationForm,
+  ApplicationFormSummary,
   ApplicationFormInput,
   ApplicationRecord,
   ApplicationStatus
@@ -280,8 +281,9 @@ export const api = {
     markAllRead: () => request<void>('/api/notifications/read-all', { method: 'POST' })
   },
   applications: {
-    list: (params: { filter?: string; search?: string; sort?: string; page?: number; pageSize?: number }) =>
+    list: (params: { filter?: string; formId?: string; search?: string; sort?: string; page?: number; pageSize?: number }) =>
       request<ApplicationFeed>(`/api/applications${queryString(params)}`),
+    forms: () => request<ApplicationFormSummary[]>('/api/applications/forms'),
     counts: () => request<ApplicationCounts>('/api/applications/counts'),
     get: (id: string) => request<ApplicationRecord>(`/api/applications/${encodeURIComponent(id)}`),
     setStatus: (id: string, status: ApplicationStatus, expectedVersion: number, comment = '') =>
