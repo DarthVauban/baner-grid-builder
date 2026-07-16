@@ -7,8 +7,12 @@ COPY client ./client
 RUN npm run build
 
 FROM node:20-alpine AS runtime
+ARG APP_BUILD_SHA=development
 ENV NODE_ENV=production
+ENV APP_BUILD_SHA=$APP_BUILD_SHA
 WORKDIR /app
+
+LABEL org.opencontainers.image.revision=$APP_BUILD_SHA
 
 RUN addgroup -S nodeapp && adduser -S nodeapp -G nodeapp
 COPY package.json package-lock.json ./

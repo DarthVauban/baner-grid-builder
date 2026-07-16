@@ -7,6 +7,7 @@ process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'pg-mem://banner-builder-tests';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.COOKIE_SECURE = 'false';
+process.env.APP_BUILD_SHA = 'test-build-sha';
 process.env.ADMIN_NAME = 'Test Admin';
 process.env.ADMIN_EMAIL = 'admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
@@ -74,6 +75,16 @@ function currentTotpCode(secret) {
 
   return String(binary % 1_000_000).padStart(6, '0');
 }
+
+test('health endpoint exposes the exact running build revision', async () => {
+  await request(app)
+    .get('/api/health')
+    .expect(200)
+    .expect('X-MT-Build-Sha', 'test-build-sha')
+    .expect((response) => {
+      assert.deepEqual(response.body.data, { status: 'ok', buildSha: 'test-build-sha' });
+    });
+});
 
 test('approval flow and shared banner storage work through REST API', async () => {
   const registration = await registerAndVerify({

@@ -38,6 +38,10 @@ const app = express();
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-MT-Build-Sha', env.APP_BUILD_SHA);
+  next();
+});
 
 app.use(helmet({
   contentSecurityPolicy: {
@@ -86,7 +90,7 @@ const authLimiter = rateLimit({
 
 app.get('/api/health', asyncHandler(async (req, res) => {
   await query('SELECT 1');
-  res.json({ data: { status: 'ok' } });
+  res.json({ data: { status: 'ok', buildSha: env.APP_BUILD_SHA } });
 }));
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/admin', adminRoutes);

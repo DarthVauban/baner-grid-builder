@@ -10,6 +10,7 @@ const schema = z.object({
   JWT_EXPIRES_IN: z.string().default('12h'),
   COOKIE_NAME: z.string().default('mt_session'),
   COOKIE_SECURE: z.enum(['true', 'false', 'auto']).default('auto'),
+  APP_BUILD_SHA: z.string().min(7).default('development'),
   APP_ORIGIN: z.string().optional(),
   ADMIN_NAME: z.string().optional(),
   ADMIN_EMAIL: z.string().email().optional(),
