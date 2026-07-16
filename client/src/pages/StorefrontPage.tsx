@@ -107,11 +107,16 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
   const images = useMemo(() => productGalleryImages(product), [product]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [thumbsSwiper, setThumbsSwiper] = useState<SwiperInstance | null>(null);
+  const [brandLogoFailed, setBrandLogoFailed] = useState(false);
 
   useEffect(() => {
     setLightboxIndex(null);
     setThumbsSwiper(null);
   }, [product.productCode]);
+
+  useEffect(() => {
+    setBrandLogoFailed(false);
+  }, [product.brand?.logoUrl]);
 
   if (!images.length) return <span className="storefront-product-image storefront-product-image--gallery"><Icon name="phone" size={34} /></span>;
 
@@ -131,8 +136,8 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
           </button>
         </SwiperSlide>)}
       </Swiper>
-      {product.brand?.logoUrl && <span className="storefront-gallery__brand-sticker">
-        <img src={product.brand.logoUrl} alt={product.brand.label} loading="lazy" />
+      {product.brand?.logoUrl && !brandLogoFailed && <span className="storefront-gallery__brand-sticker">
+        <img src={product.brand.logoUrl} alt={product.brand.label} loading="lazy" onError={() => setBrandLogoFailed(true)} />
       </span>}
     </div>
     {images.length > 1 && <Swiper
@@ -202,7 +207,7 @@ function StorefrontCharacteristics({ product }: { product: CatalogProduct }) {
   </section>;
 }
 
-function StorefrontProductTabs({ product }: { product: CatalogProduct }) {
+function StorefrontProductInfoTabs({ product }: { product: CatalogProduct }) {
   const hasDescription = Boolean(product.descriptionHtml);
   const hasCharacteristics = Boolean(product.characteristics?.items?.length);
   const [activeTab, setActiveTab] = useState<StorefrontProductTab>(hasDescription ? 'description' : 'characteristics');
@@ -214,8 +219,8 @@ function StorefrontProductTabs({ product }: { product: CatalogProduct }) {
 
   if (!hasDescription && !hasCharacteristics) return null;
 
-  return <section className="storefront-product-tabs">
-    <div className="storefront-product-tabs__nav" role="tablist" aria-label="Інформація про товар">
+  return <section className="storefront-product-info-card">
+    <div className="storefront-product-info-card__tabs" role="tablist" aria-label="Інформація про товар">
       {hasDescription && <button
         className={activeTab === 'description' ? 'active' : ''}
         type="button"
@@ -235,7 +240,7 @@ function StorefrontProductTabs({ product }: { product: CatalogProduct }) {
         Характеристики
       </button>}
     </div>
-    <div className="storefront-product-tabs__panel" role="tabpanel">
+    <div className="storefront-product-info-card__panel" role="tabpanel">
       {activeTab === 'description' && hasDescription ? <StorefrontDescription product={product} /> : null}
       {activeTab === 'characteristics' && hasCharacteristics ? <StorefrontCharacteristics product={product} /> : null}
     </div>
@@ -282,6 +287,62 @@ function StorefrontModifications({ product, preview }: { product: CatalogProduct
       </div>;
     })}
   </div>;
+}
+
+function StorefrontProductDetailPage({
+  product,
+  preview,
+  basePath,
+  canRequestProduct,
+  onRequest
+}: {
+  product: CatalogProduct;
+  preview: boolean;
+  basePath: string;
+  canRequestProduct: boolean;
+  onRequest: () => void;
+}) {
+  const specs = baseSpecItems(product);
+  const actionLabel = preview
+    ? 'Preview без заявки'
+    : product.availability.status === 'unavailable'
+      ? 'Немає в наявності'
+      : canRequestProduct
+        ? 'Оформити заявку'
+        : 'Заявка недоступна';
+
+  return <section className="storefront-product-page" data-product-detail="new">
+    <div className="storefront-product-page__top">
+      <section className="storefront-product-page__gallery" aria-label="Фото товару">
+        <ProductGallery product={product} />
+      </section>
+      <article className="storefront-product-page__summary">
+        <Link to={basePath} className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>
+        <div className="storefront-product-page__meta">
+          <span>{product.productCode}</span>
+          <span>{product.conditionLabel}</span>
+          {product.brand?.label && <span>{product.brand.label}</span>}
+        </div>
+        <h1>{product.name}</h1>
+        <div className="storefront-product-page__purchase">
+          <strong>{product.priceLabel}</strong>
+          <span>{product.availability.label}</span>
+        </div>
+        {product.shortDescription && <p className="storefront-product-page__lead">{product.shortDescription}</p>}
+        {specs.length > 0 && <dl className="storefront-product-page__specs">
+          {specs.map((item) => <div key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>)}
+        </dl>}
+        <StorefrontModifications product={product} preview={preview} />
+        <button className="button button--primary storefront-product-page__action" type="button" disabled={!canRequestProduct} onClick={onRequest}>
+          {actionLabel} <Icon name="arrowRight" size={16} />
+        </button>
+      </article>
+    </div>
+    <StorefrontProductInfoTabs product={product} />
+  </section>;
 }
 
 const swatchColors = [
@@ -732,28 +793,13 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
 
     {slug ? productData ? <>
     <StorefrontProductJsonLd product={productData} />
-    <section className="storefront-detail">
-      <div className="storefront-detail__media">
-        <ProductGallery product={productData} />
-      </div>
-      <div className="storefront-detail__main">
-      <article className="storefront-detail__info">
-        <Link to={basePath} className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>
-        <p className="eyebrow">{productData.productCode} · {productData.conditionLabel}</p>
-        <h1>{productData.name}</h1>
-        <div className="storefront-detail__badges"><span>{productData.availability.label}</span><span>{productData.priceLabel}</span></div>
-        {productData.shortDescription && <p>{productData.shortDescription}</p>}
-        <dl className="storefront-specs">
-          {baseSpecItems(productData).map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}
-        </dl>
-        <StorefrontModifications product={productData} preview={preview} />
-        <button className="button button--primary" type="button" disabled={!canRequestProduct} onClick={() => setRequestOpen(true)}>
-          {preview ? 'Preview без заявки' : productData.availability.status === 'unavailable' ? 'Немає в наявності' : form.data ? 'Оформити заявку' : 'Заявка недоступна'} <Icon name="arrowRight" size={16} />
-        </button>
-      </article>
-      </div>
-    </section>
-    <StorefrontProductTabs product={productData} />
+    <StorefrontProductDetailPage
+      product={productData}
+      preview={preview}
+      basePath={basePath}
+      canRequestProduct={canRequestProduct}
+      onRequest={() => setRequestOpen(true)}
+    />
     {requestOpen && canRequestProduct && <StorefrontApplicationModal product={productData} form={form.data} onClose={() => setRequestOpen(false)} />}
     </> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
       <div className="storefront-hero">
