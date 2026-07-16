@@ -19,6 +19,8 @@ interface StyledSelectProps<T extends SelectValue = string> {
   ariaLabel?: string;
   className?: string;
   compact?: boolean;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }
 
 function sameValue(left: SelectValue, right: SelectValue) {
@@ -32,14 +34,23 @@ export function StyledSelect<T extends SelectValue = string>({
   disabled = false,
   ariaLabel,
   className = '',
-  compact = false
+  compact = false,
+  searchable = false,
+  searchPlaceholder = 'Пошук'
 }: StyledSelectProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
-  const selectedIndex = Math.max(0, options.findIndex((option) => sameValue(option.value, value)));
+  const [search, setSearch] = useState('');
+  const filteredOptions = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase('uk-UA');
+    if (!searchable || !needle) return options;
+    return options.filter((option) => option.label.toLocaleLowerCase('uk-UA').includes(needle));
+  }, [options, search, searchable]);
+  const selectedIndex = Math.max(0, filteredOptions.findIndex((option) => sameValue(option.value, value)));
   const [highlighted, setHighlighted] = useState(selectedIndex);
   const selected = useMemo(
     () => options.find((option) => sameValue(option.value, value)) || options[0],
@@ -47,6 +58,16 @@ export function StyledSelect<T extends SelectValue = string>({
   );
 
   useEffect(() => setHighlighted(selectedIndex), [selectedIndex]);
+
+  useEffect(() => {
+    if (!open) {
+      setSearch('');
+      return undefined;
+    }
+    if (!searchable) return undefined;
+    const timer = window.setTimeout(() => searchInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [open, searchable]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -98,16 +119,16 @@ export function StyledSelect<T extends SelectValue = string>({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [open, options.length]);
+  }, [open, filteredOptions.length]);
 
   function move(step: number) {
-    if (!options.length) return;
+    if (!filteredOptions.length) return;
     setOpen(true);
     setHighlighted((current) => {
       let next = current;
-      for (let attempt = 0; attempt < options.length; attempt += 1) {
-        next = (next + step + options.length) % options.length;
-        if (!options[next]?.disabled) return next;
+      for (let attempt = 0; attempt < filteredOptions.length; attempt += 1) {
+        next = (next + step + filteredOptions.length) % filteredOptions.length;
+        if (!filteredOptions[next]?.disabled) return next;
       }
       return current;
     });
@@ -129,13 +150,41 @@ export function StyledSelect<T extends SelectValue = string>({
       move(-1);
     } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      if (open && options[highlighted]) selectOption(options[highlighted]);
+      if (open && filteredOptions[highlighted]) selectOption(filteredOptions[highlighted]);
       else setOpen(true);
     }
   }
 
+  function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      move(1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      move(-1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (filteredOptions[highlighted]) selectOption(filteredOptions[highlighted]);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    }
+  }
+
   const menu = <div ref={menuRef} className={`custom-select__menu custom-select__menu--portal${compact ? ' custom-select__menu--compact' : ''}`} role="listbox" aria-label={ariaLabel} style={menuStyle}>
-    {options.map((option, index) => {
+    {searchable && <div className="custom-select__search">
+      <Icon name="search" size={15} />
+      <input
+        ref={searchInputRef}
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        onKeyDown={handleSearchKeyDown}
+        placeholder={searchPlaceholder}
+        aria-label={searchPlaceholder}
+      />
+    </div>}
+    {filteredOptions.map((option, index) => {
       const active = sameValue(option.value, value);
       const highlightedOption = index === highlighted;
       return <button
@@ -152,6 +201,7 @@ export function StyledSelect<T extends SelectValue = string>({
         {active && <Icon name="check" size={15} />}
       </button>;
     })}
+    {!filteredOptions.length && <div className="custom-select__empty">Нічого не знайдено</div>}
   </div>;
 
   return <div className={`custom-select${compact ? ' custom-select--compact' : ''}${open ? ' custom-select--open' : ''}${className ? ` ${className}` : ''}`} ref={rootRef}>

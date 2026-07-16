@@ -33,6 +33,7 @@ import {
   publicationStatuses,
   publicationStatusLabels,
   serializeBrand,
+  serializeBrandDirectory,
   serializeCatalogProduct,
   serializePublicCatalogProduct,
   validatePublicationReady
@@ -91,10 +92,25 @@ const deleteProductSchema = z.object({
   groupAction: z.enum(['disband', 'promote']).optional(),
   newMainProductId: z.string().uuid().nullable().optional()
 });
+const brandDirectoryInputSchema = z.object({
+  label: z.string().trim().min(1).max(180),
+  description: z.string().trim().max(2000).default(''),
+  active: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0)
+});
+const brandListSchema = z.object({
+  directoryId: z.string().uuid().optional(),
+  active: z.enum(['all', 'active']).default('all')
+});
 const brandInputSchema = z.object({
+  directoryId: z.string().uuid(),
   label: z.string().trim().min(1).max(160),
   active: z.boolean().default(true),
   sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0)
+});
+const brandBulkSchema = z.object({
+  directoryId: z.string().uuid(),
+  labels: z.array(z.string().trim().min(1).max(160)).min(1).max(1000)
 });
 const characteristicFieldSchema = z.object({
   id: z.string().uuid().optional(),
@@ -176,6 +192,29 @@ const sortSql = {
 
 function uniqueViolation(error) {
   return error?.code === '23505' || /duplicate key/i.test(String(error?.message || ''));
+}
+
+function normalizeBrandLabel(value) {
+  return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+}
+
+function uniqueBrandLabels(labels) {
+  const seen = new Set();
+  const result = [];
+  for (const label of labels) {
+    const normalized = normalizeBrandLabel(label);
+    const key = normalized.toLocaleLowerCase('uk-UA');
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
+    result.push(normalized);
+  }
+  return result;
+}
+
+async function assertBrandDirectoryExists(directoryId, db = { query }) {
+  const result = await db.query('SELECT * FROM used_smartphone_brand_directories WHERE id = $1', [directoryId]);
+  if (!result.rows[0]) throw new AppError(404, 'CATALOG_BRAND_DIRECTORY_NOT_FOUND', 'Довідник брендів не знайдено.');
+  return result.rows[0];
 }
 
 function productParams(input, normalizedName, slug, userId, descriptionContent) {
@@ -1009,48 +1048,175 @@ router.get('/summary', asyncHandler(async (req, res) => {
   } });
 }));
 
-router.get('/brands', asyncHandler(async (req, res) => {
+router.get('/brand-directories', asyncHandler(async (req, res) => {
   const result = await query(
-    `SELECT *
-     FROM used_smartphone_brands
-     ORDER BY active DESC, sort_order, lower(label)`
+    `SELECT directories.*,
+            COALESCE(brand_counts.brand_count, 0)::INTEGER AS brand_count
+     FROM used_smartphone_brand_directories AS directories
+     LEFT JOIN (
+       SELECT directory_id, COUNT(*)::INTEGER AS brand_count
+       FROM used_smartphone_brands
+       GROUP BY directory_id
+     ) AS brand_counts ON brand_counts.directory_id = directories.id
+     ORDER BY directories.label`
+  );
+  res.json({ data: result.rows.map(serializeBrandDirectory) });
+}));
+
+router.post('/brand-directories', asyncHandler(async (req, res) => {
+  const input = parseInput(brandDirectoryInputSchema, req.body);
+  try {
+    const result = await query(
+      `INSERT INTO used_smartphone_brand_directories (
+         label, description, active, sort_order, created_by, updated_by
+       ) VALUES ($1, $2, $3, $4, $5, $5)
+       RETURNING *`,
+      [input.label, input.description, input.active, input.sortOrder, req.user.id]
+    );
+    const recipients = await getCatalogRecipientIds();
+    publishCatalogUpdates(recipients, { type: 'brand_directory_created', directoryId: result.rows[0].id });
+    res.status(201).json({ data: serializeBrandDirectory(result.rows[0]) });
+  } catch (error) {
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_BRAND_DIRECTORY_EXISTS', 'Довідник з такою назвою вже існує.');
+    throw error;
+  }
+}));
+
+router.patch('/brand-directories/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(brandDirectoryInputSchema.partial(), req.body);
+  const current = await query('SELECT * FROM used_smartphone_brand_directories WHERE id = $1', [id]);
+  if (!current.rows[0]) throw new AppError(404, 'CATALOG_BRAND_DIRECTORY_NOT_FOUND', 'Довідник брендів не знайдено.');
+  const next = { ...serializeBrandDirectory(current.rows[0]), ...input };
+  try {
+    const result = await query(
+      `UPDATE used_smartphone_brand_directories
+       SET label = $1,
+           description = $2,
+           active = $3,
+           sort_order = $4,
+           updated_by = $5,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [next.label, next.description, next.active, next.sortOrder, req.user.id, id]
+    );
+    const recipients = await getCatalogRecipientIds();
+    publishCatalogUpdates(recipients, { type: 'brand_directory_updated', directoryId: id });
+    res.json({ data: serializeBrandDirectory(result.rows[0]) });
+  } catch (error) {
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_BRAND_DIRECTORY_EXISTS', 'Довідник з такою назвою вже існує.');
+    throw error;
+  }
+}));
+
+router.get('/brands', asyncHandler(async (req, res) => {
+  const input = parseInput(brandListSchema, {
+    directoryId: req.query.directoryId || undefined,
+    active: req.query.active || 'all'
+  });
+  const conditions = [];
+  const params = [];
+  if (input.directoryId) {
+    params.push(input.directoryId);
+    conditions.push(`brands.directory_id = $${params.length}`);
+  }
+  if (input.active === 'active') conditions.push('brands.active = TRUE');
+  const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await query(
+    `SELECT brands.*, directories.label AS directory_label
+     FROM used_smartphone_brands AS brands
+     INNER JOIN used_smartphone_brand_directories AS directories ON directories.id = brands.directory_id
+     ${whereSql}
+     ORDER BY lower(brands.label), brands.created_at`,
+    params
   );
   res.json({ data: result.rows.map(serializeBrand) });
 }));
 
 router.post('/brands', asyncHandler(async (req, res) => {
   const input = parseInput(brandInputSchema, req.body);
+  const directory = await assertBrandDirectoryExists(input.directoryId);
   try {
     const result = await query(
-      `INSERT INTO used_smartphone_brands (label, active, sort_order)
-       VALUES ($1, $2, $3)
+      `INSERT INTO used_smartphone_brands (directory_id, label, active, sort_order)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [input.label, input.active, input.sortOrder]
+      [input.directoryId, normalizeBrandLabel(input.label), input.active, input.sortOrder]
     );
-    res.status(201).json({ data: serializeBrand(result.rows[0]) });
+    const recipients = await getCatalogRecipientIds();
+    publishCatalogUpdates(recipients, { type: 'brand_created', brandId: result.rows[0].id, directoryId: input.directoryId });
+    res.status(201).json({ data: serializeBrand({ ...result.rows[0], directory_label: directory.label }) });
   } catch (error) {
-    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_BRAND_EXISTS', 'Бренд з такою назвою вже існує.');
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_BRAND_EXISTS', 'Бренд з такою назвою вже існує в цьому довіднику.');
     throw error;
   }
+}));
+
+router.post('/brands/bulk', asyncHandler(async (req, res) => {
+  const input = parseInput(brandBulkSchema, req.body);
+  const directory = await assertBrandDirectoryExists(input.directoryId);
+  const labels = uniqueBrandLabels(input.labels);
+  const created = [];
+  const skipped = [];
+
+  for (const label of labels) {
+    try {
+      const result = await query(
+        `INSERT INTO used_smartphone_brands (directory_id, label, active, sort_order)
+         VALUES ($1, $2, TRUE, 0)
+         RETURNING *`,
+        [input.directoryId, label]
+      );
+      created.push(serializeBrand({ ...result.rows[0], directory_label: directory.label }));
+    } catch (error) {
+      if (uniqueViolation(error)) {
+        skipped.push(label);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (created.length) {
+    const recipients = await getCatalogRecipientIds();
+    publishCatalogUpdates(recipients, { type: 'brands_bulk_created', directoryId: input.directoryId, created: created.length });
+  }
+
+  res.status(201).json({ data: { created, skipped, total: labels.length } });
 }));
 
 router.patch('/brands/:id', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const input = parseInput(brandInputSchema.partial(), req.body);
-  const current = await query('SELECT * FROM used_smartphone_brands WHERE id = $1', [id]);
+  const current = await query(
+    `SELECT brands.*, directories.label AS directory_label
+     FROM used_smartphone_brands AS brands
+     INNER JOIN used_smartphone_brand_directories AS directories ON directories.id = brands.directory_id
+     WHERE brands.id = $1`,
+    [id]
+  );
   if (!current.rows[0]) throw new AppError(404, 'CATALOG_BRAND_NOT_FOUND', 'Бренд не знайдено.');
   const next = { ...serializeBrand(current.rows[0]), ...input };
+  const directory = await assertBrandDirectoryExists(next.directoryId);
   try {
     const result = await query(
       `UPDATE used_smartphone_brands
-       SET label = $1, active = $2, sort_order = $3, updated_at = NOW()
-       WHERE id = $4
+       SET directory_id = $1,
+           label = $2,
+           active = $3,
+           sort_order = $4,
+           updated_at = NOW()
+       WHERE id = $5
        RETURNING *`,
-      [next.label, next.active, next.sortOrder, id]
+      [next.directoryId, normalizeBrandLabel(next.label), next.active, next.sortOrder, id]
     );
-    res.json({ data: serializeBrand(result.rows[0]) });
+    const recipients = await getCatalogRecipientIds();
+    publishCatalogUpdates(recipients, { type: 'brand_updated', brandId: id, directoryId: next.directoryId });
+    publishPublicCatalogUpdate({ type: 'brand_updated', brandId: id });
+    res.json({ data: serializeBrand({ ...result.rows[0], directory_label: directory.label }) });
   } catch (error) {
-    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_BRAND_EXISTS', 'Бренд з такою назвою вже існує.');
+    if (uniqueViolation(error)) throw new AppError(409, 'CATALOG_BRAND_EXISTS', 'Бренд з такою назвою вже існує в цьому довіднику.');
     throw error;
   }
 }));

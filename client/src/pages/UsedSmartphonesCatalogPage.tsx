@@ -19,6 +19,7 @@ import { useToast } from '../toast/ToastContext';
 import type {
   CatalogAvailabilityStatus,
   CatalogBrand,
+  CatalogBrandDirectory,
   CatalogCharacteristicField,
   CatalogCharacteristicTemplate,
   CatalogCondition,
@@ -87,6 +88,10 @@ function CatalogMiniThumb({ imageUrl, className = 'catalog-thumb' }: { imageUrl:
 
 function ProductThumb({ product }: { product: CatalogProduct }) {
   return <CatalogMiniThumb imageUrl={product.mainImageUrl} />;
+}
+
+function compareCatalogLabel<T extends { label: string }>(left: T, right: T) {
+  return left.label.localeCompare(right.label, 'uk-UA', { sensitivity: 'base' });
 }
 
 type CatalogEditorTab = 'main' | 'availability' | 'media' | 'description' | 'condition' | 'characteristics' | 'modifications' | 'seo' | 'internal';
@@ -344,6 +349,7 @@ function CharacteristicFieldControl({
 function ProductEditorScreen({
   product,
   brands,
+  brandDirectories,
   busy,
   onClose,
   onSubmit,
@@ -352,6 +358,7 @@ function ProductEditorScreen({
 }: {
   product: CatalogProduct | null;
   brands: CatalogBrand[];
+  brandDirectories: CatalogBrandDirectory[];
   busy: boolean;
   onClose: () => void;
   onSubmit: (input: CatalogProductInput, product: CatalogProduct | null) => Promise<CatalogProduct | null>;
@@ -373,6 +380,7 @@ function ProductEditorScreen({
   const { showToast } = useToast();
   const [selectedCharacteristicTemplateId, setSelectedCharacteristicTemplateId] = useState('');
   const [characteristicValues, setCharacteristicValues] = useState<Record<string, unknown>>({});
+  const [selectedBrandDirectoryId, setSelectedBrandDirectoryId] = useState(product?.brand?.directoryId || '');
   const [selectedModificationGroupId, setSelectedModificationGroupId] = useState('');
   const [modificationGroupLabel, setModificationGroupLabel] = useState('');
   const [selectedModificationProductIds, setSelectedModificationProductIds] = useState<string[]>([]);
@@ -421,6 +429,22 @@ function ProductEditorScreen({
   );
   const editorBusy = busy || linkedSaveBusy;
   const groupSwitchItems = productModifications.data?.items || [];
+  const sortedBrandDirectories = useMemo(
+    () => [...brandDirectories]
+      .filter((directory) => directory.active || directory.id === product?.brand?.directoryId)
+      .sort(compareCatalogLabel),
+    [brandDirectories, product?.brand?.directoryId]
+  );
+  const sortedBrands = useMemo(
+    () => [...brands]
+      .filter((brand) => brand.directoryId === selectedBrandDirectoryId && (brand.active || brand.id === draft.brandId))
+      .sort(compareCatalogLabel),
+    [brands, draft.brandId, selectedBrandDirectoryId]
+  );
+  const selectedBrand = useMemo(
+    () => brands.find((brand) => brand.id === draft.brandId) || null,
+    [brands, draft.brandId]
+  );
   const editorSnapshot = useMemo(() => stableSnapshot({
     draft,
     selectedCharacteristicTemplateId,
@@ -450,6 +474,7 @@ function ProductEditorScreen({
 
   useEffect(() => {
     setDraft(product ? productToInput(product) : { ...emptyCatalogProductInput });
+    setSelectedBrandDirectoryId(product?.brand?.directoryId || '');
     setSelectedCharacteristicTemplateId('');
     setCharacteristicValues({});
     setSelectedModificationGroupId(newModificationGroupId);
@@ -462,7 +487,18 @@ function ProductEditorScreen({
     setLeavePrompt(null);
     browserUnloadArmedRef.current = false;
     allowNextNavigationRef.current = false;
-  }, [product?.id]);
+  }, [product?.brand?.directoryId, product?.id]);
+
+  useEffect(() => {
+    if (selectedBrand && selectedBrand.directoryId !== selectedBrandDirectoryId) {
+      setSelectedBrandDirectoryId(selectedBrand.directoryId);
+    }
+  }, [selectedBrand, selectedBrandDirectoryId]);
+
+  useEffect(() => {
+    if (selectedBrandDirectoryId || !sortedBrandDirectories.length) return;
+    setSelectedBrandDirectoryId(sortedBrandDirectories[0].id);
+  }, [selectedBrandDirectoryId, sortedBrandDirectories]);
 
   useEffect(() => {
     if (!productCharacteristics.data) return;
@@ -585,6 +621,11 @@ function ProductEditorScreen({
 
   function setField<K extends keyof CatalogProductInput>(key: K, value: CatalogProductInput[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function chooseBrandDirectory(directoryId: string) {
+    setSelectedBrandDirectoryId(directoryId);
+    setField('brandId', null);
   }
 
   function setDiagnostic(key: string, value: string) {
@@ -885,7 +926,8 @@ function ProductEditorScreen({
           <div className="catalog-editor-grid">
             <label className="field catalog-editor-grid__wide"><span>Назва</span><input value={draft.name} onChange={(event) => setField('name', event.target.value)} required maxLength={240} /></label>
             <label className="field"><span>Стан</span><StyledSelect value={draft.condition} options={catalogConditionOptions} onChange={(value) => setField('condition', value as CatalogCondition)} /></label>
-            <label className="field"><span>Бренд</span><StyledSelect value={draft.brandId || ''} options={[{ value: '', label: 'Без бренду' }, ...brands.map((brand) => ({ value: brand.id, label: brand.label }))]} onChange={(value) => setField('brandId', value ? String(value) : null)} /></label>
+            <label className="field"><span>Довідник брендів</span><StyledSelect value={selectedBrandDirectoryId} options={sortedBrandDirectories.length ? sortedBrandDirectories.map((directory) => ({ value: directory.id, label: directory.label, disabled: !directory.active })) : [{ value: '', label: 'Довідників немає', disabled: true }]} onChange={(value) => chooseBrandDirectory(String(value))} disabled={!sortedBrandDirectories.length} /></label>
+            <label className="field"><span>Бренд</span><StyledSelect value={draft.brandId || ''} options={[{ value: '', label: 'Без бренду' }, ...sortedBrands.map((brand) => ({ value: brand.id, label: brand.label, disabled: !brand.active }))]} onChange={(value) => setField('brandId', value ? String(value) : null)} disabled={!selectedBrandDirectoryId} searchable searchPlaceholder="Пошук бренду" /></label>
             <label className="field"><span>Slug</span><input value={draft.slug} onChange={(event) => setField('slug', event.target.value)} placeholder="iphone-13-used" maxLength={260} /></label>
           </div>
         </section>}
@@ -1600,7 +1642,8 @@ export function UsedSmartphonesCatalogPage() {
     refetchOnMount: 'always'
   });
   const summary = useQuery({ queryKey: ['catalog-summary'], queryFn: api.catalog.summary });
-  const brands = useQuery({ queryKey: ['catalog-brands'], queryFn: api.catalog.brands });
+  const brands = useQuery({ queryKey: ['catalog-brands'], queryFn: () => api.catalog.brands() });
+  const brandDirectories = useQuery({ queryKey: ['catalog-brand-directories'], queryFn: api.catalog.brandDirectories });
   const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
   const storefrontSettings = useQuery({ queryKey: ['catalog-storefront-settings'], queryFn: api.catalog.storefrontSettings });
   const sharedProduct = useQuery({
@@ -1863,6 +1906,7 @@ export function UsedSmartphonesCatalogPage() {
     return <ProductEditorScreen
       product={editorProduct}
       brands={brands.data || []}
+      brandDirectories={brandDirectories.data || []}
       busy={saveProduct.isPending}
       onClose={closeEditor}
       onSubmit={submitProduct}

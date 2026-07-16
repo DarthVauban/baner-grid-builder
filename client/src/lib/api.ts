@@ -52,6 +52,7 @@ import type {
 } from '../types/application';
 import type {
   CatalogBrand,
+  CatalogBrandDirectory,
   CatalogCharacteristicTemplate,
   CatalogCharacteristicTemplateInput,
   CatalogFeed,
@@ -306,10 +307,18 @@ export const api = {
   },
   catalog: {
     summary: () => request<CatalogSummary>('/api/catalog/summary'),
-    brands: () => request<CatalogBrand[]>('/api/catalog/brands'),
-    createBrand: (input: Pick<CatalogBrand, 'label' | 'active' | 'sortOrder'>) =>
+    brandDirectories: () => request<CatalogBrandDirectory[]>('/api/catalog/brand-directories'),
+    createBrandDirectory: (input: Pick<CatalogBrandDirectory, 'label' | 'description' | 'active' | 'sortOrder'>) =>
+      request<CatalogBrandDirectory>('/api/catalog/brand-directories', { method: 'POST', body: jsonBody(input) }),
+    updateBrandDirectory: (id: string, input: Partial<Pick<CatalogBrandDirectory, 'label' | 'description' | 'active' | 'sortOrder'>>) =>
+      request<CatalogBrandDirectory>(`/api/catalog/brand-directories/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+    brands: (params?: { directoryId?: string; active?: 'all' | 'active' }) =>
+      request<CatalogBrand[]>(`/api/catalog/brands${queryString(params || {})}`),
+    createBrand: (input: Pick<CatalogBrand, 'directoryId' | 'label' | 'active' | 'sortOrder'>) =>
       request<CatalogBrand>('/api/catalog/brands', { method: 'POST', body: jsonBody(input) }),
-      updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'label' | 'active' | 'sortOrder'>>) =>
+      bulkCreateBrands: (input: { directoryId: string; labels: string[] }) =>
+        request<{ created: CatalogBrand[]; skipped: string[]; total: number }>('/api/catalog/brands/bulk', { method: 'POST', body: jsonBody(input) }),
+      updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'directoryId' | 'label' | 'active' | 'sortOrder'>>) =>
         request<CatalogBrand>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
       characteristicTemplates: () => request<CatalogCharacteristicTemplate[]>('/api/catalog/characteristic-templates'),
       createCharacteristicTemplate: (input: CatalogCharacteristicTemplateInput) =>

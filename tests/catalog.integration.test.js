@@ -34,6 +34,31 @@ test('catalog products publish to storefront, import stock updates, and create a
   const catalogTool = catalog.body.data.tools.find((item) => item.toolId === 'used_smartphones_catalog');
   assert.equal(catalogTool.accessible, true);
 
+  const defaultDirectories = await admin.get('/api/catalog/brand-directories').expect(200);
+  assert.equal(defaultDirectories.body.data.some((directory) => directory.label === 'Бренди смартфонів'), true);
+
+  const brandDirectory = await admin.post('/api/catalog/brand-directories').send({
+    label: 'Виробники смартфонів',
+    description: 'Тестовий довідник брендів',
+    active: true,
+    sortOrder: 0
+  }).expect(201);
+  const bulkBrands = await admin.post('/api/catalog/brands/bulk').send({
+    directoryId: brandDirectory.body.data.id,
+    labels: ['Xiaomi', 'Apple', 'Samsung', 'Apple']
+  }).expect(201);
+  assert.equal(bulkBrands.body.data.created.length, 3);
+  const duplicateBulkBrands = await admin.post('/api/catalog/brands/bulk').send({
+    directoryId: brandDirectory.body.data.id,
+    labels: ['Apple', 'Google']
+  }).expect(201);
+  assert.equal(duplicateBulkBrands.body.data.created.length, 1);
+  assert.deepEqual(duplicateBulkBrands.body.data.skipped, ['Apple']);
+  const directoryBrands = await admin.get(`/api/catalog/brands?directoryId=${brandDirectory.body.data.id}`).expect(200);
+  assert.deepEqual(directoryBrands.body.data.map((brand) => brand.label), ['Apple', 'Google', 'Samsung', 'Xiaomi']);
+  const appleBrand = directoryBrands.body.data.find((brand) => brand.label === 'Apple');
+  assert.equal(appleBrand.directoryId, brandDirectory.body.data.id);
+
   const media = await admin.post('/api/catalog/media')
     .set('Content-Type', 'image/webp')
     .set('X-File-Name', 'catalog-test.png')
@@ -67,7 +92,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     priceUah: 18999,
     publicationStatus: 'DRAFT',
     slug: '',
-    brandId: null,
+    brandId: appleBrand.id,
     mainImageUrl: '',
     gallery: [],
     shortDescription: 'Tested used smartphone.',
@@ -85,6 +110,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   }).expect(201);
   assert.equal(created.body.data.productCode, 'SM-000001');
   assert.equal(created.body.data.publicationStatus, 'DRAFT');
+  assert.equal(created.body.data.brand.directoryId, brandDirectory.body.data.id);
 
   await admin.patch(`/api/catalog/products/${created.body.data.id}/publication-status`).send({
     status: 'PUBLISHED',
@@ -93,7 +119,7 @@ test('catalog products publish to storefront, import stock updates, and create a
 
   const updated = await admin.put(`/api/catalog/products/${created.body.data.id}`).send({
     ...created.body.data,
-    brandId: null,
+    brandId: appleBrand.id,
     mainImageUrl: 'https://example.com/iphone-13.webp',
     gallery: [],
     description: '.tab .content{color:blue}<h2 onclick="alert(1)">Specs</h2><style>.note{color:red}</style><p><a href="javascript:alert(1)">bad link</a></p><script>window.__catalogTest = true;</script>',

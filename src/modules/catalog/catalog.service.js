@@ -29,10 +29,13 @@ export const availabilityLabels = {
 export const productSelect = `
   SELECT product.*,
          brand.label AS brand_label,
+         brand.directory_id AS brand_directory_id,
+         brand_directory.label AS brand_directory_label,
          creator.name AS created_by_name,
          updater.name AS updated_by_name
   FROM used_smartphone_products AS product
   LEFT JOIN used_smartphone_brands AS brand ON brand.id = product.brand_id
+  LEFT JOIN used_smartphone_brand_directories AS brand_directory ON brand_directory.id = brand.directory_id
   LEFT JOIN users AS creator ON creator.id = product.created_by
   LEFT JOIN users AS updater ON updater.id = product.updated_by
 `;
@@ -117,12 +120,38 @@ export async function makeUniqueSlug(value, excludeId, db, suffixFallback = '') 
 export function serializeBrand(row) {
   return {
     id: row.id,
+    directoryId: row.directory_id,
+    directoryLabel: row.directory_label || row.brand_directory_label || '',
     label: row.label,
     active: row.active === true,
     sortOrder: Number(row.sort_order || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+export function serializeBrandDirectory(row) {
+  return {
+    id: row.id,
+    label: row.label,
+    description: row.description || '',
+    active: row.active === true,
+    sortOrder: Number(row.sort_order || 0),
+    brandCount: Number(row.brand_count || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function serializeProductBrand(row) {
+  return row.brand_id
+    ? {
+        id: row.brand_id,
+        label: row.brand_label || '',
+        directoryId: row.brand_directory_id || '',
+        directoryLabel: row.brand_directory_label || ''
+      }
+    : null;
 }
 
 function normalizeJsonArray(value) {
@@ -424,7 +453,7 @@ export function serializePublicCatalogProduct(row, { detail = false } = {}) {
     priceLabel: formatMoney(row.price_uah),
     slug: row.slug,
     publicPath: `/storefront/smartphones/${encodeURIComponent(row.slug)}`,
-    brand: row.brand_id ? { id: row.brand_id, label: row.brand_label || '' } : null,
+    brand: serializeProductBrand(row),
     mainImageUrl: row.main_image_url || '',
     shortDescription: row.short_description || ''
   };
@@ -464,7 +493,7 @@ export function serializeCatalogProduct(row) {
     publicationStatusLabel: publicationStatusLabels[row.publication_status] || row.publication_status,
     slug: row.slug,
     publicPath: `/storefront/smartphones/${encodeURIComponent(row.slug)}`,
-    brand: row.brand_id ? { id: row.brand_id, label: row.brand_label || '' } : null,
+    brand: serializeProductBrand(row),
     mainImageUrl: row.main_image_url || '',
     gallery: normalizeJsonArray(row.gallery),
     shortDescription: row.short_description || '',

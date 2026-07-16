@@ -97,6 +97,8 @@ export function AppShell() {
       void queryClient.invalidateQueries({ queryKey: ['catalog-products'] });
       void queryClient.invalidateQueries({ queryKey: ['catalog-summary'] });
       void queryClient.invalidateQueries({ queryKey: ['catalog-imports'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-brand-directories'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-brands'] });
       void queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
       if (payload.productId) void queryClient.invalidateQueries({ queryKey: ['catalog-product', payload.productId] });
     };

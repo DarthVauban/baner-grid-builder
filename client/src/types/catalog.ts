@@ -9,9 +9,22 @@ export interface CatalogAvailability {
 
 export interface CatalogBrand {
   id: string;
+  directoryId: string;
+  directoryLabel: string;
   label: string;
   active: boolean;
   sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CatalogBrandDirectory {
+  id: string;
+  label: string;
+  description: string;
+  active: boolean;
+  sortOrder: number;
+  brandCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -177,7 +190,7 @@ export interface CatalogProduct {
   publicationStatusLabel: string;
   slug: string;
   publicPath: string;
-  brand: { id: string; label: string } | null;
+  brand: { id: string; label: string; directoryId?: string; directoryLabel?: string } | null;
   mainImageUrl: string;
   gallery: CatalogGalleryItem[];
   shortDescription: string;
