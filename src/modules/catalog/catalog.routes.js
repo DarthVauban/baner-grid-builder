@@ -97,7 +97,7 @@ const brandInputSchema = z.object({
 const characteristicFieldSchema = z.object({
   key: z.string().trim().max(120).default(''),
   label: z.string().trim().min(1).max(180),
-  type: z.enum(['text', 'number', 'select', 'multiselect', 'boolean']).default('text'),
+  type: z.enum(['text', 'number', 'select', 'multiselect', 'boolean', 'color']).default('text'),
   unit: z.string().trim().max(40).default(''),
   options: z.array(z.string().trim().min(1).max(160)).max(80).default([]),
   required: z.boolean().default(false),
@@ -438,6 +438,10 @@ function characteristicValueForField(field, values) {
   if (field.type === 'number') {
     const number = Number(raw);
     return Number.isFinite(number) ? number : null;
+  }
+  if (field.type === 'color') {
+    const text = String(raw || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : '';
   }
   if (field.type === 'multiselect') return Array.isArray(raw) ? raw.map(String) : [];
   return raw == null ? '' : String(raw);

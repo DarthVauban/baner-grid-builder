@@ -17,7 +17,8 @@ const fieldTypeOptions: Array<{ value: CatalogCharacteristicFieldType; label: st
   { value: 'number', label: 'Число' },
   { value: 'select', label: 'Список' },
   { value: 'multiselect', label: 'Мультивибір' },
-  { value: 'boolean', label: 'Так/ні' }
+  { value: 'boolean', label: 'Так/ні' },
+  { value: 'color', label: 'Колір' }
 ];
 
 const emptyField = (): CatalogCharacteristicField => ({
@@ -71,6 +72,7 @@ export function CatalogCharacteristicsPage() {
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<CatalogCharacteristicTemplateInput>(() => emptyTemplate());
   const [draggedFieldIndex, setDraggedFieldIndex] = useState<number | null>(null);
+  const [fieldDropTarget, setFieldDropTarget] = useState<{ index: number; placement: 'before' | 'after' } | null>(null);
 
   const templates = useQuery({
     queryKey: ['catalog-characteristic-templates'],
@@ -117,6 +119,22 @@ export function CatalogCharacteristicsPage() {
     }));
   }
 
+  function setTemplateFieldType(index: number, type: CatalogCharacteristicFieldType) {
+    setDraft((current) => ({
+      ...current,
+      fields: current.fields.map((field, fieldIndex) => {
+        if (fieldIndex !== index) return field;
+        const listType = type === 'select' || type === 'multiselect';
+        return {
+          ...field,
+          type,
+          unit: type === 'boolean' || type === 'color' ? '' : field.unit,
+          options: listType ? field.options : []
+        };
+      })
+    }));
+  }
+
   function addField() {
     setDraft((current) => ({
       ...current,
@@ -143,16 +161,29 @@ export function CatalogCharacteristicsPage() {
 
   function startFieldDrag(event: DragEvent<HTMLElement>, index: number) {
     setDraggedFieldIndex(index);
+    setFieldDropTarget(null);
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', String(index));
+  }
+
+  function overField(event: DragEvent<HTMLElement>, index: number) {
+    if (draggedFieldIndex === null || draggedFieldIndex === index) return;
+    event.preventDefault();
+    setFieldDropTarget({ index, placement: draggedFieldIndex < index ? 'after' : 'before' });
   }
 
   function dropField(event: DragEvent<HTMLElement>, index: number) {
     event.preventDefault();
     const rawIndex = event.dataTransfer.getData('text/plain');
     const fromIndex = draggedFieldIndex ?? Number(rawIndex);
-    if (Number.isInteger(fromIndex)) reorderField(fromIndex, index);
+    const targetIndex = fieldDropTarget?.index === index && fieldDropTarget.placement === 'after' && fromIndex > index
+      ? index + 1
+      : fieldDropTarget?.index === index && fieldDropTarget.placement === 'before' && fromIndex < index
+        ? index - 1
+        : index;
+    if (Number.isInteger(fromIndex)) reorderField(fromIndex, targetIndex);
     setDraggedFieldIndex(null);
+    setFieldDropTarget(null);
   }
 
   async function submit() {
@@ -208,20 +239,20 @@ export function CatalogCharacteristicsPage() {
             <button className="button button--secondary button--small" type="button" onClick={addField}><Icon name="add" size={15} /> Поле</button>
           </div>
           {draft.fields.map((field, index) => <article
-            className={`catalog-template-field${draggedFieldIndex === index ? ' catalog-template-field--dragging' : ''}`}
+            className={`catalog-template-field${draggedFieldIndex === index ? ' catalog-template-field--dragging' : ''}${fieldDropTarget?.index === index ? ` catalog-template-field--drop-${fieldDropTarget.placement}` : ''}`}
             key={index}
-            onDragOver={(event) => { if (draggedFieldIndex !== null && draggedFieldIndex !== index) event.preventDefault(); }}
+            onDragOver={(event) => overField(event, index)}
             onDrop={(event) => dropField(event, index)}
-            onDragEnd={() => setDraggedFieldIndex(null)}
+            onDragEnd={() => { setDraggedFieldIndex(null); setFieldDropTarget(null); }}
           >
             <div className="catalog-template-field__bar">
               <span className="catalog-drag-handle" draggable={draft.fields.length > 1} aria-disabled={draft.fields.length <= 1} title="Перетягнути поле" onDragStart={(event) => startFieldDrag(event, index)}><Icon name="menu" size={18} /> Поле {index + 1}</span>
               <button className="icon-button" type="button" onClick={() => removeField(index)} aria-label="Видалити поле"><Icon name="delete" /></button>
             </div>
-            <div className="catalog-editor-grid">
+            <div className="catalog-editor-grid catalog-template-field__grid">
               <label className="field"><span>Назва поля</span><input value={field.label} onChange={(event) => setTemplateField(index, { label: event.target.value })} maxLength={180} /></label>
               <label className="field"><span>Ключ</span><input value={field.key} onChange={(event) => setTemplateField(index, { key: event.target.value })} placeholder="auto якщо порожньо" maxLength={120} /></label>
-              <label className="field"><span>Тип</span><StyledSelect value={field.type} options={fieldTypeOptions} onChange={(value) => setTemplateField(index, { type: value })} /></label>
+              <label className="field"><span>Тип</span><StyledSelect value={field.type} options={fieldTypeOptions} onChange={(value) => setTemplateFieldType(index, value as CatalogCharacteristicFieldType)} /></label>
               <label className="field"><span>Одиниця</span><input value={field.unit} onChange={(event) => setTemplateField(index, { unit: event.target.value })} placeholder="GB, %, mAh" maxLength={40} /></label>
               {(field.type === 'select' || field.type === 'multiselect') && <label className="field catalog-editor-grid__wide"><span>Опції</span><textarea value={optionsText(field)} onChange={(event) => setTemplateField(index, { options: parseOptions(event.target.value) })} placeholder="Кожна опція з нового рядка" /></label>}
               <label className="toggle-row"><input type="checkbox" checked={field.required} onChange={(event) => setTemplateField(index, { required: event.target.checked })} /> Обов'язкове</label>

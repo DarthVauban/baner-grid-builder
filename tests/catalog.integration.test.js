@@ -129,10 +129,11 @@ test('catalog products publish to storefront, import stock updates, and create a
       { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, isModifier: true, sortOrder: 0 },
       { key: 'battery_health', label: 'Battery health', type: 'number', unit: '%', options: [], required: false, filterable: true, sortOrder: 1 },
       { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Green', 'Blue'], required: false, filterable: true, isModifier: true, sortOrder: 2 },
-      { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 3 }
+      { key: 'shell_color', label: 'Shell color', type: 'color', unit: '', options: [], required: false, filterable: true, sortOrder: 3 },
+      { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 4 }
     ]
   }).expect(201);
-  assert.equal(template.body.data.fields.length, 4);
+  assert.equal(template.body.data.fields.length, 5);
 
   const productWithCharacteristics = await admin.put(`/api/catalog/products/${created.body.data.id}/characteristics`).send({
     templateId: template.body.data.id,
@@ -141,6 +142,7 @@ test('catalog products publish to storefront, import stock updates, and create a
       storage: '128',
       battery_health: 91,
       colors: ['Midnight'],
+      shell_color: '#222222',
       face_id: true
     }
   }).expect(200);
@@ -151,6 +153,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(savedCharacteristics.body.data.values.storage, '128');
   assert.equal(savedCharacteristics.body.data.values.battery_health, 91);
   assert.deepEqual(savedCharacteristics.body.data.values.colors, ['Midnight']);
+  assert.equal(savedCharacteristics.body.data.values.shell_color, '#222222');
   assert.equal(savedCharacteristics.body.data.values.face_id, true);
 
   const publicProductWithCharacteristics = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
@@ -161,6 +164,7 @@ test('catalog products publish to storefront, import stock updates, and create a
       ['storage', '128 GB'],
       ['battery_health', '91 %'],
       ['colors', 'Midnight'],
+      ['shell_color', '#222222'],
       ['face_id', 'Так']
     ]
   );
@@ -197,6 +201,7 @@ test('catalog products publish to storefront, import stock updates, and create a
       storage: '256',
       battery_health: 88,
       colors: ['Green'],
+      shell_color: '#00aa66',
       face_id: true
     }
   }).expect(200);
@@ -269,14 +274,15 @@ test('catalog products publish to storefront, import stock updates, and create a
       { key: 'colors', label: 'Colors', type: 'multiselect', unit: '', options: ['Midnight', 'Green', 'Blue'], required: false, filterable: true, isModifier: true, sortOrder: 0 },
       { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, isModifier: true, sortOrder: 1 },
       { key: 'battery_health', label: 'Battery health', type: 'number', unit: '%', options: [], required: false, filterable: true, sortOrder: 2 },
-      { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 3 }
+      { key: 'shell_color', label: 'Shell color', type: 'color', unit: '', options: [], required: false, filterable: true, sortOrder: 3 },
+      { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 4 }
     ]
   }).expect(200);
 
   const publicAfterTemplateReorder = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
   assert.deepEqual(
     publicAfterTemplateReorder.body.data.characteristics.items.map((item) => item.key),
-    ['colors', 'storage', 'battery_health', 'face_id']
+    ['colors', 'storage', 'battery_health', 'shell_color', 'face_id']
   );
   const storageAfterTemplateReorder = publicAfterTemplateReorder.body.data.modifications.parameters.find((parameter) => parameter.key === 'storage');
   assert.ok(storageAfterTemplateReorder);

@@ -233,6 +233,11 @@ function characteristicArrayValue(value: unknown) {
   return [];
 }
 
+function characteristicColorValue(value: unknown) {
+  const text = characteristicStringValue(value).trim();
+  return /^#[0-9a-f]{6}$/i.test(text) ? text : '#000000';
+}
+
 function CharacteristicFieldControl({
   field,
   value,
@@ -283,6 +288,16 @@ function CharacteristicFieldControl({
       {unit}
     </div>;
   }
+  if (field.type === 'color') {
+    const colorValue = characteristicColorValue(value);
+    return <label className="field catalog-characteristic-field">
+      <span>{field.label}{field.required ? ' *' : ''}</span>
+      <div className="catalog-color-input">
+        <input type="color" value={colorValue} onChange={(event) => onChange(event.target.value)} />
+        <input value={characteristicStringValue(value)} placeholder="#000000" onChange={(event) => onChange(event.target.value)} maxLength={7} />
+      </div>
+    </label>;
+  }
   return <label className="field catalog-characteristic-field">
     <span>{field.label}{field.required ? ' *' : ''}</span>
     <input
@@ -316,6 +331,7 @@ function ProductEditorScreen({
   const [mediaBusy, setMediaBusy] = useState('');
   const [mediaError, setMediaError] = useState('');
   const [draggedGalleryIndex, setDraggedGalleryIndex] = useState<number | null>(null);
+  const [galleryDropTarget, setGalleryDropTarget] = useState<{ index: number; placement: 'before' | 'after' } | null>(null);
   const [linkedSaveBusy, setLinkedSaveBusy] = useState(false);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -531,16 +547,29 @@ function ProductEditorScreen({
 
   function startGalleryDrag(event: DragEvent<HTMLElement>, index: number) {
     setDraggedGalleryIndex(index);
+    setGalleryDropTarget(null);
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', String(index));
+  }
+
+  function overGalleryItem(event: DragEvent<HTMLElement>, index: number) {
+    if (draggedGalleryIndex === null || draggedGalleryIndex === index) return;
+    event.preventDefault();
+    setGalleryDropTarget({ index, placement: draggedGalleryIndex < index ? 'after' : 'before' });
   }
 
   function dropGalleryItem(event: DragEvent<HTMLElement>, index: number) {
     event.preventDefault();
     const rawIndex = event.dataTransfer.getData('text/plain');
     const fromIndex = draggedGalleryIndex ?? Number(rawIndex);
-    if (Number.isInteger(fromIndex)) reorderGalleryItem(fromIndex, index);
+    const targetIndex = galleryDropTarget?.index === index && galleryDropTarget.placement === 'after' && fromIndex > index
+      ? index + 1
+      : galleryDropTarget?.index === index && galleryDropTarget.placement === 'before' && fromIndex < index
+        ? index - 1
+        : index;
+    if (Number.isInteger(fromIndex)) reorderGalleryItem(fromIndex, targetIndex);
     setDraggedGalleryIndex(null);
+    setGalleryDropTarget(null);
   }
 
   async function uploadProductPhotos(files: FileList | null) {
@@ -670,11 +699,11 @@ function ProductEditorScreen({
               {draft.gallery.map((item, index) => {
                 const isMain = Boolean(item.url && draft.mainImageUrl === item.url);
                 return <article
-                  className={`catalog-gallery-tile${isMain ? ' catalog-gallery-tile--main' : ''}${draggedGalleryIndex === index ? ' catalog-gallery-tile--dragging' : ''}`}
+                  className={`catalog-gallery-tile${isMain ? ' catalog-gallery-tile--main' : ''}${draggedGalleryIndex === index ? ' catalog-gallery-tile--dragging' : ''}${galleryDropTarget?.index === index ? ` catalog-gallery-tile--drop-${galleryDropTarget.placement}` : ''}`}
                   key={index}
-                  onDragOver={(event) => { if (draggedGalleryIndex !== null && draggedGalleryIndex !== index) event.preventDefault(); }}
+                  onDragOver={(event) => overGalleryItem(event, index)}
                   onDrop={(event) => dropGalleryItem(event, index)}
-                  onDragEnd={() => setDraggedGalleryIndex(null)}
+                  onDragEnd={() => { setDraggedGalleryIndex(null); setGalleryDropTarget(null); }}
                 >
                   <span className="catalog-gallery-tile__image">{item.url ? <img src={item.url} alt="" /> : <Icon name="savedBanners" size={22} />}</span>
                   <label className="catalog-gallery-tile__main"><input type="checkbox" checked={isMain} disabled={!item.url} onChange={(event) => setField('mainImageUrl', event.target.checked ? item.url : '')} /> Головне фото</label>

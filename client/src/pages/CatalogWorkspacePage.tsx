@@ -8,7 +8,6 @@ const catalogLinks = [
   { to: '/catalog/imports', icon: 'upload' as const, label: 'Імпорт XLSX' },
   { to: '/catalog/brands', icon: 'savedBanners' as const, label: 'Бренди' },
   { to: '/catalog/characteristics', icon: 'productTables' as const, label: 'Характеристики' },
-  { to: '/catalog/filters', icon: 'search' as const, label: 'Фільтри' },
   { to: '/catalog/storefront', icon: 'integrations' as const, label: 'Налаштування вітрини' },
   { to: '/catalog/preview', icon: 'visibility' as const, label: 'Preview магазину' },
   { to: '/catalog/audit', icon: 'schedule' as const, label: 'Історія змін' }

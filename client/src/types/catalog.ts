@@ -39,7 +39,7 @@ export interface CatalogMediaAsset {
   updatedAt: string;
 }
 
-export type CatalogCharacteristicFieldType = 'text' | 'number' | 'select' | 'multiselect' | 'boolean';
+export type CatalogCharacteristicFieldType = 'text' | 'number' | 'select' | 'multiselect' | 'boolean' | 'color';
 
 export interface CatalogCharacteristicField {
   id?: string;
