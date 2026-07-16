@@ -295,7 +295,7 @@ function StorefrontProductCard({ product, preview }: { product: CatalogProduct; 
     <Link to={link} className="storefront-card__body">
       <ProductImage product={product} />
       <span className="storefront-card__badge">{product.conditionLabel}</span>
-      {product.brand?.label && <span className="storefront-card__brand">{product.brand.label}</span>}
+      <span className="storefront-card__brand">{product.brand?.label || ''}</span>
       <strong>{product.name}</strong>
       <small>{product.productCode} · {product.availability.label}</small>
     </Link>

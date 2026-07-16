@@ -2104,7 +2104,9 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .storefront-detail { width: min(1180px,100%); margin: 0 auto; }
 .storefront-hero { display: grid; gap: 10px; margin-bottom: 18px; }
 .storefront-hero h1 { max-width: 720px; margin: 0; font-size: 35px; line-height: 1.12; letter-spacing: 0; }
-.storefront-controls { display: grid; grid-template-columns: minmax(240px,1fr) 220px; gap: 10px; margin-bottom: 18px; }
+.storefront-controls { display: grid; grid-template-columns: minmax(240px,1fr) 276px; align-items: end; gap: 12px; margin-bottom: 24px; }
+.storefront-controls > .field { margin: 0; }
+.storefront-controls > .custom-select { align-self: end; }
 .storefront-catalog__layout { display: grid; grid-template-columns: 260px minmax(0,1fr); align-items: start; gap: 18px; }
 .storefront-filter-panel { position: sticky; top: 18px; display: grid; gap: 16px; border: 1px solid #dde5e3; border-radius: 8px; padding: 16px; background: #fff; box-shadow: 0 8px 24px rgba(28,45,55,.05); }
 .storefront-filter-panel header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -2128,24 +2130,25 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .storefront-price-filter__range input { position: absolute; width: 100%; height: 20px; margin: 0; appearance: none; pointer-events: none; background: transparent; }
 .storefront-price-filter__range input::-webkit-slider-thumb { width: 16px; height: 16px; border: 1px solid #9aa4b2; border-radius: 999px; appearance: none; background: #fff; pointer-events: auto; cursor: pointer; }
 .storefront-price-filter__range input::-moz-range-thumb { width: 16px; height: 16px; border: 1px solid #9aa4b2; border-radius: 999px; background: #fff; pointer-events: auto; cursor: pointer; }
-.storefront-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; }
-.storefront-card { position: relative; min-width: 0; align-self: start; display: grid; gap: 10px; border: 1px solid #dde5e3; border-radius: 8px; padding: 12px; color: inherit; background: #fff; box-shadow: 0 8px 24px rgba(28,45,55,.05); transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+.storefront-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); grid-auto-rows: 1fr; align-items: stretch; gap: 14px; }
+.storefront-card { position: relative; min-width: 0; height: 100%; display: grid; grid-template-rows: minmax(0,1fr) auto; gap: 12px; border: 1px solid #dde5e3; border-radius: 8px; padding: 14px; color: inherit; background: #fff; box-shadow: 0 8px 24px rgba(28,45,55,.05); transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
 .storefront-card:hover,
 .storefront-card:focus-within { z-index: 3; border-color: #cbd7d3; transform: translateY(-2px); box-shadow: 0 18px 42px rgba(28,45,55,.13); }
-.storefront-card__body { min-width: 0; display: grid; gap: 8px; color: inherit; text-decoration: none; }
-.storefront-card .storefront-product-image { aspect-ratio: 1 / 1; width: 100%; height: auto; }
-.storefront-card .storefront-product-image img { object-fit: cover; }
+.storefront-card__body { min-width: 0; display: grid; grid-template-rows: auto auto 20px 42px 16px; gap: 8px; color: inherit; text-decoration: none; }
+.storefront-card .storefront-product-image { aspect-ratio: 1 / 1; width: 100%; height: auto; display: block; border-radius: 8px; background: #eef2f4; }
+.storefront-card .storefront-product-image img { display: block; width: 100%; height: 100%; object-fit: cover !important; object-position: center; }
 .storefront-card__badge { width: fit-content; border-radius: 999px; padding: 5px 8px; color: #2f5e46; background: #e9f6ef; font-size: 10px; font-weight: 850; }
-.storefront-card__brand { color: #162033; font-size: 14px; font-weight: 850; line-height: 1.2; }
-.storefront-card strong { min-height: 38px; color: #162033; font-size: 14px; line-height: 1.35; }
-.storefront-card small { color: #788493; font-size: 11px; }
+.storefront-card__brand { min-width: 0; overflow: hidden; color: #162033; font-size: 14px; font-weight: 850; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.storefront-card__brand:empty::before { content: ""; }
+.storefront-card strong { min-width: 0; overflow: hidden; color: #162033; display: -webkit-box; font-size: 14px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.storefront-card small { min-width: 0; overflow: hidden; color: #788493; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .storefront-card__purchase { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .storefront-card__purchase b { min-width: 0; color: #1f2f46; font-size: 19px; line-height: 1.1; }
 .storefront-card__buy { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; padding: 8px 16px; color: #111827; background: #ffd400; font-size: 15px; font-weight: 850; line-height: 1; text-decoration: none; white-space: nowrap; }
 .storefront-card__buy:hover { background: #f5c900; }
-.storefront-card__hover { display: grid; gap: 12px; max-height: 0; overflow: hidden; opacity: 0; border-top: 1px solid transparent; transition: max-height .18s ease, opacity .16s ease, padding-top .16s ease, border-color .16s ease; }
+.storefront-card__hover { position: absolute; top: calc(100% - 1px); right: -1px; left: -1px; z-index: 4; display: grid; gap: 12px; max-height: 0; overflow: hidden; opacity: 0; border: 1px solid transparent; border-top: 0; border-radius: 0 0 8px 8px; padding: 0 14px; background: #fff; box-shadow: 0 18px 42px rgba(28,45,55,.13); transition: max-height .18s ease, opacity .16s ease, padding .16s ease, border-color .16s ease; }
 .storefront-card:hover .storefront-card__hover,
-.storefront-card:focus-within .storefront-card__hover { max-height: 280px; opacity: 1; border-color: #edf1f3; padding-top: 10px; }
+.storefront-card:focus-within .storefront-card__hover { max-height: 280px; opacity: 1; border-color: #cbd7d3; padding: 10px 14px 14px; }
 .storefront-card__availability { color: #162033; font-size: 13px; line-height: 1.2; }
 .storefront-card-modification { display: grid; gap: 7px; }
 .storefront-card-modification__label { color: #39465a; font-size: 13px; line-height: 1.2; }
