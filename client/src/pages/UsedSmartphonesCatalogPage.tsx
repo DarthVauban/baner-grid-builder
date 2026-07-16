@@ -498,6 +498,9 @@ function ProductEditorScreen({
     setMainModificationProductId(product?.id || '');
     setCharacteristicsLoaded(!product?.id);
     setModificationsLoaded(!product?.id);
+    setMediaBusy('');
+    setMediaError('');
+    setPhotoUploads([]);
     setSavedSnapshot('');
     setLeavePrompt(null);
     browserUnloadArmedRef.current = false;
@@ -821,7 +824,7 @@ function ProductEditorScreen({
     if (!selected.length) return;
     const uploadItems = selected.map(createCatalogPhotoUploadItem);
     const uploaded: Array<{ url: string; alt: string }> = [];
-    let failedCount = 0;
+    const uploadErrors: string[] = [];
 
     function updateUpload(id: string, patch: Partial<CatalogPhotoUploadItem>) {
       setPhotoUploads((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
@@ -850,10 +853,11 @@ function ProductEditorScreen({
         uploaded.push({ url: media.url, alt: mediaAltFromFile(file) });
         updateUpload(uploadItem.id, { status: 'done', progress: 100 });
       } catch (error) {
-        failedCount += 1;
+        const message = error instanceof Error ? error.message : 'Не вдалося завантажити фото.';
+        uploadErrors.push(`${file.name}: ${message}`);
         updateUpload(uploadItem.id, {
           status: 'error',
-          error: error instanceof Error ? error.message : 'Не вдалося завантажити фото.'
+          error: message
         });
       }
     }
@@ -867,9 +871,10 @@ function ProductEditorScreen({
     }
 
     const messages: string[] = [];
-    if (failedCount) messages.push(`Не вдалося завантажити ${failedCount} фото. Деталі показано біля кожного файлу.`);
+    if (uploadErrors.length) messages.push(`Не вдалося завантажити ${uploadErrors.length} фото: ${uploadErrors.join(' ')}`);
     if (allFiles.length > selected.length) messages.push(`Додано лише доступні фото. Максимум у галереї: 20 фото.`);
     setMediaError(messages.join(' '));
+    setPhotoUploads([]);
     setMediaBusy('');
   }
 
@@ -936,7 +941,7 @@ function ProductEditorScreen({
           return <button
             className={`catalog-editor-group-switcher__item${active ? ' active' : ''}`}
             type="button"
-            disabled={active}
+            disabled={active || Boolean(mediaBusy)}
             key={item.id}
             onClick={() => requestGuardedAction(() => onSwitchProduct(item.id))}
           >

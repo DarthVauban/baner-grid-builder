@@ -17,4 +17,15 @@ describe('CatalogPhotoUploadProgress', () => {
     expect(screen.getByText('Завантаження · 42%')).toBeInTheDocument();
     expect(screen.getByText('Готово · 100%')).toBeInTheDocument();
   });
+
+  it('removes the progress list when the completed batch is cleared', () => {
+    const { rerender } = render(<CatalogPhotoUploadProgress items={[
+      { id: 'one', name: 'front.jpg', progress: 100, status: 'done' }
+    ]} />);
+
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    rerender(<CatalogPhotoUploadProgress items={[]} />);
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Прогрес завантаження фото' })).not.toBeInTheDocument();
+  });
 });
