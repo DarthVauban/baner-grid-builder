@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
+import { convertCatalogImageToWebp } from '../lib/catalog-media';
 import { useToast } from '../toast/ToastContext';
 import type { CatalogBrand, CatalogBrandDirectory } from '../types/catalog';
 
@@ -31,6 +32,11 @@ function parseBrandLines(value: string) {
     labels.push(label);
   });
   return labels;
+}
+
+function validateBrandLogoFile(file: File) {
+  const isPng = file.type.toLowerCase() === 'image/png' || file.name.toLowerCase().endsWith('.png');
+  if (!isPng) throw new Error('Логотип бренду має бути PNG.');
 }
 
 function BulkBrandsModal({
@@ -92,6 +98,7 @@ export function CatalogBrandsPage() {
   const [newBrandLabel, setNewBrandLabel] = useState('');
   const [brandDrafts, setBrandDrafts] = useState<Record<string, BrandDraft>>({});
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [logoBusyId, setLogoBusyId] = useState('');
 
   const directories = useQuery({
     queryKey: ['catalog-brand-directories'],
@@ -189,6 +196,7 @@ export function CatalogBrandsPage() {
     await createBrand.mutateAsync({
       directoryId: selectedDirectory.id,
       label: newBrandLabel,
+      logoUrl: '',
       active: true,
       sortOrder: 0
     });
@@ -212,6 +220,51 @@ export function CatalogBrandsPage() {
     setBulkOpen(false);
     const skipped = result.skipped.length ? ` Пропущено дублікатів: ${result.skipped.length}.` : '';
     showToast(`Додано брендів: ${result.created.length}.${skipped}`, 'success');
+  }
+
+  async function uploadBrandLogo(brand: CatalogBrand, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+
+    try {
+      validateBrandLogoFile(file);
+      setLogoBusyId(brand.id);
+      const webp = await convertCatalogImageToWebp(file);
+      const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'), file);
+      await api.catalog.updateBrand(brand.id, {
+        directoryId: brand.directoryId,
+        label: brand.label,
+        logoUrl: media.url,
+        active: brand.active,
+        sortOrder: brand.sortOrder
+      });
+      await refreshBrands(brand.directoryId);
+      showToast('Логотип бренду оновлено.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося завантажити логотип.', 'error');
+    } finally {
+      setLogoBusyId('');
+    }
+  }
+
+  async function removeBrandLogo(brand: CatalogBrand) {
+    try {
+      setLogoBusyId(brand.id);
+      await api.catalog.updateBrand(brand.id, {
+        directoryId: brand.directoryId,
+        label: brand.label,
+        logoUrl: '',
+        active: brand.active,
+        sortOrder: brand.sortOrder
+      });
+      await refreshBrands(brand.directoryId);
+      showToast('Логотип бренду прибрано.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося прибрати логотип.', 'error');
+    } finally {
+      setLogoBusyId('');
+    }
   }
 
   function setBrandDraft(id: string, patch: Partial<BrandDraft>) {
@@ -278,7 +331,20 @@ export function CatalogBrandsPage() {
             {sortedBrands.map((brand) => {
               const draft = brandDrafts[brand.id] || { label: brand.label, active: brand.active };
               const changed = draft.label !== brand.label || draft.active !== brand.active;
+              const logoBusy = logoBusyId === brand.id;
               return <article className="catalog-brand-row" key={brand.id}>
+                <div className="catalog-brand-logo">
+                  <span className="catalog-brand-logo__preview">
+                    {brand.logoUrl ? <img src={brand.logoUrl} alt={brand.label} loading="lazy" /> : <Icon name="savedBanners" size={18} />}
+                  </span>
+                  <div className="catalog-brand-logo__actions">
+                    <label className={`button button--secondary button--small${logoBusy ? ' button--loading' : ''}`}>
+                      <Icon name="upload" size={14} /> PNG
+                      <input className="visually-hidden" type="file" accept="image/png,.png" disabled={busy || logoBusy} onChange={(event) => void uploadBrandLogo(brand, event)} />
+                    </label>
+                    {brand.logoUrl && <button className="icon-button icon-button--danger" type="button" disabled={busy || logoBusy} onClick={() => void removeBrandLogo(brand)} aria-label="Прибрати логотип"><Icon name="delete" size={16} /></button>}
+                  </div>
+                </div>
                 <label className="field"><span>Назва</span><input value={draft.label} onChange={(event) => setBrandDraft(brand.id, { label: event.target.value })} maxLength={160} /></label>
                 <label className="toggle-row"><input type="checkbox" checked={draft.active} onChange={(event) => setBrandDraft(brand.id, { active: event.target.checked })} /> Активний</label>
                 <button className="button button--secondary button--small" type="button" disabled={busy || !changed || !draft.label.trim()} onClick={() => void saveBrand(brand)}><Icon name="save" size={15} /> Зберегти</button>

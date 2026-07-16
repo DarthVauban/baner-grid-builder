@@ -67,6 +67,15 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.match(media.body.data.url, /^\/media\/catalog\/.+\.webp$/);
   assert.equal(media.body.data.mimeType, 'image/webp');
 
+  const appleBrandWithLogo = await admin.patch(`/api/catalog/brands/${appleBrand.id}`).send({
+    directoryId: appleBrand.directoryId,
+    label: appleBrand.label,
+    logoUrl: media.body.data.url,
+    active: appleBrand.active,
+    sortOrder: appleBrand.sortOrder
+  }).expect(200);
+  assert.equal(appleBrandWithLogo.body.data.logoUrl, media.body.data.url);
+
   const jsonMedia = await admin.post('/api/catalog/media').send({
     webpBase64: tinyWebp.toString('base64'),
     webpName: 'catalog-json.webp',
@@ -111,6 +120,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(created.body.data.productCode, 'SM-000001');
   assert.equal(created.body.data.publicationStatus, 'DRAFT');
   assert.equal(created.body.data.brand.directoryId, brandDirectory.body.data.id);
+  assert.equal(created.body.data.brand.logoUrl, media.body.data.url);
 
   await admin.patch(`/api/catalog/products/${created.body.data.id}/publication-status`).send({
     status: 'PUBLISHED',
@@ -138,6 +148,7 @@ test('catalog products publish to storefront, import stock updates, and create a
 
   const publicProduct = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
   assert.equal(publicProduct.body.data.name, 'iPhone 13 128GB Midnight');
+  assert.equal(publicProduct.body.data.brand.logoUrl, media.body.data.url);
   assert.match(publicProduct.body.data.descriptionHtml, /Specs/);
   assert.doesNotMatch(publicProduct.body.data.descriptionHtml, /\.tab \.content/);
   assert.doesNotMatch(publicProduct.body.data.descriptionHtml, /script|onclick|javascript:/i);

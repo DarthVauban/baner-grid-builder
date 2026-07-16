@@ -12,6 +12,7 @@ export interface CatalogBrand {
   directoryId: string;
   directoryLabel: string;
   label: string;
+  logoUrl: string;
   active: boolean;
   sortOrder: number;
   createdAt: string;
@@ -190,7 +191,7 @@ export interface CatalogProduct {
   publicationStatusLabel: string;
   slug: string;
   publicPath: string;
-  brand: { id: string; label: string; directoryId?: string; directoryLabel?: string } | null;
+  brand: { id: string; label: string; directoryId?: string; directoryLabel?: string; logoUrl?: string } | null;
   mainImageUrl: string;
   gallery: CatalogGalleryItem[];
   shortDescription: string;

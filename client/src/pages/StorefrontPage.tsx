@@ -121,20 +121,25 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
   if (!images.length) return <span className="storefront-product-image storefront-product-image--gallery"><Icon name="phone" size={34} /></span>;
 
   return <div className="storefront-gallery">
-    <Swiper
-      className="storefront-gallery__stage-swiper"
-      modules={[Keyboard, Navigation, Pagination, Thumbs]}
-      keyboard={{ enabled: true }}
-      navigation={images.length > 1}
-      pagination={images.length > 1 ? { type: 'fraction' } : false}
-      thumbs={{ swiper: thumbsSwiper && !thumbsSwiper.destroyed ? thumbsSwiper : null }}
-    >
-      {images.map((image, index) => <SwiperSlide key={`${image.url}-${index}`}>
-        <button className="storefront-gallery__stage" type="button" onClick={() => setLightboxIndex(index)} aria-label="Відкрити фото на весь екран">
-          <img src={image.url} alt={image.alt} loading="lazy" />
-        </button>
-      </SwiperSlide>)}
-    </Swiper>
+    <div className="storefront-gallery__stage-shell">
+      <Swiper
+        className="storefront-gallery__stage-swiper"
+        modules={[Keyboard, Navigation, Pagination, Thumbs]}
+        keyboard={{ enabled: true }}
+        navigation={images.length > 1}
+        pagination={images.length > 1 ? { type: 'fraction' } : false}
+        thumbs={{ swiper: thumbsSwiper && !thumbsSwiper.destroyed ? thumbsSwiper : null }}
+      >
+        {images.map((image, index) => <SwiperSlide key={`${image.url}-${index}`}>
+          <button className="storefront-gallery__stage" type="button" onClick={() => setLightboxIndex(index)} aria-label="Відкрити фото на весь екран">
+            <img src={image.url} alt={image.alt} loading="lazy" />
+          </button>
+        </SwiperSlide>)}
+      </Swiper>
+      {product.brand?.logoUrl && <span className="storefront-gallery__brand-sticker">
+        <img src={product.brand.logoUrl} alt={product.brand.label} loading="lazy" />
+      </span>}
+    </div>
     {images.length > 1 && <Swiper
       className="storefront-gallery__thumbs"
       modules={[Thumbs]}

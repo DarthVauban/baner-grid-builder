@@ -31,6 +31,7 @@ export const productSelect = `
          brand.label AS brand_label,
          brand.directory_id AS brand_directory_id,
          brand_directory.label AS brand_directory_label,
+         brand.logo_url AS brand_logo_url,
          creator.name AS created_by_name,
          updater.name AS updated_by_name
   FROM used_smartphone_products AS product
@@ -123,6 +124,7 @@ export function serializeBrand(row) {
     directoryId: row.directory_id,
     directoryLabel: row.directory_label || row.brand_directory_label || '',
     label: row.label,
+    logoUrl: row.logo_url || '',
     active: row.active === true,
     sortOrder: Number(row.sort_order || 0),
     createdAt: row.created_at,
@@ -149,7 +151,8 @@ function serializeProductBrand(row) {
         id: row.brand_id,
         label: row.brand_label || '',
         directoryId: row.brand_directory_id || '',
-        directoryLabel: row.brand_directory_label || ''
+        directoryLabel: row.brand_directory_label || '',
+        logoUrl: row.brand_logo_url || ''
       }
     : null;
 }

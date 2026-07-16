@@ -105,6 +105,7 @@ const brandListSchema = z.object({
 const brandInputSchema = z.object({
   directoryId: z.string().uuid(),
   label: z.string().trim().min(1).max(160),
+  logoUrl: z.string().trim().max(4000).default(''),
   active: z.boolean().default(true),
   sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0)
 });
@@ -1139,10 +1140,10 @@ router.post('/brands', asyncHandler(async (req, res) => {
   const directory = await assertBrandDirectoryExists(input.directoryId);
   try {
     const result = await query(
-      `INSERT INTO used_smartphone_brands (directory_id, label, active, sort_order)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO used_smartphone_brands (directory_id, label, logo_url, active, sort_order)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [input.directoryId, normalizeBrandLabel(input.label), input.active, input.sortOrder]
+      [input.directoryId, normalizeBrandLabel(input.label), input.logoUrl, input.active, input.sortOrder]
     );
     const recipients = await getCatalogRecipientIds();
     publishCatalogUpdates(recipients, { type: 'brand_created', brandId: result.rows[0].id, directoryId: input.directoryId });
@@ -1204,12 +1205,13 @@ router.patch('/brands/:id', asyncHandler(async (req, res) => {
       `UPDATE used_smartphone_brands
        SET directory_id = $1,
            label = $2,
-           active = $3,
-           sort_order = $4,
+           logo_url = $3,
+           active = $4,
+           sort_order = $5,
            updated_at = NOW()
-       WHERE id = $5
+       WHERE id = $6
        RETURNING *`,
-      [next.directoryId, normalizeBrandLabel(next.label), next.active, next.sortOrder, id]
+      [next.directoryId, normalizeBrandLabel(next.label), next.logoUrl, next.active, next.sortOrder, id]
     );
     const recipients = await getCatalogRecipientIds();
     publishCatalogUpdates(recipients, { type: 'brand_updated', brandId: id, directoryId: next.directoryId });

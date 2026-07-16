@@ -314,11 +314,11 @@ export const api = {
       request<CatalogBrandDirectory>(`/api/catalog/brand-directories/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
     brands: (params?: { directoryId?: string; active?: 'all' | 'active' }) =>
       request<CatalogBrand[]>(`/api/catalog/brands${queryString(params || {})}`),
-    createBrand: (input: Pick<CatalogBrand, 'directoryId' | 'label' | 'active' | 'sortOrder'>) =>
+    createBrand: (input: Pick<CatalogBrand, 'directoryId' | 'label' | 'logoUrl' | 'active' | 'sortOrder'>) =>
       request<CatalogBrand>('/api/catalog/brands', { method: 'POST', body: jsonBody(input) }),
       bulkCreateBrands: (input: { directoryId: string; labels: string[] }) =>
         request<{ created: CatalogBrand[]; skipped: string[]; total: number }>('/api/catalog/brands/bulk', { method: 'POST', body: jsonBody(input) }),
-      updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'directoryId' | 'label' | 'active' | 'sortOrder'>>) =>
+      updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'directoryId' | 'label' | 'logoUrl' | 'active' | 'sortOrder'>>) =>
         request<CatalogBrand>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
       characteristicTemplates: () => request<CatalogCharacteristicTemplate[]>('/api/catalog/characteristic-templates'),
       createCharacteristicTemplate: (input: CatalogCharacteristicTemplateInput) =>
