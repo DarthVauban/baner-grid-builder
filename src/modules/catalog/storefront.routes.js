@@ -11,8 +11,12 @@ import {
   subscribeToPublicCatalogUpdates
 } from './catalog.events.js';
 import {
+  appendStorefrontProductFilters,
+  attachPublicCatalogProductListDetails,
   catalogProductSnapshot,
+  loadStorefrontProductFilters,
   loadPublicProduct,
+  normalizeStorefrontCharacteristicFilters,
   productConditions,
   productSelect,
   serializePublicCatalogProduct
@@ -24,6 +28,10 @@ const listSchema = z.object({
   search: z.string().trim().max(120).default(''),
   condition: z.enum(['all', ...productConditions]).default('all'),
   availability: z.enum(['all', 'in_stock', 'incoming', 'unavailable']).default('all'),
+  brandId: z.string().uuid().optional(),
+  priceMin: z.coerce.number().min(0).optional(),
+  priceMax: z.coerce.number().min(0).optional(),
+  characteristics: z.string().trim().max(12000).default(''),
   sort: z.enum(['updated_desc', 'name_asc', 'price_asc', 'price_desc']).default('updated_desc'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(6).max(48).default(24)
@@ -74,6 +82,7 @@ function buildFilters(input) {
   if (input.availability === 'in_stock') where.push('product.stock_count > 0');
   if (input.availability === 'incoming') where.push('product.stock_count = 0 AND product.incoming_count > 0');
   if (input.availability === 'unavailable') where.push('product.stock_count = 0 AND product.incoming_count = 0');
+  if (input.includeStorefrontFilters) appendStorefrontProductFilters(input, params, where);
   return { params, whereSql: `WHERE ${where.join(' AND ')}` };
 }
 
@@ -113,11 +122,17 @@ router.get('/products', asyncHandler(async (req, res) => {
     search: String(req.query.search || ''),
     condition: req.query.condition || 'all',
     availability: req.query.availability || 'all',
+    brandId: req.query.brandId || undefined,
+    priceMin: req.query.priceMin || undefined,
+    priceMax: req.query.priceMax || undefined,
+    characteristics: String(req.query.characteristics || ''),
     sort: req.query.sort || 'updated_desc',
     page: req.query.page || 1,
     pageSize: req.query.pageSize || 24
   });
-  const { params, whereSql } = buildFilters(input);
+  const characteristicFilters = normalizeStorefrontCharacteristicFilters(input.characteristics);
+  const baseFilters = buildFilters({ ...input, includeStorefrontFilters: false });
+  const { params, whereSql } = buildFilters({ ...input, characteristicFilters, includeStorefrontFilters: true });
   const totalResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM used_smartphone_products AS product ${whereSql}`, params);
   const offset = (input.page - 1) * input.pageSize;
   const result = await query(
@@ -127,9 +142,13 @@ router.get('/products', asyncHandler(async (req, res) => {
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, input.pageSize, offset]
   );
+  const items = result.rows.map((row) => serializePublicCatalogProduct(row));
+  await attachPublicCatalogProductListDetails(items, { query }, { publicOnly: true });
+  const filters = await loadStorefrontProductFilters(baseFilters.whereSql, baseFilters.params);
   const total = Number(totalResult.rows[0]?.count || 0);
   res.json({ data: {
-    items: result.rows.map((row) => serializePublicCatalogProduct(row)),
+    items,
+    filters,
     total,
     page: input.page,
     pageSize: input.pageSize,

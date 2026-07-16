@@ -382,11 +382,11 @@ export const api = {
   },
   storefront: {
     settings: () => request<CatalogStorefrontSettings>('/api/storefront/settings'),
-    list: (params: { search?: string; condition?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
+    list: (params: { search?: string; condition?: string; availability?: string; brandId?: string; priceMin?: string | number; priceMax?: string | number; characteristics?: string; sort?: string; page?: number; pageSize?: number }) =>
       request<CatalogFeed>(`/api/storefront/products${queryString(params)}`),
     get: (identifier: string) => request<CatalogProduct>(`/api/storefront/products/${encodeURIComponent(identifier)}`),
     previewSettings: () => request<CatalogStorefrontSettings & { preview: true }>('/api/catalog/preview/settings'),
-    previewList: (params: { search?: string; condition?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
+    previewList: (params: { search?: string; condition?: string; availability?: string; brandId?: string; priceMin?: string | number; priceMax?: string | number; characteristics?: string; sort?: string; page?: number; pageSize?: number }) =>
       request<CatalogFeed>(`/api/catalog/preview/products${queryString(params)}`),
     previewGet: (identifier: string) => request<CatalogProduct>(`/api/catalog/preview/products/${encodeURIComponent(identifier)}`),
     form: (publicId: string) => request<{

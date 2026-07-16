@@ -16,6 +16,8 @@ import {
 import { saveCatalogMediaAsset } from './catalog.media.js';
 import {
   analyzeImportRows,
+  appendStorefrontProductFilters,
+  attachPublicCatalogProductListDetails,
   attachCatalogProductGroups,
   catalogToolId,
   commitImportRows,
@@ -25,9 +27,11 @@ import {
   loadCatalogProduct,
   loadProductModificationSet,
   loadPreviewProduct,
+  loadStorefrontProductFilters,
   logCatalogAudit,
   makeUniqueSlug,
   normalizeProductName,
+  normalizeStorefrontCharacteristicFilters,
   productConditions,
   productSelect,
   publicationStatuses,
@@ -48,6 +52,10 @@ const listSchema = z.object({
   condition: z.enum(['all', ...productConditions]).default('all'),
   status: z.enum(['all', ...publicationStatuses]).default('all'),
   availability: z.enum(['all', 'in_stock', 'incoming', 'unavailable']).default('all'),
+  brandId: z.string().uuid().optional(),
+  priceMin: z.coerce.number().min(0).optional(),
+  priceMax: z.coerce.number().min(0).optional(),
+  characteristics: z.string().trim().max(12000).default(''),
   sort: z.enum(['updated_desc', 'name_asc', 'price_asc', 'price_desc', 'stock_asc', 'stock_desc']).default('updated_desc'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(10).max(100).default(25)
@@ -943,6 +951,7 @@ function buildProductFilters(input) {
   if (input.availability === 'in_stock') where.push('product.stock_count > 0');
   if (input.availability === 'incoming') where.push('product.stock_count = 0 AND product.incoming_count > 0');
   if (input.availability === 'unavailable') where.push('product.stock_count = 0 AND product.incoming_count = 0');
+  if (input.includeStorefrontFilters) appendStorefrontProductFilters(input, params, where);
   return { params, whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '' };
 }
 
@@ -1467,13 +1476,22 @@ router.get('/preview/products', asyncHandler(async (req, res) => {
     condition: req.query.condition || 'all',
     status: req.query.status || 'all',
     availability: req.query.availability || 'all',
+    brandId: req.query.brandId || undefined,
+    priceMin: req.query.priceMin || undefined,
+    priceMax: req.query.priceMax || undefined,
+    characteristics: String(req.query.characteristics || ''),
     sort: req.query.sort || 'updated_desc',
     page: req.query.page || 1,
     pageSize: req.query.pageSize || 25
   });
-  const filters = buildProductFilters(input);
+  const characteristicFilters = normalizeStorefrontCharacteristicFilters(input.characteristics);
+  const baseFilters = buildProductFilters({ ...input, includeStorefrontFilters: false });
+  const filters = buildProductFilters({ ...input, characteristicFilters, includeStorefrontFilters: true });
   const whereSql = filters.whereSql
     ? `${filters.whereSql} AND product.publication_status <> 'ARCHIVED'`
+    : "WHERE product.publication_status <> 'ARCHIVED'";
+  const baseWhereSql = baseFilters.whereSql
+    ? `${baseFilters.whereSql} AND product.publication_status <> 'ARCHIVED'`
     : "WHERE product.publication_status <> 'ARCHIVED'";
   const totalResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM used_smartphone_products AS product ${whereSql}`, filters.params);
   const offset = (input.page - 1) * input.pageSize;
@@ -1484,9 +1502,13 @@ router.get('/preview/products', asyncHandler(async (req, res) => {
      LIMIT $${filters.params.length + 1} OFFSET $${filters.params.length + 2}`,
     [...filters.params, input.pageSize, offset]
   );
+  const items = result.rows.map((row) => serializePublicCatalogProduct(row));
+  await attachPublicCatalogProductListDetails(items, { query }, { publicOnly: false });
+  const filterOptions = await loadStorefrontProductFilters(baseWhereSql, baseFilters.params);
   const total = Number(totalResult.rows[0]?.count || 0);
   res.json({ data: {
-    items: result.rows.map((row) => serializePublicCatalogProduct(row)),
+    items,
+    filters: filterOptions,
     total,
     page: input.page,
     pageSize: input.pageSize,

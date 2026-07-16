@@ -219,6 +219,30 @@ export interface CatalogProduct {
   updatedAt: string;
 }
 
+export interface CatalogStorefrontFilterOption {
+  value: string;
+  label: string;
+  count: number;
+  colorHex?: string;
+}
+
+export interface CatalogStorefrontCharacteristicFilter {
+  key: string;
+  label: string;
+  type: CatalogCharacteristicFieldType;
+  unit: string;
+  options: CatalogStorefrontFilterOption[];
+}
+
+export interface CatalogStorefrontFilters {
+  brands: CatalogStorefrontFilterOption[];
+  price: {
+    min: number;
+    max: number;
+  };
+  characteristics: CatalogStorefrontCharacteristicFilter[];
+}
+
 export interface CatalogProductInput {
   name: string;
   condition: CatalogCondition;
@@ -246,6 +270,7 @@ export interface CatalogProductInput {
 
 export interface CatalogFeed {
   items: CatalogProduct[];
+  filters?: CatalogStorefrontFilters;
   total: number;
   page: number;
   pageSize: number;

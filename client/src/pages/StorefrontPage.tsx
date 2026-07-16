@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ChangeEvent, FormEvent } from 'react';
+import type { CSSProperties, ChangeEvent, FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,26 +13,20 @@ import 'swiper/css/thumbs';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
-import { catalogConditionOptions } from '../lib/catalog';
 import type {
   CatalogAvailabilityStatus,
   CatalogCondition,
   CatalogProduct,
   CatalogProductModificationOption,
-  CatalogProductModificationParameter
+  CatalogProductModificationParameter,
+  CatalogStorefrontCharacteristicFilter,
+  CatalogStorefrontFilters
 } from '../types/catalog';
 
 type PublicForm = Awaited<ReturnType<typeof api.storefront.form>>;
 type PublicField = PublicForm['fields'][number];
 type StorefrontGalleryImage = { url: string; alt: string };
 
-const availabilityOptions: Array<{ value: CatalogAvailabilityStatus | 'all'; label: string }> = [
-  { value: 'all', label: 'Уся наявність' },
-  { value: 'in_stock', label: 'В наявності' },
-  { value: 'incoming', label: 'В дорозі' },
-  { value: 'unavailable', label: 'Немає' }
-];
-const conditionOptions = [{ value: 'all', label: 'Усі' }, ...catalogConditionOptions];
 const sortOptions = [
   { value: 'updated_desc', label: 'Нові оновлення' },
   { value: 'name_asc', label: 'Назва А-Я' },
@@ -249,6 +243,159 @@ function StorefrontModifications({ product, preview }: { product: CatalogProduct
   </div>;
 }
 
+const swatchColors = [
+  ['black', '#050505'], ['чор', '#050505'],
+  ['graphite', '#2f3338'], ['графіт', '#2f3338'],
+  ['grey', '#bfc2c7'], ['gray', '#bfc2c7'], ['silver', '#d7d9dc'], ['сір', '#bfc2c7'], ['сріб', '#d7d9dc'],
+  ['white', '#ffffff'], ['бі', '#ffffff'],
+  ['blue', '#38a9d6'], ['син', '#2563eb'], ['блакит', '#38a9d6'],
+  ['green', '#35b779'], ['зелен', '#35b779'],
+  ['red', '#e53935'], ['черв', '#e53935'],
+  ['purple', '#8b5cf6'], ['violet', '#8b5cf6'], ['фіолет', '#8b5cf6'],
+  ['yellow', '#facc15'], ['жовт', '#facc15'],
+  ['gold', '#d8b45f'], ['золот', '#d8b45f'],
+  ['pink', '#f4a7c8'], ['рож', '#f4a7c8']
+] as const;
+
+function swatchColor(label: string, colorHex = '') {
+  if (/^#[0-9a-f]{6}$/i.test(colorHex)) return colorHex;
+  const normalized = label.toLocaleLowerCase('uk-UA');
+  const match = swatchColors.find(([token]) => normalized.includes(token));
+  return match?.[1] || '#f8fafc';
+}
+
+function swatchStyle(label: string, colorHex = ''): CSSProperties {
+  return { background: swatchColor(label, colorHex) };
+}
+
+function StorefrontCardModificationOption({
+  parameter,
+  option,
+  preview
+}: {
+  parameter: CatalogProductModificationParameter;
+  option: CatalogProductModificationOption;
+  preview: boolean;
+}) {
+  const colorParameter = isColorModification(parameter);
+  const className = `storefront-card-modification__option${colorParameter ? ' storefront-card-modification__option--swatch' : ''}${option.selected ? ' storefront-card-modification__option--active' : ''}${option.compatible === false && !option.selected ? ' storefront-card-modification__option--unavailable' : ''}`;
+  const content = colorParameter
+    ? <><span className="storefront-card-modification__swatch" style={swatchStyle(option.label)} aria-hidden="true" /><span className="visually-hidden">{option.label}</span></>
+    : option.label;
+  if (option.product && !option.selected) {
+    return <Link className={className} to={productLink(option.product, preview)} title={option.label}>{content}</Link>;
+  }
+  return <span className={className} title={option.label}>{content}</span>;
+}
+
+function StorefrontProductCard({ product, preview }: { product: CatalogProduct; preview: boolean }) {
+  const parameters = (product.modifications?.parameters || []).filter((parameter) => parameter.options.length);
+  const link = productLink(product, preview);
+  return <article className="storefront-card">
+    <Link to={link} className="storefront-card__body">
+      <ProductImage product={product} />
+      <span className="storefront-card__badge">{product.conditionLabel}</span>
+      {product.brand?.label && <span className="storefront-card__brand">{product.brand.label}</span>}
+      <strong>{product.name}</strong>
+      <small>{product.productCode} · {product.availability.label}</small>
+    </Link>
+    <div className="storefront-card__purchase">
+      <b>{product.priceLabel}</b>
+      <Link to={link} className="storefront-card__buy">Купити</Link>
+    </div>
+    <div className="storefront-card__hover">
+      <span className="storefront-card__availability">{product.availability.label}</span>
+      {parameters.map((parameter) => <div className="storefront-card-modification" key={parameter.id}>
+        <span className="storefront-card-modification__label">{parameter.label}</span>
+        <div className={`storefront-card-modification__options${isColorModification(parameter) ? ' storefront-card-modification__options--swatches' : ''}`}>
+          {parameter.options.map((option) => <StorefrontCardModificationOption parameter={parameter} option={option} preview={preview} key={option.id} />)}
+        </div>
+      </div>)}
+    </div>
+  </article>;
+}
+
+function activeFilterValues(filters: Record<string, string[]>) {
+  return Object.fromEntries(Object.entries(filters).map(([key, values]) => [
+    key,
+    values.filter(Boolean)
+  ]).filter(([, values]) => values.length));
+}
+
+function StorefrontFilterPanel({
+  filters,
+  brandId,
+  setBrandId,
+  priceDraft,
+  setPriceDraft,
+  priceFilter,
+  applyPriceFilter,
+  resetFilters,
+  characteristicFilters,
+  toggleCharacteristic
+}: {
+  filters: CatalogStorefrontFilters | undefined;
+  brandId: string;
+  setBrandId: (value: string) => void;
+  priceDraft: { min: string; max: string };
+  setPriceDraft: (value: { min: string; max: string }) => void;
+  priceFilter: { min: string; max: string };
+  applyPriceFilter: () => void;
+  resetFilters: () => void;
+  characteristicFilters: Record<string, string[]>;
+  toggleCharacteristic: (key: string, value: string) => void;
+}) {
+  const priceMin = Math.floor(filters?.price.min || 0);
+  const priceMax = Math.ceil(filters?.price.max || 0);
+  const safeMax = Math.max(priceMax, priceMin + 1);
+  const draftMin = priceDraft.min || String(priceMin);
+  const draftMax = priceDraft.max || String(priceMax || safeMax);
+  const hasActiveFilters = brandId !== 'all' || Boolean(priceFilter.min || priceFilter.max) || Object.keys(activeFilterValues(characteristicFilters)).length > 0;
+  return <aside className="storefront-filter-panel">
+    <header>
+      <h2>Фільтри</h2>
+      {hasActiveFilters && <button type="button" onClick={resetFilters}>Скинути</button>}
+    </header>
+    <section className="storefront-filter-group">
+      <h3>Бренд</h3>
+      <label className="storefront-filter-option">
+        <input type="radio" name="storefront-brand" checked={brandId === 'all'} onChange={() => setBrandId('all')} />
+        <span>Усі бренди</span>
+      </label>
+      {(filters?.brands || []).map((option) => <label className="storefront-filter-option" key={option.value}>
+        <input type="radio" name="storefront-brand" checked={brandId === option.value} onChange={() => setBrandId(option.value)} />
+        <span>{option.label}</span>
+        <small>{option.count}</small>
+      </label>)}
+    </section>
+    <section className="storefront-filter-group storefront-filter-group--price">
+      <h3>Ціна, грн</h3>
+      <div className="storefront-price-filter__inputs">
+        <input type="number" min={priceMin} value={priceDraft.min} placeholder={String(priceMin)} onChange={(event) => setPriceDraft({ ...priceDraft, min: event.target.value })} />
+        <span />
+        <input type="number" min={priceMin} value={priceDraft.max} placeholder={String(priceMax)} onChange={(event) => setPriceDraft({ ...priceDraft, max: event.target.value })} />
+        <button type="button" onClick={applyPriceFilter}>OK</button>
+      </div>
+      <div className="storefront-price-filter__range">
+        <input type="range" min={priceMin} max={safeMax} value={Math.min(Number(draftMin) || priceMin, safeMax)} onChange={(event) => setPriceDraft({ ...priceDraft, min: event.target.value })} />
+        <input type="range" min={priceMin} max={safeMax} value={Math.min(Number(draftMax) || safeMax, safeMax)} onChange={(event) => setPriceDraft({ ...priceDraft, max: event.target.value })} />
+      </div>
+    </section>
+    {(filters?.characteristics || []).map((filter: CatalogStorefrontCharacteristicFilter) => <section className="storefront-filter-group" key={filter.key}>
+      <h3>{filter.label}</h3>
+      {filter.options.map((option) => {
+        const selected = (characteristicFilters[filter.key] || []).includes(option.value);
+        return <label className="storefront-filter-option" key={option.value}>
+          <input type="checkbox" checked={selected} onChange={() => toggleCharacteristic(filter.key, option.value)} />
+          {filter.type === 'color' && <span className="storefront-filter-option__swatch" style={swatchStyle(option.label, option.colorHex)} aria-hidden="true" />}
+          <span>{option.label}</span>
+          <small>{option.count}</small>
+        </label>;
+      })}
+    </section>)}
+  </aside>;
+}
+
 function schemaAvailability(status: CatalogAvailabilityStatus) {
   if (status === 'in_stock') return 'https://schema.org/InStock';
   if (status === 'incoming') return 'https://schema.org/PreOrder';
@@ -424,11 +571,26 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [condition, setCondition] = useState<CatalogCondition | 'all'>('all');
-  const [availability, setAvailability] = useState<CatalogAvailabilityStatus | 'all'>('all');
+  const [brandId, setBrandId] = useState(searchParams.get('brandId') || 'all');
+  const [priceDraft, setPriceDraft] = useState({ min: '', max: '' });
+  const [priceFilter, setPriceFilter] = useState({ min: '', max: '' });
+  const [characteristicFilters, setCharacteristicFilters] = useState<Record<string, string[]>>({});
   const [sort, setSort] = useState('updated_desc');
   const [requestOpen, setRequestOpen] = useState(false);
-  const params = useMemo(() => ({ search, condition, availability, sort, page: 1, pageSize: 24 }), [availability, condition, search, sort]);
+  const serializedCharacteristicFilters = useMemo(() => {
+    const active = activeFilterValues(characteristicFilters);
+    return Object.keys(active).length ? JSON.stringify(active) : '';
+  }, [characteristicFilters]);
+  const params = useMemo(() => ({
+    search,
+    brandId: brandId === 'all' ? undefined : brandId,
+    priceMin: priceFilter.min || undefined,
+    priceMax: priceFilter.max || undefined,
+    characteristics: serializedCharacteristicFilters || undefined,
+    sort,
+    page: 1,
+    pageSize: 24
+  }), [brandId, priceFilter.max, priceFilter.min, search, serializedCharacteristicFilters, sort]);
   const basePath = preview ? '/catalog/preview/storefront' : '/storefront';
   const settings = useQuery({
     queryKey: [preview ? 'storefront-preview-settings' : 'storefront-settings'],
@@ -479,7 +641,42 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
     setSearchParams(next, { replace: true });
   }
 
+  function applyPriceFilter() {
+    const min = Number(priceDraft.min);
+    const max = Number(priceDraft.max);
+    const nextMin = Number.isFinite(min) && min >= 0 ? Math.round(min) : '';
+    const nextMax = Number.isFinite(max) && max >= 0 ? Math.round(max) : '';
+    if (nextMin !== '' && nextMax !== '' && nextMin > nextMax) {
+      setPriceFilter({ min: String(nextMax), max: String(nextMin) });
+      setPriceDraft({ min: String(nextMax), max: String(nextMin) });
+      return;
+    }
+    setPriceFilter({
+      min: nextMin === '' ? '' : String(nextMin),
+      max: nextMax === '' ? '' : String(nextMax)
+    });
+  }
+
+  function resetFilters() {
+    setBrandId('all');
+    setPriceDraft({ min: '', max: '' });
+    setPriceFilter({ min: '', max: '' });
+    setCharacteristicFilters({});
+  }
+
+  function toggleCharacteristic(key: string, value: string) {
+    setCharacteristicFilters((current) => {
+      const values = current[key] || [];
+      const nextValues = values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+      const next = { ...current };
+      if (nextValues.length) next[key] = nextValues;
+      else delete next[key];
+      return next;
+    });
+  }
+
   const items = products.data?.items || [];
+  const storefrontFilters = products.data?.filters;
   const productData = product.data;
   const canRequestProduct = Boolean(!preview && productData && productData.availability.status !== 'unavailable' && form.data);
 
@@ -525,18 +722,24 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
       </div>
       <div className="storefront-controls">
         <label className="field"><span>Пошук</span><input value={search} onChange={updateSearch} placeholder="iPhone, Samsung, код товару" /></label>
-        <StyledSelect value={condition} options={conditionOptions} onChange={(value) => setCondition(value as CatalogCondition | 'all')} />
-        <StyledSelect value={availability} options={availabilityOptions} onChange={(value) => setAvailability(value as CatalogAvailabilityStatus | 'all')} />
         <StyledSelect value={sort} options={sortOptions} onChange={(value) => setSort(String(value))} />
       </div>
-      <div className="storefront-grid">
-        {items.map((item) => <Link to={productLink(item, preview)} className="storefront-card" key={item.productCode}>
-          <ProductImage product={item} />
-          <span>{item.conditionLabel}</span>
-          <strong>{item.name}</strong>
-          <small>{item.productCode} · {item.availability.label}</small>
-          <b>{item.priceLabel}</b>
-        </Link>)}
+      <div className="storefront-catalog__layout">
+        <StorefrontFilterPanel
+          filters={storefrontFilters}
+          brandId={brandId}
+          setBrandId={setBrandId}
+          priceDraft={priceDraft}
+          setPriceDraft={setPriceDraft}
+          priceFilter={priceFilter}
+          applyPriceFilter={applyPriceFilter}
+          resetFilters={resetFilters}
+          characteristicFilters={characteristicFilters}
+          toggleCharacteristic={toggleCharacteristic}
+        />
+        <div className="storefront-grid">
+          {items.map((item) => <StorefrontProductCard product={item} preview={preview} key={item.productCode} />)}
+        </div>
       </div>
       {!products.isLoading && !items.length && <div className="storefront-empty"><Icon name="phone" size={32} /><h2>Товарів не знайдено</h2></div>}
     </section>}

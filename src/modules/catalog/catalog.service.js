@@ -221,6 +221,206 @@ function characteristicDisplayValue(value, unit = '') {
   return unit ? `${text} ${unit}` : text;
 }
 
+function characteristicFilterOptions(value, unit = '') {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      const text = String(item).trim();
+      return text ? { value: text, label: unit ? `${text} ${unit}` : text } : null;
+    }).filter(Boolean);
+  }
+  if (typeof value === 'boolean') {
+    return [{ value: String(value), label: characteristicDisplayValue(value, unit) }];
+  }
+  if (value && typeof value === 'object') {
+    const raw = String(value.name || value.label || value.hex || '').trim();
+    const label = characteristicDisplayValue(value, unit);
+    return raw && label ? [{ value: raw, label, colorHex: value.hex || '' }] : [];
+  }
+  const text = value === null || value === undefined ? '' : String(value).trim();
+  return text ? [{ value: text, label: characteristicDisplayValue(value, unit) }] : [];
+}
+
+function appendWhereClause(whereSql, clause) {
+  return whereSql ? `${whereSql} AND ${clause}` : `WHERE ${clause}`;
+}
+
+export function normalizeStorefrontCharacteristicFilters(value) {
+  if (!value) return {};
+  let parsed = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  return Object.fromEntries(Object.entries(parsed).map(([key, values]) => [
+    String(key).trim().slice(0, 120),
+    (Array.isArray(values) ? values : [values])
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 80)
+  ]).filter(([key, values]) => key && values.length));
+}
+
+export function appendStorefrontProductFilters(input, params, where) {
+  if (input.brandId) {
+    params.push(input.brandId);
+    where.push(`product.brand_id = $${params.length}`);
+  }
+  const priceMin = Number(input.priceMin);
+  if (Number.isFinite(priceMin) && priceMin >= 0) {
+    params.push(priceMin);
+    where.push(`product.price_uah >= $${params.length}`);
+  }
+  const priceMax = Number(input.priceMax);
+  if (Number.isFinite(priceMax) && priceMax >= 0) {
+    params.push(priceMax);
+    where.push(`product.price_uah <= $${params.length}`);
+  }
+  const characteristicFilters = input.characteristicFilters || {};
+  Object.entries(characteristicFilters).forEach(([key, values]) => {
+    if (!key || !values.length) return;
+    params.push(key);
+    const keyIndex = params.length;
+    const valueClauses = values.map((value) => {
+      params.push(value);
+      const valueIndex = params.length;
+      params.push(`%${value}%`);
+      const likeIndex = params.length;
+      return `(
+        filter_characteristic.value_text = $${valueIndex}
+        OR filter_characteristic.value_text LIKE $${likeIndex}
+        OR filter_characteristic.value_json->>'value' = $${valueIndex}
+        OR filter_characteristic.value_json->'value'->>'name' = $${valueIndex}
+        OR filter_characteristic.value_json->'value'->>'label' = $${valueIndex}
+        OR filter_characteristic.value_json->'value'->>'hex' = $${valueIndex}
+        OR CASE
+          WHEN filter_characteristic.value_boolean = TRUE THEN 'true'
+          WHEN filter_characteristic.value_boolean = FALSE THEN 'false'
+          ELSE ''
+        END = $${valueIndex}
+      )`;
+    });
+    where.push(`product.id IN (
+      SELECT filter_characteristic.product_id
+      FROM used_smartphone_product_characteristics AS filter_characteristic
+      LEFT JOIN used_smartphone_characteristic_template_fields AS filter_fields
+        ON filter_fields.id = filter_characteristic.field_id
+      WHERE filter_characteristic.key = $${keyIndex}
+        AND COALESCE(filter_fields.filterable, FALSE) = TRUE
+        AND (${valueClauses.join(' OR ')})
+    )`);
+  });
+}
+
+export async function loadStorefrontProductFilters(whereSql, params, db = { query }) {
+  const scopedParams = [...params];
+  const brandsResult = await db.query(
+    `SELECT brand.id, brand.label, COUNT(*)::INTEGER AS count
+     FROM used_smartphone_products AS product
+     INNER JOIN used_smartphone_brands AS brand ON brand.id = product.brand_id
+     ${whereSql}
+     GROUP BY brand.id, brand.label
+     ORDER BY lower(brand.label)`,
+    scopedParams
+  );
+  const priceResult = await db.query(
+    `SELECT COALESCE(MIN(product.price_uah), 0)::NUMERIC AS min,
+            COALESCE(MAX(product.price_uah), 0)::NUMERIC AS max
+     FROM used_smartphone_products AS product
+     ${whereSql}`,
+    scopedParams
+  );
+  const characteristicWhereSql = appendWhereClause(whereSql, 'COALESCE(fields.filterable, FALSE) = TRUE');
+  const characteristicsResult = await db.query(
+    `SELECT characteristics.product_id,
+            characteristics.*,
+            COALESCE(fields.label, characteristics.label) AS field_label,
+            COALESCE(fields.type, 'text') AS type,
+            COALESCE(fields.unit, '') AS unit,
+            COALESCE(fields.sort_order, characteristics.sort_order) AS field_sort_order
+     FROM used_smartphone_products AS product
+     INNER JOIN used_smartphone_product_characteristics AS characteristics
+       ON characteristics.product_id = product.id
+     LEFT JOIN used_smartphone_characteristic_template_fields AS fields
+       ON fields.id = characteristics.field_id
+     ${characteristicWhereSql}
+     ORDER BY COALESCE(fields.sort_order, characteristics.sort_order),
+              lower(COALESCE(fields.label, characteristics.label))`,
+    scopedParams
+  );
+  const characteristicsByKey = new Map();
+  characteristicsResult.rows.forEach((row) => {
+    const key = row.key;
+    if (!key) return;
+    if (!characteristicsByKey.has(key)) {
+      characteristicsByKey.set(key, {
+        key,
+        label: row.field_label || row.label,
+        type: row.type || 'text',
+        unit: row.unit || '',
+        sortOrder: Number(row.field_sort_order || row.sort_order || 0),
+        options: new Map()
+      });
+    }
+    const field = characteristicsByKey.get(key);
+    characteristicFilterOptions(productCharacteristicValue(row), row.unit || '').forEach((option) => {
+      const current = field.options.get(option.value) || { ...option, productIds: new Set() };
+      current.productIds.add(row.product_id);
+      if (option.colorHex) current.colorHex = option.colorHex;
+      field.options.set(option.value, current);
+    });
+  });
+  const characteristics = [...characteristicsByKey.values()]
+    .map((field) => ({
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      unit: field.unit,
+      options: [...field.options.values()]
+        .map((option) => ({
+          value: option.value,
+          label: option.label,
+          colorHex: option.colorHex || '',
+          count: option.productIds.size
+        }))
+        .sort((left, right) => {
+          if (field.type === 'number') return Number(left.value) - Number(right.value);
+          return left.label.localeCompare(right.label, 'uk');
+        })
+    }))
+    .filter((field) => field.options.length)
+    .sort((left, right) => {
+      const leftField = characteristicsByKey.get(left.key);
+      const rightField = characteristicsByKey.get(right.key);
+      return (leftField.sortOrder - rightField.sortOrder) || left.label.localeCompare(right.label, 'uk');
+    });
+
+  return {
+    brands: brandsResult.rows.map((row) => ({
+      value: row.id,
+      label: row.label,
+      count: Number(row.count || 0)
+    })),
+    price: {
+      min: Number(priceResult.rows[0]?.min || 0),
+      max: Number(priceResult.rows[0]?.max || 0)
+    },
+    characteristics
+  };
+}
+
+export async function attachPublicCatalogProductListDetails(products, db = { query }, { publicOnly = true } = {}) {
+  await Promise.all(products.map(async (product) => {
+    if (!product.internalId) return;
+    product.characteristics = await loadProductCharacteristicSet(product.internalId, db);
+    product.modifications = await loadProductModificationSet(product.internalId, db, { publicOnly });
+  }));
+  return products;
+}
+
 export async function loadProductCharacteristicSet(productId, db = { query }) {
   const result = await db.query(
     `SELECT characteristics.*,

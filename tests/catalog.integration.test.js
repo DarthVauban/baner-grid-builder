@@ -293,6 +293,20 @@ test('catalog products publish to storefront, import stock updates, and create a
     ]
   );
 
+  const storefrontFilters = await request(app)
+    .get(`/api/storefront/products?brandId=${appleBrand.id}&priceMin=18000&priceMax=19000&characteristics=${encodeURIComponent(JSON.stringify({ storage: ['128'] }))}`)
+    .expect(200);
+  assert.equal(storefrontFilters.body.data.total, 1);
+  assert.equal(storefrontFilters.body.data.items[0].productCode, 'SM-000001');
+  assert.equal(
+    storefrontFilters.body.data.items[0].characteristics.items.find((item) => item.key === 'storage').displayValue,
+    '128 GB'
+  );
+  assert.equal(storefrontFilters.body.data.items[0].modifications.parameters.length, 2);
+  const storageFilter = storefrontFilters.body.data.filters.characteristics.find((filter) => filter.key === 'storage');
+  assert.ok(storageFilter);
+  assert.deepEqual(storageFilter.options.map((option) => [option.value, option.label, option.count]), [['128', '128 GB', 1]]);
+
   const publicDraftChildVariant = await request(app).get(`/api/storefront/products/${variant.body.data.slug}`).expect(200);
   assert.equal(publicDraftChildVariant.body.data.productCode, 'SM-000002');
   assert.equal(publicDraftChildVariant.body.data.modifications.mainProductId, created.body.data.id);
