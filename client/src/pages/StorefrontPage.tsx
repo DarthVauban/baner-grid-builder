@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ChangeEvent, FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -356,46 +356,122 @@ function swatchStyle(label: string, colorHex = ''): CSSProperties {
 function StorefrontCardModificationOption({
   parameter,
   option,
-  preview
+  busy,
+  onSelect
 }: {
   parameter: CatalogProductModificationParameter;
   option: CatalogProductModificationOption;
-  preview: boolean;
+  busy: boolean;
+  onSelect: (parameter: CatalogProductModificationParameter, option: CatalogProductModificationOption) => void;
 }) {
   const colorParameter = isColorModification(parameter);
   const className = `storefront-card-modification__option${colorParameter ? ' storefront-card-modification__option--swatch' : ''}${option.selected ? ' storefront-card-modification__option--active' : ''}${option.compatible === false && !option.selected ? ' storefront-card-modification__option--unavailable' : ''}`;
   const content = colorParameter
     ? <><span className="storefront-card-modification__swatch" style={swatchStyle(option.label)} aria-hidden="true" /><span className="visually-hidden">{option.label}</span></>
     : option.label;
-  if (option.product && !option.selected) {
-    return <Link className={className} to={productLink(option.product, preview)} title={option.label}>{content}</Link>;
-  }
-  return <span className={className} title={option.label}>{content}</span>;
+  return <button
+    className={className}
+    type="button"
+    title={option.label}
+    aria-pressed={option.selected}
+    disabled={busy || option.selected || !option.product}
+    onClick={() => onSelect(parameter, option)}
+  >
+    {content}
+  </button>;
 }
 
-function StorefrontProductCard({ product, preview }: { product: CatalogProduct; preview: boolean }) {
-  const parameters = (product.modifications?.parameters || []).filter((parameter) => parameter.options.length);
-  const link = productLink(product, preview);
-  return <article className="storefront-card">
+function optimisticCardVariant(
+  current: CatalogProduct,
+  parameter: CatalogProductModificationParameter,
+  option: CatalogProductModificationOption
+) {
+  if (!option.product) return current;
+  return {
+    ...current,
+    ...option.product,
+    modifications: current.modifications ? {
+      ...current.modifications,
+      parameters: current.modifications.parameters.map((item) => item.id === parameter.id ? {
+        ...item,
+        currentValueId: option.id,
+        currentValueLabel: option.label,
+        options: item.options.map((candidate) => ({ ...candidate, selected: candidate.id === option.id }))
+      } : item)
+    } : current.modifications
+  };
+}
+
+export function StorefrontProductCard({
+  product,
+  preview,
+  formAvailable,
+  onRequest
+}: {
+  product: CatalogProduct;
+  preview: boolean;
+  formAvailable: boolean;
+  onRequest: (product: CatalogProduct) => void;
+}) {
+  const queryClient = useQueryClient();
+  const requestId = useRef(0);
+  const [displayedProduct, setDisplayedProduct] = useState(product);
+  const [variantBusy, setVariantBusy] = useState(false);
+  const [variantError, setVariantError] = useState('');
+
+  useEffect(() => {
+    setDisplayedProduct((current) => current.productCode === product.productCode ? product : current);
+  }, [product]);
+
+  const parameters = (displayedProduct.modifications?.parameters || []).filter((parameter) => parameter.options.length);
+  const link = productLink(displayedProduct, preview);
+  const canBuy = !preview && formAvailable && displayedProduct.availability.status !== 'unavailable' && !variantBusy;
+
+  async function selectVariant(parameter: CatalogProductModificationParameter, option: CatalogProductModificationOption) {
+    if (!option.product || option.selected || variantBusy) return;
+    const currentRequest = ++requestId.current;
+    const previousProduct = displayedProduct;
+    setVariantError('');
+    setVariantBusy(true);
+    setDisplayedProduct(optimisticCardVariant(previousProduct, parameter, option));
+
+    try {
+      const variant = await queryClient.fetchQuery({
+        queryKey: [preview ? 'storefront-preview-product' : 'storefront-product', option.product.slug],
+        queryFn: () => preview ? api.storefront.previewGet(option.product!.slug) : api.storefront.get(option.product!.slug)
+      });
+      if (requestId.current === currentRequest) setDisplayedProduct(variant);
+    } catch {
+      if (requestId.current === currentRequest) {
+        setDisplayedProduct(previousProduct);
+        setVariantError('Не вдалося завантажити цю модифікацію.');
+      }
+    } finally {
+      if (requestId.current === currentRequest) setVariantBusy(false);
+    }
+  }
+
+  return <article className="storefront-card" aria-busy={variantBusy}>
     <Link to={link} className="storefront-card__body">
-      <ProductImage product={product} />
-      <span className="storefront-card__badge">{product.conditionLabel}</span>
-      <span className="storefront-card__brand">{product.brand?.label || ''}</span>
-      <strong>{product.name}</strong>
-      <small>{product.productCode} · {product.availability.label}</small>
+      <ProductImage product={displayedProduct} />
+      <span className="storefront-card__badge">{displayedProduct.conditionLabel}</span>
+      <span className="storefront-card__brand">{displayedProduct.brand?.label || ''}</span>
+      <strong>{displayedProduct.name}</strong>
+      <small>{displayedProduct.productCode} · {displayedProduct.availability.label}</small>
     </Link>
     <div className="storefront-card__purchase">
-      <b>{product.priceLabel}</b>
-      <Link to={link} className="storefront-card__buy">Купити</Link>
+      <b>{displayedProduct.priceLabel}</b>
+      <button className="storefront-card__buy" type="button" disabled={!canBuy} onClick={() => onRequest(displayedProduct)}>Купити</button>
     </div>
     <div className="storefront-card__hover">
-      <span className="storefront-card__availability">{product.availability.label}</span>
+      <span className="storefront-card__availability">{displayedProduct.availability.label}</span>
       {parameters.map((parameter) => <div className="storefront-card-modification" key={parameter.id}>
         <span className="storefront-card-modification__label">{parameter.label}</span>
         <div className={`storefront-card-modification__options${isColorModification(parameter) ? ' storefront-card-modification__options--swatches' : ''}`}>
-          {parameter.options.map((option) => <StorefrontCardModificationOption parameter={parameter} option={option} preview={preview} key={option.id} />)}
+          {parameter.options.map((option) => <StorefrontCardModificationOption parameter={parameter} option={option} busy={variantBusy} onSelect={(item, candidate) => void selectVariant(item, candidate)} key={option.id} />)}
         </div>
       </div>)}
+      {variantError && <span className="storefront-card__variant-error" role="alert">{variantError}</span>}
     </div>
   </article>;
 }
@@ -661,7 +737,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   const [priceFilter, setPriceFilter] = useState({ min: '', max: '' });
   const [characteristicFilters, setCharacteristicFilters] = useState<Record<string, string[]>>({});
   const [sort, setSort] = useState('updated_desc');
-  const [requestOpen, setRequestOpen] = useState(false);
+  const [requestProduct, setRequestProduct] = useState<CatalogProduct | null>(null);
   const serializedCharacteristicFilters = useMemo(() => {
     const active = activeFilterValues(characteristicFilters);
     return Object.keys(active).length ? JSON.stringify(active) : '';
@@ -715,7 +791,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   }, [preview, queryClient]);
 
   useEffect(() => {
-    setRequestOpen(false);
+    setRequestProduct(null);
   }, [slug]);
 
   function updateSearch(event: ChangeEvent<HTMLInputElement>) {
@@ -781,9 +857,8 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
       preview={preview}
       basePath={basePath}
       canRequestProduct={canRequestProduct}
-      onRequest={() => setRequestOpen(true)}
+      onRequest={() => setRequestProduct(productData)}
     />
-    {requestOpen && canRequestProduct && <StorefrontApplicationModal product={productData} form={form.data} onClose={() => setRequestOpen(false)} />}
     </> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
       <div className="storefront-hero">
         <p className="eyebrow">Used & refurbished</p>
@@ -807,10 +882,17 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
           toggleCharacteristic={toggleCharacteristic}
         />
         <div className="storefront-grid">
-          {items.map((item) => <StorefrontProductCard product={item} preview={preview} key={item.productCode} />)}
+          {items.map((item) => <StorefrontProductCard
+            product={item}
+            preview={preview}
+            formAvailable={Boolean(form.data)}
+            onRequest={setRequestProduct}
+            key={item.productCode}
+          />)}
         </div>
       </div>
       {!products.isLoading && !items.length && <div className="storefront-empty"><Icon name="phone" size={32} /><h2>Товарів не знайдено</h2></div>}
     </section>}
+    {requestProduct && !preview && form.data && requestProduct.availability.status !== 'unavailable' && <StorefrontApplicationModal product={requestProduct} form={form.data} onClose={() => setRequestProduct(null)} />}
   </main>;
 }

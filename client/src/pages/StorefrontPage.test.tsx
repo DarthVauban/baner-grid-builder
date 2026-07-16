@@ -1,10 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
-import type { PropsWithChildren } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PropsWithChildren, ReactElement } from 'react';
+import { api } from '../lib/api';
 import type { CatalogProduct } from '../types/catalog';
-import { StorefrontProductDetailPage } from './StorefrontPage';
+import { StorefrontProductCard, StorefrontProductDetailPage } from './StorefrontPage';
 
 vi.mock('swiper/modules', () => ({
   Keyboard: {},
@@ -17,6 +19,13 @@ vi.mock('swiper/react', () => ({
   Swiper: ({ children, className }: PropsWithChildren<{ className?: string }>) => <div className={className}>{children}</div>,
   SwiperSlide: ({ children, className }: PropsWithChildren<{ className?: string }>) => <div className={className}>{children}</div>
 }));
+
+afterEach(() => vi.restoreAllMocks());
+
+function renderWithQueryClient(element: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}><MemoryRouter>{element}</MemoryRouter></QueryClientProvider>);
+}
 
 const product: CatalogProduct = {
   id: 'product-1',
@@ -133,5 +142,51 @@ describe('StorefrontProductDetailPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Оформити заявку/ }));
     expect(onRequest).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('StorefrontProductCard', () => {
+  it('switches the card in place and opens the assigned form for the selected modification', async () => {
+    const variantProduct: CatalogProduct = {
+      ...product,
+      id: 'product-2',
+      productCode: 'MT-00002',
+      name: 'Apple iPhone 13 128 GB Blue',
+      slug: 'iphone-13-blue',
+      publicPath: '/storefront/smartphones/iphone-13-blue',
+      priceUah: 20499,
+      priceLabel: '20 499 ₴',
+      mainImageUrl: '/iphone-blue.webp',
+      modifications: product.modifications ? {
+        ...product.modifications,
+        isMain: false,
+        parameters: product.modifications.parameters.map((parameter) => ({
+          ...parameter,
+          currentValueId: 'blue',
+          currentValueLabel: 'Blue',
+          options: parameter.options.map((option) => ({ ...option, selected: option.id === 'blue' }))
+        }))
+      } : undefined
+    };
+    const loadVariant = vi.spyOn(api.storefront, 'get').mockResolvedValue(variantProduct);
+    const onRequest = vi.fn();
+    const { container } = renderWithQueryClient(<StorefrontProductCard
+      product={product}
+      preview={false}
+      formAvailable
+      onRequest={onRequest}
+    />);
+
+    expect(screen.queryByRole('link', { name: 'Blue' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Blue' }));
+
+    expect(loadVariant).toHaveBeenCalledWith('iphone-13-blue');
+    expect(await screen.findByText('Apple iPhone 13 128 GB Blue')).toBeInTheDocument();
+    expect(screen.getByText('MT-00002 · В наявності')).toBeInTheDocument();
+    expect(screen.getByText('20 499 ₴')).toBeInTheDocument();
+    expect(container.querySelector('.storefront-card__body')).toHaveAttribute('href', '/storefront/smartphones/iphone-13-blue');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Купити' }));
+    expect(onRequest).toHaveBeenCalledWith(variantProduct);
   });
 });
