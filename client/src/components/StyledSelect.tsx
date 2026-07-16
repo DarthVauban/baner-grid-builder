@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 
 type SelectValue = string | number;
@@ -35,7 +36,9 @@ export function StyledSelect<T extends SelectValue = string>({
 }: StyledSelectProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const selectedIndex = Math.max(0, options.findIndex((option) => sameValue(option.value, value)));
   const [highlighted, setHighlighted] = useState(selectedIndex);
   const selected = useMemo(
@@ -48,7 +51,8 @@ export function StyledSelect<T extends SelectValue = string>({
   useEffect(() => {
     if (!open) return undefined;
     const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     const keydown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -63,6 +67,38 @@ export function StyledSelect<T extends SelectValue = string>({
       document.removeEventListener('keydown', keydown);
     };
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+
+    function updatePosition() {
+      const button = buttonRef.current;
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      const gap = 8;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const width = Math.min(Math.max(rect.width, 140), viewportWidth - gap * 2);
+      const left = Math.min(Math.max(rect.left, gap), viewportWidth - width - gap);
+      const belowSpace = viewportHeight - rect.bottom - gap;
+      const aboveSpace = rect.top - gap;
+      const opensUp = belowSpace < 170 && aboveSpace > belowSpace;
+      const maxHeight = Math.max(96, Math.min(240, opensUp ? aboveSpace - 6 : belowSpace - 6));
+      const top = opensUp
+        ? Math.max(gap, rect.top - maxHeight - 6)
+        : Math.min(rect.bottom + 6, viewportHeight - gap - maxHeight);
+
+      setMenuStyle({ left, top, width, maxHeight });
+    }
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, options.length]);
 
   function move(step: number) {
     if (!options.length) return;
@@ -98,6 +134,26 @@ export function StyledSelect<T extends SelectValue = string>({
     }
   }
 
+  const menu = <div ref={menuRef} className={`custom-select__menu custom-select__menu--portal${compact ? ' custom-select__menu--compact' : ''}`} role="listbox" aria-label={ariaLabel} style={menuStyle}>
+    {options.map((option, index) => {
+      const active = sameValue(option.value, value);
+      const highlightedOption = index === highlighted;
+      return <button
+        key={String(option.value)}
+        className={`${active ? 'active ' : ''}${highlightedOption ? 'highlighted' : ''}`.trim()}
+        type="button"
+        role="option"
+        aria-selected={active}
+        disabled={option.disabled}
+        onMouseEnter={() => setHighlighted(index)}
+        onClick={() => selectOption(option)}
+      >
+        <span>{option.label}</span>
+        {active && <Icon name="check" size={15} />}
+      </button>;
+    })}
+  </div>;
+
   return <div className={`custom-select${compact ? ' custom-select--compact' : ''}${open ? ' custom-select--open' : ''}${className ? ` ${className}` : ''}`} ref={rootRef}>
     <button
       ref={buttonRef}
@@ -113,24 +169,6 @@ export function StyledSelect<T extends SelectValue = string>({
       <span>{selected?.label || ''}</span>
       <Icon name="chevronRight" size={17} />
     </button>
-    {open && <div className="custom-select__menu" role="listbox" aria-label={ariaLabel}>
-      {options.map((option, index) => {
-        const active = sameValue(option.value, value);
-        const highlightedOption = index === highlighted;
-        return <button
-          key={String(option.value)}
-          className={`${active ? 'active ' : ''}${highlightedOption ? 'highlighted' : ''}`.trim()}
-          type="button"
-          role="option"
-          aria-selected={active}
-          disabled={option.disabled}
-          onMouseEnter={() => setHighlighted(index)}
-          onClick={() => selectOption(option)}
-        >
-          <span>{option.label}</span>
-          {active && <Icon name="check" size={15} />}
-        </button>;
-      })}
-    </div>}
+    {open && createPortal(menu, document.body)}
   </div>;
 }
