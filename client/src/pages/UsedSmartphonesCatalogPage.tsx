@@ -234,8 +234,18 @@ function characteristicArrayValue(value: unknown) {
 }
 
 function characteristicColorValue(value: unknown) {
+  const fallbackHex = '#000000';
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const color = value as { name?: unknown; hex?: unknown };
+    const hex = characteristicStringValue(color.hex).trim();
+    return {
+      name: characteristicStringValue(color.name),
+      hex: /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : fallbackHex
+    };
+  }
   const text = characteristicStringValue(value).trim();
-  return /^#[0-9a-f]{6}$/i.test(text) ? text : '#000000';
+  if (/^#[0-9a-f]{6}$/i.test(text)) return { name: '', hex: text.toLowerCase() };
+  return { name: text, hex: fallbackHex };
 }
 
 function CharacteristicFieldControl({
@@ -293,19 +303,19 @@ function CharacteristicFieldControl({
     return <label className="field catalog-characteristic-field">
       <span>{field.label}{field.required ? ' *' : ''}</span>
       <div className="catalog-color-input">
-        <input type="color" value={colorValue} onChange={(event) => onChange(event.target.value)} />
-        <input value={characteristicStringValue(value)} placeholder="#000000" onChange={(event) => onChange(event.target.value)} maxLength={7} />
+        <input type="color" value={colorValue.hex} onChange={(event) => onChange({ ...colorValue, hex: event.target.value.toLowerCase() })} />
+        <input value={colorValue.name} placeholder="Назва кольору" onChange={(event) => onChange({ ...colorValue, name: event.target.value })} maxLength={120} />
       </div>
     </label>;
   }
+  const input = <input
+    type={field.type === 'number' ? 'number' : 'text'}
+    value={characteristicStringValue(value)}
+    onChange={(event) => onChange(event.target.value)}
+  />;
   return <label className="field catalog-characteristic-field">
     <span>{field.label}{field.required ? ' *' : ''}</span>
-    <input
-      type={field.type === 'number' ? 'number' : 'text'}
-      value={characteristicStringValue(value)}
-      onChange={(event) => onChange(event.target.value)}
-    />
-    {unit}
+    {field.unit ? <div className="catalog-unit-input">{input}<em>{field.unit}</em></div> : input}
   </label>;
 }
 

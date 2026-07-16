@@ -41,6 +41,85 @@ const emptyTemplate = (): CatalogCharacteristicTemplateInput => ({
   fields: [emptyField()]
 });
 
+const cyrillicTransliteration: Record<string, string> = {
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'h',
+  ґ: 'g',
+  д: 'd',
+  е: 'e',
+  є: 'ye',
+  ж: 'zh',
+  з: 'z',
+  и: 'y',
+  і: 'i',
+  ї: 'yi',
+  й: 'y',
+  к: 'k',
+  л: 'l',
+  м: 'm',
+  н: 'n',
+  о: 'o',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  у: 'u',
+  ф: 'f',
+  х: 'kh',
+  ц: 'ts',
+  ч: 'ch',
+  ш: 'sh',
+  щ: 'shch',
+  ь: '',
+  ю: 'yu',
+  я: 'ya',
+  ы: 'y',
+  э: 'e',
+  ё: 'yo',
+  ъ: ''
+};
+
+function transliterateToLatin(value: string) {
+  return Array.from(value.normalize('NFKD').replace(/[\u0300-\u036f]/g, ''))
+    .map((char) => cyrillicTransliteration[char.toLocaleLowerCase('uk-UA')] ?? char)
+    .join('');
+}
+
+function normalizeCharacteristicKey(value: string, fallback: string) {
+  return transliterateToLatin(value || fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_{2,}/g, '_')
+    .slice(0, 120) || fallback;
+}
+
+function uniqueCharacteristicKey(base: string, seen: Set<string>) {
+  let key = base || 'field';
+  let counter = 2;
+  while (seen.has(key)) {
+    const suffix = `_${counter}`;
+    key = `${base.slice(0, 120 - suffix.length)}${suffix}`;
+    counter += 1;
+  }
+  seen.add(key);
+  return key;
+}
+
+function fieldKeyPreview(field: CatalogCharacteristicField, index: number) {
+  return normalizeCharacteristicKey(field.label || field.key, `field_${index + 1}`);
+}
+
+function withGeneratedFieldKeys(fields: CatalogCharacteristicField[]) {
+  const seen = new Set<string>();
+  return normalizeFieldOrder(fields).map((field, index) => ({
+    ...field,
+    key: uniqueCharacteristicKey(fieldKeyPreview(field, index), seen)
+  }));
+}
+
 function optionsText(field: CatalogCharacteristicField) {
   return field.options.join('\n');
 }
@@ -82,11 +161,12 @@ export function CatalogCharacteristicsPage() {
     () => (templates.data || []).find((template) => template.id === selectedId) || null,
     [selectedId, templates.data]
   );
+  const generatedDraftFields = useMemo(() => withGeneratedFieldKeys(draft.fields), [draft.fields]);
 
   const saveTemplate = useMutation({
-    mutationFn: () => selectedTemplate
-      ? api.catalog.updateCharacteristicTemplate(selectedTemplate.id, draft)
-      : api.catalog.createCharacteristicTemplate(draft)
+    mutationFn: (payload: CatalogCharacteristicTemplateInput) => selectedTemplate
+      ? api.catalog.updateCharacteristicTemplate(selectedTemplate.id, payload)
+      : api.catalog.createCharacteristicTemplate(payload)
   });
 
   useEffect(() => {
@@ -115,7 +195,12 @@ export function CatalogCharacteristicsPage() {
   function setTemplateField(index: number, patch: Partial<CatalogCharacteristicField>) {
     setDraft((current) => ({
       ...current,
-      fields: current.fields.map((field, fieldIndex) => (fieldIndex === index ? { ...field, ...patch } : field))
+      fields: current.fields.map((field, fieldIndex) => {
+        if (fieldIndex !== index) return field;
+        const next = { ...field, ...patch };
+        if (Object.hasOwn(patch, 'label')) next.key = fieldKeyPreview(next, index);
+        return next;
+      })
     }));
   }
 
@@ -188,7 +273,7 @@ export function CatalogCharacteristicsPage() {
 
   async function submit() {
     try {
-      const saved = await saveTemplate.mutateAsync();
+      const saved = await saveTemplate.mutateAsync({ ...draft, fields: withGeneratedFieldKeys(draft.fields) });
       showToast(selectedTemplate ? 'Шаблон характеристик оновлено.' : 'Шаблон характеристик створено.');
       setSelectedId(saved.id);
       setDraft(templateToInput(saved));
@@ -246,12 +331,14 @@ export function CatalogCharacteristicsPage() {
             onDragEnd={() => { setDraggedFieldIndex(null); setFieldDropTarget(null); }}
           >
             <div className="catalog-template-field__bar">
-              <span className="catalog-drag-handle" draggable={draft.fields.length > 1} aria-disabled={draft.fields.length <= 1} title="Перетягнути поле" onDragStart={(event) => startFieldDrag(event, index)}><Icon name="menu" size={18} /> Поле {index + 1}</span>
+              <span className="catalog-template-field__bar-main">
+                <span className="catalog-drag-handle" draggable={draft.fields.length > 1} aria-disabled={draft.fields.length <= 1} title="Перетягнути поле" onDragStart={(event) => startFieldDrag(event, index)}><Icon name="menu" size={18} /> Поле {index + 1}</span>
+                <code className="catalog-template-field__key">{generatedDraftFields[index]?.key || fieldKeyPreview(field, index)}</code>
+              </span>
               <button className="icon-button" type="button" onClick={() => removeField(index)} aria-label="Видалити поле"><Icon name="delete" /></button>
             </div>
             <div className="catalog-editor-grid catalog-template-field__grid">
               <label className="field"><span>Назва поля</span><input value={field.label} onChange={(event) => setTemplateField(index, { label: event.target.value })} maxLength={180} /></label>
-              <label className="field"><span>Ключ</span><input value={field.key} onChange={(event) => setTemplateField(index, { key: event.target.value })} placeholder="auto якщо порожньо" maxLength={120} /></label>
               <label className="field"><span>Тип</span><StyledSelect value={field.type} options={fieldTypeOptions} onChange={(value) => setTemplateFieldType(index, value as CatalogCharacteristicFieldType)} /></label>
               <label className="field"><span>Одиниця</span><input value={field.unit} onChange={(event) => setTemplateField(index, { unit: event.target.value })} placeholder="GB, %, mAh" maxLength={40} /></label>
               {(field.type === 'select' || field.type === 'multiselect') && <label className="field catalog-editor-grid__wide"><span>Опції</span><textarea value={optionsText(field)} onChange={(event) => setTemplateField(index, { options: parseOptions(event.target.value) })} placeholder="Кожна опція з нового рядка" /></label>}

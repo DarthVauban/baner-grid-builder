@@ -181,6 +181,9 @@ function characteristicDisplayValue(value, unit = '') {
   if (Array.isArray(value)) return value.map(String).filter(Boolean).join(', ');
   if (typeof value === 'boolean') return value ? 'Так' : 'Ні';
   if (value === null || value === undefined) return '';
+  if (value && typeof value === 'object') {
+    return String(value.name || value.label || value.hex || '').trim();
+  }
   const text = String(value).trim();
   if (!text) return '';
   return unit ? `${text} ${unit}` : text;

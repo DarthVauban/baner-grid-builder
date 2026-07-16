@@ -134,6 +134,19 @@ test('catalog products publish to storefront, import stock updates, and create a
     ]
   }).expect(201);
   assert.equal(template.body.data.fields.length, 5);
+  assert.deepEqual(template.body.data.fields.map((field) => field.key), ['storage', 'battery_health', 'colors', 'shell_color', 'face_id']);
+
+  const laptopTemplate = await admin.post('/api/catalog/characteristic-templates').send({
+    label: 'Laptop basics',
+    description: 'Independent laptop specs',
+    active: true,
+    sortOrder: 2,
+    fields: [
+      { key: 'storage', label: 'Storage', type: 'number', unit: 'GB', options: [], required: false, filterable: true, sortOrder: 0 },
+      { key: 'ignored_manual_key', label: 'Процесор', type: 'text', unit: '', options: [], required: false, filterable: true, sortOrder: 1 }
+    ]
+  }).expect(201);
+  assert.deepEqual(laptopTemplate.body.data.fields.map((field) => field.key), ['storage', 'protsesor']);
 
   const productWithCharacteristics = await admin.put(`/api/catalog/products/${created.body.data.id}/characteristics`).send({
     templateId: template.body.data.id,
@@ -142,7 +155,7 @@ test('catalog products publish to storefront, import stock updates, and create a
       storage: '128',
       battery_health: 91,
       colors: ['Midnight'],
-      shell_color: '#222222',
+      shell_color: { name: 'Graphite', hex: '#222222' },
       face_id: true
     }
   }).expect(200);
@@ -153,7 +166,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(savedCharacteristics.body.data.values.storage, '128');
   assert.equal(savedCharacteristics.body.data.values.battery_health, 91);
   assert.deepEqual(savedCharacteristics.body.data.values.colors, ['Midnight']);
-  assert.equal(savedCharacteristics.body.data.values.shell_color, '#222222');
+  assert.deepEqual(savedCharacteristics.body.data.values.shell_color, { name: 'Graphite', hex: '#222222' });
   assert.equal(savedCharacteristics.body.data.values.face_id, true);
 
   const publicProductWithCharacteristics = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
@@ -164,7 +177,7 @@ test('catalog products publish to storefront, import stock updates, and create a
       ['storage', '128 GB'],
       ['battery_health', '91 %'],
       ['colors', 'Midnight'],
-      ['shell_color', '#222222'],
+      ['shell_color', 'Graphite'],
       ['face_id', 'Так']
     ]
   );
@@ -201,7 +214,7 @@ test('catalog products publish to storefront, import stock updates, and create a
       storage: '256',
       battery_health: 88,
       colors: ['Green'],
-      shell_color: '#00aa66',
+      shell_color: { name: 'Green', hex: '#00aa66' },
       face_id: true
     }
   }).expect(200);

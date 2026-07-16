@@ -95,6 +95,7 @@ const brandInputSchema = z.object({
   sortOrder: z.coerce.number().int().min(-9999).max(9999).default(0)
 });
 const characteristicFieldSchema = z.object({
+  id: z.string().uuid().optional(),
   key: z.string().trim().max(120).default(''),
   label: z.string().trim().min(1).max(180),
   type: z.enum(['text', 'number', 'select', 'multiselect', 'boolean', 'color']).default('text'),
@@ -286,13 +287,83 @@ function normalizeJsonObjectValue(value) {
   return {};
 }
 
+const cyrillicTransliteration = {
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'h',
+  ґ: 'g',
+  д: 'd',
+  е: 'e',
+  є: 'ye',
+  ж: 'zh',
+  з: 'z',
+  и: 'y',
+  і: 'i',
+  ї: 'yi',
+  й: 'y',
+  к: 'k',
+  л: 'l',
+  м: 'm',
+  н: 'n',
+  о: 'o',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  у: 'u',
+  ф: 'f',
+  х: 'kh',
+  ц: 'ts',
+  ч: 'ch',
+  ш: 'sh',
+  щ: 'shch',
+  ь: '',
+  ю: 'yu',
+  я: 'ya',
+  ы: 'y',
+  э: 'e',
+  ё: 'yo',
+  ъ: ''
+};
+
+function transliterateToLatin(value) {
+  return Array.from(String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, ''))
+    .map((char) => cyrillicTransliteration[char.toLocaleLowerCase('uk-UA')] ?? char)
+    .join('');
+}
+
 function normalizeTemplateFieldKey(value, fallback) {
-  return String(value || fallback || 'field')
-    .normalize('NFKC')
-    .toLocaleLowerCase('uk-UA')
-    .replace(/[^\p{L}\p{N}]+/gu, '_')
+  return transliterateToLatin(value || fallback || 'field')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
+    .replace(/_{2,}/g, '_')
     .slice(0, 120) || `field_${Date.now()}`;
+}
+
+function uniqueTemplateFieldKey(base, seen) {
+  let key = base || 'field';
+  let counter = 2;
+  while (seen.has(key)) {
+    const suffix = `_${counter}`;
+    key = `${base.slice(0, 120 - suffix.length)}${suffix}`;
+    counter += 1;
+  }
+  seen.add(key);
+  return key;
+}
+
+function normalizeTemplateFields(fields) {
+  const seen = new Set();
+  return fields.map((field, index) => {
+    const base = normalizeTemplateFieldKey(field.label || field.key, `field_${index + 1}`);
+    return {
+      ...field,
+      key: uniqueTemplateFieldKey(base, seen),
+      sortOrder: field.sortOrder ?? index
+    };
+  });
 }
 
 function serializeCharacteristicField(row) {
@@ -354,29 +425,43 @@ async function loadCharacteristicTemplate(templateId, db = { query }) {
 }
 
 async function replaceCharacteristicFields(db, templateId, fields) {
-  assertUniqueFieldKeys(fields);
+  const normalizedFields = normalizeTemplateFields(fields);
+  assertUniqueFieldKeys(normalizedFields);
   const existing = await db.query('SELECT * FROM used_smartphone_characteristic_template_fields WHERE template_id = $1', [templateId]);
+  const existingById = new Map(existing.rows.map((row) => [row.id, row]));
   const existingByKey = new Map(existing.rows.map((row) => [row.key, row]));
   const activeKeys = new Set();
-  for (const [index, field] of fields.entries()) {
-    const key = normalizeTemplateFieldKey(field.key, field.label);
-    const sortOrder = field.sortOrder ?? index;
-    activeKeys.add(key);
-    const existingField = existingByKey.get(key);
+  const activeIds = new Set();
+  const plannedFields = normalizedFields.map((field, index) => ({
+    field,
+    sortOrder: field.sortOrder ?? index,
+    existingField: (field.id && existingById.get(field.id)) || existingByKey.get(field.key)
+  }));
+  for (const row of existing.rows) {
+    await db.query(
+      'UPDATE used_smartphone_characteristic_template_fields SET key = $1 WHERE id = $2',
+      [`tmp_${String(row.id).replace(/-/g, '')}`, row.id]
+    );
+  }
+  for (const { field, sortOrder, existingField } of plannedFields) {
+    activeKeys.add(field.key);
     if (existingField) {
+      activeIds.add(existingField.id);
       await db.query(
         `UPDATE used_smartphone_characteristic_template_fields
-         SET label = $1,
-             type = $2,
-             unit = $3,
-             options = $4::JSONB,
-             required = $5,
-             filterable = $6,
-             is_modifier = $7,
-             sort_order = $8,
+         SET key = $1,
+             label = $2,
+             type = $3,
+             unit = $4,
+             options = $5::JSONB,
+             required = $6,
+             filterable = $7,
+             is_modifier = $8,
+             sort_order = $9,
              updated_at = NOW()
-         WHERE id = $9`,
+         WHERE id = $10`,
         [
+          field.key,
           field.label,
           field.type,
           field.unit,
@@ -388,6 +473,16 @@ async function replaceCharacteristicFields(db, templateId, fields) {
           existingField.id
         ]
       );
+      await db.query(
+        `UPDATE used_smartphone_product_characteristics
+         SET field_id = $1,
+             key = $2,
+             label = $3,
+             sort_order = $4,
+             updated_at = NOW()
+         WHERE field_id = $1 OR (template_id = $5 AND key = $6)`,
+        [existingField.id, field.key, field.label, sortOrder, templateId, existingField.key]
+      );
     } else {
       await db.query(
         `INSERT INTO used_smartphone_characteristic_template_fields (
@@ -395,7 +490,7 @@ async function replaceCharacteristicFields(db, templateId, fields) {
          ) VALUES ($1, $2, $3, $4, $5, $6::JSONB, $7, $8, $9, $10)`,
         [
           templateId,
-          key,
+          field.key,
           field.label,
           field.type,
           field.unit,
@@ -409,7 +504,7 @@ async function replaceCharacteristicFields(db, templateId, fields) {
     }
   }
   for (const row of existing.rows) {
-    if (!activeKeys.has(row.key)) {
+    if (!activeIds.has(row.id) && !activeKeys.has(row.key)) {
       await db.query('DELETE FROM used_smartphone_characteristic_template_fields WHERE id = $1', [row.id]);
     }
   }
@@ -432,6 +527,19 @@ async function replaceCharacteristicFields(db, templateId, fields) {
   }
 }
 
+function normalizeColorHex(value) {
+  const text = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : '';
+}
+
+function characteristicTextValue(value) {
+  if (Array.isArray(value)) return value.map(String).join(', ');
+  if (value && typeof value === 'object') {
+    return String(value.name || value.label || value.hex || '').trim();
+  }
+  return value == null ? '' : String(value);
+}
+
 function characteristicValueForField(field, values) {
   const raw = values[field.key];
   if (field.type === 'boolean') return raw === true || raw === 'true';
@@ -440,8 +548,14 @@ function characteristicValueForField(field, values) {
     return Number.isFinite(number) ? number : null;
   }
   if (field.type === 'color') {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return {
+        name: String(raw.name || raw.label || '').trim().slice(0, 160),
+        hex: normalizeColorHex(raw.hex)
+      };
+    }
     const text = String(raw || '').trim();
-    return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : '';
+    return normalizeColorHex(text) ? { name: '', hex: normalizeColorHex(text) } : { name: text.slice(0, 160), hex: '' };
   }
   if (field.type === 'multiselect') return Array.isArray(raw) ? raw.map(String) : [];
   return raw == null ? '' : String(raw);
@@ -1237,7 +1351,7 @@ router.put('/products/:id/characteristics', asyncHandler(async (req, res) => {
           field.id,
           field.key,
           field.label,
-          Array.isArray(value) ? value.join(', ') : value == null ? '' : String(value),
+          characteristicTextValue(value),
           typeof value === 'number' ? value : null,
           typeof value === 'boolean' ? value : null,
           JSON.stringify({ value }),
