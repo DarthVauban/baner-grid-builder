@@ -85,13 +85,23 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.match(jsonMedia.body.data.url, /^\/media\/catalog\/.+\.webp$/);
   assert.equal(jsonMedia.body.data.originalUrl, '');
 
-  const tooLargeWebp = Buffer.concat([Buffer.from('524946460000000057454250', 'hex'), Buffer.alloc((3 * 1024 * 1024) + 1)]);
+  const fourMegabyteWebp = Buffer.alloc(4 * 1024 * 1024);
+  tinyWebp.copy(fourMegabyteWebp);
+  const acceptedLargeMedia = await admin.post('/api/catalog/media')
+    .set('Content-Type', 'image/webp')
+    .set('X-File-Name', 'large-but-allowed.webp')
+    .send(fourMegabyteWebp)
+    .expect(201);
+  assert.equal(acceptedLargeMedia.body.data.size, fourMegabyteWebp.length);
+
+  const tooLargeWebp = Buffer.alloc((5 * 1024 * 1024) + 1);
+  tinyWebp.copy(tooLargeWebp);
   const mediaTooLarge = await admin.post('/api/catalog/media')
     .set('Content-Type', 'image/webp')
     .set('X-File-Name', 'too-large.webp')
     .send(tooLargeWebp)
     .expect(413);
-  assert.match(mediaTooLarge.body.error.message, /3/);
+  assert.match(mediaTooLarge.body.error.message, /5/);
 
   const created = await admin.post('/api/catalog/products').send({
     name: 'iPhone 13 128GB Midnight',

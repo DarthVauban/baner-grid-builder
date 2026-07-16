@@ -8,8 +8,11 @@ export function errorHandler(error, req, res, next) {
   if (res.headersSent) return next(error);
 
   if (error?.type === 'entity.too.large' || error?.status === 413 || error?.statusCode === 413) {
+    const message = String(req.originalUrl || '').startsWith('/api/catalog/media')
+      ? 'Фото товару завелике. Кожне фото має бути до 5 МБ.'
+      : 'Файл або запит завеликий.';
     return res.status(413).json({
-      error: { code: 'PAYLOAD_TOO_LARGE', message: 'Файл або запит завеликий. Кожне фото має бути до 3 МБ.' }
+      error: { code: 'PAYLOAD_TOO_LARGE', message }
     });
   }
 

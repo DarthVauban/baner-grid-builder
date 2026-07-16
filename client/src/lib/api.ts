@@ -138,25 +138,6 @@ function queryString(params: Record<string, string | number | undefined>): strin
   return result ? `?${result}` : '';
 }
 
-function imageMimeFromFile(file: File | undefined, fallback = 'image/webp') {
-  const type = file?.type?.toLowerCase();
-  if (type === 'image/png' || type === 'image/jpeg' || type === 'image/webp') return type;
-  const extension = file?.name.toLowerCase().split('.').pop();
-  if (extension === 'png') return 'image/png';
-  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
-  if (extension === 'webp') return 'image/webp';
-  return fallback;
-}
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || '').split(',').pop() || '');
-    reader.onerror = () => reject(reader.error || new Error('Не вдалося прочитати файл.'));
-    reader.readAsDataURL(blob);
-  });
-}
-
 export const api = {
   auth: {
     me: () => request<User>('/api/auth/me'),
@@ -350,30 +331,42 @@ export const api = {
         request<CatalogProductModificationSet>(`/api/catalog/products/${encodeURIComponent(id)}/modifications`),
       updateProductModifications: (id: string, input: { groupId?: string | null; groupLabel?: string; mainProductId?: string | null; productIds: string[]; expectedVersion: number }) =>
         request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/modifications`, { method: 'PUT', body: jsonBody(input) }),
-    uploadMedia: async (file: Blob, fileName: string, originalFile?: File) => {
-      const response = await fetch('/api/catalog/media', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: jsonBody({
-          webpBase64: await blobToBase64(file),
-          webpName: fileName,
-          originalName: originalFile?.name || fileName,
-          originalMimeType: imageMimeFromFile(originalFile)
-        }),
-        credentials: 'same-origin'
+    uploadMedia: (file: Blob, fileName: string, onProgress?: (progress: number) => void) => new Promise<CatalogMediaAsset>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/catalog/media');
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('Content-Type', 'image/webp');
+      xhr.setRequestHeader('X-File-Name', encodeURIComponent(fileName));
+      xhr.upload.addEventListener('progress', (event) => {
+        if (!event.lengthComputable || event.total <= 0) return;
+        onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
       });
-      const payload = await response.json().catch(() => ({})) as ApiSuccessPayload<CatalogMediaAsset> & ApiErrorPayload;
-      if (!response.ok) {
-        const error = new ApiError(response.status, payload);
-        if (response.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
-          window.dispatchEvent(new Event('mt:unauthorized'));
+      xhr.addEventListener('load', () => {
+        let payload: ApiSuccessPayload<CatalogMediaAsset> & ApiErrorPayload = {} as ApiSuccessPayload<CatalogMediaAsset> & ApiErrorPayload;
+        try {
+          payload = JSON.parse(xhr.responseText || '{}') as ApiSuccessPayload<CatalogMediaAsset> & ApiErrorPayload;
+        } catch {
+          payload = {} as ApiSuccessPayload<CatalogMediaAsset> & ApiErrorPayload;
         }
-        throw error;
-      }
-      return payload.data;
-    },
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const error = new ApiError(xhr.status, payload);
+          if (xhr.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
+            window.dispatchEvent(new Event('mt:unauthorized'));
+          }
+          reject(error);
+          return;
+        }
+        onProgress?.(100);
+        resolve(payload.data);
+      });
+      xhr.addEventListener('error', () => reject(new ApiError(0, {
+        error: { code: 'NETWORK_ERROR', message: 'Не вдалося завантажити фото. Перевірте з’єднання та спробуйте ще раз.' }
+      })));
+      xhr.addEventListener('abort', () => reject(new ApiError(0, {
+        error: { code: 'UPLOAD_ABORTED', message: 'Завантаження фото скасовано.' }
+      })));
+      xhr.send(file);
+    }),
     previewImport: (rows: Array<Record<string, unknown>>) =>
       request<CatalogImportPreview>('/api/catalog/imports/preview', { method: 'POST', body: jsonBody({ rows }) }),
     commitImport: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) =>

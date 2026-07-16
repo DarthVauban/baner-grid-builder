@@ -231,7 +231,7 @@ export function CatalogBrandsPage() {
       validateBrandLogoFile(file);
       setLogoBusyId(brand.id);
       const webp = await convertCatalogImageToWebp(file);
-      const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'), file);
+      const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'));
       await api.catalog.updateBrand(brand.id, {
         directoryId: brand.directoryId,
         label: brand.label,

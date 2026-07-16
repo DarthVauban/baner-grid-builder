@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { AppError } from '../../lib/app-error.js';
 
-const maxCatalogImageBytes = 3 * 1024 * 1024;
+const maxCatalogImageBytes = 5 * 1024 * 1024;
 const allowedOriginalTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDir, '../../..');
@@ -79,7 +79,7 @@ export async function saveCatalogWebpImage(buffer, originalName = '') {
     throw new AppError(422, 'CATALOG_MEDIA_EMPTY', 'Файл зображення порожній.');
   }
   if (buffer.length > maxCatalogImageBytes) {
-    throw new AppError(413, 'CATALOG_MEDIA_TOO_LARGE', 'Кожне фото має бути до 3 МБ.');
+    throw new AppError(413, 'CATALOG_MEDIA_TOO_LARGE', 'Кожне фото має бути до 5 МБ.');
   }
   assertWebp(buffer);
   const filename = `${Date.now()}-${safeName(originalName)}-${randomUUID()}.webp`;
@@ -100,7 +100,7 @@ export async function saveCatalogMediaAsset({
   originalMimeType = ''
 }) {
   if (originalBuffer && originalBuffer.length > maxCatalogImageBytes) {
-    throw new AppError(413, 'CATALOG_ORIGINAL_MEDIA_TOO_LARGE', 'Кожне фото має бути до 3 МБ.');
+    throw new AppError(413, 'CATALOG_ORIGINAL_MEDIA_TOO_LARGE', 'Кожне фото має бути до 5 МБ.');
   }
   if (originalBuffer && !allowedOriginalTypes.has(originalMimeType)) {
     throw new AppError(415, 'CATALOG_ORIGINAL_MEDIA_UNSUPPORTED_TYPE', 'Оригінал має бути PNG, JPG або WebP.');

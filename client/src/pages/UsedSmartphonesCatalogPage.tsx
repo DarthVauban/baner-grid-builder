@@ -3,6 +3,8 @@ import type { ChangeEvent, DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { CatalogPhotoUploadProgress } from '../components/CatalogPhotoUploadProgress';
+import type { CatalogPhotoUploadItem } from '../components/CatalogPhotoUploadProgress';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
@@ -101,6 +103,18 @@ type CatalogDeleteChoice = {
   groupAction?: CatalogDeleteGroupAction;
   newMainProductId?: string | null;
 };
+
+let catalogPhotoUploadSequence = 0;
+
+function createCatalogPhotoUploadItem(file: File): CatalogPhotoUploadItem {
+  catalogPhotoUploadSequence += 1;
+  return {
+    id: `${Date.now()}-${catalogPhotoUploadSequence}`,
+    name: file.name,
+    progress: 0,
+    status: 'queued'
+  };
+}
 
 const editorTabs: Array<{ id: CatalogEditorTab; label: string }> = [
   { id: 'main', label: 'Основне' },
@@ -373,6 +387,7 @@ function ProductEditorScreen({
   const [activeTab, setActiveTab] = useState<CatalogEditorTab>('main');
   const [mediaBusy, setMediaBusy] = useState('');
   const [mediaError, setMediaError] = useState('');
+  const [photoUploads, setPhotoUploads] = useState<CatalogPhotoUploadItem[]>([]);
   const [draggedGalleryIndex, setDraggedGalleryIndex] = useState<number | null>(null);
   const [galleryDropTarget, setGalleryDropTarget] = useState<{ index: number; placement: 'before' | 'after' } | null>(null);
   const [linkedSaveBusy, setLinkedSaveBusy] = useState(false);
@@ -427,7 +442,7 @@ function ProductEditorScreen({
     () => (productGroups.data || []).find((group) => group.id === selectedModificationGroupId) || null,
     [productGroups.data, selectedModificationGroupId]
   );
-  const editorBusy = busy || linkedSaveBusy;
+  const editorBusy = busy || linkedSaveBusy || Boolean(mediaBusy);
   const groupSwitchItems = productModifications.data?.items || [];
   const sortedBrandDirectories = useMemo(
     () => [...brandDirectories]
@@ -804,29 +819,58 @@ function ProductEditorScreen({
     const remainingSlots = Math.max(0, 20 - draft.gallery.length);
     const selected = allFiles.slice(0, remainingSlots);
     if (!selected.length) return;
-    try {
-      setMediaError('');
-      setMediaBusy('gallery-batch');
-      selected.forEach(validateCatalogImageFile);
-      const uploaded: Array<{ url: string; alt: string }> = [];
-      for (const file of selected) {
+    const uploadItems = selected.map(createCatalogPhotoUploadItem);
+    const uploaded: Array<{ url: string; alt: string }> = [];
+    let failedCount = 0;
+
+    function updateUpload(id: string, patch: Partial<CatalogPhotoUploadItem>) {
+      setPhotoUploads((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+    }
+
+    setMediaError('');
+    setMediaBusy('gallery-batch');
+    setPhotoUploads(uploadItems);
+
+    for (let index = 0; index < selected.length; index += 1) {
+      const file = selected[index];
+      const uploadItem = uploadItems[index];
+      try {
+        validateCatalogImageFile(file);
+        updateUpload(uploadItem.id, { status: 'converting', progress: 5 });
         const webp = await convertCatalogImageToWebp(file);
-        const media = await api.catalog.uploadMedia(webp, file.name.replace(/\.[^.]+$/, '.webp'), file);
+        updateUpload(uploadItem.id, { status: 'uploading', progress: 20 });
+        const media = await api.catalog.uploadMedia(
+          webp,
+          file.name.replace(/\.[^.]+$/, '.webp'),
+          (progress) => updateUpload(uploadItem.id, {
+            status: 'uploading',
+            progress: Math.min(99, 20 + Math.round(progress * 0.79))
+          })
+        );
         uploaded.push({ url: media.url, alt: mediaAltFromFile(file) });
+        updateUpload(uploadItem.id, { status: 'done', progress: 100 });
+      } catch (error) {
+        failedCount += 1;
+        updateUpload(uploadItem.id, {
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Не вдалося завантажити фото.'
+        });
       }
+    }
+
+    if (uploaded.length) {
       setDraft((current) => ({
         ...current,
         mainImageUrl: current.mainImageUrl || uploaded[0]?.url || '',
         gallery: [...current.gallery, ...uploaded].slice(0, 20)
       }));
-      if (allFiles.length > selected.length) {
-        setMediaError(`Додано ${selected.length} фото з ${allFiles.length}. Максимум у галереї: 20 фото.`);
-      }
-    } catch (error) {
-      setMediaError(error instanceof Error ? error.message : 'Не вдалося завантажити фото.');
-    } finally {
-      setMediaBusy('');
     }
+
+    const messages: string[] = [];
+    if (failedCount) messages.push(`Не вдалося завантажити ${failedCount} фото. Деталі показано біля кожного файлу.`);
+    if (allFiles.length > selected.length) messages.push(`Додано лише доступні фото. Максимум у галереї: 20 фото.`);
+    setMediaError(messages.join(' '));
+    setMediaBusy('');
   }
 
   async function submitAll() {
@@ -951,7 +995,9 @@ function ProductEditorScreen({
               </label>
             </div>
           </header>
+          <p className="catalog-editor-muted">PNG, JPG або WebP до 5 МБ. Перед завантаженням кожне фото автоматично конвертується у WebP.</p>
           {mediaError && <p className="form-message form-message--error">{mediaError}</p>}
+          <CatalogPhotoUploadProgress items={photoUploads} />
           <div className="catalog-gallery-editor">
             <div className="catalog-gallery-grid">
               {draft.gallery.map((item, index) => {

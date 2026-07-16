@@ -2051,6 +2051,21 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .catalog-media-upload > div { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .catalog-media-upload strong { width: 100%; color: var(--ink); font-size: 13px; }
 .catalog-media-upload small { width: 100%; color: #667085; font-size: 12px; font-weight: 700; line-height: 1.45; }
+.catalog-photo-upload-list { display: grid; gap: 9px; }
+.catalog-photo-upload-row { display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px; background: var(--surface-soft); }
+.catalog-photo-upload-row__heading { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.catalog-photo-upload-row__heading strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-photo-upload-row__heading span { flex: none; color: #667085; font-size: 11px; font-weight: 800; }
+.catalog-photo-upload-row progress { appearance: none; width: 100%; height: 8px; overflow: hidden; border: 0; border-radius: 999px; background: #e5e9f0; }
+.catalog-photo-upload-row progress::-webkit-progress-bar { border-radius: 999px; background: #e5e9f0; }
+.catalog-photo-upload-row progress::-webkit-progress-value { border-radius: 999px; background: var(--brand); transition: width .18s ease; }
+.catalog-photo-upload-row progress::-moz-progress-bar { border-radius: 999px; background: var(--brand); }
+.catalog-photo-upload-row--done progress::-webkit-progress-value { background: var(--success); }
+.catalog-photo-upload-row--done progress::-moz-progress-bar { background: var(--success); }
+.catalog-photo-upload-row--error { border-color: #efc8cf; background: #fff7f8; }
+.catalog-photo-upload-row--error progress::-webkit-progress-value { background: var(--danger); }
+.catalog-photo-upload-row--error progress::-moz-progress-bar { background: var(--danger); }
+.catalog-photo-upload-row--error small { color: var(--danger); font-size: 11px; font-weight: 750; line-height: 1.4; }
 .catalog-gallery-editor { display: grid; gap: 10px; }
 .catalog-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(174px,1fr)); gap: 12px; }
 .catalog-gallery-tile { position: relative; min-width: 0; display: grid; grid-template-rows: auto auto auto auto; gap: 9px; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--surface-soft); transition: border-color .15s ease, box-shadow .15s ease, opacity .15s ease, transform .15s ease; }

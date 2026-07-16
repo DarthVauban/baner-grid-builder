@@ -1,5 +1,5 @@
 const allowedCatalogImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const maxCatalogImageBytes = 3 * 1024 * 1024;
+export const maxCatalogImageBytes = 5 * 1024 * 1024;
 const maxCatalogImageSide = 2200;
 
 function normalizedImageType(file: File) {
@@ -45,7 +45,7 @@ function isImageBitmap(value: ImageBitmap | HTMLImageElement): value is ImageBit
 export function validateCatalogImageFile(file: File) {
   const type = normalizedImageType(file);
   if (!allowedCatalogImageTypes.has(type)) throw new Error('Оберіть PNG, JPG або WebP.');
-  if (file.size > maxCatalogImageBytes) throw new Error('Кожне фото має бути до 3 МБ.');
+  if (file.size > maxCatalogImageBytes) throw new Error('Кожне фото має бути до 5 МБ.');
 }
 
 export async function convertCatalogImageToWebp(file: File): Promise<Blob> {
@@ -71,6 +71,6 @@ export async function convertCatalogImageToWebp(file: File): Promise<Blob> {
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.84));
   if (!blob) throw new Error('Браузер не підтримує конвертацію у WebP.');
-  if (blob.size > maxCatalogImageBytes) throw new Error('Після конвертації фото все ще більше 3 МБ. Зменште розмір файлу.');
+  if (blob.size > maxCatalogImageBytes) throw new Error('Після конвертації фото все ще більше 5 МБ. Зменште розмір файлу.');
   return blob;
 }

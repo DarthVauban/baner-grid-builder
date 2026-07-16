@@ -278,6 +278,14 @@ function bufferFromBase64(value) {
   return Buffer.from(base64 || '', 'base64');
 }
 
+function decodeHeaderFileName(value, fallback = 'catalog-photo.webp') {
+  try {
+    return decodeURIComponent(String(value || fallback));
+  } catch {
+    return fallback;
+  }
+}
+
 function serializeMedia(row) {
   return {
     id: row.id,
@@ -987,13 +995,13 @@ router.get('/stream', (req, res) => {
   req.on('close', () => { clearInterval(heartbeat); unsubscribe(); });
 });
 
-router.post('/media', raw({ type: 'image/webp', limit: '3mb' }), asyncHandler(async (req, res) => {
+router.post('/media', raw({ type: 'image/webp', limit: '5mb' }), asyncHandler(async (req, res) => {
   const contentType = String(req.get('content-type') || '').toLowerCase();
   let asset;
   if (contentType.startsWith('image/webp')) {
     asset = await saveCatalogMediaAsset({
       webpBuffer: req.body,
-      webpName: req.get('x-file-name') || 'catalog-photo.webp'
+      webpName: decodeHeaderFileName(req.get('x-file-name'))
     });
   } else if (contentType.startsWith('application/json')) {
     const input = parseInput(mediaUploadSchema, req.body);
