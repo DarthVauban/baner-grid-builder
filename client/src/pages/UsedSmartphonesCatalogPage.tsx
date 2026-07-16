@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
@@ -248,6 +248,23 @@ function characteristicColorValue(value: unknown) {
   return { name: text, hex: fallbackHex };
 }
 
+function stableSnapshotValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableSnapshotValue);
+  if (value && typeof value === 'object') {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((snapshot, key) => {
+        snapshot[key] = stableSnapshotValue((value as Record<string, unknown>)[key]);
+        return snapshot;
+      }, {});
+  }
+  return value;
+}
+
+function stableSnapshot(value: unknown) {
+  return JSON.stringify(stableSnapshotValue(value));
+}
+
 function CharacteristicFieldControl({
   field,
   value,
@@ -325,7 +342,8 @@ function ProductEditorScreen({
   busy,
   onClose,
   onSubmit,
-  onProductUpdated
+  onProductUpdated,
+  onSwitchProduct
 }: {
   product: CatalogProduct | null;
   brands: CatalogBrand[];
@@ -333,7 +351,10 @@ function ProductEditorScreen({
   onClose: () => void;
   onSubmit: (input: CatalogProductInput, product: CatalogProduct | null) => Promise<CatalogProduct | null>;
   onProductUpdated: (product: CatalogProduct) => Promise<void> | void;
+  onSwitchProduct: (productId: string) => Promise<void> | void;
 }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [draft, setDraft] = useState<CatalogProductInput>(() => (
     product ? productToInput(product) : { ...emptyCatalogProductInput }
   ));
@@ -351,6 +372,14 @@ function ProductEditorScreen({
   const [modificationGroupLabel, setModificationGroupLabel] = useState('');
   const [selectedModificationProductIds, setSelectedModificationProductIds] = useState<string[]>([]);
   const [mainModificationProductId, setMainModificationProductId] = useState('');
+  const [characteristicsLoaded, setCharacteristicsLoaded] = useState(!product?.id);
+  const [modificationsLoaded, setModificationsLoaded] = useState(!product?.id);
+  const [savedSnapshot, setSavedSnapshot] = useState('');
+  const [leavePrompt, setLeavePrompt] = useState<null | { type: 'navigation' | 'action' | 'browser'; action?: () => void | Promise<void> }>(null);
+  const currentSnapshotRef = useRef('');
+  const currentLocationRef = useRef('');
+  const allowNextNavigationRef = useRef(false);
+  const browserUnloadArmedRef = useRef(false);
 
   const characteristicTemplates = useQuery<CatalogCharacteristicTemplate[]>({
     queryKey: ['catalog-characteristic-templates'],
@@ -386,20 +415,55 @@ function ProductEditorScreen({
     [productGroups.data, selectedModificationGroupId]
   );
   const editorBusy = busy || linkedSaveBusy;
+  const groupSwitchItems = productModifications.data?.items || [];
+  const editorSnapshot = useMemo(() => stableSnapshot({
+    draft,
+    selectedCharacteristicTemplateId,
+    characteristicValues,
+    selectedModificationGroupId,
+    modificationGroupLabel,
+    selectedModificationProductIds,
+    mainModificationProductId
+  }), [
+    characteristicValues,
+    draft,
+    mainModificationProductId,
+    modificationGroupLabel,
+    selectedCharacteristicTemplateId,
+    selectedModificationGroupId,
+    selectedModificationProductIds
+  ]);
+  const hasUnsavedChanges = Boolean(savedSnapshot && editorSnapshot !== savedSnapshot);
 
   useEffect(() => {
+    currentSnapshotRef.current = editorSnapshot;
+  }, [editorSnapshot]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) currentLocationRef.current = `${location.pathname}${location.search}${location.hash}`;
+  }, [hasUnsavedChanges, location.hash, location.pathname, location.search]);
+
+  useEffect(() => {
+    setDraft(product ? productToInput(product) : { ...emptyCatalogProductInput });
     setSelectedCharacteristicTemplateId('');
     setCharacteristicValues({});
     setSelectedModificationGroupId(newModificationGroupId);
     setModificationGroupLabel(product?.name || '');
     setSelectedModificationProductIds(product?.id ? [product.id] : []);
     setMainModificationProductId(product?.id || '');
+    setCharacteristicsLoaded(!product?.id);
+    setModificationsLoaded(!product?.id);
+    setSavedSnapshot('');
+    setLeavePrompt(null);
+    browserUnloadArmedRef.current = false;
+    allowNextNavigationRef.current = false;
   }, [product?.id]);
 
   useEffect(() => {
     if (!productCharacteristics.data) return;
     setSelectedCharacteristicTemplateId(productCharacteristics.data.templateId || '');
     setCharacteristicValues(productCharacteristics.data.values || {});
+    setCharacteristicsLoaded(true);
   }, [productCharacteristics.data]);
 
   useEffect(() => {
@@ -410,13 +474,85 @@ function ProductEditorScreen({
       ? productModifications.data.items.map((item) => item.id)
       : product?.id ? [product.id] : []);
     setMainModificationProductId(productModifications.data.mainProductId || product?.id || '');
+    setModificationsLoaded(true);
   }, [product?.id, product?.name, productModifications.data]);
+
+  useEffect(() => {
+    if (!product?.id || productCharacteristics.isLoading || productCharacteristics.data) return;
+    if (productCharacteristics.isError) setCharacteristicsLoaded(true);
+  }, [product?.id, productCharacteristics.data, productCharacteristics.isError, productCharacteristics.isLoading]);
+
+  useEffect(() => {
+    if (!product?.id || productModifications.isLoading || productModifications.data) return;
+    if (productModifications.isError) setModificationsLoaded(true);
+  }, [product?.id, productModifications.data, productModifications.isError, productModifications.isLoading]);
 
   useEffect(() => {
     if (!product || selectedCharacteristicTemplateId || productCharacteristics.isLoading) return;
     const firstTemplate = characteristicTemplates.data?.find((template) => template.active) || characteristicTemplates.data?.[0];
     if (firstTemplate) setSelectedCharacteristicTemplateId(firstTemplate.id);
   }, [characteristicTemplates.data, product, productCharacteristics.isLoading, selectedCharacteristicTemplateId]);
+
+  useEffect(() => {
+    if (savedSnapshot || !characteristicsLoaded || !modificationsLoaded) return undefined;
+    const timer = window.setTimeout(() => setSavedSnapshot(currentSnapshotRef.current), 0);
+    return () => window.clearTimeout(timer);
+  }, [characteristicsLoaded, modificationsLoaded, product?.id, savedSnapshot]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target.closest('a[href]') as HTMLAnchorElement | null : null;
+      if (!target || target.target && target.target !== '_self' || target.hasAttribute('download')) return;
+      const nextUrl = new URL(target.href, window.location.href);
+      if (nextUrl.origin !== window.location.origin) return;
+      const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+      const currentPath = `${location.pathname}${location.search}${location.hash}`;
+      if (nextPath === currentPath) return;
+      if (allowNextNavigationRef.current || leavePrompt) {
+        allowNextNavigationRef.current = false;
+        return;
+      }
+      event.preventDefault();
+      allowNextNavigationRef.current = true;
+      setLeavePrompt({ type: 'action', action: () => navigate(nextPath) });
+    };
+    document.addEventListener('click', handleDocumentClick, true);
+    return () => document.removeEventListener('click', handleDocumentClick, true);
+  }, [hasUnsavedChanges, leavePrompt, location.hash, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const handlePopState = (event: PopStateEvent) => {
+      if (allowNextNavigationRef.current) {
+        allowNextNavigationRef.current = false;
+        return;
+      }
+      const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const currentPath = currentLocationRef.current || `${location.pathname}${location.search}${location.hash}`;
+      if (nextPath === currentPath) return;
+      event.stopImmediatePropagation();
+      window.history.pushState(window.history.state, '', currentPath);
+      allowNextNavigationRef.current = true;
+      setLeavePrompt((current) => current || { type: 'action', action: () => navigate(nextPath) });
+    };
+    window.addEventListener('popstate', handlePopState, true);
+    return () => window.removeEventListener('popstate', handlePopState, true);
+  }, [hasUnsavedChanges, location.hash, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (browserUnloadArmedRef.current) return;
+      browserUnloadArmedRef.current = true;
+      setLeavePrompt((current) => current || { type: 'browser' });
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   const publishBlockers = useMemo(() => {
     const blockers = [];
@@ -457,6 +593,41 @@ function ProductEditorScreen({
 
   function setCharacteristicValue(key: string, value: unknown) {
     setCharacteristicValues((current) => ({ ...current, [key]: value }));
+  }
+
+  async function runAllowedAction(action?: () => void | Promise<void>) {
+    if (!action) return;
+    allowNextNavigationRef.current = true;
+    await action();
+  }
+
+  function requestGuardedAction(action: () => void | Promise<void>) {
+    if (!hasUnsavedChanges) {
+      void runAllowedAction(action);
+      return;
+    }
+    if (leavePrompt) {
+      setLeavePrompt(null);
+      void runAllowedAction(action);
+      return;
+    }
+    setLeavePrompt({ type: 'action', action });
+  }
+
+  async function discardUnsavedChanges() {
+    const prompt = leavePrompt;
+    setLeavePrompt(null);
+    browserUnloadArmedRef.current = true;
+    if (prompt?.action) await runAllowedAction(prompt.action);
+  }
+
+  async function saveBeforeLeaving() {
+    const prompt = leavePrompt;
+    const saved = await submitAll();
+    if (!saved) return;
+    setLeavePrompt(null);
+    browserUnloadArmedRef.current = false;
+    if (prompt?.action) await runAllowedAction(prompt.action);
   }
 
   function chooseModificationGroup(groupId: string) {
@@ -617,7 +788,10 @@ function ProductEditorScreen({
     try {
       const savedProduct = await onSubmit(draft, product);
       if (!savedProduct) return null;
-      return await saveLinkedProductData(savedProduct);
+      const saved = await saveLinkedProductData(savedProduct);
+      setSavedSnapshot(currentSnapshotRef.current);
+      browserUnloadArmedRef.current = false;
+      return saved;
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося зберегти всі дані товару.', 'error');
       return null;
@@ -641,12 +815,13 @@ function ProductEditorScreen({
 
   return <form className="catalog-editor-screen" onSubmit={(event) => void submit(event)}>
     <header className="catalog-editor-screen__topbar">
-      <button className="button button--secondary" type="button" onClick={onClose}><Icon name="arrowLeft" size={17} /> До списку</button>
+      <button className="button button--secondary" type="button" onClick={() => requestGuardedAction(onClose)}><Icon name="arrowLeft" size={17} /> До списку</button>
       <div className="catalog-editor-heading">
         <p className="eyebrow">{editorCode}</p>
         <h1 className="catalog-editor-title" data-full-title={editorTitle}><span>{editorTitle}</span></h1>
       </div>
       <div className="catalog-editor-controls">
+        {hasUnsavedChanges && <span className="catalog-unsaved-badge"><Icon name="schedule" size={15} /> Незбережені зміни</span>}
         <label className="catalog-editor-status">
           <span>Статус</span>
           <StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} ariaLabel="Статус публікації" compact />
@@ -658,6 +833,32 @@ function ProductEditorScreen({
         </div>
       </div>
     </header>
+
+    {groupSwitchItems.length > 1 && <nav className="catalog-editor-group-switcher" aria-label="Товари групи модифікацій">
+      <div>
+        <span>Група модифікацій</span>
+        <strong>{productModifications.data?.groupLabel || product?.modificationGroup?.groupLabel || 'Модифікації товару'}</strong>
+      </div>
+      <div className="catalog-editor-group-switcher__items">
+        {groupSwitchItems.map((item) => {
+          const active = item.id === product?.id;
+          const isMain = item.id === productModifications.data?.mainProductId;
+          return <button
+            className={`catalog-editor-group-switcher__item${active ? ' active' : ''}`}
+            type="button"
+            disabled={active}
+            key={item.id}
+            onClick={() => requestGuardedAction(() => onSwitchProduct(item.id))}
+          >
+            <CatalogMiniThumb imageUrl={item.mainImageUrl} className="catalog-editor-group-switcher__thumb" />
+            <span>
+              <strong>{item.name}</strong>
+              <small>{item.productCode} · {item.priceLabel}{isMain ? ' · Основний' : ''}</small>
+            </span>
+          </button>;
+        })}
+      </div>
+    </nav>}
 
     <div className="catalog-editor-screen__layout">
       <aside className="catalog-editor-tabs" aria-label="Розділи редактора">
@@ -871,6 +1072,27 @@ function ProductEditorScreen({
         </section>}
       </section>
     </div>
+    {leavePrompt && <div className="modal-backdrop modal-backdrop--nested" role="presentation">
+      <section className="modal catalog-unsaved-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-unsaved-title">
+        <header className="modal__header">
+          <div>
+            <p className="eyebrow">Незбережені зміни</p>
+            <h2 id="catalog-unsaved-title">Зміни в картці товару ще не збережені</h2>
+          </div>
+        </header>
+        <div className="catalog-unsaved-modal__content">
+          <span className="catalog-unsaved-modal__mark"><Icon name="schedule" size={24} /></span>
+          <div>
+            <p>Якщо вийти з редактора зараз, внесені зміни зітруться. Можна закрити редактор без збереження або спочатку зберегти зміни.</p>
+            {leavePrompt.type === 'browser' && <small>Для закриття вкладки браузер може показати власне системне підтвердження. Повторна спроба не буде зупинена.</small>}
+          </div>
+        </div>
+        <footer className="modal__footer catalog-unsaved-modal__footer">
+          <button className="button button--secondary" type="button" onClick={() => void discardUnsavedChanges()}>Закрити</button>
+          <button className="button button--primary" type="button" disabled={editorBusy} onClick={() => void saveBeforeLeaving()}><Icon name="save" size={17} /> Зберегти зміни</button>
+        </footer>
+      </section>
+    </div>}
   </form>;
 }
 
@@ -1286,6 +1508,18 @@ export function UsedSmartphonesCatalogPage() {
     setSearchParams(next, { replace: true });
   }
 
+  async function switchEditorProduct(productId: string) {
+    try {
+      const product = await api.catalog.get(productId);
+      setEditorProduct(product);
+      const next = new URLSearchParams(searchParams);
+      next.set('product', product.id);
+      setSearchParams(next, { replace: true });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося відкрити товар групи.', 'error');
+    }
+  }
+
   function closeEditor() {
     setEditorProduct(undefined);
     if (!searchParams.has('product')) return;
@@ -1418,6 +1652,7 @@ export function UsedSmartphonesCatalogPage() {
         setEditorProduct(saved);
         await refresh();
       }}
+      onSwitchProduct={switchEditorProduct}
     />;
   }
 
