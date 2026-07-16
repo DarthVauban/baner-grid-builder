@@ -5,7 +5,6 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
-import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import {
   catalogConditionOptions,
@@ -91,6 +90,12 @@ function ProductThumb({ product }: { product: CatalogProduct }) {
 }
 
 type CatalogEditorTab = 'main' | 'availability' | 'media' | 'description' | 'condition' | 'characteristics' | 'modifications' | 'seo' | 'internal';
+type CatalogDeleteGroupAction = 'disband' | 'promote';
+type CatalogDeleteChoice = {
+  product: CatalogProduct;
+  groupAction?: CatalogDeleteGroupAction;
+  newMainProductId?: string | null;
+};
 
 const editorTabs: Array<{ id: CatalogEditorTab; label: string }> = [
   { id: 'main', label: 'Основне' },
@@ -1099,8 +1104,10 @@ function ProductEditorScreen({
 function CatalogRow({
   product,
   busy,
+  selected,
   childrenCount = 0,
   expanded = false,
+  onSelect,
   onOpen,
   onQuickSave,
   onShare,
@@ -1110,8 +1117,10 @@ function CatalogRow({
 }: {
   product: CatalogProduct;
   busy: boolean;
+  selected: boolean;
   childrenCount?: number;
   expanded?: boolean;
+  onSelect: (product: CatalogProduct, selected: boolean) => void;
   onOpen: (product: CatalogProduct) => void;
   onQuickSave: (product: CatalogProduct, input: CatalogProductInput) => Promise<void>;
   onShare: (product: CatalogProduct) => void;
@@ -1128,6 +1137,9 @@ function CatalogRow({
   }
 
   return <article className="catalog-row">
+    <label className="catalog-row__select" onClick={(event) => event.stopPropagation()}>
+      <input type="checkbox" checked={selected} onChange={(event) => onSelect(product, event.target.checked)} aria-label={`Обрати ${product.name}`} />
+    </label>
     <div className={`catalog-row__product${childrenCount > 0 ? ' catalog-row__product--expandable' : ''}`}>
       {childrenCount > 0 && <button className="icon-button catalog-row__expand" type="button" title="Розгорнути модифікації" aria-label="Розгорнути модифікації" onClick={(event) => { event.stopPropagation(); onToggleChildren?.(); }}>
         <Icon name={expanded ? 'arrowDown' : 'arrowRight'} />
@@ -1148,7 +1160,7 @@ function CatalogRow({
       </button>}
       <button className="icon-button" type="button" title="Поділитися" aria-label="Поділитися" onClick={(event) => { event.stopPropagation(); onShare(product); }}><Icon name="share" /></button>
       <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label="Видалити" disabled={busy} onClick={(event) => { event.stopPropagation(); onDelete(product); }}><Icon name="delete" /></button>
-      <button className="button button--secondary button--small" type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void onQuickSave(product, draft); }}><Icon name="save" size={15} /> Save</button>
+      <button className="button button--secondary button--small catalog-row__save" type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void onQuickSave(product, draft); }}><Icon name="save" size={15} /> Save</button>
     </div>
   </article>;
 }
@@ -1348,6 +1360,147 @@ function ModificationManagerModal({
   </div>;
 }
 
+function CatalogDeleteProductsModal({
+  products,
+  busy,
+  onClose,
+  onConfirm
+}: {
+  products: CatalogProduct[];
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (choices: CatalogDeleteChoice[]) => Promise<void>;
+}) {
+  const selectedIds = useMemo(() => new Set(products.map((product) => product.id)), [products]);
+  const groupedMainProducts = useMemo(
+    () => products.filter((product) => product.modificationGroup?.isMain && (product.modificationChildren || []).length > 0),
+    [products]
+  );
+  const [groupActions, setGroupActions] = useState<Record<string, CatalogDeleteGroupAction>>({});
+  const [promotedIds, setPromotedIds] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const nextActions: Record<string, CatalogDeleteGroupAction> = {};
+    const nextPromoted: Record<string, string> = {};
+    groupedMainProducts.forEach((product) => {
+      const candidates = (product.modificationChildren || []).filter((child) => !selectedIds.has(child.id));
+      nextActions[product.id] = 'disband';
+      if (candidates[0]) nextPromoted[product.id] = candidates[0].id;
+    });
+    setGroupActions(nextActions);
+    setPromotedIds(nextPromoted);
+  }, [groupedMainProducts, selectedIds]);
+
+  function selectGroupAction(productId: string, action: CatalogDeleteGroupAction) {
+    setGroupActions((current) => ({ ...current, [productId]: action }));
+  }
+
+  function selectPromotedProduct(productId: string, promotedProductId: string) {
+    setGroupActions((current) => ({ ...current, [productId]: 'promote' }));
+    setPromotedIds((current) => ({ ...current, [productId]: promotedProductId }));
+  }
+
+  async function submitDelete() {
+    const choices = products.map((product) => {
+      const isMainGroupProduct = product.modificationGroup?.isMain && (product.modificationChildren || []).length > 0;
+      if (!isMainGroupProduct) return { product };
+      const groupAction = groupActions[product.id] || 'disband';
+      return {
+        product,
+        groupAction,
+        newMainProductId: groupAction === 'promote' ? promotedIds[product.id] || null : null
+      };
+    });
+    await onConfirm(choices);
+  }
+
+  const title = products.length > 1 ? 'Видалити товари?' : 'Видалити товар?';
+
+  return <div className="modal-backdrop" role="presentation">
+    <section className="modal catalog-delete-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-delete-title">
+      <header className="modal__header">
+        <div>
+          <p className="eyebrow">Архівація</p>
+          <h2 id="catalog-delete-title">{title}</h2>
+          <p>{products.length > 1 ? `Буде видалено з активного каталогу: ${products.length}` : products[0]?.name}</p>
+        </div>
+        <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" /></button>
+      </header>
+
+      <div className="catalog-delete-modal__content">
+        <div className="catalog-editor-notice catalog-delete-modal__notice">
+          Товари будуть перенесені в архів і зникнуть з активного каталогу. Дочірні товари групи не видаляються автоматично.
+        </div>
+
+        <div className="catalog-delete-products">
+          {products.map((product) => <article className="catalog-delete-product" key={product.id}>
+            <CatalogMiniThumb imageUrl={product.mainImageUrl} className="catalog-delete-product__thumb" />
+            <span>
+              <strong>{product.name}</strong>
+              <small>{product.productCode} · {product.publicationStatusLabel}</small>
+            </span>
+          </article>)}
+        </div>
+
+        {groupedMainProducts.map((product) => {
+          const children = product.modificationChildren || [];
+          const candidates = children.filter((child) => !selectedIds.has(child.id));
+          const action = groupActions[product.id] || 'disband';
+          return <section className="catalog-delete-group" key={product.id}>
+            <header>
+              <Icon name="variants" size={20} />
+              <div>
+                <strong>Основний товар групи буде видалено</strong>
+                <p>Група “{product.modificationGroup?.groupLabel || product.name}” зміниться. Оберіть, що зробити з товарами всередині групи.</p>
+              </div>
+            </header>
+            <div className="catalog-delete-group__products">
+              {[product, ...children].map((item) => <article className="catalog-delete-product catalog-delete-product--compact" key={item.id}>
+                <CatalogMiniThumb imageUrl={item.mainImageUrl} className="catalog-delete-product__thumb" />
+                <span>
+                  <strong>{item.name}</strong>
+                  <small>{item.id === product.id ? 'Поточний основний' : 'Модифікація'}</small>
+                </span>
+              </article>)}
+            </div>
+            <div className="catalog-delete-options">
+              <label className={`catalog-delete-option${action === 'disband' ? ' active' : ''}`}>
+                <input type="radio" name={`group-action-${product.id}`} checked={action === 'disband'} onChange={() => selectGroupAction(product.id, 'disband')} />
+                <span>
+                  <strong>Розформувати групу</strong>
+                  <small>Усі товари групи стануть одиночними товарами.</small>
+                </span>
+              </label>
+              <label className={`catalog-delete-option${action === 'promote' ? ' active' : ''}${!candidates.length ? ' disabled' : ''}`}>
+                <input type="radio" name={`group-action-${product.id}`} checked={action === 'promote'} disabled={!candidates.length} onChange={() => selectGroupAction(product.id, 'promote')} />
+                <span>
+                  <strong>Призначити новий основний товар</strong>
+                  <small>{candidates.length ? 'Оберіть одну з модифікацій, яка стане головною.' : 'Немає доступних товарів для призначення.'}</small>
+                </span>
+              </label>
+              {candidates.length > 0 && <div className="catalog-delete-promote-list">
+                {candidates.map((child) => <label className={`catalog-delete-promote${action === 'promote' && promotedIds[product.id] === child.id ? ' active' : ''}`} key={child.id}>
+                  <input type="checkbox" checked={promotedIds[product.id] === child.id && action === 'promote'} onChange={() => selectPromotedProduct(product.id, child.id)} />
+                  <CatalogMiniThumb imageUrl={child.mainImageUrl} className="catalog-delete-product__thumb" />
+                  <span>
+                    <strong>{child.name}</strong>
+                    <small>{child.productCode} · {child.priceLabel}</small>
+                  </span>
+                </label>)}
+              </div>}
+            </div>
+          </section>;
+        })}
+      </div>
+
+      <footer className="modal__footer">
+        <button className="button button--secondary" type="button" disabled={busy} onClick={onClose}>Скасувати</button>
+        <button className="button button--danger" type="button" disabled={busy} onClick={() => void submitDelete()}><Icon name="delete" size={17} /> Видалити</button>
+      </footer>
+    </section>
+  </div>;
+}
+
 function ImportModal({
   busy,
   preview,
@@ -1420,7 +1573,6 @@ function ImportModal({
 export function UsedSmartphonesCatalogPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const confirm = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [condition, setCondition] = useState<CatalogCondition | 'all'>('all');
@@ -1435,6 +1587,10 @@ export function UsedSmartphonesCatalogPage() {
   const [settingsOrigin, setSettingsOrigin] = useState('');
   const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>([]);
   const [modificationProduct, setModificationProduct] = useState<CatalogProduct | null>(null);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [bulkStatus, setBulkStatus] = useState<CatalogPublicationStatus>('DRAFT');
+  const [deleteProducts, setDeleteProducts] = useState<CatalogProduct[] | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const sharedProductId = searchParams.get('product');
   const queryParams = useMemo(() => ({ search, condition, status, availability, sort, page, pageSize: 25 }), [availability, condition, page, search, sort, status]);
 
@@ -1462,7 +1618,8 @@ export function UsedSmartphonesCatalogPage() {
     )
   });
   const removeProduct = useMutation({
-    mutationFn: (product: CatalogProduct) => api.catalog.remove(product.id, product.version)
+    mutationFn: ({ product, groupAction, newMainProductId }: CatalogDeleteChoice) =>
+      api.catalog.remove(product.id, product.version, { groupAction, newMainProductId })
   });
   const previewImport = useMutation({ mutationFn: api.catalog.previewImport });
   const commitImport = useMutation({
@@ -1470,7 +1627,7 @@ export function UsedSmartphonesCatalogPage() {
       api.catalog.commitImport(rows, options)
   });
   const updateSettings = useMutation({ mutationFn: api.catalog.updateStorefrontSettings });
-  const busy = saveProduct.isPending || removeProduct.isPending || commitImport.isPending || updateSettings.isPending;
+  const busy = saveProduct.isPending || removeProduct.isPending || commitImport.isPending || updateSettings.isPending || bulkBusy;
 
   useEffect(() => {
     if (!storefrontSettings.data) return;
@@ -1560,22 +1717,45 @@ export function UsedSmartphonesCatalogPage() {
     }
   }
 
-  async function deleteCatalogProduct(product: CatalogProduct) {
-    const confirmed = await confirm({
-      title: 'Видалити товар?',
-      message: `Товар "${product.name}" буде перенесено в архів і зникне з активного каталогу.`,
-      confirmLabel: 'Видалити',
-      cancelLabel: 'Скасувати',
-      tone: 'danger'
-    });
-    if (!confirmed) return;
+  function deleteCatalogProduct(product: CatalogProduct) {
+    setDeleteProducts([product]);
+  }
+
+  async function confirmDeleteCatalogProducts(choices: CatalogDeleteChoice[]) {
     try {
-      await removeProduct.mutateAsync(product);
-      showToast('Товар видалено з каталогу.');
-      if (modificationProduct?.id === product.id) setModificationProduct(null);
+      setBulkBusy(true);
+      for (const choice of choices) {
+        await removeProduct.mutateAsync(choice);
+      }
+      showToast(choices.length > 1 ? 'Товари видалено з каталогу.' : 'Товар видалено з каталогу.');
+      if (modificationProduct && choices.some((choice) => choice.product.id === modificationProduct.id)) setModificationProduct(null);
+      setDeleteProducts(null);
+      setSelectedProductIds((current) => current.filter((id) => !choices.some((choice) => choice.product.id === id)));
       await refresh();
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося видалити товар.', 'error');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkChangePublicationStatus(productsToUpdate: CatalogProduct[]) {
+    if (!productsToUpdate.length) return;
+    try {
+      setBulkBusy(true);
+      for (const product of productsToUpdate) {
+        await saveProduct.mutateAsync({
+          product,
+          input: { ...productToInput(product), publicationStatus: bulkStatus }
+        });
+      }
+      showToast('Статус вибраних товарів оновлено.');
+      setSelectedProductIds([]);
+      await refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося змінити статус вибраних товарів.', 'error');
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -1639,7 +1819,45 @@ export function UsedSmartphonesCatalogPage() {
     || !product.modificationGroup.mainProductId
     || !rowIds.has(product.modificationGroup.mainProductId)
   ));
+  const loadedRows = useMemo(() => rows.flatMap((product) => [product, ...(product.modificationChildren || [])]), [rows]);
+  const loadedProductById = useMemo(() => new Map(loadedRows.map((product) => [product.id, product])), [loadedRows]);
+  const visibleRows = useMemo(() => topRows.flatMap((product) => {
+    const groupId = product.modificationGroup?.groupId || '';
+    const children = groupId && expandedGroupIds.includes(groupId) ? product.modificationChildren || [] : [];
+    return [product, ...children];
+  }), [expandedGroupIds, topRows]);
+  const selectedProducts = selectedProductIds.map((id) => loadedProductById.get(id)).filter((product): product is CatalogProduct => Boolean(product));
+  const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((product) => selectedProductIds.includes(product.id));
   const publishedForms = (forms.data || []).filter((form) => form.status === 'published');
+
+  useEffect(() => {
+    const loadedIds = new Set(loadedRows.map((product) => product.id));
+    setSelectedProductIds((current) => {
+      const next = current.filter((id) => loadedIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [loadedRows]);
+
+  function selectCatalogProduct(product: CatalogProduct, selected: boolean) {
+    setSelectedProductIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(product.id);
+      else next.delete(product.id);
+      return [...next];
+    });
+  }
+
+  function selectVisibleProducts(selected: boolean) {
+    const visibleIds = visibleRows.map((product) => product.id);
+    setSelectedProductIds((current) => {
+      const next = new Set(current);
+      visibleIds.forEach((id) => {
+        if (selected) next.add(id);
+        else next.delete(id);
+      });
+      return [...next];
+    });
+  }
 
   if (editorProduct !== undefined) {
     return <ProductEditorScreen
@@ -1691,7 +1909,21 @@ export function UsedSmartphonesCatalogPage() {
     </section>
 
     <section className="catalog-table">
+      {selectedProducts.length > 0 && <div className="catalog-bulk-bar">
+        <div className="catalog-bulk-bar__summary">
+          <strong>{selectedProducts.length} вибрано</strong>
+          <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => setSelectedProductIds([])}>Скинути</button>
+        </div>
+        <div className="catalog-bulk-bar__actions">
+          <StyledSelect value={bulkStatus} options={catalogPublicationStatusOptions} onChange={(value) => setBulkStatus(value as CatalogPublicationStatus)} compact />
+          <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => void bulkChangePublicationStatus(selectedProducts)}><Icon name="publication" size={15} /> Змінити статус</button>
+          <button className="button button--danger button--small" type="button" disabled={busy} onClick={() => setDeleteProducts(selectedProducts)}><Icon name="delete" size={15} /> Видалити</button>
+        </div>
+      </div>}
       <div className="catalog-table__head">
+        <label className="catalog-row__select catalog-row__select--head">
+          <input type="checkbox" checked={allVisibleSelected} disabled={!visibleRows.length} onChange={(event) => selectVisibleProducts(event.target.checked)} aria-label="Обрати всі видимі товари" />
+        </label>
         <span>Товар</span><span>Ціна</span><span>Залишок</span><span>В дорозі</span><span>Статус</span><span>Наявність</span><span>Дії</span>
       </div>
       {topRows.map((product) => {
@@ -1702,8 +1934,10 @@ export function UsedSmartphonesCatalogPage() {
           <CatalogRow
             product={product}
             busy={busy}
+            selected={selectedProductIds.includes(product.id)}
             childrenCount={children.length}
             expanded={expanded}
+            onSelect={selectCatalogProduct}
             onToggleChildren={() => setExpandedGroupIds((current) => (
               current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
             ))}
@@ -1718,6 +1952,8 @@ export function UsedSmartphonesCatalogPage() {
               key={child.id}
               product={child}
               busy={busy}
+              selected={selectedProductIds.includes(child.id)}
+              onSelect={selectCatalogProduct}
               onOpen={openProduct}
               onQuickSave={quickSave}
               onShare={(item) => void shareProduct(item)}
@@ -1752,6 +1988,12 @@ export function UsedSmartphonesCatalogPage() {
       onSaved={async () => {
         await refresh();
       }}
+    />}
+    {deleteProducts && <CatalogDeleteProductsModal
+      products={deleteProducts}
+      busy={busy}
+      onClose={() => setDeleteProducts(null)}
+      onConfirm={confirmDeleteCatalogProducts}
     />}
   </div>;
 }

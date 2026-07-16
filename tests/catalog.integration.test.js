@@ -334,6 +334,78 @@ test('catalog products publish to storefront, import stock updates, and create a
   const mainAfterVariantDelete = catalogAfterVariantDelete.body.data.items.find((item) => item.id === created.body.data.id);
   assert.equal(mainAfterVariantDelete.modificationGroup.childCount, 0);
 
+  async function createDeleteGroupProduct(name) {
+    return admin.post('/api/catalog/products').send({
+      name,
+      condition: 'USED',
+      stockCount: 1,
+      incomingCount: 0,
+      priceUah: 1000,
+      publicationStatus: 'DRAFT',
+      slug: '',
+      brandId: null,
+      mainImageUrl: '',
+      gallery: [],
+      shortDescription: '',
+      description: '',
+      seoTitle: '',
+      seoDescription: '',
+      socialDescription: '',
+      bodyCondition: '',
+      displayCondition: '',
+      batteryHealth: '',
+      warranty: '',
+      includedAccessories: '',
+      diagnostics: {},
+      internalNotes: ''
+    }).expect(201);
+  }
+
+  const promoteMain = await createDeleteGroupProduct('Delete group promote main');
+  const promoteChild = await createDeleteGroupProduct('Delete group promote child');
+  const promotedGroup = await admin.put(`/api/catalog/products/${promoteMain.body.data.id}/modifications`).send({
+    groupId: null,
+    groupLabel: 'Delete group promote',
+    mainProductId: promoteMain.body.data.id,
+    productIds: [promoteMain.body.data.id, promoteChild.body.data.id],
+    expectedVersion: promoteMain.body.data.version
+  }).expect(200);
+
+  await admin.delete(`/api/catalog/products/${promoteMain.body.data.id}`).send({
+    expectedVersion: promotedGroup.body.data.version,
+    groupAction: 'promote',
+    newMainProductId: promoteChild.body.data.id
+  }).expect(204);
+
+  const archivedPromoteMain = await admin.get(`/api/catalog/products/${promoteMain.body.data.id}`).expect(200);
+  assert.equal(archivedPromoteMain.body.data.publicationStatus, 'ARCHIVED');
+  const promotedChild = await admin.get(`/api/catalog/products/${promoteChild.body.data.id}`).expect(200);
+  assert.equal(promotedChild.body.data.publicationStatus, 'DRAFT');
+  const promotedCatalog = await admin.get('/api/catalog/products?search=Delete%20group%20promote&pageSize=25').expect(200);
+  const promotedChildRow = promotedCatalog.body.data.items.find((item) => item.id === promoteChild.body.data.id);
+  assert.equal(promotedChildRow.modificationGroup.isMain, true);
+  assert.equal(promotedChildRow.modificationGroup.childCount, 0);
+
+  const disbandMain = await createDeleteGroupProduct('Delete group disband main');
+  const disbandChild = await createDeleteGroupProduct('Delete group disband child');
+  const disbandGroup = await admin.put(`/api/catalog/products/${disbandMain.body.data.id}/modifications`).send({
+    groupId: null,
+    groupLabel: 'Delete group disband',
+    mainProductId: disbandMain.body.data.id,
+    productIds: [disbandMain.body.data.id, disbandChild.body.data.id],
+    expectedVersion: disbandMain.body.data.version
+  }).expect(200);
+
+  await admin.delete(`/api/catalog/products/${disbandMain.body.data.id}`).send({
+    expectedVersion: disbandGroup.body.data.version,
+    groupAction: 'disband'
+  }).expect(204);
+
+  const disbandCatalog = await admin.get('/api/catalog/products?search=Delete%20group%20disband&pageSize=25').expect(200);
+  const disbandChildRow = disbandCatalog.body.data.items.find((item) => item.id === disbandChild.body.data.id);
+  assert.equal(disbandChildRow.publicationStatus, 'DRAFT');
+  assert.equal(disbandChildRow.modificationGroup, undefined);
+
   const duplicatePreview = await admin.post('/api/catalog/imports/preview').send({
     rows: [
       { 'Назва': 'iPhone 13 128GB Midnight', 'Статус': 'Вживаний', 'Залишок': 2, 'В дорозі': 1, 'Ціна': 17999 },

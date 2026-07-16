@@ -87,7 +87,9 @@ const statusSchema = z.object({
   expectedVersion: z.coerce.number().int().min(1)
 });
 const deleteProductSchema = z.object({
-  expectedVersion: z.coerce.number().int().min(1)
+  expectedVersion: z.coerce.number().int().min(1),
+  groupAction: z.enum(['disband', 'promote']).optional(),
+  newMainProductId: z.string().uuid().nullable().optional()
 });
 const brandInputSchema = z.object({
   label: z.string().trim().min(1).max(160),
@@ -769,7 +771,7 @@ async function syncProductGroupModifications(db, groupId, mainProductId, product
   }
 }
 
-async function detachProductFromModificationGroups(db, productId) {
+async function detachProductFromModificationGroups(db, productId, options = {}) {
   const groups = await db.query(
     `SELECT DISTINCT groups.id, groups.main_product_id
      FROM used_smartphone_product_groups AS groups
@@ -783,6 +785,44 @@ async function detachProductFromModificationGroups(db, productId) {
 
   for (const group of groups.rows) {
     if (group.main_product_id !== productId) continue;
+    if (options.groupAction === 'disband') {
+      await db.query('DELETE FROM used_smartphone_product_group_items WHERE group_id = $1', [group.id]);
+      await db.query(
+        `UPDATE used_smartphone_product_groups
+         SET main_product_id = NULL, active = FALSE, updated_at = NOW()
+         WHERE id = $1`,
+        [group.id]
+      );
+      continue;
+    }
+    if (options.groupAction === 'promote' && options.newMainProductId) {
+      const promoted = await db.query(
+        `SELECT product.id
+         FROM used_smartphone_product_group_items AS items
+         INNER JOIN used_smartphone_products AS product ON product.id = items.product_id
+         WHERE items.group_id = $1
+           AND product.id = $2
+           AND product.publication_status <> 'ARCHIVED'
+         LIMIT 1`,
+        [group.id, options.newMainProductId]
+      );
+      if (!promoted.rows[0]) {
+        throw new AppError(422, 'CATALOG_GROUP_MAIN_INVALID', 'Новий основний товар не знайдено у цій групі або він архівований.');
+      }
+      await db.query(
+        `UPDATE used_smartphone_product_groups
+         SET main_product_id = $1, active = TRUE, updated_at = NOW()
+         WHERE id = $2`,
+        [options.newMainProductId, group.id]
+      );
+      await db.query(
+        `UPDATE used_smartphone_product_group_items
+         SET sort_order = 0
+         WHERE group_id = $1 AND product_id = $2`,
+        [group.id, options.newMainProductId]
+      );
+      continue;
+    }
     const nextMain = await db.query(
       `SELECT product.id
        FROM used_smartphone_product_group_items AS items
@@ -1623,7 +1663,10 @@ router.delete('/products/:id', asyncHandler(async (req, res) => {
       throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
     }
     previousStatus = current.publication_status;
-    touchedGroups = await detachProductFromModificationGroups(client, id);
+    touchedGroups = await detachProductFromModificationGroups(client, id, {
+      groupAction: input.groupAction,
+      newMainProductId: input.newMainProductId || null
+    });
     await client.query(
       `UPDATE used_smartphone_products
        SET publication_status = 'ARCHIVED',
