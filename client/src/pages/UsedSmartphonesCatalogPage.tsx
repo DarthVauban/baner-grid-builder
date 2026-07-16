@@ -1200,6 +1200,7 @@ function CatalogRow({
       {onModifications && <button className="button button--secondary button--small catalog-row__modifications" type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); onModifications(product); }}>
         <Icon name="variants" size={15} /> Модифікації
       </button>}
+      <a className="icon-button catalog-row__preview" href={catalogPreviewPath(product)} target="_blank" rel="noreferrer" title="Відкрити сторінку товару" aria-label="Відкрити сторінку товару" onClick={(event) => event.stopPropagation()}><Icon name="openInNew" /></a>
       <button className="icon-button" type="button" title="Поділитися" aria-label="Поділитися" onClick={(event) => { event.stopPropagation(); onShare(product); }}><Icon name="share" /></button>
       <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label="Видалити" disabled={busy} onClick={(event) => { event.stopPropagation(); onDelete(product); }}><Icon name="delete" /></button>
       <button className="button button--secondary button--small catalog-row__save" type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void onQuickSave(product, draft); }}><Icon name="save" size={15} /> Save</button>
@@ -1925,6 +1926,7 @@ export function UsedSmartphonesCatalogPage() {
         <h1>Каталог смартфонів</h1>
       </div>
       <div className="task-toolbar__controls">
+        <a className="button button--secondary" href="/catalog/preview/storefront" target="_blank" rel="noreferrer"><Icon name="openInNew" /> Відкрити вітрину</a>
         <button className="button button--secondary" type="button" onClick={downloadImportTemplate}><Icon name="productTables" /> Шаблон XLSX</button>
         <button className="button button--secondary" type="button" onClick={() => { setImportPreview(null); setImportOpen(true); }}><Icon name="upload" /> Імпорт XLSX</button>
         <button className="button button--primary" type="button" onClick={() => setEditorProduct(null)}><Icon name="add" /> Новий товар</button>
