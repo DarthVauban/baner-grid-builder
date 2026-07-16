@@ -26,6 +26,7 @@ import type {
 type PublicForm = Awaited<ReturnType<typeof api.storefront.form>>;
 type PublicField = PublicForm['fields'][number];
 type StorefrontGalleryImage = { url: string; alt: string };
+type StorefrontProductTab = 'description' | 'characteristics';
 
 const sortOptions = [
   { value: 'updated_desc', label: 'Нові оновлення' },
@@ -198,6 +199,46 @@ function StorefrontCharacteristics({ product }: { product: CatalogProduct }) {
         <dd>{item.displayValue}</dd>
       </div>)}
     </dl>
+  </section>;
+}
+
+function StorefrontProductTabs({ product }: { product: CatalogProduct }) {
+  const hasDescription = Boolean(product.descriptionHtml);
+  const hasCharacteristics = Boolean(product.characteristics?.items?.length);
+  const [activeTab, setActiveTab] = useState<StorefrontProductTab>(hasDescription ? 'description' : 'characteristics');
+
+  useEffect(() => {
+    if (activeTab === 'description' && !hasDescription && hasCharacteristics) setActiveTab('characteristics');
+    if (activeTab === 'characteristics' && !hasCharacteristics && hasDescription) setActiveTab('description');
+  }, [activeTab, hasCharacteristics, hasDescription, product.productCode]);
+
+  if (!hasDescription && !hasCharacteristics) return null;
+
+  return <section className="storefront-product-tabs">
+    <div className="storefront-product-tabs__nav" role="tablist" aria-label="Інформація про товар">
+      {hasDescription && <button
+        className={activeTab === 'description' ? 'active' : ''}
+        type="button"
+        role="tab"
+        aria-selected={activeTab === 'description'}
+        onClick={() => setActiveTab('description')}
+      >
+        Опис
+      </button>}
+      {hasCharacteristics && <button
+        className={activeTab === 'characteristics' ? 'active' : ''}
+        type="button"
+        role="tab"
+        aria-selected={activeTab === 'characteristics'}
+        onClick={() => setActiveTab('characteristics')}
+      >
+        Характеристики
+      </button>}
+    </div>
+    <div className="storefront-product-tabs__panel" role="tabpanel">
+      {activeTab === 'description' && hasDescription ? <StorefrontDescription product={product} /> : null}
+      {activeTab === 'characteristics' && hasCharacteristics ? <StorefrontCharacteristics product={product} /> : null}
+    </div>
   </section>;
 }
 
@@ -694,7 +735,6 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
     <section className="storefront-detail">
       <div className="storefront-detail__media">
         <ProductGallery product={productData} />
-        <StorefrontDescription product={productData} />
       </div>
       <div className="storefront-detail__main">
       <article className="storefront-detail__info">
@@ -711,9 +751,9 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
           {preview ? 'Preview без заявки' : productData.availability.status === 'unavailable' ? 'Немає в наявності' : form.data ? 'Оформити заявку' : 'Заявка недоступна'} <Icon name="arrowRight" size={16} />
         </button>
       </article>
-      <StorefrontCharacteristics product={productData} />
       </div>
     </section>
+    <StorefrontProductTabs product={productData} />
     {requestOpen && canRequestProduct && <StorefrontApplicationModal product={productData} form={form.data} onClose={() => setRequestOpen(false)} />}
     </> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
       <div className="storefront-hero">
