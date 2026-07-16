@@ -26,7 +26,6 @@ import type {
 type PublicForm = Awaited<ReturnType<typeof api.storefront.form>>;
 type PublicField = PublicForm['fields'][number];
 type StorefrontGalleryImage = { url: string; alt: string };
-type StorefrontProductTab = 'description' | 'characteristics';
 
 const sortOptions = [
   { value: 'updated_desc', label: 'Нові оновлення' },
@@ -196,54 +195,34 @@ function baseSpecItems(product: CatalogProduct) {
 function StorefrontCharacteristics({ product }: { product: CatalogProduct }) {
   const items = product.characteristics?.items || [];
   if (!items.length) return null;
-  return <section className="storefront-characteristics">
-    <h2>Характеристики</h2>
-    <dl>
-      {items.map((item) => <div key={item.key}>
-        <dt>{item.label}</dt>
-        <dd>{item.displayValue}</dd>
-      </div>)}
-    </dl>
-  </section>;
+  return <dl className="storefront-characteristics">
+    {items.map((item) => <div key={item.key}>
+      <dt>{item.label}</dt>
+      <dd>{item.displayValue}</dd>
+    </div>)}
+  </dl>;
 }
 
-function StorefrontProductInfoTabs({ product }: { product: CatalogProduct }) {
+function StorefrontProductInformation({ product }: { product: CatalogProduct }) {
   const hasDescription = Boolean(product.descriptionHtml);
   const hasCharacteristics = Boolean(product.characteristics?.items?.length);
-  const [activeTab, setActiveTab] = useState<StorefrontProductTab>(hasDescription ? 'description' : 'characteristics');
-
-  useEffect(() => {
-    if (activeTab === 'description' && !hasDescription && hasCharacteristics) setActiveTab('characteristics');
-    if (activeTab === 'characteristics' && !hasCharacteristics && hasDescription) setActiveTab('description');
-  }, [activeTab, hasCharacteristics, hasDescription, product.productCode]);
-
   if (!hasDescription && !hasCharacteristics) return null;
 
-  return <section className="storefront-product-info-card">
-    <div className="storefront-product-info-card__tabs" role="tablist" aria-label="Інформація про товар">
-      {hasDescription && <button
-        className={activeTab === 'description' ? 'active' : ''}
-        type="button"
-        role="tab"
-        aria-selected={activeTab === 'description'}
-        onClick={() => setActiveTab('description')}
-      >
-        Опис
-      </button>}
-      {hasCharacteristics && <button
-        className={activeTab === 'characteristics' ? 'active' : ''}
-        type="button"
-        role="tab"
-        aria-selected={activeTab === 'characteristics'}
-        onClick={() => setActiveTab('characteristics')}
-      >
-        Характеристики
-      </button>}
-    </div>
-    <div className="storefront-product-info-card__panel" role="tabpanel">
-      {activeTab === 'description' && hasDescription ? <StorefrontDescription product={product} /> : null}
-      {activeTab === 'characteristics' && hasCharacteristics ? <StorefrontCharacteristics product={product} /> : null}
-    </div>
+  return <section className="storefront-product-content" aria-label="Інформація про товар">
+    {hasDescription && <div className="storefront-product-content__section storefront-product-content__section--description">
+      <header className="storefront-product-content__header">
+        <span>Про товар</span>
+        <h2>Опис товару</h2>
+      </header>
+      <StorefrontDescription product={product} />
+    </div>}
+    {hasCharacteristics && <div className="storefront-product-content__section storefront-product-content__section--characteristics">
+      <header className="storefront-product-content__header">
+        <span>Детальні дані</span>
+        <h2>Характеристики</h2>
+      </header>
+      <StorefrontCharacteristics product={product} />
+    </div>}
   </section>;
 }
 
@@ -289,7 +268,7 @@ function StorefrontModifications({ product, preview }: { product: CatalogProduct
   </div>;
 }
 
-function StorefrontProductDetailPage({
+export function StorefrontProductDetailPage({
   product,
   preview,
   basePath,
@@ -311,37 +290,41 @@ function StorefrontProductDetailPage({
         ? 'Оформити заявку'
         : 'Заявка недоступна';
 
-  return <section className="storefront-product-page" data-product-detail="new">
-    <div className="storefront-product-page__top">
-      <section className="storefront-product-page__gallery" aria-label="Фото товару">
+  return <section className="storefront-product-view" data-product-detail="rebuilt">
+    <div className="storefront-product-view__hero">
+      <section className="storefront-product-view__media" aria-label="Фото товару">
         <ProductGallery product={product} />
       </section>
-      <article className="storefront-product-page__summary">
+      <article className="storefront-product-view__details">
         <Link to={basePath} className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>
-        <div className="storefront-product-page__meta">
-          <span>{product.productCode}</span>
-          <span>{product.conditionLabel}</span>
-          {product.brand?.label && <span>{product.brand.label}</span>}
+        <div className="storefront-product-view__body">
+          <div className="storefront-product-view__meta">
+            <span>{product.productCode}</span>
+            <span>{product.conditionLabel}</span>
+            {product.brand?.label && <span>{product.brand.label}</span>}
+          </div>
+          <h1>{product.name}</h1>
+          <div className="storefront-product-view__purchase">
+            <strong>{product.priceLabel}</strong>
+            <span>{product.availability.label}</span>
+          </div>
+          {product.shortDescription && <p className="storefront-product-view__lead">{product.shortDescription}</p>}
+          {specs.length > 0 && <dl className="storefront-product-view__specs">
+            {specs.map((item) => <div key={item.label}>
+              <dt>{item.label}</dt>
+              <dd>{item.value}</dd>
+            </div>)}
+          </dl>}
+          <StorefrontModifications product={product} preview={preview} />
         </div>
-        <h1>{product.name}</h1>
-        <div className="storefront-product-page__purchase">
-          <strong>{product.priceLabel}</strong>
-          <span>{product.availability.label}</span>
+        <div className="storefront-product-view__footer">
+          <button className="button button--primary storefront-product-view__action" type="button" disabled={!canRequestProduct} onClick={onRequest}>
+            {actionLabel} <Icon name="arrowRight" size={16} />
+          </button>
         </div>
-        {product.shortDescription && <p className="storefront-product-page__lead">{product.shortDescription}</p>}
-        {specs.length > 0 && <dl className="storefront-product-page__specs">
-          {specs.map((item) => <div key={item.label}>
-            <dt>{item.label}</dt>
-            <dd>{item.value}</dd>
-          </div>)}
-        </dl>}
-        <StorefrontModifications product={product} preview={preview} />
-        <button className="button button--primary storefront-product-page__action" type="button" disabled={!canRequestProduct} onClick={onRequest}>
-          {actionLabel} <Icon name="arrowRight" size={16} />
-        </button>
       </article>
     </div>
-    <StorefrontProductInfoTabs product={product} />
+    <StorefrontProductInformation product={product} />
   </section>;
 }
 
