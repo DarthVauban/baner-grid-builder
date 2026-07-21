@@ -3,6 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AppShell } from '../components/AppShell';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { ServiceUnavailableScreen } from '../components/ServiceUnavailableScreen';
 import { DashboardPage } from '../pages/DashboardPage';
 import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
@@ -61,6 +62,7 @@ function ProtectedRoute() {
   const location = useLocation();
 
   if (status === 'loading') return <LoadingScreen />;
+  if (status === 'unavailable') return <ServiceUnavailableScreen />;
   if (status === 'anonymous') {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
@@ -70,6 +72,7 @@ function ProtectedRoute() {
 function AnonymousRoute() {
   const { status } = useAuth();
   if (status === 'loading') return <LoadingScreen />;
+  if (status === 'unavailable') return <ServiceUnavailableScreen />;
   if (status === 'authenticated') return <Navigate to="/" replace />;
   return <Outlet />;
 }

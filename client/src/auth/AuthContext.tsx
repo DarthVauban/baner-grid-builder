@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import type {
   LoginInput,
   ProfileInput,
@@ -13,7 +13,7 @@ import type {
   User
 } from '../types/user';
 
-type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
+type AuthStatus = 'loading' | 'authenticated' | 'anonymous' | 'unavailable';
 
 interface AuthContextValue {
   user: User | null;
@@ -28,6 +28,10 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+function isAuthenticationError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
@@ -49,8 +53,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setUser(currentUser);
         setStatus('authenticated');
       })
-      .catch(() => {
-        if (active) clearSession();
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (isAuthenticationError(error)) {
+          clearSession();
+          return;
+        }
+
+        // A temporary API/database outage must not destroy a valid browser session.
+        setStatus('unavailable');
       });
 
     const handleUnauthorized = () => clearSession();
@@ -93,11 +104,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const refreshUser = useCallback(async () => {
-    const currentUser = await api.auth.me();
-    setUser(currentUser);
-    setStatus('authenticated');
-    return currentUser;
-  }, []);
+    setStatus('loading');
+    try {
+      const currentUser = await api.auth.me();
+      setUser(currentUser);
+      setStatus('authenticated');
+      return currentUser;
+    } catch (error) {
+      if (isAuthenticationError(error)) {
+        clearSession();
+      } else {
+        setStatus('unavailable');
+      }
+      throw error;
+    }
+  }, [clearSession]);
 
   const logout = useCallback(async () => {
     try {

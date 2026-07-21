@@ -29,6 +29,14 @@ test('remote deployment retries transient container registry failures', () => {
   assert.match(workflow, /retry 5 10 docker pull "\$IMAGE"/);
 });
 
+test('remote deployment starts PostgreSQL, waits for readiness, and prints diagnostics on failure', () => {
+  assert.match(workflow, /docker compose up -d --no-build db/);
+  assert.match(workflow, /DB_CONTAINER_ID="\$\(docker compose ps -q db\)"/);
+  assert.match(workflow, /DB_HEALTH=.*\.State\.Health\.Status/);
+  assert.match(workflow, /test "\$DB_HEALTH" = "healthy"/);
+  assert.match(workflow, /docker compose logs --no-color --tail=120 db app/);
+});
+
 test('runtime image carries the build revision used by the health check', () => {
   assert.match(dockerfile, /ARG APP_BUILD_SHA=development/);
   assert.match(dockerfile, /ENV APP_BUILD_SHA=\$APP_BUILD_SHA/);

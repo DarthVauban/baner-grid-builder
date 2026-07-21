@@ -43,7 +43,10 @@ export const pool = new Pool({
   connectionString: env.DATABASE_URL,
   ssl: env.databaseSsl ? { rejectUnauthorized: false } : false,
   max: 10,
-  idleTimeoutMillis: 30000
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000
 });
 
 pool.on('error', (error) => {

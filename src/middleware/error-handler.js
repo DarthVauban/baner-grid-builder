@@ -1,5 +1,29 @@
 import { AppError } from '../lib/app-error.js';
 
+const DATABASE_UNAVAILABLE_CODES = new Set([
+  '08000', '08001', '08003', '08004', '08006', '08007', '08P01',
+  '53100', '53200', '53300', '53400', '57P01', '57P02', '57P03',
+  '58000', '58030',
+  'ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT'
+]);
+
+const DATABASE_UNAVAILABLE_MESSAGES = [
+  'connection terminated unexpectedly',
+  'timeout exceeded when trying to connect',
+  'terminating connection due to administrator command'
+];
+
+function isDatabaseUnavailable(error) {
+  let current = error;
+  for (let depth = 0; current && depth < 4; depth += 1) {
+    if (DATABASE_UNAVAILABLE_CODES.has(String(current.code || ''))) return true;
+    const message = String(current.message || '').toLowerCase();
+    if (DATABASE_UNAVAILABLE_MESSAGES.some((fragment) => message.includes(fragment))) return true;
+    current = current.cause;
+  }
+  return false;
+}
+
 export function notFoundHandler(req, res, next) {
   next(new AppError(404, 'NOT_FOUND', 'Маршрут не знайдено.'));
 }
@@ -35,6 +59,16 @@ export function errorHandler(error, req, res, next) {
   if (error?.code === '23505') {
     return res.status(409).json({
       error: { code: 'CONFLICT', message: 'Такий запис уже існує.' }
+    });
+  }
+
+  if (isDatabaseUnavailable(error)) {
+    console.error('Database connection unavailable', error);
+    return res.status(503).json({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Сервіс тимчасово недоступний через проблему зі з’єднанням з базою даних. Спробуйте ще раз за хвилину.'
+      }
     });
   }
 
