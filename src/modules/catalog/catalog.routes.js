@@ -18,6 +18,7 @@ import {
 import { saveCatalogMediaAsset } from './catalog.media.js';
 import {
   normalizeProductCardTheme,
+  normalizeProductPageTheme,
   normalizeStorefrontTheme,
   storefrontFontFamilies
 } from './storefront.theme.js';
@@ -350,11 +351,83 @@ const productCardThemeSchema = z.object({
     swatchSize: z.coerce.number().int().min(24).max(60)
   })
 });
+const productPageThemeSchema = z.object({
+  version: z.literal(1).default(1),
+  layout: z.object({
+    galleryWidth: z.coerce.number().int().min(35).max(65),
+    gap: z.coerce.number().int().min(0).max(60),
+    sectionGap: z.coerce.number().int().min(0).max(80)
+  }),
+  gallery: z.object({
+    background: themeColorSchema,
+    borderColor: themeColorSchema,
+    borderWidth: z.coerce.number().int().min(0).max(6),
+    radius: z.coerce.number().int().min(0).max(48),
+    padding: z.coerce.number().int().min(0).max(48),
+    imageFit: z.enum(['contain', 'cover']),
+    thumbnailHeight: z.coerce.number().int().min(54).max(160),
+    thumbnailGap: z.coerce.number().int().min(0).max(32),
+    showThumbnails: z.boolean(),
+    showArrows: z.boolean(),
+    showCounter: z.boolean()
+  }),
+  details: z.object({
+    background: themeColorSchema,
+    borderColor: themeColorSchema,
+    borderWidth: z.coerce.number().int().min(0).max(6),
+    radius: z.coerce.number().int().min(0).max(48),
+    padding: z.coerce.number().int().min(0).max(72),
+    gap: z.coerce.number().int().min(0).max(48),
+    shadow: themeShadowSchema
+  }),
+  visibility: z.object({
+    backLink: z.boolean(),
+    meta: z.boolean(),
+    shortDescription: z.boolean(),
+    quickSpecs: z.boolean(),
+    modifications: z.boolean(),
+    tabs: z.boolean()
+  }),
+  typography: z.object({
+    titleColor: themeColorSchema,
+    titleSizeDesktop: z.coerce.number().int().min(24).max(80),
+    titleSizeMobile: z.coerce.number().int().min(22).max(56),
+    titleWeight: themeFontWeightSchema,
+    priceColor: themeColorSchema,
+    priceSize: z.coerce.number().int().min(20).max(64),
+    priceWeight: themeFontWeightSchema,
+    leadColor: themeColorSchema,
+    leadSize: z.coerce.number().int().min(11).max(24)
+  }),
+  button: z.object({
+    label: z.string().trim().min(1).max(80),
+    unavailableLabel: z.string().trim().min(1).max(100),
+    previewLabel: z.string().trim().min(1).max(100),
+    background: themeColorSchema,
+    hoverBackground: themeColorSchema,
+    textColor: themeColorSchema,
+    radius: z.coerce.number().int().min(0).max(40),
+    height: z.coerce.number().int().min(36).max(80),
+    fontSize: z.coerce.number().int().min(11).max(26),
+    fontWeight: themeFontWeightSchema
+  }),
+  tabs: z.object({
+    descriptionLabel: z.string().trim().min(1).max(80),
+    characteristicsLabel: z.string().trim().min(1).max(80),
+    background: themeColorSchema,
+    borderColor: themeColorSchema,
+    textColor: themeColorSchema,
+    activeColor: themeColorSchema,
+    radius: z.coerce.number().int().min(0).max(40),
+    padding: z.coerce.number().int().min(12).max(72)
+  })
+});
 const settingsSchema = z.object({
   selectedFormPublicId: z.string().uuid().nullable().optional(),
   publicOrigin: z.string().trim().max(500).optional(),
   storefrontTheme: storefrontThemeSchema.optional(),
-  productCardTheme: productCardThemeSchema.optional()
+  productCardTheme: productCardThemeSchema.optional(),
+  productPageTheme: productPageThemeSchema.optional()
 });
 const previewApplicationSchema = z.object({
   values: z.record(z.string(), z.unknown()).default({}),
@@ -1150,7 +1223,7 @@ function buildProductFilters(input) {
 
 async function loadSettings(db = { query }) {
   const result = await db.query(
-    `SELECT selected_form_public_id, public_origin, storefront_theme, product_card_theme, updated_at
+    `SELECT selected_form_public_id, public_origin, storefront_theme, product_card_theme, product_page_theme, updated_at
      FROM used_smartphone_storefront_settings
      WHERE id = TRUE`
   );
@@ -1160,6 +1233,7 @@ async function loadSettings(db = { query }) {
     publicOrigin: row.public_origin || '',
     storefrontTheme: normalizeStorefrontTheme(row.storefront_theme),
     productCardTheme: normalizeProductCardTheme(row.product_card_theme),
+    productPageTheme: normalizeProductPageTheme(row.product_page_theme),
     updatedAt: row.updated_at || null
   };
 }
@@ -2395,7 +2469,8 @@ router.patch('/storefront-settings', asyncHandler(async (req, res) => {
     selectedFormPublicId: Object.hasOwn(req.body || {}, 'selectedFormPublicId') ? input.selectedFormPublicId || null : current.selectedFormPublicId,
     publicOrigin: Object.hasOwn(req.body || {}, 'publicOrigin') ? input.publicOrigin || '' : current.publicOrigin,
     storefrontTheme: input.storefrontTheme || current.storefrontTheme,
-    productCardTheme: input.productCardTheme || current.productCardTheme
+    productCardTheme: input.productCardTheme || current.productCardTheme,
+    productPageTheme: input.productPageTheme || current.productPageTheme
   };
   if (next.selectedFormPublicId) {
     const form = await query(
@@ -2410,11 +2485,12 @@ router.patch('/storefront-settings', asyncHandler(async (req, res) => {
          public_origin = $2,
          storefront_theme = $3::JSONB,
          product_card_theme = $4::JSONB,
-         updated_by = $5,
+         product_page_theme = $5::JSONB,
+         updated_by = $6,
          updated_at = NOW()
      WHERE id = TRUE
-     RETURNING selected_form_public_id, public_origin, storefront_theme, product_card_theme, updated_at`,
-    [next.selectedFormPublicId, next.publicOrigin, JSON.stringify(next.storefrontTheme), JSON.stringify(next.productCardTheme), req.user.id]
+     RETURNING selected_form_public_id, public_origin, storefront_theme, product_card_theme, product_page_theme, updated_at`,
+    [next.selectedFormPublicId, next.publicOrigin, JSON.stringify(next.storefrontTheme), JSON.stringify(next.productCardTheme), JSON.stringify(next.productPageTheme), req.user.id]
   );
   publishPublicCatalogUpdate({ type: 'settings_updated' });
   res.json({ data: {
@@ -2422,6 +2498,7 @@ router.patch('/storefront-settings', asyncHandler(async (req, res) => {
     publicOrigin: result.rows[0].public_origin || '',
     storefrontTheme: normalizeStorefrontTheme(result.rows[0].storefront_theme),
     productCardTheme: normalizeProductCardTheme(result.rows[0].product_card_theme),
+    productPageTheme: normalizeProductPageTheme(result.rows[0].product_page_theme),
     updatedAt: result.rows[0].updated_at
   } });
 }));

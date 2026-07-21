@@ -21,7 +21,7 @@ import {
   productSelect,
   serializePublicCatalogProduct
 } from './catalog.service.js';
-import { normalizeProductCardTheme, normalizeStorefrontTheme } from './storefront.theme.js';
+import { normalizeProductCardTheme, normalizeProductPageTheme, normalizeStorefrontTheme } from './storefront.theme.js';
 
 const router = Router();
 
@@ -89,7 +89,7 @@ function buildFilters(input) {
 
 async function loadStorefrontSettings() {
   const result = await query(
-    `SELECT selected_form_public_id, public_origin, storefront_theme, product_card_theme, updated_at
+    `SELECT selected_form_public_id, public_origin, storefront_theme, product_card_theme, product_page_theme, updated_at
      FROM used_smartphone_storefront_settings
      WHERE id = TRUE`
   );
@@ -99,6 +99,7 @@ async function loadStorefrontSettings() {
     publicOrigin: row.public_origin || '',
     storefrontTheme: normalizeStorefrontTheme(row.storefront_theme),
     productCardTheme: normalizeProductCardTheme(row.product_card_theme),
+    productPageTheme: normalizeProductPageTheme(row.product_page_theme),
     updatedAt: row.updated_at || null
   };
 }

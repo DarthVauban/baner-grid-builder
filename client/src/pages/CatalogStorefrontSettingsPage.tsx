@@ -189,7 +189,13 @@ export function CatalogStorefrontSettingsPage() {
       </div>
 
       <aside className="catalog-theme-builder__preview">
-        <header><div><strong>Живий preview</strong><span>Зміни застосовуються одразу</span></div><CatalogThemeDeviceSwitch device={device} onChange={setDevice} /></header>
+        <header>
+          <div><strong>Живий preview</strong><span>Зміни застосовуються одразу</span></div>
+          <div className="catalog-theme-builder__preview-actions">
+            <button className="button button--primary catalog-theme-builder__preview-save" type="button" disabled={saveSettings.isPending || !hasUnsavedChanges} onClick={() => void submit()}><Icon name="save" size={16} /> {saveSettings.isPending ? 'Збереження…' : 'Зберегти'}</button>
+            <CatalogThemeDeviceSwitch device={device} onChange={setDevice} />
+          </div>
+        </header>
         <CatalogThemePreview storefrontTheme={theme} cardTheme={cardTheme} device={device} />
       </aside>
     </div>}

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   defaultProductCardTheme,
+  defaultProductPageTheme,
   defaultStorefrontTheme,
   fontWeightOptions,
   productCardThemeStyle,
+  productPageThemeStyle,
   storefrontFontOptions,
   storefrontThemeStyle
 } from './storefront-theme';
@@ -40,6 +42,23 @@ describe('storefront theme tokens', () => {
     expect(productCardThemeStyle(card)).toMatchObject({
       '--sf-card-button-width': '100%',
       '--sf-card-image-fit': 'contain'
+    });
+  });
+
+  it('maps product page layout, gallery and action settings to scoped CSS variables', () => {
+    const theme = structuredClone(defaultProductPageTheme);
+    theme.layout.galleryWidth = 45;
+    theme.gallery.showThumbnails = false;
+    theme.gallery.imageFit = 'cover';
+    theme.button.background = '#123456';
+    theme.tabs.activeColor = '#654321';
+
+    expect(productPageThemeStyle(theme)).toMatchObject({
+      '--sf-product-columns': '45fr 55fr',
+      '--sf-product-thumbs-display': 'none',
+      '--sf-product-image-fit': 'cover',
+      '--sf-product-button-bg': '#123456',
+      '--sf-product-tabs-active': '#654321'
     });
   });
 });

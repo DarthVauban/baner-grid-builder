@@ -524,9 +524,11 @@ test('catalog products publish to storefront, import stock updates, and create a
   }).expect(200);
   assert.equal(savedStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Inter');
   assert.equal(savedStorefrontSettings.body.data.productCardTheme.button.label, 'Купити');
+  assert.equal(savedStorefrontSettings.body.data.productPageTheme.layout.galleryWidth, 50);
 
   const storefrontTheme = structuredClone(savedStorefrontSettings.body.data.storefrontTheme);
   const productCardTheme = structuredClone(savedStorefrontSettings.body.data.productCardTheme);
+  const productPageTheme = structuredClone(savedStorefrontSettings.body.data.productPageTheme);
   storefrontTheme.typography.bodyFontFamily = 'Unbounded';
   storefrontTheme.typography.headingFontFamily = 'Unbounded';
   storefrontTheme.typography.headingWeight = 900;
@@ -534,8 +536,12 @@ test('catalog products publish to storefront, import stock updates, and create a
   productCardTheme.button.label = 'Замовити';
   productCardTheme.contentOrder = ['image', 'title', 'badge', 'brand', 'meta'];
   productCardTheme.image.fit = 'contain';
+  productPageTheme.layout.galleryWidth = 45;
+  productPageTheme.gallery.showCounter = false;
+  productPageTheme.button.label = 'Замовити смартфон';
+  productPageTheme.tabs.descriptionLabel = 'Детальний огляд';
 
-  await admin.patch('/api/catalog/storefront-settings').send({ storefrontTheme, productCardTheme }).expect(200);
+  await admin.patch('/api/catalog/storefront-settings').send({ storefrontTheme, productCardTheme, productPageTheme }).expect(200);
   const publicStorefrontSettings = await request(app).get('/api/storefront/settings').expect(200);
   assert.equal(publicStorefrontSettings.body.data.selectedFormPublicId, form.body.data.publicId);
   assert.equal(publicStorefrontSettings.body.data.publicOrigin, 'https://storefront.test');
@@ -544,6 +550,10 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.layout.columnsDesktop, 5);
   assert.equal(publicStorefrontSettings.body.data.productCardTheme.button.label, 'Замовити');
   assert.deepEqual(publicStorefrontSettings.body.data.productCardTheme.contentOrder, ['image', 'title', 'badge', 'brand', 'meta']);
+  assert.equal(publicStorefrontSettings.body.data.productPageTheme.layout.galleryWidth, 45);
+  assert.equal(publicStorefrontSettings.body.data.productPageTheme.gallery.showCounter, false);
+  assert.equal(publicStorefrontSettings.body.data.productPageTheme.button.label, 'Замовити смартфон');
+  assert.equal(publicStorefrontSettings.body.data.productPageTheme.tabs.descriptionLabel, 'Детальний огляд');
 
   const submitted = await request(app).post(`/api/storefront/products/${updated.body.data.slug}/applications`).send({
     values: {

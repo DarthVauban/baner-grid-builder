@@ -14,8 +14,10 @@ import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import {
   defaultProductCardTheme,
+  defaultProductPageTheme,
   defaultStorefrontTheme,
   productCardThemeStyle,
+  productPageThemeStyle,
   storefrontThemeStyle
 } from '../lib/storefront-theme';
 import type {
@@ -24,6 +26,7 @@ import type {
   CatalogProduct,
   CatalogProductCardContentKey,
   CatalogProductCardTheme,
+  CatalogProductPageTheme,
   CatalogProductModificationOption,
   CatalogProductModificationParameter,
   CatalogStorefrontCharacteristicFilter,
@@ -166,7 +169,7 @@ function StorefrontGalleryLightbox({
   </div>, document.body);
 }
 
-function ProductGallery({ product }: { product: CatalogProduct }) {
+function ProductGallery({ product, theme = defaultProductPageTheme }: { product: CatalogProduct; theme?: CatalogProductPageTheme }) {
   const images = useMemo(() => productGalleryImages(product), [product]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const stageSwiperRef = useRef<SwiperInstance | null>(null);
@@ -235,7 +238,7 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
       key={`thumbs-${product.productCode}`}
       className="storefront-gallery__thumbs"
       slidesPerView="auto"
-      spaceBetween={8}
+      spaceBetween={theme.gallery.thumbnailGap}
       watchSlidesProgress
       onSwiper={(swiper) => { thumbsSwiperRef.current = swiper; }}
       aria-label="Фото товару"
@@ -316,7 +319,7 @@ function StorefrontCharacteristics({ product }: { product: CatalogProduct }) {
   </dl>;
 }
 
-function StorefrontProductInformation({ product }: { product: CatalogProduct }) {
+function StorefrontProductInformation({ product, theme = defaultProductPageTheme }: { product: CatalogProduct; theme?: CatalogProductPageTheme }) {
   const hasDescription = Boolean(product.descriptionHtml);
   const hasCharacteristics = Boolean(product.characteristics?.items?.length);
   const [activeTab, setActiveTab] = useState<'description' | 'characteristics'>(() => (
@@ -331,8 +334,8 @@ function StorefrontProductInformation({ product }: { product: CatalogProduct }) 
   if (!hasDescription && !hasCharacteristics) return null;
 
   const tabs = [
-    ...(hasDescription ? [{ id: 'description' as const, label: 'Опис товару' }] : []),
-    ...(hasCharacteristics ? [{ id: 'characteristics' as const, label: 'Характеристики' }] : [])
+    ...(hasDescription ? [{ id: 'description' as const, label: theme.tabs.descriptionLabel }] : []),
+    ...(hasCharacteristics ? [{ id: 'characteristics' as const, label: theme.tabs.characteristicsLabel }] : [])
   ];
   const resolvedActiveTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0].id;
   const tabPrefix = `storefront-product-information-${product.id}`;
@@ -376,7 +379,7 @@ function StorefrontProductInformation({ product }: { product: CatalogProduct }) 
     >
       <header className="storefront-product-content__header">
         <span>{resolvedActiveTab === 'description' ? 'Про товар' : 'Детальні дані'}</span>
-        <h2>{resolvedActiveTab === 'description' ? 'Опис товару' : 'Характеристики'}</h2>
+        <h2>{resolvedActiveTab === 'description' ? theme.tabs.descriptionLabel : theme.tabs.characteristicsLabel}</h2>
       </header>
       {resolvedActiveTab === 'description'
         ? <StorefrontDescription product={product} />
@@ -432,47 +435,51 @@ export function StorefrontProductDetailPage({
   preview,
   basePath,
   canRequestProduct,
-  onRequest
+  onRequest,
+  theme = defaultProductPageTheme
 }: {
   product: CatalogProduct;
   preview: boolean;
   basePath: string;
   canRequestProduct: boolean;
   onRequest: () => void;
+  theme?: CatalogProductPageTheme;
 }) {
   const specs = baseSpecItems(product);
   const actionLabel = product.availability.status === 'unavailable'
-    ? 'Немає в наявності'
+    ? theme.button.unavailableLabel
     : canRequestProduct
-      ? 'Оформити заявку'
-      : 'Заявка недоступна';
+      ? theme.button.label
+      : preview
+        ? theme.button.previewLabel
+        : 'Заявка недоступна';
 
   return <section className="storefront-product-view" data-product-detail="rebuilt">
     <div className="storefront-product-view__hero">
       <section className="storefront-product-view__media" aria-label="Фото товару">
-        <ProductGallery product={product} />
+        <ProductGallery product={product} theme={theme} />
       </section>
       <article className="storefront-product-view__details">
-        <Link to={basePath} className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>
+        {theme.visibility.backLink && <Link to={basePath} className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</Link>}
         <div className="storefront-product-view__body">
-          <div className="storefront-product-view__meta">
+          {theme.visibility.meta && <div className="storefront-product-view__meta">
             <span>{product.productCode}</span>
             <span>{product.conditionLabel}</span>
             {product.brand?.label && <span>{product.brand.label}</span>}
-          </div>
+          </div>}
           <h1>{product.name}</h1>
           <div className="storefront-product-view__purchase">
             <strong>{product.priceLabel}</strong>
             <span>{product.availability.label}</span>
           </div>
-          {product.shortDescription && <p className="storefront-product-view__lead">{product.shortDescription}</p>}
-          {specs.length > 0 && <dl className="storefront-product-view__specs">
+          {theme.visibility.shortDescription && product.shortDescription && <p className="storefront-product-view__lead">{product.shortDescription}</p>}
+          {theme.visibility.quickSpecs && specs.length > 0 && <dl className="storefront-product-view__specs">
             {specs.map((item) => <div key={item.label}>
               <dt>{item.label}</dt>
               <dd>{item.value}</dd>
             </div>)}
           </dl>}
-          <StorefrontModifications product={product} preview={preview} />
+          {theme.visibility.modifications && <StorefrontModifications product={product} preview={preview} />}
         </div>
         <div className="storefront-product-view__footer">
           <button className="button button--primary storefront-product-view__action" type="button" disabled={!canRequestProduct} onClick={onRequest}>
@@ -481,7 +488,7 @@ export function StorefrontProductDetailPage({
         </div>
       </article>
     </div>
-    <StorefrontProductInformation product={product} />
+    {theme.visibility.tabs && <StorefrontProductInformation product={product} theme={theme} />}
   </section>;
 }
 
@@ -1163,7 +1170,8 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   const canRequestProduct = Boolean(productData && productData.availability.status !== 'unavailable' && form.data);
   const storefrontTheme = settings.data?.storefrontTheme || defaultStorefrontTheme;
   const productCardTheme = settings.data?.productCardTheme || defaultProductCardTheme;
-  const pageStyle = { ...storefrontThemeStyle(storefrontTheme), ...productCardThemeStyle(productCardTheme) };
+  const productPageTheme = settings.data?.productPageTheme || defaultProductPageTheme;
+  const pageStyle = { ...storefrontThemeStyle(storefrontTheme), ...productCardThemeStyle(productCardTheme), ...productPageThemeStyle(productPageTheme) };
 
   return <main className="storefront-page" style={pageStyle}>
     <header className="storefront-header">
@@ -1182,6 +1190,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
       basePath={basePath}
       canRequestProduct={canRequestProduct}
       onRequest={() => setRequestProduct(productData)}
+      theme={productPageTheme}
     />
     </> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
       <div className="storefront-hero">

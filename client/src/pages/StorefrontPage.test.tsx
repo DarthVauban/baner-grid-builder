@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PropsWithChildren, ReactElement } from 'react';
 import { api } from '../lib/api';
+import { defaultProductPageTheme } from '../lib/storefront-theme';
 import type { CatalogProduct } from '../types/catalog';
 import appStyles from '../styles/app.css?raw';
 import { formatStorefrontPhone, StorefrontApplicationForm, StorefrontProductCard, StorefrontProductDetailPage, StorefrontProductHead } from './StorefrontPage';
@@ -71,7 +72,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('storefront product layout styles', () => {
   it('keeps equal hero columns and fills their shared row without stretching gallery images', () => {
-    expect(appStyles).toMatch(/\.storefront-product-view__hero\s*\{[^}]*grid-template-columns:\s*repeat\(2,minmax\(0,1fr\)\);[^}]*align-items:\s*stretch/);
+    expect(appStyles).toMatch(/\.storefront-product-view__hero\s*\{[^}]*grid-template-columns:\s*var\(--sf-product-columns,repeat\(2,minmax\(0,1fr\)\)\);[^}]*align-items:\s*stretch/);
     expect(appStyles).toMatch(/\.storefront-product-view__media\s*\{[^}]*min-height:\s*clamp\(500px,34vw,620px\);[^}]*height:\s*auto/);
     expect(appStyles).toMatch(/\.storefront-gallery__stage img\s*\{[^}]*width:\s*auto;[^}]*height:\s*auto;[^}]*max-width:\s*100%;[^}]*max-height:\s*100%/);
     expect(appStyles).toMatch(/\.storefront-gallery-lightbox__thumbs-shell\s*\{[^}]*position:\s*fixed;[^}]*right:\s*0;[^}]*left:\s*0;[^}]*justify-content:\s*center/);
@@ -82,6 +83,8 @@ describe('storefront product layout styles', () => {
     expect(appStyles).toMatch(/\.storefront-description,\s*\.storefront-description \*,[^}]*font-family:\s*inherit\s*!important/);
     expect(appStyles).toMatch(/\.storefront-product-content\s*\{[^}]*height:\s*fit-content;[^}]*align-self:\s*start/);
     expect(appStyles).toMatch(/\.storefront-product-content__section\s*\{[^}]*width:\s*100%;[^}]*min-height:\s*0;[^}]*height:\s*auto;[^}]*overflow:\s*visible/);
+    expect(appStyles).toMatch(/\.catalog-theme-preview__viewport\s*\{[^}]*justify-content:\s*center;[^}]*overflow:\s*hidden/);
+    expect(appStyles).toMatch(/\.catalog-theme-preview__page\s*\{[^}]*position:\s*absolute;[^}]*transform-origin:\s*top left/);
   });
 });
 
@@ -291,6 +294,36 @@ describe('StorefrontProductDetailPage', () => {
     expect(screen.queryByText('Preview без заявки')).not.toBeInTheDocument();
     await userEvent.click(action);
     expect(onRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies product page visibility and editable labels', () => {
+    const theme = structuredClone(defaultProductPageTheme);
+    theme.visibility.backLink = false;
+    theme.visibility.meta = false;
+    theme.visibility.quickSpecs = false;
+    theme.visibility.modifications = false;
+    theme.tabs.descriptionLabel = 'Детальний огляд';
+    theme.tabs.characteristicsLabel = 'Технічні дані';
+    theme.button.label = 'Замовити смартфон';
+
+    const { container } = render(<MemoryRouter>
+      <StorefrontProductDetailPage
+        product={product}
+        preview={false}
+        basePath="/storefront"
+        canRequestProduct
+        onRequest={vi.fn()}
+        theme={theme}
+      />
+    </MemoryRouter>);
+
+    expect(screen.queryByText('До каталогу')).not.toBeInTheDocument();
+    expect(screen.queryByText(product.productCode)).not.toBeInTheDocument();
+    expect(container.querySelector('.storefront-product-view__specs')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Midnight' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Детальний огляд' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Технічні дані' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Замовити смартфон/ })).toBeEnabled();
   });
 
   it('renders custom description code at full width with storefront typography and no document scrolling', () => {

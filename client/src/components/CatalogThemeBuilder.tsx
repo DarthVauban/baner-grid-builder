@@ -1,10 +1,11 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { StyledSelect } from './StyledSelect';
-import { productCardThemeStyle, storefrontThemeStyle } from '../lib/storefront-theme';
+import { productCardThemeStyle, productPageThemeStyle, storefrontThemeStyle } from '../lib/storefront-theme';
 import type {
   CatalogProductCardContentKey,
   CatalogProductCardTheme,
+  CatalogProductPageTheme,
   CatalogStorefrontTheme
 } from '../types/catalog';
 
@@ -117,6 +118,75 @@ function ThemePreviewCard({ theme, index }: { theme: CatalogProductCardTheme; in
   </article>;
 }
 
+function ScaledThemePreview({
+  children,
+  className,
+  device,
+  style,
+  cardOnly = false
+}: {
+  children: ReactNode;
+  className: string;
+  device: CatalogThemeDevice;
+  style: CSSProperties;
+  cardOnly?: boolean;
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const logicalWidth = cardOnly
+    ? ({ desktop: 430, tablet: 380, mobile: 310 } as const)[device]
+    : ({ desktop: 1366, tablet: 768, mobile: 390 } as const)[device];
+  const minimumHeight = cardOnly ? 570 : device === 'mobile' ? 980 : 760;
+  const [scale, setScale] = useState(device === 'desktop' && !cardOnly ? 0.5 : 1);
+  const [contentHeight, setContentHeight] = useState(minimumHeight);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const page = pageRef.current;
+    if (!viewport || !page) return undefined;
+
+    const measure = () => {
+      const viewportStyles = window.getComputedStyle(viewport);
+      const horizontalPadding = Number.parseFloat(viewportStyles.paddingLeft) + Number.parseFloat(viewportStyles.paddingRight);
+      const availableWidth = Math.max(1, viewport.clientWidth - horizontalPadding);
+      setScale(Math.min(1, availableWidth / logicalWidth));
+      setContentHeight(Math.max(minimumHeight, page.scrollHeight));
+    };
+
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(page);
+    return () => observer.disconnect();
+  }, [cardOnly, device, logicalWidth, minimumHeight]);
+
+  const frameStyle = {
+    width: `${logicalWidth * scale}px`,
+    height: `${contentHeight * scale}px`
+  };
+  const pageStyle = {
+    ...style,
+    width: `${logicalWidth}px`,
+    minHeight: `${minimumHeight}px`,
+    transform: `scale(${scale})`
+  };
+
+  return <div className={className}>
+    <div className="catalog-theme-preview__viewport" ref={viewportRef}>
+      <div className="catalog-theme-preview__scale-frame" style={frameStyle}>
+        <div className="storefront-page catalog-theme-preview__page" style={pageStyle} ref={pageRef} onClickCapture={(event) => event.preventDefault()}>
+          {children}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
 export function CatalogThemePreview({
   storefrontTheme,
   cardTheme,
@@ -130,18 +200,17 @@ export function CatalogThemePreview({
 }) {
   const style = { ...storefrontThemeStyle(storefrontTheme), ...productCardThemeStyle(cardTheme) };
   if (cardOnly) {
-    return <div className={`catalog-theme-preview catalog-theme-preview--${device} catalog-theme-preview--card`}>
-      <div className="catalog-theme-preview__viewport">
-        <div className="storefront-page catalog-theme-preview__page" style={style} onClickCapture={(event) => event.preventDefault()}>
-          <div className="storefront-grid catalog-theme-preview__card-grid"><ThemePreviewCard theme={cardTheme} index={0} /></div>
-        </div>
-      </div>
-    </div>;
+    return <ScaledThemePreview
+      className={`catalog-theme-preview catalog-theme-preview--${device} catalog-theme-preview--card`}
+      device={device}
+      style={style}
+      cardOnly
+    >
+      <div className="storefront-grid catalog-theme-preview__card-grid"><ThemePreviewCard theme={cardTheme} index={0} /></div>
+    </ScaledThemePreview>;
   }
 
-  return <div className={`catalog-theme-preview catalog-theme-preview--${device}`}>
-    <div className="catalog-theme-preview__viewport">
-      <div className="storefront-page catalog-theme-preview__page" style={style} onClickCapture={(event) => event.preventDefault()}>
+  return <ScaledThemePreview className={`catalog-theme-preview catalog-theme-preview--${device}`} device={device} style={style}>
         <header className="storefront-header">
           <span className="storefront-brand"><span>{storefrontTheme.header.brandMark}</span><strong>{storefrontTheme.header.brandText}</strong></span>
           <button className="button button--secondary button--small storefront-header__action" type="button">У робочий простір</button>
@@ -166,7 +235,52 @@ export function CatalogThemePreview({
             </div>
           </div>
         </section>
+  </ScaledThemePreview>;
+}
+
+export function CatalogProductPagePreview({
+  storefrontTheme,
+  productPageTheme,
+  device
+}: {
+  storefrontTheme: CatalogStorefrontTheme;
+  productPageTheme: CatalogProductPageTheme;
+  device: CatalogThemeDevice;
+}) {
+  const style = { ...storefrontThemeStyle(storefrontTheme), ...productPageThemeStyle(productPageTheme) };
+  return <ScaledThemePreview className={`catalog-theme-preview catalog-theme-preview--${device} catalog-theme-preview--product-page`} device={device} style={style}>
+    <header className="storefront-header">
+      <span className="storefront-brand"><span>{storefrontTheme.header.brandMark}</span><strong>{storefrontTheme.header.brandText}</strong></span>
+    </header>
+    <section className="storefront-product-view catalog-product-page-preview__product">
+      <div className="storefront-product-view__hero">
+        <section className="storefront-product-view__media catalog-product-page-preview__media">
+          <div className="catalog-product-page-preview__stage">
+            <span className="catalog-theme-preview__phone" />
+            {productPageTheme.gallery.showArrows && <><button className="storefront-gallery-navigation storefront-gallery__navigation storefront-gallery__navigation--prev" type="button"><Icon name="arrowLeft" size={20} /></button><button className="storefront-gallery-navigation storefront-gallery__navigation storefront-gallery__navigation--next" type="button"><Icon name="arrowRight" size={20} /></button></>}
+            {productPageTheme.gallery.showCounter && <span className="storefront-gallery__counter">1 / 6</span>}
+          </div>
+          {productPageTheme.gallery.showThumbnails && <div className="catalog-product-page-preview__thumbs">
+            {[0, 1, 2, 3, 4].map((item) => <span className={item === 0 ? 'active' : ''} key={item}><span className="catalog-theme-preview__phone" /></span>)}
+          </div>}
+        </section>
+        <article className="storefront-product-view__details">
+          {productPageTheme.visibility.backLink && <span className="storefront-back"><Icon name="arrowLeft" size={16} /> До каталогу</span>}
+          <div className="storefront-product-view__body">
+            {productPageTheme.visibility.meta && <div className="storefront-product-view__meta"><span>SM-000125</span><span>Вживаний</span><span>Apple</span></div>}
+            <h1>Смартфон Apple iPhone 15 Pro 256GB Black</h1>
+            <div className="storefront-product-view__purchase"><strong>35 999 грн</strong><span>В наявності</span></div>
+            {productPageTheme.visibility.shortDescription && <p className="storefront-product-view__lead">Перевірений смартфон у відмінному стані з гарантією магазину.</p>}
+            {productPageTheme.visibility.quickSpecs && <dl className="storefront-product-view__specs"><div><dt>Корпус</dt><dd>Відмінний</dd></div><div><dt>Акумулятор</dt><dd>91%</dd></div><div><dt>Дисплей</dt><dd>Оригінальний</dd></div><div><dt>Гарантія</dt><dd>6 місяців</dd></div></dl>}
+            {productPageTheme.visibility.modifications && <div className="storefront-modifications"><div className="storefront-modification"><span className="storefront-modification__label">Колір</span><div className="storefront-modification__options"><button className="storefront-modification__option storefront-modification__option--active" type="button">Black</button><button className="storefront-modification__option" type="button">Natural</button></div></div></div>}
+          </div>
+          <div className="storefront-product-view__footer"><button className="button button--primary storefront-product-view__action" type="button">{productPageTheme.button.label} <Icon name="arrowRight" size={16} /></button></div>
+        </article>
       </div>
-    </div>
-  </div>;
+      {productPageTheme.visibility.tabs && <section className="storefront-product-content catalog-product-page-preview__tabs">
+        <div className="storefront-product-content__tabs"><button className="storefront-product-content__tab active" type="button">{productPageTheme.tabs.descriptionLabel}</button><button className="storefront-product-content__tab" type="button">{productPageTheme.tabs.characteristicsLabel}</button></div>
+        <div className="storefront-product-content__section"><header className="storefront-product-content__header"><span>Про товар</span><h2>{productPageTheme.tabs.descriptionLabel}</h2></header><p>Повний опис товару відображатиметься в цьому блоці.</p></div>
+      </section>}
+    </section>
+  </ScaledThemePreview>;
 }

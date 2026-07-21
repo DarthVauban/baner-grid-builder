@@ -190,7 +190,13 @@ export function CatalogProductCardSettingsPage() {
       </div>
 
       <aside className="catalog-theme-builder__preview">
-        <header><div><strong>Живий preview картки</strong><span>Використовує активну тему вітрини</span></div><CatalogThemeDeviceSwitch device={device} onChange={setDevice} /></header>
+        <header>
+          <div><strong>Живий preview картки</strong><span>Використовує активну тему вітрини</span></div>
+          <div className="catalog-theme-builder__preview-actions">
+            <button className="button button--primary catalog-theme-builder__preview-save" type="button" disabled={saveSettings.isPending || !hasUnsavedChanges} onClick={() => void submit()}><Icon name="save" size={16} /> {saveSettings.isPending ? 'Збереження…' : 'Зберегти'}</button>
+            <CatalogThemeDeviceSwitch device={device} onChange={setDevice} />
+          </div>
+        </header>
         <CatalogThemePreview storefrontTheme={storefrontTheme} cardTheme={theme} device={device} cardOnly />
       </aside>
     </div>}

@@ -167,6 +167,74 @@ export const defaultProductCardTheme = {
   }
 };
 
+export const defaultProductPageTheme = {
+  version: 1,
+  layout: { galleryWidth: 50, gap: 22, sectionGap: 22 },
+  gallery: {
+    background: '#ffffff',
+    borderColor: '#dde5e3',
+    borderWidth: 1,
+    radius: 8,
+    padding: 0,
+    imageFit: 'contain',
+    thumbnailHeight: 91,
+    thumbnailGap: 8,
+    showThumbnails: true,
+    showArrows: true,
+    showCounter: true
+  },
+  details: {
+    background: '#ffffff',
+    borderColor: '#dde5e3',
+    borderWidth: 1,
+    radius: 8,
+    padding: 36,
+    gap: 24,
+    shadow: 'soft'
+  },
+  visibility: {
+    backLink: true,
+    meta: true,
+    shortDescription: true,
+    quickSpecs: true,
+    modifications: true,
+    tabs: true
+  },
+  typography: {
+    titleColor: '#162033',
+    titleSizeDesktop: 52,
+    titleSizeMobile: 36,
+    titleWeight: 800,
+    priceColor: '#111827',
+    priceSize: 38,
+    priceWeight: 800,
+    leadColor: '#667085',
+    leadSize: 14
+  },
+  button: {
+    label: 'Оформити заявку',
+    unavailableLabel: 'Немає в наявності',
+    previewLabel: 'Preview без заявки',
+    background: '#6c5ce7',
+    hoverBackground: '#5b4bd6',
+    textColor: '#ffffff',
+    radius: 10,
+    height: 50,
+    fontSize: 16,
+    fontWeight: 800
+  },
+  tabs: {
+    descriptionLabel: 'Опис товару',
+    characteristicsLabel: 'Характеристики',
+    background: '#ffffff',
+    borderColor: '#dde5e3',
+    textColor: '#697586',
+    activeColor: '#4f46e5',
+    radius: 8,
+    padding: 42
+  }
+};
+
 function mergeTheme(defaults, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return structuredClone(defaults);
   const result = structuredClone(defaults);
@@ -194,4 +262,8 @@ export function normalizeProductCardTheme(value) {
   ));
   theme.contentOrder = [...validOrder, ...defaultProductCardTheme.contentOrder.filter((item) => !validOrder.includes(item))];
   return theme;
+}
+
+export function normalizeProductPageTheme(value) {
+  return mergeTheme(defaultProductPageTheme, value);
 }

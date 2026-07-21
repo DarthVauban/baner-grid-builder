@@ -46,6 +46,9 @@ const CatalogStorefrontSettingsPage = lazy(() => import('../pages/CatalogStorefr
 const CatalogProductCardSettingsPage = lazy(() => import('../pages/CatalogProductCardSettingsPage').then((module) => ({
   default: module.CatalogProductCardSettingsPage
 })));
+const CatalogProductPageSettingsPage = lazy(() => import('../pages/CatalogProductPageSettingsPage').then((module) => ({
+  default: module.CatalogProductPageSettingsPage
+})));
 const CatalogPlaceholderPage = lazy(() => import('../pages/CatalogWorkspacePage').then((module) => ({
   default: module.CatalogPlaceholderPage
 })));
@@ -112,6 +115,7 @@ export function App() {
             <Route path="filters" element={<Navigate to="characteristics" replace />} />
             <Route path="storefront" element={<Suspense fallback={<LoadingScreen />}><CatalogStorefrontSettingsPage /></Suspense>} />
             <Route path="product-card" element={<Suspense fallback={<LoadingScreen />}><CatalogProductCardSettingsPage /></Suspense>} />
+            <Route path="product-page" element={<Suspense fallback={<LoadingScreen />}><CatalogProductPageSettingsPage /></Suspense>} />
             <Route path="preview" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Preview магазину" /></Suspense>} />
             <Route path="audit" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Історія змін" /></Suspense>} />
           </Route>

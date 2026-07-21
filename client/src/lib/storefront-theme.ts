@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type {
   CatalogProductCardTheme,
+  CatalogProductPageTheme,
   CatalogStorefrontFontFamily,
   CatalogStorefrontTheme,
   CatalogThemeShadow
@@ -41,11 +42,26 @@ export const defaultProductCardTheme: CatalogProductCardTheme = {
   modifications: { mode: 'hover', labelColor: '#39465a', optionBackground: '#ffffff', optionTextColor: '#263248', optionBorderColor: '#b8c2ce', activeBackground: '#111827', activeTextColor: '#ffffff', activeBorderColor: '#111827', radius: 8, optionHeight: 30, swatchSize: 34 }
 };
 
+export const defaultProductPageTheme: CatalogProductPageTheme = {
+  version: 1,
+  layout: { galleryWidth: 50, gap: 22, sectionGap: 22 },
+  gallery: { background: '#ffffff', borderColor: '#dde5e3', borderWidth: 1, radius: 8, padding: 0, imageFit: 'contain', thumbnailHeight: 91, thumbnailGap: 8, showThumbnails: true, showArrows: true, showCounter: true },
+  details: { background: '#ffffff', borderColor: '#dde5e3', borderWidth: 1, radius: 8, padding: 36, gap: 24, shadow: 'soft' },
+  visibility: { backLink: true, meta: true, shortDescription: true, quickSpecs: true, modifications: true, tabs: true },
+  typography: { titleColor: '#162033', titleSizeDesktop: 52, titleSizeMobile: 36, titleWeight: 800, priceColor: '#111827', priceSize: 38, priceWeight: 800, leadColor: '#667085', leadSize: 14 },
+  button: { label: 'Оформити заявку', unavailableLabel: 'Немає в наявності', previewLabel: 'Preview без заявки', background: '#6c5ce7', hoverBackground: '#5b4bd6', textColor: '#ffffff', radius: 10, height: 50, fontSize: 16, fontWeight: 800 },
+  tabs: { descriptionLabel: 'Опис товару', characteristicsLabel: 'Характеристики', background: '#ffffff', borderColor: '#dde5e3', textColor: '#697586', activeColor: '#4f46e5', radius: 8, padding: 42 }
+};
+
 export function cloneStorefrontTheme(theme = defaultStorefrontTheme) {
   return structuredClone(theme);
 }
 
 export function cloneProductCardTheme(theme = defaultProductCardTheme) {
+  return structuredClone(theme);
+}
+
+export function cloneProductPageTheme(theme = defaultProductPageTheme) {
   return structuredClone(theme);
 }
 
@@ -176,5 +192,54 @@ export function productCardThemeStyle(theme: CatalogProductCardTheme): ThemeStyl
     '--sf-card-mod-radius': `${theme.modifications.radius}px`,
     '--sf-card-mod-height': `${theme.modifications.optionHeight}px`,
     '--sf-card-swatch-size': `${theme.modifications.swatchSize}px`
+  };
+}
+
+export function productPageThemeStyle(theme: CatalogProductPageTheme): ThemeStyle {
+  const detailsWidth = 100 - theme.layout.galleryWidth;
+  return {
+    '--sf-product-columns': `${theme.layout.galleryWidth}fr ${detailsWidth}fr`,
+    '--sf-product-gap': `${theme.layout.gap}px`,
+    '--sf-product-section-gap': `${theme.layout.sectionGap}px`,
+    '--sf-product-gallery-bg': theme.gallery.background,
+    '--sf-product-gallery-border': theme.gallery.borderColor,
+    '--sf-product-gallery-border-width': `${theme.gallery.borderWidth}px`,
+    '--sf-product-gallery-radius': `${theme.gallery.radius}px`,
+    '--sf-product-gallery-padding': `${theme.gallery.padding}px`,
+    '--sf-product-image-fit': theme.gallery.imageFit,
+    '--sf-product-thumbs-height': `${theme.gallery.thumbnailHeight}px`,
+    '--sf-product-thumb-gap': `${theme.gallery.thumbnailGap}px`,
+    '--sf-product-thumbs-display': theme.gallery.showThumbnails ? 'block' : 'none',
+    '--sf-product-arrows-display': theme.gallery.showArrows ? 'inline-flex' : 'none',
+    '--sf-product-counter-display': theme.gallery.showCounter ? 'inline-flex' : 'none',
+    '--sf-product-details-bg': theme.details.background,
+    '--sf-product-details-border': theme.details.borderColor,
+    '--sf-product-details-border-width': `${theme.details.borderWidth}px`,
+    '--sf-product-details-radius': `${theme.details.radius}px`,
+    '--sf-product-details-padding': `${theme.details.padding}px`,
+    '--sf-product-details-gap': `${theme.details.gap}px`,
+    '--sf-product-details-shadow': shadowValues[theme.details.shadow],
+    '--sf-product-title-color': theme.typography.titleColor,
+    '--sf-product-title-size': `${theme.typography.titleSizeDesktop}px`,
+    '--sf-product-title-mobile-size': `${theme.typography.titleSizeMobile}px`,
+    '--sf-product-title-weight': theme.typography.titleWeight,
+    '--sf-product-price-color': theme.typography.priceColor,
+    '--sf-product-price-size': `${theme.typography.priceSize}px`,
+    '--sf-product-price-weight': theme.typography.priceWeight,
+    '--sf-product-lead-color': theme.typography.leadColor,
+    '--sf-product-lead-size': `${theme.typography.leadSize}px`,
+    '--sf-product-button-bg': theme.button.background,
+    '--sf-product-button-hover-bg': theme.button.hoverBackground,
+    '--sf-product-button-color': theme.button.textColor,
+    '--sf-product-button-radius': `${theme.button.radius}px`,
+    '--sf-product-button-height': `${theme.button.height}px`,
+    '--sf-product-button-size': `${theme.button.fontSize}px`,
+    '--sf-product-button-weight': theme.button.fontWeight,
+    '--sf-product-tabs-bg': theme.tabs.background,
+    '--sf-product-tabs-border': theme.tabs.borderColor,
+    '--sf-product-tabs-color': theme.tabs.textColor,
+    '--sf-product-tabs-active': theme.tabs.activeColor,
+    '--sf-product-tabs-radius': `${theme.tabs.radius}px`,
+    '--sf-product-tabs-padding': `${theme.tabs.padding}px`
   };
 }

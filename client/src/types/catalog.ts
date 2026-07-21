@@ -328,6 +328,7 @@ export interface CatalogStorefrontSettings {
   publicOrigin: string;
   storefrontTheme: CatalogStorefrontTheme;
   productCardTheme: CatalogProductCardTheme;
+  productPageTheme: CatalogProductPageTheme;
   updatedAt: string | null;
 }
 
@@ -490,5 +491,77 @@ export interface CatalogProductCardTheme {
     radius: number;
     optionHeight: number;
     swatchSize: number;
+  };
+}
+
+export interface CatalogProductPageTheme {
+  version: 1;
+  layout: {
+    galleryWidth: number;
+    gap: number;
+    sectionGap: number;
+  };
+  gallery: {
+    background: string;
+    borderColor: string;
+    borderWidth: number;
+    radius: number;
+    padding: number;
+    imageFit: 'contain' | 'cover';
+    thumbnailHeight: number;
+    thumbnailGap: number;
+    showThumbnails: boolean;
+    showArrows: boolean;
+    showCounter: boolean;
+  };
+  details: {
+    background: string;
+    borderColor: string;
+    borderWidth: number;
+    radius: number;
+    padding: number;
+    gap: number;
+    shadow: CatalogThemeShadow;
+  };
+  visibility: {
+    backLink: boolean;
+    meta: boolean;
+    shortDescription: boolean;
+    quickSpecs: boolean;
+    modifications: boolean;
+    tabs: boolean;
+  };
+  typography: {
+    titleColor: string;
+    titleSizeDesktop: number;
+    titleSizeMobile: number;
+    titleWeight: number;
+    priceColor: string;
+    priceSize: number;
+    priceWeight: number;
+    leadColor: string;
+    leadSize: number;
+  };
+  button: {
+    label: string;
+    unavailableLabel: string;
+    previewLabel: string;
+    background: string;
+    hoverBackground: string;
+    textColor: string;
+    radius: number;
+    height: number;
+    fontSize: number;
+    fontWeight: number;
+  };
+  tabs: {
+    descriptionLabel: string;
+    characteristicsLabel: string;
+    background: string;
+    borderColor: string;
+    textColor: string;
+    activeColor: string;
+    radius: number;
+    padding: number;
   };
 }
