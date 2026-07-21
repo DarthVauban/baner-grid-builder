@@ -253,12 +253,33 @@ export function CatalogStorefrontSettingsPage() {
           <ThemeRangeField label="Радіус" value={theme.controls.radius} min={0} max={36} onChange={(value) => updateTheme('controls', { ...theme.controls, radius: value })} />
         </ThemeSection>
 
-        <ThemeSection title="Фільтри">
+        <ThemeSection title="Фільтри" description="Окремі кольори для кожного елемента desktop-панелі та мобільного drawer.">
           <ThemeToggle label="Показувати фільтри" checked={theme.filters.visible} onChange={(value) => updateTheme('filters', { ...theme.filters, visible: value })} />
           <ThemeToggle label="Закріпити панель" checked={theme.filters.sticky} onChange={(value) => updateTheme('filters', { ...theme.filters, sticky: value })} />
           <ThemeToggle label="Показувати лічильники" checked={theme.filters.showCounts} onChange={(value) => updateTheme('filters', { ...theme.filters, showCounts: value })} />
-          <ThemeColorField label="Фон" value={theme.filters.background} onChange={(value) => updateTheme('filters', { ...theme.filters, background: value })} />
-          <ThemeColorField label="Рамка" value={theme.filters.borderColor} onChange={(value) => updateTheme('filters', { ...theme.filters, borderColor: value })} />
+          <ThemeColorField label="Фон панелі" value={theme.filters.background} onChange={(value) => updateTheme('filters', { ...theme.filters, background: value })} />
+          <ThemeColorField label="Рамка панелі" value={theme.filters.borderColor} onChange={(value) => updateTheme('filters', { ...theme.filters, borderColor: value })} />
+          <ThemeColorField label="Головний заголовок" value={theme.filters.titleColor} onChange={(value) => updateTheme('filters', { ...theme.filters, titleColor: value })} />
+          <ThemeColorField label="Посилання «Скинути»" value={theme.filters.resetColor} onChange={(value) => updateTheme('filters', { ...theme.filters, resetColor: value })} />
+          <ThemeColorField label="Заголовки груп" value={theme.filters.groupTitleColor} onChange={(value) => updateTheme('filters', { ...theme.filters, groupTitleColor: value })} />
+          <ThemeColorField label="Текст варіантів" value={theme.filters.optionTextColor} onChange={(value) => updateTheme('filters', { ...theme.filters, optionTextColor: value })} />
+          <ThemeColorField label="Лічильники" value={theme.filters.countColor} onChange={(value) => updateTheme('filters', { ...theme.filters, countColor: value })} />
+          <ThemeColorField label="Розділювачі" value={theme.filters.dividerColor} onChange={(value) => updateTheme('filters', { ...theme.filters, dividerColor: value })} />
+          <ThemeColorField label="Активний вибір" value={theme.filters.activeColor} onChange={(value) => updateTheme('filters', { ...theme.filters, activeColor: value })} />
+          <ThemeColorField label="Позначка активного вибору" value={theme.filters.activeMarkColor} onChange={(value) => updateTheme('filters', { ...theme.filters, activeMarkColor: value })} />
+          <ThemeColorField label="Рамка неактивного вибору" value={theme.filters.inactiveControlBorderColor} onChange={(value) => updateTheme('filters', { ...theme.filters, inactiveControlBorderColor: value })} />
+          <ThemeColorField label="Фон полів ціни" value={theme.filters.inputBackground} onChange={(value) => updateTheme('filters', { ...theme.filters, inputBackground: value })} />
+          <ThemeColorField label="Рамка полів ціни" value={theme.filters.inputBorderColor} onChange={(value) => updateTheme('filters', { ...theme.filters, inputBorderColor: value })} />
+          <ThemeColorField label="Текст полів ціни" value={theme.filters.inputTextColor} onChange={(value) => updateTheme('filters', { ...theme.filters, inputTextColor: value })} />
+          <ThemeColorField label="Фон кнопки OK" value={theme.filters.buttonBackground} onChange={(value) => updateTheme('filters', { ...theme.filters, buttonBackground: value })} />
+          <ThemeColorField label="Рамка кнопки OK" value={theme.filters.buttonBorderColor} onChange={(value) => updateTheme('filters', { ...theme.filters, buttonBorderColor: value })} />
+          <ThemeColorField label="Текст кнопки OK" value={theme.filters.buttonTextColor} onChange={(value) => updateTheme('filters', { ...theme.filters, buttonTextColor: value })} />
+          <ThemeColorField label="Лінія діапазону" value={theme.filters.rangeTrackColor} onChange={(value) => updateTheme('filters', { ...theme.filters, rangeTrackColor: value })} />
+          <ThemeColorField label="Фон повзунків" value={theme.filters.rangeThumbBackground} onChange={(value) => updateTheme('filters', { ...theme.filters, rangeThumbBackground: value })} />
+          <ThemeColorField label="Рамка повзунків" value={theme.filters.rangeThumbBorderColor} onChange={(value) => updateTheme('filters', { ...theme.filters, rangeThumbBorderColor: value })} />
+          <ThemeColorField label="Затемнення mobile" value={theme.filters.mobileOverlayColor} onChange={(value) => updateTheme('filters', { ...theme.filters, mobileOverlayColor: value })} />
+          <ThemeColorField label="Фон кнопки «Показати»" value={theme.filters.mobileButtonBackground} onChange={(value) => updateTheme('filters', { ...theme.filters, mobileButtonBackground: value })} />
+          <ThemeColorField label="Текст кнопки «Показати»" value={theme.filters.mobileButtonTextColor} onChange={(value) => updateTheme('filters', { ...theme.filters, mobileButtonTextColor: value })} />
           <ThemeRangeField label="Внутрішній відступ" value={theme.filters.padding} min={0} max={48} onChange={(value) => updateTheme('filters', { ...theme.filters, padding: value })} />
           <ThemeRangeField label="Проміжок груп" value={theme.filters.groupGap} min={0} max={40} onChange={(value) => updateTheme('filters', { ...theme.filters, groupGap: value })} />
           <ThemeRangeField label="Радіус" value={theme.filters.radius} min={0} max={40} onChange={(value) => updateTheme('filters', { ...theme.filters, radius: value })} />

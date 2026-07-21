@@ -88,6 +88,12 @@ describe('storefront product layout styles', () => {
     expect(appStyles).toMatch(/@media \(max-width:\s*920px\)[\s\S]*?\.storefront-product-content__tabs\s*\{\s*justify-content:\s*center/);
     expect(appStyles).toMatch(/\.storefront-filter-panel--open\s*\{[^}]*visibility:\s*visible;[^}]*transform:\s*translateX\(0\)/);
     expect(appStyles).toMatch(/\.storefront-filter-panel__body\s*\{[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*contain/);
+    expect(appStyles).toMatch(/\.storefront-filter-panel h2\s*\{[^}]*color:\s*var\(--sf-filter-title/);
+    expect(appStyles).toMatch(/\.storefront-filter-option input\s*\{[^}]*appearance:\s*none;[^}]*border:[^;]*var\(--sf-filter-control-border/);
+    expect(appStyles).toMatch(/\.storefront-filter-option input\[type="checkbox"\]:checked\s*\{[^}]*background:\s*var\(--sf-filter-active/);
+    expect(appStyles).toMatch(/\.storefront-price-filter__inputs button\s*\{[^}]*color:\s*var\(--sf-filter-button-text[^}]*background:\s*var\(--sf-filter-button-bg/);
+    expect(appStyles).toMatch(/\.storefront-filter-backdrop\s*\{[^}]*background:\s*color-mix\(in srgb,var\(--sf-filter-mobile-overlay/);
+    expect(appStyles).toMatch(/\.storefront-filter-panel__mobile-footer button\s*\{[^}]*color:\s*var\(--sf-filter-mobile-button-text[^}]*background:\s*var\(--sf-filter-mobile-button-bg/);
   });
 });
 

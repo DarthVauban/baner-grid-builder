@@ -552,6 +552,9 @@ test('catalog products publish to storefront, import stock updates, and create a
   storefrontTheme.header.logoUrl = '/media/catalog/storefront-logo.webp';
   storefrontTheme.header.logoLink = 'https://mobiletrend.com.ua';
   storefrontTheme.header.logoHeight = 54;
+  storefrontTheme.filters.titleColor = '#102030';
+  storefrontTheme.filters.activeColor = '#405060';
+  storefrontTheme.filters.mobileButtonBackground = '#708090';
   productCardTheme.button.label = 'Замовити';
   productCardTheme.contentOrder = ['image', 'title', 'badge', 'brand', 'meta'];
   productCardTheme.image.fit = 'contain';
@@ -571,6 +574,9 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoUrl, '/media/catalog/storefront-logo.webp');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoLink, 'https://mobiletrend.com.ua');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoHeight, 54);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.filters.titleColor, '#102030');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.filters.activeColor, '#405060');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.filters.mobileButtonBackground, '#708090');
   assert.equal(publicStorefrontSettings.body.data.productCardTheme.button.label, 'Замовити');
   assert.deepEqual(publicStorefrontSettings.body.data.productCardTheme.contentOrder, ['image', 'title', 'badge', 'brand', 'meta']);
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.layout.galleryWidth, 45);
