@@ -7,7 +7,7 @@ import type { PropsWithChildren, ReactElement } from 'react';
 import { api } from '../lib/api';
 import type { CatalogProduct } from '../types/catalog';
 import appStyles from '../styles/app.css?raw';
-import { StorefrontProductCard, StorefrontProductDetailPage } from './StorefrontPage';
+import { formatStorefrontPhone, StorefrontApplicationForm, StorefrontProductCard, StorefrontProductDetailPage } from './StorefrontPage';
 
 vi.mock('swiper/modules', () => ({
   Keyboard: {},
@@ -75,6 +75,8 @@ describe('storefront product layout styles', () => {
     expect(appStyles).toMatch(/\.storefront-product-view__media\s*\{[^}]*min-height:\s*clamp\(500px,34vw,620px\);[^}]*height:\s*auto/);
     expect(appStyles).toMatch(/\.storefront-gallery__stage img\s*\{[^}]*width:\s*auto;[^}]*height:\s*auto;[^}]*max-width:\s*100%;[^}]*max-height:\s*100%/);
     expect(appStyles).toMatch(/\.storefront-gallery-lightbox__thumbs-shell\s*\{[^}]*position:\s*fixed;[^}]*right:\s*0;[^}]*left:\s*0;[^}]*justify-content:\s*center/);
+    expect(appStyles).toMatch(/\.application-details-modal\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,1fr\) auto;[^}]*overflow:\s*hidden/);
+    expect(appStyles).toMatch(/\.application-details-modal__content\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto/);
   });
 });
 
@@ -314,5 +316,63 @@ describe('StorefrontProductCard', () => {
     expect(buyButton).toBeEnabled();
     await userEvent.click(buyButton);
     expect(onRequest).toHaveBeenCalledWith(product);
+  });
+});
+
+describe('StorefrontApplicationForm', () => {
+  it('masks phone values, submits a direct product URL and uses builder styles on success', async () => {
+    const submit = vi.spyOn(api.storefront, 'previewSubmitApplication').mockResolvedValue({
+      id: 'application-1',
+      number: '00029',
+      status: 'new'
+    });
+    const form = {
+      id: 'form-1',
+      title: 'Оформлення замовлення',
+      description: '',
+      buttonText: 'Надіслати',
+      successMessage: 'Заявку надіслано. Менеджер зв’яжеться з вами.',
+      styles: {
+        accentColor: '#5b4ce2',
+        buttonBackgroundColor: '#123456',
+        numberBlockBackgroundColor: '#f0efff',
+        numberBlockBorderColor: '#c8c3ff',
+        numberBlockTextColor: '#211866',
+        numberBlockRadius: '18px'
+      },
+      fields: [{
+        key: 'phone',
+        label: 'Телефон',
+        type: 'phone',
+        placeholder: '',
+        helpText: '',
+        defaultValue: '',
+        required: true,
+        systemFieldType: 'phone',
+        options: []
+      }]
+    };
+
+    renderWithQueryClient(<StorefrontApplicationForm product={product} form={form} preview />);
+    const phone = screen.getByRole('textbox', { name: /Телефон/ });
+    await userEvent.click(phone);
+    await userEvent.type(phone, '501112233');
+    expect(phone).toHaveValue('+380 (50) 111-22-33');
+    expect(formatStorefrontPhone('0501112233')).toBe('+380 (50) 111-22-33');
+
+    await userEvent.click(screen.getByRole('button', { name: /Надіслати/ }));
+    expect(submit).toHaveBeenCalledWith(product.slug, expect.objectContaining({
+      values: { phone: '+380 (50) 111-22-33' },
+      context: expect.objectContaining({
+        sourceUrl: new URL(`/catalog/preview/storefront/smartphones/${product.slug}`, window.location.origin).toString(),
+        pageTitle: product.name
+      })
+    }));
+
+    expect(await screen.findByText('00029')).toBeInTheDocument();
+    expect(screen.getByText('Номер заявки')).toBeInTheDocument();
+    const success = screen.getByText('00029').closest('.storefront-form');
+    expect(success).toHaveStyle({ '--storefront-form-number-color': '#211866' });
+    expect(success).toHaveStyle({ '--storefront-form-number-radius': '18px' });
   });
 });

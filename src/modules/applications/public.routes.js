@@ -125,7 +125,7 @@ function validateSubmission(form, rawValues) {
     if (['select', 'radio'].includes(field.type) && field.systemFieldType !== 'bank' && value && !field.options.some((option) => option.active !== false && option.value === value)) {
       errors.push({ field: field.key, message: `Обране значення поля «${field.label}» недоступне.` });
     }
-    if (field.type === 'phone' && value && !/^\+?[0-9\s().-]{7,30}$/.test(value)) {
+    if ((field.type === 'phone' || field.systemFieldType === 'phone') && value && !/^\+?[0-9\s().-]{7,30}$/.test(value)) {
       errors.push({ field: field.key, message: 'Вкажіть коректний телефон.' });
     }
     if (field.type === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {

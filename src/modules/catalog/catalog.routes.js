@@ -1559,12 +1559,12 @@ router.post('/preview/products/:identifier/applications', asyncHandler(async (re
   const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim();
   const fallbackOrigin = forwardedHost ? `${forwardedProto}://${forwardedHost}` : `${req.protocol}://${req.get('host')}`;
   const origin = settings.publicOrigin || fallbackOrigin;
-  const sourceUrl = cleanUrl(input.context.sourceUrl || `${origin}/catalog/preview/storefront/smartphones/${encodeURIComponent(product.slug)}`);
+  const sourceUrl = cleanUrl(new URL(`/catalog/preview/storefront/smartphones/${encodeURIComponent(product.slug)}`, `${fallbackOrigin}/`).toString());
   const context = {
     ...input.context,
     sourceUrl,
     canonicalUrl: sourceUrl,
-    pageTitle: cleanText(input.context.pageTitle || product.name, 500),
+    pageTitle: cleanText(product.name, 500),
     referrer: cleanUrl(input.context.referrer || '')
   };
   let domain = '';

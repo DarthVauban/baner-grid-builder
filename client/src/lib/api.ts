@@ -391,6 +391,7 @@ export const api = {
       description: string;
       buttonText: string;
       successMessage: string;
+      styles: Record<string, string>;
       fields: Array<{
         key: string;
         label: string;

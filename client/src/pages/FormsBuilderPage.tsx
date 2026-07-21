@@ -522,6 +522,9 @@ export function FormsBuilderPage() {
         {previewOptions(field).map((option) => <label className="form-preview__choice" key={option.value}><input type={field.type} name={`preview-${field.key}`} /> <span>{option.label}</span></label>)}
       </div>;
     }
+    if (field.type === 'phone' || field.systemFieldType === 'phone') {
+      return <input type="tel" inputMode="tel" placeholder="+380 (__) ___-__-__" />;
+    }
     return <input placeholder={field.placeholder} />;
   }
 

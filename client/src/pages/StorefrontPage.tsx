@@ -764,6 +764,52 @@ function fieldValue(values: Record<string, unknown>, field: PublicField) {
   return value == null ? '' : String(value);
 }
 
+export function storefrontPhoneDigits(value: unknown) {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('380')) digits = digits.slice(3);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits.slice(0, 9);
+}
+
+export function formatStorefrontPhone(value: unknown) {
+  const digits = storefrontPhoneDigits(value);
+  if (!digits) return '';
+  let result = '+380';
+  if (digits.length > 0) result += ` (${digits.slice(0, 2)}`;
+  if (digits.length >= 2) result += ')';
+  if (digits.length > 2) result += ` ${digits.slice(2, 5)}`;
+  if (digits.length > 5) result += `-${digits.slice(5, 7)}`;
+  if (digits.length > 7) result += `-${digits.slice(7, 9)}`;
+  return result;
+}
+
+function formStyleValue(styles: Record<string, string> | undefined, key: string, fallback: string) {
+  const value = styles?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function storefrontFormStyles(form: PublicForm): CSSProperties {
+  const styles = form.styles || {};
+  const accent = formStyleValue(styles, 'accentColor', '#6d5dfc');
+  const radius = formStyleValue(styles, 'borderRadius', '12px');
+  return {
+    '--storefront-form-accent': accent,
+    '--storefront-form-button-bg': formStyleValue(styles, 'buttonBackgroundColor', accent),
+    '--storefront-form-button-color': formStyleValue(styles, 'buttonTextColor', '#ffffff'),
+    '--storefront-form-radius': radius,
+    '--storefront-form-control-radius': formStyleValue(styles, 'controlRadius', radius),
+    '--storefront-form-choice-accent': formStyleValue(styles, 'choiceAccentColor', accent),
+    '--storefront-form-choice-border': formStyleValue(styles, 'choiceBorderColor', '#cfd6e3'),
+    '--storefront-form-choice-bg': formStyleValue(styles, 'choiceBackgroundColor', '#ffffff'),
+    '--storefront-form-choice-color': formStyleValue(styles, 'choiceTextColor', '#344054'),
+    '--storefront-form-checkbox-radius': formStyleValue(styles, 'checkboxRadius', '5px'),
+    '--storefront-form-number-bg': formStyleValue(styles, 'numberBlockBackgroundColor', '#f6f4ff'),
+    '--storefront-form-number-border': formStyleValue(styles, 'numberBlockBorderColor', '#d8d4ff'),
+    '--storefront-form-number-color': formStyleValue(styles, 'numberBlockTextColor', '#172033'),
+    '--storefront-form-number-radius': formStyleValue(styles, 'numberBlockRadius', '16px')
+  } as CSSProperties;
+}
+
 function PublicFieldControl({
   field,
   values,
@@ -794,11 +840,27 @@ function PublicFieldControl({
       onChange(field.key, [...next]);
     }} /> {option.label}</label>)}</fieldset>;
   }
+  if (field.type === 'phone' || field.systemFieldType === 'phone') {
+    const current = String(fieldValue(values, field));
+    return <label className="field storefront-form__field"><span>{field.label}{field.required ? ' *' : ''}</span><input
+      type="tel"
+      inputMode="tel"
+      autoComplete="tel"
+      required={field.required}
+      placeholder="+380 (__) ___-__-__"
+      pattern="[+]380 [(][0-9]{2}[)] [0-9]{3}-[0-9]{2}-[0-9]{2}"
+      title="Введіть номер у форматі +380 (__) ___-__-__"
+      value={current}
+      onFocus={() => { if (!current) onChange(field.key, '+380 '); }}
+      onBlur={() => { if (!storefrontPhoneDigits(current)) onChange(field.key, ''); }}
+      onChange={(event) => onChange(field.key, formatStorefrontPhone(event.target.value) || '+380 ')}
+    /></label>;
+  }
   const inputType = field.type === 'phone' ? 'tel' : field.type === 'email' ? 'email' : field.type === 'number' ? 'number' : 'text';
   return <label className="field storefront-form__field"><span>{field.label}{field.required ? ' *' : ''}</span><input type={inputType} required={field.required} placeholder={field.placeholder} value={String(fieldValue(values, field))} onChange={(event) => onChange(field.key, event.target.value)} /></label>;
 }
 
-function StorefrontApplicationForm({
+export function StorefrontApplicationForm({
   product,
   form,
   preview
@@ -809,12 +871,21 @@ function StorefrontApplicationForm({
 }) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [done, setDone] = useState<{ number: string } | null>(null);
+  useEffect(() => {
+    if (!form) return;
+    setValues(Object.fromEntries(form.fields
+      .filter((field) => field.defaultValue)
+      .map((field) => [field.key, field.type === 'phone' || field.systemFieldType === 'phone'
+        ? formatStorefrontPhone(field.defaultValue)
+        : field.defaultValue])));
+    setDone(null);
+  }, [form, product.id]);
   const submit = useMutation({
     mutationFn: () => (preview ? api.storefront.previewSubmitApplication : api.storefront.submitApplication)(product.slug, {
       values,
       context: {
-        sourceUrl: window.location.href,
-        pageTitle: document.title,
+        sourceUrl: new URL(productPath(product.slug, preview), window.location.origin).toString(),
+        pageTitle: product.name,
         referrer: document.referrer
       },
       idempotencyKey: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`
@@ -832,9 +903,13 @@ function StorefrontApplicationForm({
   }
 
   if (!form) return <section className="storefront-form storefront-form--empty"><h2>Заявка тимчасово недоступна</h2><p>Для вітрини ще не обрано активну форму.</p></section>;
-  if (done) return <section className="storefront-form storefront-form--done"><h2>{form.successMessage || 'Заявку надіслано'}</h2><strong>№{done.number}</strong></section>;
+  const formStyles = storefrontFormStyles(form);
+  if (done) return <section className="storefront-form storefront-form--done" style={formStyles}>
+    <h2>{form.successMessage || 'Заявку надіслано'}</h2>
+    <div className="storefront-form__number"><span>Номер заявки</span><strong>{done.number}</strong></div>
+  </section>;
 
-  return <form className="storefront-form" onSubmit={(event) => void handleSubmit(event)}>
+  return <form className="storefront-form" style={formStyles} onSubmit={(event) => void handleSubmit(event)}>
     <div><h2>{form.title}</h2>{form.description && <p>{form.description}</p>}</div>
     {form.fields.map((field) => <PublicFieldControl field={field} values={values} onChange={setField} key={field.key} />)}
     {submit.error && <p className="form-message form-message--error">{submit.error instanceof Error ? submit.error.message : 'Не вдалося надіслати заявку.'}</p>}

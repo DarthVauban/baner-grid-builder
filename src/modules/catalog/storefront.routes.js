@@ -178,12 +178,12 @@ router.post('/products/:identifier/applications', submitLimiter, asyncHandler(as
     throw new AppError(422, 'STOREFRONT_FORM_NOT_CONFIGURED', 'Для вітрини ще не обрано форму заявок.');
   }
   const origin = settings.publicOrigin || publicOrigin(req);
-  const sourceUrl = cleanUrl(input.context.sourceUrl || `${origin}${product.publicPath}`);
+  const sourceUrl = cleanUrl(new URL(product.publicPath, `${origin}/`).toString());
   const context = {
     ...input.context,
     sourceUrl,
     canonicalUrl: sourceUrl,
-    pageTitle: cleanText(input.context.pageTitle || product.name, 500),
+    pageTitle: cleanText(product.name, 500),
     referrer: cleanUrl(input.context.referrer || ''),
     ...buildUtm(input.context)
   };

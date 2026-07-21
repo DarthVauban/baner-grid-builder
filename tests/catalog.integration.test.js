@@ -524,7 +524,8 @@ test('catalog products publish to storefront, import stock updates, and create a
       bank: 'mono'
     },
     context: {
-      sourceUrl: `https://storefront.test${updated.body.data.publicPath}`,
+      sourceUrl: 'https://storefront.test/storefront',
+      pageTitle: 'Mobile Trend — смартфони',
       utm_source: 'catalog'
     },
     idempotencyKey: 'catalog-product-application-1'
@@ -537,6 +538,8 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(applications.body.data.items[0].product.title, 'iPhone 13 128GB Midnight');
   assert.equal(applications.body.data.items[0].product.productCode, 'SM-000001');
   assert.equal(applications.body.data.items[0].product.externalProductId, created.body.data.id);
+  assert.equal(applications.body.data.items[0].sourceUrl, `https://storefront.test${updated.body.data.publicPath}`);
+  assert.equal(applications.body.data.items[0].pageTitle, 'iPhone 13 128GB Midnight');
 
   await request(app)
     .post(`/api/catalog/preview/products/${updated.body.data.slug}/applications`)
@@ -545,6 +548,8 @@ test('catalog products publish to storefront, import stock updates, and create a
 
   const previewSubmitted = await admin
     .post(`/api/catalog/preview/products/${updated.body.data.slug}/applications`)
+    .set('x-forwarded-host', 'panel.test')
+    .set('x-forwarded-proto', 'https')
     .send({
       values: {
         first_name: 'Test',
@@ -553,7 +558,8 @@ test('catalog products publish to storefront, import stock updates, and create a
         bank: 'mono'
       },
       context: {
-        sourceUrl: `https://panel.test/catalog/preview/storefront/smartphones/${updated.body.data.slug}`
+        sourceUrl: 'https://panel.test/catalog/preview/storefront',
+        pageTitle: 'Mobile Trend — смартфони'
       },
       idempotencyKey: 'catalog-preview-application-1'
     })
@@ -566,6 +572,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(previewApplications.body.data.items[0].product.title, 'iPhone 13 128GB Midnight');
   assert.equal(previewApplications.body.data.items[0].product.productCode, 'SM-000001');
   assert.equal(previewApplications.body.data.items[0].sourceUrl, `https://panel.test/catalog/preview/storefront/smartphones/${updated.body.data.slug}`);
+  assert.equal(previewApplications.body.data.items[0].pageTitle, 'iPhone 13 128GB Midnight');
 
   const unavailable = await admin.put(`/api/catalog/products/${created.body.data.id}`).send({
     ...productAfterImport.body.data,

@@ -39,13 +39,18 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
 
   useEffect(() => setStatus(application.status), [application.status]);
   useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const close = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (deleteOpen) setDeleteOpen(false);
       else onClose();
     };
     document.addEventListener('keydown', close);
-    return () => document.removeEventListener('keydown', close);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', close);
+    };
   }, [deleteOpen, onClose]);
 
   const productTitle = application.product?.title || application.pageTitle || 'Товар не визначено';
