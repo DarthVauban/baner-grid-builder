@@ -6,6 +6,8 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
+import { cleanText, cleanUrl } from '../applications/application.service.js';
+import { createPublicApplication } from '../applications/public.routes.js';
 import { publishChatUpdates } from '../chat/chat.events.js';
 import { canSaveCatalogSourceJs, prepareCatalogDescription } from './catalog.content.js';
 import {
@@ -19,6 +21,7 @@ import {
   appendStorefrontProductFilters,
   attachPublicCatalogProductListDetails,
   attachCatalogProductGroups,
+  catalogProductSnapshot,
   catalogToolId,
   commitImportRows,
   conditionLabels,
@@ -176,6 +179,12 @@ const importCommitSchema = importPreviewSchema.extend({
 const settingsSchema = z.object({
   selectedFormPublicId: z.string().uuid().nullable().optional(),
   publicOrigin: z.string().trim().max(500).default('')
+});
+const previewApplicationSchema = z.object({
+  values: z.record(z.string(), z.unknown()).default({}),
+  context: z.record(z.string(), z.unknown()).default({}),
+  idempotencyKey: z.string().trim().max(160).optional().default(''),
+  honeypot: z.string().trim().max(200).optional().default('')
 });
 const mediaUploadSchema = z.object({
   webpBase64: z.string().min(1),
@@ -1529,6 +1538,55 @@ router.get('/preview/products/:identifier', asyncHandler(async (req, res) => {
   const product = await loadPreviewProduct(identifier);
   if (!product) throw new AppError(404, 'CATALOG_PREVIEW_PRODUCT_NOT_FOUND', 'Товар не знайдено або він архівований.');
   res.json({ data: product });
+}));
+
+router.post('/preview/products/:identifier/applications', asyncHandler(async (req, res) => {
+  const identifier = parseInput(z.string().trim().min(1).max(260), req.params.identifier);
+  const input = parseInput(previewApplicationSchema, req.body);
+  const [settings, product] = await Promise.all([
+    loadSettings(),
+    loadPreviewProduct(identifier)
+  ]);
+  if (!product) throw new AppError(404, 'CATALOG_PREVIEW_PRODUCT_NOT_FOUND', 'Товар не знайдено або він архівований.');
+  if (product.availability.status === 'unavailable') {
+    throw new AppError(409, 'STOREFRONT_PRODUCT_UNAVAILABLE', 'Товар зараз недоступний для заявки.');
+  }
+  if (!settings.selectedFormPublicId) {
+    throw new AppError(422, 'STOREFRONT_FORM_NOT_CONFIGURED', 'Для вітрини ще не обрано форму заявок.');
+  }
+
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim();
+  const fallbackOrigin = forwardedHost ? `${forwardedProto}://${forwardedHost}` : `${req.protocol}://${req.get('host')}`;
+  const origin = settings.publicOrigin || fallbackOrigin;
+  const sourceUrl = cleanUrl(input.context.sourceUrl || `${origin}/catalog/preview/storefront/smartphones/${encodeURIComponent(product.slug)}`);
+  const context = {
+    ...input.context,
+    sourceUrl,
+    canonicalUrl: sourceUrl,
+    pageTitle: cleanText(input.context.pageTitle || product.name, 500),
+    referrer: cleanUrl(input.context.referrer || '')
+  };
+  let domain = '';
+  try { domain = sourceUrl ? new URL(sourceUrl).hostname : ''; } catch { domain = ''; }
+
+  const result = await createPublicApplication({
+    publicId: settings.selectedFormPublicId,
+    input: {
+      values: input.values,
+      product: {},
+      context,
+      idempotencyKey: input.idempotencyKey,
+      honeypot: input.honeypot
+    },
+    req,
+    productOverride: catalogProductSnapshot(product, { origin, sourceUrl, domain, preview: true }),
+    contextOverride: context,
+    source: 'storefront_catalog_preview',
+    historyComment: 'Заявку створено з тестової вітрини каталогу'
+  });
+  if (result.status === 204) return res.status(204).end();
+  res.status(result.status).json({ data: result.data });
 }));
 
 router.get('/products/:id', asyncHandler(async (req, res) => {

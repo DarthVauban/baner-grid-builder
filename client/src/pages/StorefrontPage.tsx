@@ -429,13 +429,11 @@ export function StorefrontProductDetailPage({
   onRequest: () => void;
 }) {
   const specs = baseSpecItems(product);
-  const actionLabel = preview
-    ? 'Preview без заявки'
-    : product.availability.status === 'unavailable'
-      ? 'Немає в наявності'
-      : canRequestProduct
-        ? 'Оформити заявку'
-        : 'Заявка недоступна';
+  const actionLabel = product.availability.status === 'unavailable'
+    ? 'Немає в наявності'
+    : canRequestProduct
+      ? 'Оформити заявку'
+      : 'Заявка недоступна';
 
   return <section className="storefront-product-view" data-product-detail="rebuilt">
     <div className="storefront-product-view__hero">
@@ -572,7 +570,7 @@ export function StorefrontProductCard({
 
   const parameters = (displayedProduct.modifications?.parameters || []).filter((parameter) => parameter.options.length);
   const link = productLink(displayedProduct, preview);
-  const canBuy = !preview && formAvailable && displayedProduct.availability.status !== 'unavailable' && !variantBusy;
+  const canBuy = formAvailable && displayedProduct.availability.status !== 'unavailable' && !variantBusy;
 
   async function selectVariant(parameter: CatalogProductModificationParameter, option: CatalogProductModificationOption) {
     if (!option.product || option.selected || variantBusy) return;
@@ -802,15 +800,17 @@ function PublicFieldControl({
 
 function StorefrontApplicationForm({
   product,
-  form
+  form,
+  preview
 }: {
   product: CatalogProduct;
   form: PublicForm | undefined;
+  preview: boolean;
 }) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [done, setDone] = useState<{ number: string } | null>(null);
   const submit = useMutation({
-    mutationFn: () => api.storefront.submitApplication(product.slug, {
+    mutationFn: () => (preview ? api.storefront.previewSubmitApplication : api.storefront.submitApplication)(product.slug, {
       values,
       context: {
         sourceUrl: window.location.href,
@@ -845,10 +845,12 @@ function StorefrontApplicationForm({
 function StorefrontApplicationModal({
   product,
   form,
+  preview,
   onClose
 }: {
   product: CatalogProduct;
   form: PublicForm | undefined;
+  preview: boolean;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -869,7 +871,7 @@ function StorefrontApplicationModal({
   }}>
     <div className="storefront-modal__panel">
       <button className="storefront-modal__close" type="button" aria-label="Закрити форму" onClick={onClose}>×</button>
-      <StorefrontApplicationForm product={product} form={form} />
+      <StorefrontApplicationForm product={product} form={form} preview={preview} />
     </div>
   </div>;
 }
@@ -918,7 +920,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   const form = useQuery({
     queryKey: ['storefront-form', settings.data?.selectedFormPublicId],
     queryFn: () => api.storefront.form(settings.data!.selectedFormPublicId!),
-    enabled: !preview && Boolean(settings.data?.selectedFormPublicId),
+    enabled: Boolean(settings.data?.selectedFormPublicId),
     retry: false
   });
 
@@ -986,7 +988,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   const items = products.data?.items || [];
   const storefrontFilters = products.data?.filters;
   const productData = product.data;
-  const canRequestProduct = Boolean(!preview && productData && productData.availability.status !== 'unavailable' && form.data);
+  const canRequestProduct = Boolean(productData && productData.availability.status !== 'unavailable' && form.data);
 
   return <main className="storefront-page">
     <header className="storefront-header">
@@ -1040,6 +1042,6 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
       </div>
       {!products.isLoading && !items.length && <div className="storefront-empty"><Icon name="phone" size={32} /><h2>Товарів не знайдено</h2></div>}
     </section>}
-    {requestProduct && !preview && form.data && requestProduct.availability.status !== 'unavailable' && <StorefrontApplicationModal product={requestProduct} form={form.data} onClose={() => setRequestProduct(null)} />}
+    {requestProduct && form.data && requestProduct.availability.status !== 'unavailable' && <StorefrontApplicationModal product={requestProduct} form={form.data} preview={preview} onClose={() => setRequestProduct(null)} />}
   </main>;
 }

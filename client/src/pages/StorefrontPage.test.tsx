@@ -235,6 +235,25 @@ describe('StorefrontProductDetailPage', () => {
     expect(lightbox.querySelector('.storefront-gallery-lightbox__swiper')).toHaveAttribute('data-active-index', '1');
     expect(lightbox.querySelectorAll('.storefront-gallery-lightbox__thumb-button')[1]).toHaveAttribute('aria-current', 'true');
   });
+
+  it('allows an order to be started from the test storefront when a form is connected', async () => {
+    const onRequest = vi.fn();
+    render(<MemoryRouter>
+      <StorefrontProductDetailPage
+        product={product}
+        preview
+        basePath="/catalog/preview/storefront"
+        canRequestProduct
+        onRequest={onRequest}
+      />
+    </MemoryRouter>);
+
+    const action = screen.getByRole('button', { name: /Оформити заявку/ });
+    expect(action).toBeEnabled();
+    expect(screen.queryByText('Preview без заявки')).not.toBeInTheDocument();
+    await userEvent.click(action);
+    expect(onRequest).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('StorefrontProductCard', () => {
@@ -280,5 +299,20 @@ describe('StorefrontProductCard', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Купити' }));
     expect(onRequest).toHaveBeenCalledWith(variantProduct);
+  });
+
+  it('enables the buy button on the test storefront when a form is connected', async () => {
+    const onRequest = vi.fn();
+    renderWithQueryClient(<StorefrontProductCard
+      product={product}
+      preview
+      formAvailable
+      onRequest={onRequest}
+    />);
+
+    const buyButton = screen.getByRole('button', { name: 'Купити' });
+    expect(buyButton).toBeEnabled();
+    await userEvent.click(buyButton);
+    expect(onRequest).toHaveBeenCalledWith(product);
   });
 });

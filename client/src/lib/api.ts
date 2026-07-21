@@ -407,6 +407,11 @@ export const api = {
       request<{ id: string; number: string; status: string; duplicate?: boolean }>(`/api/storefront/products/${encodeURIComponent(identifier)}/applications`, {
         method: 'POST',
         body: jsonBody(input)
+      }),
+    previewSubmitApplication: (identifier: string, input: { values: Record<string, unknown>; context: Record<string, unknown>; idempotencyKey: string; honeypot?: string }) =>
+      request<{ id: string; number: string; status: string; duplicate?: boolean }>(`/api/catalog/preview/products/${encodeURIComponent(identifier)}/applications`, {
+        method: 'POST',
+        body: jsonBody(input)
       })
   },
   forms: {

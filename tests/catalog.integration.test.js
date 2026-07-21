@@ -538,6 +538,35 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(applications.body.data.items[0].product.productCode, 'SM-000001');
   assert.equal(applications.body.data.items[0].product.externalProductId, created.body.data.id);
 
+  await request(app)
+    .post(`/api/catalog/preview/products/${updated.body.data.slug}/applications`)
+    .send({ values: {}, context: {}, idempotencyKey: 'anonymous-preview-application' })
+    .expect(401);
+
+  const previewSubmitted = await admin
+    .post(`/api/catalog/preview/products/${updated.body.data.slug}/applications`)
+    .send({
+      values: {
+        first_name: 'Test',
+        last_name: 'Customer',
+        phone: '+380509998877',
+        bank: 'mono'
+      },
+      context: {
+        sourceUrl: `https://panel.test/catalog/preview/storefront/smartphones/${updated.body.data.slug}`
+      },
+      idempotencyKey: 'catalog-preview-application-1'
+    })
+    .expect(201);
+  assert.equal(previewSubmitted.body.data.number, '00002');
+
+  const previewApplications = await admin.get('/api/applications?search=00002').expect(200);
+  assert.equal(previewApplications.body.data.total, 1);
+  assert.equal(previewApplications.body.data.items[0].source, 'storefront_catalog_preview');
+  assert.equal(previewApplications.body.data.items[0].product.title, 'iPhone 13 128GB Midnight');
+  assert.equal(previewApplications.body.data.items[0].product.productCode, 'SM-000001');
+  assert.equal(previewApplications.body.data.items[0].sourceUrl, `https://panel.test/catalog/preview/storefront/smartphones/${updated.body.data.slug}`);
+
   const unavailable = await admin.put(`/api/catalog/products/${created.body.data.id}`).send({
     ...productAfterImport.body.data,
     brandId: null,
