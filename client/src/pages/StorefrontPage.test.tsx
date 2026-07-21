@@ -78,8 +78,10 @@ describe('storefront product layout styles', () => {
     expect(appStyles).toMatch(/\.application-details-modal\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,1fr\) auto;[^}]*overflow:\s*hidden/);
     expect(appStyles).toMatch(/\.application-details-modal__content\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto/);
     expect(appStyles).toMatch(/\.storefront-description--sandbox iframe\s*\{[^}]*height:\s*1px;[^}]*overflow:\s*hidden/);
+    expect(appStyles).toMatch(/\.storefront-description\s*\{[^}]*width:\s*100%;[^}]*overflow:\s*visible;[^}]*font-family:\s*inherit/);
+    expect(appStyles).toMatch(/\.storefront-description,\s*\.storefront-description \*,[^}]*font-family:\s*inherit\s*!important/);
     expect(appStyles).toMatch(/\.storefront-product-content\s*\{[^}]*height:\s*fit-content;[^}]*align-self:\s*start/);
-    expect(appStyles).toMatch(/\.storefront-product-content__section\s*\{[^}]*min-height:\s*0;[^}]*height:\s*auto/);
+    expect(appStyles).toMatch(/\.storefront-product-content__section\s*\{[^}]*width:\s*100%;[^}]*min-height:\s*0;[^}]*height:\s*auto;[^}]*overflow:\s*visible/);
   });
 });
 
@@ -258,6 +260,38 @@ describe('StorefrontProductDetailPage', () => {
     expect(screen.queryByText('Preview без заявки')).not.toBeInTheDocument();
     await userEvent.click(action);
     expect(onRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders custom description code at full width with storefront typography and no document scrolling', () => {
+    const styledDescriptionProduct: CatalogProduct = {
+      ...product,
+      descriptionHtml: '<section class="vendor-copy"><h3>Опис смартфона</h3><img src="/description.webp" alt="Смартфон" /></section>',
+      descriptionCss: 'html,body{overflow:auto!important}.vendor-copy{width:1800px;font-family:"Times New Roman"!important}',
+      descriptionJs: '',
+      descriptionHasJs: false
+    };
+    render(<MemoryRouter>
+      <StorefrontProductDetailPage
+        product={styledDescriptionProduct}
+        preview
+        basePath="/catalog/preview/storefront"
+        canRequestProduct={false}
+        onRequest={vi.fn()}
+      />
+    </MemoryRouter>);
+
+    const frame = screen.getByTitle('Опис товару');
+    const srcDoc = frame.getAttribute('srcdoc') || '';
+    const productStylesIndex = srcDoc.indexOf('data-product-description');
+    const guardStylesIndex = srcDoc.indexOf('data-storefront-description-guard');
+
+    expect(frame).toHaveAttribute('scrolling', 'no');
+    expect(srcDoc).toContain('class="storefront-description-document"');
+    expect(srcDoc).toContain('src="/mt-auto-height-sandbox.js"');
+    expect(srcDoc).toContain('font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important');
+    expect(srcDoc).toContain('overflow:hidden!important');
+    expect(productStylesIndex).toBeGreaterThan(-1);
+    expect(guardStylesIndex).toBeGreaterThan(productStylesIndex);
   });
 });
 
