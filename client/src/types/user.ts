@@ -115,3 +115,13 @@ export interface UserDirectory {
     rejected: number;
   };
 }
+
+export interface UserApplicationNotificationSettings {
+  userId: string;
+  forms: Array<{
+    formId: string;
+    name: string;
+    status: 'draft' | 'published' | 'disabled';
+    enabled: boolean;
+  }>;
+}

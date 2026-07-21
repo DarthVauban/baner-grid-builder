@@ -28,12 +28,15 @@ describe('AdminUserRow', () => {
     const onRole = vi.fn();
     const onStatus = vi.fn();
     const onAccess = vi.fn();
+    const onNotifications = vi.fn();
     const onDelete = vi.fn();
-    render(<AdminUserRow user={pendingUser} currentUserId="admin-1" busy={false} canAdminister onAccess={onAccess} onDelete={onDelete} onRole={onRole} onStatus={onStatus} />);
+    render(<AdminUserRow user={pendingUser} currentUserId="admin-1" busy={false} canAdminister onAccess={onAccess} onNotifications={onNotifications} onDelete={onDelete} onRole={onRole} onStatus={onStatus} />);
 
     expect(screen.getByText('Очікує схвалення')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Доступи' }));
     expect(onAccess).toHaveBeenCalledWith(pendingUser);
+    await userEvent.click(screen.getByRole('button', { name: 'Сповіщення' }));
+    expect(onNotifications).toHaveBeenCalledWith(pendingUser);
     await userEvent.click(screen.getByRole('button', { name: 'Роль користувача Ірина Коваль' }));
     await userEvent.click(screen.getByRole('option', { name: 'Редактор' }));
     expect(onRole).toHaveBeenCalledWith(pendingUser, 'editor');
@@ -45,8 +48,9 @@ describe('AdminUserRow', () => {
 
   it('does not allow the current administrator to demote or reject themselves', () => {
     const self = { ...pendingUser, id: 'admin-1', role: 'admin' as const, status: 'approved' as const };
-    render(<AdminUserRow user={self} currentUserId="admin-1" busy={false} canAdminister onAccess={vi.fn()} onDelete={vi.fn()} onRole={vi.fn()} onStatus={vi.fn()} />);
+    render(<AdminUserRow user={self} currentUserId="admin-1" busy={false} canAdminister onAccess={vi.fn()} onNotifications={vi.fn()} onDelete={vi.fn()} onRole={vi.fn()} onStatus={vi.fn()} />);
     expect(screen.getByText('Ви')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Сповіщення' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Роль користувача Ірина Коваль' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Відхилити' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Видалити/ })).not.toBeInTheDocument();

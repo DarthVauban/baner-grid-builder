@@ -9,6 +9,7 @@ import type {
   RolePermission,
   SavedDataResource,
   User,
+  UserApplicationNotificationSettings,
   UserDirectory,
   ProfileInput,
   TwoFactorConfirmResult,
@@ -462,6 +463,13 @@ export const api = {
     setToolAccess: (id: string, tools: ToolId[], canManageToolAccess: boolean, requiresTwoFactorTools?: ToolId[]) => request<UserToolAccess>(
       `/api/admin/users/${encodeURIComponent(id)}/tool-access`,
       { method: 'PUT', body: jsonBody({ tools, canManageToolAccess, requiresTwoFactorTools }) }
+    ),
+    applicationNotifications: (id: string) => request<UserApplicationNotificationSettings>(
+      `/api/admin/users/${encodeURIComponent(id)}/application-notifications`
+    ),
+    setApplicationNotifications: (id: string, disabledFormIds: string[]) => request<UserApplicationNotificationSettings>(
+      `/api/admin/users/${encodeURIComponent(id)}/application-notifications`,
+      { method: 'PUT', body: jsonBody({ disabledFormIds }) }
     ),
     removeUser: (id: string) => request<void>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     integrations: () => request<IntegrationSettings>('/api/admin/integrations'),

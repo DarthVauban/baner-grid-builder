@@ -249,6 +249,23 @@ export async function getApplicationRecipientIds(db = { query }) {
   return result.rows.map((row) => row.id);
 }
 
+export async function getApplicationNotificationRecipientIds(db = { query }, formId) {
+  const result = await db.query(
+    `SELECT users.id
+     FROM users
+     LEFT JOIN user_tool_access AS access
+       ON access.user_id = users.id AND access.tool_id = 'applications'
+     LEFT JOIN user_application_form_notification_preferences AS preference
+       ON preference.user_id = users.id AND preference.form_id = $1
+     WHERE users.status = 'approved'
+       AND (users.role = 'admin' OR access.user_id IS NOT NULL)
+       AND COALESCE(preference.enabled, TRUE) = TRUE
+     ORDER BY users.id`,
+    [formId]
+  );
+  return result.rows.map((row) => row.id);
+}
+
 export async function canAccessApplications(user, db = { query }) {
   return (await getUserToolAccess(user, db)).includes('applications');
 }

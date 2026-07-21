@@ -15,6 +15,7 @@ import {
   applicationStatusLabels,
   applicationStatuses,
   canViewApplicationRow,
+  getApplicationNotificationRecipientIds,
   getApplicationRecipientIds,
   loadApplicationView
 } from './application.service.js';
@@ -99,7 +100,14 @@ async function fetchProductImage(value) {
 }
 
 async function notifyApplicationRecipients(db, applicationId, actorId, type, title, message) {
-  const recipients = (await getApplicationRecipientIds(db)).filter((userId) => userId !== actorId);
+  const applicationResult = await db.query(
+    'SELECT form_id FROM applications WHERE id = $1',
+    [applicationId]
+  );
+  const formId = applicationResult.rows[0]?.form_id;
+  if (!formId) return [];
+  const recipients = (await getApplicationNotificationRecipientIds(db, formId))
+    .filter((userId) => userId !== actorId);
   for (const userId of recipients) {
     await createNotification(db, { userId, applicationId, type, title, message });
   }
@@ -373,7 +381,7 @@ router.post('/:id/claim', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const input = parseInput(claimSchema, req.body);
   const client = await pool.connect();
-  let recipients = [];
+  let notificationRecipients = [];
   let application;
   try {
     await client.query('BEGIN');
@@ -406,7 +414,7 @@ router.post('/:id/claim', asyncHandler(async (req, res) => {
        ) VALUES ($1, $2, 'in_progress', $3, $4)`,
       [id, current.status, req.user.id, 'Взято в роботу']
     );
-    recipients = await notifyApplicationRecipients(
+    notificationRecipients = await notifyApplicationRecipients(
       client,
       id,
       req.user.id,
@@ -423,7 +431,7 @@ router.post('/:id/claim', asyncHandler(async (req, res) => {
     client.release();
   }
 
-  const updateRecipients = [...new Set([...recipients, req.user.id])];
+  const updateRecipients = [...new Set([...(await getApplicationRecipientIds()), req.user.id])];
   publishApplicationUpdates(updateRecipients, {
     type: 'claimed',
     applicationId: id,
@@ -431,7 +439,7 @@ router.post('/:id/claim', asyncHandler(async (req, res) => {
     version: application?.version,
     updatedAt: application?.updatedAt
   });
-  publishNotificationUpdates(recipients);
+  publishNotificationUpdates(notificationRecipients);
   publishChatUpdates(updateRecipients, { type: 'entity', entityType: 'application', entityId: id, senderId: req.user.id });
   res.json({ data: application });
 }));
@@ -440,7 +448,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const input = parseInput(statusSchema, req.body);
   const client = await pool.connect();
-  let recipients = [];
+  let notificationRecipients = [];
   let application;
   try {
     await client.query('BEGIN');
@@ -473,7 +481,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
          ) VALUES ($1, $2, $3, $4, $5)`,
         [id, current.status, input.status, req.user.id, input.comment]
       );
-      recipients = await notifyApplicationRecipients(
+      notificationRecipients = await notifyApplicationRecipients(
         client,
         id,
         req.user.id,
@@ -492,7 +500,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
   }
 
   if (application) {
-    const updateRecipients = [...new Set([...recipients, req.user.id])];
+    const updateRecipients = [...new Set([...(await getApplicationRecipientIds()), req.user.id])];
     publishApplicationUpdates(updateRecipients, {
       type: 'status_changed',
       applicationId: id,
@@ -500,7 +508,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
       version: application.version,
       updatedAt: application.updatedAt
     });
-    publishNotificationUpdates(recipients);
+    publishNotificationUpdates(notificationRecipients);
     publishChatUpdates(updateRecipients, { type: 'entity', entityType: 'application', entityId: id, senderId: req.user.id });
   }
   res.json({ data: application });
@@ -510,7 +518,7 @@ router.post('/:id/comments', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const input = parseInput(commentSchema, req.body);
   const client = await pool.connect();
-  let recipients = [];
+  let notificationRecipients = [];
   let application;
   try {
     await client.query('BEGIN');
@@ -534,7 +542,7 @@ router.post('/:id/comments', asyncHandler(async (req, res) => {
        WHERE id = $2`,
       [req.user.id, id]
     );
-    recipients = await notifyApplicationRecipients(
+    notificationRecipients = await notifyApplicationRecipients(
       client,
       id,
       req.user.id,
@@ -550,14 +558,14 @@ router.post('/:id/comments', asyncHandler(async (req, res) => {
   } finally {
     client.release();
   }
-  const updateRecipients = [...new Set([...recipients, req.user.id])];
+  const updateRecipients = [...new Set([...(await getApplicationRecipientIds()), req.user.id])];
   publishApplicationUpdates(updateRecipients, {
     type: 'comment_added',
     applicationId: id,
     version: application?.version,
     updatedAt: application?.updatedAt
   });
-  publishNotificationUpdates(recipients);
+  publishNotificationUpdates(notificationRecipients);
   publishChatUpdates(updateRecipients, { type: 'entity', entityType: 'application', entityId: id, senderId: req.user.id });
   res.status(201).json({ data: application });
 }));

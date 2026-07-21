@@ -33,6 +33,9 @@ const toolAccessSchema = z.object({
   canManageToolAccess: z.boolean().optional(),
   requiresTwoFactorTools: z.array(z.enum(toolIds)).max(toolIds.length).optional()
 });
+const applicationNotificationSchema = z.object({
+  disabledFormIds: z.array(z.string().uuid()).max(500)
+});
 const permissionSchema = z.object({
   role: z.enum(['editor', 'content_manager']),
   resource: z.enum(['banner_grids', 'saved_banners', 'product_tables']),
@@ -71,6 +74,38 @@ function serializeToolAccessPayload({
       .map((requirement) => requirement.toolId),
     toolRequirements: requirements,
     canManageToolRequirements: isPrimaryAdmin(actor)
+  };
+}
+
+async function getApplicationNotificationSettings(db, userId) {
+  const result = await db.query(
+    `SELECT forms.id,
+            forms.name,
+            forms.status,
+            COALESCE(preference.enabled, TRUE) AS enabled
+     FROM application_forms AS forms
+     LEFT JOIN user_application_form_notification_preferences AS preference
+       ON preference.form_id = forms.id AND preference.user_id = $1
+     WHERE forms.status <> 'archived'
+     ORDER BY CASE forms.status
+                WHEN 'published' THEN 0
+                WHEN 'draft' THEN 1
+                WHEN 'disabled' THEN 2
+                ELSE 3
+              END,
+              lower(forms.name),
+              forms.created_at DESC`,
+    [userId]
+  );
+
+  return {
+    userId,
+    forms: result.rows.map((row) => ({
+      formId: row.id,
+      name: row.name,
+      status: row.status,
+      enabled: row.enabled === true
+    }))
   };
 }
 
@@ -327,6 +362,62 @@ router.put('/users/:id/tool-access', accessManagerOnly, asyncHandler(async (req,
     });
   } catch (error) {
     await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+router.get('/users/:id/application-notifications', adminOnly, asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const userResult = await query('SELECT id FROM users WHERE id = $1', [id]);
+  if (!userResult.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
+
+  res.json({ data: await getApplicationNotificationSettings({ query }, id) });
+}));
+
+router.put('/users/:id/application-notifications', adminOnly, asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(applicationNotificationSchema, req.body);
+  const disabledFormIds = [...new Set(input.disabledFormIds)];
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const userResult = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [id]);
+    if (!userResult.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
+
+    if (disabledFormIds.length) {
+      const placeholders = disabledFormIds.map((_, index) => `$${index + 1}`).join(', ');
+      const formsResult = await client.query(
+        `SELECT id
+         FROM application_forms
+         WHERE id IN (${placeholders}) AND status <> 'archived'`,
+        disabledFormIds
+      );
+      if (formsResult.rows.length !== disabledFormIds.length) {
+        throw new AppError(422, 'APPLICATION_FORM_NOT_FOUND', 'Одна або кілька форм більше недоступні. Оновіть сторінку.');
+      }
+    }
+
+    await client.query(
+      'DELETE FROM user_application_form_notification_preferences WHERE user_id = $1',
+      [id]
+    );
+    for (const formId of disabledFormIds) {
+      await client.query(
+        `INSERT INTO user_application_form_notification_preferences (
+           user_id, form_id, enabled, updated_by
+         ) VALUES ($1, $2, FALSE, $3)`,
+        [id, formId, req.user.id]
+      );
+    }
+
+    const data = await getApplicationNotificationSettings(client, id);
+    await client.query('COMMIT');
+    res.json({ data });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
     client.release();

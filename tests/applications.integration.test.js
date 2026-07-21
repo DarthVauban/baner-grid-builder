@@ -317,6 +317,19 @@ test('form builder and applications list have separate access and process public
   assert.equal(publicForm.body.data.styles.numberBlockRadius, '18px');
   assert.equal(publicForm.body.data.fields.find((field) => field.key === 'addons').options[1].value, 'extended_warranty');
 
+  await manager.get(`/api/admin/users/${managerId}/application-notifications`).expect(403);
+  const defaultNotificationSettings = await admin
+    .get(`/api/admin/users/${managerId}/application-notifications`)
+    .expect(200);
+  assert.equal(defaultNotificationSettings.body.data.forms.find((item) => item.formId === form.body.data.id).enabled, true);
+  assert.equal(defaultNotificationSettings.body.data.forms.find((item) => item.formId === flexibleForm.body.data.id).enabled, true);
+  const updatedNotificationSettings = await admin
+    .put(`/api/admin/users/${managerId}/application-notifications`)
+    .send({ disabledFormIds: [form.body.data.id] })
+    .expect(200);
+  assert.equal(updatedNotificationSettings.body.data.forms.find((item) => item.formId === form.body.data.id).enabled, false);
+  assert.equal(updatedNotificationSettings.body.data.forms.find((item) => item.formId === flexibleForm.body.data.id).enabled, true);
+
   const submitted = await request(app).post(`/api/public/application-forms/${form.body.data.publicId}/applications`).send({
     values: {
       first_name: 'Ivan',
@@ -419,7 +432,9 @@ test('form builder and applications list have separate access and process public
   assert.equal(commented.body.data.comments[0].text, 'Customer asked for a callback tomorrow.');
 
   const notifications = await manager.get('/api/notifications').expect(200);
-  assert.ok(notifications.body.data.items.some((item) => item.type === 'application_created' && item.applicationId === applicationId));
+  assert.equal(notifications.body.data.items.some((item) => item.type === 'application_created' && item.applicationId === applicationId), false);
+  const otherNotifications = await otherManager.get('/api/notifications').expect(200);
+  assert.ok(otherNotifications.body.data.items.some((item) => item.type === 'application_created' && item.applicationId === applicationId));
 
   await manager.delete(`/api/applications/${applicationId}`).send({ code: '000000' }).expect(403)
     .expect((response) => assert.equal(response.body.error.code, 'PRIMARY_ADMIN_REQUIRED'));
@@ -432,4 +447,18 @@ test('form builder and applications list have separate access and process public
   await manager.get(`/api/applications/${applicationId}`).expect(404);
   const feedAfterDelete = await manager.get('/api/applications?search=1').expect(200);
   assert.equal(feedAfterDelete.body.data.total, 0);
+
+  const flexibleSubmission = await request(app)
+    .post(`/api/public/application-forms/${flexibleForm.body.data.publicId}/applications`)
+    .send({
+      values: { comment: 'Call after 18:00', phone: '+380501234567' },
+      product: { title: 'Storefront smartphone' },
+      context: { sourceUrl: 'https://shop.example.com/smartphones/storefront-phone' },
+      idempotencyKey: 'flexible-form-customer-1'
+    })
+    .expect(201);
+  const notificationsAfterFlexibleSubmission = await manager.get('/api/notifications').expect(200);
+  assert.ok(notificationsAfterFlexibleSubmission.body.data.items.some((item) => (
+    item.type === 'application_created' && item.applicationId === flexibleSubmission.body.data.id
+  )));
 });

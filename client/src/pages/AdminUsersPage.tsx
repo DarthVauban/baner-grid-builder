@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { UserAvatar } from '../components/UserAvatar';
 import { UserToolAccessModal } from '../components/UserToolAccessModal';
+import { UserApplicationNotificationsModal } from '../components/UserApplicationNotificationsModal';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -46,6 +47,7 @@ export function AdminUserRow({
   busy,
   canAdminister,
   onAccess,
+  onNotifications,
   onDelete,
   onRole,
   onStatus
@@ -55,6 +57,7 @@ export function AdminUserRow({
   busy: boolean;
   canAdminister: boolean;
   onAccess: (user: User) => void;
+  onNotifications: (user: User) => void;
   onDelete: (user: User) => void;
   onRole: (user: User, role: UserRole) => void;
   onStatus: (user: User, status: UserStatus) => void;
@@ -74,6 +77,7 @@ export function AdminUserRow({
       </div>
       <div className="admin-user-row__actions">
         <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => onAccess(user)}><Icon name="tools" size={16} /> Доступи</button>
+        {canAdminister && <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => onNotifications(user)}><Icon name="bell" size={16} /> Сповіщення</button>}
         {!canAdminister || isSelf ? (
           <span className="admin-role-static">{roleLabels[user.role]}</span>
         ) : (
@@ -99,6 +103,7 @@ export function AdminUsersPage() {
   const [page, setPage] = useState(1);
   const [busyUserId, setBusyUserId] = useState('');
   const [accessUser, setAccessUser] = useState<User | null>(null);
+  const [notificationUser, setNotificationUser] = useState<User | null>(null);
   const canAdminister = currentUser?.role === 'admin';
 
   useEffect(() => {
@@ -214,13 +219,14 @@ export function AdminUsersPage() {
           {directory.isLoading && <div className="admin-list-state">Завантажуємо користувачів…</div>}
           {directory.isError && <div className="admin-list-state admin-list-state--error">{directory.error instanceof Error ? directory.error.message : 'Не вдалося завантажити користувачів.'}</div>}
           {!directory.isLoading && !directory.data?.items.length && <div className="admin-list-state">Користувачів за цими умовами не знайдено.</div>}
-          {directory.data?.items.map((directoryUser) => <AdminUserRow key={directoryUser.id} user={directoryUser} currentUserId={currentUser?.id || ''} busy={busyUserId === directoryUser.id} canAdminister={canAdminister} onAccess={setAccessUser} onDelete={(target) => void deleteUser(target)} onRole={(target, value) => void changeRole(target, value)} onStatus={(target, value) => void changeStatus(target, value)} />)}
+          {directory.data?.items.map((directoryUser) => <AdminUserRow key={directoryUser.id} user={directoryUser} currentUserId={currentUser?.id || ''} busy={busyUserId === directoryUser.id} canAdminister={canAdminister} onAccess={setAccessUser} onNotifications={setNotificationUser} onDelete={(target) => void deleteUser(target)} onRole={(target, value) => void changeRole(target, value)} onStatus={(target, value) => void changeStatus(target, value)} />)}
         </div>
 
         {directory.data && directory.data.pageCount > 1 && <nav className="admin-pagination" aria-label="Сторінки користувачів"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><Icon name="arrowLeft" size={17} /> Назад</button><span>Сторінка {page} із {directory.data.pageCount}</span><button type="button" disabled={page >= directory.data.pageCount} onClick={() => setPage((value) => value + 1)}>Далі <Icon name="arrowRight" size={17} /></button></nav>}
       </section>
 
       {accessUser && <UserToolAccessModal user={accessUser} onClose={() => setAccessUser(null)} />}
+      {notificationUser && <UserApplicationNotificationsModal user={notificationUser} onClose={() => setNotificationUser(null)} />}
     </div>
   );
 }

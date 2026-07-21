@@ -15,6 +15,7 @@ import {
   cleanText,
   cleanUrl,
   generateApplicationNumber,
+  getApplicationNotificationRecipientIds,
   getApplicationRecipientIds,
   loadApplicationView,
   loadPublishedForm
@@ -374,6 +375,7 @@ export async function createPublicApplication({
   let applicationId;
   let applicationNumber;
   let recipients = [];
+  let notificationRecipients = [];
 
   try {
     await client.query('BEGIN');
@@ -474,7 +476,8 @@ export async function createPublicApplication({
       );
     }
     recipients = await getApplicationRecipientIds(client);
-    for (const userId of recipients) {
+    notificationRecipients = await getApplicationNotificationRecipientIds(client, form.id);
+    for (const userId of notificationRecipients) {
       await createNotification(client, {
         userId,
         applicationId,
@@ -497,7 +500,7 @@ export async function createPublicApplication({
     number: applicationNumber,
     status: 'new'
   });
-  publishNotificationUpdates(recipients);
+  publishNotificationUpdates(notificationRecipients);
   publishChatUpdates(recipients, { type: 'entity', entityType: 'application', entityId: applicationId });
   const application = recipients[0]
     ? await loadApplicationView(applicationId, { id: recipients[0], role: 'admin' })
