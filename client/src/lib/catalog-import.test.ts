@@ -24,7 +24,7 @@ function characteristicField(key: string, label: string, sortOrder: number): Cat
 
 function importSchema(fields: CatalogImportTemplateField[]): CatalogImportTemplateSchema {
   return {
-    version: 1,
+    version: 2,
     source: 'xlsx_catalog',
     clearToken: '#CLEAR',
     columns: [
@@ -32,9 +32,20 @@ function importSchema(fields: CatalogImportTemplateField[]): CatalogImportTempla
       { key: 'condition', label: 'Стан', width: 16, example: 'Вживаний', required: true, description: 'Стан товару.' },
       { key: 'brandDirectory', label: 'Довідник брендів', width: 24, example: '', description: 'Довідник.' },
       { key: 'brand', label: 'Бренд', width: 20, example: '', description: 'Бренд.' },
+      { key: 'slug', label: 'Slug', width: 28, example: '', description: 'Адреса.' },
+      { key: 'priceUah', label: 'Ціна', width: 14, example: 18999, required: true, description: 'Ціна.' },
+      { key: 'stockCount', label: 'Залишок', width: 12, example: 1, required: true, description: 'Залишок.' },
+      { key: 'incomingCount', label: 'В дорозі', width: 12, example: 0, required: true, description: 'В дорозі.' },
+      { key: 'shortDescription', label: 'Короткий опис', width: 36, example: '', description: 'Короткий опис.' },
+      { key: 'description', label: 'Повний опис', width: 48, example: '', description: 'Повний опис.' },
+      { key: 'bodyCondition', label: 'Стан корпусу', width: 22, example: '', description: 'Стан корпусу.' },
+      { key: 'displayCondition', label: 'Стан дисплея', width: 22, example: '', description: 'Стан дисплея.' },
+      { key: 'batteryHealth', label: 'Акумулятор', width: 16, example: '', description: 'Акумулятор.' },
+      { key: 'warranty', label: 'Гарантія', width: 18, example: '', description: 'Гарантія.' },
+      { key: 'includedAccessories', label: 'Комплектація', width: 28, example: '', description: 'Комплектація.' },
+      { key: 'defectsText', label: 'Дефекти', width: 32, example: '', description: 'Дефекти.' },
       { key: 'template', label: 'Шаблон характеристик', width: 28, example: '', description: 'Шаблон.' },
-      { key: 'groupLabel', label: 'Група модифікацій', width: 28, example: '', description: 'Група.' },
-      { key: 'groupMain', label: 'Основна модифікація', width: 20, example: '', description: 'Основна модифікація.' }
+      { key: 'imeiSerial', label: 'Серійний номер / IMEI', width: 26, example: '', description: 'Серійний номер.' }
     ],
     templates: [{
       id: templateId,
@@ -62,7 +73,14 @@ describe('catalog XLSX import template', () => {
     expect(reopened.SheetNames).toEqual(['Імпорт', 'Приклад', 'Довідники', 'Характеристики', 'Довідка', '_meta']);
     const importRows = XLSX.utils.sheet_to_json<Array<string>>(reopened.Sheets['Імпорт'], { header: 1 });
     expect(importRows).toHaveLength(1);
-    expect(importRows[0]).toContain(storage.header);
+    expect(importRows[0]).toEqual([
+      'Назва', 'Стан', 'Довідник брендів', 'Бренд', 'Slug', 'Ціна', 'Залишок', 'В дорозі',
+      'Короткий опис', 'Повний опис', 'Стан корпусу', 'Стан дисплея', 'Акумулятор', 'Гарантія', 'Комплектація', 'Дефекти',
+      'Шаблон характеристик', storage.header, 'Серійний номер / IMEI'
+    ]);
+    expect(importRows[0]).not.toContain('Група модифікацій');
+    const characteristicRows = XLSX.utils.sheet_to_json<Array<string>>(reopened.Sheets['Характеристики'], { header: 1 });
+    expect(characteristicRows[0]).not.toContain('Параметр модифікації');
     expect(reopened.Workbook?.Sheets?.find((sheet) => sheet.name === '_meta')?.Hidden).toBe(1);
   });
 

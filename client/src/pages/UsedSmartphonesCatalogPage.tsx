@@ -1655,7 +1655,7 @@ function ImportModal({
       </header>
       <div className="catalog-import-modal__content">
         <label className="field"><span>Файл</span><input type="file" accept=".xlsx,.xls" onChange={(event) => void readFile(event)} /></label>
-        <p className="catalog-import-modal__hint">Нові товари створюються чернетками. Наявні товари оновлюються без зміни фото, галереї та статусу публікації.</p>
+        <p className="catalog-import-modal__hint">Нові товари створюються чернетками. Фото, галерея, статус публікації та звʼязки модифікацій не змінюються.</p>
         {fileName && <p className="catalog-import-modal__file">{fileName} · {rows.length} рядків</p>}
         <div className="catalog-import-options">
           <label><input type="checkbox" checked={importNew} onChange={(event) => setImportNew(event.target.checked)} /> Створювати нові товари</label>
@@ -1672,8 +1672,8 @@ function ImportModal({
             <span>{row.rowNumber}</span>
             <div className="catalog-import-table__product">
               <strong>{row.name || 'Без назви'}</strong>
-              {(row.brandLabel || row.templateLabel || row.characteristicCount || row.groupLabel) && <small>
-                {[row.brandLabel, row.templateLabel, row.characteristicCount ? `${row.characteristicCount} хар.` : '', row.groupLabel ? `Група: ${row.groupLabel}` : ''].filter(Boolean).join(' · ')}
+              {(row.brandLabel || row.templateLabel || row.characteristicCount) && <small>
+                {[row.brandLabel, row.templateLabel, row.characteristicCount ? `${row.characteristicCount} хар.` : ''].filter(Boolean).join(' · ')}
               </small>}
             </div>
             <span>{row.conditionLabel || row.condition || '-'}</span>

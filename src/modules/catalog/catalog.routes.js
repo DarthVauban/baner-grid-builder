@@ -41,6 +41,7 @@ import {
   loadStorefrontProductFilters,
   logCatalogAudit,
   makeUniqueSlug,
+  normalizeCatalogSerial,
   normalizeProductName,
   normalizeStorefrontCharacteristicFilters,
   productConditions,
@@ -2255,15 +2256,19 @@ router.post('/products', asyncHandler(async (req, res) => {
          description_has_js, description_source_updated_at, description_source_updated_by,
          seo_title, seo_description, social_description,
          body_condition, display_condition, battery_health, warranty, included_accessories,
-         diagnostics, internal_notes, created_by, updated_by
+         diagnostics, internal_notes, imei_serial, created_by, updated_by
        ) VALUES (
          $29, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::JSONB,
          $12, $13, $14, $15, $16, $17, NOW(), $28,
          $18, $19, $20, $21, $22, $23, $24, $25,
-         $26::JSONB, $27, $28, $28
+         $26::JSONB, $27, $30, $28, $28
        )
        RETURNING id`,
-      [...productParams(input, normalizedName, slug, req.user.id, descriptionContent), productCode]
+      [
+        ...productParams(input, normalizedName, slug, req.user.id, descriptionContent),
+        productCode,
+        normalizeCatalogSerial(input.diagnostics.privateSerial)
+      ]
     );
     await syncProductMedia(client, created.rows[0].id, input, req.user.id);
     await logCatalogAudit(client, {
@@ -2347,11 +2352,17 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
            included_accessories = $25,
            diagnostics = $26::JSONB,
            internal_notes = $27,
+           imei_serial = $31,
            updated_by = $28,
            updated_at = NOW(),
            version = version + 1
        WHERE id = $30`,
-      [...productParams(input, normalizedName, slug, req.user.id, descriptionContent), descriptionContent.sourceChanged, id]
+      [
+        ...productParams(input, normalizedName, slug, req.user.id, descriptionContent),
+        descriptionContent.sourceChanged,
+        id,
+        normalizeCatalogSerial(input.diagnostics.privateSerial)
+      ]
     );
     await syncProductMedia(client, id, input, req.user.id);
     await logCatalogAudit(client, {

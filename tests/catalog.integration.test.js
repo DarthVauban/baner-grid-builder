@@ -196,6 +196,14 @@ test('catalog products publish to storefront, import stock updates, and create a
 
   const initialImportSchema = await admin.get('/api/catalog/imports/template').expect(200);
   assert.match(initialImportSchema.headers['cache-control'], /no-store/);
+  assert.equal(initialImportSchema.body.data.version, 2);
+  assert.deepEqual(initialImportSchema.body.data.columns.map((column) => column.key), [
+    'name', 'condition', 'brandDirectory', 'brand', 'slug',
+    'priceUah', 'stockCount', 'incomingCount',
+    'shortDescription', 'description',
+    'bodyCondition', 'displayCondition', 'batteryHealth', 'warranty', 'includedAccessories', 'defectsText',
+    'template', 'imeiSerial'
+  ]);
   const initialSmartphoneImportTemplate = initialImportSchema.body.data.templates.find((item) => item.id === template.body.data.id);
   assert.ok(initialSmartphoneImportTemplate);
   assert.deepEqual(initialSmartphoneImportTemplate.fields.map((field) => field.key), ['storage', 'battery_health', 'colors', 'shell_color', 'face_id']);
@@ -534,47 +542,27 @@ test('catalog products publish to storefront, import stock updates, and create a
   const importHeaders = Object.fromEntries(
     refreshedSmartphoneImportTemplate.fields.map((field) => [field.key, field.header])
   );
-  const independentVariantsPreview = await admin.post('/api/catalog/imports/preview').send({
-    rows: ['Signature Model A', 'Signature Model B'].map((name) => ({
-      'Назва': `${name} 128 Midnight`,
-      'Стан': 'Вживаний',
-      'Залишок': 1,
-      'В дорозі': 0,
-      'Ціна': 10000,
-      'Шаблон характеристик': refreshedSmartphoneImportTemplate.label,
-      'Група модифікацій': name,
-      [importHeaders.storage]: '128',
-      [importHeaders.colors]: 'Midnight'
-    }))
-  }).expect(200);
-  assert.equal(independentVariantsPreview.body.data.summary.create, 2);
-  assert.equal(independentVariantsPreview.body.data.summary.conflict, 0);
-
   const fullImportRows = [
     {
       'Назва': 'Import Test Phone 128',
       'Стан': 'Вживаний',
       'Довідник брендів': brandDirectory.body.data.label,
       'Бренд': appleBrand.label,
+      'Slug': 'import-test-phone-128-xlsx',
       'Залишок': 3,
       'В дорозі': 1,
       'Ціна': 14999,
-      'Закупівельна ціна': 11000,
-      'Грейд': 'A',
       'Стан корпусу': 'Незначні сліди',
       'Стан дисплея': 'Без подряпин',
       'Акумулятор': '92%',
       'Гарантія': '3 місяці',
       'Комплектація': 'Смартфон, кабель',
-      'Технік': 'Олег',
-      'Дата перевірки': '2026-07-21',
-      'Обліковий статус': 'Перевірено',
-      'IMEI / Серійний номер': '359999999999991',
+      'Дефекти': 'Легка потертість на рамці',
+      'Серійний номер / IMEI': '359999999999991',
       'Короткий опис': 'Тестовий товар з XLSX',
-      'Внутрішні нотатки': 'Перевірено при прийманні',
+      'Повний опис': '<section><h2>Опис з XLSX</h2><p>Повний опис товару.</p></section>',
       'Шаблон характеристик': refreshedSmartphoneImportTemplate.label,
-      'Група модифікацій': 'Import Test Phone',
-      'Основна модифікація': 'Так',
+      'Група модифікацій': 'Ця застаріла колонка має бути проігнорована',
       [importHeaders.storage]: '128',
       [importHeaders.battery_health]: 92,
       [importHeaders.colors]: 'Midnight; Blue',
@@ -590,10 +578,8 @@ test('catalog products publish to storefront, import stock updates, and create a
       'Залишок': 1,
       'В дорозі': 0,
       'Ціна': 16999,
-      'IMEI / Серійний номер': '359999999999992',
+      'Серійний номер / IMEI': '359999999999992',
       'Шаблон характеристик': refreshedSmartphoneImportTemplate.label,
-      'Група модифікацій': 'Import Test Phone',
-      'Основна модифікація': 'Ні',
       [importHeaders.storage]: '256',
       [importHeaders.battery_health]: 88,
       [importHeaders.colors]: 'Green',
@@ -625,14 +611,16 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(importedCharacteristics.body.data.values.network, '5G');
 
   const importedModifications = await admin.get(`/api/catalog/products/${importedMainRow.productId}/modifications`).expect(200);
-  assert.equal(importedModifications.body.data.groupLabel, 'Import Test Phone');
-  assert.equal(importedModifications.body.data.mainProductId, importedMainRow.productId);
-  assert.deepEqual(
-    importedModifications.body.data.items.map((item) => item.id).sort(),
-    [importedMainRow.productId, importedChildRow.productId].sort()
-  );
+  assert.equal(importedModifications.body.data.groupId, null);
 
   const importedProductBeforePhoto = await admin.get(`/api/catalog/products/${importedMainRow.productId}`).expect(200);
+  assert.equal(importedProductBeforePhoto.body.data.slug, 'import-test-phone-128-xlsx');
+  assert.equal(importedProductBeforePhoto.body.data.shortDescription, 'Тестовий товар з XLSX');
+  assert.match(importedProductBeforePhoto.body.data.description, /Повний опис товару/);
+  assert.match(importedProductBeforePhoto.body.data.descriptionHtml, /Опис з XLSX/);
+  assert.equal(importedProductBeforePhoto.body.data.bodyCondition, 'Незначні сліди');
+  assert.equal(importedProductBeforePhoto.body.data.diagnostics.defectsText, 'Легка потертість на рамці');
+  assert.equal(importedProductBeforePhoto.body.data.diagnostics.privateSerial, '359999999999991');
   const importedProductWithPhoto = await admin.put(`/api/catalog/products/${importedMainRow.productId}`).send({
     ...importedProductBeforePhoto.body.data,
     brandId: importedProductBeforePhoto.body.data.brand.id,
@@ -648,7 +636,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     'Залишок': 7,
     'В дорозі': 2,
     'Ціна': 14499,
-    'IMEI / Серійний номер': '359999999999991',
+    'Серійний номер / IMEI': '359999999999991',
     'Шаблон характеристик': refreshedSmartphoneImportTemplate.label,
     [importHeaders.battery_health]: 90
   };
@@ -670,6 +658,10 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(importedProductAfterRepeat.body.data.stockCount, 7);
   assert.equal(importedProductAfterRepeat.body.data.mainImageUrl, 'https://example.com/import-test-phone.webp');
   assert.equal(importedProductAfterRepeat.body.data.publicationStatus, 'DRAFT');
+  assert.equal(importedProductAfterRepeat.body.data.slug, 'import-test-phone-128-xlsx');
+  assert.match(importedProductAfterRepeat.body.data.description, /Повний опис товару/);
+  assert.equal(importedProductAfterRepeat.body.data.diagnostics.defectsText, 'Легка потертість на рамці');
+  assert.equal(importedProductAfterRepeat.body.data.diagnostics.privateSerial, '359999999999991');
   const importedCharacteristicsAfterRepeat = await admin.get(`/api/catalog/products/${importedMainRow.productId}/characteristics`).expect(200);
   assert.equal(importedCharacteristicsAfterRepeat.body.data.values.storage, '128');
   assert.equal(importedCharacteristicsAfterRepeat.body.data.values.battery_health, 90);

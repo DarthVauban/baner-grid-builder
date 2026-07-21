@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { getUserToolAccess } from '../access/access.service.js';
@@ -867,37 +866,31 @@ export async function getCatalogRecipientIds(db = { query }) {
 const importSource = 'xlsx_catalog';
 const importClearToken = '#CLEAR';
 const characteristicHeaderPattern = /\[([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}):([a-z0-9_]+)\]\s*$/i;
+const legacyProductCodeAliases = ['Код товару', 'Product code', 'SKU'];
 
 const importCoreColumns = [
-  { key: 'productCode', label: 'Код товару', aliases: ['Код товару', 'Product code', 'SKU'], width: 18, example: '', description: 'Необовʼязковий внутрішній код SM-XXXXXX. Має найвищий пріоритет під час зіставлення.' },
   { key: 'name', label: 'Назва', aliases: ['Назва', 'Назва товару', 'Name', 'Модель'], width: 38, example: 'iPhone 13 128GB Midnight', required: true, description: 'Стабільна назва товару. Разом зі станом використовується як резервний ключ імпорту.' },
   { key: 'condition', label: 'Стан', aliases: ['Статус', 'Стан', 'Condition'], width: 16, example: 'Вживаний', required: true, description: 'Вживаний або Відновлений. Також підтримуються USED і REFURBISHED.' },
   { key: 'brandDirectory', label: 'Довідник брендів', aliases: ['Довідник брендів', 'Brand directory'], width: 24, example: 'Бренди смартфонів', description: 'Потрібен, якщо однакова назва бренду існує в декількох довідниках.' },
   { key: 'brand', label: 'Бренд', aliases: ['Бренд', 'Brand'], width: 20, example: 'Apple', description: `Точна назва бренду з аркуша «Довідники». ${importClearToken} очищає бренд.` },
+  { key: 'slug', label: 'Slug', aliases: ['Slug', 'Адреса', 'Публічна адреса'], width: 28, example: '', description: `Необовʼязкова публічна адреса. Порожня клітинка не змінює її під час оновлення; ${importClearToken} згенерує нову з назви.` },
+  { key: 'priceUah', label: 'Ціна', aliases: ['Ціна', 'Цена', 'Price', 'Цiна'], width: 14, example: 18999, required: true, description: 'Роздрібна ціна у гривнях.' },
   { key: 'stockCount', label: 'Залишок', aliases: ['Залишок', 'Stock', 'Кількість'], width: 12, example: 1, required: true, description: 'Невідʼємне ціле число.' },
   { key: 'incomingCount', label: 'В дорозі', aliases: ['В дорозі', 'Incoming', 'В дорозi'], width: 12, example: 0, required: true, description: 'Невідʼємне ціле число.' },
-  { key: 'priceUah', label: 'Ціна', aliases: ['Ціна', 'Цена', 'Price', 'Цiна'], width: 14, example: 18999, required: true, description: 'Роздрібна ціна у гривнях.' },
-  { key: 'purchasePriceUah', label: 'Закупівельна ціна', aliases: ['Закупівельна ціна', 'Purchase price'], width: 18, example: 15000, description: 'Необовʼязкова закупівельна ціна у гривнях.' },
-  { key: 'conditionGrade', label: 'Грейд', aliases: ['Грейд', 'Grade'], width: 14, example: 'A', description: `Внутрішній грейд товару. ${importClearToken} очищає значення.` },
+  { key: 'shortDescription', label: 'Короткий опис', aliases: ['Короткий опис', 'Short description'], width: 36, example: '', description: `Короткий опис для картки. ${importClearToken} очищає значення.` },
+  { key: 'description', label: 'Повний опис', aliases: ['Повний опис', 'Опис', 'Full description', 'Description'], width: 48, example: '', description: `Повний HTML-опис без JavaScript. ${importClearToken} очищає значення.` },
   { key: 'bodyCondition', label: 'Стан корпусу', aliases: ['Стан корпусу', 'Body condition'], width: 22, example: 'Незначні сліди використання', description: `Опис стану корпусу. ${importClearToken} очищає значення.` },
   { key: 'displayCondition', label: 'Стан дисплея', aliases: ['Стан дисплея', 'Display condition'], width: 22, example: 'Без подряпин', description: `Опис стану дисплея. ${importClearToken} очищає значення.` },
   { key: 'batteryHealth', label: 'Акумулятор', aliases: ['Акумулятор', 'Battery health'], width: 16, example: '91%', description: `Стан акумулятора. ${importClearToken} очищає значення.` },
   { key: 'warranty', label: 'Гарантія', aliases: ['Гарантія', 'Warranty'], width: 18, example: '3 місяці', description: `Умови гарантії. ${importClearToken} очищає значення.` },
   { key: 'includedAccessories', label: 'Комплектація', aliases: ['Комплектація', 'Included accessories'], width: 28, example: 'Смартфон, кабель', description: `Комплектація товару. ${importClearToken} очищає значення.` },
-  { key: 'technicianName', label: 'Технік', aliases: ['Технік', 'Technician'], width: 20, example: '', description: `Імʼя відповідального техніка. ${importClearToken} очищає значення.` },
-  { key: 'inspectionDate', label: 'Дата перевірки', aliases: ['Дата перевірки', 'Inspection date'], width: 16, example: '2026-07-21', description: `Дата у форматі YYYY-MM-DD. ${importClearToken} очищає значення.` },
-  { key: 'accountingStatus', label: 'Обліковий статус', aliases: ['Обліковий статус', 'Accounting status'], width: 20, example: '', description: `Внутрішній обліковий статус. ${importClearToken} очищає значення.` },
-  { key: 'imeiSerial', label: 'IMEI / Серійний номер', aliases: ['IMEI / Серійний номер', 'IMEI', 'Серійний номер', 'Serial'], width: 24, example: '', description: `Стабільний ідентифікатор із найвищим пріоритетом після коду товару. ${importClearToken} очищає значення.` },
-  { key: 'shortDescription', label: 'Короткий опис', aliases: ['Короткий опис', 'Short description'], width: 36, example: '', description: `Короткий опис для картки. ${importClearToken} очищає значення.` },
-  { key: 'internalNotes', label: 'Внутрішні нотатки', aliases: ['Внутрішні нотатки', 'Internal notes'], width: 36, example: '', description: `Приватні нотатки. ${importClearToken} очищає значення.` },
+  { key: 'defectsText', label: 'Дефекти', aliases: ['Дефекти', 'Defects'], width: 32, example: '', description: `Опис виявлених дефектів. ${importClearToken} очищає значення.` },
   { key: 'template', label: 'Шаблон характеристик', aliases: ['Шаблон характеристик', 'Characteristic template'], width: 28, example: '', description: 'Точна назва актуального шаблону з аркуша «Характеристики».' },
-  { key: 'groupLabel', label: 'Група модифікацій', aliases: ['Група модифікацій', 'Modification group'], width: 28, example: '', description: 'Однакова назва обʼєднує рядки в групу модифікацій.' },
-  { key: 'groupMain', label: 'Основна модифікація', aliases: ['Основна модифікація', 'Main modification'], width: 20, example: '', description: 'Так/Ні. У межах групи основною може бути лише одна модифікація.' }
+  { key: 'imeiSerial', label: 'Серійний номер / IMEI', aliases: ['Серійний номер / IMEI', 'IMEI / Серійний номер', 'IMEI', 'Серійний номер', 'Serial'], width: 26, example: '', description: `Поле «Серійний номер / IMEI» з картки товару та надійний ключ повторного імпорту. ${importClearToken} очищає значення.` }
 ];
 
 function importCharacteristicHeader(template, field) {
-  const suffix = field.isModifier ? ' · параметр модифікації' : '';
-  return `${template.label} · ${field.label}${suffix} [${template.id}:${field.key}]`;
+  return `${template.label} · ${field.label} [${template.id}:${field.key}]`;
 }
 
 export async function loadCatalogImportSchema(db = { query }) {
@@ -955,7 +948,7 @@ export async function loadCatalogImportSchema(db = { query }) {
     return template;
   });
   return {
-    version: 1,
+    version: 2,
     source: importSource,
     clearToken: importClearToken,
     columns: importCoreColumns.map(({ aliases, ...column }) => column),
@@ -994,10 +987,6 @@ function findColumn(lookup, columns) {
   return { found: false, value: '', key: '' };
 }
 
-function pickColumn(row, columns) {
-  return findColumn(rowLookup(row), columns).value;
-}
-
 export function parseImportCondition(value) {
   const text = normalizeHeader(value);
   if (['used', 'вживаний', 'б/у', 'бу', 'u'].includes(text)) return 'USED';
@@ -1021,14 +1010,9 @@ export function parseMoney(value) {
   return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) / 100 : NaN;
 }
 
-function normalizeImportSerial(value) {
+export function normalizeCatalogSerial(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
   return String(value || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 160);
-}
-
-function stableImportValue(value) {
-  if (Array.isArray(value)) return value.map(stableImportValue).sort().join(',');
-  if (value && typeof value === 'object') return Object.keys(value).sort().map((key) => `${key}:${stableImportValue(value[key])}`).join(',');
-  return String(value ?? '').normalize('NFKC').toLocaleLowerCase('uk-UA').trim();
 }
 
 function importTextCell(lookup, aliases, maxLength) {
@@ -1038,17 +1022,6 @@ function importTextCell(lookup, aliases, maxLength) {
   if (!raw) return { provided: false, value: '' };
   if (raw.toUpperCase() === importClearToken) return { provided: true, value: '' };
   return { provided: true, value: cleanText(raw, maxLength) };
-}
-
-function parseImportDate(value) {
-  if (value === null || value === undefined || value === '') return '';
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const date = new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86400000);
-    return date.toISOString().slice(0, 10);
-  }
-  const text = String(value).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(`${text}T00:00:00Z`))) return text;
-  return '';
 }
 
 function parseImportBoolean(value) {
@@ -1117,17 +1090,8 @@ function characteristicHasValue(field, value) {
 function importIdentityKeys(row) {
   const keys = [];
   if (row.productCode) keys.push(`code:${row.productCode.toLocaleLowerCase('uk-UA')}`);
-  const serial = normalizeImportSerial(row.imeiSerial);
+  const serial = normalizeCatalogSerial(row.imeiSerial);
   if (serial) keys.push(`imei:${serial}`);
-  const modifierParts = row.template?.fields
-    .filter((field) => field.isModifier && row.characteristicProvidedKeys.includes(field.key) && characteristicHasValue(field, row.characteristics[field.key]))
-    .map((field) => `${field.key}=${stableImportValue(row.characteristics[field.key])}`)
-    .sort() || [];
-  if (row.template && modifierParts.length) {
-    const variantScope = normalizeProductName(row.groupLabel || row.name);
-    const modifierSignature = createHash('sha256').update(modifierParts.join('|')).digest('hex');
-    keys.push(`variant:${variantScope}|${row.condition}|${row.brandId || ''}|${row.template.id}|${modifierSignature}`);
-  }
   if (row.normalizedName && row.condition) keys.push(`name:${row.normalizedName}|condition:${row.condition}`);
   return [...new Set(keys)];
 }
@@ -1139,7 +1103,7 @@ function serializeImportRow(row, index, reference) {
   const stockCount = parseNonNegativeInteger(findColumn(lookup, importCoreColumns.find((column) => column.key === 'stockCount').aliases).value);
   const incomingCount = parseNonNegativeInteger(findColumn(lookup, importCoreColumns.find((column) => column.key === 'incomingCount').aliases).value);
   const priceUah = parseMoney(findColumn(lookup, importCoreColumns.find((column) => column.key === 'priceUah').aliases).value);
-  const productCode = cleanText(findColumn(lookup, importCoreColumns.find((column) => column.key === 'productCode').aliases).value, 20).toUpperCase();
+  const productCode = cleanText(findColumn(lookup, legacyProductCodeAliases).value, 20).toUpperCase();
   const normalizedName = normalizeProductName(name);
   const errors = [];
   if (!name) errors.push('Не заповнено назву.');
@@ -1205,51 +1169,25 @@ function serializeImportRow(row, index, reference) {
   }
 
   const textFieldLengths = {
-    conditionGrade: 40,
+    slug: 260,
+    shortDescription: 1200,
+    description: 32767,
     bodyCondition: 120,
     displayCondition: 120,
     batteryHealth: 120,
     warranty: 160,
-    includedAccessories: 10000,
-    technicianName: 160,
-    accountingStatus: 80,
-    imeiSerial: 160,
-    shortDescription: 1200,
-    internalNotes: 10000
+    includedAccessories: 3000,
+    defectsText: 3000,
+    imeiSerial: 240
   };
   const textFields = {};
   for (const [key, maxLength] of Object.entries(textFieldLengths)) {
     const column = importCoreColumns.find((item) => item.key === key);
     textFields[key] = importTextCell(lookup, column.aliases, maxLength);
   }
-  const purchaseCell = findColumn(lookup, importCoreColumns.find((column) => column.key === 'purchasePriceUah').aliases);
-  let purchasePriceUah = { provided: false, value: null };
-  if (purchaseCell.found && String(purchaseCell.value ?? '').trim()) {
-    if (String(purchaseCell.value).trim().toUpperCase() === importClearToken) {
-      purchasePriceUah = { provided: true, value: null };
-    } else {
-      const parsed = parseMoney(purchaseCell.value);
-      if (!Number.isFinite(parsed)) errors.push('Закупівельна ціна має бути невідʼємним числом.');
-      else purchasePriceUah = { provided: true, value: parsed };
-    }
-  }
-  const inspectionCell = findColumn(lookup, importCoreColumns.find((column) => column.key === 'inspectionDate').aliases);
-  let inspectionDate = { provided: false, value: null };
-  if (inspectionCell.found && String(inspectionCell.value ?? '').trim()) {
-    if (String(inspectionCell.value).trim().toUpperCase() === importClearToken) inspectionDate = { provided: true, value: null };
-    else {
-      const parsed = parseImportDate(inspectionCell.value);
-      if (!parsed) errors.push('Дата перевірки має формат YYYY-MM-DD.');
-      else inspectionDate = { provided: true, value: parsed };
-    }
-  }
-  const groupLabel = importTextCell(lookup, importCoreColumns.find((column) => column.key === 'groupLabel').aliases, 240);
-  const groupMainCell = findColumn(lookup, importCoreColumns.find((column) => column.key === 'groupMain').aliases);
-  let groupMain = false;
-  if (groupMainCell.found && String(groupMainCell.value ?? '').trim()) {
-    const parsed = parseImportBoolean(groupMainCell.value);
-    if (!parsed.valid) errors.push('Основна модифікація має бути Так або Ні.');
-    groupMain = parsed.value;
+  const descriptionContent = prepareCatalogDescription(textFields.description.value);
+  if (textFields.description.provided && descriptionContent.hasJs) {
+    errors.push('Повний опис у XLSX не може містити JavaScript.');
   }
 
   const serialized = {
@@ -1270,20 +1208,16 @@ function serializeImportRow(row, index, reference) {
     characteristics,
     characteristicProvidedKeys,
     characteristicCount: characteristicProvidedKeys.length,
-    purchasePriceUah,
-    inspectionDate,
     textFields,
-    imeiSerial: textFields.imeiSerial.value,
-    groupLabel: groupLabel.value,
-    groupMain,
+    imeiSerial: normalizeCatalogSerial(textFields.imeiSerial.value),
     action: errors.length ? 'error' : 'pending',
     result: errors.length ? 'error' : 'pending',
     reason: errors.join(' ')
   };
   Object.defineProperty(serialized, 'template', { value: template, writable: true, enumerable: false });
+  Object.defineProperty(serialized, 'descriptionContent', { value: descriptionContent, writable: true, enumerable: false });
   serialized.identityKeys = importIdentityKeys(serialized);
   serialized.identityKey = serialized.identityKeys.find((key) => key.startsWith('imei:'))
-    || serialized.identityKeys.find((key) => key.startsWith('variant:'))
     || serialized.identityKeys.find((key) => key.startsWith('name:'))
     || '';
   return serialized;
@@ -1323,8 +1257,7 @@ async function findImportProduct(row, db) {
     );
     const identityLabel = identityKey.startsWith('imei:') ? 'IMEI / серійним номером'
       : identityKey.startsWith('code:') ? 'кодом товару'
-        : identityKey.startsWith('variant:') ? 'параметрами модифікації'
-          : 'назвою та станом';
+        : 'назвою та станом';
     remember(mapped.rows[0], `Збережена відповідність попереднього імпорту за ${identityLabel}.`, 5);
   }
   if (row.productCode) {
@@ -1390,24 +1323,6 @@ async function validateImportCharacteristics(row, product, db) {
   Object.defineProperty(row, 'finalCharacteristicValues', { value: finalValues, writable: true, enumerable: false });
 }
 
-function markImportGroupConflicts(rows) {
-  const groups = new Map();
-  rows.filter((row) => row.groupLabel && row.result !== 'error' && row.result !== 'conflict').forEach((row) => {
-    const key = normalizeHeader(row.groupLabel);
-    const groupRows = groups.get(key) || [];
-    groupRows.push(row);
-    groups.set(key, groupRows);
-  });
-  groups.forEach((groupRows) => {
-    if (groupRows.filter((row) => row.groupMain).length <= 1) return;
-    groupRows.forEach((row) => {
-      row.action = 'conflict';
-      row.result = 'conflict';
-      row.reason = 'У групі модифікацій позначено декілька основних товарів.';
-    });
-  });
-}
-
 export async function analyzeImportRows(rawRows, db = { query }) {
   const schema = await loadCatalogImportSchema(db);
   const reference = importReferenceData(schema);
@@ -1415,13 +1330,11 @@ export async function analyzeImportRows(rawRows, db = { query }) {
   const keyCounts = new Map();
   for (const row of rows) {
     if (row.result === 'error') continue;
-    const key = row.identityKey;
-    keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
+    row.identityKeys.forEach((key) => keyCounts.set(key, (keyCounts.get(key) || 0) + 1));
   }
   for (const row of rows) {
     if (row.result === 'error') continue;
-    const key = row.identityKey;
-    if (keyCounts.get(key) > 1) {
+    if (row.identityKeys.some((key) => keyCounts.get(key) > 1)) {
       row.action = 'conflict';
       row.result = 'conflict';
       row.reason = 'Дублікат у файлі імпорту. Рядки не агрегуються.';
@@ -1447,7 +1360,6 @@ export async function analyzeImportRows(rawRows, db = { query }) {
     row.action = product ? 'update' : 'create';
     row.result = 'ready';
   }
-  markImportGroupConflicts(rows);
   return { rows, summary: importSummary(rows) };
 }
 
@@ -1492,9 +1404,7 @@ async function saveImportIdentityKeys(db, productId, row) {
     condition: row.condition,
     brandId: row.brandId || null,
     templateId: row.templateId || null,
-    modifierValues: row.template?.fields
-      .filter((field) => field.isModifier)
-      .reduce((values, field) => ({ ...values, [field.key]: row.finalCharacteristicValues?.[field.key] ?? null }), {}) || {}
+    imeiSerial: row.textFields.imeiSerial.value || ''
   };
   for (const identityKey of importIdentityKeys(row)) {
     const existing = await db.query(
@@ -1510,73 +1420,6 @@ async function saveImportIdentityKeys(db, productId, row) {
        ON CONFLICT (source, identity_key)
        DO UPDATE SET identity_snapshot = EXCLUDED.identity_snapshot, updated_at = NOW()`,
       [importSource, identityKey, productId, JSON.stringify(snapshot)]
-    );
-  }
-}
-
-async function makeUniqueImportGroupSlug(label, db) {
-  const base = slugBase(label, 'modifications');
-  let slug = base;
-  for (let index = 2; index < 1000; index += 1) {
-    const existing = await db.query('SELECT id FROM used_smartphone_product_groups WHERE slug = $1', [slug]);
-    if (!existing.rows[0]) return slug;
-    slug = `${base}-${index}`;
-  }
-  throw new AppError(409, 'CATALOG_GROUP_SLUG_UNAVAILABLE', 'Не вдалося створити адресу групи модифікацій.');
-}
-
-async function syncImportedGroups(db, rows, actorId) {
-  const grouped = new Map();
-  rows.filter((row) => ['created', 'updated'].includes(row.result) && row.groupLabel && row.productId).forEach((row) => {
-    const key = normalizeHeader(row.groupLabel);
-    const groupRows = grouped.get(key) || [];
-    groupRows.push(row);
-    grouped.set(key, groupRows);
-  });
-  for (const groupRows of grouped.values()) {
-    const label = groupRows[0].groupLabel;
-    const groups = await db.query(
-      'SELECT * FROM used_smartphone_product_groups WHERE lower(label) = lower($1) ORDER BY updated_at DESC',
-      [label]
-    );
-    if (groups.rows.length > 1) throw new AppError(409, 'CATALOG_IMPORT_GROUP_CONFLICT', `Знайдено декілька груп із назвою «${label}».`);
-    let group = groups.rows[0];
-    if (!group) {
-      const created = await db.query(
-        `INSERT INTO used_smartphone_product_groups (label, slug, active, created_by, updated_by)
-         VALUES ($1, $2, TRUE, $3, $3)
-         RETURNING *`,
-        [label, await makeUniqueImportGroupSlug(label, db), actorId]
-      );
-      group = created.rows[0];
-    }
-    const productIds = [...new Set(groupRows.map((row) => row.productId))];
-    const productPlaceholders = productIds.map((_, index) => `$${index + 1}`).join(', ');
-    await db.query(
-      `DELETE FROM used_smartphone_product_group_items
-       WHERE product_id IN (${productPlaceholders}) AND group_id <> $${productIds.length + 1}`,
-      [...productIds, group.id]
-    );
-    await db.query(
-      `UPDATE used_smartphone_product_groups
-       SET main_product_id = NULL, updated_at = NOW()
-       WHERE main_product_id IN (${productPlaceholders}) AND id <> $${productIds.length + 1}`,
-      [...productIds, group.id]
-    );
-    for (const [index, row] of groupRows.entries()) {
-      await db.query(
-        `INSERT INTO used_smartphone_product_group_items (group_id, product_id, sort_order)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (group_id, product_id) DO UPDATE SET sort_order = EXCLUDED.sort_order`,
-        [group.id, row.productId, index]
-      );
-    }
-    const selectedMain = groupRows.find((row) => row.groupMain)?.productId || group.main_product_id || groupRows[0].productId;
-    await db.query(
-      `UPDATE used_smartphone_product_groups
-       SET main_product_id = $1, label = $2, active = TRUE, updated_by = $3, updated_at = NOW()
-       WHERE id = $4`,
-      [selectedMain, label, actorId, group.id]
     );
   }
 }
@@ -1610,19 +1453,23 @@ export async function commitImportRows(rawRows, options, actorId, db) {
         committed.reason = 'Оновлення наявних товарів вимкнено для цього імпорту.';
       } else if (row.action === 'create') {
         const productCode = await generateProductCode(db);
-        const slug = await makeUniqueSlug(row.name, null, db, productCode.toLowerCase());
+        const slug = await makeUniqueSlug(row.textFields.slug.value || row.name, null, db, productCode.toLowerCase());
+        const diagnostics = {
+          defectsText: row.textFields.defectsText.value,
+          privateSerial: row.textFields.imeiSerial.value
+        };
         const created = await db.query(
           `INSERT INTO used_smartphone_products (
              product_code, name, normalized_name, condition, stock_count,
              incoming_count, price_uah, publication_status, slug, brand_id,
-             short_description, body_condition, display_condition, battery_health,
-             warranty, included_accessories, internal_notes, condition_grade,
-             technician_name, inspection_date, purchase_price_uah, accounting_status,
-             imei_serial, created_by, updated_by
+             short_description, description, description_safe_html, description_css,
+             description_source_updated_at, description_source_updated_by,
+             body_condition, display_condition, battery_health, warranty,
+             included_accessories, diagnostics, imei_serial, created_by, updated_by
            ) VALUES (
              $1, $2, $3, $4, $5, $6, $7, 'DRAFT', $8, $9,
-             $10, $11, $12, $13, $14, $15, $16, $17,
-             $18, $19, $20, $21, $22, $23, $23
+             $10, $11, $12, $13, NOW(), $21,
+             $14, $15, $16, $17, $18, $19::JSONB, $20, $21, $21
            )
            RETURNING id, product_code`,
           [
@@ -1636,18 +1483,16 @@ export async function commitImportRows(rawRows, options, actorId, db) {
             slug,
             row.brandProvided ? row.brandId : null,
             row.textFields.shortDescription.value,
+            row.textFields.description.value,
+            row.descriptionContent.safeHtml,
+            row.descriptionContent.css,
             row.textFields.bodyCondition.value,
             row.textFields.displayCondition.value,
             row.textFields.batteryHealth.value,
             row.textFields.warranty.value,
             row.textFields.includedAccessories.value,
-            row.textFields.internalNotes.value,
-            row.textFields.conditionGrade.value,
-            row.textFields.technicianName.value,
-            row.inspectionDate.value,
-            row.purchasePriceUah.value,
-            row.textFields.accountingStatus.value,
-            row.textFields.imeiSerial.value,
+            JSON.stringify(diagnostics),
+            row.imeiSerial,
             actorId
           ]
         );
@@ -1668,6 +1513,14 @@ export async function commitImportRows(rawRows, options, actorId, db) {
           changes: { stockCount: row.stockCount, incomingCount: row.incomingCount, priceUah: row.priceUah }
         });
       } else if (row.action === 'update') {
+        const nextSlug = row.textFields.slug.provided
+          ? await makeUniqueSlug(row.textFields.slug.value || row.name, row.productId, db, row.productCode.toLowerCase())
+          : '';
+        const current = await db.query('SELECT diagnostics FROM used_smartphone_products WHERE id = $1', [row.productId]);
+        const diagnostics = normalizeJsonObject(current.rows[0]?.diagnostics);
+        if (row.textFields.defectsText.provided) diagnostics.defectsText = row.textFields.defectsText.value;
+        if (row.textFields.imeiSerial.provided) diagnostics.privateSerial = row.textFields.imeiSerial.value;
+        const diagnosticsProvided = row.textFields.defectsText.provided || row.textFields.imeiSerial.provided;
         await db.query(
           `UPDATE used_smartphone_products
            SET name = $1,
@@ -1677,23 +1530,26 @@ export async function commitImportRows(rawRows, options, actorId, db) {
                incoming_count = $5,
                price_uah = $6,
                brand_id = CASE WHEN $7 THEN $8 ELSE brand_id END,
-               short_description = CASE WHEN $9 THEN $10 ELSE short_description END,
-               body_condition = CASE WHEN $11 THEN $12 ELSE body_condition END,
-               display_condition = CASE WHEN $13 THEN $14 ELSE display_condition END,
-               battery_health = CASE WHEN $15 THEN $16 ELSE battery_health END,
-               warranty = CASE WHEN $17 THEN $18 ELSE warranty END,
-               included_accessories = CASE WHEN $19 THEN $20 ELSE included_accessories END,
-               internal_notes = CASE WHEN $21 THEN $22 ELSE internal_notes END,
-               condition_grade = CASE WHEN $23 THEN $24 ELSE condition_grade END,
-               technician_name = CASE WHEN $25 THEN $26 ELSE technician_name END,
-               inspection_date = CASE WHEN $27 THEN $28::DATE ELSE inspection_date END,
-               purchase_price_uah = CASE WHEN $29 THEN $30 ELSE purchase_price_uah END,
-               accounting_status = CASE WHEN $31 THEN $32 ELSE accounting_status END,
-               imei_serial = CASE WHEN $33 THEN $34 ELSE imei_serial END,
-               updated_by = $35,
+               slug = CASE WHEN $9 THEN $10 ELSE slug END,
+               short_description = CASE WHEN $11 THEN $12 ELSE short_description END,
+               description = CASE WHEN $13 THEN $14 ELSE description END,
+               description_safe_html = CASE WHEN $13 THEN $15 ELSE description_safe_html END,
+               description_css = CASE WHEN $13 THEN $16 ELSE description_css END,
+               description_js = CASE WHEN $13 THEN '' ELSE description_js END,
+               description_has_js = CASE WHEN $13 THEN FALSE ELSE description_has_js END,
+               description_source_updated_at = CASE WHEN $13 THEN NOW() ELSE description_source_updated_at END,
+               description_source_updated_by = CASE WHEN $13 THEN $17 ELSE description_source_updated_by END,
+               body_condition = CASE WHEN $18 THEN $19 ELSE body_condition END,
+               display_condition = CASE WHEN $20 THEN $21 ELSE display_condition END,
+               battery_health = CASE WHEN $22 THEN $23 ELSE battery_health END,
+               warranty = CASE WHEN $24 THEN $25 ELSE warranty END,
+               included_accessories = CASE WHEN $26 THEN $27 ELSE included_accessories END,
+               diagnostics = CASE WHEN $28 THEN $29::JSONB ELSE diagnostics END,
+               imei_serial = CASE WHEN $30 THEN $31 ELSE imei_serial END,
+               updated_by = $32,
                updated_at = NOW(),
                version = version + 1
-           WHERE id = $36`,
+           WHERE id = $33`,
           [
             row.name,
             row.normalizedName,
@@ -1703,8 +1559,15 @@ export async function commitImportRows(rawRows, options, actorId, db) {
             row.priceUah,
             row.brandProvided,
             row.brandId,
+            row.textFields.slug.provided,
+            nextSlug,
             row.textFields.shortDescription.provided,
             row.textFields.shortDescription.value,
+            row.textFields.description.provided,
+            row.textFields.description.value,
+            row.descriptionContent.safeHtml,
+            row.descriptionContent.css,
+            actorId,
             row.textFields.bodyCondition.provided,
             row.textFields.bodyCondition.value,
             row.textFields.displayCondition.provided,
@@ -1715,20 +1578,10 @@ export async function commitImportRows(rawRows, options, actorId, db) {
             row.textFields.warranty.value,
             row.textFields.includedAccessories.provided,
             row.textFields.includedAccessories.value,
-            row.textFields.internalNotes.provided,
-            row.textFields.internalNotes.value,
-            row.textFields.conditionGrade.provided,
-            row.textFields.conditionGrade.value,
-            row.textFields.technicianName.provided,
-            row.textFields.technicianName.value,
-            row.inspectionDate.provided,
-            row.inspectionDate.value,
-            row.purchasePriceUah.provided,
-            row.purchasePriceUah.value,
-            row.textFields.accountingStatus.provided,
-            row.textFields.accountingStatus.value,
+            diagnosticsProvided,
+            JSON.stringify(diagnostics),
             row.textFields.imeiSerial.provided,
-            row.textFields.imeiSerial.value,
+            row.imeiSerial,
             actorId,
             row.productId
           ]
@@ -1772,16 +1625,12 @@ export async function commitImportRows(rawRows, options, actorId, db) {
         JSON.stringify({
           brandLabel: committed.brandLabel || '',
           templateLabel: committed.templateLabel || '',
-          characteristics: committed.characteristics || {},
-          groupLabel: committed.groupLabel || '',
-          groupMain: committed.groupMain === true
+          characteristics: committed.characteristics || {}
         })
       ]
     );
     committedRows.push(committed);
   }
-
-  await syncImportedGroups(db, committedRows, actorId);
 
   const summary = importSummary(committedRows);
   await db.query(

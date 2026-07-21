@@ -311,7 +311,6 @@ export interface CatalogImportRow {
   templateId?: string | null;
   templateLabel?: string;
   characteristicCount?: number;
-  groupLabel?: string;
   matchReason?: string;
 }
 
