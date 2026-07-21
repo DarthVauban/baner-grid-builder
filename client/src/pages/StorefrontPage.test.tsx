@@ -117,7 +117,7 @@ const product: CatalogProduct = {
 };
 
 describe('StorefrontProductDetailPage', () => {
-  it('keeps the gallery and modification links while showing description and characteristics together', async () => {
+  it('keeps equal hero cards and switches description and characteristics inside one tabbed block', async () => {
     const onRequest = vi.fn();
     const { container } = render(<MemoryRouter>
       <StorefrontProductDetailPage
@@ -133,14 +133,25 @@ describe('StorefrontProductDetailPage', () => {
     expect(screen.getByRole('region', { name: 'Фото товару' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Опис товару' })).toBeInTheDocument();
     expect(screen.getByText('Повний опис смартфона.')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Характеристики' })).toBeInTheDocument();
-    expect(screen.getByText('128 GB')).toBeInTheDocument();
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Характеристики' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Опис товару' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Характеристики' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Опис товару');
     expect(container.querySelectorAll('.storefront-gallery__thumb-slide')).toHaveLength(2);
     expect([...container.querySelectorAll('.storefront-gallery img')].every((image) => image.getAttribute('draggable') === 'false')).toBe(true);
 
     expect(screen.getByRole('button', { name: 'Midnight' })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Blue' })).toHaveAttribute('href', '/storefront/smartphones/iphone-13-blue');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Характеристики' }));
+    expect(screen.getByRole('heading', { name: 'Характеристики' })).toBeInTheDocument();
+    expect(screen.getByText('128 GB')).toBeInTheDocument();
+    expect(screen.queryByText('Повний опис смартфона.')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Характеристики' })).toHaveAttribute('aria-selected', 'true');
+
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(screen.getByRole('tab', { name: 'Опис товару' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Повний опис смартфона.')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /Оформити заявку/ }));
     expect(onRequest).toHaveBeenCalledTimes(1);

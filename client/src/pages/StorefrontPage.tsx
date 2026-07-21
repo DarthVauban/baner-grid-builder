@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, ChangeEvent, FormEvent } from 'react';
+import type { CSSProperties, ChangeEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -206,23 +206,69 @@ function StorefrontCharacteristics({ product }: { product: CatalogProduct }) {
 function StorefrontProductInformation({ product }: { product: CatalogProduct }) {
   const hasDescription = Boolean(product.descriptionHtml);
   const hasCharacteristics = Boolean(product.characteristics?.items?.length);
+  const [activeTab, setActiveTab] = useState<'description' | 'characteristics'>(() => (
+    hasDescription ? 'description' : 'characteristics'
+  ));
+
+  useEffect(() => {
+    if (activeTab === 'description' && !hasDescription && hasCharacteristics) setActiveTab('characteristics');
+    if (activeTab === 'characteristics' && !hasCharacteristics && hasDescription) setActiveTab('description');
+  }, [activeTab, hasCharacteristics, hasDescription]);
+
   if (!hasDescription && !hasCharacteristics) return null;
 
+  const tabs = [
+    ...(hasDescription ? [{ id: 'description' as const, label: 'Опис товару' }] : []),
+    ...(hasCharacteristics ? [{ id: 'characteristics' as const, label: 'Характеристики' }] : [])
+  ];
+  const resolvedActiveTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0].id;
+  const tabPrefix = `storefront-product-information-${product.id}`;
+
+  function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, tabId: 'description' | 'characteristics') {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = tabs.findIndex((tab) => tab.id === tabId);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? tabs.length - 1
+        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    const nextTab = tabs[nextIndex];
+    setActiveTab(nextTab.id);
+    window.requestAnimationFrame(() => document.getElementById(`${tabPrefix}-tab-${nextTab.id}`)?.focus());
+  }
+
   return <section className="storefront-product-content" aria-label="Інформація про товар">
-    {hasDescription && <div className="storefront-product-content__section storefront-product-content__section--description">
-      <header className="storefront-product-content__header">
-        <span>Про товар</span>
-        <h2>Опис товару</h2>
-      </header>
-      <StorefrontDescription product={product} />
+    {tabs.length > 1 && <div className="storefront-product-content__tabs" role="tablist" aria-label="Інформація про товар">
+      {tabs.map((tab) => <button
+        className={`storefront-product-content__tab${resolvedActiveTab === tab.id ? ' active' : ''}`}
+        id={`${tabPrefix}-tab-${tab.id}`}
+        type="button"
+        role="tab"
+        aria-selected={resolvedActiveTab === tab.id}
+        aria-controls={`${tabPrefix}-panel-${tab.id}`}
+        tabIndex={resolvedActiveTab === tab.id ? 0 : -1}
+        onClick={() => setActiveTab(tab.id)}
+        onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
+        key={tab.id}
+      >
+        {tab.label}
+      </button>)}
     </div>}
-    {hasCharacteristics && <div className="storefront-product-content__section storefront-product-content__section--characteristics">
+    <div
+      className={`storefront-product-content__section storefront-product-content__section--${resolvedActiveTab}`}
+      id={`${tabPrefix}-panel-${resolvedActiveTab}`}
+      role={tabs.length > 1 ? 'tabpanel' : undefined}
+      aria-labelledby={tabs.length > 1 ? `${tabPrefix}-tab-${resolvedActiveTab}` : undefined}
+    >
       <header className="storefront-product-content__header">
-        <span>Детальні дані</span>
-        <h2>Характеристики</h2>
+        <span>{resolvedActiveTab === 'description' ? 'Про товар' : 'Детальні дані'}</span>
+        <h2>{resolvedActiveTab === 'description' ? 'Опис товару' : 'Характеристики'}</h2>
       </header>
-      <StorefrontCharacteristics product={product} />
-    </div>}
+      {resolvedActiveTab === 'description'
+        ? <StorefrontDescription product={product} />
+        : <StorefrontCharacteristics product={product} />}
+    </div>
   </section>;
 }
 
