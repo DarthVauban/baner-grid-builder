@@ -14,6 +14,7 @@ import {
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
+import { convertCatalogImageToWebp, maxCatalogImageBytes } from '../lib/catalog-media';
 import {
   cloneStorefrontTheme,
   defaultProductCardTheme,
@@ -54,6 +55,7 @@ export function CatalogStorefrontSettingsPage() {
   const { theme, formId, origin } = draft;
   const [device, setDevice] = useState<CatalogThemeDevice>('desktop');
   const [savedSnapshot, setSavedSnapshot] = useState('');
+  const [logoUpload, setLogoUpload] = useState({ busy: false, progress: 0, error: '' });
 
   useEffect(() => {
     if (!settings.data) return;
@@ -103,6 +105,36 @@ export function CatalogStorefrontSettingsPage() {
 
   function resetTheme() {
     setDraft((current) => ({ ...current, theme: cloneStorefrontTheme(defaultStorefrontTheme) }));
+  }
+
+  async function uploadLogo(file?: File) {
+    if (!file) return;
+    const isPng = file.type.toLowerCase() === 'image/png' || file.name.toLowerCase().endsWith('.png');
+    if (!isPng) {
+      setLogoUpload({ busy: false, progress: 0, error: 'Оберіть логотип у форматі PNG.' });
+      return;
+    }
+    if (file.size > maxCatalogImageBytes) {
+      setLogoUpload({ busy: false, progress: 0, error: 'Логотип має бути до 5 МБ.' });
+      return;
+    }
+    setLogoUpload({ busy: true, progress: 0, error: '' });
+    try {
+      const webp = await convertCatalogImageToWebp(file);
+      const asset = await api.catalog.uploadMedia(webp, file.name.replace(/\.png$/i, '.webp'), (progress) => {
+        setLogoUpload((current) => ({ ...current, progress }));
+      });
+      setDraft((current) => ({
+        ...current,
+        theme: {
+          ...current.theme,
+          header: { ...current.theme.header, logoUrl: asset.url }
+        }
+      }));
+      setLogoUpload({ busy: false, progress: 100, error: '' });
+    } catch (error) {
+      setLogoUpload({ busy: false, progress: 0, error: error instanceof Error ? error.message : 'Не вдалося завантажити логотип.' });
+    }
   }
 
   return <div className="catalog-theme-page">
@@ -161,6 +193,27 @@ export function CatalogStorefrontSettingsPage() {
           <ThemeToggle label="Показувати шапку" checked={theme.header.visible} onChange={(value) => updateTheme('header', { ...theme.header, visible: value })} />
           <ThemeToggle label="Закріпити при прокручуванні" checked={theme.header.sticky} onChange={(value) => updateTheme('header', { ...theme.header, sticky: value })} />
           <ThemeToggle label="Показувати кнопку Workspace" checked={theme.header.actionVisible} onChange={(value) => updateTheme('header', { ...theme.header, actionVisible: value })} />
+          <div className="catalog-theme-logo catalog-theme-control--wide">
+            <span>Логотип магазину</span>
+            <div className="catalog-theme-logo__body">
+              <div className="catalog-theme-logo__preview">
+                {theme.header.logoUrl
+                  ? <img src={theme.header.logoUrl} alt="Поточний логотип" />
+                  : <span>{theme.header.brandMark || 'LOGO'}</span>}
+              </div>
+              <div className="catalog-theme-logo__actions">
+                <label className="button button--secondary button--small">
+                  <Icon name="upload" size={15} /> {logoUpload.busy ? `Завантаження ${logoUpload.progress}%` : theme.header.logoUrl ? 'Замінити PNG' : 'Завантажити PNG'}
+                  <input className="visually-hidden" type="file" accept="image/png,.png" disabled={logoUpload.busy} onChange={(event) => { void uploadLogo(event.target.files?.[0]); event.currentTarget.value = ''; }} />
+                </label>
+                {theme.header.logoUrl && <button className="button button--danger button--small" type="button" disabled={logoUpload.busy} onClick={() => updateTheme('header', { ...theme.header, logoUrl: '' })}>Видалити</button>}
+              </div>
+            </div>
+            <small>PNG до 5 МБ. Після завантаження файл автоматично оптимізується у WebP.</small>
+            {logoUpload.error && <small className="catalog-theme-logo__error" role="alert">{logoUpload.error}</small>}
+          </div>
+          <ThemeTextField label="Посилання логотипу" value={theme.header.logoLink} placeholder="https://example.com або /" onChange={(value) => updateTheme('header', { ...theme.header, logoLink: value })} />
+          <ThemeRangeField label="Висота логотипу" value={theme.header.logoHeight} min={20} max={120} onChange={(value) => updateTheme('header', { ...theme.header, logoHeight: value })} />
           <ThemeTextField label="Назва бренду" value={theme.header.brandText} onChange={(value) => updateTheme('header', { ...theme.header, brandText: value })} />
           <ThemeTextField label="Знак бренду" value={theme.header.brandMark} onChange={(value) => updateTheme('header', { ...theme.header, brandMark: value.slice(0, 8) })} />
           <ThemeColorField label="Фон" value={theme.header.background} onChange={(value) => updateTheme('header', { ...theme.header, background: value })} />

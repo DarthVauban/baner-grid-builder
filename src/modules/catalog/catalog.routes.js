@@ -230,6 +230,9 @@ const storefrontThemeSchema = z.object({
     shadow: themeShadowSchema,
     brandText: z.string().trim().max(80),
     brandMark: z.string().trim().max(8),
+    logoUrl: z.string().trim().max(4000),
+    logoLink: z.string().trim().max(2000),
+    logoHeight: z.coerce.number().int().min(20).max(120),
     brandSize: z.coerce.number().int().min(10).max(34),
     actionVisible: z.boolean()
   }),
@@ -366,6 +369,7 @@ const productPageThemeSchema = z.object({
     radius: z.coerce.number().int().min(0).max(48),
     padding: z.coerce.number().int().min(0).max(48),
     imageFit: z.enum(['contain', 'cover']),
+    imageScale: z.coerce.number().int().min(35).max(100),
     thumbnailHeight: z.coerce.number().int().min(54).max(160),
     thumbnailGap: z.coerce.number().int().min(0).max(32),
     showThumbnails: z.boolean(),

@@ -44,6 +44,18 @@ const sortOptions = [
   { value: 'price_desc', label: 'Дорожчі спочатку' }
 ];
 
+function storefrontBrandHref(value: string, fallback: string) {
+  const candidate = value.trim();
+  if (!candidate) return fallback;
+  if (candidate.startsWith('/') && !candidate.startsWith('//')) return candidate;
+  try {
+    const url = new URL(candidate);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function ProductImage({ product }: { product: CatalogProduct }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [product.mainImageUrl]);
@@ -1180,10 +1192,16 @@ export function StorefrontPage({ preview = false, rootMounted = false }: { previ
   const productCardTheme = settings.data?.productCardTheme || defaultProductCardTheme;
   const productPageTheme = settings.data?.productPageTheme || defaultProductPageTheme;
   const pageStyle = { ...storefrontThemeStyle(storefrontTheme), ...productCardThemeStyle(productCardTheme), ...productPageThemeStyle(productPageTheme) };
+  const brandHref = storefrontBrandHref(storefrontTheme.header.logoLink, basePath);
 
   return <main className="storefront-page" style={pageStyle}>
     <header className="storefront-header">
-      <Link to={basePath} className="storefront-brand"><span>{storefrontTheme.header.brandMark}</span><strong>{storefrontTheme.header.brandText}</strong></Link>
+      <a href={brandHref} className="storefront-brand">
+        {storefrontTheme.header.logoUrl
+          ? <img className="storefront-brand__logo" src={storefrontTheme.header.logoUrl} alt={storefrontTheme.header.brandText || 'Логотип магазину'} />
+          : <span>{storefrontTheme.header.brandMark}</span>}
+        {storefrontTheme.header.brandText && <strong>{storefrontTheme.header.brandText}</strong>}
+      </a>
       {preview
         ? <a className="button button--secondary button--small storefront-header__action" href="/catalog/products">До каталогу</a>
         : !rootMounted && <a className="button button--secondary button--small storefront-header__action" href="/login">У робочий простір</a>}

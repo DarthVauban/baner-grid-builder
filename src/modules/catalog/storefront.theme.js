@@ -44,6 +44,9 @@ export const defaultStorefrontTheme = {
     shadow: 'none',
     brandText: 'Mobile Trend',
     brandMark: 'MT',
+    logoUrl: '',
+    logoLink: '',
+    logoHeight: 42,
     brandSize: 15,
     actionVisible: true
   },
@@ -177,6 +180,7 @@ export const defaultProductPageTheme = {
     radius: 8,
     padding: 0,
     imageFit: 'contain',
+    imageScale: 72,
     thumbnailHeight: 91,
     thumbnailGap: 8,
     showThumbnails: true,

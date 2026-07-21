@@ -61,6 +61,21 @@ const sortSql = {
   price_desc: 'product.price_uah DESC, lower(product.name) ASC'
 };
 
+const publicProductVisibilitySql = `(
+  product.publication_status = 'PUBLISHED'
+  OR (
+    product.publication_status <> 'ARCHIVED'
+    AND product.id IN (
+      SELECT public_group_items.product_id
+      FROM used_smartphone_product_group_items AS public_group_items
+      INNER JOIN used_smartphone_product_groups AS public_groups ON public_groups.id = public_group_items.group_id
+      INNER JOIN used_smartphone_products AS public_main ON public_main.id = public_groups.main_product_id
+      WHERE public_groups.active = TRUE
+        AND public_main.publication_status = 'PUBLISHED'
+    )
+  )
+)`;
+
 function publicOrigin(req) {
   const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
   const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim();
@@ -70,7 +85,7 @@ function publicOrigin(req) {
 
 function buildFilters(input) {
   const params = [];
-  const where = ["product.publication_status = 'PUBLISHED'"];
+  const where = [publicProductVisibilitySql];
   const terms = input.search.toLocaleLowerCase('uk-UA').split(/\s+/).filter(Boolean);
   for (const term of terms) {
     params.push(`%${term}%`);

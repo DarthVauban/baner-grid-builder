@@ -26,6 +26,7 @@ describe('storefront theme tokens', () => {
     const card = structuredClone(defaultProductCardTheme);
     storefront.typography.bodyFontFamily = 'Unbounded';
     storefront.layout.columnsDesktop = 5;
+    storefront.header.logoHeight = 54;
     storefront.filters.visible = false;
     storefront.controls.sortVisible = false;
     card.button.label = 'Замовити';
@@ -35,6 +36,7 @@ describe('storefront theme tokens', () => {
     expect(storefrontThemeStyle(storefront)).toMatchObject({
       '--sf-font-body': '"Unbounded", sans-serif',
       '--sf-columns-desktop': 5,
+      '--sf-brand-logo-height': '54px',
       '--sf-filter-display': 'none',
       '--sf-catalog-columns': 'minmax(0,1fr)',
       '--sf-controls-columns': 'minmax(240px,1fr)'
@@ -50,6 +52,7 @@ describe('storefront theme tokens', () => {
     theme.layout.galleryWidth = 45;
     theme.gallery.showThumbnails = false;
     theme.gallery.imageFit = 'cover';
+    theme.gallery.imageScale = 64;
     theme.button.background = '#123456';
     theme.tabs.activeColor = '#654321';
 
@@ -57,6 +60,7 @@ describe('storefront theme tokens', () => {
       '--sf-product-columns': '45fr 55fr',
       '--sf-product-thumbs-display': 'none',
       '--sf-product-image-fit': 'cover',
+      '--sf-product-image-scale': '64%',
       '--sf-product-button-bg': '#123456',
       '--sf-product-tabs-active': '#654321'
     });

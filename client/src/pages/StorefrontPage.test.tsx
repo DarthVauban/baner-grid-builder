@@ -74,7 +74,7 @@ describe('storefront product layout styles', () => {
   it('keeps equal hero columns and fills their shared row without stretching gallery images', () => {
     expect(appStyles).toMatch(/\.storefront-product-view__hero\s*\{[^}]*grid-template-columns:\s*var\(--sf-product-columns,repeat\(2,minmax\(0,1fr\)\)\);[^}]*align-items:\s*stretch/);
     expect(appStyles).toMatch(/\.storefront-product-view__media\s*\{[^}]*min-height:\s*clamp\(500px,34vw,620px\);[^}]*height:\s*auto/);
-    expect(appStyles).toMatch(/\.storefront-gallery__stage img\s*\{[^}]*width:\s*auto;[^}]*height:\s*auto;[^}]*max-width:\s*100%;[^}]*max-height:\s*100%/);
+    expect(appStyles).toMatch(/\.storefront-gallery__stage img\s*\{[^}]*width:\s*auto;[^}]*height:\s*auto;[^}]*max-width:\s*var\(--sf-product-image-scale,72%\);[^}]*max-height:\s*var\(--sf-product-image-scale,72%\)/);
     expect(appStyles).toMatch(/\.storefront-gallery-lightbox__thumbs-shell\s*\{[^}]*position:\s*fixed;[^}]*right:\s*0;[^}]*left:\s*0;[^}]*justify-content:\s*center/);
     expect(appStyles).toMatch(/\.application-details-modal\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,1fr\) auto;[^}]*overflow:\s*hidden/);
     expect(appStyles).toMatch(/\.application-details-modal__content\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto/);

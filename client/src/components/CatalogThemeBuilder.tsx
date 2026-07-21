@@ -50,13 +50,66 @@ export function ThemeRangeField({
   suffix?: string;
   onChange: (value: number) => void;
 }) {
+  const [draftValue, setDraftValue] = useState(String(value));
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) setDraftValue(String(value));
+  }, [isEditing, value]);
+
+  function commitDraft() {
+    const parsed = Number(draftValue);
+    if (!draftValue.trim() || !Number.isFinite(parsed)) {
+      setDraftValue(String(value));
+      return;
+    }
+    const next = Math.max(min, Math.min(max, parsed));
+    setDraftValue(String(next));
+    if (next !== value) onChange(next);
+  }
+
   return <label className="catalog-theme-range">
     <span><span>{label}</span><b>{value}{suffix}</b></span>
     <span className="catalog-theme-range__control">
       <input type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} />
-      <input type="number" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Math.max(min, Math.min(max, Number(event.target.value) || min)))} />
+      <input
+        type="number"
+        value={draftValue}
+        min={min}
+        max={max}
+        step={step}
+        onFocus={() => setIsEditing(true)}
+        onChange={(event) => {
+          const nextDraft = event.target.value;
+          setDraftValue(nextDraft);
+          const parsed = Number(nextDraft);
+          if (nextDraft.trim() && Number.isFinite(parsed) && parsed >= min && parsed <= max && parsed !== value) {
+            onChange(parsed);
+          }
+        }}
+        onBlur={() => {
+          commitDraft();
+          setIsEditing(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Escape') {
+            setDraftValue(String(value));
+            event.currentTarget.blur();
+          }
+        }}
+      />
     </span>
   </label>;
+}
+
+function StorefrontBrandPreview({ theme }: { theme: CatalogStorefrontTheme }) {
+  return <span className="storefront-brand">
+    {theme.header.logoUrl
+      ? <img className="storefront-brand__logo" src={theme.header.logoUrl} alt="" />
+      : <span>{theme.header.brandMark}</span>}
+    {theme.header.brandText && <strong>{theme.header.brandText}</strong>}
+  </span>;
 }
 
 export function ThemeTextField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder?: string; onChange: (value: string) => void }) {
@@ -212,7 +265,7 @@ export function CatalogThemePreview({
 
   return <ScaledThemePreview className={`catalog-theme-preview catalog-theme-preview--${device}`} device={device} style={style}>
         <header className="storefront-header">
-          <span className="storefront-brand"><span>{storefrontTheme.header.brandMark}</span><strong>{storefrontTheme.header.brandText}</strong></span>
+          <StorefrontBrandPreview theme={storefrontTheme} />
           <button className="button button--secondary button--small storefront-header__action" type="button">У робочий простір</button>
         </header>
         <section className="storefront-catalog">
@@ -250,7 +303,7 @@ export function CatalogProductPagePreview({
   const style = { ...storefrontThemeStyle(storefrontTheme), ...productPageThemeStyle(productPageTheme) };
   return <ScaledThemePreview className={`catalog-theme-preview catalog-theme-preview--${device} catalog-theme-preview--product-page`} device={device} style={style}>
     <header className="storefront-header">
-      <span className="storefront-brand"><span>{storefrontTheme.header.brandMark}</span><strong>{storefrontTheme.header.brandText}</strong></span>
+      <StorefrontBrandPreview theme={storefrontTheme} />
     </header>
     <section className="storefront-product-view catalog-product-page-preview__product">
       <div className="storefront-product-view__hero">

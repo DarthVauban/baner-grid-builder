@@ -109,6 +109,7 @@ export function CatalogProductPageSettingsPage() {
           <ThemeRangeField label="Радіус" value={theme.gallery.radius} min={0} max={48} onChange={(value) => updateTheme('gallery', { ...theme.gallery, radius: value })} />
           <ThemeRangeField label="Внутрішній відступ" value={theme.gallery.padding} min={0} max={48} onChange={(value) => updateTheme('gallery', { ...theme.gallery, padding: value })} />
           <ThemeSelectField label="Заповнення фото" value={theme.gallery.imageFit} options={[{ value: 'contain', label: 'Вмістити повністю' }, { value: 'cover', label: 'Заповнити контейнер' }]} onChange={(value) => updateTheme('gallery', { ...theme.gallery, imageFit: value as CatalogProductPageTheme['gallery']['imageFit'] })} />
+          <ThemeRangeField label="Масштаб фото" value={theme.gallery.imageScale} min={35} max={100} suffix="%" onChange={(value) => updateTheme('gallery', { ...theme.gallery, imageScale: value })} />
           <ThemeRangeField label="Висота мініатюр" value={theme.gallery.thumbnailHeight} min={54} max={160} onChange={(value) => updateTheme('gallery', { ...theme.gallery, thumbnailHeight: value })} />
           <ThemeRangeField label="Відстань між мініатюрами" value={theme.gallery.thumbnailGap} min={0} max={32} onChange={(value) => updateTheme('gallery', { ...theme.gallery, thumbnailGap: value })} />
           <ThemeToggle label="Показувати мініатюри" checked={theme.gallery.showThumbnails} onChange={(value) => updateTheme('gallery', { ...theme.gallery, showThumbnails: value })} />

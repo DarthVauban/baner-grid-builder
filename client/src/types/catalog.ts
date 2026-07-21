@@ -379,6 +379,9 @@ export interface CatalogStorefrontTheme {
     shadow: CatalogThemeShadow;
     brandText: string;
     brandMark: string;
+    logoUrl: string;
+    logoLink: string;
+    logoHeight: number;
     brandSize: number;
     actionVisible: boolean;
   };
@@ -508,6 +511,7 @@ export interface CatalogProductPageTheme {
     radius: number;
     padding: number;
     imageFit: 'contain' | 'cover';
+    imageScale: number;
     thumbnailHeight: number;
     thumbnailGap: number;
     showThumbnails: boolean;

@@ -314,6 +314,13 @@ test('catalog products publish to storefront, import stock updates, and create a
     ]
   );
 
+  const publicGroupedList = await request(app).get('/api/storefront/products?search=iPhone').expect(200);
+  assert.equal(publicGroupedList.body.data.total, 2);
+  assert.deepEqual(
+    publicGroupedList.body.data.items.map((item) => item.productCode).sort(),
+    ['SM-000001', 'SM-000002']
+  );
+
   const storefrontFilters = await request(app)
     .get(`/api/storefront/products?brandId=${appleBrand.id}&priceMin=18000&priceMax=19000&characteristics=${encodeURIComponent(JSON.stringify({ storage: ['128'] }))}`)
     .expect(200);
@@ -326,7 +333,10 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(storefrontFilters.body.data.items[0].modifications.parameters.length, 2);
   const storageFilter = storefrontFilters.body.data.filters.characteristics.find((filter) => filter.key === 'storage');
   assert.ok(storageFilter);
-  assert.deepEqual(storageFilter.options.map((option) => [option.value, option.label, option.count]), [['128', '128 GB', 1]]);
+  assert.deepEqual(storageFilter.options.map((option) => [option.value, option.label, option.count]), [
+    ['128', '128 GB', 1],
+    ['256', '256 GB', 1]
+  ]);
 
   const publicDraftChildVariant = await request(app).get(`/api/storefront/products/${variant.body.data.slug}`).expect(200);
   assert.equal(publicDraftChildVariant.body.data.productCode, 'SM-000002');
@@ -527,8 +537,10 @@ test('catalog products publish to storefront, import stock updates, and create a
     publicOrigin: 'https://used.example.test/catalog/'
   }).expect(200);
   assert.equal(savedStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Inter');
+  assert.equal(savedStorefrontSettings.body.data.storefrontTheme.header.logoUrl, '');
   assert.equal(savedStorefrontSettings.body.data.productCardTheme.button.label, 'Купити');
   assert.equal(savedStorefrontSettings.body.data.productPageTheme.layout.galleryWidth, 50);
+  assert.equal(savedStorefrontSettings.body.data.productPageTheme.gallery.imageScale, 72);
 
   const storefrontTheme = structuredClone(savedStorefrontSettings.body.data.storefrontTheme);
   const productCardTheme = structuredClone(savedStorefrontSettings.body.data.productCardTheme);
@@ -537,10 +549,14 @@ test('catalog products publish to storefront, import stock updates, and create a
   storefrontTheme.typography.headingFontFamily = 'Unbounded';
   storefrontTheme.typography.headingWeight = 900;
   storefrontTheme.layout.columnsDesktop = 5;
+  storefrontTheme.header.logoUrl = '/media/catalog/storefront-logo.webp';
+  storefrontTheme.header.logoLink = 'https://mobiletrend.com.ua';
+  storefrontTheme.header.logoHeight = 54;
   productCardTheme.button.label = 'Замовити';
   productCardTheme.contentOrder = ['image', 'title', 'badge', 'brand', 'meta'];
   productCardTheme.image.fit = 'contain';
   productPageTheme.layout.galleryWidth = 45;
+  productPageTheme.gallery.imageScale = 64;
   productPageTheme.gallery.showCounter = false;
   productPageTheme.button.label = 'Замовити смартфон';
   productPageTheme.tabs.descriptionLabel = 'Детальний огляд';
@@ -552,9 +568,13 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Unbounded');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.typography.headingWeight, 900);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.layout.columnsDesktop, 5);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoUrl, '/media/catalog/storefront-logo.webp');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoLink, 'https://mobiletrend.com.ua');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoHeight, 54);
   assert.equal(publicStorefrontSettings.body.data.productCardTheme.button.label, 'Замовити');
   assert.deepEqual(publicStorefrontSettings.body.data.productCardTheme.contentOrder, ['image', 'title', 'badge', 'brand', 'meta']);
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.layout.galleryWidth, 45);
+  assert.equal(publicStorefrontSettings.body.data.productPageTheme.gallery.imageScale, 64);
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.gallery.showCounter, false);
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.button.label, 'Замовити смартфон');
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.tabs.descriptionLabel, 'Детальний огляд');
