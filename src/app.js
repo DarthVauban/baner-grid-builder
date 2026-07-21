@@ -49,7 +49,10 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'"],
+      // CodeMirror builds its scoped base theme and syntax highlighting in a
+      // runtime <style> element. Keep scripts restricted to self, but allow
+      // the editor (and the app's existing React style attributes) to render.
+      styleSrc: ["'self'", "'unsafe-inline'"],
       fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
       imgSrc: ["'self'", 'data:', 'https:', 'http:'],
       connectSrc: ["'self'"],

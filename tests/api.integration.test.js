@@ -83,6 +83,8 @@ test('health endpoint exposes the exact running build revision', async () => {
     .expect('X-MT-Build-Sha', 'test-build-sha')
     .expect((response) => {
       assert.deepEqual(response.body.data, { status: 'ok', buildSha: 'test-build-sha' });
+      assert.match(response.headers['content-security-policy'], /style-src 'self' 'unsafe-inline'/);
+      assert.match(response.headers['content-security-policy'], /script-src 'self'/);
     });
 });
 

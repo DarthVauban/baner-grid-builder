@@ -2135,10 +2135,13 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .rich-editor__surface:empty::before { content: "Повний опис товару"; color: #a0a8b7; }
 .rich-editor__surface ul, .rich-editor__surface ol { margin: 0 0 0 22px; }
 .rich-editor__source { width: 100%; overflow: hidden; color: #e5e7eb; background: #111827; }
-.rich-editor__source .cm-editor { font-size: 13px; }
-.rich-editor__source .cm-scroller { font-family: "JetBrains Mono", Consolas, "Courier New", monospace; line-height: 1.55; }
-.rich-editor__source .cm-gutters { border-right-color: #334155; background: #0f172a; }
+.rich-editor__source .cm-editor { position: relative !important; display: flex !important; flex-direction: column; height: 480px; font-size: 13px; }
+.rich-editor__source .cm-scroller { display: flex !important; align-items: flex-start !important; height: 100%; overflow: auto; position: relative; font-family: "JetBrains Mono", Consolas, "Courier New", monospace; line-height: 1.55; }
+.rich-editor__source .cm-content { min-width: max-content; min-height: 100%; flex: 2 0 auto; display: block; margin: 0; padding: 4px 0; box-sizing: border-box; white-space: pre; caret-color: #fff; outline: 0; }
+.rich-editor__source .cm-line { display: block; padding: 0 8px; }
+.rich-editor__source .cm-gutters { display: flex; flex-shrink: 0; height: 100%; box-sizing: border-box; border-right-color: #334155; background: #0f172a; }
 .rich-editor__source .cm-focused { outline: 0; }
+.rich-editor__source .cm-announced { position: fixed !important; top: -10000px !important; left: -10000px !important; width: 1px; height: 1px; overflow: hidden; }
 .rich-editor__source footer { min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #334155; padding: 7px 12px; color: #94a3b8; background: #0f172a; font: 700 10px/1.2 Arial,sans-serif; letter-spacing: .04em; text-transform: uppercase; }
 .rich-editor__source-loading { min-height: 280px; display: grid; place-items: center; color: #94a3b8; background: #111827; font-size: 12px; font-weight: 750; }
 .rich-editor__preview { min-height: 320px; display: grid; place-items: start center; padding: 14px; background: #eef2f5; }
