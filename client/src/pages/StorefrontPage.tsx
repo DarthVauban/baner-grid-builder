@@ -3,11 +3,10 @@ import type { CSSProperties, ChangeEvent, FormEvent, KeyboardEvent as ReactKeybo
 import { createPortal } from 'react-dom';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Keyboard, Navigation, Pagination, Thumbs } from 'swiper/modules';
+import { Keyboard, Pagination, Thumbs } from 'swiper/modules';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import type { Swiper as SwiperInstance } from 'swiper';
 import 'swiper/css';
-import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 import 'swiper/css/thumbs';
 import { Icon } from '../components/Icon';
@@ -65,6 +64,8 @@ function StorefrontGalleryLightbox({
   onIndex: (index: number) => void;
   onClose: () => void;
 }) {
+  const [swiper, setSwiper] = useState<SwiperInstance | null>(null);
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -86,11 +87,11 @@ function StorefrontGalleryLightbox({
     <button className="storefront-gallery-lightbox__close" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={24} /></button>
     <Swiper
       className="storefront-gallery-lightbox__swiper"
-      modules={[Keyboard, Navigation, Pagination]}
+      modules={[Keyboard, Pagination]}
       initialSlide={index}
       keyboard={{ enabled: true }}
-      navigation={images.length > 1}
       pagination={images.length > 1 ? { type: 'fraction' } : false}
+      onSwiper={setSwiper}
       onSlideChange={(swiper) => onIndex(swiper.realIndex)}
     >
       {images.map((image, slideIndex) => <SwiperSlide key={`${image.url}-${slideIndex}`}>
@@ -99,23 +100,52 @@ function StorefrontGalleryLightbox({
         </span>
       </SwiperSlide>)}
     </Swiper>
+    {images.length > 1 && <>
+      <button
+        className="storefront-gallery-navigation storefront-gallery-lightbox__navigation storefront-gallery-lightbox__navigation--prev"
+        type="button"
+        onClick={() => swiper?.slidePrev()}
+        disabled={index === 0}
+        aria-label="Попереднє фото"
+      >
+        <Icon name="chevronLeft" size={30} />
+      </button>
+      <button
+        className="storefront-gallery-navigation storefront-gallery-lightbox__navigation storefront-gallery-lightbox__navigation--next"
+        type="button"
+        onClick={() => swiper?.slideNext()}
+        disabled={index === images.length - 1}
+        aria-label="Наступне фото"
+      >
+        <Icon name="chevronRight" size={30} />
+      </button>
+    </>}
   </div>, document.body);
 }
 
 function ProductGallery({ product }: { product: CatalogProduct }) {
   const images = useMemo(() => productGalleryImages(product), [product]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [stageSwiper, setStageSwiper] = useState<SwiperInstance | null>(null);
   const [thumbsSwiper, setThumbsSwiper] = useState<SwiperInstance | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [brandLogoFailed, setBrandLogoFailed] = useState(false);
 
   useEffect(() => {
     setLightboxIndex(null);
+    setStageSwiper(null);
     setThumbsSwiper(null);
+    setActiveIndex(0);
   }, [product.productCode]);
 
   useEffect(() => {
     setBrandLogoFailed(false);
   }, [product.brand?.logoUrl]);
+
+  useEffect(() => {
+    if (!thumbsSwiper || thumbsSwiper.destroyed) return;
+    thumbsSwiper.slideTo(activeIndex);
+  }, [activeIndex, thumbsSwiper]);
 
   if (!images.length) return <span className="storefront-product-image storefront-product-image--gallery"><Icon name="phone" size={34} /></span>;
 
@@ -123,11 +153,12 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
     <div className="storefront-gallery__stage-shell">
       <Swiper
         className="storefront-gallery__stage-swiper"
-        modules={[Keyboard, Navigation, Pagination, Thumbs]}
+        modules={[Keyboard, Pagination, Thumbs]}
         keyboard={{ enabled: true }}
-        navigation={images.length > 1}
         pagination={images.length > 1 ? { type: 'fraction' } : false}
         thumbs={{ swiper: thumbsSwiper && !thumbsSwiper.destroyed ? thumbsSwiper : null }}
+        onSwiper={setStageSwiper}
+        onSlideChange={(swiper) => setActiveIndex(swiper.realIndex)}
       >
         {images.map((image, index) => <SwiperSlide key={`${image.url}-${index}`}>
           <button className="storefront-gallery__stage" type="button" onClick={() => setLightboxIndex(index)} aria-label="Відкрити фото на весь екран">
@@ -135,6 +166,26 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
           </button>
         </SwiperSlide>)}
       </Swiper>
+      {images.length > 1 && <>
+        <button
+          className="storefront-gallery-navigation storefront-gallery__navigation storefront-gallery__navigation--prev"
+          type="button"
+          onClick={() => stageSwiper?.slidePrev()}
+          disabled={activeIndex === 0}
+          aria-label="Попереднє фото"
+        >
+          <Icon name="chevronLeft" size={28} />
+        </button>
+        <button
+          className="storefront-gallery-navigation storefront-gallery__navigation storefront-gallery__navigation--next"
+          type="button"
+          onClick={() => stageSwiper?.slideNext()}
+          disabled={activeIndex === images.length - 1}
+          aria-label="Наступне фото"
+        >
+          <Icon name="chevronRight" size={28} />
+        </button>
+      </>}
       {product.brand?.logoUrl && !brandLogoFailed && <span className="storefront-gallery__brand-sticker">
         <img src={product.brand.logoUrl} alt={product.brand.label} loading="lazy" draggable={false} onError={() => setBrandLogoFailed(true)} />
       </span>}
@@ -149,12 +200,30 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
       aria-label="Фото товару"
     >
       {images.map((image, index) => <SwiperSlide className="storefront-gallery__thumb-slide" key={`${image.url}-${index}`}>
-        <button type="button" aria-label={`Фото ${index + 1}`}>
+        <button
+          className={activeIndex === index ? 'storefront-gallery__thumb-button storefront-gallery__thumb-button--active' : 'storefront-gallery__thumb-button'}
+          type="button"
+          onClick={() => {
+            stageSwiper?.slideTo(index);
+            setActiveIndex(index);
+          }}
+          aria-label={`Фото ${index + 1}`}
+          aria-current={activeIndex === index ? 'true' : undefined}
+        >
           <img src={image.url} alt="" loading="lazy" draggable={false} />
         </button>
       </SwiperSlide>)}
     </Swiper>}
-    {lightboxIndex !== null && <StorefrontGalleryLightbox images={images} index={lightboxIndex} onIndex={setLightboxIndex} onClose={() => setLightboxIndex(null)} />}
+    {lightboxIndex !== null && <StorefrontGalleryLightbox
+      images={images}
+      index={lightboxIndex}
+      onIndex={(index) => {
+        setLightboxIndex(index);
+        setActiveIndex(index);
+        stageSwiper?.slideTo(index);
+      }}
+      onClose={() => setLightboxIndex(null)}
+    />}
   </div>;
 }
 

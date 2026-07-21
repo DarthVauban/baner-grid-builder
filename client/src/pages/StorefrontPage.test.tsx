@@ -147,6 +147,9 @@ describe('StorefrontProductDetailPage', () => {
     expect(screen.getByRole('tab', { name: 'Характеристики' })).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Опис товару');
     expect(container.querySelectorAll('.storefront-gallery__thumb-slide')).toHaveLength(2);
+    expect(container.querySelector('.storefront-gallery__thumb-button--active')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('button', { name: 'Попереднє фото' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Наступне фото' })).toBeEnabled();
     expect([...container.querySelectorAll('.storefront-gallery img')].every((image) => image.getAttribute('draggable') === 'false')).toBe(true);
 
     expect(screen.getByRole('button', { name: 'Midnight' })).toBeDisabled();
