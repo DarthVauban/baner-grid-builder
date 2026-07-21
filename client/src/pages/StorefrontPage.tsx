@@ -39,7 +39,7 @@ function ProductImage({ product }: { product: CatalogProduct }) {
   useEffect(() => setFailed(false), [product.mainImageUrl]);
   return <span className="storefront-product-image">
     {product.mainImageUrl && !failed
-      ? <img src={product.mainImageUrl} alt={product.name} loading="lazy" onError={() => setFailed(true)} />
+      ? <img src={product.mainImageUrl} alt={product.name} loading="lazy" draggable={false} onError={() => setFailed(true)} />
       : <Icon name="phone" size={34} />}
   </span>;
 }
@@ -95,7 +95,7 @@ function StorefrontGalleryLightbox({
     >
       {images.map((image, slideIndex) => <SwiperSlide key={`${image.url}-${slideIndex}`}>
         <span className="storefront-gallery-lightbox__image">
-          <img src={image.url} alt={image.alt} />
+          <img src={image.url} alt={image.alt} draggable={false} />
         </span>
       </SwiperSlide>)}
     </Swiper>
@@ -131,12 +131,12 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
       >
         {images.map((image, index) => <SwiperSlide key={`${image.url}-${index}`}>
           <button className="storefront-gallery__stage" type="button" onClick={() => setLightboxIndex(index)} aria-label="Відкрити фото на весь екран">
-            <img src={image.url} alt={image.alt} loading="lazy" />
+            <img src={image.url} alt={image.alt} loading="lazy" draggable={false} />
           </button>
         </SwiperSlide>)}
       </Swiper>
       {product.brand?.logoUrl && !brandLogoFailed && <span className="storefront-gallery__brand-sticker">
-        <img src={product.brand.logoUrl} alt={product.brand.label} loading="lazy" onError={() => setBrandLogoFailed(true)} />
+        <img src={product.brand.logoUrl} alt={product.brand.label} loading="lazy" draggable={false} onError={() => setBrandLogoFailed(true)} />
       </span>}
     </div>
     {images.length > 1 && <Swiper
@@ -150,7 +150,7 @@ function ProductGallery({ product }: { product: CatalogProduct }) {
     >
       {images.map((image, index) => <SwiperSlide className="storefront-gallery__thumb-slide" key={`${image.url}-${index}`}>
         <button type="button" aria-label={`Фото ${index + 1}`}>
-          <img src={image.url} alt="" loading="lazy" />
+          <img src={image.url} alt="" loading="lazy" draggable={false} />
         </button>
       </SwiperSlide>)}
     </Swiper>}

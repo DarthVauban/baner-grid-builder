@@ -136,12 +136,18 @@ describe('StorefrontProductDetailPage', () => {
     expect(screen.getByRole('heading', { name: 'Характеристики' })).toBeInTheDocument();
     expect(screen.getByText('128 GB')).toBeInTheDocument();
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.storefront-gallery__thumb-slide')).toHaveLength(2);
+    expect([...container.querySelectorAll('.storefront-gallery img')].every((image) => image.getAttribute('draggable') === 'false')).toBe(true);
 
     expect(screen.getByRole('button', { name: 'Midnight' })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Blue' })).toHaveAttribute('href', '/storefront/smartphones/iphone-13-blue');
 
     await userEvent.click(screen.getByRole('button', { name: /Оформити заявку/ }));
     expect(onRequest).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Відкрити фото на весь екран' })[0]);
+    const lightbox = screen.getByRole('dialog', { name: 'Перегляд фото' });
+    expect([...lightbox.querySelectorAll('img')].every((image) => image.getAttribute('draggable') === 'false')).toBe(true);
   });
 });
 
