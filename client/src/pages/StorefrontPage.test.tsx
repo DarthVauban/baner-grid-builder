@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PropsWithChildren, ReactElement } from 'react';
 import { api } from '../lib/api';
 import { defaultProductPageTheme } from '../lib/storefront-theme';
-import type { CatalogProduct } from '../types/catalog';
+import type { CatalogProduct, CatalogStorefrontFilters } from '../types/catalog';
 import appStyles from '../styles/app.css?raw';
-import { formatStorefrontPhone, StorefrontApplicationForm, StorefrontProductCard, StorefrontProductDetailPage, StorefrontProductHead } from './StorefrontPage';
+import { formatStorefrontPhone, StorefrontApplicationForm, StorefrontFilterPanel, StorefrontProductCard, StorefrontProductDetailPage, StorefrontProductHead } from './StorefrontPage';
 
 vi.mock('swiper/modules', () => ({
   Keyboard: {},
@@ -85,6 +85,54 @@ describe('storefront product layout styles', () => {
     expect(appStyles).toMatch(/\.storefront-product-content__section\s*\{[^}]*width:\s*100%;[^}]*min-height:\s*0;[^}]*height:\s*auto;[^}]*overflow:\s*visible/);
     expect(appStyles).toMatch(/\.catalog-theme-preview__viewport\s*\{[^}]*justify-content:\s*center;[^}]*overflow:\s*hidden/);
     expect(appStyles).toMatch(/\.catalog-theme-preview__page\s*\{[^}]*position:\s*absolute;[^}]*transform-origin:\s*top left/);
+    expect(appStyles).toMatch(/@media \(max-width:\s*920px\)[\s\S]*?\.storefront-product-content__tabs\s*\{\s*justify-content:\s*center/);
+    expect(appStyles).toMatch(/\.storefront-filter-panel--open\s*\{[^}]*visibility:\s*visible;[^}]*transform:\s*translateX\(0\)/);
+    expect(appStyles).toMatch(/\.storefront-filter-panel__body\s*\{[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*contain/);
+  });
+});
+
+describe('StorefrontFilterPanel', () => {
+  const filters: CatalogStorefrontFilters = {
+    brands: [{ value: 'apple', label: 'Apple', count: 12 }],
+    price: { min: 4999, max: 69999 },
+    characteristics: [{
+      key: 'storage',
+      label: 'Памʼять',
+      type: 'text',
+      unit: '',
+      options: [{ value: '256 GB', label: '256 GB', count: 7 }]
+    }]
+  };
+
+  it('exposes the mobile drawer controls and applies the selected filters without duplicating their state', async () => {
+    const setBrandId = vi.fn();
+    const toggleCharacteristic = vi.fn();
+    const onMobileClose = vi.fn();
+    render(<StorefrontFilterPanel
+      filters={filters}
+      brandId="all"
+      setBrandId={setBrandId}
+      priceDraft={{ min: '', max: '' }}
+      setPriceDraft={vi.fn()}
+      priceFilter={{ min: '', max: '' }}
+      applyPriceFilter={vi.fn()}
+      resetFilters={vi.fn()}
+      characteristicFilters={{}}
+      toggleCharacteristic={toggleCharacteristic}
+      mobileOpen
+      total={23}
+      onMobileClose={onMobileClose}
+    />);
+
+    expect(screen.getByRole('dialog', { name: 'Фільтри каталогу' })).toHaveClass('storefront-filter-panel--open');
+    expect(screen.getByRole('button', { name: 'Показати 23 товари' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('radio', { name: /Apple/ }));
+    expect(setBrandId).toHaveBeenCalledWith('apple');
+    await userEvent.click(screen.getByRole('checkbox', { name: /256 GB/ }));
+    expect(toggleCharacteristic).toHaveBeenCalledWith('storage', '256 GB');
+    await userEvent.click(screen.getByRole('button', { name: 'Показати 23 товари' }));
+    expect(onMobileClose).toHaveBeenCalledTimes(1);
   });
 });
 

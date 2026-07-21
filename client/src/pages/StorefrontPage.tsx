@@ -669,7 +669,16 @@ function activeFilterValues(filters: Record<string, string[]>) {
   ]).filter(([, values]) => values.length));
 }
 
-function StorefrontFilterPanel({
+function storefrontProductCountLabel(count: number) {
+  const lastTwoDigits = count % 100;
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return 'товарів';
+  const lastDigit = count % 10;
+  if (lastDigit === 1) return 'товар';
+  if (lastDigit >= 2 && lastDigit <= 4) return 'товари';
+  return 'товарів';
+}
+
+export function StorefrontFilterPanel({
   filters,
   brandId,
   setBrandId,
@@ -679,7 +688,10 @@ function StorefrontFilterPanel({
   applyPriceFilter,
   resetFilters,
   characteristicFilters,
-  toggleCharacteristic
+  toggleCharacteristic,
+  mobileOpen = false,
+  total = 0,
+  onMobileClose = () => undefined
 }: {
   filters: CatalogStorefrontFilters | undefined;
   brandId: string;
@@ -691,19 +703,48 @@ function StorefrontFilterPanel({
   resetFilters: () => void;
   characteristicFilters: Record<string, string[]>;
   toggleCharacteristic: (key: string, value: string) => void;
+  mobileOpen?: boolean;
+  total?: number;
+  onMobileClose?: () => void;
 }) {
+  const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
   const priceMin = Math.floor(filters?.price.min || 0);
   const priceMax = Math.ceil(filters?.price.max || 0);
   const safeMax = Math.max(priceMax, priceMin + 1);
   const draftMin = priceDraft.min || String(priceMin);
   const draftMax = priceDraft.max || String(priceMax || safeMax);
   const hasActiveFilters = brandId !== 'all' || Boolean(priceFilter.min || priceFilter.max) || Object.keys(activeFilterValues(characteristicFilters)).length > 0;
-  return <aside className="storefront-filter-panel">
-    <header>
-      <h2>Фільтри</h2>
-      {hasActiveFilters && <button type="button" onClick={resetFilters}>Скинути</button>}
-    </header>
-    <section className="storefront-filter-group">
+  useEffect(() => {
+    if (!mobileOpen) return;
+    window.requestAnimationFrame(() => mobileCloseButtonRef.current?.focus());
+  }, [mobileOpen]);
+
+  return <>
+    <button
+      className={`storefront-filter-backdrop${mobileOpen ? ' storefront-filter-backdrop--visible' : ''}`}
+      type="button"
+      aria-label="Закрити фільтри"
+      tabIndex={mobileOpen ? 0 : -1}
+      onClick={onMobileClose}
+    />
+    <aside
+      className={`storefront-filter-panel${mobileOpen ? ' storefront-filter-panel--open' : ''}`}
+      id="storefront-mobile-filters"
+      role={mobileOpen ? 'dialog' : undefined}
+      aria-modal={mobileOpen || undefined}
+      aria-label="Фільтри каталогу"
+    >
+      <header className="storefront-filter-panel__mobile-header">
+        <button type="button" ref={mobileCloseButtonRef} aria-label="Закрити фільтри" onClick={onMobileClose}><Icon name="chevronLeft" size={24} /></button>
+        <h2>Фільтри</h2>
+        {hasActiveFilters ? <button type="button" onClick={resetFilters}>Скинути</button> : <span aria-hidden="true" />}
+      </header>
+      <div className="storefront-filter-panel__body">
+        <header className="storefront-filter-panel__desktop-header">
+          <h2>Фільтри</h2>
+          {hasActiveFilters && <button type="button" onClick={resetFilters}>Скинути</button>}
+        </header>
+        <section className="storefront-filter-group">
       <h3>Бренд</h3>
       <label className="storefront-filter-option">
         <input type="radio" name="storefront-brand" checked={brandId === 'all'} onChange={() => setBrandId('all')} />
@@ -714,8 +755,8 @@ function StorefrontFilterPanel({
         <span>{option.label}</span>
         <small>{option.count}</small>
       </label>)}
-    </section>
-    <section className="storefront-filter-group storefront-filter-group--price">
+        </section>
+        <section className="storefront-filter-group storefront-filter-group--price">
       <h3>Ціна, грн</h3>
       <div className="storefront-price-filter__inputs">
         <input type="number" min={priceMin} value={priceDraft.min} placeholder={String(priceMin)} onChange={(event) => setPriceDraft({ ...priceDraft, min: event.target.value })} />
@@ -727,20 +768,25 @@ function StorefrontFilterPanel({
         <input type="range" min={priceMin} max={safeMax} value={Math.min(Number(draftMin) || priceMin, safeMax)} onChange={(event) => setPriceDraft({ ...priceDraft, min: event.target.value })} />
         <input type="range" min={priceMin} max={safeMax} value={Math.min(Number(draftMax) || safeMax, safeMax)} onChange={(event) => setPriceDraft({ ...priceDraft, max: event.target.value })} />
       </div>
-    </section>
-    {(filters?.characteristics || []).map((filter: CatalogStorefrontCharacteristicFilter) => <section className="storefront-filter-group" key={filter.key}>
-      <h3>{filter.label}</h3>
-      {filter.options.map((option) => {
-        const selected = (characteristicFilters[filter.key] || []).includes(option.value);
-        return <label className="storefront-filter-option" key={option.value}>
-          <input type="checkbox" checked={selected} onChange={() => toggleCharacteristic(filter.key, option.value)} />
-          {filter.type === 'color' && <span className="storefront-filter-option__swatch" style={swatchStyle(option.label, option.colorHex)} aria-hidden="true" />}
-          <span>{option.label}</span>
-          <small>{option.count}</small>
-        </label>;
-      })}
-    </section>)}
-  </aside>;
+        </section>
+        {(filters?.characteristics || []).map((filter: CatalogStorefrontCharacteristicFilter) => <section className="storefront-filter-group" key={filter.key}>
+          <h3>{filter.label}</h3>
+          {filter.options.map((option) => {
+            const selected = (characteristicFilters[filter.key] || []).includes(option.value);
+            return <label className="storefront-filter-option" key={option.value}>
+              <input type="checkbox" checked={selected} onChange={() => toggleCharacteristic(filter.key, option.value)} />
+              {filter.type === 'color' && <span className="storefront-filter-option__swatch" style={swatchStyle(option.label, option.colorHex)} aria-hidden="true" />}
+              <span>{option.label}</span>
+              <small>{option.count}</small>
+            </label>;
+          })}
+        </section>)}
+      </div>
+      <footer className="storefront-filter-panel__mobile-footer">
+        <button type="button" onClick={onMobileClose}>Показати {total} {storefrontProductCountLabel(total)}</button>
+      </footer>
+    </aside>
+  </>;
 }
 
 function schemaAvailability(status: CatalogAvailabilityStatus) {
@@ -1086,6 +1132,8 @@ export function StorefrontPage({ preview = false, rootMounted = false }: { previ
   const [characteristicFilters, setCharacteristicFilters] = useState<Record<string, string[]>>({});
   const [sort, setSort] = useState('updated_desc');
   const [requestProduct, setRequestProduct] = useState<CatalogProduct | null>(null);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const mobileFilterTriggerRef = useRef<HTMLButtonElement>(null);
   const serializedCharacteristicFilters = useMemo(() => {
     const active = activeFilterValues(characteristicFilters);
     return Object.keys(active).length ? JSON.stringify(active) : '';
@@ -1140,7 +1188,34 @@ export function StorefrontPage({ preview = false, rootMounted = false }: { previ
 
   useEffect(() => {
     setRequestProduct(null);
+    setMobileFiltersOpen(false);
   }, [slug]);
+
+  useEffect(() => {
+    if (!mobileFiltersOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMobileFiltersOpen(false);
+      window.requestAnimationFrame(() => mobileFilterTriggerRef.current?.focus());
+    };
+    const closeOnDesktopResize = () => {
+      if (window.innerWidth > 700) setMobileFiltersOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('resize', closeOnDesktopResize);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('resize', closeOnDesktopResize);
+    };
+  }, [mobileFiltersOpen]);
+
+  function closeMobileFilters() {
+    setMobileFiltersOpen(false);
+    window.requestAnimationFrame(() => mobileFilterTriggerRef.current?.focus());
+  }
 
   function updateSearch(event: ChangeEvent<HTMLInputElement>) {
     setSearch(event.target.value);
@@ -1226,10 +1301,20 @@ export function StorefrontPage({ preview = false, rootMounted = false }: { previ
       </div>
       <div className="storefront-controls">
         <label className="field"><span>Пошук</span><input value={search} onChange={updateSearch} placeholder={storefrontTheme.controls.searchPlaceholder} /></label>
-        <div className="storefront-controls__sort"><StyledSelect value={sort} options={sortOptions} onChange={(value) => setSort(String(value))} /></div>
+        <div className="storefront-controls__actions">
+          {storefrontTheme.filters.visible && <button
+            className="storefront-mobile-filter-trigger"
+            type="button"
+            ref={mobileFilterTriggerRef}
+            aria-controls="storefront-mobile-filters"
+            aria-expanded={mobileFiltersOpen}
+            onClick={() => setMobileFiltersOpen(true)}
+          ><Icon name="characteristics" size={19} /> Фільтри</button>}
+          <div className="storefront-controls__sort"><StyledSelect value={sort} options={sortOptions} onChange={(value) => setSort(String(value))} /></div>
+        </div>
       </div>
       <div className="storefront-catalog__layout">
-        <StorefrontFilterPanel
+        {storefrontTheme.filters.visible && <StorefrontFilterPanel
           filters={storefrontFilters}
           brandId={brandId}
           setBrandId={setBrandId}
@@ -1240,7 +1325,10 @@ export function StorefrontPage({ preview = false, rootMounted = false }: { previ
           resetFilters={resetFilters}
           characteristicFilters={characteristicFilters}
           toggleCharacteristic={toggleCharacteristic}
-        />
+          mobileOpen={mobileFiltersOpen}
+          total={products.data?.total ?? items.length}
+          onMobileClose={closeMobileFilters}
+        />}
         <div className="storefront-grid">
           {items.map((item) => <StorefrontProductCard
             product={item}

@@ -276,13 +276,18 @@ export function CatalogThemePreview({
           </div>
           <div className="storefront-controls">
             <label className="field"><span>Пошук</span><input readOnly placeholder={storefrontTheme.controls.searchPlaceholder} /></label>
-            <button className="custom-select__button catalog-theme-preview__sort" type="button">Нові оновлення</button>
+            <div className="storefront-controls__actions">
+              {storefrontTheme.filters.visible && <button className="storefront-mobile-filter-trigger" type="button"><Icon name="characteristics" size={19} /> Фільтри</button>}
+              <button className="custom-select__button catalog-theme-preview__sort" type="button">Нові оновлення</button>
+            </div>
           </div>
           <div className="storefront-catalog__layout">
-            <aside className="storefront-filter-panel">
-              <header><h2>Фільтри</h2></header>
-              <section className="storefront-filter-group"><h3>Бренд</h3><label className="storefront-filter-option"><input type="radio" checked readOnly /><span>Усі бренди</span><small>12</small></label><label className="storefront-filter-option"><input type="radio" readOnly /><span>Apple</span><small>7</small></label></section>
-            </aside>
+            {storefrontTheme.filters.visible && <aside className="storefront-filter-panel">
+              <div className="storefront-filter-panel__body">
+                <header className="storefront-filter-panel__desktop-header"><h2>Фільтри</h2></header>
+                <section className="storefront-filter-group"><h3>Бренд</h3><label className="storefront-filter-option"><input type="radio" checked readOnly /><span>Усі бренди</span><small>12</small></label><label className="storefront-filter-option"><input type="radio" readOnly /><span>Apple</span><small>7</small></label></section>
+              </div>
+            </aside>}
             <div className="storefront-grid">
               {[0, 1, 2, 3].map((index) => <ThemePreviewCard theme={cardTheme} index={index} key={index} />)}
             </div>
