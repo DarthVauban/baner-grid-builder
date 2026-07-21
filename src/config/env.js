@@ -12,6 +12,10 @@ const schema = z.object({
   COOKIE_SECURE: z.enum(['true', 'false', 'auto']).default('auto'),
   APP_BUILD_SHA: z.string().min(7).default('development'),
   APP_ORIGIN: z.string().optional(),
+  STOREFRONT_ORIGIN: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().url().optional()
+  ),
   ADMIN_NAME: z.string().optional(),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(10).optional()

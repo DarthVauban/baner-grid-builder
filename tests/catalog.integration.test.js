@@ -8,6 +8,7 @@ process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'pg-mem://catalog-tests';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.COOKIE_SECURE = 'false';
+process.env.STOREFRONT_ORIGIN = 'https://used.example.test';
 process.env.CATALOG_MEDIA_DIR = path.join(os.tmpdir(), 'mt-catalog-media-tests');
 process.env.ADMIN_NAME = 'Catalog Admin';
 process.env.ADMIN_EMAIL = 'catalog-admin@test.local';
@@ -520,7 +521,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   await admin.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);
   const savedStorefrontSettings = await admin.patch('/api/catalog/storefront-settings').send({
     selectedFormPublicId: form.body.data.publicId,
-    publicOrigin: 'https://storefront.test'
+    publicOrigin: 'https://used.example.test'
   }).expect(200);
   assert.equal(savedStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Inter');
   assert.equal(savedStorefrontSettings.body.data.productCardTheme.button.label, 'Купити');
@@ -544,7 +545,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   await admin.patch('/api/catalog/storefront-settings').send({ storefrontTheme, productCardTheme, productPageTheme }).expect(200);
   const publicStorefrontSettings = await request(app).get('/api/storefront/settings').expect(200);
   assert.equal(publicStorefrontSettings.body.data.selectedFormPublicId, form.body.data.publicId);
-  assert.equal(publicStorefrontSettings.body.data.publicOrigin, 'https://storefront.test');
+  assert.equal(publicStorefrontSettings.body.data.publicOrigin, 'https://used.example.test');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Unbounded');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.typography.headingWeight, 900);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.layout.columnsDesktop, 5);
@@ -555,20 +556,25 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.button.label, 'Замовити смартфон');
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.tabs.descriptionLabel, 'Детальний огляд');
 
-  const submitted = await request(app).post(`/api/storefront/products/${updated.body.data.slug}/applications`).send({
-    values: {
-      first_name: 'Olena',
-      last_name: 'Buyer',
-      phone: '+380501112233',
-      bank: 'mono'
-    },
-    context: {
-      sourceUrl: 'https://storefront.test/storefront',
-      pageTitle: 'Mobile Trend — смартфони',
-      utm_source: 'catalog'
-    },
-    idempotencyKey: 'catalog-product-application-1'
-  }).expect(201);
+  const submitted = await request(app)
+    .post(`/api/storefront/products/${updated.body.data.slug}/applications`)
+    .set('Host', 'used.example.test')
+    .set('x-forwarded-proto', 'https')
+    .send({
+      values: {
+        first_name: 'Olena',
+        last_name: 'Buyer',
+        phone: '+380501112233',
+        bank: 'mono'
+      },
+      context: {
+        sourceUrl: 'https://used.example.test/',
+        pageTitle: 'Mobile Trend — смартфони',
+        utm_source: 'catalog'
+      },
+      idempotencyKey: 'catalog-product-application-1'
+    })
+    .expect(201);
   assert.equal(submitted.body.data.number, '00001');
 
   const applications = await admin.get('/api/applications?search=00001').expect(200);
@@ -577,7 +583,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(applications.body.data.items[0].product.title, 'iPhone 13 128GB Midnight');
   assert.equal(applications.body.data.items[0].product.productCode, 'SM-000001');
   assert.equal(applications.body.data.items[0].product.externalProductId, created.body.data.id);
-  assert.equal(applications.body.data.items[0].sourceUrl, `https://storefront.test${updated.body.data.publicPath}`);
+  assert.equal(applications.body.data.items[0].sourceUrl, `https://used.example.test/smartphones/${updated.body.data.slug}`);
   assert.equal(applications.body.data.items[0].pageTitle, 'iPhone 13 128GB Midnight');
 
   await request(app)

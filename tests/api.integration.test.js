@@ -8,6 +8,7 @@ process.env.DATABASE_URL = 'pg-mem://banner-builder-tests';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.COOKIE_SECURE = 'false';
 process.env.APP_BUILD_SHA = 'test-build-sha';
+process.env.STOREFRONT_ORIGIN = 'https://used.example.test';
 process.env.ADMIN_NAME = 'Test Admin';
 process.env.ADMIN_EMAIL = 'admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
@@ -24,6 +25,24 @@ before(async () => {
 
 after(async () => {
   await pool.end();
+});
+
+test('standalone storefront hostname exposes public APIs but blocks workspace routes', async () => {
+  await request(app)
+    .get('/api/storefront/settings')
+    .set('Host', 'used.example.test')
+    .expect(200);
+  await request(app)
+    .get('/api/auth/me')
+    .set('Host', 'used.example.test')
+    .expect(404);
+  await request(app)
+    .get('/login')
+    .set('Host', 'used.example.test')
+    .expect(404);
+  await request(app)
+    .get('/api/auth/me')
+    .expect(401);
 });
 
 async function registerAndVerify(input) {

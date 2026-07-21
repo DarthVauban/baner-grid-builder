@@ -211,6 +211,15 @@ describe('StorefrontProductHead', () => {
     expect(document.head.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
     unmount();
   });
+
+  it('builds canonical product URLs from the standalone storefront root', () => {
+    const { unmount } = render(<StorefrontProductHead product={product} preview={false} basePath="/" />);
+
+    expect(document.head.querySelector('link[rel="canonical"]')).toHaveAttribute('href', `${window.location.origin}/smartphones/${product.slug}`);
+    expect(document.head.querySelector('meta[property="og:url"]')).toHaveAttribute('content', `${window.location.origin}/smartphones/${product.slug}`);
+
+    unmount();
+  });
 });
 
 describe('StorefrontProductDetailPage', () => {
@@ -360,6 +369,18 @@ describe('StorefrontProductDetailPage', () => {
 });
 
 describe('StorefrontProductCard', () => {
+  it('links root-mounted storefront cards directly to the public product route', () => {
+    const { container } = renderWithQueryClient(<StorefrontProductCard
+      product={product}
+      preview={false}
+      basePath="/"
+      formAvailable={false}
+      onRequest={vi.fn()}
+    />);
+
+    expect(container.querySelector('.storefront-card__body')).toHaveAttribute('href', `/smartphones/${product.slug}`);
+  });
+
   it('switches the card in place and opens the assigned form for the selected modification', async () => {
     const variantProduct: CatalogProduct = {
       ...product,

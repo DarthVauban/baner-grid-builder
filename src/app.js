@@ -24,6 +24,11 @@ import catalogRoutes from './modules/catalog/catalog.routes.js';
 import storefrontRoutes from './modules/catalog/storefront.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
+import {
+  isAllowedStandaloneStorefrontRequest,
+  isStandaloneStorefrontRequest,
+  standaloneStorefrontProductPath
+} from './modules/catalog/storefront.domain.js';
 import { injectStorefrontProductSeo } from './modules/catalog/storefront.seo.js';
 import { env } from './config/env.js';
 import { query } from './db/pool.js';
@@ -67,6 +72,15 @@ app.use(helmet({
   crossOriginOpenerPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
+
+app.use((req, res, next) => {
+  req.isStandaloneStorefront = isStandaloneStorefrontRequest(req, env.STOREFRONT_ORIGIN);
+  if (!req.isStandaloneStorefront || isAllowedStandaloneStorefrontRequest(req)) return next();
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ресурс не знайдено.' } });
+  }
+  return res.status(404).type('text').send('Not found');
+});
 
 if (env.APP_ORIGIN) {
   app.use((req, res, next) => {
@@ -148,9 +162,12 @@ async function sendStorefrontProductHtml(req, res, { preview = false } = {}) {
     ? await loadPreviewProduct(req.params.slug)
     : await loadPublicProduct(req.params.slug);
   if (!product) return sendBuiltHtml(res, storefrontIndex, preview ? 'Storefront preview' : 'Storefront');
+  const seoProduct = req.isStandaloneStorefront
+    ? { ...product, publicPath: standaloneStorefrontProductPath(product.slug) }
+    : product;
   const html = await readFile(storefrontIndex, 'utf8');
   res.setHeader('Cache-Control', preview ? 'no-store' : 'no-cache');
-  return res.type('html').send(injectStorefrontProductSeo(html, product, {
+  return res.type('html').send(injectStorefrontProductSeo(html, seoProduct, {
     origin: requestOrigin(req),
     preview
   }));
@@ -165,6 +182,26 @@ app.get(/^\/catalog\/preview\/storefront(?:\/.*)?$/, requireAuth, requireToolAcc
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Cache-Control', 'no-store');
   return sendBuiltHtml(res, storefrontIndex, 'Storefront preview');
+});
+
+app.get('/smartphones/:slug', asyncHandler(async (req, res, next) => {
+  if (!req.isStandaloneStorefront) return next();
+  await sendStorefrontProductHtml(req, res);
+}));
+
+app.get('/', (req, res, next) => {
+  if (!req.isStandaloneStorefront) return next();
+  return sendBuiltHtml(res, storefrontIndex, 'Storefront');
+});
+
+app.get('/storefront', (req, res, next) => {
+  if (!req.isStandaloneStorefront) return next();
+  return res.redirect(308, '/');
+});
+
+app.get('/storefront/smartphones/:slug', (req, res, next) => {
+  if (!req.isStandaloneStorefront) return next();
+  return res.redirect(308, standaloneStorefrontProductPath(req.params.slug));
 });
 
 app.get('/storefront/smartphones/:slug', asyncHandler(async (req, res) => {

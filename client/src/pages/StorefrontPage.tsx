@@ -271,13 +271,13 @@ function ProductGallery({ product, theme = defaultProductPageTheme }: { product:
   </div>;
 }
 
-function productPath(slug: string, preview: boolean) {
+function productPath(slug: string, basePath: string) {
   const encodedSlug = encodeURIComponent(slug);
-  return preview ? `/catalog/preview/storefront/smartphones/${encodedSlug}` : `/storefront/smartphones/${encodedSlug}`;
+  return `${basePath.replace(/\/$/, '')}/smartphones/${encodedSlug}`;
 }
 
-function productLink(product: Pick<CatalogProduct, 'slug'>, preview: boolean) {
-  return productPath(product.slug, preview);
+function productLink(product: Pick<CatalogProduct, 'slug'>, basePath: string) {
+  return productPath(product.slug, basePath);
 }
 
 function StorefrontDescription({ product }: { product: CatalogProduct }) {
@@ -405,7 +405,7 @@ function modificationOptionContent(parameter: CatalogProductModificationParamete
   </>;
 }
 
-function StorefrontModifications({ product, preview }: { product: CatalogProduct; preview: boolean }) {
+function StorefrontModifications({ product, basePath }: { product: CatalogProduct; basePath: string }) {
   const parameters = (product.modifications?.parameters || []).filter((parameter) => parameter.options.length);
   if (!parameters.length) return null;
   return <div className="storefront-modifications" aria-label="Модифікації товару">
@@ -420,7 +420,7 @@ function StorefrontModifications({ product, preview }: { product: CatalogProduct
               return <button className={className} type="button" disabled key={option.id}>{modificationOptionContent(parameter, option)}</button>;
             }
             if (option.product) {
-              return <Link className={className} to={productLink(option.product, preview)} key={option.id}>{modificationOptionContent(parameter, option)}</Link>;
+              return <Link className={className} to={productLink(option.product, basePath)} key={option.id}>{modificationOptionContent(parameter, option)}</Link>;
             }
             return <span className={className} key={option.id}>{modificationOptionContent(parameter, option)}</span>;
           })}
@@ -479,7 +479,7 @@ export function StorefrontProductDetailPage({
               <dd>{item.value}</dd>
             </div>)}
           </dl>}
-          {theme.visibility.modifications && <StorefrontModifications product={product} preview={preview} />}
+          {theme.visibility.modifications && <StorefrontModifications product={product} basePath={basePath} />}
         </div>
         <div className="storefront-product-view__footer">
           <button className="button button--primary storefront-product-view__action" type="button" disabled={!canRequestProduct} onClick={onRequest}>
@@ -569,12 +569,14 @@ function optimisticCardVariant(
 export function StorefrontProductCard({
   product,
   preview,
+  basePath = '/storefront',
   formAvailable,
   onRequest,
   theme = defaultProductCardTheme
 }: {
   product: CatalogProduct;
   preview: boolean;
+  basePath?: string;
   formAvailable: boolean;
   onRequest: (product: CatalogProduct) => void;
   theme?: CatalogProductCardTheme;
@@ -590,7 +592,7 @@ export function StorefrontProductCard({
   }, [product]);
 
   const parameters = (displayedProduct.modifications?.parameters || []).filter((parameter) => parameter.options.length);
-  const link = productLink(displayedProduct, preview);
+  const link = productLink(displayedProduct, basePath);
   const canBuy = formAvailable && displayedProduct.availability.status !== 'unavailable' && !variantBusy;
   const content: Record<CatalogProductCardContentKey, ReactNode> = {
     image: <ProductImage product={displayedProduct} />,
@@ -774,13 +776,14 @@ function resetStorefrontHead() {
   if (!description.parentNode) document.head.append(description);
 }
 
-export function StorefrontProductHead({ product, preview }: { product: CatalogProduct; preview: boolean }) {
+export function StorefrontProductHead({ product, preview, basePath }: { product: CatalogProduct; preview: boolean; basePath?: string }) {
   useEffect(() => {
     clearStorefrontProductHead();
     const title = product.seoTitle.trim() || product.name;
     const description = product.seoDescription.trim() || product.shortDescription.trim() || product.name;
     const socialDescription = product.socialDescription.trim() || description;
-    const canonicalUrl = absoluteStorefrontUrl(product.publicPath);
+    const resolvedBasePath = basePath ?? (preview ? '/catalog/preview/storefront' : '/storefront');
+    const canonicalUrl = absoluteStorefrontUrl(productPath(product.slug, resolvedBasePath));
     const imageUrl = absoluteStorefrontUrl(product.mainImageUrl);
     const images = [product.mainImageUrl, ...(product.gallery || []).map((item) => item.url)]
       .map(absoluteStorefrontUrl)
@@ -857,7 +860,7 @@ export function StorefrontProductHead({ product, preview }: { product: CatalogPr
     document.head.append(structuredData);
 
     return resetStorefrontHead;
-  }, [preview, product]);
+  }, [basePath, preview, product]);
 
   return null;
 }
@@ -967,12 +970,15 @@ function PublicFieldControl({
 export function StorefrontApplicationForm({
   product,
   form,
-  preview
+  preview,
+  basePath
 }: {
   product: CatalogProduct;
   form: PublicForm | undefined;
   preview: boolean;
+  basePath?: string;
 }) {
+  const resolvedBasePath = basePath ?? (preview ? '/catalog/preview/storefront' : '/storefront');
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [done, setDone] = useState<{ number: string } | null>(null);
   useEffect(() => {
@@ -988,7 +994,7 @@ export function StorefrontApplicationForm({
     mutationFn: () => (preview ? api.storefront.previewSubmitApplication : api.storefront.submitApplication)(product.slug, {
       values,
       context: {
-        sourceUrl: new URL(productPath(product.slug, preview), window.location.origin).toString(),
+        sourceUrl: new URL(productPath(product.slug, resolvedBasePath), window.location.origin).toString(),
         pageTitle: product.name,
         referrer: document.referrer
       },
@@ -1025,11 +1031,13 @@ function StorefrontApplicationModal({
   product,
   form,
   preview,
+  basePath,
   onClose
 }: {
   product: CatalogProduct;
   form: PublicForm | undefined;
   preview: boolean;
+  basePath: string;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -1050,12 +1058,12 @@ function StorefrontApplicationModal({
   }}>
     <div className="storefront-modal__panel">
       <button className="storefront-modal__close" type="button" aria-label="Закрити форму" onClick={onClose}>×</button>
-      <StorefrontApplicationForm product={product} form={form} preview={preview} />
+      <StorefrontApplicationForm product={product} form={form} preview={preview} basePath={basePath} />
     </div>
   </div>;
 }
 
-export function StorefrontPage({ preview = false }: { preview?: boolean }) {
+export function StorefrontPage({ preview = false, rootMounted = false }: { preview?: boolean; rootMounted?: boolean }) {
   const { slug } = useParams();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1080,7 +1088,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
     page: 1,
     pageSize: 24
   }), [brandId, priceFilter.max, priceFilter.min, search, serializedCharacteristicFilters, sort]);
-  const basePath = preview ? '/catalog/preview/storefront' : '/storefront';
+  const basePath = preview ? '/catalog/preview/storefront' : rootMounted ? '/' : '/storefront';
   const settings = useQuery({
     queryKey: [preview ? 'storefront-preview-settings' : 'storefront-settings'],
     queryFn: preview ? api.storefront.previewSettings : api.storefront.settings
@@ -1178,12 +1186,12 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
       <Link to={basePath} className="storefront-brand"><span>{storefrontTheme.header.brandMark}</span><strong>{storefrontTheme.header.brandText}</strong></Link>
       {preview
         ? <a className="button button--secondary button--small storefront-header__action" href="/catalog/products">До каталогу</a>
-        : <a className="button button--secondary button--small storefront-header__action" href="/login">У робочий простір</a>}
+        : !rootMounted && <a className="button button--secondary button--small storefront-header__action" href="/login">У робочий простір</a>}
     </header>
     {preview && <div className="storefront-preview-banner">Preview магазину · сторінка закрита від індексації</div>}
 
     {slug ? productData ? <>
-    <StorefrontProductHead product={productData} preview={preview} />
+    <StorefrontProductHead product={productData} preview={preview} basePath={basePath} />
     <StorefrontProductDetailPage
       product={productData}
       preview={preview}
@@ -1219,6 +1227,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
           {items.map((item) => <StorefrontProductCard
             product={item}
             preview={preview}
+            basePath={basePath}
             formAvailable={Boolean(form.data)}
             onRequest={setRequestProduct}
             theme={productCardTheme}
@@ -1228,6 +1237,6 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
       </div>
       {!products.isLoading && !items.length && <div className="storefront-empty"><Icon name="phone" size={32} /><h2>Товарів не знайдено</h2></div>}
     </section>}
-    {requestProduct && form.data && requestProduct.availability.status !== 'unavailable' && <StorefrontApplicationModal product={requestProduct} form={form.data} preview={preview} onClose={() => setRequestProduct(null)} />}
+    {requestProduct && form.data && requestProduct.availability.status !== 'unavailable' && <StorefrontApplicationModal product={requestProduct} form={form.data} preview={preview} basePath={basePath} onClose={() => setRequestProduct(null)} />}
   </main>;
 }

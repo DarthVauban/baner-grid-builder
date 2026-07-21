@@ -10,6 +10,7 @@ import { createPublicApplication } from '../applications/public.routes.js';
 import {
   subscribeToPublicCatalogUpdates
 } from './catalog.events.js';
+import { storefrontProductPathForRequest } from './storefront.domain.js';
 import {
   appendStorefrontProductFilters,
   attachPublicCatalogProductListDetails,
@@ -182,8 +183,9 @@ router.post('/products/:identifier/applications', submitLimiter, asyncHandler(as
   if (!settings.selectedFormPublicId) {
     throw new AppError(422, 'STOREFRONT_FORM_NOT_CONFIGURED', 'Для вітрини ще не обрано форму заявок.');
   }
-  const origin = settings.publicOrigin || publicOrigin(req);
-  const sourceUrl = cleanUrl(new URL(product.publicPath, `${origin}/`).toString());
+  const requestPublicOrigin = publicOrigin(req);
+  const origin = req.isStandaloneStorefront ? requestPublicOrigin : settings.publicOrigin || requestPublicOrigin;
+  const sourceUrl = cleanUrl(new URL(storefrontProductPathForRequest(req, product), `${origin}/`).toString());
   const context = {
     ...input.context,
     sourceUrl,

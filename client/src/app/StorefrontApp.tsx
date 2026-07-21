@@ -4,6 +4,8 @@ import { StorefrontPage } from '../pages/StorefrontPage';
 export function StorefrontApp() {
   return (
     <Routes>
+      <Route path="/" element={<StorefrontPage rootMounted />} />
+      <Route path="/smartphones/:slug" element={<StorefrontPage rootMounted />} />
       <Route path="/storefront" element={<StorefrontPage />} />
       <Route path="/storefront/smartphones/:slug" element={<StorefrontPage />} />
       <Route path="/catalog/preview/storefront" element={<StorefrontPage preview />} />
