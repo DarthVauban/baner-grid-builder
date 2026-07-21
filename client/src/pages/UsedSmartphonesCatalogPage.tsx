@@ -935,7 +935,9 @@ function ProductEditorScreen({
         <h1 className="catalog-editor-title" data-full-title={editorTitle}><span>{editorTitle}</span></h1>
       </div>
       <div className="catalog-editor-controls">
-        {hasUnsavedChanges && <span className="catalog-unsaved-badge"><Icon name="schedule" size={15} /> Незбережені зміни</span>}
+        <span className={`catalog-unsaved-badge${hasUnsavedChanges ? '' : ' catalog-unsaved-badge--hidden'}`} aria-hidden={!hasUnsavedChanges}>
+          <Icon name="schedule" size={15} /> Незбережені зміни
+        </span>
         <label className="catalog-editor-status">
           <span>Статус</span>
           <StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} ariaLabel="Статус публікації" compact />

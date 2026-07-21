@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -22,7 +23,8 @@ import publicApplicationRoutes from './modules/applications/public.routes.js';
 import catalogRoutes from './modules/catalog/catalog.routes.js';
 import storefrontRoutes from './modules/catalog/storefront.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
-import { catalogToolId } from './modules/catalog/catalog.service.js';
+import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
+import { injectStorefrontProductSeo } from './modules/catalog/storefront.seo.js';
 import { env } from './config/env.js';
 import { query } from './db/pool.js';
 import { asyncHandler } from './lib/async-handler.js';
@@ -126,11 +128,48 @@ function sendBuiltHtml(res, file, label) {
   return res.sendFile(file);
 }
 
+function requestOrigin(req) {
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim();
+  const host = forwardedHost || req.get('host');
+  if (!host) return '';
+  try {
+    return new URL(`${forwardedProto}://${host}`).origin;
+  } catch {
+    return '';
+  }
+}
+
+async function sendStorefrontProductHtml(req, res, { preview = false } = {}) {
+  if (!existsSync(storefrontIndex)) {
+    return res.status(503).send('Storefront is not built. Run npm run build first.');
+  }
+  const product = preview
+    ? await loadPreviewProduct(req.params.slug)
+    : await loadPublicProduct(req.params.slug);
+  if (!product) return sendBuiltHtml(res, storefrontIndex, preview ? 'Storefront preview' : 'Storefront');
+  const html = await readFile(storefrontIndex, 'utf8');
+  res.setHeader('Cache-Control', preview ? 'no-store' : 'no-cache');
+  return res.type('html').send(injectStorefrontProductSeo(html, product, {
+    origin: requestOrigin(req),
+    preview
+  }));
+}
+
+app.get('/catalog/preview/storefront/smartphones/:slug', requireAuth, requireToolAccess(catalogToolId), asyncHandler(async (req, res) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  await sendStorefrontProductHtml(req, res, { preview: true });
+}));
+
 app.get(/^\/catalog\/preview\/storefront(?:\/.*)?$/, requireAuth, requireToolAccess(catalogToolId), (req, res) => {
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Cache-Control', 'no-store');
   return sendBuiltHtml(res, storefrontIndex, 'Storefront preview');
 });
+
+app.get('/storefront/smartphones/:slug', asyncHandler(async (req, res) => {
+  await sendStorefrontProductHtml(req, res);
+}));
 
 app.get(/^\/storefront(?:\/.*)?$/, (req, res) => sendBuiltHtml(res, storefrontIndex, 'Storefront'));
 

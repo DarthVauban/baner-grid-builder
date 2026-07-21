@@ -7,7 +7,7 @@ import type { PropsWithChildren, ReactElement } from 'react';
 import { api } from '../lib/api';
 import type { CatalogProduct } from '../types/catalog';
 import appStyles from '../styles/app.css?raw';
-import { formatStorefrontPhone, StorefrontApplicationForm, StorefrontProductCard, StorefrontProductDetailPage } from './StorefrontPage';
+import { formatStorefrontPhone, StorefrontApplicationForm, StorefrontProductCard, StorefrontProductDetailPage, StorefrontProductHead } from './StorefrontPage';
 
 vi.mock('swiper/modules', () => ({
   Keyboard: {},
@@ -178,6 +178,37 @@ const product: CatalogProduct = {
   createdAt: '2030-01-01T00:00:00.000Z',
   updatedAt: '2030-01-01T00:00:00.000Z'
 };
+
+describe('StorefrontProductHead', () => {
+  it('syncs saved SEO and social fields with the document head', () => {
+    const seoProduct = {
+      ...product,
+      seoTitle: 'Купити iPhone 13 у Mobile Trend',
+      seoDescription: 'SEO-опис товару',
+      socialDescription: 'Опис для соцмереж'
+    };
+    const { unmount } = render(<StorefrontProductHead product={seoProduct} preview={false} />);
+
+    expect(document.title).toBe(seoProduct.seoTitle);
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute('content', seoProduct.seoDescription);
+    expect(document.head.querySelector('meta[property="og:description"]')).toHaveAttribute('content', seoProduct.socialDescription);
+    expect(document.head.querySelector('meta[name="twitter:description"]')).toHaveAttribute('content', seoProduct.socialDescription);
+    expect(document.head.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'index, follow, max-image-preview:large');
+    expect(document.head.querySelector('link[rel="canonical"]')).toHaveAttribute('href', expect.stringContaining(product.publicPath));
+    const structuredData = JSON.parse(document.head.querySelector('script[type="application/ld+json"]')?.textContent || '{}');
+    expect(structuredData).toMatchObject({ '@type': 'Product', name: product.name, sku: product.productCode });
+
+    unmount();
+    expect(document.title).toBe('Mobile Trend — смартфони');
+    expect(document.head.querySelector('meta[property="og:title"]')).not.toBeInTheDocument();
+  });
+
+  it('marks preview product pages as noindex', () => {
+    const { unmount } = render(<StorefrontProductHead product={product} preview />);
+    expect(document.head.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
+    unmount();
+  });
+});
 
 describe('StorefrontProductDetailPage', () => {
   it('keeps equal hero cards and switches description and characteristics inside one tabbed block', async () => {

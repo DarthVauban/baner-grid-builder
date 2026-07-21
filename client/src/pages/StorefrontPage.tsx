@@ -716,16 +716,59 @@ function schemaCondition(condition: CatalogCondition) {
   return condition === 'REFURBISHED' ? 'https://schema.org/RefurbishedCondition' : 'https://schema.org/UsedCondition';
 }
 
-function StorefrontProductJsonLd({ product }: { product: CatalogProduct }) {
-  const json = useMemo(() => {
-    const url = typeof window !== 'undefined' ? window.location.href : product.publicPath;
+const storefrontDefaultTitle = 'Mobile Trend — смартфони';
+const storefrontDefaultDescription = 'Вітрина перевірених вживаних та відновлених смартфонів Mobile Trend';
+
+function absoluteStorefrontUrl(value: string) {
+  if (!value) return '';
+  try {
+    return new URL(value, window.location.origin).toString();
+  } catch {
+    return value;
+  }
+}
+
+function clearStorefrontProductHead() {
+  document.head.querySelectorAll('[data-storefront-seo]').forEach((element) => element.remove());
+}
+
+function setStorefrontMeta(attribute: 'name' | 'property', key: string, content: string) {
+  if (!content) return;
+  const selector = `meta[${attribute}="${key}"]`;
+  const element = document.head.querySelector<HTMLMetaElement>(selector) || document.createElement('meta');
+  element.setAttribute(attribute, key);
+  element.content = content;
+  element.dataset.storefrontSeo = 'client';
+  if (!element.parentNode) document.head.append(element);
+}
+
+function resetStorefrontHead() {
+  clearStorefrontProductHead();
+  document.title = storefrontDefaultTitle;
+  const description = document.head.querySelector<HTMLMetaElement>('meta[name="description"]') || document.createElement('meta');
+  description.name = 'description';
+  description.content = storefrontDefaultDescription;
+  if (!description.parentNode) document.head.append(description);
+}
+
+export function StorefrontProductHead({ product, preview }: { product: CatalogProduct; preview: boolean }) {
+  useEffect(() => {
+    clearStorefrontProductHead();
+    const title = product.seoTitle.trim() || product.name;
+    const description = product.seoDescription.trim() || product.shortDescription.trim() || product.name;
+    const socialDescription = product.socialDescription.trim() || description;
+    const canonicalUrl = absoluteStorefrontUrl(product.publicPath);
+    const imageUrl = absoluteStorefrontUrl(product.mainImageUrl);
+    const images = [product.mainImageUrl, ...(product.gallery || []).map((item) => item.url)]
+      .map(absoluteStorefrontUrl)
+      .filter(Boolean);
     const additionalProperty = [
       ...baseSpecItems(product).map((item) => ({
         '@type': 'PropertyValue',
         name: item.label,
         value: item.value
       })),
-      ...(product.characteristics?.items || []).map((item) => ({
+      ...(product.characteristics?.items || []).filter((item) => item.displayValue).map((item) => ({
         '@type': 'PropertyValue',
         name: item.label,
         propertyID: item.key,
@@ -739,27 +782,61 @@ function StorefrontProductJsonLd({ product }: { product: CatalogProduct }) {
         value: parameter.currentValueLabel
       }))
     ];
-    return {
+
+    document.title = title;
+    setStorefrontMeta('name', 'description', description);
+    setStorefrontMeta('name', 'robots', preview ? 'noindex, nofollow' : 'index, follow, max-image-preview:large');
+    setStorefrontMeta('property', 'og:locale', 'uk_UA');
+    setStorefrontMeta('property', 'og:type', 'product');
+    setStorefrontMeta('property', 'og:site_name', 'Mobile Trend');
+    setStorefrontMeta('property', 'og:title', title);
+    setStorefrontMeta('property', 'og:description', socialDescription);
+    setStorefrontMeta('property', 'og:url', canonicalUrl);
+    setStorefrontMeta('property', 'product:price:amount', String(product.priceUah));
+    setStorefrontMeta('property', 'product:price:currency', 'UAH');
+    setStorefrontMeta('name', 'twitter:card', imageUrl ? 'summary_large_image' : 'summary');
+    setStorefrontMeta('name', 'twitter:title', title);
+    setStorefrontMeta('name', 'twitter:description', socialDescription);
+    if (imageUrl) {
+      setStorefrontMeta('property', 'og:image', imageUrl);
+      setStorefrontMeta('property', 'og:image:alt', product.name);
+      setStorefrontMeta('name', 'twitter:image', imageUrl);
+    }
+
+    const canonical = document.createElement('link');
+    canonical.rel = 'canonical';
+    canonical.href = canonicalUrl;
+    canonical.dataset.storefrontSeo = 'client';
+    document.head.append(canonical);
+
+    const structuredData = document.createElement('script');
+    structuredData.type = 'application/ld+json';
+    structuredData.dataset.storefrontSeo = 'client';
+    structuredData.textContent = JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'Product',
       name: product.name,
       sku: product.productCode,
-      image: [product.mainImageUrl, ...(product.gallery || []).map((item) => item.url)].filter(Boolean),
-      description: product.seoDescription || product.shortDescription || product.name,
+      image: images,
+      description,
       brand: product.brand?.label ? { '@type': 'Brand', name: product.brand.label } : undefined,
       itemCondition: schemaCondition(product.condition),
       additionalProperty,
       offers: {
         '@type': 'Offer',
-        url,
+        url: canonicalUrl,
         priceCurrency: 'UAH',
         price: product.priceUah,
         availability: schemaAvailability(product.availability.status),
         itemCondition: schemaCondition(product.condition)
       }
-    };
-  }, [product]);
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(json) }} />;
+    }).replace(/</g, '\\u003c');
+    document.head.append(structuredData);
+
+    return resetStorefrontHead;
+  }, [preview, product]);
+
+  return null;
 }
 
 function fieldValue(values: Record<string, unknown>, field: PublicField) {
@@ -1079,7 +1156,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
     {preview && <div className="storefront-preview-banner">Preview магазину · сторінка закрита від індексації</div>}
 
     {slug ? productData ? <>
-    <StorefrontProductJsonLd product={productData} />
+    <StorefrontProductHead product={productData} preview={preview} />
     <StorefrontProductDetailPage
       product={productData}
       preview={preview}

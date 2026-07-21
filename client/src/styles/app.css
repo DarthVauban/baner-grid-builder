@@ -1845,6 +1845,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .catalog-editor-actions { min-width: 0; display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: 8px; }
 .catalog-editor-actions .button { min-height: 44px; white-space: nowrap; }
 .catalog-unsaved-badge { min-height: 34px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #f0d27a; border-radius: 999px; padding: 7px 10px; color: #8a5f00; background: #fff7db; font-size: 11px; font-weight: 850; white-space: nowrap; }
+.catalog-unsaved-badge--hidden { visibility: hidden; pointer-events: none; }
 .catalog-editor-status { width: 176px; display: grid; flex: 0 0 176px; gap: 4px; }
 .catalog-editor-status > span { color: #8791a0; font-size: 9px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
 .catalog-editor-status .custom-select__button { min-height: 38px; height: 38px; border-radius: 10px; font-size: 11px; }

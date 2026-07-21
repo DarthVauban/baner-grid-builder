@@ -146,6 +146,9 @@ test('catalog products publish to storefront, import stock updates, and create a
     mainImageUrl: 'https://example.com/iphone-13.webp',
     gallery: [],
     description: '.tab .content{color:blue}<section id="specs" data-product-section="details"><h2 onclick="alert(1)">Specs</h2></section><style>.note{color:red}</style><p><a href="javascript:alert(1)">bad link</a></p><script>window.__catalogTest = true;</script>',
+    seoTitle: 'Certified iPhone 13 128GB',
+    seoDescription: 'Buy a tested iPhone 13 from Mobile Trend.',
+    socialDescription: 'Tested iPhone 13 ready to order.',
     publicationStatus: 'PUBLISHED',
     expectedVersion: created.body.data.version
   }).expect(200);
@@ -169,6 +172,9 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.match(publicProduct.body.data.descriptionCss, /\.tab \.content/);
   assert.match(publicProduct.body.data.descriptionCss, /color:red/);
   assert.match(publicProduct.body.data.descriptionJs, /__catalogTest/);
+  assert.equal(publicProduct.body.data.seoTitle, 'Certified iPhone 13 128GB');
+  assert.equal(publicProduct.body.data.seoDescription, 'Buy a tested iPhone 13 from Mobile Trend.');
+  assert.equal(publicProduct.body.data.socialDescription, 'Tested iPhone 13 ready to order.');
   assert.equal(Object.hasOwn(publicProduct.body.data, 'internalNotes'), false);
 
   const template = await admin.post('/api/catalog/characteristic-templates').send({

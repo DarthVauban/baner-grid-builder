@@ -78,4 +78,8 @@ describe('RichTextEditor source mode', () => {
     expect(appStyles).toMatch(/\.rich-editor__source \.cm-content\s*\{[^}]*min-height:\s*100%;[^}]*display:\s*block/);
     expect(appStyles).toMatch(/\.rich-editor__source \.cm-announced\s*\{[^}]*top:\s*-10000px\s*!important;[^}]*overflow:\s*hidden/);
   });
+
+  it('reserves header space for the unsaved changes indicator', () => {
+    expect(appStyles).toMatch(/\.catalog-unsaved-badge--hidden\s*\{[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none/);
+  });
 });
