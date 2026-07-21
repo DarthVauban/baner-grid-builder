@@ -305,6 +305,14 @@ export interface CatalogImportRow {
   reason: string;
   productId?: string | null;
   productCode?: string;
+  identityKey?: string;
+  brandId?: string | null;
+  brandLabel?: string;
+  templateId?: string | null;
+  templateLabel?: string;
+  characteristicCount?: number;
+  groupLabel?: string;
+  matchReason?: string;
 }
 
 export interface CatalogImportSummary {
@@ -321,6 +329,52 @@ export interface CatalogImportPreview {
   rows: CatalogImportRow[];
   summary: CatalogImportSummary;
   importId?: string;
+}
+
+export interface CatalogImportTemplateColumn {
+  key: string;
+  label: string;
+  width: number;
+  example: string | number;
+  required?: boolean;
+  description: string;
+}
+
+export interface CatalogImportTemplateField {
+  id: string;
+  templateId: string;
+  key: string;
+  label: string;
+  type: CatalogCharacteristicFieldType;
+  unit: string;
+  options: string[];
+  required: boolean;
+  filterable: boolean;
+  isModifier: boolean;
+  sortOrder: number;
+  header: string;
+}
+
+export interface CatalogImportTemplateDefinition {
+  id: string;
+  label: string;
+  description: string;
+  updatedAt: string;
+  fields: CatalogImportTemplateField[];
+}
+
+export interface CatalogImportTemplateSchema {
+  version: number;
+  source: string;
+  clearToken: string;
+  columns: CatalogImportTemplateColumn[];
+  templates: CatalogImportTemplateDefinition[];
+  brands: Array<{
+    id: string;
+    label: string;
+    directoryId: string;
+    directoryLabel: string;
+  }>;
 }
 
 export interface CatalogStorefrontSettings {

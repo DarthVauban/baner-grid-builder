@@ -2153,6 +2153,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .catalog-import-modal { width: min(100%,900px); }
 .catalog-import-modal__content { display: grid; gap: 16px; padding: 22px 26px; }
 .catalog-import-modal__file { margin: -6px 0 0; color: #7b8698; font-size: 11px; font-weight: 750; }
+.catalog-import-modal__hint { margin: -7px 0 0; color: #7b8698; font-size: 11px; line-height: 1.5; }
 .catalog-import-options { display: flex; flex-wrap: wrap; gap: 12px; }
 .catalog-import-options label { display: inline-flex; align-items: center; gap: 8px; color: #596579; font-size: 12px; font-weight: 750; }
 .catalog-import-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; }
@@ -2161,9 +2162,12 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .catalog-import-table { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 13px; }
 .catalog-import-table__row { display: grid; grid-template-columns: 52px minmax(190px,1fr) 110px 90px 90px 95px; gap: 9px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 11px; }
 .catalog-import-table__row:last-child { border-bottom: 0; }
-.catalog-import-table__row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-import-table__product { min-width: 0; display: grid; gap: 3px; }
+.catalog-import-table__product strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-import-table__product small { min-width: 0; overflow: hidden; color: #7b8698; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .catalog-import-table__row b { justify-self: start; border-radius: 999px; padding: 5px 8px; color: #596579; background: #eef1f5; font-size: 9px; text-transform: uppercase; }
-.catalog-import-table__row small { grid-column: 2 / -1; color: #9f2940; line-height: 1.4; }
+.catalog-import-table__row .catalog-import-table__reason { grid-column: 2 / -1; color: #9f2940; line-height: 1.4; }
+.catalog-import-table__row--update .catalog-import-table__reason { color: #6c5ce7; }
 .catalog-import-table__row--conflict b, .catalog-import-table__row--error b { color: #9f2940; background: #fff0f3; }
 .chat-entity--catalog-product > header { background: linear-gradient(120deg, #24324a, #284536); }
 .chat-entity--catalog-product > header > span { overflow: hidden; }

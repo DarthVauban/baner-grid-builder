@@ -34,6 +34,7 @@ import {
   conditionLabels,
   generateProductCode,
   getCatalogRecipientIds,
+  loadCatalogImportSchema,
   loadCatalogProduct,
   loadProductModificationSet,
   loadPreviewProduct,
@@ -2446,6 +2447,11 @@ router.post('/imports/preview', asyncHandler(async (req, res) => {
   const input = parseInput(importPreviewSchema, req.body);
   const preview = await analyzeImportRows(input.rows);
   res.json({ data: preview });
+}));
+
+router.get('/imports/template', asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ data: await loadCatalogImportSchema() });
 }));
 
 router.post('/imports/commit', asyncHandler(async (req, res) => {

@@ -59,6 +59,7 @@ import type {
   CatalogCharacteristicTemplateInput,
   CatalogFeed,
   CatalogImportPreview,
+  CatalogImportTemplateSchema,
   CatalogMediaAsset,
   CatalogProduct,
   CatalogProductCharacteristics,
@@ -370,6 +371,7 @@ export const api = {
     }),
     previewImport: (rows: Array<Record<string, unknown>>) =>
       request<CatalogImportPreview>('/api/catalog/imports/preview', { method: 'POST', body: jsonBody({ rows }) }),
+    importTemplate: () => request<CatalogImportTemplateSchema>('/api/catalog/imports/template'),
     commitImport: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) =>
       request<CatalogImportPreview>('/api/catalog/imports/commit', { method: 'POST', body: jsonBody({ rows, ...options }) }),
     storefrontSettings: () => request<CatalogStorefrontSettings>('/api/catalog/storefront-settings'),

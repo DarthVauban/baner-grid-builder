@@ -17,6 +17,7 @@ import {
   productToInput
 } from '../lib/catalog';
 import { convertCatalogImageToWebp, validateCatalogImageFile } from '../lib/catalog-media';
+import { buildCatalogImportWorkbook } from '../lib/catalog-import';
 import { copyShareLink } from '../lib/share';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -1649,11 +1650,12 @@ function ImportModal({
   return <div className="modal-backdrop" role="presentation">
     <section className="modal catalog-import-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-import-title">
       <header className="modal__header">
-        <div><p className="eyebrow">XLSX</p><h2 id="catalog-import-title">Імпорт залишків</h2></div>
+        <div><p className="eyebrow">XLSX</p><h2 id="catalog-import-title">Імпорт товарів</h2></div>
         <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" /></button>
       </header>
       <div className="catalog-import-modal__content">
         <label className="field"><span>Файл</span><input type="file" accept=".xlsx,.xls" onChange={(event) => void readFile(event)} /></label>
+        <p className="catalog-import-modal__hint">Нові товари створюються чернетками. Наявні товари оновлюються без зміни фото, галереї та статусу публікації.</p>
         {fileName && <p className="catalog-import-modal__file">{fileName} · {rows.length} рядків</p>}
         <div className="catalog-import-options">
           <label><input type="checkbox" checked={importNew} onChange={(event) => setImportNew(event.target.checked)} /> Створювати нові товари</label>
@@ -1668,12 +1670,17 @@ function ImportModal({
         {preview?.rows.length ? <div className="catalog-import-table">
           {preview.rows.slice(0, 80).map((row) => <div className={`catalog-import-table__row catalog-import-table__row--${row.action}`} key={`${row.rowNumber}-${row.name}`}>
             <span>{row.rowNumber}</span>
-            <strong>{row.name || 'Без назви'}</strong>
+            <div className="catalog-import-table__product">
+              <strong>{row.name || 'Без назви'}</strong>
+              {(row.brandLabel || row.templateLabel || row.characteristicCount || row.groupLabel) && <small>
+                {[row.brandLabel, row.templateLabel, row.characteristicCount ? `${row.characteristicCount} хар.` : '', row.groupLabel ? `Група: ${row.groupLabel}` : ''].filter(Boolean).join(' · ')}
+              </small>}
+            </div>
             <span>{row.conditionLabel || row.condition || '-'}</span>
             <span>{row.stockCount ?? '-'}/{row.incomingCount ?? '-'}</span>
             <span>{row.priceUah ?? '-'}</span>
             <b>{importActionLabel(row)}</b>
-            {row.reason && <small>{row.reason}</small>}
+            {(row.reason || row.matchReason) && <small className="catalog-import-table__reason">{row.reason || row.matchReason}</small>}
           </div>)}
         </div> : null}
       </div>
@@ -1864,27 +1871,14 @@ export function UsedSmartphonesCatalogPage() {
     }
   }
 
-  function downloadImportTemplate() {
-    const headers = ['Назва', 'Статус', 'Залишок', 'В дорозі', 'Ціна'];
-    const rows = [
-      { 'Назва': 'iPhone 13 128GB Midnight', 'Статус': 'Вживаний', 'Залишок': 1, 'В дорозі': 0, 'Ціна': 18999 },
-      { 'Назва': 'Samsung Galaxy S22 128GB Black', 'Статус': 'Відновлений', 'Залишок': 0, 'В дорозі': 3, 'Ціна': 20999 }
-    ];
-    const workbook = XLSX.utils.book_new();
-    const sheet = XLSX.utils.json_to_sheet(rows, { header: headers });
-    sheet['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
-    XLSX.utils.book_append_sheet(workbook, sheet, 'Імпорт');
-    const help = XLSX.utils.aoa_to_sheet([
-      ['Колонка', 'Правило'],
-      ['Назва', 'Назва товару або моделі. Разом зі статусом використовується для пошуку наявного товару.'],
-      ['Статус', 'Вживаний або Відновлений. Також можна USED або REFURBISHED.'],
-      ['Залишок', 'Ціле число 0 або більше.'],
-      ['В дорозі', 'Ціле число 0 або більше.'],
-      ['Ціна', 'Число 0 або більше у гривнях.']
-    ]);
-    help['!cols'] = [{ wch: 18 }, { wch: 78 }];
-    XLSX.utils.book_append_sheet(workbook, help, 'Довідка');
-    XLSX.writeFile(workbook, 'used-smartphones-import-template.xlsx');
+  async function downloadImportTemplate() {
+    try {
+      const schema = await api.catalog.importTemplate();
+      XLSX.writeFile(buildCatalogImportWorkbook(schema), 'used-smartphones-import-template.xlsx');
+      showToast('Завантажено актуальний шаблон XLSX.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося сформувати XLSX-шаблон.', 'error');
+    }
   }
 
   async function runPreview(rows: Array<Record<string, unknown>>) {
@@ -1977,7 +1971,7 @@ export function UsedSmartphonesCatalogPage() {
       </div>
       <div className="task-toolbar__controls">
         <a className="button button--secondary" href="/catalog/preview/storefront" target="_blank" rel="noreferrer"><Icon name="openInNew" /> Відкрити вітрину</a>
-        <button className="button button--secondary" type="button" onClick={downloadImportTemplate}><Icon name="productTables" /> Шаблон XLSX</button>
+        <button className="button button--secondary" type="button" onClick={() => void downloadImportTemplate()}><Icon name="productTables" /> Актуальний шаблон XLSX</button>
         <button className="button button--secondary" type="button" onClick={() => { setImportPreview(null); setImportOpen(true); }}><Icon name="upload" /> Імпорт XLSX</button>
         <button className="button button--primary" type="button" onClick={() => setEditorProduct(null)}><Icon name="add" /> Новий товар</button>
       </div>
@@ -2055,7 +2049,7 @@ export function UsedSmartphonesCatalogPage() {
       {!products.isLoading && !rows.length && <div className="empty-state">
         <div className="empty-state__icon"><Icon name="phone" size={28} /></div>
         <h2>Каталог поки порожній</h2>
-        <p>Створіть товар вручну або завантажте XLSX з колонками Назва, Статус, Залишок, В дорозі, Ціна.</p>
+        <p>Створіть товар вручну або завантажте XLSX з основними даними, характеристиками та параметрами модифікацій.</p>
       </div>}
       <div className="task-list__summary">
         <span>{products.data ? `${products.data.total} товарів · сторінка ${products.data.page} з ${products.data.pageCount}` : 'Завантаження...'}</span>

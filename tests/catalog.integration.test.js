@@ -194,6 +194,14 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(template.body.data.fields.length, 5);
   assert.deepEqual(template.body.data.fields.map((field) => field.key), ['storage', 'battery_health', 'colors', 'shell_color', 'face_id']);
 
+  const initialImportSchema = await admin.get('/api/catalog/imports/template').expect(200);
+  assert.match(initialImportSchema.headers['cache-control'], /no-store/);
+  const initialSmartphoneImportTemplate = initialImportSchema.body.data.templates.find((item) => item.id === template.body.data.id);
+  assert.ok(initialSmartphoneImportTemplate);
+  assert.deepEqual(initialSmartphoneImportTemplate.fields.map((field) => field.key), ['storage', 'battery_health', 'colors', 'shell_color', 'face_id']);
+  assert.match(initialSmartphoneImportTemplate.fields[0].header, new RegExp(`\\[${template.body.data.id}:storage\\]$`));
+  assert.equal(initialImportSchema.body.data.brands.some((brand) => brand.id === appleBrand.id), true);
+
   const laptopTemplate = await admin.post('/api/catalog/characteristic-templates').send({
     label: 'Laptop basics',
     description: 'Independent laptop specs',
@@ -370,9 +378,19 @@ test('catalog products publish to storefront, import stock updates, and create a
       { key: 'storage', label: 'Storage', type: 'select', unit: 'GB', options: ['128', '256'], required: true, filterable: true, isModifier: true, sortOrder: 1 },
       { key: 'battery_health', label: 'Battery health', type: 'number', unit: '%', options: [], required: false, filterable: true, sortOrder: 2 },
       { key: 'shell_color', label: 'Shell color', type: 'color', unit: '', options: [], required: false, filterable: true, sortOrder: 3 },
-      { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 4 }
+      { key: 'face_id', label: 'Face ID', type: 'boolean', unit: '', options: [], required: false, filterable: false, sortOrder: 4 },
+      { key: 'network', label: 'Network', type: 'select', unit: '', options: ['4G', '5G'], required: false, filterable: true, sortOrder: 5 }
     ]
   }).expect(200);
+
+  const refreshedImportSchema = await admin.get('/api/catalog/imports/template').expect(200);
+  const refreshedSmartphoneImportTemplate = refreshedImportSchema.body.data.templates.find((item) => item.id === template.body.data.id);
+  assert.ok(refreshedSmartphoneImportTemplate);
+  assert.deepEqual(
+    refreshedSmartphoneImportTemplate.fields.map((field) => field.key),
+    ['colors', 'storage', 'battery_health', 'shell_color', 'face_id', 'network']
+  );
+  assert.match(refreshedSmartphoneImportTemplate.fields[5].header, new RegExp(`\\[${template.body.data.id}:network\\]$`));
 
   const publicAfterTemplateReorder = await request(app).get(`/api/storefront/products/${updated.body.data.slug}`).expect(200);
   assert.deepEqual(
@@ -512,6 +530,152 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(productAfterImport.body.data.incomingCount, 2);
   assert.equal(productAfterImport.body.data.priceUah, 17500);
   assert.equal(productAfterImport.body.data.publicationStatus, 'PUBLISHED');
+
+  const importHeaders = Object.fromEntries(
+    refreshedSmartphoneImportTemplate.fields.map((field) => [field.key, field.header])
+  );
+  const independentVariantsPreview = await admin.post('/api/catalog/imports/preview').send({
+    rows: ['Signature Model A', 'Signature Model B'].map((name) => ({
+      'Назва': `${name} 128 Midnight`,
+      'Стан': 'Вживаний',
+      'Залишок': 1,
+      'В дорозі': 0,
+      'Ціна': 10000,
+      'Шаблон характеристик': refreshedSmartphoneImportTemplate.label,
+      'Група модифікацій': name,
+      [importHeaders.storage]: '128',
+      [importHeaders.colors]: 'Midnight'
+    }))
+  }).expect(200);
+  assert.equal(independentVariantsPreview.body.data.summary.create, 2);
+  assert.equal(independentVariantsPreview.body.data.summary.conflict, 0);
+
+  const fullImportRows = [
+    {
+      'Назва': 'Import Test Phone 128',
+      'Стан': 'Вживаний',
+      'Довідник брендів': brandDirectory.body.data.label,
+      'Бренд': appleBrand.label,
+      'Залишок': 3,
+      'В дорозі': 1,
+      'Ціна': 14999,
+      'Закупівельна ціна': 11000,
+      'Грейд': 'A',
+      'Стан корпусу': 'Незначні сліди',
+      'Стан дисплея': 'Без подряпин',
+      'Акумулятор': '92%',
+      'Гарантія': '3 місяці',
+      'Комплектація': 'Смартфон, кабель',
+      'Технік': 'Олег',
+      'Дата перевірки': '2026-07-21',
+      'Обліковий статус': 'Перевірено',
+      'IMEI / Серійний номер': '359999999999991',
+      'Короткий опис': 'Тестовий товар з XLSX',
+      'Внутрішні нотатки': 'Перевірено при прийманні',
+      'Шаблон характеристик': refreshedSmartphoneImportTemplate.label,
+      'Група модифікацій': 'Import Test Phone',
+      'Основна модифікація': 'Так',
+      [importHeaders.storage]: '128',
+      [importHeaders.battery_health]: 92,
+      [importHeaders.colors]: 'Midnight; Blue',
+      [importHeaders.shell_color]: 'Midnight | #1f2937',
+      [importHeaders.face_id]: 'Так',
+      [importHeaders.network]: '5G'
+    },
+    {
+      'Назва': 'Import Test Phone 256',
+      'Стан': 'Вживаний',
+      'Довідник брендів': brandDirectory.body.data.label,
+      'Бренд': appleBrand.label,
+      'Залишок': 1,
+      'В дорозі': 0,
+      'Ціна': 16999,
+      'IMEI / Серійний номер': '359999999999992',
+      'Шаблон характеристик': refreshedSmartphoneImportTemplate.label,
+      'Група модифікацій': 'Import Test Phone',
+      'Основна модифікація': 'Ні',
+      [importHeaders.storage]: '256',
+      [importHeaders.battery_health]: 88,
+      [importHeaders.colors]: 'Green',
+      [importHeaders.face_id]: 'Так',
+      [importHeaders.network]: '5G'
+    }
+  ];
+
+  const fullImportPreview = await admin.post('/api/catalog/imports/preview').send({ rows: fullImportRows }).expect(200);
+  assert.equal(fullImportPreview.body.data.summary.create, 2);
+  assert.equal(fullImportPreview.body.data.rows.every((row) => row.characteristicCount >= 5), true);
+
+  const fullImport = await admin.post('/api/catalog/imports/commit').send({
+    rows: fullImportRows,
+    importNew: true,
+    updateExisting: true
+  }).expect(201);
+  assert.equal(fullImport.body.data.summary.create, 2);
+  const importedMainRow = fullImport.body.data.rows.find((row) => row.name === 'Import Test Phone 128');
+  const importedChildRow = fullImport.body.data.rows.find((row) => row.name === 'Import Test Phone 256');
+  assert.ok(importedMainRow?.productId);
+  assert.ok(importedChildRow?.productId);
+
+  const importedCharacteristics = await admin.get(`/api/catalog/products/${importedMainRow.productId}/characteristics`).expect(200);
+  assert.equal(importedCharacteristics.body.data.templateId, template.body.data.id);
+  assert.equal(importedCharacteristics.body.data.values.storage, '128');
+  assert.equal(importedCharacteristics.body.data.values.battery_health, 92);
+  assert.deepEqual(importedCharacteristics.body.data.values.colors, ['Midnight', 'Blue']);
+  assert.equal(importedCharacteristics.body.data.values.network, '5G');
+
+  const importedModifications = await admin.get(`/api/catalog/products/${importedMainRow.productId}/modifications`).expect(200);
+  assert.equal(importedModifications.body.data.groupLabel, 'Import Test Phone');
+  assert.equal(importedModifications.body.data.mainProductId, importedMainRow.productId);
+  assert.deepEqual(
+    importedModifications.body.data.items.map((item) => item.id).sort(),
+    [importedMainRow.productId, importedChildRow.productId].sort()
+  );
+
+  const importedProductBeforePhoto = await admin.get(`/api/catalog/products/${importedMainRow.productId}`).expect(200);
+  const importedProductWithPhoto = await admin.put(`/api/catalog/products/${importedMainRow.productId}`).send({
+    ...importedProductBeforePhoto.body.data,
+    brandId: importedProductBeforePhoto.body.data.brand.id,
+    mainImageUrl: 'https://example.com/import-test-phone.webp',
+    gallery: [],
+    expectedVersion: importedProductBeforePhoto.body.data.version
+  }).expect(200);
+  assert.equal(importedProductWithPhoto.body.data.mainImageUrl, 'https://example.com/import-test-phone.webp');
+
+  const repeatImportRow = {
+    'Назва': 'Import Test Phone 128 Renamed',
+    'Стан': 'Вживаний',
+    'Залишок': 7,
+    'В дорозі': 2,
+    'Ціна': 14499,
+    'IMEI / Серійний номер': '359999999999991',
+    'Шаблон характеристик': refreshedSmartphoneImportTemplate.label,
+    [importHeaders.battery_health]: 90
+  };
+  const repeatPreview = await admin.post('/api/catalog/imports/preview').send({ rows: [repeatImportRow] }).expect(200);
+  assert.equal(repeatPreview.body.data.summary.update, 1);
+  assert.equal(repeatPreview.body.data.rows[0].productId, importedMainRow.productId);
+  assert.match(repeatPreview.body.data.rows[0].matchReason, /IMEI/i);
+
+  const repeatImport = await admin.post('/api/catalog/imports/commit').send({
+    rows: [repeatImportRow],
+    importNew: true,
+    updateExisting: true
+  }).expect(201);
+  assert.equal(repeatImport.body.data.summary.update, 1);
+  assert.equal(repeatImport.body.data.rows[0].productId, importedMainRow.productId);
+
+  const importedProductAfterRepeat = await admin.get(`/api/catalog/products/${importedMainRow.productId}`).expect(200);
+  assert.equal(importedProductAfterRepeat.body.data.name, 'Import Test Phone 128 Renamed');
+  assert.equal(importedProductAfterRepeat.body.data.stockCount, 7);
+  assert.equal(importedProductAfterRepeat.body.data.mainImageUrl, 'https://example.com/import-test-phone.webp');
+  assert.equal(importedProductAfterRepeat.body.data.publicationStatus, 'DRAFT');
+  const importedCharacteristicsAfterRepeat = await admin.get(`/api/catalog/products/${importedMainRow.productId}/characteristics`).expect(200);
+  assert.equal(importedCharacteristicsAfterRepeat.body.data.values.storage, '128');
+  assert.equal(importedCharacteristicsAfterRepeat.body.data.values.battery_health, 90);
+  assert.deepEqual(importedCharacteristicsAfterRepeat.body.data.values.colors, ['Midnight', 'Blue']);
+  const importedProductSearch = await admin.get('/api/catalog/products?search=Import%20Test%20Phone%20128&pageSize=25').expect(200);
+  assert.equal(importedProductSearch.body.data.items.filter((item) => item.id === importedMainRow.productId).length, 1);
 
   await admin.post('/api/forms/banks').send({
     label: 'Mono Bank',
