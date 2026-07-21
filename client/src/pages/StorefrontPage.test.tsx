@@ -24,8 +24,9 @@ vi.mock('swiper/react', () => ({
 afterEach(() => vi.restoreAllMocks());
 
 describe('storefront product layout styles', () => {
-  it('keeps a 40/60 hero ratio and constrains gallery images without stretching them', () => {
-    expect(appStyles).toMatch(/\.storefront-product-view__hero\s*\{[^}]*grid-template-columns:\s*minmax\(0,2fr\)\s+minmax\(0,3fr\)/);
+  it('keeps equal hero columns and fills their shared row without stretching gallery images', () => {
+    expect(appStyles).toMatch(/\.storefront-product-view__hero\s*\{[^}]*grid-template-columns:\s*repeat\(2,minmax\(0,1fr\)\);[^}]*align-items:\s*stretch/);
+    expect(appStyles).toMatch(/\.storefront-product-view__media\s*\{[^}]*min-height:\s*clamp\(500px,34vw,620px\);[^}]*height:\s*auto/);
     expect(appStyles).toMatch(/\.storefront-gallery__stage img\s*\{[^}]*width:\s*auto;[^}]*height:\s*auto;[^}]*max-width:\s*100%;[^}]*max-height:\s*100%/);
   });
 });
