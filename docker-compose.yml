@@ -2,6 +2,11 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-banner_builder}
       POSTGRES_USER: ${POSTGRES_USER:-banner_user}
@@ -18,6 +23,11 @@ services:
     image: ghcr.io/darthvauban/baner-grid-builder:latest
     build: .
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     env_file:
       - .env
     environment:

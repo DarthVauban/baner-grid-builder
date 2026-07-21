@@ -75,6 +75,17 @@ jobs:
             REPOSITORY="$(echo 'ghcr.io/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
             IMAGE="$REPOSITORY:sha-${{ github.sha }}"
             LATEST="$REPOSITORY:latest"
+            echo "Storage usage before Docker cleanup:"
+            df -h / "$(pwd)" || true
+            docker system df || true
+            # Immutable sha-* tags from every deploy are not removed by the
+            # default image prune and eventually exhaust the server disk.
+            docker container prune -f
+            docker image prune -af
+            docker builder prune -af
+            echo "Storage usage after Docker cleanup:"
+            df -h / "$(pwd)" || true
+            docker system df || true
             retry() {
               max_attempts="$1"
               delay_seconds="$2"
@@ -125,19 +136,26 @@ jobs:
                 fi
               fi
             fi
+            wait_for_database() {
+              DB_CONTAINER_ID="$(docker compose ps -q db)"
+              test -n "$DB_CONTAINER_ID" || return 1
+              DB_HEALTH="starting"
+              for attempt in $(seq 1 12); do
+                DB_HEALTH="$(docker inspect "$DB_CONTAINER_ID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')"
+                if [ "$DB_HEALTH" = "healthy" ]; then
+                  return 0
+                fi
+                echo "PostgreSQL is $DB_HEALTH (attempt $attempt/12)." >&2
+                sleep 5
+              done
+              return 1
+            }
             docker compose up -d --no-build db
-            DB_CONTAINER_ID="$(docker compose ps -q db)"
-            test -n "$DB_CONTAINER_ID"
-            DB_HEALTH="starting"
-            for attempt in $(seq 1 12); do
-              DB_HEALTH="$(docker inspect "$DB_CONTAINER_ID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')"
-              if [ "$DB_HEALTH" = "healthy" ]; then
-                break
-              fi
-              echo "PostgreSQL is $DB_HEALTH (attempt $attempt/12)." >&2
-              sleep 5
-            done
-            test "$DB_HEALTH" = "healthy"
+            if ! wait_for_database; then
+              echo "PostgreSQL did not recover after cleanup. Restarting it once." >&2
+              docker compose restart db
+              wait_for_database
+            fi
             docker compose up -d --no-build --force-recreate app
             docker compose ps app
             sleep 8
@@ -162,4 +180,4 @@ jobs:
             grep -Fq '/web-assets/storefront-' <<< "$STOREFRONT"
             LOADER="$(curl -fsS http://127.0.0.1:3000/api/public/application-forms/loader.js)"
             grep -Fq "MTApplicationForms" <<< "$LOADER"
-            docker image prune -f
+            docker image prune -af

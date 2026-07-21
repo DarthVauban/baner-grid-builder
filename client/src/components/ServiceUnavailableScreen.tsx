@@ -1,7 +1,15 @@
+import { useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 
 export function ServiceUnavailableScreen() {
   const { refreshUser } = useAuth();
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void refreshUser().catch(() => undefined);
+    }, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [refreshUser]);
 
   return (
     <main className="service-unavailable" role="alert">

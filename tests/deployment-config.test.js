@@ -33,8 +33,16 @@ test('remote deployment starts PostgreSQL, waits for readiness, and prints diagn
   assert.match(workflow, /docker compose up -d --no-build db/);
   assert.match(workflow, /DB_CONTAINER_ID="\$\(docker compose ps -q db\)"/);
   assert.match(workflow, /DB_HEALTH=.*\.State\.Health\.Status/);
-  assert.match(workflow, /test "\$DB_HEALTH" = "healthy"/);
+  assert.match(workflow, /if ! wait_for_database; then[\s\S]*docker compose restart db[\s\S]*wait_for_database/);
   assert.match(workflow, /docker compose logs --no-color --tail=120 db app/);
+});
+
+test('remote deployment removes unused tagged images and limits container logs', () => {
+  assert.match(workflow, /docker container prune -f/);
+  assert.match(workflow, /docker image prune -af/);
+  assert.match(workflow, /docker builder prune -af/);
+  assert.match(compose, /max-size:\s*"10m"/);
+  assert.match(compose, /max-file:\s*"3"/);
 });
 
 test('runtime image carries the build revision used by the health check', () => {
