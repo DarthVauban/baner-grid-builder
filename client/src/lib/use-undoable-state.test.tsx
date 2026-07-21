@@ -10,6 +10,7 @@ function HistoryHarness({ limit = 15, groupWindowMs = 350 }: { limit?: number; g
     <output aria-label="can undo">{String(canUndo)}</output>
     <button type="button" onClick={() => setState((current) => current + 1)}>increment</button>
     <button type="button" onClick={() => replaceState(100)}>replace</button>
+    <input aria-label="editor input" onKeyDown={(event) => event.stopPropagation()} />
   </>;
 }
 
@@ -30,7 +31,17 @@ describe('useUndoableState', () => {
     expect(screen.getByLabelText('value')).toHaveTextContent('2');
     expect(screen.getByLabelText('depth')).toHaveTextContent('1');
 
-    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    fireEvent.keyDown(screen.getByLabelText('editor input'), { key: 'я', code: 'KeyZ', ctrlKey: true });
+
+    expect(screen.getByLabelText('value')).toHaveTextContent('0');
+    expect(screen.getByLabelText('can undo')).toHaveTextContent('false');
+  });
+
+  it('handles Cmd+Z by its physical key code', () => {
+    render(<HistoryHarness />);
+    fireEvent.click(screen.getByRole('button', { name: 'increment' }));
+
+    fireEvent.keyDown(screen.getByLabelText('editor input'), { key: 'я', code: 'KeyZ', metaKey: true });
 
     expect(screen.getByLabelText('value')).toHaveTextContent('0');
     expect(screen.getByLabelText('can undo')).toHaveTextContent('false');

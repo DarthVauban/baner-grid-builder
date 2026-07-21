@@ -84,13 +84,14 @@ export function useUndoableState<T>(
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.altKey || event.shiftKey) return;
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' || !canUndo) return;
+      const isUndoKey = event.code === 'KeyZ' || event.key.toLowerCase() === 'z';
+      if (!(event.ctrlKey || event.metaKey) || !isUndoKey || !canUndo) return;
       event.preventDefault();
       undo();
     }
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [canUndo, keyboard, undo]);
 
   return {
