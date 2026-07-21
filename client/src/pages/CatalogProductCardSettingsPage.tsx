@@ -19,6 +19,7 @@ import {
   defaultStorefrontTheme,
   fontWeightOptions
 } from '../lib/storefront-theme';
+import { useUndoableState } from '../lib/use-undoable-state';
 import { useToast } from '../toast/ToastContext';
 import type { CatalogProductCardContentKey, CatalogProductCardTheme } from '../types/catalog';
 
@@ -40,16 +41,23 @@ export function CatalogProductCardSettingsPage() {
   const { showToast } = useToast();
   const settings = useQuery({ queryKey: ['catalog-storefront-settings'], queryFn: api.catalog.storefrontSettings });
   const saveSettings = useMutation({ mutationFn: api.catalog.updateStorefrontSettings });
-  const [theme, setTheme] = useState<CatalogProductCardTheme>(() => cloneProductCardTheme());
+  const {
+    state: theme,
+    setState: setTheme,
+    replaceState: replaceTheme,
+    undo,
+    canUndo,
+    historyDepth
+  } = useUndoableState<CatalogProductCardTheme>(() => cloneProductCardTheme());
   const [device, setDevice] = useState<CatalogThemeDevice>('desktop');
   const [savedSnapshot, setSavedSnapshot] = useState('');
 
   useEffect(() => {
     if (!settings.data) return;
     const next = cloneProductCardTheme(settings.data.productCardTheme);
-    setTheme(next);
+    replaceTheme(next);
     setSavedSnapshot(JSON.stringify(next));
-  }, [settings.data]);
+  }, [replaceTheme, settings.data]);
 
   const currentSnapshot = useMemo(() => JSON.stringify(theme), [theme]);
   const hasUnsavedChanges = Boolean(savedSnapshot && currentSnapshot !== savedSnapshot);
@@ -74,7 +82,7 @@ export function CatalogProductCardSettingsPage() {
     try {
       const saved = await saveSettings.mutateAsync({ productCardTheme: theme });
       const next = cloneProductCardTheme(saved.productCardTheme);
-      setTheme(next);
+      replaceTheme(next);
       setSavedSnapshot(JSON.stringify(next));
       await queryClient.invalidateQueries({ queryKey: ['catalog-storefront-settings'] });
       showToast('Дизайн картки товару збережено.');
@@ -88,6 +96,7 @@ export function CatalogProductCardSettingsPage() {
       <div><p className="eyebrow">Product card builder</p><h1>Картка товару</h1><p>Контейнер, фото, порядок елементів, типографіка, кнопка та перемикачі модифікацій.</p></div>
       <div className="task-toolbar__controls">
         <span className={`catalog-unsaved-badge${hasUnsavedChanges ? '' : ' catalog-unsaved-badge--hidden'}`} aria-hidden={!hasUnsavedChanges}><Icon name="schedule" size={15} /> Незбережені зміни</span>
+        <button className="button button--secondary" type="button" disabled={!canUndo} onClick={undo} title={canUndo ? `Скасувати останню дію (${historyDepth}/15) · Ctrl+Z` : 'Немає дій для скасування'}><Icon name="undo" size={16} /> Скасувати</button>
         <a className="button button--secondary" href="/catalog/preview/storefront" target="_blank" rel="noreferrer"><Icon name="openInNew" size={16} /> Відкрити preview</a>
         <button className="button button--secondary" type="button" onClick={() => setTheme(cloneProductCardTheme(defaultProductCardTheme))}><Icon name="reply" size={16} /> Стандартна картка</button>
         <button className="button button--primary" type="button" disabled={saveSettings.isPending || !hasUnsavedChanges} onClick={() => void submit()}><Icon name="save" size={16} /> Зберегти</button>

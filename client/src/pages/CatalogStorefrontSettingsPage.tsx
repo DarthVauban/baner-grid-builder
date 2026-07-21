@@ -21,6 +21,7 @@ import {
   fontWeightOptions,
   storefrontFontOptions
 } from '../lib/storefront-theme';
+import { useUndoableState } from '../lib/use-undoable-state';
 import { useToast } from '../toast/ToastContext';
 import type { CatalogStorefrontTheme } from '../types/catalog';
 
@@ -30,26 +31,41 @@ const shadowOptions = [
   { value: 'strong', label: 'Виразна' }
 ];
 
+interface StorefrontBuilderDraft {
+  theme: CatalogStorefrontTheme;
+  formId: string;
+  origin: string;
+}
+
 export function CatalogStorefrontSettingsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const settings = useQuery({ queryKey: ['catalog-storefront-settings'], queryFn: api.catalog.storefrontSettings });
   const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
   const saveSettings = useMutation({ mutationFn: api.catalog.updateStorefrontSettings });
-  const [theme, setTheme] = useState<CatalogStorefrontTheme>(() => cloneStorefrontTheme());
-  const [formId, setFormId] = useState('');
-  const [origin, setOrigin] = useState('');
+  const {
+    state: draft,
+    setState: setDraft,
+    replaceState: replaceDraft,
+    undo,
+    canUndo,
+    historyDepth
+  } = useUndoableState<StorefrontBuilderDraft>(() => ({ theme: cloneStorefrontTheme(), formId: '', origin: '' }));
+  const { theme, formId, origin } = draft;
   const [device, setDevice] = useState<CatalogThemeDevice>('desktop');
   const [savedSnapshot, setSavedSnapshot] = useState('');
 
   useEffect(() => {
     if (!settings.data) return;
     const nextTheme = cloneStorefrontTheme(settings.data.storefrontTheme);
-    setTheme(nextTheme);
-    setFormId(settings.data.selectedFormPublicId || '');
-    setOrigin(settings.data.publicOrigin || '');
-    setSavedSnapshot(JSON.stringify({ theme: nextTheme, formId: settings.data.selectedFormPublicId || '', origin: settings.data.publicOrigin || '' }));
-  }, [settings.data]);
+    const nextDraft = {
+      theme: nextTheme,
+      formId: settings.data.selectedFormPublicId || '',
+      origin: settings.data.publicOrigin || ''
+    };
+    replaceDraft(nextDraft);
+    setSavedSnapshot(JSON.stringify(nextDraft));
+  }, [replaceDraft, settings.data]);
 
   const currentSnapshot = useMemo(() => JSON.stringify({ theme, formId, origin }), [formId, origin, theme]);
   const hasUnsavedChanges = Boolean(savedSnapshot && currentSnapshot !== savedSnapshot);
@@ -57,7 +73,10 @@ export function CatalogStorefrontSettingsPage() {
   const publishedForms = (forms.data || []).filter((form) => form.status === 'published');
 
   function updateTheme<K extends keyof CatalogStorefrontTheme>(section: K, value: CatalogStorefrontTheme[K]) {
-    setTheme((current) => ({ ...current, [section]: value }));
+    setDraft((current) => ({
+      ...current,
+      theme: { ...current.theme, [section]: value }
+    }));
   }
 
   async function submit() {
@@ -68,8 +87,13 @@ export function CatalogStorefrontSettingsPage() {
         storefrontTheme: theme
       });
       const nextTheme = cloneStorefrontTheme(saved.storefrontTheme);
-      setTheme(nextTheme);
-      setSavedSnapshot(JSON.stringify({ theme: nextTheme, formId: saved.selectedFormPublicId || '', origin: saved.publicOrigin || '' }));
+      const nextDraft = {
+        theme: nextTheme,
+        formId: saved.selectedFormPublicId || '',
+        origin: saved.publicOrigin || ''
+      };
+      replaceDraft(nextDraft);
+      setSavedSnapshot(JSON.stringify(nextDraft));
       await queryClient.invalidateQueries({ queryKey: ['catalog-storefront-settings'] });
       showToast('Дизайн вітрини збережено.');
     } catch (error) {
@@ -78,7 +102,7 @@ export function CatalogStorefrontSettingsPage() {
   }
 
   function resetTheme() {
-    setTheme(cloneStorefrontTheme(defaultStorefrontTheme));
+    setDraft((current) => ({ ...current, theme: cloneStorefrontTheme(defaultStorefrontTheme) }));
   }
 
   return <div className="catalog-theme-page">
@@ -86,6 +110,7 @@ export function CatalogStorefrontSettingsPage() {
       <div><p className="eyebrow">Storefront builder</p><h1>Налаштування вітрини</h1><p>Глобальний стиль, компонування каталогу, шапка, hero, пошук і фільтри.</p></div>
       <div className="task-toolbar__controls">
         <span className={`catalog-unsaved-badge${hasUnsavedChanges ? '' : ' catalog-unsaved-badge--hidden'}`} aria-hidden={!hasUnsavedChanges}><Icon name="schedule" size={15} /> Незбережені зміни</span>
+        <button className="button button--secondary" type="button" disabled={!canUndo} onClick={undo} title={canUndo ? `Скасувати останню дію (${historyDepth}/15) · Ctrl+Z` : 'Немає дій для скасування'}><Icon name="undo" size={16} /> Скасувати</button>
         <a className="button button--secondary" href="/catalog/preview/storefront" target="_blank" rel="noreferrer"><Icon name="openInNew" size={16} /> Відкрити preview</a>
         <button className="button button--secondary" type="button" onClick={resetTheme}><Icon name="reply" size={16} /> Стандартна тема</button>
         <button className="button button--primary" type="button" disabled={saveSettings.isPending || !hasUnsavedChanges} onClick={() => void submit()}><Icon name="save" size={16} /> Зберегти</button>
@@ -96,8 +121,8 @@ export function CatalogStorefrontSettingsPage() {
       : settings.isLoading ? <section className="catalog-placeholder"><h2>Завантаження конструктора…</h2></section> : <div className="catalog-theme-builder">
       <div className="catalog-theme-builder__controls">
         <ThemeSection title="Підключення" description="Форма замовлення та публічна адреса вітрини.">
-          <label className="field catalog-theme-control--wide"><span>Форма заявок</span><StyledSelect value={formId} options={[{ value: '', label: 'Не обрано' }, ...publishedForms.map((form) => ({ value: form.publicId, label: form.name }))]} onChange={(value) => setFormId(String(value))} /></label>
-          <ThemeTextField label="Публічний origin" value={origin} placeholder="https://example.com" onChange={setOrigin} />
+          <label className="field catalog-theme-control--wide"><span>Форма заявок</span><StyledSelect value={formId} options={[{ value: '', label: 'Не обрано' }, ...publishedForms.map((form) => ({ value: form.publicId, label: form.name }))]} onChange={(value) => setDraft((current) => ({ ...current, formId: String(value) }))} /></label>
+          <ThemeTextField label="Публічний origin" value={origin} placeholder="https://example.com" onChange={(value) => setDraft((current) => ({ ...current, origin: value }))} />
         </ThemeSection>
 
         <ThemeSection title="Типографіка" description="Чотири оптимізовані Google Fonts. Unbounded доступний у всіх вагах 200–900.">

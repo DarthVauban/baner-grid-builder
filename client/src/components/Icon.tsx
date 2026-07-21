@@ -65,6 +65,7 @@ import StorefrontRounded from '@mui/icons-material/StorefrontRounded';
 import StyleOutlined from '@mui/icons-material/StyleOutlined';
 import WebRounded from '@mui/icons-material/WebRounded';
 import HistoryRounded from '@mui/icons-material/HistoryRounded';
+import UndoRounded from '@mui/icons-material/UndoRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -124,6 +125,7 @@ export type IconName =
   | 'savedGrids'
   | 'storefront'
   | 'history'
+  | 'undo'
   | 'tasks'
   | 'tools'
   | 'upload'
@@ -200,6 +202,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   savedGrids: GridOnRounded,
   storefront: StorefrontRounded,
   history: HistoryRounded,
+  undo: UndoRounded,
   tasks: ChecklistRounded,
   tools: GridViewRounded,
   upload: UploadFileRounded,
