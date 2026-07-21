@@ -8,7 +8,7 @@ process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'pg-mem://catalog-tests';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.COOKIE_SECURE = 'false';
-process.env.STOREFRONT_ORIGIN = 'https://used.example.test';
+delete process.env.STOREFRONT_ORIGIN;
 process.env.CATALOG_MEDIA_DIR = path.join(os.tmpdir(), 'mt-catalog-media-tests');
 process.env.ADMIN_NAME = 'Catalog Admin';
 process.env.ADMIN_EMAIL = 'catalog-admin@test.local';
@@ -519,9 +519,12 @@ test('catalog products publish to storefront, import stock updates, and create a
     styles: {}
   }).expect(201);
   await admin.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);
+  await admin.patch('/api/catalog/storefront-settings').send({
+    publicOrigin: 'javascript:alert(1)'
+  }).expect(422);
   const savedStorefrontSettings = await admin.patch('/api/catalog/storefront-settings').send({
     selectedFormPublicId: form.body.data.publicId,
-    publicOrigin: 'https://used.example.test'
+    publicOrigin: 'https://used.example.test/catalog/'
   }).expect(200);
   assert.equal(savedStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Inter');
   assert.equal(savedStorefrontSettings.body.data.productCardTheme.button.label, 'Купити');

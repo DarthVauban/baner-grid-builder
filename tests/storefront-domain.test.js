@@ -1,8 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  cacheSavedStorefrontOrigin,
+  invalidateSavedStorefrontOriginCache,
   isAllowedStandaloneStorefrontRequest,
   isStandaloneStorefrontRequest,
+  normalizeStorefrontOrigin,
+  resolveStandaloneStorefrontOrigin,
   standaloneStorefrontProductPath,
   storefrontHostFromOrigin,
   storefrontProductPathForRequest
@@ -21,12 +25,33 @@ function fakeRequest({ host = 'mt-panel.sbs', forwardedHost = '', method = 'GET'
 }
 
 test('recognizes only the configured standalone storefront hostname', () => {
+  assert.equal(normalizeStorefrontOrigin('https://Used.Example.com/catalog/'), 'https://used.example.com');
+  assert.equal(normalizeStorefrontOrigin('javascript:alert(1)'), '');
   assert.equal(storefrontHostFromOrigin('https://used.example.com/catalog'), 'used.example.com');
   assert.equal(isStandaloneStorefrontRequest(fakeRequest({ host: 'used.example.com' }), 'https://used.example.com'), true);
   assert.equal(isStandaloneStorefrontRequest(fakeRequest({ host: 'used.example.com:443' }), 'https://used.example.com'), true);
   assert.equal(isStandaloneStorefrontRequest(fakeRequest({ forwardedHost: 'used.example.com, proxy.internal' }), 'https://used.example.com'), true);
   assert.equal(isStandaloneStorefrontRequest(fakeRequest({ host: 'mt-panel.sbs' }), 'https://used.example.com'), false);
   assert.equal(isStandaloneStorefrontRequest(fakeRequest({ host: 'used.example.com' }), ''), false);
+});
+
+test('resolves the saved public origin without requiring an environment variable', async () => {
+  let loadCount = 0;
+  invalidateSavedStorefrontOriginCache();
+  const loadOrigin = async () => {
+    loadCount += 1;
+    return 'https://saved.example.com/storefront';
+  };
+
+  assert.equal(await resolveStandaloneStorefrontOrigin(loadOrigin), 'https://saved.example.com');
+  assert.equal(await resolveStandaloneStorefrontOrigin(loadOrigin), 'https://saved.example.com');
+  assert.equal(loadCount, 1);
+
+  cacheSavedStorefrontOrigin('');
+  assert.equal(
+    await resolveStandaloneStorefrontOrigin(async () => { throw new Error('cache should be used'); }, 'https://fallback.example.com'),
+    'https://fallback.example.com'
+  );
 });
 
 test('allows only public storefront resources on the standalone hostname', () => {

@@ -27,6 +27,7 @@ import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/
 import {
   isAllowedStandaloneStorefrontRequest,
   isStandaloneStorefrontRequest,
+  resolveStandaloneStorefrontOrigin,
   standaloneStorefrontProductPath
 } from './modules/catalog/storefront.domain.js';
 import { injectStorefrontProductSeo } from './modules/catalog/storefront.seo.js';
@@ -73,14 +74,24 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
-app.use((req, res, next) => {
-  req.isStandaloneStorefront = isStandaloneStorefrontRequest(req, env.STOREFRONT_ORIGIN);
+async function loadSavedStorefrontOrigin() {
+  const result = await query(
+    `SELECT public_origin
+     FROM used_smartphone_storefront_settings
+     WHERE id = TRUE`
+  );
+  return result.rows[0]?.public_origin || '';
+}
+
+app.use(asyncHandler(async (req, res, next) => {
+  const storefrontOrigin = await resolveStandaloneStorefrontOrigin(loadSavedStorefrontOrigin, env.STOREFRONT_ORIGIN);
+  req.isStandaloneStorefront = isStandaloneStorefrontRequest(req, storefrontOrigin);
   if (!req.isStandaloneStorefront || isAllowedStandaloneStorefrontRequest(req)) return next();
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ресурс не знайдено.' } });
   }
   return res.status(404).type('text').send('Not found');
-});
+}));
 
 if (env.APP_ORIGIN) {
   app.use((req, res, next) => {

@@ -8,13 +8,13 @@ process.env.DATABASE_URL = 'pg-mem://banner-builder-tests';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.COOKIE_SECURE = 'false';
 process.env.APP_BUILD_SHA = 'test-build-sha';
-process.env.STOREFRONT_ORIGIN = 'https://used.example.test';
+delete process.env.STOREFRONT_ORIGIN;
 process.env.ADMIN_NAME = 'Test Admin';
 process.env.ADMIN_EMAIL = 'admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
 
 const { default: app } = await import('../src/app.js');
-const { pool } = await import('../src/db/pool.js');
+const { pool, query } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
 
@@ -28,6 +28,10 @@ after(async () => {
 });
 
 test('standalone storefront hostname exposes public APIs but blocks workspace routes', async () => {
+  await query(
+    'UPDATE used_smartphone_storefront_settings SET public_origin = $1 WHERE id = TRUE',
+    ['https://used.example.test']
+  );
   await request(app)
     .get('/api/storefront/settings')
     .set('Host', 'used.example.test')

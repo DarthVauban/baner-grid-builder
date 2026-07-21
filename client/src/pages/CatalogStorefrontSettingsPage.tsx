@@ -120,9 +120,9 @@ export function CatalogStorefrontSettingsPage() {
     {settings.isError ? <section className="catalog-placeholder"><h2>Не вдалося завантажити налаштування</h2><p>Перевірте з’єднання та спробуйте ще раз.</p><button className="button button--secondary" type="button" onClick={() => void settings.refetch()}>Повторити</button></section>
       : settings.isLoading ? <section className="catalog-placeholder"><h2>Завантаження конструктора…</h2></section> : <div className="catalog-theme-builder">
       <div className="catalog-theme-builder__controls">
-        <ThemeSection title="Підключення" description="Форма замовлення та публічна адреса вітрини.">
+        <ThemeSection title="Підключення" description="Форма замовлення та адреса окремої публічної вітрини.">
           <label className="field catalog-theme-control--wide"><span>Форма заявок</span><StyledSelect value={formId} options={[{ value: '', label: 'Не обрано' }, ...publishedForms.map((form) => ({ value: form.publicId, label: form.name }))]} onChange={(value) => setDraft((current) => ({ ...current, formId: String(value) }))} /></label>
-          <ThemeTextField label="Публічний origin" value={origin} placeholder="https://example.com" onChange={(value) => setDraft((current) => ({ ...current, origin: value }))} />
+          <ThemeTextField label="Публічна адреса вітрини" value={origin} placeholder="https://used.example.com" onChange={(value) => setDraft((current) => ({ ...current, origin: value }))} />
         </ThemeSection>
 
         <ThemeSection title="Типографіка" description="Чотири оптимізовані Google Fonts. Unbounded доступний у всіх вагах 200–900.">

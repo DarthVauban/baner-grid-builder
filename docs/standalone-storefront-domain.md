@@ -4,15 +4,15 @@ The public used-smartphone storefront can be mounted at the root of a separate d
 
 ## Application configuration
 
-Set the canonical storefront origin in the production `.env` file:
+Set the complete HTTPS address in **Public origin** in the storefront builder:
 
-```env
-STOREFRONT_ORIGIN=https://used.example.com
+```text
+https://used.example.com
 ```
 
-Use the same value for **Public origin** in the storefront builder. Restart the application after changing the environment variable.
+Saving the builder activates the hostname immediately. Editing `.env` or restarting the application is not required. `STOREFRONT_ORIGIN` remains an optional emergency fallback when the saved setting is empty or temporarily unavailable.
 
-When `STOREFRONT_ORIGIN` is configured, requests with that hostname receive only the public storefront surface. Workspace pages and private APIs return `404` on that hostname.
+Requests with the saved hostname receive only the public storefront surface. Workspace pages and private APIs return `404` on that hostname.
 
 ## DNS and TLS
 

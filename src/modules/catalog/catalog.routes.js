@@ -16,6 +16,7 @@ import {
   subscribeToCatalogUpdates
 } from './catalog.events.js';
 import { saveCatalogMediaAsset } from './catalog.media.js';
+import { cacheSavedStorefrontOrigin, normalizeStorefrontOrigin } from './storefront.domain.js';
 import {
   normalizeProductCardTheme,
   normalizeProductPageTheme,
@@ -424,7 +425,10 @@ const productPageThemeSchema = z.object({
 });
 const settingsSchema = z.object({
   selectedFormPublicId: z.string().uuid().nullable().optional(),
-  publicOrigin: z.string().trim().max(500).optional(),
+  publicOrigin: z.string().trim().max(500).refine(
+    (value) => !value || Boolean(normalizeStorefrontOrigin(value)),
+    'Вкажіть повну HTTP(S)-адресу вітрини.'
+  ).optional(),
   storefrontTheme: storefrontThemeSchema.optional(),
   productCardTheme: productCardThemeSchema.optional(),
   productPageTheme: productPageThemeSchema.optional()
@@ -2467,7 +2471,7 @@ router.patch('/storefront-settings', asyncHandler(async (req, res) => {
   const current = await loadSettings();
   const next = {
     selectedFormPublicId: Object.hasOwn(req.body || {}, 'selectedFormPublicId') ? input.selectedFormPublicId || null : current.selectedFormPublicId,
-    publicOrigin: Object.hasOwn(req.body || {}, 'publicOrigin') ? input.publicOrigin || '' : current.publicOrigin,
+    publicOrigin: Object.hasOwn(req.body || {}, 'publicOrigin') ? normalizeStorefrontOrigin(input.publicOrigin) : current.publicOrigin,
     storefrontTheme: input.storefrontTheme || current.storefrontTheme,
     productCardTheme: input.productCardTheme || current.productCardTheme,
     productPageTheme: input.productPageTheme || current.productPageTheme
@@ -2492,6 +2496,7 @@ router.patch('/storefront-settings', asyncHandler(async (req, res) => {
      RETURNING selected_form_public_id, public_origin, storefront_theme, product_card_theme, product_page_theme, updated_at`,
     [next.selectedFormPublicId, next.publicOrigin, JSON.stringify(next.storefrontTheme), JSON.stringify(next.productCardTheme), JSON.stringify(next.productPageTheme), req.user.id]
   );
+  cacheSavedStorefrontOrigin(result.rows[0].public_origin || '');
   publishPublicCatalogUpdate({ type: 'settings_updated' });
   res.json({ data: {
     selectedFormPublicId: result.rows[0].selected_form_public_id || null,

@@ -2,6 +2,13 @@ function normalizeHostname(value) {
   return String(value || '').trim().toLowerCase().replace(/\.$/, '');
 }
 
+const storefrontOriginCacheTtlMs = 15_000;
+let cachedSavedOrigin = '';
+let cachedSavedOriginExpiresAt = 0;
+let hasCachedSavedOrigin = false;
+let pendingSavedOrigin = null;
+let savedOriginRevision = 0;
+
 function hostnameFromHost(value) {
   const host = String(value || '').trim();
   if (!host) return '';
@@ -13,14 +20,67 @@ function hostnameFromHost(value) {
 }
 
 export function storefrontHostFromOrigin(origin) {
+  const value = normalizeStorefrontOrigin(origin);
+  if (!value) return '';
+  try {
+    return normalizeHostname(new URL(value).hostname);
+  } catch {
+    return '';
+  }
+}
+
+export function normalizeStorefrontOrigin(origin) {
   const value = String(origin || '').trim();
   if (!value) return '';
   try {
     const url = new URL(value);
     if (!['http:', 'https:'].includes(url.protocol)) return '';
-    return normalizeHostname(url.hostname);
+    return url.origin;
   } catch {
     return '';
+  }
+}
+
+function storeSavedStorefrontOrigin(origin, now = Date.now()) {
+  cachedSavedOrigin = normalizeStorefrontOrigin(origin);
+  cachedSavedOriginExpiresAt = now + storefrontOriginCacheTtlMs;
+  hasCachedSavedOrigin = true;
+}
+
+export function cacheSavedStorefrontOrigin(origin, now = Date.now()) {
+  savedOriginRevision += 1;
+  storeSavedStorefrontOrigin(origin, now);
+}
+
+export function invalidateSavedStorefrontOriginCache() {
+  savedOriginRevision += 1;
+  cachedSavedOriginExpiresAt = 0;
+}
+
+export async function resolveStandaloneStorefrontOrigin(loadSavedOrigin, fallbackOrigin = '', now = Date.now()) {
+  const fallback = normalizeStorefrontOrigin(fallbackOrigin);
+  if (hasCachedSavedOrigin && now < cachedSavedOriginExpiresAt) return cachedSavedOrigin || fallback;
+
+  if (!pendingSavedOrigin) {
+    const loadingRevision = savedOriginRevision;
+    pendingSavedOrigin = Promise.resolve()
+      .then(loadSavedOrigin)
+      .then((origin) => {
+        if (loadingRevision !== savedOriginRevision) return cachedSavedOrigin;
+        storeSavedStorefrontOrigin(origin);
+        return cachedSavedOrigin;
+      })
+      .finally(() => {
+        pendingSavedOrigin = null;
+      });
+  }
+
+  try {
+    return (await pendingSavedOrigin) || fallback;
+  } catch (error) {
+    if (hasCachedSavedOrigin) return cachedSavedOrigin || fallback;
+    if (fallback) return fallback;
+    throw error;
   }
 }
 
