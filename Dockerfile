@@ -14,7 +14,10 @@ WORKDIR /app
 
 LABEL org.opencontainers.image.revision=$APP_BUILD_SHA
 
-RUN addgroup -S nodeapp && adduser -S nodeapp -G nodeapp
+RUN addgroup -S nodeapp \
+  && adduser -S nodeapp -G nodeapp \
+  && mkdir -p /app/storage/catalog-media \
+  && chown -R nodeapp:nodeapp /app/storage
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src

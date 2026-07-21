@@ -25,11 +25,15 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-banner_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-banner_builder}
       DATABASE_SSL: "false"
+      CATALOG_MEDIA_DIR: /app/storage/catalog-media
     ports:
       - "127.0.0.1:3000:3000"
+    volumes:
+      - catalog_media_data:/app/storage/catalog-media
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   banner_db_data:
+  catalog_media_data:

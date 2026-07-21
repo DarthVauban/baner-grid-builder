@@ -66,6 +66,9 @@ test('catalog products publish to storefront, import stock updates, and create a
     .expect(201);
   assert.match(media.body.data.url, /^\/media\/catalog\/.+\.webp$/);
   assert.equal(media.body.data.mimeType, 'image/webp');
+  await admin.get(media.body.data.url)
+    .expect(200)
+    .expect('Content-Type', /image\/webp/);
 
   const appleBrandWithLogo = await admin.patch(`/api/catalog/brands/${appleBrand.id}`).send({
     directoryId: appleBrand.directoryId,

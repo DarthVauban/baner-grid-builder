@@ -23,15 +23,25 @@ function canUseMediaDir(dir) {
 }
 
 function resolveCatalogMediaDir() {
-  const configured = process.env.CATALOG_MEDIA_DIR
-    ? path.resolve(projectRoot, process.env.CATALOG_MEDIA_DIR)
-    : '';
-  const candidates = [
-    configured,
-    path.join(projectRoot, 'storage', 'catalog-media'),
-    path.join(os.tmpdir(), 'mt-panel-catalog-media')
-  ].filter(Boolean);
-  return candidates.find(canUseMediaDir) || candidates[0];
+  const configuredValue = String(process.env.CATALOG_MEDIA_DIR || '').trim();
+  if (configuredValue) {
+    const configured = path.resolve(projectRoot, configuredValue);
+    if (!canUseMediaDir(configured)) {
+      throw new Error(`Catalog media directory is not writable: ${configured}`);
+    }
+    return configured;
+  }
+
+  const projectStorage = path.join(projectRoot, 'storage', 'catalog-media');
+  if (canUseMediaDir(projectStorage)) return projectStorage;
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Catalog media storage is unavailable. Configure a writable persistent CATALOG_MEDIA_DIR.');
+  }
+
+  const temporaryStorage = path.join(os.tmpdir(), 'mt-panel-catalog-media');
+  if (canUseMediaDir(temporaryStorage)) return temporaryStorage;
+  throw new Error('Catalog media storage is unavailable.');
 }
 
 export const catalogMediaDir = resolveCatalogMediaDir();
