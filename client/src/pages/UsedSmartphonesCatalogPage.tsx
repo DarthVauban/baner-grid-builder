@@ -1698,8 +1698,6 @@ export function UsedSmartphonesCatalogPage() {
   const [editorProduct, setEditorProduct] = useState<CatalogProduct | null | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<CatalogImportPreview | null>(null);
-  const [settingsFormId, setSettingsFormId] = useState('');
-  const [settingsOrigin, setSettingsOrigin] = useState('');
   const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>([]);
   const [modificationProduct, setModificationProduct] = useState<CatalogProduct | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
@@ -1717,8 +1715,6 @@ export function UsedSmartphonesCatalogPage() {
   const summary = useQuery({ queryKey: ['catalog-summary'], queryFn: api.catalog.summary });
   const brands = useQuery({ queryKey: ['catalog-brands'], queryFn: () => api.catalog.brands() });
   const brandDirectories = useQuery({ queryKey: ['catalog-brand-directories'], queryFn: api.catalog.brandDirectories });
-  const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
-  const storefrontSettings = useQuery({ queryKey: ['catalog-storefront-settings'], queryFn: api.catalog.storefrontSettings });
   const sharedProduct = useQuery({
     queryKey: ['catalog-product', sharedProductId],
     queryFn: () => api.catalog.get(sharedProductId!),
@@ -1742,14 +1738,7 @@ export function UsedSmartphonesCatalogPage() {
     mutationFn: ({ rows, options }: { rows: Array<Record<string, unknown>>; options: { importNew: boolean; updateExisting: boolean } }) =>
       api.catalog.commitImport(rows, options)
   });
-  const updateSettings = useMutation({ mutationFn: api.catalog.updateStorefrontSettings });
-  const busy = saveProduct.isPending || removeProduct.isPending || commitImport.isPending || updateSettings.isPending || bulkBusy;
-
-  useEffect(() => {
-    if (!storefrontSettings.data) return;
-    setSettingsFormId(storefrontSettings.data.selectedFormPublicId || '');
-    setSettingsOrigin(storefrontSettings.data.publicOrigin || '');
-  }, [storefrontSettings.data]);
+  const busy = saveProduct.isPending || removeProduct.isPending || commitImport.isPending || bulkBusy;
 
   useEffect(() => {
     if (sharedProduct.data) setEditorProduct(sharedProduct.data);
@@ -1917,16 +1906,6 @@ export function UsedSmartphonesCatalogPage() {
     }
   }
 
-  async function saveSettings() {
-    try {
-      await updateSettings.mutateAsync({ selectedFormPublicId: settingsFormId || null, publicOrigin: settingsOrigin });
-      showToast('Налаштування вітрини збережено.');
-      await queryClient.invalidateQueries({ queryKey: ['catalog-storefront-settings'] });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти налаштування вітрини.', 'error');
-    }
-  }
-
   const rows = products.data?.items || [];
   const rowIds = new Set(rows.map((product) => product.id));
   const topRows = rows.filter((product) => (
@@ -1944,7 +1923,6 @@ export function UsedSmartphonesCatalogPage() {
   }), [expandedGroupIds, topRows]);
   const selectedProducts = selectedProductIds.map((id) => loadedProductById.get(id)).filter((product): product is CatalogProduct => Boolean(product));
   const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((product) => selectedProductIds.includes(product.id));
-  const publishedForms = (forms.data || []).filter((form) => form.status === 'published');
 
   useEffect(() => {
     const loadedIds = new Set(loadedRows.map((product) => product.id));
@@ -2010,12 +1988,6 @@ export function UsedSmartphonesCatalogPage() {
         <span>{card.label}</span>
         <strong>{card.value}</strong>
       </article>)}
-    </section>
-
-    <section className="catalog-storefront-settings">
-      <label className="field"><span>Форма заявок вітрини</span><StyledSelect value={settingsFormId} options={[{ value: '', label: 'Не обрано' }, ...publishedForms.map((form) => ({ value: form.publicId, label: form.name }))]} onChange={(value) => setSettingsFormId(String(value))} /></label>
-      <label className="field"><span>Публічний origin</span><input value={settingsOrigin} onChange={(event) => setSettingsOrigin(event.target.value)} placeholder="https://example.com" /></label>
-      <button className="button button--secondary" type="button" disabled={busy} onClick={() => void saveSettings()}><Icon name="save" size={16} /> Зберегти</button>
     </section>
 
     <section className="catalog-filters">

@@ -17,6 +17,11 @@ import {
 } from './catalog.events.js';
 import { saveCatalogMediaAsset } from './catalog.media.js';
 import {
+  normalizeProductCardTheme,
+  normalizeStorefrontTheme,
+  storefrontFontFamilies
+} from './storefront.theme.js';
+import {
   analyzeImportRows,
   appendStorefrontProductFilters,
   attachPublicCatalogProductListDetails,
@@ -176,9 +181,180 @@ const importCommitSchema = importPreviewSchema.extend({
   importNew: z.boolean().default(true),
   updateExisting: z.boolean().default(true)
 });
+const themeColorSchema = z.string().regex(/^#[0-9a-f]{6}$/i);
+const themeShadowSchema = z.enum(['none', 'soft', 'strong']);
+const themeFontWeightSchema = z.coerce.number().int().min(200).max(900).refine((value) => value % 100 === 0);
+const storefrontThemeSchema = z.object({
+  version: z.literal(1).default(1),
+  typography: z.object({
+    bodyFontFamily: z.enum(storefrontFontFamilies),
+    headingFontFamily: z.enum(storefrontFontFamilies),
+    bodyWeight: themeFontWeightSchema,
+    headingWeight: themeFontWeightSchema,
+    baseSize: z.coerce.number().int().min(12).max(22)
+  }),
+  colors: z.object({
+    pageBackground: themeColorSchema,
+    surface: themeColorSchema,
+    text: themeColorSchema,
+    muted: themeColorSchema,
+    accent: themeColorSchema,
+    action: themeColorSchema,
+    border: themeColorSchema
+  }),
+  layout: z.object({
+    maxWidth: z.coerce.number().int().min(960).max(1920),
+    pagePaddingDesktop: z.coerce.number().int().min(0).max(120),
+    pagePaddingTablet: z.coerce.number().int().min(0).max(80),
+    pagePaddingMobile: z.coerce.number().int().min(0).max(40),
+    sectionGap: z.coerce.number().int().min(0).max(80),
+    catalogGap: z.coerce.number().int().min(0).max(60),
+    gridGap: z.coerce.number().int().min(0).max(48),
+    filterWidth: z.coerce.number().int().min(200).max(420),
+    columnsDesktop: z.coerce.number().int().min(2).max(6),
+    columnsTablet: z.coerce.number().int().min(1).max(4),
+    columnsMobile: z.coerce.number().int().min(1).max(2)
+  }),
+  header: z.object({
+    visible: z.boolean(),
+    sticky: z.boolean(),
+    height: z.coerce.number().int().min(44).max(140),
+    paddingX: z.coerce.number().int().min(0).max(80),
+    paddingY: z.coerce.number().int().min(0).max(50),
+    background: themeColorSchema,
+    borderColor: themeColorSchema,
+    borderWidth: z.coerce.number().int().min(0).max(6),
+    radius: z.coerce.number().int().min(0).max(40),
+    shadow: themeShadowSchema,
+    brandText: z.string().trim().max(80),
+    brandMark: z.string().trim().max(8),
+    brandSize: z.coerce.number().int().min(10).max(34),
+    actionVisible: z.boolean()
+  }),
+  hero: z.object({
+    visible: z.boolean(),
+    eyebrowVisible: z.boolean(),
+    eyebrowText: z.string().trim().max(100),
+    title: z.string().trim().max(180),
+    subtitle: z.string().trim().max(500),
+    alignment: z.enum(['left', 'center', 'right']),
+    titleSizeDesktop: z.coerce.number().int().min(22).max(80),
+    titleSizeMobile: z.coerce.number().int().min(20).max(56),
+    paddingX: z.coerce.number().int().min(0).max(120),
+    paddingY: z.coerce.number().int().min(0).max(120),
+    backgroundStart: themeColorSchema,
+    backgroundEnd: themeColorSchema,
+    gradientAngle: z.coerce.number().int().min(0).max(360),
+    radius: z.coerce.number().int().min(0).max(60)
+  }),
+  controls: z.object({
+    searchPlaceholder: z.string().trim().max(160),
+    sortVisible: z.boolean(),
+    height: z.coerce.number().int().min(34).max(72),
+    radius: z.coerce.number().int().min(0).max(36),
+    background: themeColorSchema,
+    borderColor: themeColorSchema
+  }),
+  filters: z.object({
+    visible: z.boolean(),
+    sticky: z.boolean(),
+    background: themeColorSchema,
+    borderColor: themeColorSchema,
+    radius: z.coerce.number().int().min(0).max(40),
+    padding: z.coerce.number().int().min(0).max(48),
+    groupGap: z.coerce.number().int().min(0).max(40),
+    shadow: themeShadowSchema,
+    showCounts: z.boolean()
+  })
+});
+const productCardOrderItemSchema = z.enum(['image', 'badge', 'brand', 'title', 'meta']);
+const productCardThemeSchema = z.object({
+  version: z.literal(1).default(1),
+  container: z.object({
+    background: themeColorSchema,
+    borderColor: themeColorSchema,
+    borderWidth: z.coerce.number().int().min(0).max(6),
+    radius: z.coerce.number().int().min(0).max(48),
+    padding: z.coerce.number().int().min(0).max(48),
+    gap: z.coerce.number().int().min(0).max(40),
+    shadow: themeShadowSchema,
+    hoverShadow: themeShadowSchema,
+    hoverLift: z.coerce.number().int().min(0).max(16)
+  }),
+  image: z.object({
+    aspectRatio: z.enum(['1 / 1', '4 / 3', '3 / 4', '16 / 9']),
+    fit: z.enum(['contain', 'cover']),
+    background: themeColorSchema,
+    radius: z.coerce.number().int().min(0).max(48),
+    padding: z.coerce.number().int().min(0).max(48),
+    hoverZoom: z.coerce.number().min(1).max(1.2)
+  }),
+  visibility: z.object({
+    image: z.boolean(),
+    badge: z.boolean(),
+    brand: z.boolean(),
+    title: z.boolean(),
+    meta: z.boolean(),
+    availability: z.boolean(),
+    modifications: z.boolean(),
+    price: z.boolean(),
+    button: z.boolean()
+  }),
+  contentOrder: z.array(productCardOrderItemSchema).length(5).refine((items) => new Set(items).size === 5),
+  badge: z.object({
+    textColor: themeColorSchema,
+    background: themeColorSchema,
+    radius: z.coerce.number().int().min(0).max(999),
+    fontSize: z.coerce.number().int().min(8).max(22),
+    fontWeight: themeFontWeightSchema,
+    paddingX: z.coerce.number().int().min(0).max(30),
+    paddingY: z.coerce.number().int().min(0).max(20)
+  }),
+  typography: z.object({
+    brandColor: themeColorSchema,
+    brandSize: z.coerce.number().int().min(9).max(28),
+    brandWeight: themeFontWeightSchema,
+    titleColor: themeColorSchema,
+    titleSize: z.coerce.number().int().min(10).max(34),
+    titleWeight: themeFontWeightSchema,
+    titleLines: z.coerce.number().int().min(1).max(5),
+    metaColor: themeColorSchema,
+    metaSize: z.coerce.number().int().min(8).max(22),
+    priceColor: themeColorSchema,
+    priceSize: z.coerce.number().int().min(12).max(42),
+    priceWeight: themeFontWeightSchema
+  }),
+  button: z.object({
+    label: z.string().trim().min(1).max(60),
+    unavailableLabel: z.string().trim().min(1).max(80),
+    background: themeColorSchema,
+    hoverBackground: themeColorSchema,
+    textColor: themeColorSchema,
+    radius: z.coerce.number().int().min(0).max(40),
+    height: z.coerce.number().int().min(30).max(72),
+    fontSize: z.coerce.number().int().min(9).max(24),
+    fontWeight: themeFontWeightSchema,
+    fullWidth: z.boolean()
+  }),
+  modifications: z.object({
+    mode: z.enum(['hover', 'always', 'hidden']),
+    labelColor: themeColorSchema,
+    optionBackground: themeColorSchema,
+    optionTextColor: themeColorSchema,
+    optionBorderColor: themeColorSchema,
+    activeBackground: themeColorSchema,
+    activeTextColor: themeColorSchema,
+    activeBorderColor: themeColorSchema,
+    radius: z.coerce.number().int().min(0).max(32),
+    optionHeight: z.coerce.number().int().min(24).max(60),
+    swatchSize: z.coerce.number().int().min(24).max(60)
+  })
+});
 const settingsSchema = z.object({
   selectedFormPublicId: z.string().uuid().nullable().optional(),
-  publicOrigin: z.string().trim().max(500).default('')
+  publicOrigin: z.string().trim().max(500).optional(),
+  storefrontTheme: storefrontThemeSchema.optional(),
+  productCardTheme: productCardThemeSchema.optional()
 });
 const previewApplicationSchema = z.object({
   values: z.record(z.string(), z.unknown()).default({}),
@@ -974,7 +1150,7 @@ function buildProductFilters(input) {
 
 async function loadSettings(db = { query }) {
   const result = await db.query(
-    `SELECT selected_form_public_id, public_origin, updated_at
+    `SELECT selected_form_public_id, public_origin, storefront_theme, product_card_theme, updated_at
      FROM used_smartphone_storefront_settings
      WHERE id = TRUE`
   );
@@ -982,6 +1158,8 @@ async function loadSettings(db = { query }) {
   return {
     selectedFormPublicId: row.selected_form_public_id || null,
     publicOrigin: row.public_origin || '',
+    storefrontTheme: normalizeStorefrontTheme(row.storefront_theme),
+    productCardTheme: normalizeProductCardTheme(row.product_card_theme),
     updatedAt: row.updated_at || null
   };
 }
@@ -2212,10 +2390,17 @@ router.get('/storefront-settings', asyncHandler(async (req, res) => {
 
 router.patch('/storefront-settings', asyncHandler(async (req, res) => {
   const input = parseInput(settingsSchema, req.body);
-  if (input.selectedFormPublicId) {
+  const current = await loadSettings();
+  const next = {
+    selectedFormPublicId: Object.hasOwn(req.body || {}, 'selectedFormPublicId') ? input.selectedFormPublicId || null : current.selectedFormPublicId,
+    publicOrigin: Object.hasOwn(req.body || {}, 'publicOrigin') ? input.publicOrigin || '' : current.publicOrigin,
+    storefrontTheme: input.storefrontTheme || current.storefrontTheme,
+    productCardTheme: input.productCardTheme || current.productCardTheme
+  };
+  if (next.selectedFormPublicId) {
     const form = await query(
       'SELECT public_id FROM application_forms WHERE public_id = $1 AND status = $2',
-      [input.selectedFormPublicId, 'published']
+      [next.selectedFormPublicId, 'published']
     );
     if (!form.rows[0]) throw new AppError(422, 'CATALOG_FORM_NOT_PUBLISHED', 'Оберіть опубліковану форму заявок.');
   }
@@ -2223,16 +2408,20 @@ router.patch('/storefront-settings', asyncHandler(async (req, res) => {
     `UPDATE used_smartphone_storefront_settings
      SET selected_form_public_id = $1,
          public_origin = $2,
-         updated_by = $3,
+         storefront_theme = $3::JSONB,
+         product_card_theme = $4::JSONB,
+         updated_by = $5,
          updated_at = NOW()
      WHERE id = TRUE
-     RETURNING selected_form_public_id, public_origin, updated_at`,
-    [input.selectedFormPublicId || null, input.publicOrigin, req.user.id]
+     RETURNING selected_form_public_id, public_origin, storefront_theme, product_card_theme, updated_at`,
+    [next.selectedFormPublicId, next.publicOrigin, JSON.stringify(next.storefrontTheme), JSON.stringify(next.productCardTheme), req.user.id]
   );
   publishPublicCatalogUpdate({ type: 'settings_updated' });
   res.json({ data: {
     selectedFormPublicId: result.rows[0].selected_form_public_id || null,
     publicOrigin: result.rows[0].public_origin || '',
+    storefrontTheme: normalizeStorefrontTheme(result.rows[0].storefront_theme),
+    productCardTheme: normalizeProductCardTheme(result.rows[0].product_card_theme),
     updatedAt: result.rows[0].updated_at
   } });
 }));

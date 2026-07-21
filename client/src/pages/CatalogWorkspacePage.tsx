@@ -9,6 +9,7 @@ const catalogLinks = [
   { to: '/catalog/brands', icon: 'savedBanners' as const, label: 'Бренди' },
   { to: '/catalog/characteristics', icon: 'productTables' as const, label: 'Характеристики' },
   { to: '/catalog/storefront', icon: 'integrations' as const, label: 'Налаштування вітрини' },
+  { to: '/catalog/product-card', icon: 'bannerGrid' as const, label: 'Картка товару' },
   { to: '/catalog/preview', icon: 'visibility' as const, label: 'Preview магазину' },
   { to: '/catalog/audit', icon: 'schedule' as const, label: 'Історія змін' }
 ];

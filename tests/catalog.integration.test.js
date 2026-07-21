@@ -518,10 +518,32 @@ test('catalog products publish to storefront, import stock updates, and create a
     styles: {}
   }).expect(201);
   await admin.patch(`/api/forms/${form.body.data.id}/publish`).expect(200);
-  await admin.patch('/api/catalog/storefront-settings').send({
+  const savedStorefrontSettings = await admin.patch('/api/catalog/storefront-settings').send({
     selectedFormPublicId: form.body.data.publicId,
     publicOrigin: 'https://storefront.test'
   }).expect(200);
+  assert.equal(savedStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Inter');
+  assert.equal(savedStorefrontSettings.body.data.productCardTheme.button.label, 'Купити');
+
+  const storefrontTheme = structuredClone(savedStorefrontSettings.body.data.storefrontTheme);
+  const productCardTheme = structuredClone(savedStorefrontSettings.body.data.productCardTheme);
+  storefrontTheme.typography.bodyFontFamily = 'Unbounded';
+  storefrontTheme.typography.headingFontFamily = 'Unbounded';
+  storefrontTheme.typography.headingWeight = 900;
+  storefrontTheme.layout.columnsDesktop = 5;
+  productCardTheme.button.label = 'Замовити';
+  productCardTheme.contentOrder = ['image', 'title', 'badge', 'brand', 'meta'];
+  productCardTheme.image.fit = 'contain';
+
+  await admin.patch('/api/catalog/storefront-settings').send({ storefrontTheme, productCardTheme }).expect(200);
+  const publicStorefrontSettings = await request(app).get('/api/storefront/settings').expect(200);
+  assert.equal(publicStorefrontSettings.body.data.selectedFormPublicId, form.body.data.publicId);
+  assert.equal(publicStorefrontSettings.body.data.publicOrigin, 'https://storefront.test');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Unbounded');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.typography.headingWeight, 900);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.layout.columnsDesktop, 5);
+  assert.equal(publicStorefrontSettings.body.data.productCardTheme.button.label, 'Замовити');
+  assert.deepEqual(publicStorefrontSettings.body.data.productCardTheme.contentOrder, ['image', 'title', 'badge', 'brand', 'meta']);
 
   const submitted = await request(app).post(`/api/storefront/products/${updated.body.data.slug}/applications`).send({
     values: {

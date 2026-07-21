@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, ChangeEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { CSSProperties, ChangeEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,10 +12,18 @@ import { AutoHeightSandbox } from '../components/AutoHeightSandbox';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
+import {
+  defaultProductCardTheme,
+  defaultStorefrontTheme,
+  productCardThemeStyle,
+  storefrontThemeStyle
+} from '../lib/storefront-theme';
 import type {
   CatalogAvailabilityStatus,
   CatalogCondition,
   CatalogProduct,
+  CatalogProductCardContentKey,
+  CatalogProductCardTheme,
   CatalogProductModificationOption,
   CatalogProductModificationParameter,
   CatalogStorefrontCharacteristicFilter,
@@ -555,12 +563,14 @@ export function StorefrontProductCard({
   product,
   preview,
   formAvailable,
-  onRequest
+  onRequest,
+  theme = defaultProductCardTheme
 }: {
   product: CatalogProduct;
   preview: boolean;
   formAvailable: boolean;
   onRequest: (product: CatalogProduct) => void;
+  theme?: CatalogProductCardTheme;
 }) {
   const queryClient = useQueryClient();
   const requestId = useRef(0);
@@ -575,6 +585,13 @@ export function StorefrontProductCard({
   const parameters = (displayedProduct.modifications?.parameters || []).filter((parameter) => parameter.options.length);
   const link = productLink(displayedProduct, preview);
   const canBuy = formAvailable && displayedProduct.availability.status !== 'unavailable' && !variantBusy;
+  const content: Record<CatalogProductCardContentKey, ReactNode> = {
+    image: <ProductImage product={displayedProduct} />,
+    badge: <span className="storefront-card__badge">{displayedProduct.conditionLabel}</span>,
+    brand: <span className="storefront-card__brand">{displayedProduct.brand?.label || ''}</span>,
+    title: <strong>{displayedProduct.name}</strong>,
+    meta: <small>{displayedProduct.productCode} · {displayedProduct.availability.label}</small>
+  };
 
   async function selectVariant(parameter: CatalogProductModificationParameter, option: CatalogProductModificationOption) {
     if (!option.product || option.selected || variantBusy) return;
@@ -600,20 +617,19 @@ export function StorefrontProductCard({
     }
   }
 
-  return <article className="storefront-card" aria-busy={variantBusy}>
+  const modificationsMode = theme.visibility.modifications ? theme.modifications.mode : 'hidden';
+  const buttonLabel = displayedProduct.availability.status === 'unavailable' ? theme.button.unavailableLabel : theme.button.label;
+
+  return <article className={`storefront-card storefront-card--modifications-${modificationsMode}`} aria-busy={variantBusy}>
     <Link to={link} className="storefront-card__body">
-      <ProductImage product={displayedProduct} />
-      <span className="storefront-card__badge">{displayedProduct.conditionLabel}</span>
-      <span className="storefront-card__brand">{displayedProduct.brand?.label || ''}</span>
-      <strong>{displayedProduct.name}</strong>
-      <small>{displayedProduct.productCode} · {displayedProduct.availability.label}</small>
+      {theme.contentOrder.map((key) => theme.visibility[key] ? <span className="storefront-card__part" key={key}>{content[key]}</span> : null)}
     </Link>
-    <div className="storefront-card__purchase">
-      <b>{displayedProduct.priceLabel}</b>
-      <button className="storefront-card__buy" type="button" disabled={!canBuy} onClick={() => onRequest(displayedProduct)}>Купити</button>
-    </div>
-    <div className="storefront-card__hover">
-      <span className="storefront-card__availability">{displayedProduct.availability.label}</span>
+    {(theme.visibility.price || theme.visibility.button) && <div className={`storefront-card__purchase${theme.button.fullWidth ? ' storefront-card__purchase--stacked' : ''}`}>
+      {theme.visibility.price && <b>{displayedProduct.priceLabel}</b>}
+      {theme.visibility.button && <button className="storefront-card__buy" type="button" disabled={!canBuy} onClick={() => onRequest(displayedProduct)}>{buttonLabel}</button>}
+    </div>}
+    {modificationsMode !== 'hidden' && <div className="storefront-card__hover">
+      {theme.visibility.availability && <span className="storefront-card__availability">{displayedProduct.availability.label}</span>}
       {parameters.map((parameter) => <div className="storefront-card-modification" key={parameter.id}>
         <span className="storefront-card-modification__label">{parameter.label}</span>
         <div className={`storefront-card-modification__options${isColorModification(parameter) ? ' storefront-card-modification__options--swatches' : ''}`}>
@@ -621,7 +637,7 @@ export function StorefrontProductCard({
         </div>
       </div>)}
       {variantError && <span className="storefront-card__variant-error" role="alert">{variantError}</span>}
-    </div>
+    </div>}
   </article>;
 }
 
@@ -1145,13 +1161,16 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
   const storefrontFilters = products.data?.filters;
   const productData = product.data;
   const canRequestProduct = Boolean(productData && productData.availability.status !== 'unavailable' && form.data);
+  const storefrontTheme = settings.data?.storefrontTheme || defaultStorefrontTheme;
+  const productCardTheme = settings.data?.productCardTheme || defaultProductCardTheme;
+  const pageStyle = { ...storefrontThemeStyle(storefrontTheme), ...productCardThemeStyle(productCardTheme) };
 
-  return <main className="storefront-page">
+  return <main className="storefront-page" style={pageStyle}>
     <header className="storefront-header">
-      <Link to={basePath} className="storefront-brand"><span>MT</span><strong>Mobile Trend</strong></Link>
+      <Link to={basePath} className="storefront-brand"><span>{storefrontTheme.header.brandMark}</span><strong>{storefrontTheme.header.brandText}</strong></Link>
       {preview
-        ? <a className="button button--secondary button--small" href="/catalog/products">До каталогу</a>
-        : <a className="button button--secondary button--small" href="/login">У робочий простір</a>}
+        ? <a className="button button--secondary button--small storefront-header__action" href="/catalog/products">До каталогу</a>
+        : <a className="button button--secondary button--small storefront-header__action" href="/login">У робочий простір</a>}
     </header>
     {preview && <div className="storefront-preview-banner">Preview магазину · сторінка закрита від індексації</div>}
 
@@ -1166,12 +1185,13 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
     />
     </> : <section className="storefront-empty"><Icon name="phone" size={32} /><h2>{product.isLoading ? 'Завантаження товару...' : 'Товар не знайдено'}</h2></section> : <section className="storefront-catalog">
       <div className="storefront-hero">
-        <p className="eyebrow">Used & refurbished</p>
-        <h1>Смартфони з перевіреним станом</h1>
+        <p className="eyebrow">{storefrontTheme.hero.eyebrowText}</p>
+        <h1>{storefrontTheme.hero.title}</h1>
+        {storefrontTheme.hero.subtitle && <p className="storefront-hero__subtitle">{storefrontTheme.hero.subtitle}</p>}
       </div>
       <div className="storefront-controls">
-        <label className="field"><span>Пошук</span><input value={search} onChange={updateSearch} placeholder="iPhone, Samsung, код товару" /></label>
-        <StyledSelect value={sort} options={sortOptions} onChange={(value) => setSort(String(value))} />
+        <label className="field"><span>Пошук</span><input value={search} onChange={updateSearch} placeholder={storefrontTheme.controls.searchPlaceholder} /></label>
+        <div className="storefront-controls__sort"><StyledSelect value={sort} options={sortOptions} onChange={(value) => setSort(String(value))} /></div>
       </div>
       <div className="storefront-catalog__layout">
         <StorefrontFilterPanel
@@ -1192,6 +1212,7 @@ export function StorefrontPage({ preview = false }: { preview?: boolean }) {
             preview={preview}
             formAvailable={Boolean(form.data)}
             onRequest={setRequestProduct}
+            theme={productCardTheme}
             key={item.productCode}
           />)}
         </div>

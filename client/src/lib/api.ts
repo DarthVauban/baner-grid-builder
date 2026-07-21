@@ -373,7 +373,7 @@ export const api = {
     commitImport: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) =>
       request<CatalogImportPreview>('/api/catalog/imports/commit', { method: 'POST', body: jsonBody({ rows, ...options }) }),
     storefrontSettings: () => request<CatalogStorefrontSettings>('/api/catalog/storefront-settings'),
-    updateStorefrontSettings: (input: Pick<CatalogStorefrontSettings, 'selectedFormPublicId' | 'publicOrigin'>) =>
+    updateStorefrontSettings: (input: Partial<Pick<CatalogStorefrontSettings, 'selectedFormPublicId' | 'publicOrigin' | 'storefrontTheme' | 'productCardTheme'>>) =>
       request<CatalogStorefrontSettings>('/api/catalog/storefront-settings', { method: 'PATCH', body: jsonBody(input) })
   },
   storefront: {

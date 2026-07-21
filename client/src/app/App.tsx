@@ -40,6 +40,12 @@ const CatalogBrandsPage = lazy(() => import('../pages/CatalogBrandsPage').then((
 const CatalogWorkspacePage = lazy(() => import('../pages/CatalogWorkspacePage').then((module) => ({
   default: module.CatalogWorkspacePage
 })));
+const CatalogStorefrontSettingsPage = lazy(() => import('../pages/CatalogStorefrontSettingsPage').then((module) => ({
+  default: module.CatalogStorefrontSettingsPage
+})));
+const CatalogProductCardSettingsPage = lazy(() => import('../pages/CatalogProductCardSettingsPage').then((module) => ({
+  default: module.CatalogProductCardSettingsPage
+})));
 const CatalogPlaceholderPage = lazy(() => import('../pages/CatalogWorkspacePage').then((module) => ({
   default: module.CatalogPlaceholderPage
 })));
@@ -104,7 +110,8 @@ export function App() {
             <Route path="brands" element={<Suspense fallback={<LoadingScreen />}><CatalogBrandsPage /></Suspense>} />
             <Route path="characteristics" element={<Suspense fallback={<LoadingScreen />}><CatalogCharacteristicsPage /></Suspense>} />
             <Route path="filters" element={<Navigate to="characteristics" replace />} />
-            <Route path="storefront" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Налаштування вітрини" /></Suspense>} />
+            <Route path="storefront" element={<Suspense fallback={<LoadingScreen />}><CatalogStorefrontSettingsPage /></Suspense>} />
+            <Route path="product-card" element={<Suspense fallback={<LoadingScreen />}><CatalogProductCardSettingsPage /></Suspense>} />
             <Route path="preview" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Preview магазину" /></Suspense>} />
             <Route path="audit" element={<Suspense fallback={<LoadingScreen />}><CatalogPlaceholderPage title="Історія змін" /></Suspense>} />
           </Route>
