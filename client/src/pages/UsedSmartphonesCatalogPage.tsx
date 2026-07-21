@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -247,6 +247,20 @@ export function RichTextEditor({
         : <div className={`rich-editor__preview rich-editor__preview--${previewDevice}`}>
           <AutoHeightSandbox title="Preview опису" srcDoc={previewSrcDoc()} />
         </div>}
+  </div>;
+}
+
+export function CatalogDescriptionField({
+  value,
+  onChange
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const labelId = useId();
+  return <div className="field catalog-editor-grid__wide" role="group" aria-labelledby={labelId}>
+    <span id={labelId}>Повний опис</span>
+    <RichTextEditor value={value} onChange={onChange} maxLength={120000} />
   </div>;
 }
 
@@ -1037,7 +1051,7 @@ function ProductEditorScreen({
           <header><h2>Опис</h2></header>
           <div className="catalog-editor-grid">
             <label className="field catalog-editor-grid__wide"><span>Короткий опис</span><textarea value={draft.shortDescription} onChange={(event) => setField('shortDescription', event.target.value)} maxLength={1200} /></label>
-            <label className="field catalog-editor-grid__wide"><span>Повний опис</span><RichTextEditor value={draft.description} onChange={(value) => setField('description', value)} maxLength={120000} /></label>
+            <CatalogDescriptionField value={draft.description} onChange={(value) => setField('description', value)} />
           </div>
         </section>}
 
