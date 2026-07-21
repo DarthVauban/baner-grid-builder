@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -16,10 +16,56 @@ vi.mock('swiper/modules', () => ({
   Thumbs: {}
 }));
 
-vi.mock('swiper/react', () => ({
-  Swiper: ({ children, className }: PropsWithChildren<{ className?: string }>) => <div className={className}>{children}</div>,
-  SwiperSlide: ({ children, className }: PropsWithChildren<{ className?: string }>) => <div className={className}>{children}</div>
-}));
+vi.mock('swiper/react', async () => {
+  const React = await import('react');
+  type MockSwiper = {
+    realIndex: number;
+    destroyed: boolean;
+    slideTo: (index: number, duration?: number) => void;
+    slidePrev: () => void;
+    slideNext: () => void;
+  };
+  type MockSwiperProps = PropsWithChildren<{
+    className?: string;
+    initialSlide?: number;
+    onSwiper?: (swiper: MockSwiper) => void;
+    onSlideChange?: (swiper: MockSwiper) => void;
+    'aria-label'?: string;
+  }>;
+
+  function Swiper({ children, className, initialSlide = 0, onSwiper, onSlideChange, 'aria-label': ariaLabel }: MockSwiperProps) {
+    const slideCount = React.Children.count(children);
+    const [activeIndex, setActiveIndex] = React.useState(initialSlide);
+    const onSlideChangeRef = React.useRef(onSlideChange);
+    onSlideChangeRef.current = onSlideChange;
+    const swiperRef = React.useRef<MockSwiper | null>(null);
+
+    if (!swiperRef.current) {
+      const clamp = (index: number) => Math.max(0, Math.min(slideCount - 1, index));
+      swiperRef.current = {
+        realIndex: initialSlide,
+        destroyed: false,
+        slideTo: (index) => setActiveIndex(clamp(index)),
+        slidePrev: () => setActiveIndex((index) => clamp(index - 1)),
+        slideNext: () => setActiveIndex((index) => clamp(index + 1))
+      };
+    }
+
+    swiperRef.current.realIndex = activeIndex;
+    React.useEffect(() => { onSwiper?.(swiperRef.current!); }, []);
+    React.useEffect(() => {
+      swiperRef.current!.realIndex = activeIndex;
+      onSlideChangeRef.current?.(swiperRef.current!);
+    }, [activeIndex]);
+
+    return <div className={className} data-active-index={activeIndex} aria-label={ariaLabel}>{children}</div>;
+  }
+
+  return {
+    Swiper,
+    SwiperSlide: ({ children, className }: PropsWithChildren<{ className?: string }>) => <div className={className}>{children}</div>
+  };
+});
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -152,6 +198,15 @@ describe('StorefrontProductDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Наступне фото' })).toBeEnabled();
     expect([...container.querySelectorAll('.storefront-gallery img')].every((image) => image.getAttribute('draggable') === 'false')).toBe(true);
 
+    const stageSwiper = container.querySelector('.storefront-gallery__stage-swiper');
+    await userEvent.click(screen.getByRole('button', { name: 'Наступне фото' }));
+    expect(stageSwiper).toHaveAttribute('data-active-index', '1');
+    expect(container.querySelectorAll('.storefront-gallery__thumb-button')[1]).toHaveAttribute('aria-current', 'true');
+
+    await userEvent.click(container.querySelectorAll('.storefront-gallery__thumb-button')[0]);
+    expect(stageSwiper).toHaveAttribute('data-active-index', '0');
+    expect(container.querySelectorAll('.storefront-gallery__thumb-button')[0]).toHaveAttribute('aria-current', 'true');
+
     expect(screen.getByRole('button', { name: 'Midnight' })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Blue' })).toHaveAttribute('href', '/storefront/smartphones/iphone-13-blue');
 
@@ -171,6 +226,12 @@ describe('StorefrontProductDetailPage', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Відкрити фото на весь екран' })[0]);
     const lightbox = screen.getByRole('dialog', { name: 'Перегляд фото' });
     expect([...lightbox.querySelectorAll('img')].every((image) => image.getAttribute('draggable') === 'false')).toBe(true);
+    expect(lightbox.querySelectorAll('.storefront-gallery-lightbox__thumb-slide')).toHaveLength(2);
+    expect(lightbox.querySelectorAll('.storefront-gallery-lightbox__thumb-button')[0]).toHaveAttribute('aria-current', 'true');
+
+    await userEvent.click(within(lightbox).getByRole('button', { name: 'Наступне фото' }));
+    expect(lightbox.querySelector('.storefront-gallery-lightbox__swiper')).toHaveAttribute('data-active-index', '1');
+    expect(lightbox.querySelectorAll('.storefront-gallery-lightbox__thumb-button')[1]).toHaveAttribute('aria-current', 'true');
   });
 });
 

@@ -2250,17 +2250,24 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .storefront-gallery__thumb-slide { width: 62px !important; min-width: 62px; max-width: 62px; height: 62px; flex: 0 0 62px; }
 .storefront-gallery__thumbs button { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #dde5e3; border-radius: 8px; padding: 0; background: #fff; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
 .storefront-gallery__thumbs button:hover { border-color: #a89df4; }
-.storefront-gallery__thumbs .swiper-slide-thumb-active button,
 .storefront-gallery__thumb-button--active { border-color: #6c5ce7 !important; box-shadow: 0 0 0 3px #e8e4ff, inset 0 0 0 1px #6c5ce7; transform: translateY(-1px); }
 .storefront-gallery__thumb-button:focus-visible { outline: 3px solid rgba(108,92,231,.24); outline-offset: 2px; }
 .storefront-gallery__thumbs img { width: 100%; height: 100%; object-fit: contain; }
 .storefront-gallery-lightbox { position: fixed; inset: 0; z-index: 2147483000; isolation: isolate; display: grid; place-items: center; padding: 28px 76px; background: rgba(2,6,23,.92); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .storefront-gallery-lightbox__swiper { position: relative; z-index: 2147483001; width: 100%; height: 100%; }
 .storefront-gallery-lightbox .swiper-slide { display: flex; align-items: center; justify-content: center; }
-.storefront-gallery-lightbox__image { position: relative; max-width: min(1200px,100%); max-height: calc(100vh - 120px); display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 8px; background: #fff; }
+.storefront-gallery-lightbox__image { position: relative; max-width: min(1200px,100%); max-height: calc(100vh - 220px); display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 8px; background: #fff; }
 .storefront-gallery-lightbox__image::before { content: ""; position: absolute; inset: 0; z-index: 0; background: #fff; }
-.storefront-gallery-lightbox img { position: relative; z-index: 1; display: block; max-width: 100%; max-height: calc(100vh - 120px); object-fit: contain; -webkit-user-drag: none; }
-.storefront-gallery-lightbox .swiper-pagination-fraction { bottom: 20px; left: 50%; width: fit-content; transform: translateX(-50%); border-radius: 999px; padding: 6px 10px; color: #fff; background: rgba(255,255,255,.14); font-size: 12px; font-weight: 850; }
+.storefront-gallery-lightbox img { position: relative; z-index: 1; display: block; max-width: 100%; max-height: calc(100vh - 220px); object-fit: contain; -webkit-user-drag: none; }
+.storefront-gallery-lightbox .swiper-pagination-fraction { bottom: 108px; left: 50%; width: fit-content; transform: translateX(-50%); border-radius: 999px; padding: 6px 10px; color: #fff; background: rgba(255,255,255,.14); font-size: 12px; font-weight: 850; }
+.storefront-gallery-lightbox__thumbs { position: fixed; bottom: 18px; left: 50%; z-index: 2147483002; box-sizing: border-box; width: min(760px,calc(100vw - 180px)); height: 76px; overflow: hidden; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 8px; background: rgba(15,23,42,.72); box-shadow: 0 12px 34px rgba(0,0,0,.28); backdrop-filter: blur(12px); }
+.storefront-gallery-lightbox__thumbs .swiper-wrapper { align-items: center; }
+.storefront-gallery-lightbox__thumb-slide { width: 58px !important; min-width: 58px; max-width: 58px; height: 58px; flex: 0 0 58px; }
+.storefront-gallery-lightbox__thumb-button { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255,255,255,.24); border-radius: 8px; padding: 0; background: #fff; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.storefront-gallery-lightbox__thumb-button:hover { border-color: #b5aaff; }
+.storefront-gallery-lightbox__thumb-button--active { border-color: #8b7cf6; box-shadow: 0 0 0 3px rgba(139,124,246,.42), inset 0 0 0 1px #6c5ce7; transform: translateY(-1px); }
+.storefront-gallery-lightbox__thumb-button:focus-visible { outline: 3px solid rgba(255,255,255,.42); outline-offset: 2px; }
+.storefront-gallery-lightbox__thumb-button img { width: 100%; height: 100%; object-fit: contain; }
 .storefront-gallery-lightbox__close { position: fixed; z-index: 2147483002; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.22); color: #fff; background: rgba(15,23,42,.62); cursor: pointer; }
 .storefront-gallery-lightbox__close { top: 18px; right: 18px; width: 44px; height: 44px; border-radius: 12px; }
 .storefront-gallery-lightbox__navigation { position: fixed; top: 50%; z-index: 2147483002; width: 54px; height: 54px; border-color: rgba(255,255,255,.28); color: #fff; background: rgba(15,23,42,.7); transform: translateY(-50%); }
@@ -2597,8 +2604,11 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
   .storefront-product-view__media > .storefront-product-image--gallery { min-height: 0; }
   .storefront-gallery__stage { aspect-ratio: 1 / 1; height: auto; min-height: 0; }
   .storefront-gallery-lightbox { padding: 70px 12px 22px; }
-  .storefront-gallery-lightbox__image { max-height: calc(100vh - 140px); }
-  .storefront-gallery-lightbox img { max-height: calc(100vh - 140px); }
+  .storefront-gallery-lightbox__image { max-height: calc(100vh - 210px); }
+  .storefront-gallery-lightbox img { max-height: calc(100vh - 210px); }
+  .storefront-gallery-lightbox .swiper-pagination-fraction { bottom: 96px; }
+  .storefront-gallery-lightbox__thumbs { bottom: 12px; width: calc(100vw - 24px); height: 70px; padding: 8px; }
+  .storefront-gallery-lightbox__thumb-slide { width: 52px !important; min-width: 52px; max-width: 52px; height: 52px; flex-basis: 52px; }
   .storefront-gallery-lightbox__navigation { width: 42px; height: 42px; }
   .storefront-gallery-lightbox__navigation--prev { left: 10px; }
   .storefront-gallery-lightbox__navigation--next { right: 10px; }
