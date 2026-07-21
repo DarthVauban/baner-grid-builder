@@ -1,16 +1,21 @@
 const allowedTags = new Set([
-  'a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'h2', 'h3', 'h4',
-  'i', 'img', 'li', 'ol', 'p', 'pre', 'span', 'strong', 'table', 'tbody',
-  'td', 'th', 'thead', 'tr', 'u', 'ul'
+  'a', 'article', 'aside', 'b', 'blockquote', 'br', 'code', 'dd', 'details',
+  'div', 'dl', 'dt', 'em', 'figcaption', 'figure', 'footer', 'h1', 'h2', 'h3',
+  'h4', 'h5', 'h6', 'header', 'hr', 'i', 'img', 'li', 'main', 'mark', 'nav',
+  'ol', 'p', 'picture', 'pre', 'section', 'small', 'source', 'span', 'strong',
+  'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr',
+  'u', 'ul', 'video'
 ]);
 
-const voidTags = new Set(['br', 'img']);
-const globalAttrs = new Set(['class', 'title']);
+const voidTags = new Set(['br', 'hr', 'img', 'source']);
+const globalAttrs = new Set(['class', 'dir', 'id', 'lang', 'title']);
 const tagAttrs = {
   a: new Set(['href', 'title', 'target', 'rel']),
-  img: new Set(['src', 'alt', 'title']),
+  img: new Set(['src', 'alt', 'title', 'width', 'height', 'loading']),
+  source: new Set(['src', 'type', 'media']),
   td: new Set(['colspan', 'rowspan']),
-  th: new Set(['colspan', 'rowspan'])
+  th: new Set(['colspan', 'rowspan']),
+  video: new Set(['src', 'poster', 'width', 'height', 'preload'])
 };
 
 function decodeEntities(value) {
@@ -83,11 +88,13 @@ function sanitizeAttributes(tag, rawAttrs) {
   let match;
   while ((match = attrPattern.exec(rawAttrs || ''))) {
     const name = match[1].toLowerCase();
-    if (name.startsWith('on') || name === 'style' || !allowed.has(name)) continue;
+    const isStructuredAttribute = name.startsWith('data-') || name.startsWith('aria-');
+    if (name.startsWith('on') || name === 'style' || (!allowed.has(name) && !isStructuredAttribute)) continue;
     const unquoted = String(match[2] || '').replace(/^['"]|['"]$/g, '');
     let value = unquoted;
     if (name === 'href') value = safeUrl(unquoted);
-    if (name === 'src') value = safeUrl(unquoted, { image: tag === 'img' });
+    if (name === 'src') value = safeUrl(unquoted, { image: tag === 'img' || tag === 'source' || tag === 'video' });
+    if (name === 'poster') value = safeUrl(unquoted, { image: true });
     if (!value) continue;
     if (name === 'target' && !['_blank', '_self'].includes(value)) continue;
     attrs.push(`${name}="${escapeAttribute(value)}"`);

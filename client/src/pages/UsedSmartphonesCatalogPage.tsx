@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { AutoHeightSandbox } from '../components/AutoHeightSandbox';
 import { CatalogPhotoUploadProgress } from '../components/CatalogPhotoUploadProgress';
 import type { CatalogPhotoUploadItem } from '../components/CatalogPhotoUploadProgress';
 import { Icon } from '../components/Icon';
@@ -35,6 +36,8 @@ import type {
   CatalogPublicationStatus,
   CatalogSummary
 } from '../types/catalog';
+
+const CatalogSourceCodeEditor = lazy(() => import('../components/CatalogSourceCodeEditor').then((module) => ({ default: module.CatalogSourceCodeEditor })));
 
 const conditionFilterOptions = [
   { value: 'all', label: 'Усі стани' },
@@ -166,10 +169,10 @@ function splitLooseDescriptionCss(source: string) {
   };
 }
 
-function RichTextEditor({
+export function RichTextEditor({
   value,
   onChange,
-  maxLength = 12000
+  maxLength = 120000
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -199,8 +202,8 @@ function RichTextEditor({
   function previewSrcDoc() {
     const source = splitLooseDescriptionCss(value);
     const css = source.css.replace(/<\/style/gi, '<\\/style');
-    const html = source.html.replace(/<\/script/gi, '<\\/script').replace(/<\/style/gi, '<\\/style');
-    return `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><style>body{margin:0;padding:18px;font:15px/1.6 Arial,sans-serif;color:#111827;background:#fff}img{max-width:100%;height:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #e5e7eb;padding:8px}a{color:#0f766e}${css}</style></head><body>${html}</body></html>`;
+    const html = source.html;
+    return `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><style>html,body{width:100%;max-width:100%;overflow-x:hidden}body{margin:0;padding:18px;font:15px/1.6 Arial,sans-serif;color:#111827;background:#fff}*,*::before,*::after{box-sizing:border-box;min-width:0}img,video,canvas,svg,object,embed{max-width:100%!important;height:auto}table{width:100%!important;max-width:100%!important;table-layout:fixed;border-collapse:collapse}td,th{overflow-wrap:anywhere;border:1px solid #e5e7eb;padding:8px}pre,code{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#0f766e}${css}*,*::before,*::after{max-width:100%!important;min-width:0!important}body *{overflow-wrap:anywhere}html,body{max-width:100%!important;overflow-x:hidden!important}body>*{max-width:100%!important}</style></head><body>${html}</body></html>`;
   }
 
   return <div className="rich-editor">
@@ -238,9 +241,11 @@ function RichTextEditor({
         onInput={(event) => onChange(event.currentTarget.innerHTML)}
       />
       : mode === 'source'
-        ? <textarea className="rich-editor__source" value={value} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} spellCheck={false} />
+        ? <Suspense fallback={<div className="rich-editor__source-loading">Завантаження редактора…</div>}>
+          <CatalogSourceCodeEditor value={value} maxLength={maxLength} onChange={onChange} />
+        </Suspense>
         : <div className={`rich-editor__preview rich-editor__preview--${previewDevice}`}>
-          <iframe title="Preview опису" sandbox="allow-scripts" srcDoc={previewSrcDoc()} />
+          <AutoHeightSandbox title="Preview опису" srcDoc={previewSrcDoc()} />
         </div>}
   </div>;
 }
@@ -1032,7 +1037,7 @@ function ProductEditorScreen({
           <header><h2>Опис</h2></header>
           <div className="catalog-editor-grid">
             <label className="field catalog-editor-grid__wide"><span>Короткий опис</span><textarea value={draft.shortDescription} onChange={(event) => setField('shortDescription', event.target.value)} maxLength={1200} /></label>
-            <label className="field catalog-editor-grid__wide"><span>Повний опис</span><RichTextEditor value={draft.description} onChange={(value) => setField('description', value)} maxLength={12000} /></label>
+            <label className="field catalog-editor-grid__wide"><span>Повний опис</span><RichTextEditor value={draft.description} onChange={(value) => setField('description', value)} maxLength={120000} /></label>
           </div>
         </section>}
 

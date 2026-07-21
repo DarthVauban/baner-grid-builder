@@ -8,6 +8,7 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import type { Swiper as SwiperInstance } from 'swiper';
 import 'swiper/css';
 import 'swiper/css/pagination';
+import { AutoHeightSandbox } from '../components/AutoHeightSandbox';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
@@ -276,9 +277,9 @@ function StorefrontDescription({ product }: { product: CatalogProduct }) {
   if (css || js || product.descriptionHasJs) {
     const safeCss = css.replace(/<\/style/gi, '<\\/style');
     const safeJs = js.replace(/<\/script/gi, '<\\/script');
-    const srcDoc = `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><style>body{margin:0;padding:20px;font:15px/1.65 Arial,sans-serif;color:#111827;background:#fff}img{max-width:100%;height:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #e5e7eb;padding:8px}a{color:#0f766e}${safeCss}</style></head><body>${html}<script>${safeJs}</script></body></html>`;
+    const srcDoc = `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><style>html,body{width:100%;max-width:100%;overflow-x:hidden}body{margin:0;padding:20px;font:15px/1.65 Arial,sans-serif;color:#111827;background:#fff}*,*::before,*::after{box-sizing:border-box;min-width:0}img,video,canvas,svg,object,embed{max-width:100%!important;height:auto}table{width:100%!important;max-width:100%!important;table-layout:fixed;border-collapse:collapse}td,th{overflow-wrap:anywhere;border:1px solid #e5e7eb;padding:8px}pre,code{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#0f766e}${safeCss}*,*::before,*::after{max-width:100%!important;min-width:0!important}body *{overflow-wrap:anywhere}html,body{max-width:100%!important;overflow-x:hidden!important}body>*{max-width:100%!important}</style></head><body>${html}<script>${safeJs}</script></body></html>`;
     return <section className="storefront-description storefront-description--sandbox">
-      <iframe title="Опис товару" sandbox="allow-scripts" srcDoc={srcDoc} />
+      <AutoHeightSandbox title="Опис товару" srcDoc={srcDoc} />
     </section>;
   }
   return <section className="storefront-description" dangerouslySetInnerHTML={{ __html: html }} />;

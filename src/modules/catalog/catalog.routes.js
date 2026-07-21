@@ -79,7 +79,7 @@ const productInputSchema = z.object({
   mainImageUrl: z.string().trim().max(4000).default(''),
   gallery: z.array(galleryItemSchema).max(20).default([]),
   shortDescription: z.string().trim().max(1200).default(''),
-  description: z.string().trim().max(12000).default(''),
+  description: z.string().trim().max(120000).default(''),
   seoTitle: z.string().trim().max(240).default(''),
   seoDescription: z.string().trim().max(500).default(''),
   socialDescription: z.string().trim().max(500).default(''),

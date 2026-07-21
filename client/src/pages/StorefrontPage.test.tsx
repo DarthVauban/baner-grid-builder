@@ -77,6 +77,9 @@ describe('storefront product layout styles', () => {
     expect(appStyles).toMatch(/\.storefront-gallery-lightbox__thumbs-shell\s*\{[^}]*position:\s*fixed;[^}]*right:\s*0;[^}]*left:\s*0;[^}]*justify-content:\s*center/);
     expect(appStyles).toMatch(/\.application-details-modal\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,1fr\) auto;[^}]*overflow:\s*hidden/);
     expect(appStyles).toMatch(/\.application-details-modal__content\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto/);
+    expect(appStyles).toMatch(/\.storefront-description--sandbox iframe\s*\{[^}]*height:\s*1px;[^}]*overflow:\s*hidden/);
+    expect(appStyles).toMatch(/\.storefront-product-content\s*\{[^}]*height:\s*fit-content;[^}]*align-self:\s*start/);
+    expect(appStyles).toMatch(/\.storefront-product-content__section\s*\{[^}]*min-height:\s*0;[^}]*height:\s*auto/);
   });
 });
 

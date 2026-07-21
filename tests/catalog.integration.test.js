@@ -145,7 +145,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     brandId: appleBrand.id,
     mainImageUrl: 'https://example.com/iphone-13.webp',
     gallery: [],
-    description: '.tab .content{color:blue}<h2 onclick="alert(1)">Specs</h2><style>.note{color:red}</style><p><a href="javascript:alert(1)">bad link</a></p><script>window.__catalogTest = true;</script>',
+    description: '.tab .content{color:blue}<section id="specs" data-product-section="details"><h2 onclick="alert(1)">Specs</h2></section><style>.note{color:red}</style><p><a href="javascript:alert(1)">bad link</a></p><script>window.__catalogTest = true;</script>',
     publicationStatus: 'PUBLISHED',
     expectedVersion: created.body.data.version
   }).expect(200);
@@ -163,6 +163,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicProduct.body.data.name, 'iPhone 13 128GB Midnight');
   assert.equal(publicProduct.body.data.brand.logoUrl, media.body.data.url);
   assert.match(publicProduct.body.data.descriptionHtml, /Specs/);
+  assert.match(publicProduct.body.data.descriptionHtml, /<section id="specs" data-product-section="details">/);
   assert.doesNotMatch(publicProduct.body.data.descriptionHtml, /\.tab \.content/);
   assert.doesNotMatch(publicProduct.body.data.descriptionHtml, /script|onclick|javascript:/i);
   assert.match(publicProduct.body.data.descriptionCss, /\.tab \.content/);
