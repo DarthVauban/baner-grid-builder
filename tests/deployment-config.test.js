@@ -22,6 +22,13 @@ test('remote deployment fails fast and verifies the running revision', () => {
   assert.match(workflow, /grep -Fq 'id="storefront-root"' <<< "\$STOREFRONT"/);
 });
 
+test('remote deployment retries transient container registry failures', () => {
+  assert.match(workflow, /command_timeout: 20m/);
+  assert.match(workflow, /retry\(\) \{[\s\S]*until "\$@"; do[\s\S]*delay_seconds=\$\(\(delay_seconds \* 2\)\)/);
+  assert.match(workflow, /retry 4 5 login_ghcr/);
+  assert.match(workflow, /retry 5 10 docker pull "\$IMAGE"/);
+});
+
 test('runtime image carries the build revision used by the health check', () => {
   assert.match(dockerfile, /ARG APP_BUILD_SHA=development/);
   assert.match(dockerfile, /ENV APP_BUILD_SHA=\$APP_BUILD_SHA/);

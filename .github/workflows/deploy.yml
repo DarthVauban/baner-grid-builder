@@ -68,14 +68,34 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
+          command_timeout: 20m
           script: |
             set -euo pipefail
             cd ${{ secrets.APP_DIR }}
             REPOSITORY="$(echo 'ghcr.io/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
             IMAGE="$REPOSITORY:sha-${{ github.sha }}"
             LATEST="$REPOSITORY:latest"
-            echo ${{ github.token }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull "$IMAGE"
+            retry() {
+              max_attempts="$1"
+              delay_seconds="$2"
+              shift 2
+              attempt=1
+              until "$@"; do
+                if [ "$attempt" -ge "$max_attempts" ]; then
+                  echo "Registry command failed after $attempt attempts." >&2
+                  return 1
+                fi
+                echo "Registry command failed (attempt $attempt/$max_attempts). Retrying in ${delay_seconds}s..." >&2
+                sleep "$delay_seconds"
+                attempt=$((attempt + 1))
+                delay_seconds=$((delay_seconds * 2))
+              done
+            }
+            login_ghcr() {
+              printf '%s\n' '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+            }
+            retry 4 5 login_ghcr
+            retry 5 10 docker pull "$IMAGE"
             EXPECTED_IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
             docker tag "$IMAGE" "$LATEST"
             MEDIA_BACKUP="$(mktemp -d)"
