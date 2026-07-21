@@ -58,6 +58,13 @@ import AndroidRounded from '@mui/icons-material/AndroidRounded';
 import Apple from '@mui/icons-material/Apple';
 import QrCode2Rounded from '@mui/icons-material/QrCode2Rounded';
 import SecurityRounded from '@mui/icons-material/SecurityRounded';
+import DevicesRounded from '@mui/icons-material/DevicesRounded';
+import SellOutlined from '@mui/icons-material/SellOutlined';
+import TuneRounded from '@mui/icons-material/TuneRounded';
+import StorefrontRounded from '@mui/icons-material/StorefrontRounded';
+import StyleOutlined from '@mui/icons-material/StyleOutlined';
+import WebRounded from '@mui/icons-material/WebRounded';
+import HistoryRounded from '@mui/icons-material/HistoryRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -73,7 +80,10 @@ export type IconName =
   | 'bell'
   | 'bannerGrid'
   | 'blogPublications'
+  | 'brands'
   | 'calendar'
+  | 'catalog'
+  | 'characteristics'
   | 'check'
   | 'chat'
   | 'chevronLeft'
@@ -100,6 +110,8 @@ export type IconName =
   | 'phone'
   | 'publication'
   | 'productSelection'
+  | 'productCard'
+  | 'productPage'
   | 'productTables'
   | 'qrCode'
   | 'remove'
@@ -110,6 +122,8 @@ export type IconName =
   | 'schedule'
   | 'savedBanners'
   | 'savedGrids'
+  | 'storefront'
+  | 'history'
   | 'tasks'
   | 'tools'
   | 'upload'
@@ -142,7 +156,10 @@ const icons: Record<IconName, SvgIconComponent> = {
   bell: NotificationsNoneRounded,
   bannerGrid: DashboardCustomizeRounded,
   blogPublications: ArticleOutlined,
+  brands: SellOutlined,
   calendar: CalendarMonthRounded,
+  catalog: DevicesRounded,
+  characteristics: TuneRounded,
   check: CheckRounded,
   chat: ChatBubbleOutlineRounded,
   chevronLeft: ChevronLeftRounded,
@@ -169,6 +186,8 @@ const icons: Record<IconName, SvgIconComponent> = {
   phone: PhoneOutlined,
   publication: PublishRounded,
   productSelection: Inventory2Outlined,
+  productCard: StyleOutlined,
+  productPage: WebRounded,
   productTables: TableChartOutlined,
   qrCode: QrCode2Rounded,
   remove: RemoveRounded,
@@ -179,6 +198,8 @@ const icons: Record<IconName, SvgIconComponent> = {
   schedule: AccessTimeRounded,
   savedBanners: ImageOutlined,
   savedGrids: GridOnRounded,
+  storefront: StorefrontRounded,
+  history: HistoryRounded,
   tasks: ChecklistRounded,
   tools: GridViewRounded,
   upload: UploadFileRounded,

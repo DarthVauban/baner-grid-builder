@@ -220,7 +220,7 @@ export function AppShell() {
             <span>Інструменти</span>
           </NavLink>
           {hasCatalogAccess && <NavLink aria-label="Каталог смартфонів" title="Каталог смартфонів" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/catalog/products" onClick={closeSidebar}>
-            <Icon name="phone" />
+            <Icon name="catalog" />
             <span>Каталог смартфонів</span>
           </NavLink>}
         </nav>
