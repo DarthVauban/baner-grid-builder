@@ -105,32 +105,35 @@ function StorefrontGalleryLightbox({
         </span>
       </SwiperSlide>)}
     </Swiper>
-    {images.length > 1 && <Swiper
-      className="storefront-gallery-lightbox__thumbs"
-      slidesPerView="auto"
-      spaceBetween={8}
-      watchSlidesProgress
-      onSwiper={(swiper) => {
-        thumbsSwiperRef.current = swiper;
-        swiper.slideTo(index, 0);
-      }}
-      aria-label="Мініатюри фото"
-    >
-      {images.map((image, thumbIndex) => <SwiperSlide className="storefront-gallery-lightbox__thumb-slide" key={`${image.url}-lightbox-thumb-${thumbIndex}`}>
-        <button
-          className={index === thumbIndex ? 'storefront-gallery-lightbox__thumb-button storefront-gallery-lightbox__thumb-button--active' : 'storefront-gallery-lightbox__thumb-button'}
-          type="button"
-          onClick={() => {
-            swiperRef.current?.slideTo(thumbIndex);
-            onIndex(thumbIndex);
-          }}
-          aria-label={`Фото ${thumbIndex + 1}`}
-          aria-current={index === thumbIndex ? 'true' : undefined}
-        >
-          <img src={image.url} alt="" loading="lazy" draggable={false} />
-        </button>
-      </SwiperSlide>)}
-    </Swiper>}
+    {images.length > 1 && <div className="storefront-gallery-lightbox__thumbs-shell">
+      <Swiper
+        className="storefront-gallery-lightbox__thumbs"
+        slidesPerView="auto"
+        spaceBetween={8}
+        watchSlidesProgress
+        centerInsufficientSlides
+        onSwiper={(swiper) => {
+          thumbsSwiperRef.current = swiper;
+          swiper.slideTo(index, 0);
+        }}
+        aria-label="Мініатюри фото"
+      >
+        {images.map((image, thumbIndex) => <SwiperSlide className="storefront-gallery-lightbox__thumb-slide" key={`${image.url}-lightbox-thumb-${thumbIndex}`}>
+          <button
+            className={index === thumbIndex ? 'storefront-gallery-lightbox__thumb-button storefront-gallery-lightbox__thumb-button--active' : 'storefront-gallery-lightbox__thumb-button'}
+            type="button"
+            onClick={() => {
+              swiperRef.current?.slideTo(thumbIndex);
+              onIndex(thumbIndex);
+            }}
+            aria-label={`Фото ${thumbIndex + 1}`}
+            aria-current={index === thumbIndex ? 'true' : undefined}
+          >
+            <img src={image.url} alt="" loading="lazy" draggable={false} />
+          </button>
+        </SwiperSlide>)}
+      </Swiper>
+    </div>}
     {images.length > 1 && <>
       <button
         className="storefront-gallery-navigation storefront-gallery-lightbox__navigation storefront-gallery-lightbox__navigation--prev"

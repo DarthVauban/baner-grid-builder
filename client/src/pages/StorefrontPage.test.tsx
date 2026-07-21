@@ -74,6 +74,7 @@ describe('storefront product layout styles', () => {
     expect(appStyles).toMatch(/\.storefront-product-view__hero\s*\{[^}]*grid-template-columns:\s*repeat\(2,minmax\(0,1fr\)\);[^}]*align-items:\s*stretch/);
     expect(appStyles).toMatch(/\.storefront-product-view__media\s*\{[^}]*min-height:\s*clamp\(500px,34vw,620px\);[^}]*height:\s*auto/);
     expect(appStyles).toMatch(/\.storefront-gallery__stage img\s*\{[^}]*width:\s*auto;[^}]*height:\s*auto;[^}]*max-width:\s*100%;[^}]*max-height:\s*100%/);
+    expect(appStyles).toMatch(/\.storefront-gallery-lightbox__thumbs-shell\s*\{[^}]*position:\s*fixed;[^}]*right:\s*0;[^}]*left:\s*0;[^}]*justify-content:\s*center/);
   });
 });
 
@@ -227,6 +228,7 @@ describe('StorefrontProductDetailPage', () => {
     const lightbox = screen.getByRole('dialog', { name: 'Перегляд фото' });
     expect([...lightbox.querySelectorAll('img')].every((image) => image.getAttribute('draggable') === 'false')).toBe(true);
     expect(lightbox.querySelectorAll('.storefront-gallery-lightbox__thumb-slide')).toHaveLength(2);
+    expect(lightbox.querySelector('.storefront-gallery-lightbox__thumbs-shell .storefront-gallery-lightbox__thumbs')).toBeInTheDocument();
     expect(lightbox.querySelectorAll('.storefront-gallery-lightbox__thumb-button')[0]).toHaveAttribute('aria-current', 'true');
 
     await userEvent.click(within(lightbox).getByRole('button', { name: 'Наступне фото' }));
