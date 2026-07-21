@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PropsWithChildren, ReactElement } from 'react';
 import { api } from '../lib/api';
 import type { CatalogProduct } from '../types/catalog';
+import appStyles from '../styles/app.css?raw';
 import { StorefrontProductCard, StorefrontProductDetailPage } from './StorefrontPage';
 
 vi.mock('swiper/modules', () => ({
@@ -21,6 +22,13 @@ vi.mock('swiper/react', () => ({
 }));
 
 afterEach(() => vi.restoreAllMocks());
+
+describe('storefront product layout styles', () => {
+  it('keeps a 40/60 hero ratio and constrains gallery images without stretching them', () => {
+    expect(appStyles).toMatch(/\.storefront-product-view__hero\s*\{[^}]*grid-template-columns:\s*minmax\(0,2fr\)\s+minmax\(0,3fr\)/);
+    expect(appStyles).toMatch(/\.storefront-gallery__stage img\s*\{[^}]*width:\s*auto;[^}]*height:\s*auto;[^}]*max-width:\s*100%;[^}]*max-height:\s*100%/);
+  });
+});
 
 function renderWithQueryClient(element: ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
