@@ -63,11 +63,43 @@ function serializeTelegram(row) {
   };
 }
 
+function readableTelegramApiError(description, status) {
+  const message = String(description || '').trim();
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("bot can't send messages to the bot")) {
+    return 'Вказаний Chat ID належить боту. Вкажіть ID свого Telegram-акаунта, групи або каналу, куди бот має надсилати резервні копії.';
+  }
+  if (normalized.includes('bot was blocked by the user')) {
+    return 'Користувач заблокував Telegram-бота. Розблокуйте його, відкрийте чат і натисніть Start.';
+  }
+  if (normalized.includes("bot can't initiate conversation") || normalized.includes('bot cannot initiate conversation')) {
+    return 'Спочатку відкрийте чат із Telegram-ботом і натисніть Start, а потім повторіть підключення.';
+  }
+  if (normalized.includes('chat not found')) {
+    return 'Telegram-чат не знайдено. Перевірте Chat ID або @username і переконайтеся, що бот доданий до цього чату.';
+  }
+  if (
+    normalized.includes('not enough rights')
+    || normalized.includes('have no rights')
+    || normalized.includes('need administrator rights')
+    || normalized.includes('not a member of the channel')
+  ) {
+    return 'Telegram-бот не має права надсилати файли в цей чат. Додайте бота до чату та надайте йому право публікувати повідомлення.';
+  }
+  if (status === 401 || normalized.includes('unauthorized')) {
+    return 'Telegram відхилив bot token. Скопіюйте актуальний токен у @BotFather і повторіть підключення.';
+  }
+
+  return message || `Telegram API повернув HTTP ${status}.`;
+}
+
 export class TelegramApiError extends Error {
-  constructor(message, status = 502) {
+  constructor(message, status = 502, rawMessage = message) {
     super(message);
     this.name = 'TelegramApiError';
     this.status = status;
+    this.rawMessage = rawMessage;
   }
 }
 
@@ -84,7 +116,8 @@ export async function telegramApiRequest(token, method, body, { fetchImpl = fetc
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload.ok !== true) {
-      throw new TelegramApiError(payload.description || `Telegram API returned HTTP ${response.status}.`, response.status);
+      const description = payload.description || `Telegram API returned HTTP ${response.status}.`;
+      throw new TelegramApiError(readableTelegramApiError(description, response.status), response.status, description);
     }
     return payload.result;
   } catch (error) {
@@ -94,6 +127,40 @@ export async function telegramApiRequest(token, method, body, { fetchImpl = fetc
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function validateTelegramDestination(token, bot, chatId, fetchImpl) {
+  const chat = await telegramApiRequest(token, 'getChat', { chat_id: chatId }, { fetchImpl });
+
+  if (String(chat.id) === String(bot.id)) {
+    throw new TelegramApiError(
+      'Вказаний Chat ID належить самому боту. Вкажіть ID свого Telegram-акаунта, групи або каналу.',
+      400,
+      "Bad Request: bot can't send messages to the bot"
+    );
+  }
+
+  if (chat.type === 'channel') {
+    const membership = await telegramApiRequest(token, 'getChatMember', {
+      chat_id: chat.id,
+      user_id: bot.id
+    }, { fetchImpl });
+    const canPost = membership.status === 'creator'
+      || (membership.status === 'administrator' && membership.can_post_messages === true);
+    if (!canPost) {
+      throw new TelegramApiError(
+        'Telegram-бот не має права публікувати файли в цьому каналі. Призначте його адміністратором із правом публікації повідомлень.',
+        403
+      );
+    }
+  } else {
+    await telegramApiRequest(token, 'sendChatAction', {
+      chat_id: chat.id,
+      action: 'upload_document'
+    }, { fetchImpl });
+  }
+
+  return chat;
 }
 
 export async function getAdminIntegrations() {
@@ -191,7 +258,7 @@ export async function saveTelegramIntegration(input, userId, { fetchImpl = fetch
 
   const token = suppliedToken || decryptSecret(current);
   const bot = await telegramApiRequest(token, 'getMe', {}, { fetchImpl });
-  await telegramApiRequest(token, 'getChat', { chat_id: input.chatId }, { fetchImpl });
+  await validateTelegramDestination(token, bot, input.chatId, fetchImpl);
 
   const secret = suppliedToken ? encryptSecret(suppliedToken) : {
     secretCiphertext: current.secret_ciphertext,

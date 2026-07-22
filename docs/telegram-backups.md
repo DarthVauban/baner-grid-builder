@@ -5,9 +5,12 @@ Administrators configure backups on the **Integrations** page.
 ## Telegram setup
 
 1. Create a bot through `@BotFather` and copy its token.
-2. Add the bot to the target private chat, group, or channel. For a channel, grant the bot permission to post messages.
-3. Enter the numeric chat ID (for example, `-100...`) or the channel `@username`.
-4. Save the integration. The server validates both the bot token and the target chat before storing the token encrypted.
+2. Choose where the bot should send backups:
+   - personal chat: open the new bot, press **Start**, and use your own Telegram account ID (not the bot ID);
+   - group: add the bot and use the group's numeric chat ID;
+   - channel: add the bot as an administrator with permission to post messages and use `@channel_username` or its numeric ID.
+3. Enter the target chat ID (for example, `-100...`) or the channel `@username`.
+4. Save the integration. The server validates the bot token, rejects the bot's own ID, and verifies that the bot can send a document to the target before storing the token encrypted.
 
 The standard Telegram Bot API accepts documents up to 50 MB. MT Workspace keeps a small safety margin and rejects a larger generated archive with a visible error instead of attempting a partial backup.
 

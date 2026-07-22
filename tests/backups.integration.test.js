@@ -12,15 +12,27 @@ process.env.ADMIN_EMAIL = 'backup-admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
 
 const telegramCalls = [];
+let sendDocumentFailure = '';
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options) => {
   const method = String(url).split('/').pop();
   telegramCalls.push({ method, options });
+  if (method === 'sendDocument' && sendDocumentFailure) {
+    return new Response(JSON.stringify({ ok: false, description: sendDocumentFailure }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  const body = options.body instanceof FormData ? null : JSON.parse(options.body || '{}');
   const result = method === 'getMe'
     ? { id: 100, is_bot: true, first_name: 'Backup', username: 'mt_backup_bot' }
     : method === 'getChat'
-      ? { id: -1001234567890, title: 'Backups', type: 'channel' }
-      : { message_id: 7788 };
+      ? body.chat_id === '100'
+        ? { id: 100, first_name: 'Backup', username: 'mt_backup_bot', type: 'private' }
+        : { id: -1001234567890, title: 'Backups', type: 'channel' }
+      : method === 'getChatMember'
+        ? { status: 'administrator', can_post_messages: true, user: { id: 100, is_bot: true } }
+        : { message_id: 7788 };
   return new Response(JSON.stringify({ ok: true, result }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' }
@@ -57,6 +69,7 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
   assert.equal(telegram.body.data.botUsername, 'mt_backup_bot');
   assert.equal(telegramCalls[0].method, 'getMe');
   assert.equal(telegramCalls[1].method, 'getChat');
+  assert.equal(telegramCalls[2].method, 'getChatMember');
 
   const integrations = await agent.get('/api/admin/integrations').expect(200);
   assert.equal(integrations.body.data.telegram.chatId, '-1001234567890');
@@ -91,4 +104,41 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
     .send(invalidArchive)
     .expect(422);
   assert.equal(rejectedRestore.body.error.code, 'INVALID_BACKUP_ARCHIVE');
+});
+
+test('Telegram integration rejects the bot itself as the backup destination', async () => {
+  const agent = request.agent(app);
+  await agent.post('/api/auth/login').send({
+    email: process.env.ADMIN_EMAIL,
+    password: process.env.ADMIN_PASSWORD
+  }).expect(200);
+
+  const response = await agent.put('/api/admin/integrations/telegram').send({
+    chatId: '100',
+    token: '123456:integration-test-token'
+  }).expect(422);
+
+  assert.equal(response.body.error.code, 'TELEGRAM_CONNECTION_FAILED');
+  assert.match(response.body.error.message, /Chat ID.*боту/);
+});
+
+test('manual backup returns a readable configuration error instead of Bad Gateway', async () => {
+  const agent = request.agent(app);
+  await agent.post('/api/auth/login').send({
+    email: process.env.ADMIN_EMAIL,
+    password: process.env.ADMIN_PASSWORD
+  }).expect(200);
+
+  sendDocumentFailure = "Forbidden: the bot can't send messages to the bot";
+  try {
+    const response = await agent.post('/api/admin/backups/run').expect(422);
+    assert.equal(response.body.error.code, 'TELEGRAM_SEND_FAILED');
+    assert.match(response.body.error.message, /Chat ID.*боту/);
+
+    const state = await agent.get('/api/admin/backups').expect(200);
+    assert.equal(state.body.data.runs[0].status, 'failed');
+    assert.match(state.body.data.runs[0].errorMessage, /Chat ID.*боту/);
+  } finally {
+    sendDocumentFailure = '';
+  }
 });

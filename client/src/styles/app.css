@@ -820,6 +820,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .integration-form--compact .field > span:first-child { font-size: 10px; }
 .integration-form--compact .field input,
 .integration-form--compact .field select { height: 40px; border-radius: 10px; font-size: 11px; }
+.integration-field-hint { color: #8791a2; font-size: 9px; line-height: 1.4; }
 .integration-form__wide { grid-column: 1 / -1; }
 .integration-card__footer { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .integration-card__footer small { overflow-wrap: anywhere; color: #8791a2; font-size: 9px; }

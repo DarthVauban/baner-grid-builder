@@ -326,7 +326,10 @@ router.post('/backups/run', adminOnly, asyncHandler(async (req, res) => {
     res.status(201).json({ data: await createAndSendBackup({ trigger: 'manual', userId: req.user.id }) });
   } catch (error) {
     if (error instanceof BackupError) throw new AppError(error.status, error.code, error.message);
-    if (error instanceof TelegramApiError) throw new AppError(502, 'TELEGRAM_SEND_FAILED', error.message);
+    if (error instanceof TelegramApiError) {
+      const status = error.status === 429 ? 429 : error.status >= 500 ? 502 : 422;
+      throw new AppError(status, 'TELEGRAM_SEND_FAILED', error.message);
+    }
     throw error;
   }
 }));

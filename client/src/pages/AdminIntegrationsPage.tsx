@@ -38,6 +38,13 @@ function formatBytes(value: number) {
   return `${(value / 1024 / 1024).toFixed(value >= 10 * 1024 * 1024 ? 1 : 2)} МБ`;
 }
 
+function formatBackupError(message: string) {
+  if (message.toLowerCase().includes("bot can't send messages to the bot")) {
+    return 'Вказаний Chat ID належить боту. Вкажіть ID свого акаунта, групи або каналу.';
+  }
+  return message;
+}
+
 export function AdminIntegrationsPage() {
   const { showToast } = useToast();
   const confirm = useConfirmDialog();
@@ -250,6 +257,7 @@ export function AdminIntegrationsPage() {
             <label className="field">
               <span>ID чату або @канал</span>
               <input value={chatId} onChange={(event) => setChatId(event.target.value)} autoComplete="off" placeholder="-1001234567890" required />
+              <small className="integration-field-hint">Не ID бота. Для особистого чату спочатку відкрийте бота, натисніть Start і вкажіть ID свого акаунта.</small>
             </label>
             <label className="field">
               <span>{telegram?.configured ? 'Новий bot token (необов’язково)' : 'Bot token'}</span>
@@ -326,7 +334,7 @@ export function AdminIntegrationsPage() {
             <div className="backup-history__title"><Icon name="history" size={17} /><strong>Останні операції</strong></div>
             {backups.data.runs.slice(0, 5).map((run) => <div className="backup-history__row" key={run.id}>
               <span className={run.status === 'success' ? 'backup-run-status backup-run-status--success' : 'backup-run-status backup-run-status--failed'} />
-              <span><strong>{triggerLabels[run.trigger]}</strong><small>{run.errorMessage || run.fileName || 'Операцію завершено'}</small></span>
+              <span><strong>{triggerLabels[run.trigger]}</strong><small>{run.errorMessage ? formatBackupError(run.errorMessage) : run.fileName || 'Операцію завершено'}</small></span>
               <span><strong>{formatDate(run.completedAt, timezone)}</strong><small>{formatBytes(run.sizeBytes)}</small></span>
             </div>)}
           </div>}
