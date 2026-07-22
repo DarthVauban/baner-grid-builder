@@ -120,6 +120,7 @@ function newField(index: number): ApplicationFormField {
     active: true,
     system: false,
     systemFieldType: null,
+    showInSummary: false,
     sortOrder: 100 + index,
     validation: {},
     options: []
@@ -289,6 +290,7 @@ export function FormsBuilderPage() {
       ...patch,
       active: field.system ? true : patch.active ?? field.active,
       required: field.system ? true : patch.required ?? field.required,
+      showInSummary: field.system ? true : patch.showInSummary ?? field.showInSummary,
       type: field.systemFieldType === 'bank' ? 'select' : field.systemFieldType === 'phone' ? 'phone' : patch.type ?? field.type
     } : field));
   }
@@ -679,6 +681,7 @@ export function FormsBuilderPage() {
                   </div>}
                   <label className="check-field"><input type="checkbox" checked={field.required} disabled={field.system} onChange={(event) => updateField(index, { required: event.target.checked })} /><span>Обовʼязкове</span></label>
                   <label className="check-field"><input type="checkbox" checked={field.active} disabled={field.system} onChange={(event) => updateField(index, { active: event.target.checked })} /><span>Активне</span></label>
+                  <label className="check-field form-builder-grid__wide"><input type="checkbox" checked={field.system || field.showInSummary} disabled={field.system} onChange={(event) => updateField(index, { showInSummary: event.target.checked })} /><span>Показувати в основній інформації заявки</span></label>
                 </div>
                 <footer><button className="button button--danger button--small" type="button" onClick={() => removeField(index)}><Icon name="delete" size={15} /> Видалити</button></footer>
               </article>)}

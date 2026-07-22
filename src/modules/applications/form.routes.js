@@ -41,6 +41,7 @@ const fieldSchema = z.object({
   active: z.boolean().default(true),
   system: z.boolean().default(false),
   systemFieldType: z.enum(['first_name', 'last_name', 'phone', 'bank']).nullable().optional(),
+  showInSummary: z.boolean().default(false),
   sortOrder: z.number().int().min(0).max(10000).default(100),
   validation: jsonObject,
   options: z.array(optionSchema).max(40).default([])
@@ -89,18 +90,21 @@ async function replaceEditableFields(db, formId, fields = []) {
   );
 
   const seenKeys = new Set();
+  const summarySettings = [];
   for (const [index, field] of fields.entries()) {
     const systemFieldType = field.system ? field.systemFieldType || null : null;
     const system = Boolean(systemFieldType);
+    const showInSummary = system || field.showInSummary === true;
     const type = systemFieldType === 'bank' ? 'select' : systemFieldType === 'phone' ? 'phone' : systemFieldType ? 'text' : field.type;
     let key = normalizeSlug(field.key || systemFieldType || field.label, `field_${index + 1}`);
     while (seenKeys.has(key)) key = `${key}_${randomSuffix()}`;
     seenKeys.add(key);
+    summarySettings.push({ key, showInSummary });
     const inserted = await db.query(
       `INSERT INTO application_form_fields (
          form_id, key, label, type, placeholder, help_text, default_value,
-         required, active, system, system_field_type, sort_order, validation
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::JSONB)
+         required, active, system, system_field_type, show_in_summary, sort_order, validation
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::JSONB)
        RETURNING id`,
       [
         formId,
@@ -114,6 +118,7 @@ async function replaceEditableFields(db, formId, fields = []) {
         field.active,
         system,
         systemFieldType,
+        showInSummary,
         index,
         JSON.stringify(field.validation || {})
       ]
@@ -135,6 +140,18 @@ async function replaceEditableFields(db, formId, fields = []) {
         );
       }
     }
+  }
+
+  for (const field of summarySettings) {
+    await db.query(
+      `UPDATE application_values
+       SET show_in_summary_snapshot = $3
+       WHERE field_key_snapshot = $2
+         AND application_id IN (
+           SELECT id FROM applications WHERE form_id = $1
+         )`,
+      [formId, field.key, field.showInSummary]
+    );
   }
 }
 
@@ -405,8 +422,8 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
       const copied = await client.query(
         `INSERT INTO application_form_fields (
            form_id, key, label, type, placeholder, help_text, default_value,
-           required, active, system, system_field_type, sort_order, validation
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::JSONB)
+           required, active, system, system_field_type, show_in_summary, sort_order, validation
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::JSONB)
          RETURNING id`,
         [
           formId,
@@ -420,6 +437,7 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
           field.active,
           field.system,
           field.system_field_type,
+          field.show_in_summary,
           field.sort_order,
           JSON.stringify(field.validation || {})
         ]

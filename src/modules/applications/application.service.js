@@ -99,6 +99,7 @@ export function serializeField(row, options = []) {
     active: row.active === true,
     system: row.system === true,
     systemFieldType: row.system_field_type || null,
+    showInSummary: row.system_field_type ? true : row.show_in_summary === true,
     sortOrder: row.sort_order,
     validation: row.validation || {},
     options: options.map((option) => ({
@@ -153,13 +154,14 @@ export async function ensureSystemFields(db, formId) {
   for (const field of systemFields) {
     await db.query(
       `INSERT INTO application_form_fields (
-         form_id, key, label, type, required, active, system, system_field_type, sort_order
-       ) VALUES ($1, $2, $3, $4, TRUE, TRUE, TRUE, $5, $6)
+         form_id, key, label, type, required, active, system, system_field_type, show_in_summary, sort_order
+       ) VALUES ($1, $2, $3, $4, TRUE, TRUE, TRUE, $5, TRUE, $6)
        ON CONFLICT (form_id, key) DO UPDATE SET
          required = TRUE,
          active = TRUE,
          system = TRUE,
          system_field_type = EXCLUDED.system_field_type,
+         show_in_summary = TRUE,
          type = EXCLUDED.type,
          sort_order = EXCLUDED.sort_order,
          updated_at = NOW()`,
@@ -293,6 +295,7 @@ export function mapApplicationValues(values) {
       label: value.field_label_snapshot,
       type: value.field_type_snapshot,
       systemFieldType: value.system_field_type || null,
+      showInSummary: value.show_in_summary_snapshot === true,
       value: value.value,
       optionLabel: value.option_label_snapshot,
       sortOrder: value.sort_order

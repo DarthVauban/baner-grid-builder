@@ -58,6 +58,8 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
   const productCode = application.product?.productCode || '';
   const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
   const canClaim = application.status === 'new' && !application.assignedManager;
+  const summaryValues = application.values.filter((value) => value.showInSummary);
+  const additionalValues = application.values.filter((value) => !value.showInSummary);
 
   async function copyProductText(label: string, value: string) {
     const text = value.trim();
@@ -128,6 +130,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
           <div><Icon name="calendar" size={18} /><span><small>Оновлено</small><strong>{formatApplicationDate(application.updatedAt)}</strong></span></div>
           <div><Icon name="users" size={18} /><span><small>Менеджер</small><strong>{application.assignedManager ? application.assignedManager.name : 'Не взято в роботу'}</strong></span></div>
           <div><Icon name="schedule" size={18} /><span><small>Взято в роботу</small><strong>{application.assignedManager?.assignedAt ? formatApplicationDate(application.assignedManager.assignedAt) : '—'}</strong></span></div>
+          {summaryValues.map((value) => <div key={value.id}><Icon name="edit" size={18} /><span><small>{value.label}</small><strong>{value.optionLabel || value.value || 'Не заповнено'}</strong></span></div>)}
         </section>
 
         <section className="task-details-section">
@@ -140,10 +143,10 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
           </div>
         </section>
 
-        {application.values.length > 0 && <section className="task-details-section">
-          <h3>Додаткові відповіді <span>{application.values.length}</span></h3>
+        {additionalValues.length > 0 && <section className="task-details-section">
+          <h3>Додаткові відповіді <span>{additionalValues.length}</span></h3>
           <div className="application-answer-list">
-            {application.values.map((value) => <article key={value.id}><small>{value.label}</small><strong>{value.optionLabel || value.value || 'Не заповнено'}</strong></article>)}
+            {additionalValues.map((value) => <article key={value.id}><small>{value.label}</small><strong>{value.optionLabel || value.value || 'Не заповнено'}</strong></article>)}
           </div>
         </section>}
 

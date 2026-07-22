@@ -128,6 +128,7 @@ test('form builder and applications list have separate access and process public
     styles: {}
   }).expect(201);
   assert.equal(form.body.data.fields.length, 4);
+  assert.equal(form.body.data.fields.every((field) => field.showInSummary === true), true);
 
   const flexibleForm = await builder.post('/api/forms').send({
     name: 'Flexible request',
@@ -209,6 +210,7 @@ test('form builder and applications list have separate access and process public
         active: true,
         system: false,
         systemFieldType: null,
+        showInSummary: true,
         sortOrder: 100,
         validation: {},
         options: [
@@ -227,6 +229,7 @@ test('form builder and applications list have separate access and process public
         active: true,
         system: false,
         systemFieldType: null,
+        showInSummary: false,
         sortOrder: 110,
         validation: {},
         options: [
@@ -238,6 +241,7 @@ test('form builder and applications list have separate access and process public
   };
   const configuredForm = await builder.put(`/api/forms/${form.body.data.id}`).send(formInput).expect(200);
   assert.equal(configuredForm.body.data.fields.some((field) => field.key === 'credit_term'), true);
+  assert.equal(configuredForm.body.data.fields.find((field) => field.key === 'credit_term').showInSummary, true);
   assert.equal(configuredForm.body.data.fields.find((field) => field.key === 'addons').options.length, 2);
 
   const button = await builder.post('/api/forms/buttons').send({
@@ -372,8 +376,17 @@ test('form builder and applications list have separate access and process public
   assert.equal(feed.body.data.items[0].product.imageUrl, 'http://shop.example.com/content/images/phone.webp');
   assert.equal(feed.body.data.items[0].product.imageProxyUrl, `/api/applications/${feed.body.data.items[0].id}/product-image`);
   assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'credit_term').optionLabel, '12 months');
+  assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'credit_term').showInSummary, true);
   assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'addons').optionLabel, 'Screen protection, Extended warranty');
+  assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'addons').showInSummary, false);
   assert.equal(feed.body.data.items[0].assignedManager, null);
+
+  await builder.put(`/api/forms/${form.body.data.id}`).send({
+    ...formInput,
+    fields: formInput.fields.map((field) => field.key === 'addons' ? { ...field, showInSummary: true } : field)
+  }).expect(200);
+  const applicationAfterSummaryUpdate = await manager.get(`/api/applications/${feed.body.data.items[0].id}`).expect(200);
+  assert.equal(applicationAfterSummaryUpdate.body.data.values.find((value) => value.key === 'addons').showInSummary, true);
 
   const formFilters = await manager.get('/api/applications/forms').expect(200);
   const creditFormFilter = formFilters.body.data.find((item) => item.id === form.body.data.id);

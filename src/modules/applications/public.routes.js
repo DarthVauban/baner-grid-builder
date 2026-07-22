@@ -426,8 +426,9 @@ export async function createPublicApplication({
       await client.query(
         `INSERT INTO application_values (
            application_id, field_id, field_key_snapshot, field_label_snapshot,
-           field_type_snapshot, system_field_type, value, option_label_snapshot, sort_order
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           field_type_snapshot, system_field_type, show_in_summary_snapshot,
+           value, option_label_snapshot, sort_order
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           applicationId,
           field.id || null,
@@ -435,6 +436,7 @@ export async function createPublicApplication({
           field.label,
           field.type,
           field.systemFieldType,
+          field.showInSummary === true,
           value,
           findOptionLabel(field, value),
           field.sortOrder || index

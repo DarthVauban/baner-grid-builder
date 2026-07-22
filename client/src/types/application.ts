@@ -33,6 +33,7 @@ export interface ApplicationFormField {
   active: boolean;
   system: boolean;
   systemFieldType: ApplicationSystemFieldType | null;
+  showInSummary: boolean;
   sortOrder: number;
   validation: Record<string, unknown>;
   options: ApplicationFieldOption[];
@@ -90,6 +91,7 @@ export interface ApplicationValue {
   label: string;
   type: string;
   systemFieldType: ApplicationSystemFieldType | null;
+  showInSummary: boolean;
   value: string;
   optionLabel: string;
   sortOrder: number;
