@@ -557,12 +557,12 @@ export const api = {
     backups: () => request<BackupAdminState>('/api/admin/backups'),
     saveBackupSettings: (input: Pick<BackupSettings, 'automaticEnabled' | 'scheduleType' | 'scheduleTime' | 'scheduleWeekday' | 'timezone'>) =>
       request<BackupSettings>('/api/admin/backups/settings', { method: 'PUT', body: jsonBody(input) }),
-    runBackup: () => request<BackupRun>('/api/admin/backups/run', { method: 'POST', timeoutMs: 180_000 }),
+    runBackup: () => request<BackupRun>('/api/admin/backups/run', { method: 'POST', timeoutMs: 900_000 }),
     restoreBackup: (archive: File) => request<BackupRestoreResult>('/api/admin/backups/restore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/gzip', 'X-File-Name': encodeURIComponent(archive.name) },
       body: archive,
-      timeoutMs: 300_000
+      timeoutMs: 900_000
     })
   },
   grids: {
