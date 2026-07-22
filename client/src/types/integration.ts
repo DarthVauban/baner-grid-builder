@@ -1,5 +1,6 @@
 export interface MailtrapIntegration {
   configured: boolean;
+  token: string;
   senderEmail: string;
   senderName: string;
   domain: string;
@@ -19,6 +20,7 @@ export interface MailtrapIntegrationInput {
 
 export interface TelegramIntegration {
   configured: boolean;
+  token: string;
   chatId: string;
   botUsername: string;
   botName: string;

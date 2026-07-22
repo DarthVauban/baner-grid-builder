@@ -39,28 +39,34 @@ function decryptSecret(row) {
   ]).toString('utf8');
 }
 
-function serializeMailtrap(row) {
+function serializeMailtrap(row, { includeToken = false } = {}) {
   const config = row?.public_config || {};
 
-  return {
+  const integration = {
     configured: Boolean(row?.secret_ciphertext),
     senderEmail: config.senderEmail || '',
     senderName: config.senderName || '',
     domain: config.domain || '',
     updatedAt: row?.updated_at || null
   };
+
+  if (includeToken) integration.token = row?.secret_ciphertext ? decryptSecret(row) : '';
+  return integration;
 }
 
-function serializeTelegram(row) {
+function serializeTelegram(row, { includeToken = false } = {}) {
   const config = row?.public_config || {};
 
-  return {
+  const integration = {
     configured: Boolean(row?.secret_ciphertext && config.chatId),
     chatId: config.chatId || '',
     botUsername: config.botUsername || '',
     botName: config.botName || '',
     updatedAt: row?.updated_at || null
   };
+
+  if (includeToken) integration.token = row?.secret_ciphertext ? decryptSecret(row) : '';
+  return integration;
 }
 
 function readableTelegramApiError(description, status) {
@@ -165,7 +171,7 @@ async function validateTelegramDestination(token, bot, chatId, fetchImpl) {
 
 export async function getAdminIntegrations() {
   const result = await query(
-    `SELECT key, public_config, secret_ciphertext, updated_at
+    `SELECT key, public_config, secret_ciphertext, secret_iv, secret_tag, updated_at
      FROM integration_settings
      WHERE key IN ('mailtrap', 'telegram')`
   );
@@ -173,8 +179,8 @@ export async function getAdminIntegrations() {
   const rows = new Map(result.rows.map((row) => [row.key, row]));
 
   return {
-    mailtrap: serializeMailtrap(rows.get('mailtrap')),
-    telegram: serializeTelegram(rows.get('telegram'))
+    mailtrap: serializeMailtrap(rows.get('mailtrap'), { includeToken: true }),
+    telegram: serializeTelegram(rows.get('telegram'), { includeToken: true })
   };
 }
 

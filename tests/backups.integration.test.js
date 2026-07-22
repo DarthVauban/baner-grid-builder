@@ -73,7 +73,8 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
 
   const integrations = await agent.get('/api/admin/integrations').expect(200);
   assert.equal(integrations.body.data.telegram.chatId, '-1001234567890');
-  assert.equal('token' in integrations.body.data.telegram, false);
+  assert.equal(integrations.body.data.telegram.token, '123456:integration-test-token');
+  assert.equal(integrations.headers['cache-control'], 'no-store');
 
   const settings = await agent.put('/api/admin/backups/settings').send({
     automaticEnabled: true,

@@ -174,6 +174,9 @@ test('approval flow and shared banner storage work through REST API', async () =
   );
   assert.equal(storedIntegration.rows[0].public_config.senderEmail, 'hello@mt-panel.sbs');
   assert.notEqual(storedIntegration.rows[0].secret_ciphertext, 'mailtrap_test_token_1234567890');
+  const configuredIntegrations = await admin.get('/api/admin/integrations').expect(200);
+  assert.equal(configuredIntegrations.body.data.mailtrap.token, 'mailtrap_test_token_1234567890');
+  assert.equal(configuredIntegrations.headers['cache-control'], 'no-store');
   await admin.delete(`/api/admin/users/${adminLogin.body.data.id}`).expect(400)
     .expect((response) => assert.equal(response.body.error.code, 'SELF_DELETE'));
   const disposable = await registerAndVerify({

@@ -268,6 +268,7 @@ router.patch('/permissions', adminOnly, asyncHandler(async (req, res) => {
 }));
 
 router.get('/integrations', adminOnly, asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   res.json({ data: await getAdminIntegrations() });
 }));
 

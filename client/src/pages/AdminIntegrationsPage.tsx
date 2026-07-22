@@ -1,8 +1,10 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { useToast } from '../toast/ToastContext';
+
+type ActiveIntegration = 'mailtrap' | 'telegram' | null;
 
 function formatDate(value: string | null | undefined) {
   if (!value) return 'Ще не збережено';
@@ -22,6 +24,7 @@ export function AdminIntegrationsPage() {
   const mailtrap = integrations.data?.mailtrap;
   const telegram = integrations.data?.telegram;
 
+  const [activeIntegration, setActiveIntegration] = useState<ActiveIntegration>(null);
   const [senderEmail, setSenderEmail] = useState('');
   const [senderName, setSenderName] = useState('MT Panel');
   const [mailtrapToken, setMailtrapToken] = useState('');
@@ -32,16 +35,27 @@ export function AdminIntegrationsPage() {
   const [mailtrapError, setMailtrapError] = useState('');
   const [telegramError, setTelegramError] = useState('');
 
-  useEffect(() => {
-    if (!mailtrap) return;
-    setSenderEmail(mailtrap.senderEmail);
-    setSenderName(mailtrap.senderName || 'MT Panel');
-  }, [mailtrap]);
+  function openMailtrap() {
+    setSenderEmail(mailtrap?.senderEmail || '');
+    setSenderName(mailtrap?.senderName || 'MT Panel');
+    setMailtrapToken(mailtrap?.token || '');
+    setMailtrapTokenVisible(false);
+    setMailtrapError('');
+    setActiveIntegration('mailtrap');
+  }
 
-  useEffect(() => {
-    if (!telegram) return;
-    setChatId(telegram.chatId);
-  }, [telegram]);
+  function openTelegram() {
+    setChatId(telegram?.chatId || '');
+    setTelegramToken(telegram?.token || '');
+    setTelegramTokenVisible(false);
+    setTelegramError('');
+    setActiveIntegration('telegram');
+  }
+
+  function closeModal() {
+    if (saveMailtrap.isPending || saveTelegram.isPending) return;
+    setActiveIntegration(null);
+  }
 
   async function submitMailtrap(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,9 +66,9 @@ export function AdminIntegrationsPage() {
         senderName: senderName.trim(),
         token: mailtrapToken.trim()
       });
-      setMailtrapToken('');
-      showToast('Інтеграцію Mailtrap збережено.');
       await queryClient.invalidateQueries({ queryKey: ['admin-integrations'] });
+      showToast('Інтеграцію Mailtrap збережено.');
+      setActiveIntegration(null);
     } catch (caught) {
       setMailtrapError(caught instanceof Error ? caught.message : 'Не вдалося зберегти Mailtrap.');
     }
@@ -65,9 +79,9 @@ export function AdminIntegrationsPage() {
     setTelegramError('');
     try {
       await saveTelegram.mutateAsync({ chatId: chatId.trim(), token: telegramToken.trim() });
-      setTelegramToken('');
-      showToast('Telegram-бота підключено й перевірено.');
       await queryClient.invalidateQueries({ queryKey: ['admin-integrations'] });
+      showToast('Telegram-бота підключено й перевірено.');
+      setActiveIntegration(null);
     } catch (caught) {
       setTelegramError(caught instanceof Error ? caught.message : 'Не вдалося підключити Telegram.');
     }
@@ -82,85 +96,115 @@ export function AdminIntegrationsPage() {
           <p className="eyebrow">Панель керування</p>
           <h1>Інтеграції</h1>
         </div>
-        <p>Підключення поштового сервісу та Telegram-бота для службових повідомлень робочого простору.</p>
+        <p>Підключення зовнішніх сервісів для службових повідомлень і резервних копій робочого простору.</p>
       </header>
 
       {integrations.isLoading && <div className="admin-list-state">Завантажуємо інтеграції...</div>}
       {loadingError && <div className="admin-list-state admin-list-state--error">{loadingError}</div>}
 
       {!integrations.isLoading && !loadingError && <div className="integration-grid">
-        <section className="admin-section integration-card">
-          <header className="integration-card__header">
-            <span className="integration-card__icon"><Icon name="integrations" size={20} /></span>
-            <div>
-              <p className="eyebrow">Email</p>
-              <h2>Mailtrap</h2>
-              <p>Коди підтвердження та сервісні листи робочого простору.</p>
+        <button
+          className="integration-tile"
+          type="button"
+          onClick={openMailtrap}
+          aria-haspopup="dialog"
+          aria-label={`Відкрити налаштування Mailtrap. ${mailtrap?.configured ? 'Підключено' : 'Не налаштовано'}`}
+        >
+          <span className="integration-tile__icon"><Icon name="integrations" size={24} /></span>
+          <strong>Mailtrap</strong>
+        </button>
+
+        <button
+          className="integration-tile"
+          type="button"
+          onClick={openTelegram}
+          aria-haspopup="dialog"
+          aria-label={`Відкрити налаштування Telegram. ${telegram?.configured ? 'Підключено' : 'Не налаштовано'}`}
+        >
+          <span className="integration-tile__icon integration-tile__icon--telegram"><Icon name="send" size={24} /></span>
+          <strong>Telegram</strong>
+        </button>
+      </div>}
+
+      {activeIntegration === 'mailtrap' && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeModal()}>
+        <section className="modal integration-modal" role="dialog" aria-modal="true" aria-labelledby="mailtrap-integration-title">
+          <header className="modal__header integration-modal__header">
+            <div className="integration-modal__title">
+              <span className="integration-card__icon"><Icon name="integrations" size={20} /></span>
+              <div><p className="eyebrow">Email</p><h2 id="mailtrap-integration-title">Mailtrap</h2></div>
             </div>
-            <span className={mailtrap?.configured ? 'integration-status integration-status--ready' : 'integration-status'}>
-              {mailtrap?.configured ? 'Підключено' : 'Не налаштовано'}
-            </span>
+            <div className="integration-modal__header-actions">
+              <span className={mailtrap?.configured ? 'integration-status integration-status--ready' : 'integration-status'}>
+                {mailtrap?.configured ? 'Підключено' : 'Не налаштовано'}
+              </span>
+              <button className="icon-button" type="button" onClick={closeModal} aria-label="Закрити"><Icon name="close" size={20} /></button>
+            </div>
           </header>
 
-          <form className="integration-form integration-form--compact" onSubmit={submitMailtrap}>
+          <form className="integration-form integration-modal__form" onSubmit={submitMailtrap}>
             {mailtrapError && <div className="form-message form-message--error integration-form__wide" role="alert">{mailtrapError}</div>}
             <label className="field">
               <span>Email відправника</span>
-              <input type="email" value={senderEmail} onChange={(event) => setSenderEmail(event.target.value)} autoComplete="off" placeholder="hello@mt-panel.sbs" required />
+              <input type="email" value={senderEmail} onChange={(event) => setSenderEmail(event.target.value)} autoComplete="off" placeholder="hello@mt-panel.sbs" required autoFocus />
             </label>
             <label className="field">
               <span>Назва відправника</span>
               <input value={senderName} onChange={(event) => setSenderName(event.target.value)} maxLength={120} placeholder="MT Panel" required />
             </label>
             <label className="field integration-form__wide">
-              <span>{mailtrap?.configured ? 'Новий API token (необов’язково)' : 'Mailtrap API token'}</span>
+              <span>Mailtrap API token</span>
               <span className="password-field__control">
-                <input type={mailtrapTokenVisible ? 'text' : 'password'} value={mailtrapToken} onChange={(event) => setMailtrapToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder={mailtrap?.configured ? 'Залиште порожнім, щоб не змінювати' : 'Вставте токен Mailtrap'} />
-                <button type="button" onClick={() => setMailtrapTokenVisible((value) => !value)} aria-label="Показати або сховати токен"><Icon name={mailtrapTokenVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
+                <input type={mailtrapTokenVisible ? 'text' : 'password'} value={mailtrapToken} onChange={(event) => setMailtrapToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Вставте токен Mailtrap" required />
+                <button type="button" onClick={() => setMailtrapTokenVisible((value) => !value)} aria-label={mailtrapTokenVisible ? 'Сховати Mailtrap API token' : 'Показати Mailtrap API token'}><Icon name={mailtrapTokenVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
               </span>
             </label>
-            <div className="integration-card__footer integration-form__wide">
+            <footer className="modal__footer integration-modal__footer integration-form__wide">
               <small>{mailtrap?.updatedAt ? `Оновлено ${formatDate(mailtrap.updatedAt)}` : 'Ще не збережено'}</small>
-              <button className="button button--primary button--compact" type="submit" disabled={!senderEmail.trim() || !senderName.trim() || (!mailtrapToken.trim() && !mailtrap?.configured) || saveMailtrap.isPending}>
+              <button className="button button--secondary" type="button" onClick={closeModal}>Скасувати</button>
+              <button className="button button--primary" type="submit" disabled={!senderEmail.trim() || !senderName.trim() || !mailtrapToken.trim() || saveMailtrap.isPending}>
                 <Icon name="save" size={17} />{saveMailtrap.isPending ? 'Зберігаємо...' : 'Зберегти'}
               </button>
-            </div>
+            </footer>
           </form>
         </section>
+      </div>}
 
-        <section className="admin-section integration-card integration-card--telegram">
-          <header className="integration-card__header">
-            <span className="integration-card__icon integration-card__icon--telegram"><Icon name="send" size={20} /></span>
-            <div>
-              <p className="eyebrow">Службовий канал</p>
-              <h2>Telegram</h2>
-              <p>Бот надсилатиме резервні копії у вибраний особистий чат, групу або канал.</p>
+      {activeIntegration === 'telegram' && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeModal()}>
+        <section className="modal integration-modal" role="dialog" aria-modal="true" aria-labelledby="telegram-integration-title">
+          <header className="modal__header integration-modal__header">
+            <div className="integration-modal__title">
+              <span className="integration-card__icon integration-card__icon--telegram"><Icon name="send" size={20} /></span>
+              <div><p className="eyebrow">Службовий канал</p><h2 id="telegram-integration-title">Telegram</h2></div>
             </div>
-            <span className={telegram?.configured ? 'integration-status integration-status--ready' : 'integration-status'}>
-              {telegram?.configured ? 'Підключено' : 'Не налаштовано'}
-            </span>
+            <div className="integration-modal__header-actions">
+              <span className={telegram?.configured ? 'integration-status integration-status--ready' : 'integration-status'}>
+                {telegram?.configured ? 'Підключено' : 'Не налаштовано'}
+              </span>
+              <button className="icon-button" type="button" onClick={closeModal} aria-label="Закрити"><Icon name="close" size={20} /></button>
+            </div>
           </header>
 
-          <form className="integration-form integration-form--compact" onSubmit={submitTelegram}>
+          <form className="integration-form integration-modal__form" onSubmit={submitTelegram}>
             {telegramError && <div className="form-message form-message--error integration-form__wide" role="alert">{telegramError}</div>}
             <label className="field">
               <span>ID чату або @канал</span>
-              <input value={chatId} onChange={(event) => setChatId(event.target.value)} autoComplete="off" placeholder="-1001234567890" required />
+              <input value={chatId} onChange={(event) => setChatId(event.target.value)} autoComplete="off" placeholder="-1001234567890" required autoFocus />
               <small className="integration-field-hint">Не ID бота. Для закритого каналу використовуйте числовий ID у форматі -100…</small>
             </label>
             <label className="field">
-              <span>{telegram?.configured ? 'Новий bot token (необов’язково)' : 'Bot token'}</span>
+              <span>Bot token</span>
               <span className="password-field__control">
-                <input type={telegramTokenVisible ? 'text' : 'password'} value={telegramToken} onChange={(event) => setTelegramToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder={telegram?.configured ? 'Залиште порожнім, щоб не змінювати' : 'Токен від @BotFather'} />
-                <button type="button" onClick={() => setTelegramTokenVisible((value) => !value)} aria-label="Показати або сховати токен"><Icon name={telegramTokenVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
+                <input type={telegramTokenVisible ? 'text' : 'password'} value={telegramToken} onChange={(event) => setTelegramToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Токен від @BotFather" required />
+                <button type="button" onClick={() => setTelegramTokenVisible((value) => !value)} aria-label={telegramTokenVisible ? 'Сховати Telegram bot token' : 'Показати Telegram bot token'}><Icon name={telegramTokenVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
               </span>
             </label>
-            <div className="integration-card__footer integration-form__wide">
+            <footer className="modal__footer integration-modal__footer integration-form__wide">
               <small>{telegram?.botUsername ? `Підключено @${telegram.botUsername} · ${formatDate(telegram.updatedAt)}` : 'Під час збереження бот і чат будуть перевірені'}</small>
-              <button className="button button--primary button--compact" type="submit" disabled={!chatId.trim() || (!telegramToken.trim() && !telegram?.configured) || saveTelegram.isPending}>
+              <button className="button button--secondary" type="button" onClick={closeModal}>Скасувати</button>
+              <button className="button button--primary" type="submit" disabled={!chatId.trim() || !telegramToken.trim() || saveTelegram.isPending}>
                 <Icon name="save" size={17} />{saveTelegram.isPending ? 'Перевіряємо...' : telegram?.configured ? 'Зберегти' : 'Підключити'}
               </button>
-            </div>
+            </footer>
           </form>
         </section>
       </div>}
