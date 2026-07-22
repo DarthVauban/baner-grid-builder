@@ -207,10 +207,16 @@ export function AppShell() {
                 <span>Користувачі</span>
               </NavLink>
               {user.role === 'admin' && (
-                <NavLink aria-label="Інтеграції" title="Інтеграції" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/integrations" onClick={closeSidebar}>
-                  <Icon name="integrations" />
-                  <span>Інтеграції</span>
-                </NavLink>
+                <>
+                  <NavLink aria-label="Інтеграції" title="Інтеграції" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/integrations" onClick={closeSidebar}>
+                    <Icon name="integrations" />
+                    <span>Інтеграції</span>
+                  </NavLink>
+                  <NavLink aria-label="Резервні копії" title="Резервні копії" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/backups" onClick={closeSidebar}>
+                    <Icon name="backup" />
+                    <span>Резервні копії</span>
+                  </NavLink>
+                </>
               )}
             </>
           )}

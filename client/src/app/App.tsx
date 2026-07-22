@@ -10,6 +10,7 @@ import { RegisterPage } from '../pages/RegisterPage';
 import { TasksPage } from '../pages/TasksPage';
 import { AdminUsersPage } from '../pages/AdminUsersPage';
 import { AdminIntegrationsPage } from '../pages/AdminIntegrationsPage';
+import { AdminBackupsPage } from '../pages/AdminBackupsPage';
 import { BannerWorkspaceProvider } from '../workspace/BannerWorkspaceContext';
 import { BannerBuilderPage } from '../pages/BannerBuilderPage';
 import { ProductSelectionPage } from '../pages/ProductSelectionPage';
@@ -157,6 +158,7 @@ export function App() {
           </Route>
           <Route element={<AdminOnlyRoute />}>
             <Route path="admin/integrations" element={<AdminIntegrationsPage />} />
+            <Route path="admin/backups" element={<AdminBackupsPage />} />
           </Route>
         </Route>
       </Route>
