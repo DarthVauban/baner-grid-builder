@@ -187,15 +187,15 @@ export function AppShell() {
         <nav className="sidebar__nav">
           <p className="sidebar__label">Простір</p>
           <NavLink aria-label="Огляд" title="Огляд" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/" end onClick={closeSidebar}>
-            <Icon name="home" />
+            <Icon name="home" size={18} />
             <span>Огляд</span>
           </NavLink>
           <NavLink aria-label="Справи" title="Справи" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tasks" onClick={closeSidebar}>
-            <Icon name="tasks" />
+            <Icon name="tasks" size={18} />
             <span>Справи</span>
           </NavLink>
           {hasChatAccess && <NavLink aria-label="Чат" title="Чат" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/chat" onClick={closeSidebar}>
-            <Icon name="chat" />
+            <Icon name="chat" size={18} />
             <span>Чат</span>
             {(chatUnread.data || 0) > 0 && <span className="sidebar__count">{(chatUnread.data || 0) > 99 ? '99+' : chatUnread.data}</span>}
           </NavLink>}
@@ -203,17 +203,17 @@ export function AppShell() {
             <>
               <p className="sidebar__label sidebar__label--spaced">Панель керування</p>
               <NavLink aria-label="Користувачі" title="Користувачі" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/users" onClick={closeSidebar}>
-                <Icon name="users" />
+                <Icon name="users" size={18} />
                 <span>Користувачі</span>
               </NavLink>
               {user.role === 'admin' && (
                 <>
                   <NavLink aria-label="Інтеграції" title="Інтеграції" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/integrations" onClick={closeSidebar}>
-                    <Icon name="integrations" />
+                    <Icon name="integrations" size={18} />
                     <span>Інтеграції</span>
                   </NavLink>
                   <NavLink aria-label="Резервні копії" title="Резервні копії" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/backups" onClick={closeSidebar}>
-                    <Icon name="backup" />
+                    <Icon name="backup" size={18} />
                     <span>Резервні копії</span>
                   </NavLink>
                 </>
@@ -223,11 +223,11 @@ export function AppShell() {
 
           <p className="sidebar__label sidebar__label--spaced">Інструменти</p>
           <NavLink aria-label="Інструменти" title="Інструменти" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools" onClick={closeSidebar}>
-            <Icon name="tools" />
+            <Icon name="tools" size={18} />
             <span>Інструменти</span>
           </NavLink>
           {hasCatalogAccess && <NavLink aria-label="Каталог смартфонів" title="Каталог смартфонів" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/catalog/products" onClick={closeSidebar}>
-            <Icon name="catalog" />
+            <Icon name="catalog" size={18} />
             <span>Каталог смартфонів</span>
           </NavLink>}
         </nav>
@@ -238,7 +238,7 @@ export function AppShell() {
             <span className="sidebar__profile-copy"><strong>{user.name}</strong><small>{roleLabels[user.role]}</small></span>
           </Link>
           <button className="icon-button" type="button" onClick={() => void logout()} aria-label="Вийти">
-            <Icon name="logout" />
+            <Icon name="logout" size={18} />
           </button>
         </div>
       </aside>
