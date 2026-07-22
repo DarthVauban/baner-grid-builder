@@ -130,7 +130,7 @@ export function parseCatalogAdminFilters(params: URLSearchParams): CatalogAdminF
     updatedTo: params.get('updatedTo') || '',
     productList: params.get('productList') || '',
     characteristics: characteristicFilters(params.get('characteristics')),
-    sort: enumValue(params.get('sort'), ['updated_desc', 'name_asc', 'price_asc', 'price_desc', 'stock_asc', 'stock_desc'] as const, 'updated_desc'),
+    sort: enumValue(params.get('sort'), ['popularity', 'updated_desc', 'name_asc', 'price_asc', 'price_desc', 'stock_asc', 'stock_desc'] as const, 'updated_desc'),
     page: Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1
   };
 }

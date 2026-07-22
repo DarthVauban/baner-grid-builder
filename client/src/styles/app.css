@@ -1844,7 +1844,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .catalog-bulk-bar__summary strong { color: var(--ink); font-size: 13px; }
 .catalog-bulk-bar__actions .custom-select { width: 168px; }
 .catalog-bulk-bar__actions .custom-select__button { min-height: 34px; border-radius: 10px; font-size: 11px; }
-.catalog-table__head, .catalog-row { display: grid; grid-template-columns: 28px minmax(240px,1.35fr) 100px 86px 86px 140px 108px minmax(268px,.85fr); align-items: center; gap: 8px; }
+.catalog-table__head, .catalog-row { display: grid; grid-template-columns: 28px minmax(240px,1.35fr) 100px 86px 86px 86px 140px 108px minmax(268px,.85fr); align-items: center; gap: 8px; }
 .catalog-table__head { border: 1px solid var(--line); border-radius: 14px; padding: 11px 14px; color: #8a94a6; background: var(--surface-soft); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .catalog-row { min-height: 86px; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--surface); box-shadow: 0 8px 22px rgba(22,30,50,.04); }
 .catalog-row-group { display: grid; gap: 8px; }
@@ -2686,10 +2686,10 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
   .catalog-filters { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .catalog-filters .field { grid-column: 1 / -1; }
   .catalog-table__head { display: none; }
-  .catalog-row { grid-template-columns: 28px minmax(260px,1fr) repeat(3,minmax(82px,96px)) minmax(150px,.62fr); align-items: end; gap: 10px; }
+  .catalog-row { grid-template-columns: 28px minmax(260px,1fr) repeat(4,minmax(82px,96px)) minmax(150px,.62fr); align-items: end; gap: 10px; }
   .catalog-row__select { align-self: center; }
   .catalog-row__product { align-self: center; }
-  .catalog-row__status { grid-column: 6; }
+  .catalog-row__status { grid-column: 7; }
   .catalog-availability { grid-column: 2; width: fit-content; align-self: center; }
   .catalog-row__actions { grid-column: 3 / -1; justify-content: flex-start; align-self: center; }
 }

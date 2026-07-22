@@ -89,7 +89,7 @@ const listSchema = z.object({
   updatedTo: z.string().trim().pipe(z.iso.date()).optional(),
   productList: z.string().max(40000).default(''),
   characteristics: z.string().trim().max(12000).default(''),
-  sort: z.enum(['updated_desc', 'name_asc', 'price_asc', 'price_desc', 'stock_asc', 'stock_desc']).default('updated_desc'),
+  sort: z.enum(['popularity', 'updated_desc', 'name_asc', 'price_asc', 'price_desc', 'stock_asc', 'stock_desc']).default('updated_desc'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(10).max(100).default(25)
 });
@@ -103,6 +103,7 @@ const productInputSchema = z.object({
   stockCount: z.coerce.number().int().min(0).default(0),
   incomingCount: z.coerce.number().int().min(0).default(0),
   priceUah: z.coerce.number().min(0).max(99999999).default(0),
+  popularityPosition: z.coerce.number().int().min(0).max(1000000).default(0),
   publicationStatus: z.enum(publicationStatuses).default('DRAFT'),
   slug: z.string().trim().max(260).default(''),
   brandId: z.string().uuid().nullable().optional(),
@@ -501,6 +502,7 @@ const mediaPatchSchema = z.object({
 });
 
 const sortSql = {
+  popularity: 'CASE WHEN product.popularity_position > 0 THEN 0 ELSE 1 END ASC, product.popularity_position ASC, product.updated_at DESC, lower(product.name) ASC',
   updated_desc: 'product.updated_at DESC',
   name_asc: 'lower(product.name) ASC, product.created_at DESC',
   price_asc: 'product.price_uah ASC, lower(product.name) ASC',
@@ -1992,7 +1994,7 @@ router.get('/preview/products', asyncHandler(async (req, res) => {
     priceMin: req.query.priceMin || undefined,
     priceMax: req.query.priceMax || undefined,
     characteristics: String(req.query.characteristics || ''),
-    sort: req.query.sort || 'updated_desc',
+    sort: req.query.sort || 'popularity',
     page: req.query.page || 1,
     pageSize: req.query.pageSize || 25
   });
@@ -2468,18 +2470,19 @@ router.post('/products', asyncHandler(async (req, res) => {
          description_has_js, description_source_updated_at, description_source_updated_by,
          seo_title, seo_description, social_description,
          body_condition, display_condition, battery_health, warranty, included_accessories,
-         diagnostics, internal_notes, imei_serial, created_by, updated_by
+         diagnostics, internal_notes, imei_serial, popularity_position, created_by, updated_by
        ) VALUES (
          $29, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::JSONB,
          $12, $13, $14, $15, $16, $17, NOW(), $28,
          $18, $19, $20, $21, $22, $23, $24, $25,
-         $26::JSONB, $27, $30, $28, $28
+         $26::JSONB, $27, $30, $31, $28, $28
        )
        RETURNING id`,
       [
         ...productParams(input, normalizedName, slug, req.user.id, descriptionContent),
         productCode,
-        normalizeCatalogSerial(input.diagnostics.privateSerial)
+        normalizeCatalogSerial(input.diagnostics.privateSerial),
+        input.popularityPosition
       ]
     );
     await syncProductMedia(client, created.rows[0].id, input, req.user.id);
@@ -2487,7 +2490,7 @@ router.post('/products', asyncHandler(async (req, res) => {
       productId: created.rows[0].id,
       actorId: req.user.id,
       action: 'create',
-      changes: { name: input.name, condition: input.condition, publicationStatus: input.publicationStatus }
+      changes: { name: input.name, condition: input.condition, publicationStatus: input.publicationStatus, popularityPosition: input.popularityPosition }
     });
     if (input.description) {
       await logCatalogAudit(client, {
@@ -2565,6 +2568,7 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
            diagnostics = $26::JSONB,
            internal_notes = $27,
            imei_serial = $31,
+           popularity_position = $32,
            updated_by = $28,
            updated_at = NOW(),
            version = version + 1
@@ -2573,7 +2577,8 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
         ...productParams(input, normalizedName, slug, req.user.id, descriptionContent),
         descriptionContent.sourceChanged,
         id,
-        normalizeCatalogSerial(input.diagnostics.privateSerial)
+        normalizeCatalogSerial(input.diagnostics.privateSerial),
+        input.popularityPosition
       ]
     );
     await syncProductMedia(client, id, input, req.user.id);
@@ -2581,7 +2586,12 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
       productId: id,
       actorId: req.user.id,
       action: 'update',
-      changes: { previousStatus, publicationStatus: input.publicationStatus }
+      changes: {
+        previousStatus,
+        publicationStatus: input.publicationStatus,
+        previousPopularityPosition: Number(current.popularity_position || 0),
+        popularityPosition: input.popularityPosition
+      }
     });
     if (descriptionContent.sourceChanged) {
       await logCatalogAudit(client, {

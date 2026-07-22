@@ -695,6 +695,7 @@ export function serializeCatalogProduct(row) {
     availability,
     priceUah: Number(row.price_uah || 0),
     priceLabel: formatMoney(row.price_uah),
+    popularityPosition: Number(row.popularity_position || 0),
     publicationStatus: row.publication_status,
     publicationStatusLabel: publicationStatusLabels[row.publication_status] || row.publication_status,
     slug: row.slug,

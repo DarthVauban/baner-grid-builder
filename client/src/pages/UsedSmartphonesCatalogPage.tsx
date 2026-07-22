@@ -56,6 +56,7 @@ const availabilityFilterOptions: Array<{ value: CatalogAvailabilityStatus | 'all
   { value: 'unavailable', label: 'Немає' }
 ];
 const sortOptions = [
+  { value: 'popularity', label: 'За популярністю' },
   { value: 'updated_desc', label: 'Оновлені спочатку' },
   { value: 'name_asc', label: 'Назва А-Я' },
   { value: 'price_asc', label: 'Ціна зростає' },
@@ -1026,8 +1027,10 @@ function ProductEditorScreen({
           <header><h2>Ціна і наявність</h2><span>{availabilityLabel}</span></header>
           <div className="catalog-editor-grid">
             <label className="field"><span>Ціна, грн</span><input type="number" min={0} step="0.01" value={draft.priceUah} onChange={(event) => setField('priceUah', Number(event.target.value || 0))} /></label>
+            <label className="field"><span>Позиція популярності</span><input type="number" min={0} max={1000000} step={1} value={draft.popularityPosition} onChange={(event) => setField('popularityPosition', Number(event.target.value || 0))} title="Менше число — вище товар. 0 — без ручного пріоритету." /></label>
             <label className="field"><span>Залишок</span><input type="number" min={0} step={1} value={draft.stockCount} onChange={(event) => setField('stockCount', Number(event.target.value || 0))} /></label>
             <label className="field"><span>В дорозі</span><input type="number" min={0} step={1} value={draft.incomingCount} onChange={(event) => setField('incomingCount', Number(event.target.value || 0))} /></label>
+            <p className="catalog-editor-muted catalog-editor-grid__wide">Менше додатне число підіймає товар вище на вітрині. Значення 0 залишає товар без ручного пріоритету.</p>
           </div>
         </section>}
 
@@ -1284,6 +1287,7 @@ function CatalogRow({
       </button>
     </div>
     <label className="field"><span>Ціна</span><input type="number" min={0} step="0.01" value={draft.priceUah} onChange={(event) => setField('priceUah', Number(event.target.value || 0))} /></label>
+    <label className="field"><span>Позиція</span><input type="number" min={0} max={1000000} step={1} value={draft.popularityPosition} onChange={(event) => setField('popularityPosition', Number(event.target.value || 0))} title="Менше число — вище товар. 0 — без ручного пріоритету." /></label>
     <label className="field"><span>Залишок</span><input type="number" min={0} step={1} value={draft.stockCount} onChange={(event) => setField('stockCount', Number(event.target.value || 0))} /></label>
     <label className="field"><span>В дорозі</span><input type="number" min={0} step={1} value={draft.incomingCount} onChange={(event) => setField('incomingCount', Number(event.target.value || 0))} /></label>
     <div className="catalog-row__status"><StyledSelect value={draft.publicationStatus} options={catalogPublicationStatusOptions} onChange={(value) => setField('publicationStatus', value as CatalogPublicationStatus)} compact /></div>
@@ -2110,7 +2114,7 @@ export function UsedSmartphonesCatalogPage() {
         <label className="catalog-row__select catalog-row__select--head">
           <input type="checkbox" checked={allVisibleSelected} disabled={!visibleRows.length} onChange={(event) => selectVisibleProducts(event.target.checked)} aria-label="Обрати всі видимі товари" />
         </label>
-        <span>Товар</span><span>Ціна</span><span>Залишок</span><span>В дорозі</span><span>Статус</span><span>Наявність</span><span>Дії</span>
+        <span>Товар</span><span>Ціна</span><span>Позиція</span><span>Залишок</span><span>В дорозі</span><span>Статус</span><span>Наявність</span><span>Дії</span>
       </div>
       {topRows.map((product) => {
         const groupId = product.modificationGroup?.groupId || '';

@@ -158,6 +158,7 @@ const product: CatalogProduct = {
   availability: { status: 'in_stock', label: 'В наявності' },
   priceUah: 19999,
   priceLabel: '19 999 ₴',
+  popularityPosition: 1,
   publicationStatus: 'PUBLISHED',
   publicationStatusLabel: 'Опубліковано',
   slug: 'iphone-13-midnight',

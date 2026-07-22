@@ -278,7 +278,7 @@ export function CatalogThemePreview({
             <label className="field"><span>Пошук</span><input readOnly placeholder={storefrontTheme.controls.searchPlaceholder} /></label>
             <div className="storefront-controls__actions">
               {storefrontTheme.filters.visible && <button className="storefront-mobile-filter-trigger" type="button"><Icon name="characteristics" size={19} /> Фільтри</button>}
-              <button className="custom-select__button catalog-theme-preview__sort" type="button">Нові оновлення</button>
+              <button className="custom-select__button catalog-theme-preview__sort" type="button">За популярністю</button>
             </div>
           </div>
           <div className="storefront-catalog__layout">

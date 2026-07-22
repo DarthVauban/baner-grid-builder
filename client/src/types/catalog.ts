@@ -186,6 +186,7 @@ export interface CatalogProduct {
   incomingCount: number;
   availability: CatalogAvailability;
   priceUah: number;
+  popularityPosition: number;
   priceLabel: string;
   publicationStatus: CatalogPublicationStatus;
   publicationStatusLabel: string;
@@ -249,6 +250,7 @@ export interface CatalogProductInput {
   stockCount: number;
   incomingCount: number;
   priceUah: number;
+  popularityPosition: number;
   publicationStatus: CatalogPublicationStatus;
   slug: string;
   brandId: string | null;

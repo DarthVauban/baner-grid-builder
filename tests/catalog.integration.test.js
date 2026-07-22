@@ -113,6 +113,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     stockCount: 1,
     incomingCount: 0,
     priceUah: 18999,
+    popularityPosition: 2,
     publicationStatus: 'DRAFT',
     slug: '',
     brandId: appleBrand.id,
@@ -133,6 +134,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   }).expect(201);
   assert.equal(created.body.data.productCode, 'SM-000001');
   assert.equal(created.body.data.publicationStatus, 'DRAFT');
+  assert.equal(created.body.data.popularityPosition, 2);
   assert.equal(created.body.data.brand.directoryId, brandDirectory.body.data.id);
   assert.equal(created.body.data.brand.logoUrl, media.body.data.url);
 
@@ -262,6 +264,7 @@ test('catalog products publish to storefront, import stock updates, and create a
     stockCount: 1,
     incomingCount: 0,
     priceUah: 20999,
+    popularityPosition: 1,
     publicationStatus: 'DRAFT',
     slug: '',
     brandId: null,
@@ -333,9 +336,15 @@ test('catalog products publish to storefront, import stock updates, and create a
   const publicGroupedList = await request(app).get('/api/storefront/products?search=iPhone').expect(200);
   assert.equal(publicGroupedList.body.data.total, 2);
   assert.deepEqual(
-    publicGroupedList.body.data.items.map((item) => item.productCode).sort(),
-    ['SM-000001', 'SM-000002']
+    publicGroupedList.body.data.items.map((item) => item.productCode),
+    ['SM-000002', 'SM-000001']
   );
+  const adminPopularityList = await admin.get('/api/catalog/products?search=iPhone&sort=popularity').expect(200);
+  assert.deepEqual(
+    adminPopularityList.body.data.items.map((item) => item.productCode),
+    ['SM-000002', 'SM-000001']
+  );
+  await request(app).get('/api/storefront/products?sort=updated_desc').expect(422);
 
   const storefrontFilters = await request(app)
     .get(`/api/storefront/products?brandId=${appleBrand.id}&priceMin=18000&priceMax=19000&characteristics=${encodeURIComponent(JSON.stringify({ storage: ['128'] }))}`)
@@ -586,6 +595,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(productAfterImport.body.data.incomingCount, 2);
   assert.equal(productAfterImport.body.data.priceUah, 17500);
   assert.equal(productAfterImport.body.data.publicationStatus, 'PUBLISHED');
+  assert.equal(productAfterImport.body.data.popularityPosition, 2);
 
   const importHeaders = Object.fromEntries(
     refreshedSmartphoneImportTemplate.fields.map((field) => [field.key, field.header])

@@ -34,7 +34,7 @@ const listSchema = z.object({
   priceMin: z.coerce.number().min(0).optional(),
   priceMax: z.coerce.number().min(0).optional(),
   characteristics: z.string().trim().max(12000).default(''),
-  sort: z.enum(['updated_desc', 'name_asc', 'price_asc', 'price_desc']).default('updated_desc'),
+  sort: z.enum(['popularity', 'name_asc', 'price_asc', 'price_desc']).default('popularity'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(6).max(48).default(24)
 });
@@ -55,7 +55,7 @@ const submitLimiter = rateLimit({
 });
 
 const sortSql = {
-  updated_desc: 'product.updated_at DESC',
+  popularity: 'CASE WHEN product.popularity_position > 0 THEN 0 ELSE 1 END ASC, product.popularity_position ASC, product.updated_at DESC, lower(product.name) ASC',
   name_asc: 'lower(product.name) ASC',
   price_asc: 'product.price_uah ASC, lower(product.name) ASC',
   price_desc: 'product.price_uah DESC, lower(product.name) ASC'
@@ -147,7 +147,7 @@ router.get('/products', asyncHandler(async (req, res) => {
     priceMin: req.query.priceMin || undefined,
     priceMax: req.query.priceMax || undefined,
     characteristics: String(req.query.characteristics || ''),
-    sort: req.query.sort || 'updated_desc',
+    sort: req.query.sort || 'popularity',
     page: req.query.page || 1,
     pageSize: req.query.pageSize || 24
   });

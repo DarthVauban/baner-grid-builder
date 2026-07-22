@@ -38,7 +38,7 @@ type PublicField = PublicForm['fields'][number];
 type StorefrontGalleryImage = { url: string; alt: string };
 
 const sortOptions = [
-  { value: 'updated_desc', label: 'Нові оновлення' },
+  { value: 'popularity', label: 'За популярністю' },
   { value: 'name_asc', label: 'Назва А-Я' },
   { value: 'price_asc', label: 'Дешевші спочатку' },
   { value: 'price_desc', label: 'Дорожчі спочатку' }
@@ -1130,7 +1130,7 @@ export function StorefrontPage({ preview = false, rootMounted = false }: { previ
   const [priceDraft, setPriceDraft] = useState({ min: '', max: '' });
   const [priceFilter, setPriceFilter] = useState({ min: '', max: '' });
   const [characteristicFilters, setCharacteristicFilters] = useState<Record<string, string[]>>({});
-  const [sort, setSort] = useState('updated_desc');
+  const [sort, setSort] = useState('popularity');
   const [requestProduct, setRequestProduct] = useState<CatalogProduct | null>(null);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const mobileFilterTriggerRef = useRef<HTMLButtonElement>(null);
