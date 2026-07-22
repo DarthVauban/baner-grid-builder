@@ -25,6 +25,13 @@ function renderCatalog() {
 describe('CatalogWorkspacePage', () => {
   beforeEach(() => localStorage.removeItem('mt-catalog-sidebar-collapsed'));
 
+  it('keeps history in the sidebar without separate import and preview entries', () => {
+    renderCatalog();
+    expect(screen.getByRole('link', { name: 'Історія змін' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Імпорт XLSX' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Preview магазину' })).not.toBeInTheDocument();
+  });
+
   it('switches to compact navigation and remembers the preference', async () => {
     const user = userEvent.setup();
     const firstRender = renderCatalog();

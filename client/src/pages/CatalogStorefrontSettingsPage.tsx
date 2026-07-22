@@ -72,6 +72,7 @@ export function CatalogStorefrontSettingsPage() {
   const currentSnapshot = useMemo(() => JSON.stringify({ theme, formId, origin }), [formId, origin, theme]);
   const hasUnsavedChanges = Boolean(savedSnapshot && currentSnapshot !== savedSnapshot);
   const cardTheme = settings.data?.productCardTheme || defaultProductCardTheme;
+  const savedPublicOrigin = settings.data?.publicOrigin?.trim() || '';
   const publishedForms = (forms.data || []).filter((form) => form.status === 'published');
 
   function updateTheme<K extends keyof CatalogStorefrontTheme>(section: K, value: CatalogStorefrontTheme[K]) {
@@ -154,7 +155,19 @@ export function CatalogStorefrontSettingsPage() {
       <div className="catalog-theme-builder__controls">
         <ThemeSection title="Підключення" description="Форма замовлення та адреса окремої публічної вітрини.">
           <label className="field catalog-theme-control--wide"><span>Форма заявок</span><StyledSelect value={formId} options={[{ value: '', label: 'Не обрано' }, ...publishedForms.map((form) => ({ value: form.publicId, label: form.name }))]} onChange={(value) => setDraft((current) => ({ ...current, formId: String(value) }))} /></label>
-          <ThemeTextField label="Публічна адреса вітрини" value={origin} placeholder="https://used.example.com" onChange={(value) => setDraft((current) => ({ ...current, origin: value }))} />
+          <div className="catalog-storefront-origin catalog-theme-control--wide">
+            <ThemeTextField label="Публічна адреса вітрини" value={origin} placeholder="https://used.example.com" onChange={(value) => setDraft((current) => ({ ...current, origin: value }))} />
+            <a
+              className={`button button--secondary${savedPublicOrigin ? '' : ' is-disabled'}`}
+              href={savedPublicOrigin || undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!savedPublicOrigin}
+              tabIndex={savedPublicOrigin ? undefined : -1}
+              title={savedPublicOrigin ? 'Відкрити збережену публічну вітрину' : 'Спочатку вкажіть і збережіть публічну адресу'}
+              onClick={(event) => { if (!savedPublicOrigin) event.preventDefault(); }}
+            ><Icon name="openInNew" size={16} /> Відкрити вітрину</a>
+          </div>
         </ThemeSection>
 
         <ThemeSection title="Типографіка" description="Чотири оптимізовані Google Fonts. Unbounded доступний у всіх вагах 200–900.">

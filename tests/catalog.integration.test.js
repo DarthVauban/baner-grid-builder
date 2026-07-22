@@ -741,6 +741,25 @@ test('catalog products publish to storefront, import stock updates, and create a
   const importedProductSearch = await admin.get('/api/catalog/products?search=Import%20Test%20Phone%20128&pageSize=25').expect(200);
   assert.equal(importedProductSearch.body.data.items.filter((item) => item.id === importedMainRow.productId).length, 1);
 
+  const manualHistory = await admin.get('/api/catalog/audit?source=manual&search=Import%20Test%20Phone%20128&pageSize=25').expect(200);
+  assert.ok(manualHistory.body.data.items.some((item) => item.action === 'update' && item.product.id === importedMainRow.productId));
+  const manualUpdate = manualHistory.body.data.items.find((item) => item.action === 'update' && item.product.id === importedMainRow.productId);
+  assert.ok(Array.isArray(manualUpdate.changes.fields));
+  assert.ok(manualUpdate.changes.fields.includes('mainImageUrl'));
+  assert.equal(manualUpdate.changes.before.mainImageUrl, '');
+  assert.equal(manualUpdate.changes.after.mainImageUrl, 'https://example.com/import-test-phone.webp');
+
+  const xlsxHistory = await admin.get('/api/catalog/audit?source=xlsx&search=Import%20Test%20Phone%20256&pageSize=25').expect(200);
+  assert.ok(xlsxHistory.body.data.items.some((item) => item.importId === fullImport.body.data.importId));
+  const xlsxEvent = xlsxHistory.body.data.items.find((item) => item.importId === fullImport.body.data.importId);
+  assert.equal(xlsxEvent.kind, 'import');
+  assert.equal(xlsxEvent.summary.create, 2);
+
+  const importHistoryDetail = await admin.get(`/api/catalog/imports/${fullImport.body.data.importId}?page=1&pageSize=10`).expect(200);
+  assert.equal(importHistoryDetail.body.data.total, 2);
+  assert.deepEqual(importHistoryDetail.body.data.rows.map((row) => row.name), ['Import Test Phone 128', 'Import Test Phone 256']);
+  assert.ok(importHistoryDetail.body.data.rows.every((row) => row.result === 'created'));
+
   await admin.post('/api/forms/banks').send({
     label: 'Mono Bank',
     value: 'mono',
@@ -812,6 +831,11 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.gallery.showCounter, false);
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.button.label, 'Замовити смартфон');
   assert.equal(publicStorefrontSettings.body.data.productPageTheme.tabs.descriptionLabel, 'Детальний огляд');
+  const settingsHistory = await admin.get('/api/catalog/audit?category=settings&pageSize=25').expect(200);
+  assert.equal(settingsHistory.body.data.items[0].action, 'storefront_settings_update');
+  assert.ok(settingsHistory.body.data.items[0].changes.fields.includes('storefrontTheme'));
+  assert.ok(settingsHistory.body.data.items[0].changes.fields.includes('productCardTheme'));
+  assert.ok(settingsHistory.body.data.items[0].changes.fields.includes('productPageTheme'));
 
   const submitted = await request(app)
     .post(`/api/storefront/products/${updated.body.data.slug}/applications`)

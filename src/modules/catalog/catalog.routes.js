@@ -29,6 +29,8 @@ import {
   appendStorefrontProductFilters,
   attachPublicCatalogProductListDetails,
   attachCatalogProductGroups,
+  catalogAuditChanges,
+  catalogAuditProductState,
   catalogProductSnapshot,
   catalogToolId,
   commitImportRows,
@@ -37,6 +39,7 @@ import {
   getCatalogRecipientIds,
   loadCatalogImportSchema,
   loadCatalogProduct,
+  loadProductCharacteristicSet,
   loadProductModificationSet,
   loadPreviewProduct,
   loadStorefrontProductFilters,
@@ -207,6 +210,20 @@ const importPreviewSchema = z.object({
 const importCommitSchema = importPreviewSchema.extend({
   importNew: z.boolean().default(true),
   updateExisting: z.boolean().default(true)
+});
+const auditHistorySchema = z.object({
+  search: z.string().trim().max(240).default(''),
+  source: z.enum(['all', 'manual', 'xlsx']).default('all'),
+  category: z.enum(['all', 'products', 'publication', 'media', 'characteristics', 'modifications', 'settings', 'import']).default('all'),
+  actorId: z.string().uuid().optional(),
+  dateFrom: z.string().trim().pipe(z.iso.date()).optional(),
+  dateTo: z.string().trim().pipe(z.iso.date()).optional(),
+  page: z.coerce.number().int().min(1).max(200).default(1),
+  pageSize: z.coerce.number().int().min(10).max(50).default(25)
+});
+const importHistoryDetailSchema = z.object({
+  page: z.coerce.number().int().min(1).max(200).default(1),
+  pageSize: z.coerce.number().int().min(10).max(100).default(50)
 });
 const themeColorSchema = z.string().regex(/^#[0-9a-f]{6}$/i);
 const themeShadowSchema = z.enum(['none', 'soft', 'strong']);
@@ -607,6 +624,168 @@ function catalogListRequestInput(req, { defaultSort = 'updated_desc', defaultPag
     page: req.query.page || 1,
     pageSize: req.query.pageSize || defaultPageSize
   }));
+}
+
+function auditCategory(action) {
+  if (action === 'publication_status') return 'publication';
+  if (action.startsWith('media_')) return 'media';
+  if (action.startsWith('characteristic')) return 'characteristics';
+  if (action.startsWith('modification')) return 'modifications';
+  if (action.startsWith('storefront_') || action.startsWith('product_card_') || action.startsWith('product_page_')) return 'settings';
+  if (action.startsWith('import_')) return 'import';
+  return 'products';
+}
+
+function auditCategorySql(category) {
+  if (category === 'publication') return "audit.action = 'publication_status'";
+  if (category === 'media') return "audit.action LIKE 'media_%'";
+  if (category === 'characteristics') return "audit.action LIKE 'characteristic%'";
+  if (category === 'modifications') return "audit.action LIKE 'modification%'";
+  if (category === 'settings') return "(audit.action LIKE 'storefront_%' OR audit.action LIKE 'product_card_%' OR audit.action LIKE 'product_page_%')";
+  if (category === 'products') {
+    return "audit.action NOT LIKE 'media_%' AND audit.action NOT LIKE 'characteristic%' AND audit.action NOT LIKE 'modification%' AND audit.action NOT LIKE 'storefront_%' AND audit.action NOT LIKE 'product_card_%' AND audit.action NOT LIKE 'product_page_%' AND audit.action <> 'publication_status'";
+  }
+  return '';
+}
+
+function historyDateBoundary(value, endOfDay = false) {
+  return `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z`;
+}
+
+async function loadManualAuditHistory(input, requestedLimit) {
+  if (input.source === 'xlsx' || input.category === 'import') return { rows: [], total: 0 };
+  const params = [];
+  const where = ["audit.action NOT LIKE 'import_%'"];
+  const add = (sql, value) => {
+    params.push(value);
+    where.push(sql.replace('?', `$${params.length}`));
+  };
+  const categorySql = auditCategorySql(input.category);
+  if (categorySql) where.push(categorySql);
+  if (input.actorId) add('audit.actor_id = ?', input.actorId);
+  if (input.dateFrom) add('audit.created_at >= ?', historyDateBoundary(input.dateFrom));
+  if (input.dateTo) add('audit.created_at <= ?', historyDateBoundary(input.dateTo, true));
+  if (input.search) {
+    add(`(
+      products.name ILIKE ? OR products.product_code ILIKE $${params.length + 1}
+      OR users.name ILIKE $${params.length + 1} OR audit.changes::TEXT ILIKE $${params.length + 1}
+    )`, `%${input.search}%`);
+  }
+  const whereSql = `WHERE ${where.join(' AND ')}`;
+  const [countResult, rowsResult] = await Promise.all([
+    query(
+      `SELECT COUNT(*)::INTEGER AS total
+       FROM used_smartphone_audit_log AS audit
+       LEFT JOIN used_smartphone_products AS products ON products.id = audit.product_id
+       LEFT JOIN users ON users.id = audit.actor_id
+       ${whereSql}`,
+      params
+    ),
+    query(
+      `SELECT audit.*, users.name AS actor_name, products.product_code, products.name AS product_name
+       FROM used_smartphone_audit_log AS audit
+       LEFT JOIN used_smartphone_products AS products ON products.id = audit.product_id
+       LEFT JOIN users ON users.id = audit.actor_id
+       ${whereSql}
+       ORDER BY audit.created_at DESC, audit.id DESC
+       LIMIT $${params.length + 1}`,
+      [...params, requestedLimit]
+    )
+  ]);
+  return { rows: rowsResult.rows, total: Number(countResult.rows[0]?.total || 0) };
+}
+
+async function loadImportAuditHistory(input, requestedLimit) {
+  if (input.source === 'manual' || !['all', 'import'].includes(input.category)) return { rows: [], total: 0 };
+  const params = [];
+  const where = [];
+  const add = (sql, value) => {
+    params.push(value);
+    where.push(sql.replace('?', `$${params.length}`));
+  };
+  if (input.actorId) add('imports.created_by = ?', input.actorId);
+  if (input.dateFrom) add('imports.created_at >= ?', historyDateBoundary(input.dateFrom));
+  if (input.dateTo) add('imports.created_at <= ?', historyDateBoundary(input.dateTo, true));
+  if (input.search) {
+    const searchValue = `%${input.search}%`;
+    const matchingImports = await query(
+      `SELECT DISTINCT search_rows.import_id
+       FROM used_smartphone_import_rows AS search_rows
+       LEFT JOIN used_smartphone_products AS search_products ON search_products.id = search_rows.product_id
+       WHERE search_rows.name ILIKE $1 OR search_products.product_code ILIKE $1`,
+      [searchValue]
+    );
+    params.push(searchValue);
+    const searchParts = [`users.name ILIKE $${params.length}`];
+    if (matchingImports.rows.length) {
+      const placeholders = matchingImports.rows.map((row) => {
+        params.push(row.import_id);
+        return `$${params.length}`;
+      });
+      searchParts.push(`imports.id IN (${placeholders.join(', ')})`);
+    }
+    where.push(`(${searchParts.join(' OR ')})`);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const [countResult, rowsResult] = await Promise.all([
+    query(
+      `SELECT COUNT(*)::INTEGER AS total
+       FROM used_smartphone_imports AS imports
+       LEFT JOIN users ON users.id = imports.created_by
+       ${whereSql}`,
+      params
+    ),
+    query(
+      `SELECT imports.*, users.name AS actor_name
+       FROM used_smartphone_imports AS imports
+       LEFT JOIN users ON users.id = imports.created_by
+       ${whereSql}
+       ORDER BY imports.created_at DESC, imports.id DESC
+       LIMIT $${params.length + 1}`,
+      [...params, requestedLimit]
+    )
+  ]);
+  return { rows: rowsResult.rows, total: Number(countResult.rows[0]?.total || 0) };
+}
+
+function serializeAuditHistoryItem(row) {
+  const productCode = row.product_code || String(row.changes?.subject?.productCode || row.changes?.after?.productCode || row.changes?.productCode || '');
+  const productName = row.product_name || String(row.changes?.subject?.name || row.changes?.after?.name || row.changes?.name || '');
+  return {
+    id: row.id,
+    kind: 'audit',
+    source: 'manual',
+    category: auditCategory(row.action),
+    action: row.action,
+    actor: row.actor_id ? { id: row.actor_id, name: row.actor_name || '' } : null,
+    product: row.product_id || productCode || productName ? {
+      id: row.product_id || '',
+      productCode,
+      name: productName
+    } : null,
+    changes: row.changes || {},
+    summary: null,
+    options: null,
+    importId: null,
+    createdAt: row.created_at
+  };
+}
+
+function serializeImportHistoryItem(row) {
+  return {
+    id: row.id,
+    kind: 'import',
+    source: 'xlsx',
+    category: 'import',
+    action: 'import_commit',
+    actor: row.created_by ? { id: row.created_by, name: row.actor_name || '' } : null,
+    product: null,
+    changes: {},
+    summary: row.summary || {},
+    options: row.options || {},
+    importId: row.id,
+    createdAt: row.created_at
+  };
 }
 
 async function assertBrandDirectoryExists(directoryId, db = { query }) {
@@ -2152,6 +2331,7 @@ router.put('/products/:id/characteristics', asyncHandler(async (req, res) => {
     if (Number(current.rows[0].version) !== input.expectedVersion) {
       throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
     }
+    const previousCharacteristics = await loadProductCharacteristicSet(id, client);
     const template = await loadCharacteristicTemplate(input.templateId, client);
     if (!template) throw new AppError(404, 'CATALOG_TEMPLATE_NOT_FOUND', 'Шаблон характеристик не знайдено.');
     await client.query('DELETE FROM used_smartphone_product_characteristics WHERE product_id = $1', [id]);
@@ -2189,7 +2369,19 @@ router.put('/products/:id/characteristics', asyncHandler(async (req, res) => {
       productId: id,
       actorId: req.user.id,
       action: 'characteristics_update',
-      changes: { templateId: template.id, fields: template.fields.length }
+      changes: {
+        subject: { productCode: current.rows[0].product_code, name: current.rows[0].name },
+        ...catalogAuditChanges(
+          {
+            characteristicTemplate: previousCharacteristics.templateLabel || '',
+            characteristicValues: Object.fromEntries(previousCharacteristics.items.map((item) => [item.label, item.value]))
+          },
+          {
+            characteristicTemplate: template.label,
+            characteristicValues: Object.fromEntries(template.fields.map((field) => [field.label, characteristicValueForField(field, input.values)]))
+          }
+        )
+      }
     });
     recipients = await getCatalogRecipientIds(client);
     product = await loadCatalogProduct(id, client);
@@ -2225,6 +2417,7 @@ router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
     if (Number(current.rows[0].version) !== input.expectedVersion) {
       throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
     }
+    const previousModifications = await loadProductModificationSet(id, client);
 
     const uniqueProductIds = [...new Set([id, ...input.productIds])];
     const mainProductId = input.mainProductId && uniqueProductIds.includes(input.mainProductId) ? input.mainProductId : id;
@@ -2284,6 +2477,7 @@ router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
     }
 
     await syncProductGroupModifications(client, groupId, mainProductId, uniqueProductIds);
+    const nextModifications = await loadProductModificationSet(id, client);
     await client.query(
       `UPDATE used_smartphone_products
        SET updated_by = $1,
@@ -2296,7 +2490,19 @@ router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
       productId: id,
       actorId: req.user.id,
       action: 'modifications_update',
-      changes: { groupId, mainProductId, products: uniqueProductIds.length }
+      changes: {
+        subject: { productCode: current.rows[0].product_code, name: current.rows[0].name },
+        ...catalogAuditChanges(
+          {
+            modificationGroup: previousModifications.groupLabel || '',
+            modificationProducts: previousModifications.items?.map((item) => item.productCode) || []
+          },
+          {
+            modificationGroup: nextModifications.groupLabel || '',
+            modificationProducts: nextModifications.items?.map((item) => item.productCode) || []
+          }
+        )
+      }
     });
     recipients = await getCatalogRecipientIds(client);
     product = await loadCatalogProduct(id, client);
@@ -2359,7 +2565,13 @@ router.patch('/products/:id/media', asyncHandler(async (req, res) => {
       productId: id,
       actorId: req.user.id,
       action: 'media_update',
-      changes: { galleryCount: input.gallery.length, hasMainImage: Boolean(input.mainImageUrl) }
+      changes: {
+        subject: { productCode: current.rows[0].product_code, name: current.rows[0].name },
+        ...catalogAuditChanges(
+          { mainImageUrl: current.rows[0].main_image_url || '', gallery: normalizeGalleryValue(current.rows[0].gallery) },
+          { mainImageUrl: input.mainImageUrl, gallery: input.gallery }
+        )
+      }
     });
     recipients = await getCatalogRecipientIds(client);
     product = await loadCatalogProduct(id, client);
@@ -2408,7 +2620,14 @@ router.delete('/products/:id/media/:mediaId', asyncHandler(async (req, res) => {
       productId: id,
       actorId: req.user.id,
       action: 'media_delete',
-      changes: { url: media.rows[0].url }
+      changes: {
+        subject: { productCode: current.rows[0].product_code, name: current.rows[0].name },
+        removedMediaUrl: media.rows[0].url,
+        ...catalogAuditChanges(
+          { mainImageUrl: current.rows[0].main_image_url || '', gallery },
+          { mainImageUrl: nextMainImageUrl, gallery: nextGallery }
+        )
+      }
     });
     recipients = await getCatalogRecipientIds(client);
     product = await loadCatalogProduct(id, client);
@@ -2457,7 +2676,14 @@ router.delete('/products/:id', asyncHandler(async (req, res) => {
       productId: id,
       actorId: req.user.id,
       action: 'archive',
-      changes: { previousStatus, groups: touchedGroups }
+      changes: {
+        subject: { productCode: current.product_code, name: current.name },
+        ...catalogAuditChanges(
+          { publicationStatus: previousStatus },
+          { publicationStatus: 'ARCHIVED' }
+        ),
+        affectedModificationGroups: touchedGroups
+      }
     });
     recipients = await getCatalogRecipientIds(client);
     await client.query('COMMIT');
@@ -2514,14 +2740,22 @@ router.post('/products', asyncHandler(async (req, res) => {
       productId: created.rows[0].id,
       actorId: req.user.id,
       action: 'create',
-      changes: { name: input.name, condition: input.condition, publicationStatus: input.publicationStatus, popularityPosition: input.popularityPosition }
+      changes: {
+        subject: { productCode, name: input.name },
+        ...catalogAuditChanges({}, catalogAuditProductState({
+          ...input,
+          productCode,
+          slug,
+          imeiSerial: normalizeCatalogSerial(input.diagnostics.privateSerial)
+        }))
+      }
     });
     if (input.description) {
       await logCatalogAudit(client, {
         productId: created.rows[0].id,
         actorId: req.user.id,
         action: 'description_source_create',
-        changes: { hasJs: descriptionContent.hasJs, hasCss: Boolean(descriptionContent.css) }
+        changes: { subject: { productCode, name: input.name }, hasJs: descriptionContent.hasJs, hasCss: Boolean(descriptionContent.css) }
       });
     }
     recipients = await getCatalogRecipientIds(client);
@@ -2611,10 +2845,16 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
       actorId: req.user.id,
       action: 'update',
       changes: {
-        previousStatus,
-        publicationStatus: input.publicationStatus,
-        previousPopularityPosition: Number(current.popularity_position || 0),
-        popularityPosition: input.popularityPosition
+        subject: { productCode: current.product_code, name: input.name },
+        ...catalogAuditChanges(
+          catalogAuditProductState(current),
+          catalogAuditProductState({
+            ...input,
+            productCode: current.product_code,
+            slug,
+            imeiSerial: normalizeCatalogSerial(input.diagnostics.privateSerial)
+          })
+        )
       }
     });
     if (descriptionContent.sourceChanged) {
@@ -2622,7 +2862,7 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
         productId: id,
         actorId: req.user.id,
         action: 'description_source_update',
-        changes: { hasJs: descriptionContent.hasJs, hasCss: Boolean(descriptionContent.css) }
+        changes: { subject: { productCode: current.product_code, name: input.name }, hasJs: descriptionContent.hasJs, hasCss: Boolean(descriptionContent.css) }
       });
     }
     recipients = await getCatalogRecipientIds(client);
@@ -2681,7 +2921,13 @@ router.patch('/products/:id/publication-status', asyncHandler(async (req, res) =
       productId: id,
       actorId: req.user.id,
       action: 'publication_status',
-      changes: { previousStatus, publicationStatus: input.status }
+      changes: {
+        subject: { productCode: current.product_code, name: current.name },
+        ...catalogAuditChanges(
+          { publicationStatus: previousStatus },
+          { publicationStatus: input.status }
+        )
+      }
     });
     recipients = await getCatalogRecipientIds(client);
     product = await loadCatalogProduct(id, client);
@@ -2698,6 +2944,54 @@ router.patch('/products/:id/publication-status', asyncHandler(async (req, res) =
     publishPublicCatalogUpdate({ type: 'publication_status', productId: id, status: input.status });
   }
   res.json({ data: product });
+}));
+
+router.get('/audit', asyncHandler(async (req, res) => {
+  const input = parseInput(auditHistorySchema, {
+    search: String(req.query.search || ''),
+    source: req.query.source || 'all',
+    category: req.query.category || 'all',
+    actorId: req.query.actorId || undefined,
+    dateFrom: req.query.dateFrom || undefined,
+    dateTo: req.query.dateTo || undefined,
+    page: req.query.page || 1,
+    pageSize: req.query.pageSize || 25
+  });
+  const requestedLimit = input.page * input.pageSize;
+  const [manual, imports, manualActors, importActors] = await Promise.all([
+    loadManualAuditHistory(input, requestedLimit),
+    loadImportAuditHistory(input, requestedLimit),
+    query(
+      `SELECT DISTINCT users.id, users.name
+       FROM used_smartphone_audit_log AS audit
+       INNER JOIN users ON users.id = audit.actor_id
+       ORDER BY users.name`
+    ),
+    query(
+      `SELECT DISTINCT users.id, users.name
+       FROM used_smartphone_imports AS imports
+       INNER JOIN users ON users.id = imports.created_by
+       ORDER BY users.name`
+    )
+  ]);
+  const offset = (input.page - 1) * input.pageSize;
+  const items = [
+    ...manual.rows.map(serializeAuditHistoryItem),
+    ...imports.rows.map(serializeImportHistoryItem)
+  ]
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime() || right.id.localeCompare(left.id))
+    .slice(offset, offset + input.pageSize);
+  const actorMap = new Map();
+  [...manualActors.rows, ...importActors.rows].forEach((row) => actorMap.set(row.id, { id: row.id, name: row.name || '' }));
+  const total = manual.total + imports.total;
+  res.json({ data: {
+    items,
+    actors: [...actorMap.values()].sort((left, right) => left.name.localeCompare(right.name, 'uk')),
+    total,
+    page: input.page,
+    pageSize: input.pageSize,
+    pageCount: Math.max(1, Math.ceil(total / input.pageSize))
+  } });
 }));
 
 router.post('/imports/preview', asyncHandler(async (req, res) => {
@@ -2750,50 +3044,132 @@ router.get('/imports', asyncHandler(async (req, res) => {
   })) });
 }));
 
+router.get('/imports/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(importHistoryDetailSchema, {
+    page: req.query.page || 1,
+    pageSize: req.query.pageSize || 50
+  });
+  const importResult = await query(
+    `SELECT imports.*, users.name AS created_by_name
+     FROM used_smartphone_imports AS imports
+     LEFT JOIN users ON users.id = imports.created_by
+     WHERE imports.id = $1`,
+    [id]
+  );
+  const importRow = importResult.rows[0];
+  if (!importRow) throw new AppError(404, 'CATALOG_IMPORT_NOT_FOUND', 'Імпорт не знайдено.');
+  const countResult = await query(
+    'SELECT COUNT(*)::INTEGER AS total FROM used_smartphone_import_rows WHERE import_id = $1',
+    [id]
+  );
+  const rowsResult = await query(
+    `SELECT import_rows.*, products.product_code
+     FROM used_smartphone_import_rows AS import_rows
+     LEFT JOIN used_smartphone_products AS products ON products.id = import_rows.product_id
+     WHERE import_rows.import_id = $1
+     ORDER BY import_rows.row_number
+     LIMIT $2 OFFSET $3`,
+    [id, input.pageSize, (input.page - 1) * input.pageSize]
+  );
+  const total = Number(countResult.rows[0]?.total || 0);
+  res.json({ data: {
+    id: importRow.id,
+    createdBy: importRow.created_by ? { id: importRow.created_by, name: importRow.created_by_name || '' } : null,
+    options: importRow.options || {},
+    summary: importRow.summary || {},
+    createdAt: importRow.created_at,
+    rows: rowsResult.rows.map((row) => ({
+      id: row.id,
+      rowNumber: row.row_number,
+      action: row.action,
+      result: row.result,
+      reason: row.reason || '',
+      productId: row.product_id || null,
+      productCode: row.product_code || '',
+      name: row.name || '',
+      condition: row.condition || '',
+      conditionLabel: conditionLabels[row.condition] || row.condition || '',
+      stockCount: row.stock_count === null ? null : Number(row.stock_count),
+      incomingCount: row.incoming_count === null ? null : Number(row.incoming_count),
+      priceUah: row.price_uah === null ? null : Number(row.price_uah),
+      identityKey: row.identity_key || '',
+      brandId: row.brand_id || null,
+      templateId: row.template_id || null,
+      payload: row.payload || {},
+      createdAt: row.created_at
+    })),
+    total,
+    page: input.page,
+    pageSize: input.pageSize,
+    pageCount: Math.max(1, Math.ceil(total / input.pageSize))
+  } });
+}));
+
 router.get('/storefront-settings', asyncHandler(async (req, res) => {
   res.json({ data: await loadSettings() });
 }));
 
 router.patch('/storefront-settings', asyncHandler(async (req, res) => {
   const input = parseInput(settingsSchema, req.body);
-  const current = await loadSettings();
-  const next = {
-    selectedFormPublicId: Object.hasOwn(req.body || {}, 'selectedFormPublicId') ? input.selectedFormPublicId || null : current.selectedFormPublicId,
-    publicOrigin: Object.hasOwn(req.body || {}, 'publicOrigin') ? normalizeStorefrontOrigin(input.publicOrigin) : current.publicOrigin,
-    storefrontTheme: input.storefrontTheme || current.storefrontTheme,
-    productCardTheme: input.productCardTheme || current.productCardTheme,
-    productPageTheme: input.productPageTheme || current.productPageTheme
-  };
-  if (next.selectedFormPublicId) {
-    const form = await query(
-      'SELECT public_id FROM application_forms WHERE public_id = $1 AND status = $2',
-      [next.selectedFormPublicId, 'published']
+  const client = await pool.connect();
+  let saved;
+  try {
+    await client.query('BEGIN');
+    const current = await loadSettings(client);
+    const next = {
+      selectedFormPublicId: Object.hasOwn(req.body || {}, 'selectedFormPublicId') ? input.selectedFormPublicId || null : current.selectedFormPublicId,
+      publicOrigin: Object.hasOwn(req.body || {}, 'publicOrigin') ? normalizeStorefrontOrigin(input.publicOrigin) : current.publicOrigin,
+      storefrontTheme: input.storefrontTheme || current.storefrontTheme,
+      productCardTheme: input.productCardTheme || current.productCardTheme,
+      productPageTheme: input.productPageTheme || current.productPageTheme
+    };
+    if (next.selectedFormPublicId) {
+      const form = await client.query(
+        'SELECT public_id FROM application_forms WHERE public_id = $1 AND status = $2',
+        [next.selectedFormPublicId, 'published']
+      );
+      if (!form.rows[0]) throw new AppError(422, 'CATALOG_FORM_NOT_PUBLISHED', 'Оберіть опубліковану форму заявок.');
+    }
+    const result = await client.query(
+      `UPDATE used_smartphone_storefront_settings
+       SET selected_form_public_id = $1,
+           public_origin = $2,
+           storefront_theme = $3::JSONB,
+           product_card_theme = $4::JSONB,
+           product_page_theme = $5::JSONB,
+           updated_by = $6,
+           updated_at = NOW()
+       WHERE id = TRUE
+       RETURNING selected_form_public_id, public_origin, storefront_theme, product_card_theme, product_page_theme, updated_at`,
+      [next.selectedFormPublicId, next.publicOrigin, JSON.stringify(next.storefrontTheme), JSON.stringify(next.productCardTheme), JSON.stringify(next.productPageTheme), req.user.id]
     );
-    if (!form.rows[0]) throw new AppError(422, 'CATALOG_FORM_NOT_PUBLISHED', 'Оберіть опубліковану форму заявок.');
+    saved = {
+      selectedFormPublicId: result.rows[0].selected_form_public_id || null,
+      publicOrigin: result.rows[0].public_origin || '',
+      storefrontTheme: normalizeStorefrontTheme(result.rows[0].storefront_theme),
+      productCardTheme: normalizeProductCardTheme(result.rows[0].product_card_theme),
+      productPageTheme: normalizeProductPageTheme(result.rows[0].product_page_theme),
+      updatedAt: result.rows[0].updated_at
+    };
+    await logCatalogAudit(client, {
+      actorId: req.user.id,
+      action: 'storefront_settings_update',
+      changes: catalogAuditChanges(
+        { ...current, updatedAt: undefined },
+        { ...saved, updatedAt: undefined }
+      )
+    });
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
   }
-  const result = await query(
-    `UPDATE used_smartphone_storefront_settings
-     SET selected_form_public_id = $1,
-         public_origin = $2,
-         storefront_theme = $3::JSONB,
-         product_card_theme = $4::JSONB,
-         product_page_theme = $5::JSONB,
-         updated_by = $6,
-         updated_at = NOW()
-     WHERE id = TRUE
-     RETURNING selected_form_public_id, public_origin, storefront_theme, product_card_theme, product_page_theme, updated_at`,
-    [next.selectedFormPublicId, next.publicOrigin, JSON.stringify(next.storefrontTheme), JSON.stringify(next.productCardTheme), JSON.stringify(next.productPageTheme), req.user.id]
-  );
-  cacheSavedStorefrontOrigin(result.rows[0].public_origin || '');
+  cacheSavedStorefrontOrigin(saved.publicOrigin);
   publishPublicCatalogUpdate({ type: 'settings_updated' });
-  res.json({ data: {
-    selectedFormPublicId: result.rows[0].selected_form_public_id || null,
-    publicOrigin: result.rows[0].public_origin || '',
-    storefrontTheme: normalizeStorefrontTheme(result.rows[0].storefront_theme),
-    productCardTheme: normalizeProductCardTheme(result.rows[0].product_card_theme),
-    productPageTheme: normalizeProductPageTheme(result.rows[0].product_page_theme),
-    updatedAt: result.rows[0].updated_at
-  } });
+  res.json({ data: saved });
 }));
 
 router.get('/meta', (req, res) => {

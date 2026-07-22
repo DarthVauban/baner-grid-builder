@@ -888,6 +888,54 @@ export async function logCatalogAudit(db, { productId, actorId, action, changes 
   );
 }
 
+function auditFieldValue(record, ...keys) {
+  for (const key of keys) {
+    if (record && Object.hasOwn(record, key)) return record[key];
+  }
+  return undefined;
+}
+
+export function catalogAuditProductState(product = {}) {
+  const diagnostics = normalizeJsonObject(auditFieldValue(product, 'diagnostics'));
+  return {
+    productCode: auditFieldValue(product, 'productCode', 'product_code') || '',
+    name: auditFieldValue(product, 'name') || '',
+    condition: auditFieldValue(product, 'condition') || '',
+    stockCount: Number(auditFieldValue(product, 'stockCount', 'stock_count') || 0),
+    incomingCount: Number(auditFieldValue(product, 'incomingCount', 'incoming_count') || 0),
+    priceUah: Number(auditFieldValue(product, 'priceUah', 'price_uah') || 0),
+    publicationStatus: auditFieldValue(product, 'publicationStatus', 'publication_status') || '',
+    popularityPosition: Number(auditFieldValue(product, 'popularityPosition', 'popularity_position') || 0),
+    slug: auditFieldValue(product, 'slug') || '',
+    brandId: auditFieldValue(product, 'brandId', 'brand_id') || null,
+    mainImageUrl: auditFieldValue(product, 'mainImageUrl', 'main_image_url') || '',
+    gallery: auditFieldValue(product, 'gallery') || [],
+    shortDescription: auditFieldValue(product, 'shortDescription', 'short_description') || '',
+    description: auditFieldValue(product, 'description') || '',
+    seoTitle: auditFieldValue(product, 'seoTitle', 'seo_title') || '',
+    seoDescription: auditFieldValue(product, 'seoDescription', 'seo_description') || '',
+    socialDescription: auditFieldValue(product, 'socialDescription', 'social_description') || '',
+    bodyCondition: auditFieldValue(product, 'bodyCondition', 'body_condition') || '',
+    displayCondition: auditFieldValue(product, 'displayCondition', 'display_condition') || '',
+    batteryHealth: auditFieldValue(product, 'batteryHealth', 'battery_health') || '',
+    warranty: auditFieldValue(product, 'warranty') || '',
+    includedAccessories: auditFieldValue(product, 'includedAccessories', 'included_accessories') || '',
+    defectsText: auditFieldValue(product, 'defectsText') ?? diagnostics.defectsText ?? '',
+    imeiSerial: auditFieldValue(product, 'imeiSerial', 'imei_serial') ?? diagnostics.privateSerial ?? '',
+    internalNotes: auditFieldValue(product, 'internalNotes', 'internal_notes') || ''
+  };
+}
+
+export function catalogAuditChanges(before = {}, after = {}) {
+  const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+  const changedFields = fields.filter((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null));
+  return {
+    fields: changedFields,
+    before: Object.fromEntries(changedFields.map((field) => [field, before[field] ?? null])),
+    after: Object.fromEntries(changedFields.map((field) => [field, after[field] ?? null]))
+  };
+}
+
 export async function getCatalogRecipientIds(db = { query }) {
   const result = await db.query(
     `SELECT users.id
@@ -1549,13 +1597,36 @@ export async function commitImportRows(rawRows, options, actorId, db) {
           productId: committed.productId,
           actorId,
           action: 'import_create',
-          changes: { stockCount: row.stockCount, incomingCount: row.incomingCount, priceUah: row.priceUah }
+          changes: {
+            importId,
+            subject: { productCode: committed.productCode, name: row.name },
+            ...catalogAuditChanges({}, catalogAuditProductState({
+              productCode: committed.productCode,
+              name: row.name,
+              condition: row.condition,
+              stockCount: row.stockCount,
+              incomingCount: row.incomingCount,
+              priceUah: row.priceUah,
+              publicationStatus: 'DRAFT',
+              slug,
+              brandId: row.brandProvided ? row.brandId : null,
+              shortDescription: row.textFields.shortDescription.value,
+              description: row.textFields.description.value,
+              bodyCondition: row.textFields.bodyCondition.value,
+              displayCondition: row.textFields.displayCondition.value,
+              batteryHealth: row.textFields.batteryHealth.value,
+              warranty: row.textFields.warranty.value,
+              includedAccessories: row.textFields.includedAccessories.value,
+              defectsText: row.textFields.defectsText.value,
+              imeiSerial: row.imeiSerial
+            }))
+          }
         });
       } else if (row.action === 'update') {
         const nextSlug = row.textFields.slug.provided
           ? await makeUniqueSlug(row.textFields.slug.value || row.name, row.productId, db, row.productCode.toLowerCase())
           : '';
-        const current = await db.query('SELECT diagnostics FROM used_smartphone_products WHERE id = $1', [row.productId]);
+        const current = await db.query('SELECT * FROM used_smartphone_products WHERE id = $1', [row.productId]);
         const diagnostics = normalizeJsonObject(current.rows[0]?.diagnostics);
         if (row.textFields.defectsText.provided) diagnostics.defectsText = row.textFields.defectsText.value;
         if (row.textFields.imeiSerial.provided) diagnostics.privateSerial = row.textFields.imeiSerial.value;
@@ -1628,11 +1699,35 @@ export async function commitImportRows(rawRows, options, actorId, db) {
         await applyImportCharacteristics(db, row.productId, row, actorId);
         await saveImportIdentityKeys(db, row.productId, row);
         committed.result = 'updated';
+        const beforeState = catalogAuditProductState(current.rows[0]);
+        const afterState = {
+          ...beforeState,
+          name: row.name,
+          condition: row.condition,
+          stockCount: row.stockCount,
+          incomingCount: row.incomingCount,
+          priceUah: row.priceUah,
+          brandId: row.brandProvided ? row.brandId : beforeState.brandId,
+          slug: row.textFields.slug.provided ? nextSlug : beforeState.slug,
+          shortDescription: row.textFields.shortDescription.provided ? row.textFields.shortDescription.value : beforeState.shortDescription,
+          description: row.textFields.description.provided ? row.textFields.description.value : beforeState.description,
+          bodyCondition: row.textFields.bodyCondition.provided ? row.textFields.bodyCondition.value : beforeState.bodyCondition,
+          displayCondition: row.textFields.displayCondition.provided ? row.textFields.displayCondition.value : beforeState.displayCondition,
+          batteryHealth: row.textFields.batteryHealth.provided ? row.textFields.batteryHealth.value : beforeState.batteryHealth,
+          warranty: row.textFields.warranty.provided ? row.textFields.warranty.value : beforeState.warranty,
+          includedAccessories: row.textFields.includedAccessories.provided ? row.textFields.includedAccessories.value : beforeState.includedAccessories,
+          defectsText: row.textFields.defectsText.provided ? row.textFields.defectsText.value : beforeState.defectsText,
+          imeiSerial: row.textFields.imeiSerial.provided ? row.imeiSerial : beforeState.imeiSerial
+        };
         await logCatalogAudit(db, {
           productId: row.productId,
           actorId,
           action: 'import_update',
-          changes: { stockCount: row.stockCount, incomingCount: row.incomingCount, priceUah: row.priceUah }
+          changes: {
+            importId,
+            subject: { productCode: row.productCode, name: row.name },
+            ...catalogAuditChanges(beforeState, afterState)
+          }
         });
       }
     } catch (error) {

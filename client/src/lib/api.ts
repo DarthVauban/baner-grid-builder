@@ -55,11 +55,14 @@ import type {
 import type {
   CatalogBrand,
   CatalogBrandDirectory,
+  CatalogAuditHistoryFeed,
+  CatalogAuditHistoryParams,
   CatalogCharacteristicTemplate,
   CatalogCharacteristicTemplateInput,
   CatalogExportFeed,
   CatalogFeed,
   CatalogImportPreview,
+  CatalogImportHistoryDetail,
   CatalogImportTemplateSchema,
   CatalogMediaAsset,
   CatalogProduct,
@@ -382,6 +385,10 @@ export const api = {
     importTemplate: () => request<CatalogImportTemplateSchema>('/api/catalog/imports/template'),
     commitImport: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) =>
       request<CatalogImportPreview>('/api/catalog/imports/commit', { method: 'POST', body: jsonBody({ rows, ...options }) }),
+    auditHistory: (params: CatalogAuditHistoryParams) =>
+      request<CatalogAuditHistoryFeed>(`/api/catalog/audit${queryString(params)}`),
+    importHistoryDetail: (id: string, params: { page?: number; pageSize?: number } = {}) =>
+      request<CatalogImportHistoryDetail>(`/api/catalog/imports/${encodeURIComponent(id)}${queryString(params)}`),
     storefrontSettings: () => request<CatalogStorefrontSettings>('/api/catalog/storefront-settings'),
     updateStorefrontSettings: (input: Partial<Pick<CatalogStorefrontSettings, 'selectedFormPublicId' | 'publicOrigin' | 'storefrontTheme' | 'productCardTheme' | 'productPageTheme'>>) =>
       request<CatalogStorefrontSettings>('/api/catalog/storefront-settings', { method: 'PATCH', body: jsonBody(input) })

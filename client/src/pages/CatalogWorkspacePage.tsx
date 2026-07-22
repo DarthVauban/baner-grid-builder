@@ -6,13 +6,11 @@ import { useAuth } from '../auth/AuthContext';
 
 const catalogLinks = [
   { to: '/catalog/products', icon: 'productSelection' as const, label: 'Товари' },
-  { to: '/catalog/imports', icon: 'upload' as const, label: 'Імпорт XLSX' },
   { to: '/catalog/brands', icon: 'brands' as const, label: 'Бренди' },
   { to: '/catalog/characteristics', icon: 'characteristics' as const, label: 'Характеристики' },
   { to: '/catalog/storefront', icon: 'storefront' as const, label: 'Налаштування вітрини' },
   { to: '/catalog/product-card', icon: 'productCard' as const, label: 'Картка товару' },
   { to: '/catalog/product-page', icon: 'productPage' as const, label: 'Сторінка товару' },
-  { to: '/catalog/preview', icon: 'visibility' as const, label: 'Preview магазину' },
   { to: '/catalog/audit', icon: 'history' as const, label: 'Історія змін' }
 ];
 
@@ -58,11 +56,4 @@ export function CatalogWorkspacePage() {
       <Outlet />
     </main>
   </div>;
-}
-
-export function CatalogPlaceholderPage({ title }: { title: string }) {
-  return <section className="catalog-placeholder">
-    <div className="empty-state__icon"><Icon name="phone" size={28} /></div>
-    <h1>{title}</h1>
-  </section>;
 }

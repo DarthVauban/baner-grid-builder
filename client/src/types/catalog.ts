@@ -385,6 +385,84 @@ export interface CatalogImportPreview {
   importId?: string;
 }
 
+export type CatalogAuditSource = 'all' | 'manual' | 'xlsx';
+export type CatalogAuditCategory = 'all' | 'products' | 'publication' | 'media' | 'characteristics' | 'modifications' | 'settings' | 'import';
+
+export interface CatalogAuditHistoryParams {
+  [key: string]: string | number | undefined;
+  search?: string;
+  source?: CatalogAuditSource;
+  category?: CatalogAuditCategory;
+  actorId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CatalogAuditActor {
+  id: string;
+  name: string;
+}
+
+export interface CatalogAuditHistoryItem {
+  id: string;
+  kind: 'audit' | 'import';
+  source: 'manual' | 'xlsx';
+  category: Exclude<CatalogAuditCategory, 'all'>;
+  action: string;
+  actor: CatalogAuditActor | null;
+  product: { id: string; productCode: string; name: string } | null;
+  changes: Record<string, unknown>;
+  summary: CatalogImportSummary | null;
+  options: Record<string, boolean> | null;
+  importId: string | null;
+  createdAt: string;
+}
+
+export interface CatalogAuditHistoryFeed {
+  items: CatalogAuditHistoryItem[];
+  actors: CatalogAuditActor[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+}
+
+export interface CatalogImportHistoryRow {
+  id: string;
+  rowNumber: number;
+  action: CatalogImportRow['action'];
+  result: CatalogImportRow['result'];
+  reason: string;
+  productId: string | null;
+  productCode: string;
+  name: string;
+  condition: CatalogCondition | '';
+  conditionLabel: string;
+  stockCount: number | null;
+  incomingCount: number | null;
+  priceUah: number | null;
+  identityKey: string;
+  brandId: string | null;
+  templateId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface CatalogImportHistoryDetail {
+  id: string;
+  createdBy: CatalogAuditActor | null;
+  options: Record<string, boolean>;
+  summary: CatalogImportSummary;
+  createdAt: string;
+  rows: CatalogImportHistoryRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+}
+
 export interface CatalogImportTemplateColumn {
   key: string;
   label: string;
