@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon';
 import { useToast } from '../toast/ToastContext';
 
 type ActiveIntegration = 'mailtrap' | 'telegram' | null;
+const maskedSecretValue = '••••••••••••';
 
 function formatDate(value: string | null | undefined) {
   if (!value) return 'Ще не збережено';
@@ -141,20 +142,33 @@ export function AdminIntegrationsPage() {
             </div>
           </header>
 
-          <form className="integration-form integration-modal__form" onSubmit={submitMailtrap}>
+          <form className="integration-form integration-modal__form" autoComplete="off" data-form-type="other" onSubmit={submitMailtrap}>
             {mailtrapError && <div className="form-message form-message--error integration-form__wide" role="alert">{mailtrapError}</div>}
             <label className="field">
               <span>Email відправника</span>
-              <input type="email" value={senderEmail} onChange={(event) => setSenderEmail(event.target.value)} autoComplete="off" placeholder="hello@mt-panel.sbs" required autoFocus />
+              <input type="email" value={senderEmail} onChange={(event) => setSenderEmail(event.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="hello@mt-panel.sbs" required autoFocus />
             </label>
             <label className="field">
               <span>Назва відправника</span>
-              <input value={senderName} onChange={(event) => setSenderName(event.target.value)} maxLength={120} placeholder="MT Panel" required />
+              <input value={senderName} onChange={(event) => setSenderName(event.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" maxLength={120} placeholder="MT Panel" required />
             </label>
             <label className="field integration-form__wide">
               <span>Mailtrap API token</span>
               <span className="password-field__control">
-                <input type={mailtrapTokenVisible ? 'text' : 'password'} value={mailtrapToken} onChange={(event) => setMailtrapToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Вставте токен Mailtrap" required />
+                <input
+                  type="text"
+                  value={!mailtrapTokenVisible && mailtrapToken ? maskedSecretValue : mailtrapToken}
+                  onChange={(event) => { setMailtrapTokenVisible(true); setMailtrapToken(event.target.value); }}
+                  readOnly={!mailtrapTokenVisible && Boolean(mailtrapToken)}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  spellCheck={false}
+                  placeholder="Вставте токен Mailtrap"
+                  required
+                />
                 <button type="button" onClick={() => setMailtrapTokenVisible((value) => !value)} aria-label={mailtrapTokenVisible ? 'Сховати Mailtrap API token' : 'Показати Mailtrap API token'}><Icon name={mailtrapTokenVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
               </span>
             </label>
@@ -184,17 +198,30 @@ export function AdminIntegrationsPage() {
             </div>
           </header>
 
-          <form className="integration-form integration-modal__form" onSubmit={submitTelegram}>
+          <form className="integration-form integration-modal__form" autoComplete="off" data-form-type="other" onSubmit={submitTelegram}>
             {telegramError && <div className="form-message form-message--error integration-form__wide" role="alert">{telegramError}</div>}
             <label className="field">
               <span>ID чату або @канал</span>
-              <input value={chatId} onChange={(event) => setChatId(event.target.value)} autoComplete="off" placeholder="-1001234567890" required autoFocus />
+              <input value={chatId} onChange={(event) => setChatId(event.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="-1001234567890" required autoFocus />
               <small className="integration-field-hint">Не ID бота. Для закритого каналу використовуйте числовий ID у форматі -100…</small>
             </label>
             <label className="field">
               <span>Bot token</span>
               <span className="password-field__control">
-                <input type={telegramTokenVisible ? 'text' : 'password'} value={telegramToken} onChange={(event) => setTelegramToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Токен від @BotFather" required />
+                <input
+                  type="text"
+                  value={!telegramTokenVisible && telegramToken ? maskedSecretValue : telegramToken}
+                  onChange={(event) => { setTelegramTokenVisible(true); setTelegramToken(event.target.value); }}
+                  readOnly={!telegramTokenVisible && Boolean(telegramToken)}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  spellCheck={false}
+                  placeholder="Токен від @BotFather"
+                  required
+                />
                 <button type="button" onClick={() => setTelegramTokenVisible((value) => !value)} aria-label={telegramTokenVisible ? 'Сховати Telegram bot token' : 'Показати Telegram bot token'}><Icon name={telegramTokenVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
               </span>
             </label>

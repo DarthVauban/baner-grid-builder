@@ -49,17 +49,21 @@ describe('AdminIntegrationsPage', () => {
     await user.click(telegramTile);
     expect(screen.getByRole('dialog', { name: 'Telegram' })).toBeInTheDocument();
     const telegramToken = screen.getByLabelText('Bot token');
-    expect(telegramToken).toHaveValue('123456:telegram-secret-token');
-    expect(telegramToken).toHaveAttribute('type', 'password');
+    expect(telegramToken).toHaveValue('••••••••••••');
+    expect(telegramToken).toHaveAttribute('type', 'text');
+    expect(telegramToken).toHaveAttribute('readonly');
 
     await user.click(screen.getByRole('button', { name: 'Показати Telegram bot token' }));
+    expect(telegramToken).toHaveValue('123456:telegram-secret-token');
     expect(telegramToken).toHaveAttribute('type', 'text');
+    expect(telegramToken).not.toHaveAttribute('readonly');
     await user.click(screen.getByRole('button', { name: 'Закрити' }));
 
     await user.click(screen.getByRole('button', { name: 'Відкрити налаштування Mailtrap. Підключено' }));
     expect(screen.getByRole('dialog', { name: 'Mailtrap' })).toBeInTheDocument();
     const mailtrapToken = screen.getByLabelText('Mailtrap API token');
-    expect(mailtrapToken).toHaveValue('mailtrap-secret-token');
-    expect(mailtrapToken).toHaveAttribute('type', 'password');
+    expect(mailtrapToken).toHaveValue('••••••••••••');
+    expect(mailtrapToken).toHaveAttribute('type', 'text');
+    expect(mailtrapToken).toHaveAttribute('readonly');
   });
 });
