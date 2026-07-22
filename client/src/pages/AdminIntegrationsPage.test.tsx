@@ -45,6 +45,7 @@ describe('AdminIntegrationsPage', () => {
     const telegramTile = await screen.findByRole('button', { name: 'Відкрити налаштування Telegram. Підключено' });
     expect(screen.getByRole('button', { name: 'Відкрити налаштування Mailtrap. Підключено' })).toBeInTheDocument();
     expect(appStyles).toMatch(/\.integration-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,minmax\(0,1fr\)\)/);
+    expect(appStyles).toMatch(/\.integration-modal__form\s*\{[^}]*align-items:\s*start/);
 
     await user.click(telegramTile);
     expect(screen.getByRole('dialog', { name: 'Telegram' })).toBeInTheDocument();
