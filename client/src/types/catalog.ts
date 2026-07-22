@@ -286,6 +286,12 @@ export interface CatalogFeed {
   pageCount: number;
 }
 
+export interface CatalogExportFeed {
+  items: CatalogProduct[];
+  total: number;
+  generatedAt: string;
+}
+
 export type CatalogPresenceFilter = 'all' | 'present' | 'missing';
 export type CatalogReadinessFilter = 'all' | 'ready' | 'not_ready';
 export type CatalogModificationFilter = 'all' | 'ungrouped' | 'main' | 'child';

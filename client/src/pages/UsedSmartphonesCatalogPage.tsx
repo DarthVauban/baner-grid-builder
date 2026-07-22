@@ -18,6 +18,7 @@ import {
   productToInput
 } from '../lib/catalog';
 import { convertCatalogImageToWebp, validateCatalogImageFile } from '../lib/catalog-media';
+import { buildCatalogExportWorkbook, catalogExportFileName } from '../lib/catalog-export';
 import { buildCatalogImportWorkbook } from '../lib/catalog-import';
 import {
   catalogAdminFiltersToApi,
@@ -1730,6 +1731,7 @@ export function UsedSmartphonesCatalogPage() {
   const [bulkStatus, setBulkStatus] = useState<CatalogPublicationStatus>('DRAFT');
   const [deleteProducts, setDeleteProducts] = useState<CatalogProduct[] | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const sharedProductId = searchParams.get('product');
   const queryParams = useMemo(() => catalogAdminFiltersToApi(filters, 25), [filters]);
 
@@ -1911,6 +1913,24 @@ export function UsedSmartphonesCatalogPage() {
     }
   }
 
+  async function exportCurrentSelection() {
+    try {
+      setExportBusy(true);
+      const feed = await api.catalog.exportProducts(queryParams);
+      const filtered = Boolean(filters.search || catalogAdvancedFilterCount(filters));
+      XLSX.writeFile(
+        buildCatalogExportWorkbook(feed, { filtered }),
+        catalogExportFileName(new Date(feed.generatedAt)),
+        { compression: true }
+      );
+      showToast(`Експортовано ${feed.total} товарів у XLSX.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося експортувати поточну вибірку.', 'error');
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   async function runPreview(rows: Array<Record<string, unknown>>) {
     try {
       setImportPreview(await previewImport.mutateAsync(rows));
@@ -2055,6 +2075,7 @@ export function UsedSmartphonesCatalogPage() {
       <div className="task-toolbar__controls">
         <a className="button button--secondary" href="/catalog/preview/storefront" target="_blank" rel="noreferrer"><Icon name="openInNew" /> Відкрити вітрину</a>
         <button className="button button--secondary" type="button" onClick={() => void downloadImportTemplate()}><Icon name="productTables" /> Актуальний шаблон XLSX</button>
+        <button className="button button--secondary" type="button" disabled={exportBusy} title="Експортувати всі товари, що відповідають поточним фільтрам" onClick={() => void exportCurrentSelection()}><Icon name="productTables" /> {exportBusy ? 'Формування XLSX...' : 'Експорт XLSX'}</button>
         <button className="button button--secondary" type="button" onClick={() => { setImportPreview(null); setImportOpen(true); }}><Icon name="upload" /> Імпорт XLSX</button>
         <button className="button button--primary" type="button" onClick={() => setEditorProduct(null)}><Icon name="add" /> Новий товар</button>
       </div>

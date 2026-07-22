@@ -344,6 +344,20 @@ test('catalog products publish to storefront, import stock updates, and create a
     adminPopularityList.body.data.items.map((item) => item.productCode),
     ['SM-000002', 'SM-000001']
   );
+  const completeExport = await admin.get('/api/catalog/products/export?sort=popularity&page=99&pageSize=10').expect(200);
+  assert.equal(completeExport.body.data.total, 2);
+  assert.deepEqual(
+    completeExport.body.data.items.map((item) => item.productCode),
+    ['SM-000002', 'SM-000001']
+  );
+  const filteredExport = await admin.get('/api/catalog/products/export?search=256GB&page=99&pageSize=10').expect(200);
+  assert.equal(filteredExport.body.data.total, 1);
+  assert.equal(filteredExport.body.data.items[0].productCode, 'SM-000002');
+  assert.equal(filteredExport.body.data.items[0].characteristics.templateId, template.body.data.id);
+  assert.equal(
+    filteredExport.body.data.items[0].characteristics.items.find((item) => item.key === 'storage').value,
+    '256'
+  );
   await request(app).get('/api/storefront/products?sort=updated_desc').expect(422);
 
   const storefrontFilters = await request(app)

@@ -57,6 +57,7 @@ import type {
   CatalogBrandDirectory,
   CatalogCharacteristicTemplate,
   CatalogCharacteristicTemplateInput,
+  CatalogExportFeed,
   CatalogFeed,
   CatalogImportPreview,
   CatalogImportTemplateSchema,
@@ -314,6 +315,12 @@ export const api = {
       productGroups: () => request<CatalogProductGroup[]>('/api/catalog/product-groups'),
       list: (params: CatalogProductListParams) =>
         request<CatalogFeed>(`/api/catalog/products${queryString(params)}`),
+      exportProducts: (params: CatalogProductListParams) => {
+        const selectionParams = { ...params };
+        delete selectionParams.page;
+        delete selectionParams.pageSize;
+        return request<CatalogExportFeed>(`/api/catalog/products/export${queryString(selectionParams)}`);
+      },
     get: (id: string) => request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`),
     create: (input: CatalogProductInput) =>
       request<CatalogProduct>('/api/catalog/products', { method: 'POST', body: jsonBody(input) }),

@@ -1789,6 +1789,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .catalog-placeholder { min-height: calc(100vh - 82px); display: grid; place-items: center; align-content: center; gap: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); text-align: center; }
 .catalog-placeholder h1 { margin: 0; font-size: clamp(28px,4vw,44px); letter-spacing: 0; }
 .catalog-page { min-width: 0; display: grid; gap: 18px; }
+.catalog-page .task-toolbar__controls { flex-wrap: wrap; justify-content: flex-end; }
 .catalog-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 13px; }
 .admin-summary__card--success { border-color: #cdeade; background: #f5fcf9; }
 .admin-summary__card--success strong { color: #08704d; }

@@ -25,6 +25,7 @@ import {
 } from './storefront.theme.js';
 import {
   analyzeImportRows,
+  attachCatalogProductCharacteristics,
   appendStorefrontProductFilters,
   attachPublicCatalogProductListDetails,
   attachCatalogProductGroups,
@@ -569,6 +570,43 @@ function normalizeCatalogListInput(input) {
     templateIds: uniqueCsvValues(input.templateIds, { uuids: true }),
     productList: normalizeProductList(input.productList)
   };
+}
+
+function catalogListRequestInput(req, { defaultSort = 'updated_desc', defaultPageSize = 25 } = {}) {
+  return normalizeCatalogListInput(parseInput(listSchema, {
+    search: String(req.query.search || ''),
+    condition: req.query.condition || 'all',
+    status: req.query.status || 'all',
+    availability: req.query.availability || 'all',
+    conditions: String(req.query.conditions || ''),
+    statuses: String(req.query.statuses || ''),
+    availabilities: String(req.query.availabilities || ''),
+    brandId: req.query.brandId || undefined,
+    brandIds: String(req.query.brandIds || ''),
+    brandDirectoryIds: String(req.query.brandDirectoryIds || ''),
+    templateIds: String(req.query.templateIds || ''),
+    priceMin: req.query.priceMin || undefined,
+    priceMax: req.query.priceMax || undefined,
+    stockMin: req.query.stockMin || undefined,
+    stockMax: req.query.stockMax || undefined,
+    incomingMin: req.query.incomingMin || undefined,
+    incomingMax: req.query.incomingMax || undefined,
+    photoStatus: req.query.photoStatus || 'all',
+    descriptionStatus: req.query.descriptionStatus || 'all',
+    characteristicsStatus: req.query.characteristicsStatus || 'all',
+    serialStatus: req.query.serialStatus || 'all',
+    readiness: req.query.readiness || 'all',
+    modification: req.query.modification || 'all',
+    createdFrom: req.query.createdFrom || undefined,
+    createdTo: req.query.createdTo || undefined,
+    updatedFrom: req.query.updatedFrom || undefined,
+    updatedTo: req.query.updatedTo || undefined,
+    productList: String(req.query.productList || ''),
+    characteristics: String(req.query.characteristics || ''),
+    sort: req.query.sort || defaultSort,
+    page: req.query.page || 1,
+    pageSize: req.query.pageSize || defaultPageSize
+  }));
 }
 
 async function assertBrandDirectoryExists(directoryId, db = { query }) {
@@ -1911,40 +1949,7 @@ router.get('/product-groups', asyncHandler(async (req, res) => {
 }));
 
 router.get('/products', asyncHandler(async (req, res) => {
-  const input = normalizeCatalogListInput(parseInput(listSchema, {
-    search: String(req.query.search || ''),
-    condition: req.query.condition || 'all',
-    status: req.query.status || 'all',
-    availability: req.query.availability || 'all',
-    conditions: String(req.query.conditions || ''),
-    statuses: String(req.query.statuses || ''),
-    availabilities: String(req.query.availabilities || ''),
-    brandId: req.query.brandId || undefined,
-    brandIds: String(req.query.brandIds || ''),
-    brandDirectoryIds: String(req.query.brandDirectoryIds || ''),
-    templateIds: String(req.query.templateIds || ''),
-    priceMin: req.query.priceMin || undefined,
-    priceMax: req.query.priceMax || undefined,
-    stockMin: req.query.stockMin || undefined,
-    stockMax: req.query.stockMax || undefined,
-    incomingMin: req.query.incomingMin || undefined,
-    incomingMax: req.query.incomingMax || undefined,
-    photoStatus: req.query.photoStatus || 'all',
-    descriptionStatus: req.query.descriptionStatus || 'all',
-    characteristicsStatus: req.query.characteristicsStatus || 'all',
-    serialStatus: req.query.serialStatus || 'all',
-    readiness: req.query.readiness || 'all',
-    modification: req.query.modification || 'all',
-    createdFrom: req.query.createdFrom || undefined,
-    createdTo: req.query.createdTo || undefined,
-    updatedFrom: req.query.updatedFrom || undefined,
-    updatedTo: req.query.updatedTo || undefined,
-    productList: String(req.query.productList || ''),
-    characteristics: String(req.query.characteristics || ''),
-    sort: req.query.sort || 'updated_desc',
-    page: req.query.page || 1,
-    pageSize: req.query.pageSize || 25
-  }));
+  const input = catalogListRequestInput(req);
   const characteristicFilters = normalizeStorefrontCharacteristicFilters(input.characteristics);
   const baseFilters = buildProductFilters({ ...input, includeStorefrontFilters: false });
   const filters = buildProductFilters({ ...input, characteristicFilters, includeStorefrontFilters: true });
@@ -1977,6 +1982,25 @@ router.get('/products', asyncHandler(async (req, res) => {
     page: input.page,
     pageSize: input.pageSize,
     pageCount: Math.max(1, Math.ceil(total / input.pageSize))
+  } });
+}));
+
+router.get('/products/export', asyncHandler(async (req, res) => {
+  const input = catalogListRequestInput(req);
+  const characteristicFilters = normalizeStorefrontCharacteristicFilters(input.characteristics);
+  const { params, whereSql } = buildProductFilters({ ...input, characteristicFilters, includeStorefrontFilters: true });
+  const products = await query(
+    `${productSelect}
+     ${whereSql}
+     ORDER BY ${sortSql[input.sort]}`,
+    params
+  );
+  const items = products.rows.map((row) => serializeCatalogProduct(row));
+  await attachCatalogProductCharacteristics(items);
+  res.json({ data: {
+    items,
+    total: items.length,
+    generatedAt: new Date().toISOString()
   } });
 }));
 
