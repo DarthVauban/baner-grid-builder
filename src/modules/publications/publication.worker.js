@@ -1,9 +1,11 @@
 import { pool } from '../../db/pool.js';
 import { env } from '../../config/env.js';
+import { getMaintenanceReason } from '../backups/maintenance.service.js';
 import { publishNotificationUpdates } from '../notifications/notification.events.js';
 import { createNotification } from '../notifications/notification.service.js';
 
 export async function processPublicationReminders({ now = new Date(), lockRows = env.NODE_ENV !== 'test' } = {}) {
+  if (getMaintenanceReason()) return 0;
   const client = lockRows ? await pool.connect() : pool;
   const notifiedUsers = new Set();
   let processed = 0;

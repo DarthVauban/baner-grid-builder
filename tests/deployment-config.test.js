@@ -6,6 +6,7 @@ const workflow = readFileSync(new URL('../.github/workflows/deploy.yml', import.
 const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
+const nginx = readFileSync(new URL('../nginx/nginx.conf', import.meta.url), 'utf8');
 
 test('deployment publishes and pulls the same immutable full-SHA image', () => {
   assert.match(workflow, /type=sha,prefix=sha-,format=long/);
@@ -59,6 +60,10 @@ test('catalog photos use persistent writable storage in production', () => {
   assert.match(dockerfile, /chown -R nodeapp:nodeapp \/app\/storage/);
   assert.match(catalogMedia, /NODE_ENV === 'production'/);
   assert.match(catalogMedia, /Configure a writable persistent CATALOG_MEDIA_DIR/);
+});
+
+test('reverse proxy accepts Telegram backup restore archives', () => {
+  assert.match(nginx, /client_max_body_size\s+55m/);
 });
 
 test('first persistent-storage deployment migrates media from the legacy container', () => {

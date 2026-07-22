@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, raw } from 'express';
 import { z } from 'zod';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
@@ -14,7 +14,21 @@ import {
   toolIds
 } from '../access/access.service.js';
 import { isPrimaryAdmin } from '../auth/two-factor.service.js';
-import { getAdminIntegrations, saveMailtrapIntegration } from '../integrations/integration.service.js';
+import {
+  getAdminIntegrations,
+  saveMailtrapIntegration,
+  saveTelegramIntegration,
+  TelegramApiError
+} from '../integrations/integration.service.js';
+import {
+  BackupError,
+  backupLimits,
+  createAndSendBackup,
+  getBackupSettings,
+  listBackupRuns,
+  restoreWorkspaceBackup,
+  saveBackupSettings
+} from '../backups/backup.service.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -45,6 +59,17 @@ const mailtrapIntegrationSchema = z.object({
   senderEmail: z.string().trim().email('Вкажіть коректний email відправника.').max(255),
   senderName: z.string().trim().min(2, 'Вкажіть назву відправника.').max(120),
   token: z.string().trim().max(4000, 'Токен завеликий.').optional().default('')
+});
+const telegramIntegrationSchema = z.object({
+  chatId: z.string().trim().min(1, 'Вкажіть ID чату або @username каналу.').max(255),
+  token: z.string().trim().max(4000, 'Токен завеликий.').optional().default('')
+});
+const backupSettingsSchema = z.object({
+  automaticEnabled: z.boolean(),
+  scheduleType: z.enum(['daily', 'weekly']),
+  scheduleTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Вкажіть час у форматі ГГ:ХХ.'),
+  scheduleWeekday: z.number().int().min(1).max(7),
+  timezone: z.string().trim().min(1).max(80)
 });
 const directoryQuerySchema = z.object({
   search: z.string().trim().max(160).default(''),
@@ -259,6 +284,66 @@ router.put('/integrations/mailtrap', adminOnly, asyncHandler(async (req, res) =>
     throw error;
   }
 }));
+
+router.put('/integrations/telegram', adminOnly, asyncHandler(async (req, res) => {
+  const input = parseInput(telegramIntegrationSchema, req.body);
+  try {
+    res.json({ data: await saveTelegramIntegration(input, req.user.id) });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'TELEGRAM_TOKEN_REQUIRED') {
+      throw new AppError(422, 'TELEGRAM_TOKEN_REQUIRED', 'Вкажіть токен Telegram-бота для першого підключення.');
+    }
+    if (error instanceof TelegramApiError) {
+      throw new AppError(error.status >= 500 ? 502 : 422, 'TELEGRAM_CONNECTION_FAILED', error.message);
+    }
+    throw error;
+  }
+}));
+
+router.get('/backups', adminOnly, asyncHandler(async (req, res) => {
+  const [settings, runs] = await Promise.all([getBackupSettings(), listBackupRuns()]);
+  res.json({
+    data: {
+      settings,
+      runs,
+      telegramDocumentLimitBytes: backupLimits.telegramDocumentBytes
+    }
+  });
+}));
+
+router.put('/backups/settings', adminOnly, asyncHandler(async (req, res) => {
+  const input = parseInput(backupSettingsSchema, req.body);
+  try {
+    res.json({ data: await saveBackupSettings(input, req.user.id) });
+  } catch (error) {
+    if (error instanceof BackupError) throw new AppError(error.status, error.code, error.message);
+    throw error;
+  }
+}));
+
+router.post('/backups/run', adminOnly, asyncHandler(async (req, res) => {
+  try {
+    res.status(201).json({ data: await createAndSendBackup({ trigger: 'manual', userId: req.user.id }) });
+  } catch (error) {
+    if (error instanceof BackupError) throw new AppError(error.status, error.code, error.message);
+    if (error instanceof TelegramApiError) throw new AppError(502, 'TELEGRAM_SEND_FAILED', error.message);
+    throw error;
+  }
+}));
+
+router.post(
+  '/backups/restore',
+  adminOnly,
+  raw({ type: ['application/gzip', 'application/x-gzip', 'application/octet-stream'], limit: '55mb' }),
+  asyncHandler(async (req, res) => {
+    try {
+      res.json({ data: await restoreWorkspaceBackup(req.body, { userId: req.user.id }) });
+    } catch (error) {
+      if (error instanceof BackupError) throw new AppError(error.status, error.code, error.message);
+      throw error;
+    }
+  })
+);
 
 router.get('/users/:id/tool-access', accessManagerOnly, asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);

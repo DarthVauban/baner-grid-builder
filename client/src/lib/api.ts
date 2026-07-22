@@ -39,7 +39,17 @@ import type {
 import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
-import type { IntegrationSettings, MailtrapIntegration, MailtrapIntegrationInput } from '../types/integration';
+import type {
+  BackupAdminState,
+  BackupRestoreResult,
+  BackupRun,
+  BackupSettings,
+  IntegrationSettings,
+  MailtrapIntegration,
+  MailtrapIntegrationInput,
+  TelegramIntegration,
+  TelegramIntegrationInput
+} from '../types/integration';
 import type {
   ApplicationBank,
   ApplicationButtonConfig,
@@ -127,7 +137,11 @@ async function request<T>(path: string, options: ApiRequestOptions = {}): Promis
       }, timeoutMs)
     : undefined;
 
-  if (body !== undefined && !(body instanceof FormData)) {
+  if (body !== undefined
+    && !(body instanceof FormData)
+    && !(body instanceof Blob)
+    && !(body instanceof ArrayBuffer)
+    && !ArrayBuffer.isView(body)) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -535,7 +549,21 @@ export const api = {
     saveMailtrapIntegration: (input: MailtrapIntegrationInput) => request<MailtrapIntegration>(
       '/api/admin/integrations/mailtrap',
       { method: 'PUT', body: jsonBody(input) }
-    )
+    ),
+    saveTelegramIntegration: (input: TelegramIntegrationInput) => request<TelegramIntegration>(
+      '/api/admin/integrations/telegram',
+      { method: 'PUT', body: jsonBody(input), timeoutMs: 45_000 }
+    ),
+    backups: () => request<BackupAdminState>('/api/admin/backups'),
+    saveBackupSettings: (input: Pick<BackupSettings, 'automaticEnabled' | 'scheduleType' | 'scheduleTime' | 'scheduleWeekday' | 'timezone'>) =>
+      request<BackupSettings>('/api/admin/backups/settings', { method: 'PUT', body: jsonBody(input) }),
+    runBackup: () => request<BackupRun>('/api/admin/backups/run', { method: 'POST', timeoutMs: 180_000 }),
+    restoreBackup: (archive: File) => request<BackupRestoreResult>('/api/admin/backups/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/gzip', 'X-File-Name': encodeURIComponent(archive.name) },
+      body: archive,
+      timeoutMs: 300_000
+    })
   },
   grids: {
     list: (search = '') => request<SavedGrid[]>(`/api/grids${queryString({ search })}`),

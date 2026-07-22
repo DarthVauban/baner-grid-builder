@@ -66,6 +66,7 @@ import StyleOutlined from '@mui/icons-material/StyleOutlined';
 import WebRounded from '@mui/icons-material/WebRounded';
 import HistoryRounded from '@mui/icons-material/HistoryRounded';
 import UndoRounded from '@mui/icons-material/UndoRounded';
+import SendRounded from '@mui/icons-material/SendRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -117,6 +118,7 @@ export type IconName =
   | 'qrCode'
   | 'remove'
   | 'save'
+  | 'send'
   | 'search'
   | 'security'
   | 'share'
@@ -194,6 +196,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   qrCode: QrCode2Rounded,
   remove: RemoveRounded,
   save: SaveRounded,
+  send: SendRounded,
   search: SearchRounded,
   security: SecurityRounded,
   share: ShareRounded,

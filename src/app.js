@@ -37,6 +37,7 @@ import { asyncHandler } from './lib/async-handler.js';
 import { requireAuth } from './middleware/auth.js';
 import { requireToolAccess } from './modules/access/access.service.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
+import { getMaintenanceReason } from './modules/backups/maintenance.service.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const webDistDir = path.resolve(currentDir, '../dist/web');
@@ -49,6 +50,15 @@ app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader('X-MT-Build-Sha', env.APP_BUILD_SHA);
   next();
+});
+app.use((req, res, next) => {
+  if (!getMaintenanceReason() || req.path === '/api/health') return next();
+  return res.status(503).json({
+    error: {
+      code: 'MAINTENANCE_MODE',
+      message: 'Робочий простір тимчасово недоступний під час відновлення резервної копії.'
+    }
+  });
 });
 
 app.use(helmet({
