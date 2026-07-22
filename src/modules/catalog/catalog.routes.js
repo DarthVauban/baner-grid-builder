@@ -64,9 +64,30 @@ const listSchema = z.object({
   condition: z.enum(['all', ...productConditions]).default('all'),
   status: z.enum(['all', ...publicationStatuses]).default('all'),
   availability: z.enum(['all', 'in_stock', 'incoming', 'unavailable']).default('all'),
+  conditions: z.string().trim().max(200).default(''),
+  statuses: z.string().trim().max(300).default(''),
+  availabilities: z.string().trim().max(200).default(''),
   brandId: z.string().uuid().optional(),
+  brandIds: z.string().trim().max(4000).default(''),
+  brandDirectoryIds: z.string().trim().max(4000).default(''),
+  templateIds: z.string().trim().max(4000).default(''),
   priceMin: z.coerce.number().min(0).optional(),
   priceMax: z.coerce.number().min(0).optional(),
+  stockMin: z.coerce.number().int().min(0).optional(),
+  stockMax: z.coerce.number().int().min(0).optional(),
+  incomingMin: z.coerce.number().int().min(0).optional(),
+  incomingMax: z.coerce.number().int().min(0).optional(),
+  photoStatus: z.enum(['all', 'present', 'missing']).default('all'),
+  descriptionStatus: z.enum(['all', 'present', 'missing']).default('all'),
+  characteristicsStatus: z.enum(['all', 'present', 'missing']).default('all'),
+  serialStatus: z.enum(['all', 'present', 'missing']).default('all'),
+  readiness: z.enum(['all', 'ready', 'not_ready']).default('all'),
+  modification: z.enum(['all', 'ungrouped', 'main', 'child']).default('all'),
+  createdFrom: z.string().trim().pipe(z.iso.date()).optional(),
+  createdTo: z.string().trim().pipe(z.iso.date()).optional(),
+  updatedFrom: z.string().trim().pipe(z.iso.date()).optional(),
+  updatedTo: z.string().trim().pipe(z.iso.date()).optional(),
+  productList: z.string().max(40000).default(''),
   characteristics: z.string().trim().max(12000).default(''),
   sort: z.enum(['updated_desc', 'name_asc', 'price_asc', 'price_desc', 'stock_asc', 'stock_desc']).default('updated_desc'),
   page: z.coerce.number().int().min(1).default(1),
@@ -507,6 +528,45 @@ function uniqueBrandLabels(labels) {
     result.push(normalized);
   }
   return result;
+}
+
+function uniqueCsvValues(value, { allowed = null, uuids = false, limit = 100 } = {}) {
+  const seen = new Set();
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return String(value || '').split(',').map((item) => item.trim()).filter((item) => {
+    if (!item || seen.has(item)) return false;
+    if (allowed && !allowed.includes(item)) return false;
+    if (uuids && !uuidPattern.test(item)) return false;
+    seen.add(item);
+    return true;
+  }).slice(0, limit);
+}
+
+function normalizeProductList(value) {
+  const seen = new Set();
+  return String(value || '').split(/\r?\n/).map((item) => item.trim()).filter((item) => {
+    const key = item.toLocaleLowerCase('uk-UA');
+    if (!item || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 200).map((raw) => ({
+    raw: raw.slice(0, 240),
+    code: raw.toLocaleLowerCase('uk-UA').slice(0, 240),
+    normalizedName: normalizeProductName(raw).slice(0, 240)
+  }));
+}
+
+function normalizeCatalogListInput(input) {
+  return {
+    ...input,
+    conditions: uniqueCsvValues(input.conditions, { allowed: productConditions }),
+    statuses: uniqueCsvValues(input.statuses, { allowed: publicationStatuses }),
+    availabilities: uniqueCsvValues(input.availabilities, { allowed: ['in_stock', 'incoming', 'unavailable'] }),
+    brandIds: uniqueCsvValues(input.brandIds, { uuids: true }),
+    brandDirectoryIds: uniqueCsvValues(input.brandDirectoryIds, { uuids: true }),
+    templateIds: uniqueCsvValues(input.templateIds, { uuids: true }),
+    productList: normalizeProductList(input.productList)
+  };
 }
 
 async function assertBrandDirectoryExists(directoryId, db = { query }) {
@@ -1235,21 +1295,134 @@ function buildProductFilters(input) {
     const index = params.length;
     where.push(`(lower(product.name) LIKE $${index} OR lower(product.product_code) LIKE $${index} OR lower(product.slug) LIKE $${index})`);
   }
-  if (input.condition !== 'all') {
+  if (input.conditions?.length) {
+    params.push(input.conditions);
+    where.push(`product.condition = ANY($${params.length}::TEXT[])`);
+  } else if (input.condition !== 'all') {
     params.push(input.condition);
     where.push(`product.condition = $${params.length}`);
   }
-  if (input.status !== 'all') {
+  if (input.statuses?.length) {
+    params.push(input.statuses);
+    where.push(`product.publication_status = ANY($${params.length}::TEXT[])`);
+  } else if (input.status !== 'all') {
     params.push(input.status);
     where.push(`product.publication_status = $${params.length}`);
   } else {
     where.push("product.publication_status <> 'ARCHIVED'");
   }
-  if (input.availability === 'in_stock') where.push('product.stock_count > 0');
-  if (input.availability === 'incoming') where.push('product.stock_count = 0 AND product.incoming_count > 0');
-  if (input.availability === 'unavailable') where.push('product.stock_count = 0 AND product.incoming_count = 0');
+  const availabilities = input.availabilities?.length ? input.availabilities : input.availability === 'all' ? [] : [input.availability];
+  if (availabilities.length) {
+    const availabilityClauses = [];
+    if (availabilities.includes('in_stock')) availabilityClauses.push('product.stock_count > 0');
+    if (availabilities.includes('incoming')) availabilityClauses.push('(product.stock_count = 0 AND product.incoming_count > 0)');
+    if (availabilities.includes('unavailable')) availabilityClauses.push('(product.stock_count = 0 AND product.incoming_count = 0)');
+    if (availabilityClauses.length) where.push(`(${availabilityClauses.join(' OR ')})`);
+  }
+  if (input.brandDirectoryIds?.length) {
+    params.push(input.brandDirectoryIds);
+    where.push(`product.brand_id IN (
+      SELECT filter_brand.id
+      FROM used_smartphone_brands AS filter_brand
+      WHERE filter_brand.directory_id::TEXT = ANY($${params.length}::TEXT[])
+    )`);
+  }
+  if (input.templateIds?.length) {
+    params.push(input.templateIds);
+    where.push(`product.id IN (
+      SELECT template_characteristic.product_id
+      FROM used_smartphone_product_characteristics AS template_characteristic
+      WHERE template_characteristic.template_id::TEXT = ANY($${params.length}::TEXT[])
+    )`);
+  }
+  const numericRanges = [
+    ['stockMin', 'product.stock_count', '>='],
+    ['stockMax', 'product.stock_count', '<='],
+    ['incomingMin', 'product.incoming_count', '>='],
+    ['incomingMax', 'product.incoming_count', '<=']
+  ];
+  numericRanges.forEach(([key, column, operator]) => {
+    if (input[key] === undefined) return;
+    params.push(input[key]);
+    where.push(`${column} ${operator} $${params.length}`);
+  });
+  const contentStatus = (value, presentSql) => {
+    if (value === 'present') where.push(presentSql);
+    if (value === 'missing') where.push(`NOT (${presentSql})`);
+  };
+  contentStatus(input.photoStatus, "product.main_image_url <> ''");
+  contentStatus(input.descriptionStatus, "(product.short_description <> '' OR product.description <> '')");
+  const hasCharacteristicsSql = `product.id IN (
+    SELECT content_characteristic.product_id
+    FROM used_smartphone_product_characteristics AS content_characteristic
+    WHERE (
+        content_characteristic.value_text <> ''
+        OR content_characteristic.value_number IS NOT NULL
+        OR content_characteristic.value_boolean IS NOT NULL
+        OR COALESCE(content_characteristic.value_json->'value', 'null'::JSONB) NOT IN ('null'::JSONB, '""'::JSONB, '[]'::JSONB, '{}'::JSONB)
+      )
+  )`;
+  contentStatus(input.characteristicsStatus, hasCharacteristicsSql);
+  contentStatus(input.serialStatus, "product.imei_serial <> ''");
+  const readySql = "(product.price_uah > 0 AND product.main_image_url <> '' AND product.slug <> '')";
+  if (input.readiness === 'ready') where.push(readySql);
+  if (input.readiness === 'not_ready') where.push(`NOT ${readySql}`);
+  if (input.modification === 'ungrouped') {
+    where.push('product.id NOT IN (SELECT filter_group_item.product_id FROM used_smartphone_product_group_items AS filter_group_item)');
+  }
+  if (input.modification === 'main') {
+    where.push('product.id IN (SELECT filter_group.main_product_id FROM used_smartphone_product_groups AS filter_group WHERE filter_group.main_product_id IS NOT NULL)');
+  }
+  if (input.modification === 'child') {
+    where.push(`product.id IN (
+      SELECT filter_group_item.product_id
+      FROM used_smartphone_product_group_items AS filter_group_item
+      INNER JOIN used_smartphone_product_groups AS filter_group ON filter_group.id = filter_group_item.group_id
+      WHERE filter_group.main_product_id <> filter_group_item.product_id
+    )`);
+  }
+  const dateRanges = [
+    ['createdFrom', 'product.created_at', '>=', ''],
+    ['createdTo', 'product.created_at', '<', " + INTERVAL '1 day'"],
+    ['updatedFrom', 'product.updated_at', '>=', ''],
+    ['updatedTo', 'product.updated_at', '<', " + INTERVAL '1 day'"]
+  ];
+  dateRanges.forEach(([key, column, operator, suffix]) => {
+    if (!input[key]) return;
+    params.push(input[key]);
+    where.push(`${column} ${operator} $${params.length}::DATE${suffix}`);
+  });
+  if (input.productList?.length) {
+    params.push(input.productList.map((item) => item.code));
+    const codeIndex = params.length;
+    params.push(input.productList.map((item) => item.normalizedName));
+    const nameIndex = params.length;
+    where.push(`(
+      lower(product.product_code) = ANY($${codeIndex}::TEXT[])
+      OR product.normalized_name = ANY($${nameIndex}::TEXT[])
+    )`);
+  }
   if (input.includeStorefrontFilters) appendStorefrontProductFilters(input, params, where);
   return { params, whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '' };
+}
+
+async function loadProductListDiagnostics(productList) {
+  if (!productList?.length) return null;
+  const result = await query(
+    `SELECT product_code, normalized_name
+     FROM used_smartphone_products
+     WHERE lower(product_code) = ANY($1::TEXT[])
+        OR normalized_name = ANY($2::TEXT[])`,
+    [productList.map((item) => item.code), productList.map((item) => item.normalizedName)]
+  );
+  const matchedCodes = new Set(result.rows.map((row) => String(row.product_code || '').toLocaleLowerCase('uk-UA')));
+  const matchedNames = new Set(result.rows.map((row) => row.normalized_name));
+  const unmatched = productList.filter((item) => !matchedCodes.has(item.code) && !matchedNames.has(item.normalizedName)).map((item) => item.raw);
+  return {
+    requestedCount: productList.length,
+    matchedCount: productList.length - unmatched.length,
+    unmatched
+  };
 }
 
 async function loadSettings(db = { query }) {
@@ -1736,17 +1909,49 @@ router.get('/product-groups', asyncHandler(async (req, res) => {
 }));
 
 router.get('/products', asyncHandler(async (req, res) => {
-  const input = parseInput(listSchema, {
+  const input = normalizeCatalogListInput(parseInput(listSchema, {
     search: String(req.query.search || ''),
     condition: req.query.condition || 'all',
     status: req.query.status || 'all',
     availability: req.query.availability || 'all',
+    conditions: String(req.query.conditions || ''),
+    statuses: String(req.query.statuses || ''),
+    availabilities: String(req.query.availabilities || ''),
+    brandId: req.query.brandId || undefined,
+    brandIds: String(req.query.brandIds || ''),
+    brandDirectoryIds: String(req.query.brandDirectoryIds || ''),
+    templateIds: String(req.query.templateIds || ''),
+    priceMin: req.query.priceMin || undefined,
+    priceMax: req.query.priceMax || undefined,
+    stockMin: req.query.stockMin || undefined,
+    stockMax: req.query.stockMax || undefined,
+    incomingMin: req.query.incomingMin || undefined,
+    incomingMax: req.query.incomingMax || undefined,
+    photoStatus: req.query.photoStatus || 'all',
+    descriptionStatus: req.query.descriptionStatus || 'all',
+    characteristicsStatus: req.query.characteristicsStatus || 'all',
+    serialStatus: req.query.serialStatus || 'all',
+    readiness: req.query.readiness || 'all',
+    modification: req.query.modification || 'all',
+    createdFrom: req.query.createdFrom || undefined,
+    createdTo: req.query.createdTo || undefined,
+    updatedFrom: req.query.updatedFrom || undefined,
+    updatedTo: req.query.updatedTo || undefined,
+    productList: String(req.query.productList || ''),
+    characteristics: String(req.query.characteristics || ''),
     sort: req.query.sort || 'updated_desc',
     page: req.query.page || 1,
     pageSize: req.query.pageSize || 25
-  });
-  const { params, whereSql } = buildProductFilters(input);
-  const totalResult = await query(`SELECT COUNT(*)::INTEGER AS count FROM used_smartphone_products AS product ${whereSql}`, params);
+  }));
+  const characteristicFilters = normalizeStorefrontCharacteristicFilters(input.characteristics);
+  const baseFilters = buildProductFilters({ ...input, includeStorefrontFilters: false });
+  const filters = buildProductFilters({ ...input, characteristicFilters, includeStorefrontFilters: true });
+  const { params, whereSql } = filters;
+  const [totalResult, filterOptions, productListDiagnostics] = await Promise.all([
+    query(`SELECT COUNT(*)::INTEGER AS count FROM used_smartphone_products AS product ${whereSql}`, params),
+    loadStorefrontProductFilters(baseFilters.whereSql, baseFilters.params),
+    loadProductListDiagnostics(input.productList)
+  ]);
   const offset = (input.page - 1) * input.pageSize;
   const products = await query(
     `${productSelect}
@@ -1756,9 +1961,16 @@ router.get('/products', asyncHandler(async (req, res) => {
     [...params, input.pageSize, offset]
   );
   const total = Number(totalResult.rows[0]?.count || 0);
-  const items = await attachCatalogProductGroups(products.rows.map((row) => serializeCatalogProduct(row)));
+  const pageIds = new Set(products.rows.map((row) => row.id));
+  const items = await attachCatalogProductGroups(
+    products.rows.map((row) => serializeCatalogProduct(row)),
+    { query },
+    { allowedProductIds: pageIds }
+  );
   res.json({ data: {
     items,
+    filters: filterOptions,
+    diagnostics: productListDiagnostics ? { productList: productListDiagnostics } : undefined,
     total,
     page: input.page,
     pageSize: input.pageSize,

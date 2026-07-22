@@ -265,7 +265,10 @@ export function normalizeStorefrontCharacteristicFilters(value) {
 }
 
 export function appendStorefrontProductFilters(input, params, where) {
-  if (input.brandId) {
+  if (input.brandIds?.length) {
+    params.push(input.brandIds);
+    where.push(`product.brand_id::TEXT = ANY($${params.length}::TEXT[])`);
+  } else if (input.brandId) {
     params.push(input.brandId);
     where.push(`product.brand_id = $${params.length}`);
   }
@@ -721,7 +724,7 @@ export function serializeCatalogProduct(row) {
   };
 }
 
-export async function attachCatalogProductGroups(products, db = { query }) {
+export async function attachCatalogProductGroups(products, db = { query }, { allowedProductIds = null } = {}) {
   const productIds = products.map((product) => product.id).filter(Boolean);
   if (!productIds.length) return products;
   const placeholders = productIds.map((_, index) => `$${index + 1}`).join(', ');
@@ -767,13 +770,16 @@ export async function attachCatalogProductGroups(products, db = { query }) {
     const group = groupByProduct.get(product.id);
     if (!group) return;
     const rows = itemsByGroup.get(group.id) || [];
-    const childRows = rows.filter((row) => row.id !== group.main_product_id);
+    const allChildRows = rows.filter((row) => row.id !== group.main_product_id);
+    const childRows = allowedProductIds
+      ? allChildRows.filter((row) => allowedProductIds.has(row.id))
+      : allChildRows;
     product.modificationGroup = {
       groupId: group.id,
       groupLabel: group.label,
       mainProductId: group.main_product_id || null,
       isMain: group.main_product_id === product.id,
-      childCount: childRows.length
+      childCount: allChildRows.length
     };
     product.modificationChildren = group.main_product_id === product.id
       ? childRows.map((row) => serializeCatalogProduct(row))

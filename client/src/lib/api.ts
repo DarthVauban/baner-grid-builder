@@ -66,6 +66,7 @@ import type {
   CatalogProductGroup,
   CatalogProductModificationSet,
   CatalogProductInput,
+  CatalogProductListParams,
   CatalogPublicationStatus,
   CatalogStorefrontSettings,
   CatalogSummary
@@ -311,7 +312,7 @@ export const api = {
       updateCharacteristicTemplate: (id: string, input: CatalogCharacteristicTemplateInput) =>
         request<CatalogCharacteristicTemplate>(`/api/catalog/characteristic-templates/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
       productGroups: () => request<CatalogProductGroup[]>('/api/catalog/product-groups'),
-      list: (params: { search?: string; condition?: string; status?: string; availability?: string; sort?: string; page?: number; pageSize?: number }) =>
+      list: (params: CatalogProductListParams) =>
         request<CatalogFeed>(`/api/catalog/products${queryString(params)}`),
     get: (id: string) => request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`),
     create: (input: CatalogProductInput) =>

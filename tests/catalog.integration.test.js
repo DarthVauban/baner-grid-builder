@@ -430,6 +430,54 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(groupedMain.modificationGroup.childCount, 1);
   assert.equal(groupedMain.modificationChildren[0].id, variant.body.data.id);
 
+  const pastedProductSelection = await admin.get('/api/catalog/products').query({
+    productList: `SM-000001\nsm-000001\n${variant.body.data.name}\nUnknown spreadsheet row`,
+    pageSize: 25
+  }).expect(200);
+  assert.equal(pastedProductSelection.body.data.total, 2);
+  assert.deepEqual(
+    pastedProductSelection.body.data.items.map((item) => item.productCode).sort(),
+    ['SM-000001', 'SM-000002']
+  );
+  assert.deepEqual(pastedProductSelection.body.data.diagnostics.productList, {
+    requestedCount: 3,
+    matchedCount: 2,
+    unmatched: ['Unknown spreadsheet row']
+  });
+
+  const advancedAdminSelection = await admin.get('/api/catalog/products').query({
+    conditions: 'USED',
+    brandIds: appleBrand.id,
+    brandDirectoryIds: brandDirectory.body.data.id,
+    statuses: 'PUBLISHED',
+    availabilities: 'in_stock',
+    priceMin: 18000,
+    priceMax: 19000,
+    stockMin: 1,
+    stockMax: 1,
+    incomingMax: 0,
+    photoStatus: 'present',
+    descriptionStatus: 'present',
+    characteristicsStatus: 'present',
+    serialStatus: 'missing',
+    readiness: 'ready',
+    templateIds: template.body.data.id,
+    characteristics: JSON.stringify({ storage: ['128'] }),
+    pageSize: 25
+  }).expect(200);
+  assert.equal(advancedAdminSelection.body.data.total, 1);
+  assert.equal(advancedAdminSelection.body.data.items[0].id, created.body.data.id);
+  assert.ok(advancedAdminSelection.body.data.filters.characteristics.some((field) => field.key === 'storage'));
+  await admin.get('/api/catalog/products').query({ createdFrom: '2026-02-30' }).expect(422);
+
+  const childModificationSelection = await admin.get('/api/catalog/products').query({
+    modification: 'child',
+    pageSize: 25
+  }).expect(200);
+  assert.equal(childModificationSelection.body.data.total, 1);
+  assert.equal(childModificationSelection.body.data.items[0].id, variant.body.data.id);
+  assert.deepEqual(childModificationSelection.body.data.items[0].modificationChildren, []);
+
   await admin.delete(`/api/catalog/products/${variant.body.data.id}`).send({
     expectedVersion: variantWithCharacteristics.body.data.version
   }).expect(204);

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { AutoHeightSandbox } from '../components/AutoHeightSandbox';
+import { CatalogAdvancedFilters } from '../components/CatalogAdvancedFilters';
 import { CatalogPhotoUploadProgress } from '../components/CatalogPhotoUploadProgress';
 import type { CatalogPhotoUploadItem } from '../components/CatalogPhotoUploadProgress';
 import { Icon } from '../components/Icon';
@@ -18,6 +19,14 @@ import {
 } from '../lib/catalog';
 import { convertCatalogImageToWebp, validateCatalogImageFile } from '../lib/catalog-media';
 import { buildCatalogImportWorkbook } from '../lib/catalog-import';
+import {
+  catalogAdminFiltersToApi,
+  catalogAdvancedFilterCount,
+  countPastedCatalogProducts,
+  defaultCatalogAdminFilters,
+  parseCatalogAdminFilters,
+  serializeCatalogAdminFilters
+} from '../lib/catalog-filters';
 import { copyShareLink } from '../lib/share';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -40,14 +49,6 @@ import type {
 
 const CatalogSourceCodeEditor = lazy(() => import('../components/CatalogSourceCodeEditor').then((module) => ({ default: module.CatalogSourceCodeEditor })));
 
-const conditionFilterOptions = [
-  { value: 'all', label: 'Усі стани' },
-  ...catalogConditionOptions
-];
-const statusFilterOptions = [
-  { value: 'all', label: 'Усі статуси' },
-  ...catalogPublicationStatusOptions
-];
 const availabilityFilterOptions: Array<{ value: CatalogAvailabilityStatus | 'all'; label: string }> = [
   { value: 'all', label: 'Уся наявність' },
   { value: 'in_stock', label: 'В наявності' },
@@ -62,6 +63,24 @@ const sortOptions = [
   { value: 'stock_desc', label: 'Більше залишків' },
   { value: 'stock_asc', label: 'Менше залишків' }
 ];
+
+const presenceFilterLabels = {
+  present: 'заповнено',
+  missing: 'не заповнено'
+} as const;
+
+function quickFilterValue(values: string[]) {
+  if (!values.length) return 'all';
+  return values.length === 1 ? values[0] : '__multiple__';
+}
+
+function quickFilterOptions(values: string[], allLabel: string, options: Array<{ value: string; label: string }>) {
+  return [
+    { value: 'all', label: allLabel },
+    ...(values.length > 1 ? [{ value: '__multiple__', label: `Обрано: ${values.length}`, disabled: true }] : []),
+    ...options
+  ];
+}
 
 function summaryCards(summary?: CatalogSummary) {
   return [
@@ -1696,12 +1715,8 @@ export function UsedSmartphonesCatalogPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState('');
-  const [condition, setCondition] = useState<CatalogCondition | 'all'>('all');
-  const [status, setStatus] = useState<CatalogPublicationStatus | 'all'>('all');
-  const [availability, setAvailability] = useState<CatalogAvailabilityStatus | 'all'>('all');
-  const [sort, setSort] = useState('updated_desc');
-  const [page, setPage] = useState(1);
+  const filters = useMemo(() => parseCatalogAdminFilters(searchParams), [searchParams]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [editorProduct, setEditorProduct] = useState<CatalogProduct | null | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<CatalogImportPreview | null>(null);
@@ -1712,7 +1727,7 @@ export function UsedSmartphonesCatalogPage() {
   const [deleteProducts, setDeleteProducts] = useState<CatalogProduct[] | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const sharedProductId = searchParams.get('product');
-  const queryParams = useMemo(() => ({ search, condition, status, availability, sort, page, pageSize: 25 }), [availability, condition, page, search, sort, status]);
+  const queryParams = useMemo(() => catalogAdminFiltersToApi(filters, 25), [filters]);
 
   const products = useQuery<CatalogFeed>({
     queryKey: ['catalog-products', queryParams],
@@ -1722,6 +1737,7 @@ export function UsedSmartphonesCatalogPage() {
   const summary = useQuery({ queryKey: ['catalog-summary'], queryFn: api.catalog.summary });
   const brands = useQuery({ queryKey: ['catalog-brands'], queryFn: () => api.catalog.brands() });
   const brandDirectories = useQuery({ queryKey: ['catalog-brand-directories'], queryFn: api.catalog.brandDirectories });
+  const characteristicTemplates = useQuery({ queryKey: ['catalog-characteristic-templates'], queryFn: api.catalog.characteristicTemplates });
   const sharedProduct = useQuery({
     queryKey: ['catalog-product', sharedProductId],
     queryFn: () => api.catalog.get(sharedProductId!),
@@ -1746,6 +1762,16 @@ export function UsedSmartphonesCatalogPage() {
       api.catalog.commitImport(rows, options)
   });
   const busy = saveProduct.isPending || removeProduct.isPending || commitImport.isPending || bulkBusy;
+
+  function updateFilters(patch: Partial<typeof filters>, resetPage = true) {
+    const next = { ...filters, ...patch };
+    if (resetPage && patch.page === undefined) next.page = 1;
+    setSearchParams(serializeCatalogAdminFilters(next, searchParams), { replace: true });
+  }
+
+  function resetFilters() {
+    setSearchParams(serializeCatalogAdminFilters(defaultCatalogAdminFilters, searchParams), { replace: true });
+  }
 
   useEffect(() => {
     if (sharedProduct.data) setEditorProduct(sharedProduct.data);
@@ -1947,6 +1973,59 @@ export function UsedSmartphonesCatalogPage() {
     });
   }
 
+  const brandItems = brands.data || [];
+  const directoryItems = brandDirectories.data || [];
+  const templateItems = characteristicTemplates.data || [];
+  const filterChips: Array<{ key: string; label: string; remove: () => void }> = [];
+  const addListChips = (
+    keyPrefix: string,
+    values: string[],
+    options: Array<{ value: string; label: string }>,
+    update: (values: string[]) => void
+  ) => values.forEach((value) => {
+    const label = options.find((option) => option.value === value)?.label || value;
+    filterChips.push({ key: `${keyPrefix}-${value}`, label, remove: () => update(values.filter((item) => item !== value)) });
+  });
+
+  addListChips('condition', filters.conditions, catalogConditionOptions, (conditions) => updateFilters({ conditions: conditions as CatalogCondition[] }));
+  addListChips('status', filters.statuses, catalogPublicationStatusOptions, (statuses) => updateFilters({ statuses: statuses as CatalogPublicationStatus[] }));
+  addListChips('availability', filters.availabilities, availabilityFilterOptions.filter((option) => option.value !== 'all') as Array<{ value: string; label: string }>, (availabilities) => updateFilters({ availabilities: availabilities as CatalogAvailabilityStatus[] }));
+  addListChips('brand', filters.brandIds, brandItems.map((brand) => ({ value: brand.id, label: brand.label })), (brandIds) => updateFilters({ brandIds }));
+  addListChips('directory', filters.brandDirectoryIds, directoryItems.map((directory) => ({ value: directory.id, label: directory.label })), (brandDirectoryIds) => updateFilters({ brandDirectoryIds }));
+  addListChips('template', filters.templateIds, templateItems.map((template) => ({ value: template.id, label: template.label })), (templateIds) => updateFilters({ templateIds }));
+  if (filters.priceMin || filters.priceMax) filterChips.push({ key: 'price', label: `Ціна: ${filters.priceMin || '0'}–${filters.priceMax || '∞'} ₴`, remove: () => updateFilters({ priceMin: '', priceMax: '' }) });
+  if (filters.stockMin || filters.stockMax) filterChips.push({ key: 'stock', label: `Залишок: ${filters.stockMin || '0'}–${filters.stockMax || '∞'}`, remove: () => updateFilters({ stockMin: '', stockMax: '' }) });
+  if (filters.incomingMin || filters.incomingMax) filterChips.push({ key: 'incoming', label: `У дорозі: ${filters.incomingMin || '0'}–${filters.incomingMax || '∞'}`, remove: () => updateFilters({ incomingMin: '', incomingMax: '' }) });
+  ([
+    ['photoStatus', 'Фото'],
+    ['descriptionStatus', 'Опис'],
+    ['characteristicsStatus', 'Характеристики'],
+    ['serialStatus', 'IMEI / серійний номер']
+  ] as const).forEach(([key, label]) => {
+    const status = filters[key];
+    if (status !== 'all') filterChips.push({ key, label: `${label}: ${presenceFilterLabels[status]}`, remove: () => updateFilters({ [key]: 'all' }) });
+  });
+  if (filters.readiness !== 'all') filterChips.push({ key: 'readiness', label: filters.readiness === 'ready' ? 'Готові до публікації' : 'Не готові до публікації', remove: () => updateFilters({ readiness: 'all' }) });
+  if (filters.modification !== 'all') {
+    const labels = { ungrouped: 'Без групи модифікацій', main: 'Основні модифікації', child: 'Дочірні модифікації' };
+    filterChips.push({ key: 'modification', label: labels[filters.modification], remove: () => updateFilters({ modification: 'all' }) });
+  }
+  if (filters.createdFrom || filters.createdTo) filterChips.push({ key: 'created', label: `Створено: ${filters.createdFrom || '…'} — ${filters.createdTo || '…'}`, remove: () => updateFilters({ createdFrom: '', createdTo: '' }) });
+  if (filters.updatedFrom || filters.updatedTo) filterChips.push({ key: 'updated', label: `Оновлено: ${filters.updatedFrom || '…'} — ${filters.updatedTo || '…'}`, remove: () => updateFilters({ updatedFrom: '', updatedTo: '' }) });
+  if (filters.productList) filterChips.push({ key: 'product-list', label: `Список товарів: ${countPastedCatalogProducts(filters.productList)}`, remove: () => updateFilters({ productList: '' }) });
+  Object.entries(filters.characteristics).forEach(([key, values]) => {
+    const field = products.data?.filters?.characteristics.find((item) => item.key === key);
+    filterChips.push({
+      key: `characteristic-${key}`,
+      label: `${field?.label || key}: ${values.join(', ')}`,
+      remove: () => {
+        const characteristics = { ...filters.characteristics };
+        delete characteristics[key];
+        updateFilters({ characteristics });
+      }
+    });
+  });
+
   if (editorProduct !== undefined) {
     return <ProductEditorScreen
       product={editorProduct}
@@ -1985,12 +2064,35 @@ export function UsedSmartphonesCatalogPage() {
     </section>
 
     <section className="catalog-filters">
-      <label className="field"><span>Пошук</span><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Назва, код або slug" /></label>
-      <StyledSelect value={condition} options={conditionFilterOptions} onChange={(value) => { setCondition(value as CatalogCondition | 'all'); setPage(1); }} />
-      <StyledSelect value={status} options={statusFilterOptions} onChange={(value) => { setStatus(value as CatalogPublicationStatus | 'all'); setPage(1); }} />
-      <StyledSelect value={availability} options={availabilityFilterOptions} onChange={(value) => { setAvailability(value as CatalogAvailabilityStatus | 'all'); setPage(1); }} />
-      <StyledSelect value={sort} options={sortOptions} onChange={(value) => setSort(String(value))} />
+      <label className="field"><span>Пошук</span><input value={filters.search} onChange={(event) => updateFilters({ search: event.target.value })} placeholder="Назва, код або slug" /></label>
+      <StyledSelect
+        value={quickFilterValue(filters.brandIds)}
+        options={quickFilterOptions(filters.brandIds, 'Усі бренди', brandItems.map((brand) => ({ value: brand.id, label: brand.label })))}
+        onChange={(value) => updateFilters({ brandIds: value === 'all' ? [] : [String(value)] })}
+        searchable
+        searchPlaceholder="Пошук бренду"
+      />
+      <StyledSelect
+        value={quickFilterValue(filters.statuses)}
+        options={quickFilterOptions(filters.statuses, 'Усі статуси', catalogPublicationStatusOptions)}
+        onChange={(value) => updateFilters({ statuses: value === 'all' ? [] : [value as CatalogPublicationStatus] })}
+      />
+      <StyledSelect
+        value={quickFilterValue(filters.availabilities)}
+        options={quickFilterOptions(filters.availabilities, 'Уся наявність', availabilityFilterOptions.filter((option) => option.value !== 'all') as Array<{ value: string; label: string }>)}
+        onChange={(value) => updateFilters({ availabilities: value === 'all' ? [] : [value as CatalogAvailabilityStatus] })}
+      />
+      <button className="button button--secondary catalog-filters__advanced" type="button" onClick={() => setFiltersOpen(true)}>
+        <Icon name="characteristics" size={17} /> Усі фільтри
+        {catalogAdvancedFilterCount(filters) > 0 && <span>{catalogAdvancedFilterCount(filters)}</span>}
+      </button>
+      <StyledSelect value={filters.sort} options={sortOptions} onChange={(value) => updateFilters({ sort: String(value) })} />
     </section>
+
+    {filterChips.length > 0 && <section className="catalog-filter-chips" aria-label="Активні фільтри">
+      {filterChips.map((chip) => <span className="catalog-filter-chip" key={chip.key}>{chip.label}<button type="button" onClick={chip.remove} aria-label={`Прибрати фільтр ${chip.label}`}><Icon name="close" size={13} /></button></span>)}
+      <button className="catalog-filter-chip catalog-filter-chip--reset" type="button" onClick={resetFilters}>Скинути все</button>
+    </section>}
 
     <section className="catalog-table">
       {selectedProducts.length > 0 && <div className="catalog-bulk-bar">
@@ -2048,17 +2150,27 @@ export function UsedSmartphonesCatalogPage() {
       })}
       {!products.isLoading && !rows.length && <div className="empty-state">
         <div className="empty-state__icon"><Icon name="phone" size={28} /></div>
-        <h2>Каталог поки порожній</h2>
-        <p>Створіть товар вручну або завантажте XLSX з основними даними, характеристиками та параметрами модифікацій.</p>
+        <h2>{catalogAdvancedFilterCount(filters) || filters.search ? 'За вибраними умовами товарів не знайдено' : 'Каталог поки порожній'}</h2>
+        <p>{catalogAdvancedFilterCount(filters) || filters.search ? 'Змініть або скиньте частину фільтрів і спробуйте ще раз.' : 'Створіть товар вручну або завантажте XLSX з основними даними та характеристиками.'}</p>
       </div>}
       <div className="task-list__summary">
         <span>{products.data ? `${products.data.total} товарів · сторінка ${products.data.page} з ${products.data.pageCount}` : 'Завантаження...'}</span>
         <div className="catalog-pagination">
-          <button className="button button--secondary button--small" type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><Icon name="arrowLeft" size={14} /> Назад</button>
-          <button className="button button--secondary button--small" type="button" disabled={!products.data || page >= products.data.pageCount} onClick={() => setPage((current) => current + 1)}>Далі <Icon name="arrowRight" size={14} /></button>
+          <button className="button button--secondary button--small" type="button" disabled={filters.page <= 1} onClick={() => updateFilters({ page: Math.max(1, filters.page - 1) }, false)}><Icon name="arrowLeft" size={14} /> Назад</button>
+          <button className="button button--secondary button--small" type="button" disabled={!products.data || filters.page >= products.data.pageCount} onClick={() => updateFilters({ page: filters.page + 1 }, false)}>Далі <Icon name="arrowRight" size={14} /></button>
         </div>
       </div>
     </section>
+    {filtersOpen && <CatalogAdvancedFilters
+      value={filters}
+      feed={products.data}
+      brands={brandItems}
+      brandDirectories={directoryItems}
+      templates={templateItems}
+      onChange={(patch) => updateFilters(patch)}
+      onReset={resetFilters}
+      onClose={() => setFiltersOpen(false)}
+    />}
     {importOpen && <ImportModal
       busy={previewImport.isPending || commitImport.isPending}
       preview={importPreview}

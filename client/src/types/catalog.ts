@@ -271,10 +271,57 @@ export interface CatalogProductInput {
 export interface CatalogFeed {
   items: CatalogProduct[];
   filters?: CatalogStorefrontFilters;
+  diagnostics?: {
+    productList?: {
+      requestedCount: number;
+      matchedCount: number;
+      unmatched: string[];
+    };
+  };
   total: number;
   page: number;
   pageSize: number;
   pageCount: number;
+}
+
+export type CatalogPresenceFilter = 'all' | 'present' | 'missing';
+export type CatalogReadinessFilter = 'all' | 'ready' | 'not_ready';
+export type CatalogModificationFilter = 'all' | 'ungrouped' | 'main' | 'child';
+
+export interface CatalogProductListParams {
+  [key: string]: string | number | undefined;
+  search?: string;
+  condition?: string;
+  status?: string;
+  availability?: string;
+  conditions?: string;
+  statuses?: string;
+  availabilities?: string;
+  brandId?: string;
+  brandIds?: string;
+  brandDirectoryIds?: string;
+  templateIds?: string;
+  priceMin?: string | number;
+  priceMax?: string | number;
+  stockMin?: string | number;
+  stockMax?: string | number;
+  incomingMin?: string | number;
+  incomingMax?: string | number;
+  photoStatus?: CatalogPresenceFilter;
+  descriptionStatus?: CatalogPresenceFilter;
+  characteristicsStatus?: CatalogPresenceFilter;
+  serialStatus?: CatalogPresenceFilter;
+  readiness?: CatalogReadinessFilter;
+  modification?: CatalogModificationFilter;
+  createdFrom?: string;
+  createdTo?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
+  productList?: string;
+  characteristics?: string;
+  sort?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 export interface CatalogSummary {
