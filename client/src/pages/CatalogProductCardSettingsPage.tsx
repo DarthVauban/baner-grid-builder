@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type DragEvent, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CatalogThemeDeviceSwitch,
@@ -36,6 +36,11 @@ const contentLabels: Record<CatalogProductCardContentKey, string> = {
   meta: 'Код і наявність'
 };
 
+type ContentDropTarget = {
+  index: number;
+  placement: 'before' | 'after';
+};
+
 export function CatalogProductCardSettingsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -51,6 +56,8 @@ export function CatalogProductCardSettingsPage() {
   } = useUndoableState<CatalogProductCardTheme>(() => cloneProductCardTheme());
   const [device, setDevice] = useState<CatalogThemeDevice>('desktop');
   const [savedSnapshot, setSavedSnapshot] = useState('');
+  const [draggedContentIndex, setDraggedContentIndex] = useState<number | null>(null);
+  const [contentDropTarget, setContentDropTarget] = useState<ContentDropTarget | null>(null);
 
   useEffect(() => {
     if (!settings.data) return;
@@ -76,6 +83,49 @@ export function CatalogProductCardSettingsPage() {
       [order[index], order[target]] = [order[target], order[index]];
       return { ...current, contentOrder: order };
     });
+  }
+
+  function reorderContent(fromIndex: number, toIndex: number) {
+    setTheme((current) => {
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= current.contentOrder.length || toIndex >= current.contentOrder.length) return current;
+      const contentOrder = [...current.contentOrder];
+      const [content] = contentOrder.splice(fromIndex, 1);
+      contentOrder.splice(toIndex, 0, content);
+      return { ...current, contentOrder };
+    });
+  }
+
+  function startContentDrag(event: DragEvent<HTMLElement>, index: number) {
+    setDraggedContentIndex(index);
+    setContentDropTarget(null);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+  }
+
+  function overContent(event: DragEvent<HTMLElement>, index: number) {
+    if (draggedContentIndex === null) return;
+    if (draggedContentIndex === index) {
+      setContentDropTarget(null);
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setContentDropTarget({ index, placement: draggedContentIndex < index ? 'after' : 'before' });
+  }
+
+  function dropContent(event: DragEvent<HTMLElement>, index: number) {
+    event.preventDefault();
+    const transferredIndex = event.dataTransfer.getData('text/plain');
+    const parsedIndex = transferredIndex.trim() ? Number(transferredIndex) : Number.NaN;
+    const fromIndex = draggedContentIndex ?? parsedIndex;
+    if (Number.isInteger(fromIndex) && fromIndex !== index) reorderContent(fromIndex, index);
+    setDraggedContentIndex(null);
+    setContentDropTarget(null);
+  }
+
+  function finishContentDrag() {
+    setDraggedContentIndex(null);
+    setContentDropTarget(null);
   }
 
   async function submit() {
@@ -130,8 +180,21 @@ export function CatalogProductCardSettingsPage() {
 
         <ThemeSection title="Склад картки" description="Вмикайте елементи та змінюйте порядок основного контенту.">
           <div className="catalog-theme-order catalog-theme-control--wide">
-            {theme.contentOrder.map((key, index) => <div className="catalog-theme-order__item" key={key}>
-              <span><Icon name="menu" size={16} /><strong>{contentLabels[key]}</strong></span>
+            {theme.contentOrder.map((key, index) => <div
+              className={`catalog-theme-order__item${draggedContentIndex === index ? ' catalog-theme-order__item--dragging' : ''}${contentDropTarget?.index === index ? ` catalog-theme-order__item--drop-${contentDropTarget.placement}` : ''}`}
+              key={key}
+              onDragOver={(event) => overContent(event, index)}
+              onDrop={(event) => dropContent(event, index)}
+              onDragEnd={finishContentDrag}
+            >
+              <span
+                className="catalog-theme-order__handle"
+                draggable={theme.contentOrder.length > 1}
+                aria-disabled={theme.contentOrder.length <= 1}
+                aria-label={`Перетягнути ${contentLabels[key]}`}
+                title={`Перетягнути ${contentLabels[key]}`}
+                onDragStart={(event) => startContentDrag(event, index)}
+              ><Icon name="menu" size={16} /><strong>{contentLabels[key]}</strong></span>
               <div>
                 <button className="icon-button" type="button" disabled={index === 0} aria-label={`Підняти ${contentLabels[key]}`} onClick={() => moveContent(key, -1)}><Icon name="arrowUp" size={16} /></button>
                 <button className="icon-button" type="button" disabled={index === theme.contentOrder.length - 1} aria-label={`Опустити ${contentLabels[key]}`} onClick={() => moveContent(key, 1)}><Icon name="arrowDown" size={16} /></button>
