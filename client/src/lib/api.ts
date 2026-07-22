@@ -103,33 +103,69 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  let body = options.body;
+type ApiRequestOptions = RequestInit & {
+  timeoutMs?: number;
+};
+
+const DEFAULT_API_TIMEOUT_MS = 30_000;
+
+async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const { timeoutMs = DEFAULT_API_TIMEOUT_MS, signal: externalSignal, ...fetchOptions } = options;
+  const headers = new Headers(fetchOptions.headers);
+  let body = fetchOptions.body;
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromExternalSignal();
+  else externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true });
+
+  const timeout = timeoutMs > 0
+    ? globalThis.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs)
+    : undefined;
 
   if (body !== undefined && !(body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(path, {
-    ...options,
-    headers,
-    body,
-    credentials: 'same-origin'
-  });
+  try {
+    const response = await fetch(path, {
+      ...fetchOptions,
+      headers,
+      body,
+      credentials: 'same-origin',
+      signal: controller.signal
+    });
 
-  if (response.status === 204) return undefined as T;
+    if (response.status === 204) return undefined as T;
 
-  const payload = await response.json().catch(() => ({})) as ApiSuccessPayload<T> & ApiErrorPayload;
-  if (!response.ok) {
-    const error = new ApiError(response.status, payload);
-    if (response.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
-      window.dispatchEvent(new Event('mt:unauthorized'));
+    const payload = await response.json().catch(() => ({})) as ApiSuccessPayload<T> & ApiErrorPayload;
+    if (!response.ok) {
+      const error = new ApiError(response.status, payload);
+      if (response.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
+        window.dispatchEvent(new Event('mt:unauthorized'));
+      }
+      throw error;
+    }
+
+    return payload.data;
+  } catch (error) {
+    if (timedOut) {
+      throw new ApiError(408, {
+        error: {
+          code: 'REQUEST_TIMEOUT',
+          message: 'Сервер не відповів вчасно. Перевірте з’єднання та спробуйте ще раз.'
+        }
+      });
     }
     throw error;
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromExternalSignal);
   }
-
-  return payload.data;
 }
 
 function jsonBody(value: unknown): string {
@@ -242,8 +278,8 @@ export const api = {
   },
   users: {
     search: (search = '', excludeSelf = false) => request<UserSearchResult[]>(`/api/users/search${queryString({ search, excludeSelf: excludeSelf ? 'true' : undefined })}`),
-    toolAccess: () => request<ToolId[]>('/api/users/tool-access'),
-    toolCatalog: () => request<ToolCatalog>('/api/users/tool-catalog'),
+    toolAccess: (signal?: AbortSignal) => request<ToolId[]>('/api/users/tool-access', { signal, timeoutMs: 15_000 }),
+    toolCatalog: (signal?: AbortSignal) => request<ToolCatalog>('/api/users/tool-catalog', { signal, timeoutMs: 15_000 }),
     updateProfile: (input: ProfileInput) => request<User>('/api/users/profile', {
       method: 'PUT', body: jsonBody(input)
     }),
@@ -381,10 +417,10 @@ export const api = {
       xhr.send(file);
     }),
     previewImport: (rows: Array<Record<string, unknown>>) =>
-      request<CatalogImportPreview>('/api/catalog/imports/preview', { method: 'POST', body: jsonBody({ rows }) }),
+      request<CatalogImportPreview>('/api/catalog/imports/preview', { method: 'POST', body: jsonBody({ rows }), timeoutMs: 120_000 }),
     importTemplate: () => request<CatalogImportTemplateSchema>('/api/catalog/imports/template'),
     commitImport: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) =>
-      request<CatalogImportPreview>('/api/catalog/imports/commit', { method: 'POST', body: jsonBody({ rows, ...options }) }),
+      request<CatalogImportPreview>('/api/catalog/imports/commit', { method: 'POST', body: jsonBody({ rows, ...options }), timeoutMs: 180_000 }),
     auditHistory: (params: CatalogAuditHistoryParams) =>
       request<CatalogAuditHistoryFeed>(`/api/catalog/audit${queryString(params)}`),
     importHistoryDetail: (id: string, params: { page?: number; pageSize?: number } = {}) =>

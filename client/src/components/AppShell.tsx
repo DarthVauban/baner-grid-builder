@@ -24,9 +24,10 @@ export function AppShell() {
   const locationRef = useRef(location);
   const toolAccess = useQuery({
     queryKey: ['tool-access'],
-    queryFn: api.users.toolAccess,
+    queryFn: ({ signal }) => api.users.toolAccess(signal),
     refetchInterval: 30_000,
-    refetchIntervalInBackground: true
+    refetchIntervalInBackground: true,
+    refetchOnReconnect: true
   });
   const hasChatAccess = toolAccess.data?.includes('chat') === true;
   const hasApplicationsAccess = toolAccess.data?.includes('applications') === true;

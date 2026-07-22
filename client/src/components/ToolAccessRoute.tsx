@@ -7,9 +7,10 @@ import { LoadingScreen } from './LoadingScreen';
 export function ToolAccessRoute({ tool }: { tool: ToolId }) {
   const access = useQuery({
     queryKey: ['tool-access'],
-    queryFn: api.users.toolAccess,
+    queryFn: ({ signal }) => api.users.toolAccess(signal),
     refetchInterval: 30_000,
-    refetchIntervalInBackground: true
+    refetchIntervalInBackground: true,
+    refetchOnReconnect: true
   });
 
   if (access.isLoading) return <LoadingScreen />;
