@@ -30,6 +30,8 @@ describe('storefront theme tokens', () => {
     storefront.header.linkSize = 16;
     storefront.header.linkWeight = 800;
     storefront.header.mobileMenu.background = '#101820';
+    storefront.header.mobileMenu.overlayColor = '#223344';
+    storefront.header.mobileMenu.overlayOpacity = 68;
     storefront.header.mobileMenu.toggleSize = 50;
     storefront.header.mobileMenu.linkWeight = 900;
     storefront.header.mobileMenu.alignment = 'center';
@@ -50,6 +52,8 @@ describe('storefront theme tokens', () => {
       '--sf-header-link-size': '16px',
       '--sf-header-link-weight': 800,
       '--sf-mobile-menu-bg': '#101820',
+      '--sf-mobile-menu-overlay': '#223344',
+      '--sf-mobile-menu-overlay-opacity': '68%',
       '--sf-mobile-toggle-size': '50px',
       '--sf-mobile-menu-link-weight': 900,
       '--sf-mobile-menu-align': 'center',

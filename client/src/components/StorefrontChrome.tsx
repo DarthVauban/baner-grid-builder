@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import type {
   CatalogStorefrontLink,
@@ -113,17 +114,22 @@ export function StorefrontHeader({
 
   useEffect(() => {
     if (!menuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const lockPageScroll = !headerRef.current?.closest('.catalog-theme-preview');
+    if (lockPageScroll) document.body.style.overflow = 'hidden';
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       setMenuOpen(false);
       toggleRef.current?.focus();
     };
     const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest('.storefront-header__backdrop')) return;
       if (!headerRef.current?.contains(event.target as Node)) setMenuOpen(false);
     };
     document.addEventListener('keydown', closeOnEscape);
     document.addEventListener('pointerdown', closeOutside);
     return () => {
+      if (lockPageScroll) document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', closeOnEscape);
       document.removeEventListener('pointerdown', closeOutside);
     };
@@ -140,32 +146,48 @@ export function StorefrontHeader({
   }, []);
 
   const closeMenu = () => setMenuOpen(false);
+  const closeMenuAndRestoreFocus = () => {
+    setMenuOpen(false);
+    toggleRef.current?.focus();
+  };
+  const isThemePreview = Boolean(headerRef.current?.closest('.catalog-theme-preview'));
+  const backdrop = menuOpen ? <button
+    className="storefront-header__backdrop"
+    type="button"
+    aria-label="Закрити мобільне меню"
+    style={{ background: `color-mix(in srgb, ${theme.header.mobileMenu.overlayColor} ${theme.header.mobileMenu.overlayOpacity}%, transparent)` }}
+    onClick={closeMenuAndRestoreFocus}
+  /> : null;
 
-  return <header ref={headerRef} className={`storefront-header${menuOpen ? ' storefront-header--menu-open' : ''}`}>
-    <div className="storefront-header__container">
-      <div className="storefront-header__top">
-        <StorefrontBrand theme={theme} basePath={basePath} />
-        {hasMenuContent && <button
-          ref={toggleRef}
-          className="storefront-header__toggle"
-          type="button"
-          aria-expanded={menuOpen}
-          aria-controls={menuId}
-          aria-label={menuOpen ? 'Закрити меню' : 'Відкрити меню'}
-          onClick={() => setMenuOpen((current) => !current)}
-        ><Icon name={menuOpen ? 'close' : 'menu'} size={25} /></button>}
-      </div>
-      {hasMenuContent && <div id={menuId} className={`storefront-header__menu${menuOpen ? ' storefront-header__menu--open' : ''}`}>
-        {theme.header.links.length > 0 && <nav className="storefront-header__nav" aria-label="Головна навігація">
-          {theme.header.links.map((link) => <LinkItem link={link} basePath={basePath} className="storefront-header__link" onNavigate={closeMenu} key={link.id} />)}
-        </nav>}
-        {(theme.header.socialLinks.length > 0 || hasAction) && <div className="storefront-header__tools" onClickCapture={closeMenu}>
-          <SocialLinks links={theme.header.socialLinks} className="storefront-socials storefront-socials--header" onNavigate={closeMenu} />
-          {hasAction && action}
+  return <>
+    {backdrop && !isThemePreview && createPortal(backdrop, document.body)}
+    <header ref={headerRef} className={`storefront-header${menuOpen ? ' storefront-header--menu-open' : ''}`}>
+      {backdrop && isThemePreview && backdrop}
+      <div className="storefront-header__container">
+        <div className="storefront-header__top">
+          <StorefrontBrand theme={theme} basePath={basePath} />
+          {hasMenuContent && <button
+            ref={toggleRef}
+            className="storefront-header__toggle"
+            type="button"
+            aria-expanded={menuOpen}
+            aria-controls={menuId}
+            aria-label={menuOpen ? 'Закрити меню' : 'Відкрити меню'}
+            onClick={() => setMenuOpen((current) => !current)}
+          ><Icon name={menuOpen ? 'close' : 'menu'} size={25} /></button>}
+        </div>
+        {hasMenuContent && <div id={menuId} className={`storefront-header__menu${menuOpen ? ' storefront-header__menu--open' : ''}`}>
+          {theme.header.links.length > 0 && <nav className="storefront-header__nav" aria-label="Головна навігація">
+            {theme.header.links.map((link) => <LinkItem link={link} basePath={basePath} className="storefront-header__link" onNavigate={closeMenu} key={link.id} />)}
+          </nav>}
+          {(theme.header.socialLinks.length > 0 || hasAction) && <div className="storefront-header__tools" onClickCapture={closeMenu}>
+            <SocialLinks links={theme.header.socialLinks} className="storefront-socials storefront-socials--header" onNavigate={closeMenu} />
+            {hasAction && action}
+          </div>}
         </div>}
-      </div>}
-    </div>
-  </header>;
+      </div>
+    </header>
+  </>;
 }
 
 export function StorefrontFooter({

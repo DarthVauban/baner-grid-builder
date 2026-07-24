@@ -33,6 +33,7 @@ describe('CatalogHeaderFooterSettingsPage', () => {
     expect(await screen.findByText('Типографіка хедера')).toBeInTheDocument();
     expect(screen.getByText('Типографіка футера')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Мобільне меню' })).toBeInTheDocument();
+    expect(screen.getByText('Інтенсивність затемнення')).toBeInTheDocument();
     expect(screen.getByText('Логотип хедера')).toBeInTheDocument();
     expect(screen.getByText('Логотип футера')).toBeInTheDocument();
     expect(screen.getByText('Розмір навігації')).toBeInTheDocument();

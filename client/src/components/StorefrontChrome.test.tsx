@@ -49,7 +49,7 @@ describe('StorefrontChrome', () => {
     expect(container.querySelector('.storefront-footer .storefront-brand__logo')).toHaveAttribute('src', '/footer-logo.webp');
   });
 
-  it('opens the burger menu and closes it with Escape or after navigation', async () => {
+  it('opens the burger menu as an overlay and closes it from the backdrop, Escape or navigation', async () => {
     const user = userEvent.setup();
     const theme = cloneStorefrontTheme();
     theme.header.links = [{ id: 'catalog', label: 'Каталог', url: '#catalog', newTab: false }];
@@ -65,16 +65,44 @@ describe('StorefrontChrome', () => {
 
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(menu).toHaveClass('storefront-header__menu--open');
+    expect(screen.getByRole('button', { name: 'Закрити мобільне меню' })).toBeInTheDocument();
+    expect(document.body).toHaveStyle({ overflow: 'hidden' });
+
+    await user.click(screen.getByRole('button', { name: 'Закрити мобільне меню' }));
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: 'Закрити мобільне меню' })).not.toBeInTheDocument();
+    expect(document.body).not.toHaveStyle({ overflow: 'hidden' });
+    expect(toggle).toHaveFocus();
+
+    await user.click(toggle);
 
     await user.keyboard('{Escape}');
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveFocus();
+    expect(document.body).not.toHaveStyle({ overflow: 'hidden' });
 
     await user.click(toggle);
     await user.click(screen.getByRole('link', { name: 'Каталог' }));
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('keeps the overlay inside the live theme preview without locking the workspace page', async () => {
+    const user = userEvent.setup();
+    const theme = cloneStorefrontTheme();
+    theme.header.links = [{ id: 'catalog', label: 'Каталог', url: '#catalog', newTab: false }];
+
+    render(<div className="catalog-theme-preview catalog-theme-preview--mobile">
+      <StorefrontHeader theme={theme} />
+    </div>);
+
+    await user.click(screen.getByRole('button', { name: 'Відкрити меню' }));
+
+    const backdrop = screen.getByRole('button', { name: 'Закрити мобільне меню' });
+    expect(backdrop.closest('.storefront-header')).toBeInTheDocument();
+    expect(document.body).not.toHaveStyle({ overflow: 'hidden' });
   });
 
   it('rejects unsafe link protocols', () => {

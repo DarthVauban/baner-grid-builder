@@ -606,6 +606,8 @@ export interface CatalogStorefrontTheme {
       background: string;
       textColor: string;
       dividerColor: string;
+      overlayColor: string;
+      overlayOpacity: number;
       toggleBackground: string;
       toggleColor: string;
       toggleBorderColor: string;

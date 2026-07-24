@@ -805,6 +805,8 @@ test('catalog products publish to storefront, import stock updates, and create a
   storefrontTheme.header.links = [{ id: 'delivery', label: 'Доставка', url: '/delivery', newTab: false }];
   storefrontTheme.header.socialLinks = [{ id: 'telegram', platform: 'telegram', label: 'Telegram', url: 'https://t.me/mobiletrend' }];
   storefrontTheme.header.mobileMenu.background = '#101820';
+  storefrontTheme.header.mobileMenu.overlayColor = '#223344';
+  storefrontTheme.header.mobileMenu.overlayOpacity = 68;
   storefrontTheme.header.mobileMenu.toggleSize = 50;
   storefrontTheme.header.mobileMenu.linkWeight = 900;
   storefrontTheme.header.mobileMenu.alignment = 'center';
@@ -847,6 +849,8 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.links[0].label, 'Доставка');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.socialLinks[0].platform, 'telegram');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.background, '#101820');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.overlayColor, '#223344');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.overlayOpacity, 68);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.toggleSize, 50);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.linkWeight, 900);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.alignment, 'center');

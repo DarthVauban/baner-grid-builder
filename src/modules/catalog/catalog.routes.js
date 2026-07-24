@@ -309,6 +309,8 @@ const storefrontThemeSchema = z.object({
       background: themeColorSchema,
       textColor: themeColorSchema,
       dividerColor: themeColorSchema,
+      overlayColor: themeColorSchema,
+      overlayOpacity: z.coerce.number().int().min(0).max(90),
       toggleBackground: themeColorSchema,
       toggleColor: themeColorSchema,
       toggleBorderColor: themeColorSchema,

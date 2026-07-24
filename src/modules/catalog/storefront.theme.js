@@ -64,6 +64,8 @@ export const defaultStorefrontTheme = {
       background: '#ffffff',
       textColor: '#263248',
       dividerColor: '#dde5e3',
+      overlayColor: '#0f172a',
+      overlayOpacity: 55,
       toggleBackground: '#f3f5f7',
       toggleColor: '#162033',
       toggleBorderColor: '#d1d8e0',
