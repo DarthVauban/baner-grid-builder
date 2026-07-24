@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import {
   catalogPhotoGoogleSearchUrl,
@@ -125,6 +126,9 @@ function ProductRow({
 }
 
 function ErrorList({ search }: { search: string }) {
+  const queryClient = useQueryClient();
+  const confirm = useConfirmDialog();
+  const { showToast } = useToast();
   const [page, setPage] = useState(1);
   const deferredSearch = useDeferredValue(search);
   const result = useQuery({
@@ -132,14 +136,51 @@ function ErrorList({ search }: { search: string }) {
     queryFn: () => api.catalog.photoParser.errors({ search: deferredSearch, page, pageSize: 25 }),
     placeholderData: keepPreviousData
   });
+  const clearErrors = useMutation({
+    mutationFn: api.catalog.photoParser.clearErrors,
+    onSuccess: async ({ clearedCount }) => {
+      setPage(1);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['catalog-photo-parser-errors'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog-photo-parser-products'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin-system-metrics'] })
+      ]);
+      showToast(clearedCount
+        ? `Журнал очищено. Приховано записів: ${clearedCount}.`
+        : 'Журнал помилок уже порожній.', 'success');
+    },
+    onError: (error) => {
+      showToast(error instanceof Error ? error.message : 'Не вдалося очистити журнал помилок.', 'error');
+    }
+  });
 
   useEffect(() => setPage(1), [deferredSearch]);
+
+  async function clearErrorLog() {
+    const accepted = await confirm({
+      title: 'Очистити журнал помилок?',
+      message: 'Усі поточні повідомлення про помилки фотопарсера буде приховано. Товари, фотографії та технічна історія пакетів залишаться без змін.',
+      confirmLabel: 'Очистити журнал',
+      tone: 'danger'
+    });
+    if (accepted) clearErrors.mutate();
+  }
 
   if (result.isLoading) return <div className="empty-state catalog-photo-parser-empty"><span className="catalog-photo-parser-spinner" /> Завантажуємо помилки…</div>;
   if (result.isError) return <div className="empty-state catalog-photo-parser-empty">Не вдалося завантажити журнал помилок.</div>;
   if (!result.data?.items.length) return <div className="empty-state catalog-photo-parser-empty"><Icon name="check" size={28} /><strong>Помилок немає</strong><span>Тут з’являться товари, оброблені частково або з помилкою.</span></div>;
 
   return <>
+    <div className="catalog-photo-parser-error-toolbar">
+      <div>
+        <strong>Журнал помилок</strong>
+        <span>Записів: {result.data.total}</span>
+      </div>
+      <button className="button button--danger button--small" type="button" disabled={clearErrors.isPending} onClick={() => void clearErrorLog()}>
+        <Icon name="delete" size={15} />
+        {clearErrors.isPending ? 'Очищення…' : 'Очистити журнал'}
+      </button>
+    </div>
     <div className="catalog-photo-parser-errors">
       {result.data.items.map((run) => <article className={`catalog-photo-parser-error is-${run.status}`} key={run.id}>
         <header>
@@ -215,6 +256,11 @@ export function CatalogPhotoParserPage() {
   });
   const startBatch = useMutation({
     mutationFn: api.catalog.photoParser.startBatch
+  });
+  const errorSummary = useQuery({
+    queryKey: ['catalog-photo-parser-errors', 'summary'],
+    queryFn: () => api.catalog.photoParser.errors({ page: 1, pageSize: 10 }),
+    staleTime: 4_000
   });
 
   useEffect(() => {
@@ -319,7 +365,7 @@ export function CatalogPhotoParserPage() {
       <button className={tab === 'parser' ? 'active' : ''} type="button" onClick={() => switchTab('parser')}>Товари</button>
       <button className={tab === 'errors' ? 'active' : ''} type="button" onClick={() => switchTab('errors')}>
         Помилки
-        {(displayedBatch?.counts.failed || displayedBatch?.counts.partial) ? <span>{displayedBatch.counts.failed + displayedBatch.counts.partial}</span> : null}
+        {errorSummary.data?.total ? <span>{errorSummary.data.total}</span> : null}
       </button>
     </nav>
 

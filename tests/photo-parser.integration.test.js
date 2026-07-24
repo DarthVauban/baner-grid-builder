@@ -65,6 +65,7 @@ function productInput(name) {
 
 test('photo parser API queues only products with URLs and isolates per-image failures', async () => {
   await request(app).get('/api/catalog/photo-parser/products').expect(401);
+  await request(app).delete('/api/catalog/photo-parser/errors').expect(401);
 
   const adapters = await admin.get('/api/catalog/photo-parser/adapters').expect(200);
   assert.deepEqual(
@@ -241,6 +242,18 @@ test('photo parser API queues only products with URLs and isolates per-image fai
     .expect(200);
   assert.equal(presentProducts.body.data.total, 1);
   assert.equal(presentProducts.body.data.items[0].photoCount, 1);
+  assert.equal(presentProducts.body.data.items[0].latestRun.status, 'partial');
+
+  const cleared = await admin.delete('/api/catalog/photo-parser/errors').expect(200);
+  assert.equal(cleared.body.data.clearedCount, 1);
+  const errorsAfterClear = await admin.get('/api/catalog/photo-parser/errors').expect(200);
+  assert.equal(errorsAfterClear.body.data.total, 0);
+  const productsAfterClear = await admin
+    .get('/api/catalog/photo-parser/products?photoStatus=present&pageSize=10')
+    .expect(200);
+  assert.equal(productsAfterClear.body.data.items[0].latestRun, null);
+  const clearedAgain = await admin.delete('/api/catalog/photo-parser/errors').expect(200);
+  assert.equal(clearedAgain.body.data.clearedCount, 0);
 
   await admin.post('/api/catalog/photo-parser/batches').send({
     search: 'Without URL',

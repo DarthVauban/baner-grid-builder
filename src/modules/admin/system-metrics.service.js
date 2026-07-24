@@ -191,7 +191,11 @@ async function sampleWorkload(databaseAvailable) {
         `SELECT
            COALESCE(SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END), 0)::INTEGER AS queued,
            COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0)::INTEGER AS running,
-           COALESCE(SUM(CASE WHEN status = 'failed' AND completed_at >= NOW() - INTERVAL '24 hours' THEN 1 ELSE 0 END), 0)::INTEGER AS failed_last_24_hours
+           COALESCE(SUM(CASE
+             WHEN status IN ('failed', 'partial')
+              AND error_dismissed_at IS NULL
+              AND completed_at >= NOW() - INTERVAL '24 hours'
+             THEN 1 ELSE 0 END), 0)::INTEGER AS failed_last_24_hours
          FROM used_smartphone_photo_parser_runs`
       ),
       query('SELECT automatic_enabled, next_run_at, last_run_at FROM backup_settings WHERE id = TRUE'),

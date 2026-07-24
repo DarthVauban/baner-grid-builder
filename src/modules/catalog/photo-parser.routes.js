@@ -93,6 +93,7 @@ async function latestRunsForProducts(productIds) {
     `SELECT *
      FROM used_smartphone_photo_parser_runs
      WHERE product_id IN (${placeholders})
+       AND (status NOT IN ('partial', 'failed') OR error_dismissed_at IS NULL)
      ORDER BY product_id, created_at DESC`,
     productIds
   );
@@ -406,6 +407,7 @@ router.get('/errors', asyncHandler(async (req, res) => {
   const params = [];
   const where = [
     `run.status IN ('partial', 'failed')`,
+    `run.error_dismissed_at IS NULL`,
     `product.publication_status <> 'ARCHIVED'`
   ];
   if (input.search) {
@@ -440,6 +442,27 @@ router.get('/errors', asyncHandler(async (req, res) => {
       pageCount: Math.max(1, Math.ceil(total / input.pageSize))
     }
   });
+}));
+
+router.delete('/errors', asyncHandler(async (req, res) => {
+  const result = await query(
+    `UPDATE used_smartphone_photo_parser_runs
+     SET error_dismissed_at = NOW()
+     WHERE status IN ('partial', 'failed')
+       AND error_dismissed_at IS NULL
+     RETURNING id`
+  );
+  const clearedCount = result.rowCount || result.rows.length;
+  await logCatalogAudit({ query }, {
+    actorId: req.user.id,
+    action: 'photo_parser_errors_clear',
+    changes: { clearedCount }
+  });
+  publishCatalogUpdates([req.user.id], {
+    type: 'photo_parser_errors_cleared',
+    clearedCount
+  });
+  res.json({ data: { clearedCount } });
 }));
 
 export default router;

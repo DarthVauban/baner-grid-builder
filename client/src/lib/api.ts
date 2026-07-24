@@ -469,6 +469,9 @@ export const api = {
         }),
       errors: (params: { search?: string; page?: number; pageSize?: number }) =>
         request<CatalogPhotoParserErrorFeed>(`/api/catalog/photo-parser/errors${queryString(params)}`),
+      clearErrors: () => request<{ clearedCount: number }>('/api/catalog/photo-parser/errors', {
+        method: 'DELETE'
+      }),
       adapters: () => request<CatalogPhotoParserAdapter[]>('/api/catalog/photo-parser/adapters'),
       testAdapter: (input: CatalogPhotoParserAdapterTest) =>
         request<CatalogPhotoParserTestResult>('/api/catalog/photo-parser/adapters/test', {
