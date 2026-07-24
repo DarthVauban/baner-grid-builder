@@ -115,7 +115,7 @@ export function ThemeSelectField({ label, value, options, onChange }: { label: s
 export function ThemeToggle({ label, description, checked, onChange }: { label: string; description?: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return <label className="catalog-theme-toggle">
     <span><strong>{label}</strong>{description && <small>{description}</small>}</span>
-    <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    <input className="switch" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
   </label>;
 }
 

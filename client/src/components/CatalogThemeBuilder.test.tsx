@@ -2,11 +2,16 @@ import { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { ThemeRangeField } from './CatalogThemeBuilder';
+import { ThemeRangeField, ThemeToggle } from './CatalogThemeBuilder';
 
 function RangeHarness() {
   const [value, setValue] = useState(32);
   return <ThemeRangeField label="Розмір" value={value} min={24} max={80} onChange={setValue} />;
+}
+
+function ToggleHarness() {
+  const [checked, setChecked] = useState(false);
+  return <ThemeToggle label="Показувати блок" checked={checked} onChange={setChecked} />;
 }
 
 describe('ThemeRangeField', () => {
@@ -34,5 +39,20 @@ describe('ThemeRangeField', () => {
     await user.tab();
     expect(input).toHaveValue(80);
     expect(screen.getByText('80px')).toBeInTheDocument();
+  });
+});
+
+describe('ThemeToggle', () => {
+  it('uses the shared switch control and updates its state', async () => {
+    const user = userEvent.setup();
+    render(<ToggleHarness />);
+    const input = screen.getByRole('checkbox', { name: 'Показувати блок' });
+
+    expect(input).toHaveClass('switch');
+    expect(input).not.toBeChecked();
+
+    await user.click(input);
+
+    expect(input).toBeChecked();
   });
 });
