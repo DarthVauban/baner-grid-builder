@@ -19,6 +19,17 @@ function usageStatus(percent) {
   return 'operational';
 }
 
+function readableBytes(value) {
+  const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+  let amount = Math.max(0, Number(value) || 0);
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  return `${amount.toLocaleString('uk-UA', { maximumFractionDigits: unit >= 3 ? 1 : 0 })} ${units[unit]}`;
+}
+
 function cpuTicks() {
   return os.cpus().reduce((summary, cpu) => {
     const total = Object.values(cpu.times).reduce((sum, value) => sum + value, 0);
@@ -244,12 +255,12 @@ function serviceStatus({ database, storage, workload, collectionDurationMs }) {
       id: 'photo-parser',
       label: 'Фотопарсер',
       status: parserStatus,
-      detail: workload.photoParser.running
-        ? `Обробляється: ${workload.photoParser.running}`
-        : workload.photoParser.queued
-          ? `У черзі: ${workload.photoParser.queued}`
-          : workload.photoParser.failedLast24Hours
-            ? `Помилок за 24 год: ${workload.photoParser.failedLast24Hours}`
+      detail: workload.photoParser.failedLast24Hours
+        ? `Невдалих обробок за 24 год: ${workload.photoParser.failedLast24Hours}`
+        : workload.photoParser.running
+          ? `Обробляється: ${workload.photoParser.running}`
+          : workload.photoParser.queued
+            ? `У черзі: ${workload.photoParser.queued}`
             : 'Черга порожня'
     },
     {
@@ -263,6 +274,95 @@ function serviceStatus({ database, storage, workload, collectionDurationMs }) {
           : workload.backups.automaticEnabled ? 'Автоматичний розклад активний' : 'Остання операція успішна'
     }
   ];
+}
+
+function diagnosticIssues({ cpu, memory, storage, database, workload, collectionDurationMs }) {
+  const issues = [];
+  if (cpu.status !== 'operational') {
+    issues.push({
+      id: 'cpu',
+      component: 'Процесор',
+      status: cpu.status,
+      title: `Високе навантаження CPU — ${cpu.usagePercent}%`,
+      description: `Завантаження процесора перевищило поріг ${degradedUsagePercent}%. Node.js процес використовує ${cpu.processPercent}% загальної потужності.`,
+      recommendation: 'Перевірте активні фонові операції, масовий парсинг та інші тривалі задачі. Якщо показник не знижується, перегляньте процеси на сервері.'
+    });
+  }
+  if (memory.status !== 'operational') {
+    issues.push({
+      id: 'memory',
+      component: 'Оперативна пам’ять',
+      status: memory.status,
+      title: `Використано ${memory.usagePercent}% оперативної пам’яті`,
+      description: `Поточне використання RAM перевищило поріг ${degradedUsagePercent}%. Node.js займає ${readableBytes(memory.process.rssBytes)} RSS-пам’яті.`,
+      recommendation: 'Перевірте тривалі фонові задачі та обробку великих файлів. За стабільно високого використання перезапустіть сервіс у контрольованому режимі або збільште доступну RAM.'
+    });
+  }
+  if (storage.status !== 'operational') {
+    issues.push({
+      id: 'storage',
+      component: 'Сховище медіа',
+      status: storage.status,
+      title: storage.writable ? `Сховище заповнене на ${storage.usagePercent}%` : 'Сховище недоступне для запису',
+      description: storage.writable
+        ? `Вільний обсяг сховища зменшився до ${readableBytes(storage.freeBytes)}. Після 95% стан стане критичним.`
+        : 'Сервер не може читати або записувати каталог медіафайлів. Завантаження фотографій і резервне копіювання можуть не працювати.',
+      recommendation: storage.writable
+        ? 'Видаліть непотрібні медіафайли або збільште постійний том сховища.'
+        : 'Перевірте підключення постійного тому, шлях CATALOG_MEDIA_DIR та права доступу процесу до каталогу.'
+    });
+  }
+  if (database.status !== 'operational') {
+    issues.push({
+      id: 'database',
+      component: 'PostgreSQL',
+      status: database.status,
+      title: database.status === 'critical' ? 'База даних не відповідає' : `Повільна відповідь бази даних — ${database.latencyMs} мс`,
+      description: database.status === 'critical'
+        ? 'Перевірка з’єднання з PostgreSQL завершилася помилкою. Операції робочого простору можуть бути недоступними.'
+        : 'Час виконання базової перевірки PostgreSQL перевищив одну секунду.',
+      recommendation: 'Перевірте стан PostgreSQL, завантаження сервера, активні запити та доступність підключення DATABASE_URL.'
+    });
+  }
+  if (collectionDurationMs >= 1500) {
+    issues.push({
+      id: 'api',
+      component: 'API сервера',
+      status: 'degraded',
+      title: `Повільний збір системних метрик — ${collectionDurationMs} мс`,
+      description: 'Сервер витратив понад 1,5 секунди на перевірку технічного стану. Це може вказувати на повільну базу даних або перевантаження процесу.',
+      recommendation: 'Перевірте показники CPU, RAM і PostgreSQL у цьому розділі та повторіть вимірювання через кілька секунд.'
+    });
+  }
+  if (workload.photoParser.failedLast24Hours > 0) {
+    issues.push({
+      id: 'photo-parser',
+      component: 'Фотопарсер',
+      status: 'degraded',
+      title: 'Є товари, які не вдалося обробити',
+      description: `Кількість невдалих обробок товарів за останні 24 години: ${workload.photoParser.failedLast24Hours}. Сам сервер працює, але частина посилань або фотографій завершилася помилкою.`,
+      recommendation: 'Перегляньте список помилок, перевірте проблемні посилання та за потреби повторіть парсинг окремих товарів.',
+      action: {
+        label: 'Переглянути помилки парсера',
+        href: '/catalog/photo-parser?tab=errors'
+      }
+    });
+  }
+  if (workload.backups.latestStatus === 'failed') {
+    issues.push({
+      id: 'backups',
+      component: 'Резервні копії',
+      status: 'degraded',
+      title: 'Останнє резервне копіювання завершилося помилкою',
+      description: 'Остання спроба створення або надсилання резервної копії не була успішною.',
+      recommendation: 'Відкрийте налаштування резервних копій, перевірте Telegram-інтеграцію та запустіть створення копії вручну.',
+      action: {
+        label: 'Відкрити резервні копії',
+        href: '/admin/backups'
+      }
+    });
+  }
+  return issues;
 }
 
 function overallStatus(resources, services) {
@@ -282,10 +382,12 @@ export async function collectSystemMetrics() {
   const collectionDurationMs = Math.round((performance.now() - startedAt) * 10) / 10;
   const services = serviceStatus({ database, storage, workload, collectionDurationMs });
   const status = overallStatus([cpu, memory, storage, database], services);
+  const issues = diagnosticIssues({ cpu, memory, storage, database, workload, collectionDurationMs });
 
   return {
     sampledAt: new Date().toISOString(),
     status,
+    issues,
     services,
     cpu,
     memory,

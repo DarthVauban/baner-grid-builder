@@ -1,5 +1,18 @@
 export type SystemHealthStatus = 'operational' | 'degraded' | 'critical' | 'inactive' | 'unknown';
 
+export interface SystemDiagnosticIssue {
+  id: 'cpu' | 'memory' | 'storage' | 'database' | 'api' | 'photo-parser' | 'backups';
+  component: string;
+  status: 'degraded' | 'critical';
+  title: string;
+  description: string;
+  recommendation: string;
+  action?: {
+    label: string;
+    href: string;
+  };
+}
+
 export interface SystemServiceStatus {
   id: 'api' | 'database' | 'storage' | 'photo-parser' | 'backups';
   label: string;
@@ -10,6 +23,7 @@ export interface SystemServiceStatus {
 export interface SystemMetrics {
   sampledAt: string;
   status: SystemHealthStatus;
+  issues: SystemDiagnosticIssue[];
   services: SystemServiceStatus[];
   cpu: {
     status: SystemHealthStatus;

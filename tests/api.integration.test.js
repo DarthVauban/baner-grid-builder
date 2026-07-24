@@ -144,6 +144,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect('Cache-Control', 'no-store');
   assert.match(systemMetrics.body.data.sampledAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.ok(['operational', 'degraded', 'critical'].includes(systemMetrics.body.data.status));
+  assert.ok(Array.isArray(systemMetrics.body.data.issues));
   assert.equal(systemMetrics.body.data.runtime.buildSha, 'test-build-sha');
   assert.equal(typeof systemMetrics.body.data.cpu.usagePercent, 'number');
   assert.equal(typeof systemMetrics.body.data.memory.totalBytes, 'number');

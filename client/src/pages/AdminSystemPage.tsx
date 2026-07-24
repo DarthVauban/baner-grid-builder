@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import type { IconName } from '../components/Icon';
 import { api } from '../lib/api';
-import type { SystemHealthStatus, SystemMetrics, SystemServiceStatus } from '../types/system';
+import type { SystemDiagnosticIssue, SystemHealthStatus, SystemMetrics, SystemServiceStatus } from '../types/system';
 
 type HistorySample = {
   sampledAt: string;
@@ -25,6 +26,16 @@ const serviceIcons: Record<SystemServiceStatus['id'], IconName> = {
   api: 'server',
   database: 'storage',
   storage: 'savedBanners',
+  'photo-parser': 'catalog',
+  backups: 'backup'
+};
+
+const diagnosticIcons: Record<SystemDiagnosticIssue['id'], IconName> = {
+  cpu: 'memory',
+  memory: 'server',
+  storage: 'savedBanners',
+  database: 'storage',
+  api: 'server',
   'photo-parser': 'catalog',
   backups: 'backup'
 };
@@ -159,6 +170,41 @@ function ServiceCard({ service }: { service: SystemServiceStatus }) {
   </article>;
 }
 
+function DiagnosticsPanel({ issues }: { issues: SystemDiagnosticIssue[] }) {
+  if (!issues.length) return null;
+  const criticalCount = issues.filter((issue) => issue.status === 'critical').length;
+  return <section className={`system-diagnostics${criticalCount ? ' system-diagnostics--critical' : ''}`}>
+    <header>
+      <span className="system-diagnostics__mark"><Icon name="monitor" size={23} /></span>
+      <div>
+        <p className="eyebrow">Діагностика</p>
+        <h2>{criticalCount ? 'Виявлено критичні проблеми' : 'Що саме потребує уваги'}</h2>
+        <p>{issues.length === 1 ? 'Виявлено одну причину попередження.' : `Виявлено причин попередження: ${issues.length}.`}</p>
+      </div>
+    </header>
+    <div className="system-diagnostics__list">
+      {issues.map((issue) => <article className={`system-diagnostic system-diagnostic--${issue.status}`} key={issue.id}>
+        <span className="system-diagnostic__icon"><Icon name={diagnosticIcons[issue.id]} size={20} /></span>
+        <div className="system-diagnostic__content">
+          <div className="system-diagnostic__meta">
+            <strong>{issue.component}</strong>
+            <span className={statusClass(issue.status)}><i />{statusLabels[issue.status]}</span>
+          </div>
+          <h3>{issue.title}</h3>
+          <p>{issue.description}</p>
+          <div className="system-diagnostic__recommendation">
+            <strong>Що зробити</strong>
+            <span>{issue.recommendation}</span>
+          </div>
+          {issue.action && <Link className="button button--secondary button--small" to={issue.action.href}>
+            {issue.action.label}<Icon name="chevronRight" size={15} />
+          </Link>}
+        </div>
+      </article>)}
+    </div>
+  </section>;
+}
+
 function WorkloadCard({ icon, label, value, detail }: { icon: IconName; label: string; value: number; detail: string }) {
   return <article className="system-workload-card">
     <span><Icon name={icon} size={19} /></span>
@@ -222,7 +268,7 @@ export function AdminSystemPage() {
       <section className={`system-overview system-overview--${data.status}`}>
         <div className="system-overview__status">
           <span className="system-overview__pulse"><i /></span>
-          <div><small>Загальний стан</small><h2>{statusLabels[data.status]}</h2><p>{data.status === 'operational' ? 'Усі критичні компоненти відповідають у штатному режимі.' : 'Є показники або компоненти, які потребують перевірки.'}</p></div>
+          <div><small>Загальний стан</small><h2>{statusLabels[data.status]}</h2><p>{data.status === 'operational' ? 'Усі критичні компоненти відповідають у штатному режимі.' : data.issues.length ? `Виявлено причин: ${data.issues.length}. Детальна діагностика наведена нижче.` : 'Є показники або компоненти, які потребують перевірки.'}</p></div>
         </div>
         <dl>
           <div><dt>Uptime процесу</dt><dd>{formatDuration(data.runtime.processUptimeSeconds)}</dd></div>
@@ -232,6 +278,8 @@ export function AdminSystemPage() {
           <div><dt>Останній зразок</dt><dd>{formatDateTime(data.sampledAt)}</dd></div>
         </dl>
       </section>
+
+      <DiagnosticsPanel issues={data.issues} />
 
       <section className="system-resource-grid" aria-label="Ресурси сервера">
         <ResourceCard
