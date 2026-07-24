@@ -18,7 +18,10 @@ const { default: app } = await import('../src/app.js');
 const { pool, query } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
-const { processPhotoParserRun } = await import('../src/modules/catalog/photo-parser.service.js');
+const {
+  processPhotoParserRun,
+  recoverInterruptedPhotoParserRuns
+} = await import('../src/modules/catalog/photo-parser.service.js');
 
 const admin = request.agent(app);
 
@@ -173,6 +176,45 @@ test('photo parser API queues only products with URLs and isolates per-image fai
   assert.equal(completedBatch.body.data.status, 'completed');
   assert.equal(completedBatch.body.data.counts.partial, 1);
   assert.equal(completedBatch.body.data.items[0].savedCount, 1);
+
+  await query(
+    `UPDATE used_smartphone_photo_parser_batches
+     SET status = 'running', completed_at = NULL
+     WHERE id = $1`,
+    [batch.body.data.id]
+  );
+  const activeAfterFailure = await admin
+    .get('/api/catalog/photo-parser/batches/active')
+    .expect(200);
+  assert.equal(activeAfterFailure.body.data, null);
+
+  await query(
+    `UPDATE used_smartphone_photo_parser_batches
+     SET status = 'running', completed_at = NULL
+     WHERE id = $1`,
+    [batch.body.data.id]
+  );
+  const repairedBatch = await admin
+    .get(`/api/catalog/photo-parser/batches/${batch.body.data.id}`)
+    .expect(200);
+  assert.equal(repairedBatch.body.data.status, 'completed');
+  assert.ok(repairedBatch.body.data.completedAt);
+
+  await query(
+    `UPDATE used_smartphone_photo_parser_batches
+     SET status = 'running', completed_at = NULL
+     WHERE id = $1`,
+    [batch.body.data.id]
+  );
+  await recoverInterruptedPhotoParserRuns();
+  const recoveredStatus = await query(
+    `SELECT status, completed_at
+     FROM used_smartphone_photo_parser_batches
+     WHERE id = $1`,
+    [batch.body.data.id]
+  );
+  assert.equal(recoveredStatus.rows[0].status, 'completed');
+  assert.ok(recoveredStatus.rows[0].completed_at);
 
   const product = await admin.get(`/api/catalog/products/${withUrl.body.data.id}`).expect(200);
   assert.equal(product.body.data.mainImageUrl, '/media/catalog/parser-2.webp');

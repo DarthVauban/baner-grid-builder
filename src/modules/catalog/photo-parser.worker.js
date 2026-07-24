@@ -5,6 +5,7 @@ import { closePhotoParserBrowser } from './photo-parser.browser.js';
 import {
   claimNextPhotoParserRun,
   processPhotoParserRun,
+  reconcilePhotoParserBatches,
   recoverInterruptedPhotoParserRuns
 } from './photo-parser.service.js';
 
@@ -15,13 +16,17 @@ export async function processPhotoParserQueue({
 } = {}) {
   if (getMaintenanceReason()) return 0;
   let processed = 0;
-  while (processed < limit) {
-    const run = await claimNextPhotoParserRun({ lockRows });
-    if (!run) break;
-    await processRun(run);
-    processed += 1;
+  try {
+    while (processed < limit) {
+      const run = await claimNextPhotoParserRun({ lockRows });
+      if (!run) break;
+      await processRun(run);
+      processed += 1;
+    }
+    return processed;
+  } finally {
+    await reconcilePhotoParserBatches();
   }
-  return processed;
 }
 
 export function startPhotoParserWorker({ intervalMs = 1500 } = {}) {

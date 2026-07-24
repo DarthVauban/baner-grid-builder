@@ -3,7 +3,12 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
-import { catalogPhotoGoogleSearchUrl, catalogPhotoParserStatusLabels } from '../lib/catalog-photo-parser';
+import {
+  catalogPhotoGoogleSearchUrl,
+  catalogPhotoParserBatchIsBusy,
+  catalogPhotoParserBatchIsComplete,
+  catalogPhotoParserStatusLabels
+} from '../lib/catalog-photo-parser';
 import { useToast } from '../toast/ToastContext';
 import type {
   CatalogPhotoParserBatch,
@@ -34,10 +39,11 @@ function RunStatus({ run }: { run: CatalogPhotoParserRun | null }) {
 function BatchProgress({ batch }: { batch: CatalogPhotoParserBatch }) {
   const complete = batch.counts.success + batch.counts.partial + batch.counts.failed;
   const percent = batch.requestedCount ? Math.round((complete / batch.requestedCount) * 100) : 100;
-  return <section className={`catalog-photo-parser-progress${batch.status === 'completed' ? ' is-complete' : ''}`}>
+  const isComplete = catalogPhotoParserBatchIsComplete(batch);
+  return <section className={`catalog-photo-parser-progress${isComplete ? ' is-complete' : ''}`}>
     <header>
       <div>
-        <strong>{batch.status === 'completed' ? 'Пакет завершено' : 'Масовий парсинг виконується'}</strong>
+        <strong>{isComplete ? 'Пакет завершено' : 'Масовий парсинг виконується'}</strong>
         <span>{complete} із {batch.requestedCount} товарів</span>
       </div>
       <b>{percent}%</b>
@@ -193,7 +199,7 @@ export function CatalogPhotoParserPage() {
     queryKey: ['catalog-photo-parser-batch', batchId],
     queryFn: () => api.catalog.photoParser.batch(batchId),
     enabled: Boolean(batchId),
-    refetchInterval: (query) => query.state.data?.status === 'completed' ? false : 1500,
+    refetchInterval: (query) => catalogPhotoParserBatchIsComplete(query.state.data) ? false : 1500,
     refetchIntervalInBackground: true
   });
   const startBatch = useMutation({
@@ -216,8 +222,9 @@ export function CatalogPhotoParserPage() {
   }, [products.data]);
 
   useEffect(() => {
-    if (batch.data?.status !== 'completed' || completedBatchId.current === batch.data.id) return;
-    completedBatchId.current = batch.data.id;
+    const currentBatch = batch.data;
+    if (!currentBatch || !catalogPhotoParserBatchIsComplete(currentBatch) || completedBatchId.current === currentBatch.id) return;
+    completedBatchId.current = currentBatch.id;
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ['catalog-photo-parser-products'] }),
       queryClient.invalidateQueries({ queryKey: ['catalog-photo-parser-errors'] }),
@@ -231,7 +238,7 @@ export function CatalogPhotoParserPage() {
     (batch.data?.items || []).map((run) => [run.productId, run])
   ), [batch.data?.items]);
   const displayedBatch = batch.data || activeBatch.data || null;
-  const parserBusy = displayedBatch?.status === 'queued' || displayedBatch?.status === 'running';
+  const parserBusy = catalogPhotoParserBatchIsBusy(displayedBatch);
 
   function updateDraft(productId: string, value: string) {
     dirtyIds.current.add(productId);
