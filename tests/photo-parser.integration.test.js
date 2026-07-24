@@ -79,7 +79,18 @@ test('photo parser API queues only products with URLs and isolates per-image fai
   assert.equal(customAdapter.body.data.host, 'shop.example.com');
 
   const withUrl = await admin.post('/api/catalog/products').send(productInput('Parser Phone One')).expect(201);
-  await admin.post('/api/catalog/products').send(productInput('Parser Phone Without URL')).expect(201);
+  const archivedWithoutUrl = await admin
+    .post('/api/catalog/products')
+    .send(productInput('Parser Phone Without URL'))
+    .expect(201);
+  await admin
+    .delete(`/api/catalog/products/${archivedWithoutUrl.body.data.id}`)
+    .send({ expectedVersion: archivedWithoutUrl.body.data.version })
+    .expect(204);
+  await admin
+    .patch(`/api/catalog/photo-parser/products/${archivedWithoutUrl.body.data.id}/source-url`)
+    .send({ sourceUrl: 'https://shop.example.com/products/archived-phone' })
+    .expect(404);
   const savedUrl = await admin
     .patch(`/api/catalog/photo-parser/products/${withUrl.body.data.id}/source-url`)
     .send({ sourceUrl: 'shop.example.com/products/phone-one' })
@@ -89,9 +100,9 @@ test('photo parser API queues only products with URLs and isolates per-image fai
   const missingProducts = await admin
     .get('/api/catalog/photo-parser/products?photoStatus=missing&pageSize=10')
     .expect(200);
-  assert.equal(missingProducts.body.data.total, 2);
+  assert.equal(missingProducts.body.data.total, 1);
   assert.equal(missingProducts.body.data.summary.withPhotos, 0);
-  assert.equal(missingProducts.body.data.summary.withoutPhotos, 2);
+  assert.equal(missingProducts.body.data.summary.withoutPhotos, 1);
   assert.equal(
     missingProducts.body.data.items.find((item) => item.id === withUrl.body.data.id).sourceUrl,
     'https://shop.example.com/products/phone-one'

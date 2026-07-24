@@ -172,7 +172,7 @@ export async function loadPhotoParserBatch(batchId, user, db = { query }) {
   return {
     id: batch.id,
     status: batch.status,
-    requestedCount: Number(batch.requested_count || items.length),
+    requestedCount: items.length,
     counts,
     items,
     createdAt: batch.created_at,
@@ -203,7 +203,10 @@ export async function findActivePhotoParserBatch(user, db = { query }) {
 export async function createPhotoParserBatch({ search = '', photoStatus = 'all', user }) {
   await ensureBuiltInPhotoParserAdapters();
   const params = [];
-  const where = [`product.photo_parser_url <> ''`];
+  const where = [
+    `product.photo_parser_url <> ''`,
+    `product.publication_status <> 'ARCHIVED'`
+  ];
   const terms = String(search || '').toLocaleLowerCase('uk-UA').split(/\s+/).filter(Boolean);
   for (const term of terms) {
     params.push(`%${term}%`);

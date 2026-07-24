@@ -76,6 +76,7 @@ function productListInput(req) {
 }
 
 function appendProductFilters(input, params, where) {
+  where.push(`product.publication_status <> 'ARCHIVED'`);
   const terms = input.search.toLocaleLowerCase('uk-UA').split(/\s+/).filter(Boolean);
   for (const term of terms) {
     params.push(`%${term}%`);
@@ -115,7 +116,8 @@ router.get('/products', asyncHandler(async (req, res) => {
          COUNT(*)::INTEGER AS total,
          COALESCE(SUM(CASE WHEN main_image_url <> '' THEN 1 ELSE 0 END), 0)::INTEGER AS with_photos,
          COALESCE(SUM(CASE WHEN main_image_url = '' THEN 1 ELSE 0 END), 0)::INTEGER AS without_photos
-       FROM used_smartphone_products`
+       FROM used_smartphone_products
+       WHERE publication_status <> 'ARCHIVED'`
     )
   ]);
   const total = Number(countResult.rows[0]?.count || 0);
@@ -174,6 +176,7 @@ router.patch('/products/:id/source-url', asyncHandler(async (req, res) => {
          updated_by = $3,
          updated_at = NOW()
      WHERE id = $1
+       AND publication_status <> 'ARCHIVED'
      RETURNING id, photo_parser_url`,
     [id, sourceUrl, req.user.id]
   );
@@ -401,7 +404,10 @@ router.get('/errors', asyncHandler(async (req, res) => {
     pageSize: req.query.pageSize || 25
   });
   const params = [];
-  const where = [`run.status IN ('partial', 'failed')`];
+  const where = [
+    `run.status IN ('partial', 'failed')`,
+    `product.publication_status <> 'ARCHIVED'`
+  ];
   if (input.search) {
     params.push(`%${input.search}%`);
     where.push(`(product.name ILIKE $${params.length} OR product.product_code ILIKE $${params.length} OR run.source_url ILIKE $${params.length})`);
