@@ -121,29 +121,31 @@ export function StorefrontFooter({
   ].filter((item): item is { label: string; href: string } => Boolean(item));
 
   return <footer className="storefront-footer">
-    <div className="storefront-footer__main">
-      <div className="storefront-footer__brand">
-        {footer.showLogo && <StorefrontBrand theme={theme} basePath={basePath} footer />}
-        {footer.description && <p>{footer.description}</p>}
-        {contacts.length > 0 && <address className="storefront-footer__contacts">
-          {contacts.map((item) => item.href
-            ? <a href={item.href} key={item.label}>{item.label}</a>
-            : <span key={item.label}>{item.label}</span>)}
-        </address>}
+    <div className="storefront-footer__container">
+      <div className="storefront-footer__main">
+        <div className="storefront-footer__brand">
+          {footer.showLogo && <StorefrontBrand theme={theme} basePath={basePath} footer />}
+          {footer.description && <p>{footer.description}</p>}
+          {contacts.length > 0 && <address className="storefront-footer__contacts">
+            {contacts.map((item) => item.href
+              ? <a href={item.href} key={item.label}>{item.label}</a>
+              : <span key={item.label}>{item.label}</span>)}
+          </address>}
+        </div>
+        {footer.sections.map((section) => <section className="storefront-footer__section" key={section.id}>
+          <h2>{section.title}</h2>
+          <nav aria-label={section.title}>
+            {section.links.map((link) => <LinkItem link={link} basePath={basePath} className="storefront-footer__link" key={link.id} />)}
+          </nav>
+        </section>)}
+        {footer.socialLinks.length > 0 && <section className="storefront-footer__section storefront-footer__social-section">
+          <h2>Ми в соцмережах</h2>
+          <SocialLinks links={footer.socialLinks} className="storefront-socials storefront-socials--footer" />
+        </section>}
       </div>
-      {footer.sections.map((section) => <section className="storefront-footer__section" key={section.id}>
-        <h2>{section.title}</h2>
-        <nav aria-label={section.title}>
-          {section.links.map((link) => <LinkItem link={link} basePath={basePath} className="storefront-footer__link" key={link.id} />)}
-        </nav>
-      </section>)}
-      {footer.socialLinks.length > 0 && <section className="storefront-footer__section storefront-footer__social-section">
-        <h2>Ми в соцмережах</h2>
-        <SocialLinks links={footer.socialLinks} className="storefront-socials storefront-socials--footer" />
-      </section>}
-    </div>
-    <div className="storefront-footer__bottom">
-      <span>© {copyright}</span>
+      <div className="storefront-footer__bottom">
+        <span>© {copyright}</span>
+      </div>
     </div>
   </footer>;
 }
