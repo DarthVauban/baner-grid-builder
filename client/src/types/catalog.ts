@@ -854,3 +854,118 @@ export interface CatalogProductPageTheme {
     padding: number;
   };
 }
+
+export type CatalogPhotoParserRunStatus = 'queued' | 'running' | 'success' | 'partial' | 'failed';
+export type CatalogPhotoParserBatchStatus = 'queued' | 'running' | 'completed';
+export type CatalogPhotoParserPhotoStatus = 'all' | 'present' | 'missing';
+
+export interface CatalogPhotoParserError {
+  sourceUrl?: string;
+  stage: string;
+  message: string;
+}
+
+export interface CatalogPhotoParserRun {
+  id: string;
+  batchId: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  mainImageUrl: string;
+  sourceUrl: string;
+  adapterId: string;
+  status: CatalogPhotoParserRunStatus;
+  foundCount: number;
+  savedCount: number;
+  skippedCount: number;
+  errorMessage: string;
+  errors: CatalogPhotoParserError[];
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface CatalogPhotoParserProduct {
+  id: string;
+  productCode: string;
+  name: string;
+  mainImageUrl: string;
+  photoCount: number;
+  sourceUrl: string;
+  latestRun: CatalogPhotoParserRun | null;
+  updatedAt: string;
+}
+
+export interface CatalogPhotoParserProductFeed {
+  items: CatalogPhotoParserProduct[];
+  summary: {
+    total: number;
+    withPhotos: number;
+    withoutPhotos: number;
+  };
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+}
+
+export interface CatalogPhotoParserBatch {
+  id: string;
+  status: CatalogPhotoParserBatchStatus;
+  requestedCount: number;
+  counts: Record<CatalogPhotoParserRunStatus, number>;
+  items: CatalogPhotoParserRun[];
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface CatalogPhotoParserErrorFeed {
+  items: CatalogPhotoParserRun[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+}
+
+export interface CatalogPhotoParserAdapter {
+  id: string;
+  source: 'builtin' | 'custom';
+  name: string;
+  host: string;
+  storeUrl: string;
+  gallerySelector: string;
+  strict: boolean;
+  fallback: boolean;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface CatalogPhotoParserAdapterInput {
+  id?: string;
+  name: string;
+  storeUrl: string;
+  gallerySelector: string;
+  fallback: boolean;
+}
+
+export interface CatalogPhotoParserAdapterTest extends CatalogPhotoParserAdapterInput {
+  productUrl: string;
+}
+
+export interface CatalogPhotoParserTestResult {
+  title: string;
+  host: string;
+  selectorMatches: number;
+  selectorImages: number;
+  candidates: number;
+  images: Array<{
+    sourceUrl: string;
+    preview: string;
+    width: number;
+    height: number;
+  }>;
+  errors: CatalogPhotoParserError[];
+}

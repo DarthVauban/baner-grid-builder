@@ -12,6 +12,8 @@ const catalogLinks = [
   { to: '/catalog/header-footer', icon: 'link' as const, label: 'Хедер і футер' },
   { to: '/catalog/product-card', icon: 'productCard' as const, label: 'Картка товару' },
   { to: '/catalog/product-page', icon: 'productPage' as const, label: 'Сторінка товару' },
+  { to: '/catalog/photo-parser', icon: 'savedBanners' as const, label: 'Парсер фотографій' },
+  { to: '/catalog/photo-parser/settings', icon: 'integrations' as const, label: 'Налаштування парсера' },
   { to: '/catalog/audit', icon: 'history' as const, label: 'Історія змін' }
 ];
 
@@ -43,7 +45,7 @@ export function CatalogWorkspacePage() {
         <strong>Каталог смартфонів</strong>
       </Link>
       <nav className="catalog-sidebar__nav" aria-label="Меню каталогу смартфонів">
-        {catalogLinks.map((item) => <NavLink aria-label={item.label} title={item.label} className={({ isActive }) => `catalog-sidebar__link${isActive ? ' catalog-sidebar__link--active' : ''}`} to={item.to} key={item.to}>
+        {catalogLinks.map((item) => <NavLink aria-label={item.label} title={item.label} end={item.to === '/catalog/photo-parser'} className={({ isActive }) => `catalog-sidebar__link${isActive ? ' catalog-sidebar__link--active' : ''}`} to={item.to} key={item.to}>
           <Icon name={item.icon} />
           <span>{item.label}</span>
         </NavLink>)}

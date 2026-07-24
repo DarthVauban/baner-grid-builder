@@ -28,6 +28,11 @@ const actionLabels: Record<string, string> = {
   description_source_create: 'Додано опис товару',
   description_source_update: 'Оновлено опис товару',
   storefront_settings_update: 'Оновлено налаштування вітрини',
+  photo_parser_url_update: 'Оновлено посилання для парсера',
+  photo_parser_import: 'Імпортовано фотографії парсером',
+  photo_parser_adapter_create: 'Додано магазин до парсера',
+  photo_parser_adapter_update: 'Оновлено магазин парсера',
+  photo_parser_adapter_delete: 'Видалено магазин із парсера',
   import_commit: 'Імпортовано XLSX'
 };
 
@@ -67,6 +72,13 @@ const fieldLabels: Record<string, string> = {
   productCardTheme: 'Дизайн картки товару',
   productPageTheme: 'Дизайн сторінки товару',
   removedMediaUrl: 'Видалене фото',
+  sourceUrl: 'Посилання джерела',
+  adapterId: 'Адаптер магазину',
+  found: 'Знайдено фото',
+  saved: 'Збережено фото',
+  skipped: 'Пропущено фото',
+  errors: 'Помилки',
+  host: 'Домен магазину',
   affectedModificationGroups: 'Змінені групи модифікацій'
 };
 

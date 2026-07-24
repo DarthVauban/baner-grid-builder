@@ -57,6 +57,12 @@ const CatalogProductPageSettingsPage = lazy(() => import('../pages/CatalogProduc
 const CatalogAuditPage = lazy(() => import('../pages/CatalogAuditPage').then((module) => ({
   default: module.CatalogAuditPage
 })));
+const CatalogPhotoParserPage = lazy(() => import('../pages/CatalogPhotoParserPage').then((module) => ({
+  default: module.CatalogPhotoParserPage
+})));
+const CatalogPhotoParserSettingsPage = lazy(() => import('../pages/CatalogPhotoParserSettingsPage').then((module) => ({
+  default: module.CatalogPhotoParserSettingsPage
+})));
 const ProfilePage = lazy(() => import('../pages/ProfilePage').then((module) => ({
   default: module.ProfilePage
 })));
@@ -124,6 +130,8 @@ export function App() {
             <Route path="header-footer" element={<Suspense fallback={<LoadingScreen />}><CatalogHeaderFooterSettingsPage /></Suspense>} />
             <Route path="product-card" element={<Suspense fallback={<LoadingScreen />}><CatalogProductCardSettingsPage /></Suspense>} />
             <Route path="product-page" element={<Suspense fallback={<LoadingScreen />}><CatalogProductPageSettingsPage /></Suspense>} />
+            <Route path="photo-parser" element={<Suspense fallback={<LoadingScreen />}><CatalogPhotoParserPage /></Suspense>} />
+            <Route path="photo-parser/settings" element={<Suspense fallback={<LoadingScreen />}><CatalogPhotoParserSettingsPage /></Suspense>} />
             <Route path="preview" element={<Navigate to="/catalog/storefront" replace />} />
             <Route path="audit" element={<Suspense fallback={<LoadingScreen />}><CatalogAuditPage /></Suspense>} />
           </Route>

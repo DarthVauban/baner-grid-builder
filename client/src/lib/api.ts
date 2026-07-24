@@ -75,6 +75,14 @@ import type {
   CatalogImportHistoryDetail,
   CatalogImportTemplateSchema,
   CatalogMediaAsset,
+  CatalogPhotoParserAdapter,
+  CatalogPhotoParserAdapterInput,
+  CatalogPhotoParserAdapterTest,
+  CatalogPhotoParserBatch,
+  CatalogPhotoParserErrorFeed,
+  CatalogPhotoParserPhotoStatus,
+  CatalogPhotoParserProductFeed,
+  CatalogPhotoParserTestResult,
   CatalogProduct,
   CatalogProductCharacteristics,
   CatalogProductGroup,
@@ -441,7 +449,51 @@ export const api = {
       request<CatalogImportHistoryDetail>(`/api/catalog/imports/${encodeURIComponent(id)}${queryString(params)}`),
     storefrontSettings: () => request<CatalogStorefrontSettings>('/api/catalog/storefront-settings'),
     updateStorefrontSettings: (input: Partial<Pick<CatalogStorefrontSettings, 'selectedFormPublicId' | 'publicOrigin' | 'storefrontTheme' | 'productCardTheme' | 'productPageTheme'>>) =>
-      request<CatalogStorefrontSettings>('/api/catalog/storefront-settings', { method: 'PATCH', body: jsonBody(input) })
+      request<CatalogStorefrontSettings>('/api/catalog/storefront-settings', { method: 'PATCH', body: jsonBody(input) }),
+    photoParser: {
+      products: (params: { search?: string; photoStatus?: CatalogPhotoParserPhotoStatus; page?: number; pageSize?: number }) =>
+        request<CatalogPhotoParserProductFeed>(`/api/catalog/photo-parser/products${queryString(params)}`),
+      setSourceUrl: (productId: string, sourceUrl: string) =>
+        request<{ productId: string; sourceUrl: string }>(
+          `/api/catalog/photo-parser/products/${encodeURIComponent(productId)}/source-url`,
+          { method: 'PATCH', body: jsonBody({ sourceUrl }) }
+        ),
+      activeBatch: () => request<CatalogPhotoParserBatch | null>('/api/catalog/photo-parser/batches/active'),
+      batch: (batchId: string) =>
+        request<CatalogPhotoParserBatch>(`/api/catalog/photo-parser/batches/${encodeURIComponent(batchId)}`),
+      startBatch: (input: { search?: string; photoStatus?: CatalogPhotoParserPhotoStatus }) =>
+        request<CatalogPhotoParserBatch>('/api/catalog/photo-parser/batches', {
+          method: 'POST',
+          body: jsonBody(input)
+        }),
+      errors: (params: { search?: string; page?: number; pageSize?: number }) =>
+        request<CatalogPhotoParserErrorFeed>(`/api/catalog/photo-parser/errors${queryString(params)}`),
+      adapters: () => request<CatalogPhotoParserAdapter[]>('/api/catalog/photo-parser/adapters'),
+      testAdapter: (input: CatalogPhotoParserAdapterTest) =>
+        request<CatalogPhotoParserTestResult>('/api/catalog/photo-parser/adapters/test', {
+          method: 'POST',
+          body: jsonBody(input),
+          timeoutMs: 90_000
+        }),
+      createAdapter: (input: CatalogPhotoParserAdapterInput) =>
+        request<CatalogPhotoParserAdapter>('/api/catalog/photo-parser/adapters', {
+          method: 'POST',
+          body: jsonBody(input)
+        }),
+      updateAdapter: (adapterId: string, input: CatalogPhotoParserAdapterInput) =>
+        request<CatalogPhotoParserAdapter>(`/api/catalog/photo-parser/adapters/${encodeURIComponent(adapterId)}`, {
+          method: 'PUT',
+          body: jsonBody(input)
+        }),
+      toggleAdapter: (adapterId: string) =>
+        request<CatalogPhotoParserAdapter>(`/api/catalog/photo-parser/adapters/${encodeURIComponent(adapterId)}/toggle`, {
+          method: 'PATCH'
+        }),
+      removeAdapter: (adapterId: string) =>
+        request<void>(`/api/catalog/photo-parser/adapters/${encodeURIComponent(adapterId)}`, {
+          method: 'DELETE'
+        })
+    }
   },
   storefront: {
     settings: () => request<CatalogStorefrontSettings>('/api/storefront/settings'),

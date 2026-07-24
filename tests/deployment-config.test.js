@@ -52,6 +52,11 @@ test('runtime image carries the build revision used by the health check', () => 
   assert.match(dockerfile, /org\.opencontainers\.image\.revision=\$APP_BUILD_SHA/);
 });
 
+test('runtime image includes Chromium for the server-side catalog photo parser', () => {
+  assert.match(dockerfile, /CHROMIUM_EXECUTABLE_PATH=\/usr\/bin\/chromium/);
+  assert.match(dockerfile, /apk add --no-cache chromium/);
+});
+
 test('catalog photos use persistent writable storage in production', () => {
   assert.match(compose, /CATALOG_MEDIA_DIR:\s*\/app\/storage\/catalog-media/);
   assert.match(compose, /- catalog_media_data:\/app\/storage\/catalog-media/);
