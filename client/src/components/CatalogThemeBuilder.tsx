@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { StyledSelect } from './StyledSelect';
+import { StorefrontFooter, StorefrontHeader } from './StorefrontChrome';
 import { productCardThemeStyle, productPageThemeStyle, storefrontThemeStyle } from '../lib/storefront-theme';
 import type {
   CatalogProductCardContentKey,
@@ -101,15 +102,6 @@ export function ThemeRangeField({
       />
     </span>
   </label>;
-}
-
-function StorefrontBrandPreview({ theme }: { theme: CatalogStorefrontTheme }) {
-  return <span className="storefront-brand">
-    {theme.header.logoUrl
-      ? <img className="storefront-brand__logo" src={theme.header.logoUrl} alt="" />
-      : <span>{theme.header.brandMark}</span>}
-    {theme.header.brandText && <strong>{theme.header.brandText}</strong>}
-  </span>;
 }
 
 export function ThemeTextField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder?: string; onChange: (value: string) => void }) {
@@ -264,10 +256,10 @@ export function CatalogThemePreview({
   }
 
   return <ScaledThemePreview className={`catalog-theme-preview catalog-theme-preview--${device}`} device={device} style={style}>
-        <header className="storefront-header">
-          <StorefrontBrandPreview theme={storefrontTheme} />
-          <button className="button button--secondary button--small storefront-header__action" type="button">У робочий простір</button>
-        </header>
+        <StorefrontHeader
+          theme={storefrontTheme}
+          action={<button className="button button--secondary button--small storefront-header__action" type="button">У робочий простір</button>}
+        />
         <section className="storefront-catalog">
           <div className="storefront-hero">
             <p className="eyebrow">{storefrontTheme.hero.eyebrowText}</p>
@@ -293,6 +285,7 @@ export function CatalogThemePreview({
             </div>
           </div>
         </section>
+        <StorefrontFooter theme={storefrontTheme} />
   </ScaledThemePreview>;
 }
 
@@ -307,9 +300,7 @@ export function CatalogProductPagePreview({
 }) {
   const style = { ...storefrontThemeStyle(storefrontTheme), ...productPageThemeStyle(productPageTheme) };
   return <ScaledThemePreview className={`catalog-theme-preview catalog-theme-preview--${device} catalog-theme-preview--product-page`} device={device} style={style}>
-    <header className="storefront-header">
-      <StorefrontBrandPreview theme={storefrontTheme} />
-    </header>
+    <StorefrontHeader theme={storefrontTheme} />
     <section className="storefront-product-view catalog-product-page-preview__product">
       <div className="storefront-product-view__hero">
         <section className="storefront-product-view__media catalog-product-page-preview__media">
@@ -340,5 +331,6 @@ export function CatalogProductPagePreview({
         <div className="storefront-product-content__section"><header className="storefront-product-content__header"><span>Про товар</span><h2>{productPageTheme.tabs.descriptionLabel}</h2></header><p>Повний опис товару відображатиметься в цьому блоці.</p></div>
       </section>}
     </section>
+    <StorefrontFooter theme={storefrontTheme} />
   </ScaledThemePreview>;
 }

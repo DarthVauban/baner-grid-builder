@@ -228,6 +228,23 @@ const importHistoryDetailSchema = z.object({
 const themeColorSchema = z.string().regex(/^#[0-9a-f]{6}$/i);
 const themeShadowSchema = z.enum(['none', 'soft', 'strong']);
 const themeFontWeightSchema = z.coerce.number().int().min(200).max(900).refine((value) => value % 100 === 0);
+const storefrontLinkSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  label: z.string().trim().min(1).max(80),
+  url: z.string().trim().max(2000),
+  newTab: z.boolean()
+});
+const storefrontSocialLinkSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  platform: z.enum(['instagram', 'facebook', 'telegram', 'youtube', 'tiktok', 'x']),
+  label: z.string().trim().max(80),
+  url: z.string().trim().max(2000)
+});
+const storefrontFooterSectionSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  title: z.string().trim().min(1).max(80),
+  links: z.array(storefrontLinkSchema).max(10)
+});
 const storefrontThemeSchema = z.object({
   version: z.literal(1).default(1),
   typography: z.object({
@@ -276,7 +293,32 @@ const storefrontThemeSchema = z.object({
     logoLink: z.string().trim().max(2000),
     logoHeight: z.coerce.number().int().min(20).max(120),
     brandSize: z.coerce.number().int().min(10).max(34),
-    actionVisible: z.boolean()
+    actionVisible: z.boolean(),
+    tagline: z.string().trim().max(160),
+    textColor: themeColorSchema,
+    mutedColor: themeColorSchema,
+    linkColor: themeColorSchema,
+    links: z.array(storefrontLinkSchema).max(12),
+    socialLinks: z.array(storefrontSocialLinkSchema).max(8)
+  }),
+  footer: z.object({
+    visible: z.boolean(),
+    showLogo: z.boolean(),
+    brandText: z.string().trim().max(80),
+    description: z.string().trim().max(500),
+    background: themeColorSchema,
+    textColor: themeColorSchema,
+    mutedColor: themeColorSchema,
+    borderColor: themeColorSchema,
+    borderWidth: z.coerce.number().int().min(0).max(6),
+    paddingTop: z.coerce.number().int().min(0).max(120),
+    paddingBottom: z.coerce.number().int().min(0).max(120),
+    email: z.string().trim().max(160),
+    phone: z.string().trim().max(80),
+    address: z.string().trim().max(240),
+    copyright: z.string().trim().max(240),
+    sections: z.array(storefrontFooterSectionSchema).max(4),
+    socialLinks: z.array(storefrontSocialLinkSchema).max(8)
   }),
   hero: z.object({
     visible: z.boolean(),

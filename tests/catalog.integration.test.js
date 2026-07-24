@@ -785,6 +785,7 @@ test('catalog products publish to storefront, import stock updates, and create a
   }).expect(200);
   assert.equal(savedStorefrontSettings.body.data.storefrontTheme.typography.bodyFontFamily, 'Inter');
   assert.equal(savedStorefrontSettings.body.data.storefrontTheme.header.logoUrl, '');
+  assert.equal(savedStorefrontSettings.body.data.storefrontTheme.footer.visible, true);
   assert.equal(savedStorefrontSettings.body.data.productCardTheme.button.label, 'Купити');
   assert.equal(savedStorefrontSettings.body.data.productPageTheme.layout.galleryWidth, 50);
   assert.equal(savedStorefrontSettings.body.data.productPageTheme.gallery.imageScale, 72);
@@ -799,6 +800,14 @@ test('catalog products publish to storefront, import stock updates, and create a
   storefrontTheme.header.logoUrl = '/media/catalog/storefront-logo.webp';
   storefrontTheme.header.logoLink = 'https://mobiletrend.com.ua';
   storefrontTheme.header.logoHeight = 54;
+  storefrontTheme.header.links = [{ id: 'delivery', label: 'Доставка', url: '/delivery', newTab: false }];
+  storefrontTheme.header.socialLinks = [{ id: 'telegram', platform: 'telegram', label: 'Telegram', url: 'https://t.me/mobiletrend' }];
+  storefrontTheme.footer.email = 'hello@mobiletrend.com.ua';
+  storefrontTheme.footer.sections = [{
+    id: 'support',
+    title: 'Підтримка',
+    links: [{ id: 'warranty', label: 'Гарантія', url: '/warranty', newTab: false }]
+  }];
   storefrontTheme.filters.titleColor = '#102030';
   storefrontTheme.filters.activeColor = '#405060';
   storefrontTheme.filters.mobileButtonBackground = '#708090';
@@ -821,6 +830,10 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoUrl, '/media/catalog/storefront-logo.webp');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoLink, 'https://mobiletrend.com.ua');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoHeight, 54);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.links[0].label, 'Доставка');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.socialLinks[0].platform, 'telegram');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.email, 'hello@mobiletrend.com.ua');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.sections[0].links[0].label, 'Гарантія');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.filters.titleColor, '#102030');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.filters.activeColor, '#405060');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.filters.mobileButtonBackground, '#708090');

@@ -520,6 +520,27 @@ export interface CatalogStorefrontSettings {
 
 export type CatalogStorefrontFontFamily = 'Inter' | 'Unbounded' | 'Montserrat' | 'Roboto';
 export type CatalogThemeShadow = 'none' | 'soft' | 'strong';
+export type CatalogStorefrontSocialPlatform = 'instagram' | 'facebook' | 'telegram' | 'youtube' | 'tiktok' | 'x';
+
+export interface CatalogStorefrontLink {
+  id: string;
+  label: string;
+  url: string;
+  newTab: boolean;
+}
+
+export interface CatalogStorefrontSocialLink {
+  id: string;
+  platform: CatalogStorefrontSocialPlatform;
+  label: string;
+  url: string;
+}
+
+export interface CatalogStorefrontFooterSection {
+  id: string;
+  title: string;
+  links: CatalogStorefrontLink[];
+}
 
 export interface CatalogStorefrontTheme {
   version: 1;
@@ -570,6 +591,31 @@ export interface CatalogStorefrontTheme {
     logoHeight: number;
     brandSize: number;
     actionVisible: boolean;
+    tagline: string;
+    textColor: string;
+    mutedColor: string;
+    linkColor: string;
+    links: CatalogStorefrontLink[];
+    socialLinks: CatalogStorefrontSocialLink[];
+  };
+  footer: {
+    visible: boolean;
+    showLogo: boolean;
+    brandText: string;
+    description: string;
+    background: string;
+    textColor: string;
+    mutedColor: string;
+    borderColor: string;
+    borderWidth: number;
+    paddingTop: number;
+    paddingBottom: number;
+    email: string;
+    phone: string;
+    address: string;
+    copyright: string;
+    sections: CatalogStorefrontFooterSection[];
+    socialLinks: CatalogStorefrontSocialLink[];
   };
   hero: {
     visible: boolean;

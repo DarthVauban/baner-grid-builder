@@ -1,0 +1,39 @@
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { cloneStorefrontTheme } from '../lib/storefront-theme';
+import { StorefrontFooter, StorefrontHeader, storefrontLinkHref } from './StorefrontChrome';
+
+describe('StorefrontChrome', () => {
+  it('renders configurable header navigation and resolves the storefront root', () => {
+    const theme = cloneStorefrontTheme();
+    theme.header.links = [
+      { id: 'catalog', label: 'Каталог', url: '/', newTab: false },
+      { id: 'delivery', label: 'Доставка', url: 'https://example.com/delivery', newTab: true }
+    ];
+
+    render(<StorefrontHeader theme={theme} basePath="/storefront" />);
+
+    expect(screen.getByText('Смартфони з гарантією')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Каталог' })).toHaveAttribute('href', '/storefront');
+    expect(screen.getByRole('link', { name: 'Доставка' })).toHaveAttribute('target', '_blank');
+  });
+
+  it('renders footer contacts, sections, socials and a dynamic year', () => {
+    const theme = cloneStorefrontTheme();
+    theme.footer.email = 'hello@example.com';
+    theme.footer.phone = '+380 50 123 45 67';
+    theme.footer.copyright = '{year} Тестовий магазин';
+    theme.footer.socialLinks = [{ id: 'telegram', platform: 'telegram', label: 'Наш Telegram', url: 'https://t.me/example' }];
+
+    render(<StorefrontFooter theme={theme} basePath="/" />);
+
+    expect(screen.getByText(theme.footer.description)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'hello@example.com' })).toHaveAttribute('href', 'mailto:hello@example.com');
+    expect(screen.getByRole('link', { name: 'Наш Telegram' })).toHaveAttribute('href', 'https://t.me/example');
+    expect(screen.getByText(`© ${new Date().getFullYear()} Тестовий магазин`)).toBeInTheDocument();
+  });
+
+  it('rejects unsafe link protocols', () => {
+    expect(storefrontLinkHref('javascript:alert(1)', '/storefront')).toBe('/storefront');
+  });
+});

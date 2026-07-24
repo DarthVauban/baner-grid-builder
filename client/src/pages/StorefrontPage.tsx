@@ -11,6 +11,7 @@ import 'swiper/css/pagination';
 import { AutoHeightSandbox } from '../components/AutoHeightSandbox';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
+import { StorefrontFooter, StorefrontHeader } from '../components/StorefrontChrome';
 import { api } from '../lib/api';
 import {
   defaultProductCardTheme,
@@ -43,18 +44,6 @@ const sortOptions = [
   { value: 'price_asc', label: 'Дешевші спочатку' },
   { value: 'price_desc', label: 'Дорожчі спочатку' }
 ];
-
-function storefrontBrandHref(value: string, fallback: string) {
-  const candidate = value.trim();
-  if (!candidate) return fallback;
-  if (candidate.startsWith('/') && !candidate.startsWith('//')) return candidate;
-  try {
-    const url = new URL(candidate);
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function ProductImage({ product }: { product: CatalogProduct }) {
   const [failed, setFailed] = useState(false);
@@ -1267,20 +1256,14 @@ export function StorefrontPage({ preview = false, rootMounted = false }: { previ
   const productCardTheme = settings.data?.productCardTheme || defaultProductCardTheme;
   const productPageTheme = settings.data?.productPageTheme || defaultProductPageTheme;
   const pageStyle = { ...storefrontThemeStyle(storefrontTheme), ...productCardThemeStyle(productCardTheme), ...productPageThemeStyle(productPageTheme) };
-  const brandHref = storefrontBrandHref(storefrontTheme.header.logoLink, basePath);
-
   return <main className="storefront-page" style={pageStyle}>
-    <header className="storefront-header">
-      <a href={brandHref} className="storefront-brand">
-        {storefrontTheme.header.logoUrl
-          ? <img className="storefront-brand__logo" src={storefrontTheme.header.logoUrl} alt={storefrontTheme.header.brandText || 'Логотип магазину'} />
-          : <span>{storefrontTheme.header.brandMark}</span>}
-        {storefrontTheme.header.brandText && <strong>{storefrontTheme.header.brandText}</strong>}
-      </a>
-      {preview
+    <StorefrontHeader
+      theme={storefrontTheme}
+      basePath={basePath}
+      action={preview
         ? <a className="button button--secondary button--small storefront-header__action" href="/catalog/products">До каталогу</a>
-        : !rootMounted && <a className="button button--secondary button--small storefront-header__action" href="/login">У робочий простір</a>}
-    </header>
+        : !rootMounted ? <a className="button button--secondary button--small storefront-header__action" href="/login">У робочий простір</a> : undefined}
+    />
     {preview && <div className="storefront-preview-banner">Preview магазину · сторінка закрита від індексації</div>}
 
     {slug ? productData ? <>
@@ -1343,6 +1326,7 @@ export function StorefrontPage({ preview = false, rootMounted = false }: { previ
       </div>
       {!products.isLoading && !items.length && <div className="storefront-empty"><Icon name="phone" size={32} /><h2>Товарів не знайдено</h2></div>}
     </section>}
+    <StorefrontFooter theme={storefrontTheme} basePath={basePath} />
     {requestProduct && form.data && requestProduct.availability.status !== 'unavailable' && <StorefrontApplicationModal product={requestProduct} form={form.data} preview={preview} basePath={basePath} onClose={() => setRequestProduct(null)} />}
   </main>;
 }
