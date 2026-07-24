@@ -41,6 +41,52 @@ const socialOptions: Array<{ value: CatalogStorefrontSocialPlatform; label: stri
   { value: 'x', label: 'X' }
 ];
 
+const mobileMenuAlignmentOptions = [
+  { value: 'left', label: 'Ліворуч' },
+  { value: 'center', label: 'По центру' },
+  { value: 'right', label: 'Праворуч' }
+];
+
+type LogoTarget = 'header' | 'footer';
+type LogoUploadState = { busy: boolean; progress: number; error: string };
+
+function LogoEditor({
+  title,
+  logoUrl,
+  fallback,
+  upload,
+  onUpload,
+  onRemove
+}: {
+  title: string;
+  logoUrl: string;
+  fallback: string;
+  upload: LogoUploadState;
+  onUpload: (file?: File) => void;
+  onRemove: () => void;
+}) {
+  return <div className="catalog-theme-logo catalog-theme-control--wide">
+    <span>{title}</span>
+    <div className="catalog-theme-logo__body">
+      <div className="catalog-theme-logo__preview">
+        {logoUrl ? <img src={logoUrl} alt={`Поточний логотип ${title.toLowerCase()}`} /> : <span>{fallback || 'LOGO'}</span>}
+      </div>
+      <div className="catalog-theme-logo__actions">
+        <label className="button button--secondary button--small">
+          <Icon name="upload" size={15} /> {upload.busy ? `Завантаження ${upload.progress}%` : logoUrl ? 'Замінити PNG' : 'Завантажити PNG'}
+          <input className="visually-hidden" type="file" accept="image/png,.png" disabled={upload.busy} onChange={(event) => {
+            onUpload(event.target.files?.[0]);
+            event.currentTarget.value = '';
+          }} />
+        </label>
+        {logoUrl && <button className="button button--danger button--small" type="button" disabled={upload.busy} onClick={onRemove}>Видалити</button>}
+      </div>
+    </div>
+    <small>PNG до 5 МБ. Файл автоматично оптимізується у WebP.</small>
+    {upload.error && <small className="catalog-theme-logo__error" role="alert">{upload.error}</small>}
+  </div>;
+}
+
 function createThemeId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -164,7 +210,10 @@ export function CatalogHeaderFooterSettingsPage() {
   } = useUndoableState<CatalogStorefrontTheme>(() => cloneStorefrontTheme());
   const [device, setDevice] = useState<CatalogThemeDevice>('desktop');
   const [savedSnapshot, setSavedSnapshot] = useState('');
-  const [logoUpload, setLogoUpload] = useState({ busy: false, progress: 0, error: '' });
+  const [logoUploads, setLogoUploads] = useState<Record<LogoTarget, LogoUploadState>>({
+    header: { busy: false, progress: 0, error: '' },
+    footer: { busy: false, progress: 0, error: '' }
+  });
 
   useEffect(() => {
     if (!settings.data) return;
@@ -202,27 +251,33 @@ export function CatalogHeaderFooterSettingsPage() {
     }));
   }
 
-  async function uploadLogo(file?: File) {
+  async function uploadLogo(target: LogoTarget, file?: File) {
     if (!file) return;
     const isPng = file.type.toLowerCase() === 'image/png' || file.name.toLowerCase().endsWith('.png');
     if (!isPng) {
-      setLogoUpload({ busy: false, progress: 0, error: 'Оберіть логотип у форматі PNG.' });
+      setLogoUploads((current) => ({ ...current, [target]: { busy: false, progress: 0, error: 'Оберіть логотип у форматі PNG.' } }));
       return;
     }
     if (file.size > maxCatalogImageBytes) {
-      setLogoUpload({ busy: false, progress: 0, error: 'Логотип має бути до 5 МБ.' });
+      setLogoUploads((current) => ({ ...current, [target]: { busy: false, progress: 0, error: 'Логотип має бути до 5 МБ.' } }));
       return;
     }
-    setLogoUpload({ busy: true, progress: 0, error: '' });
+    setLogoUploads((current) => ({ ...current, [target]: { busy: true, progress: 0, error: '' } }));
     try {
       const webp = await convertCatalogImageToWebp(file);
       const asset = await api.catalog.uploadMedia(webp, file.name.replace(/\.png$/i, '.webp'), (progress) => {
-        setLogoUpload((current) => ({ ...current, progress }));
+        setLogoUploads((current) => ({ ...current, [target]: { ...current[target], progress } }));
       });
-      setTheme((current) => ({ ...current, header: { ...current.header, logoUrl: asset.url } }));
-      setLogoUpload({ busy: false, progress: 100, error: '' });
+      setTheme((current) => ({
+        ...current,
+        [target]: { ...current[target], logoUrl: asset.url }
+      }));
+      setLogoUploads((current) => ({ ...current, [target]: { busy: false, progress: 100, error: '' } }));
     } catch (error) {
-      setLogoUpload({ busy: false, progress: 0, error: error instanceof Error ? error.message : 'Не вдалося завантажити логотип.' });
+      setLogoUploads((current) => ({
+        ...current,
+        [target]: { busy: false, progress: 0, error: error instanceof Error ? error.message : 'Не вдалося завантажити логотип.' }
+      }));
     }
   }
 
@@ -245,23 +300,14 @@ export function CatalogHeaderFooterSettingsPage() {
           <ThemeToggle label="Показувати хедер" checked={theme.header.visible} onChange={(value) => updateTheme('header', { ...theme.header, visible: value })} />
           <ThemeToggle label="Закріпити при прокручуванні" checked={theme.header.sticky} onChange={(value) => updateTheme('header', { ...theme.header, sticky: value })} />
           <ThemeToggle label="Показувати кнопку Workspace" checked={theme.header.actionVisible} onChange={(value) => updateTheme('header', { ...theme.header, actionVisible: value })} />
-          <div className="catalog-theme-logo catalog-theme-control--wide">
-            <span>Логотип магазину</span>
-            <div className="catalog-theme-logo__body">
-              <div className="catalog-theme-logo__preview">
-                {theme.header.logoUrl ? <img src={theme.header.logoUrl} alt="Поточний логотип" /> : <span>{theme.header.brandMark || 'LOGO'}</span>}
-              </div>
-              <div className="catalog-theme-logo__actions">
-                <label className="button button--secondary button--small">
-                  <Icon name="upload" size={15} /> {logoUpload.busy ? `Завантаження ${logoUpload.progress}%` : theme.header.logoUrl ? 'Замінити PNG' : 'Завантажити PNG'}
-                  <input className="visually-hidden" type="file" accept="image/png,.png" disabled={logoUpload.busy} onChange={(event) => { void uploadLogo(event.target.files?.[0]); event.currentTarget.value = ''; }} />
-                </label>
-                {theme.header.logoUrl && <button className="button button--danger button--small" type="button" disabled={logoUpload.busy} onClick={() => updateTheme('header', { ...theme.header, logoUrl: '' })}>Видалити</button>}
-              </div>
-            </div>
-            <small>PNG до 5 МБ. Файл автоматично оптимізується у WebP.</small>
-            {logoUpload.error && <small className="catalog-theme-logo__error" role="alert">{logoUpload.error}</small>}
-          </div>
+          <LogoEditor
+            title="Логотип хедера"
+            logoUrl={theme.header.logoUrl}
+            fallback={theme.header.brandMark}
+            upload={logoUploads.header}
+            onUpload={(file) => void uploadLogo('header', file)}
+            onRemove={() => updateTheme('header', { ...theme.header, logoUrl: '' })}
+          />
           <ThemeTextField label="Назва бренду" value={theme.header.brandText} onChange={(value) => updateTheme('header', { ...theme.header, brandText: value })} />
           <ThemeTextField label="Слоган" value={theme.header.tagline} onChange={(value) => updateTheme('header', { ...theme.header, tagline: value })} />
           <ThemeTextField label="Знак без логотипу" value={theme.header.brandMark} onChange={(value) => updateTheme('header', { ...theme.header, brandMark: value.slice(0, 8) })} />
@@ -293,9 +339,35 @@ export function CatalogHeaderFooterSettingsPage() {
           <SocialEditor links={theme.header.socialLinks} onChange={(socialLinks) => updateTheme('header', { ...theme.header, socialLinks })} />
         </ThemeSection>
 
+        <ThemeSection title="Мобільне меню" description="Окреме оформлення burger-кнопки та панелі навігації на екранах до 700 px. Посилання і їх порядок беруться з навігації хедера.">
+          <ThemeColorField label="Фон меню" value={theme.header.mobileMenu.background} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, background: value } })} />
+          <ThemeColorField label="Колір посилань" value={theme.header.mobileMenu.textColor} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, textColor: value } })} />
+          <ThemeColorField label="Розділювачі" value={theme.header.mobileMenu.dividerColor} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, dividerColor: value } })} />
+          <ThemeColorField label="Фон burger-кнопки" value={theme.header.mobileMenu.toggleBackground} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, toggleBackground: value } })} />
+          <ThemeColorField label="Іконка burger-кнопки" value={theme.header.mobileMenu.toggleColor} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, toggleColor: value } })} />
+          <ThemeColorField label="Рамка burger-кнопки" value={theme.header.mobileMenu.toggleBorderColor} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, toggleBorderColor: value } })} />
+          <ThemeRangeField label="Розмір burger-кнопки" value={theme.header.mobileMenu.toggleSize} min={36} max={56} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, toggleSize: value } })} />
+          <ThemeRangeField label="Радіус burger-кнопки" value={theme.header.mobileMenu.toggleRadius} min={0} max={28} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, toggleRadius: value } })} />
+          <ThemeRangeField label="Розмір посилань" value={theme.header.mobileMenu.linkSize} min={9} max={28} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, linkSize: value } })} />
+          <ThemeSelectField label="Вага посилань" value={String(theme.header.mobileMenu.linkWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, linkWeight: Number(value) } })} />
+          <ThemeSelectField label="Вирівнювання пунктів" value={theme.header.mobileMenu.alignment} options={mobileMenuAlignmentOptions} onChange={(value) => updateTheme('header', { ...theme.header, mobileMenu: { ...theme.header.mobileMenu, alignment: value as CatalogStorefrontTheme['header']['mobileMenu']['alignment'] } })} />
+        </ThemeSection>
+
         <ThemeSection title="Футер" description="Нижня частина вітрини з брендингом, контактами та службовою інформацією.">
           <ThemeToggle label="Показувати футер" checked={theme.footer.visible} onChange={(value) => updateTheme('footer', { ...theme.footer, visible: value })} />
           <ThemeToggle label="Показувати логотип і бренд" checked={theme.footer.showLogo} onChange={(value) => updateTheme('footer', { ...theme.footer, showLogo: value })} />
+          <LogoEditor
+            title="Логотип футера"
+            logoUrl={theme.footer.logoUrl}
+            fallback={theme.header.brandMark}
+            upload={logoUploads.footer}
+            onUpload={(file) => void uploadLogo('footer', file)}
+            onRemove={() => updateTheme('footer', { ...theme.footer, logoUrl: '' })}
+          />
+          {theme.header.logoUrl && theme.footer.logoUrl !== theme.header.logoUrl && <div className="catalog-theme-control--wide">
+            <button className="button button--secondary button--small" type="button" onClick={() => updateTheme('footer', { ...theme.footer, logoUrl: theme.header.logoUrl })}>Використати логотип хедера</button>
+          </div>}
+          <ThemeRangeField label="Висота логотипу футера" value={theme.footer.logoHeight} min={20} max={120} onChange={(value) => updateTheme('footer', { ...theme.footer, logoHeight: value })} />
           <ThemeTextField label="Назва бренду" value={theme.footer.brandText} onChange={(value) => updateTheme('footer', { ...theme.footer, brandText: value })} />
           <label className="field catalog-theme-control--wide"><span>Короткий опис</span><textarea rows={3} value={theme.footer.description} maxLength={500} onChange={(event) => updateTheme('footer', { ...theme.footer, description: event.target.value })} /></label>
           <ThemeTextField label="Email" value={theme.footer.email} placeholder="hello@example.com" onChange={(value) => updateTheme('footer', { ...theme.footer, email: value })} />

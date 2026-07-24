@@ -804,6 +804,12 @@ test('catalog products publish to storefront, import stock updates, and create a
   storefrontTheme.header.linkWeight = 800;
   storefrontTheme.header.links = [{ id: 'delivery', label: 'Доставка', url: '/delivery', newTab: false }];
   storefrontTheme.header.socialLinks = [{ id: 'telegram', platform: 'telegram', label: 'Telegram', url: 'https://t.me/mobiletrend' }];
+  storefrontTheme.header.mobileMenu.background = '#101820';
+  storefrontTheme.header.mobileMenu.toggleSize = 50;
+  storefrontTheme.header.mobileMenu.linkWeight = 900;
+  storefrontTheme.header.mobileMenu.alignment = 'center';
+  storefrontTheme.footer.logoUrl = '/media/catalog/storefront-footer-logo.webp';
+  storefrontTheme.footer.logoHeight = 58;
   storefrontTheme.footer.email = 'hello@mobiletrend.com.ua';
   storefrontTheme.footer.headingSize = 15;
   storefrontTheme.footer.headingWeight = 900;
@@ -840,6 +846,12 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.linkWeight, 800);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.links[0].label, 'Доставка');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.socialLinks[0].platform, 'telegram');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.background, '#101820');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.toggleSize, 50);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.linkWeight, 900);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.mobileMenu.alignment, 'center');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.logoUrl, '/media/catalog/storefront-footer-logo.webp');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.logoHeight, 58);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.email, 'hello@mobiletrend.com.ua');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.headingSize, 15);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.headingWeight, 900);

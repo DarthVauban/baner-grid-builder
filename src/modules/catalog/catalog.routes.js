@@ -304,11 +304,26 @@ const storefrontThemeSchema = z.object({
     linkSize: z.coerce.number().int().min(9).max(28),
     linkWeight: themeFontWeightSchema,
     links: z.array(storefrontLinkSchema).max(12),
-    socialLinks: z.array(storefrontSocialLinkSchema).max(8)
+    socialLinks: z.array(storefrontSocialLinkSchema).max(8),
+    mobileMenu: z.object({
+      background: themeColorSchema,
+      textColor: themeColorSchema,
+      dividerColor: themeColorSchema,
+      toggleBackground: themeColorSchema,
+      toggleColor: themeColorSchema,
+      toggleBorderColor: themeColorSchema,
+      toggleSize: z.coerce.number().int().min(36).max(56),
+      toggleRadius: z.coerce.number().int().min(0).max(28),
+      linkSize: z.coerce.number().int().min(9).max(28),
+      linkWeight: themeFontWeightSchema,
+      alignment: z.enum(['left', 'center', 'right'])
+    })
   }),
   footer: z.object({
     visible: z.boolean(),
     showLogo: z.boolean(),
+    logoUrl: z.string().trim().max(4000),
+    logoHeight: z.coerce.number().int().min(20).max(120),
     brandText: z.string().trim().max(80),
     description: z.string().trim().max(500),
     background: themeColorSchema,

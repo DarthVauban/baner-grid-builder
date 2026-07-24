@@ -35,6 +35,20 @@ describe('StorefrontChrome', () => {
     expect(screen.getByText(`© ${new Date().getFullYear()} Тестовий магазин`)).toBeInTheDocument();
   });
 
+  it('uses independent logos for the header and footer', () => {
+    const theme = cloneStorefrontTheme();
+    theme.header.logoUrl = '/header-logo.webp';
+    theme.footer.logoUrl = '/footer-logo.webp';
+
+    const { container } = render(<>
+      <StorefrontHeader theme={theme} />
+      <StorefrontFooter theme={theme} />
+    </>);
+
+    expect(container.querySelector('.storefront-header .storefront-brand__logo')).toHaveAttribute('src', '/header-logo.webp');
+    expect(container.querySelector('.storefront-footer .storefront-brand__logo')).toHaveAttribute('src', '/footer-logo.webp');
+  });
+
   it('opens the burger menu and closes it with Escape or after navigation', async () => {
     const user = userEvent.setup();
     const theme = cloneStorefrontTheme();

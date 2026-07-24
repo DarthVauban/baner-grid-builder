@@ -83,9 +83,10 @@ export function StorefrontBrand({
   footer?: boolean;
 }) {
   const title = footer ? theme.footer.brandText : theme.header.brandText;
+  const logoUrl = footer ? theme.footer.logoUrl : theme.header.logoUrl;
   return <a href={storefrontLinkHref(theme.header.logoLink, basePath)} className={`storefront-brand${footer ? ' storefront-brand--footer' : ''}`}>
-    {theme.header.logoUrl
-      ? <img className="storefront-brand__logo" src={theme.header.logoUrl} alt={title || 'Логотип магазину'} />
+    {logoUrl
+      ? <img className="storefront-brand__logo" src={logoUrl} alt={title || 'Логотип магазину'} />
       : <span>{theme.header.brandMark}</span>}
     {(title || (!footer && theme.header.tagline)) && <span className="storefront-brand__copy">
       {title && <strong>{title}</strong>}

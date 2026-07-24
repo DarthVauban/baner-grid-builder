@@ -29,6 +29,11 @@ describe('storefront theme tokens', () => {
     storefront.header.logoHeight = 54;
     storefront.header.linkSize = 16;
     storefront.header.linkWeight = 800;
+    storefront.header.mobileMenu.background = '#101820';
+    storefront.header.mobileMenu.toggleSize = 50;
+    storefront.header.mobileMenu.linkWeight = 900;
+    storefront.header.mobileMenu.alignment = 'center';
+    storefront.footer.logoHeight = 58;
     storefront.footer.headingSize = 15;
     storefront.footer.headingWeight = 900;
     storefront.footer.copyrightSize = 12;
@@ -44,6 +49,12 @@ describe('storefront theme tokens', () => {
       '--sf-brand-logo-height': '54px',
       '--sf-header-link-size': '16px',
       '--sf-header-link-weight': 800,
+      '--sf-mobile-menu-bg': '#101820',
+      '--sf-mobile-toggle-size': '50px',
+      '--sf-mobile-menu-link-weight': 900,
+      '--sf-mobile-menu-align': 'center',
+      '--sf-mobile-menu-justify': 'center',
+      '--sf-footer-logo-height': '58px',
       '--sf-footer-heading-size': '15px',
       '--sf-footer-heading-weight': 900,
       '--sf-footer-copyright-size': '12px',

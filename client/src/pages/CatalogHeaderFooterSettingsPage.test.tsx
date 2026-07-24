@@ -32,6 +32,9 @@ describe('CatalogHeaderFooterSettingsPage', () => {
     expect(screen.getByRole('heading', { name: 'Хедер і футер' })).toBeInTheDocument();
     expect(await screen.findByText('Типографіка хедера')).toBeInTheDocument();
     expect(screen.getByText('Типографіка футера')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Мобільне меню' })).toBeInTheDocument();
+    expect(screen.getByText('Логотип хедера')).toBeInTheDocument();
+    expect(screen.getByText('Логотип футера')).toBeInTheDocument();
     expect(screen.getByText('Розмір навігації')).toBeInTheDocument();
     expect(screen.getByText('Вага заголовків колонок')).toBeInTheDocument();
     const navigationSection = (await screen.findByRole('heading', { name: 'Навігація хедера' })).closest('section');

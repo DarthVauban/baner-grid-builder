@@ -602,10 +602,25 @@ export interface CatalogStorefrontTheme {
     linkWeight: number;
     links: CatalogStorefrontLink[];
     socialLinks: CatalogStorefrontSocialLink[];
+    mobileMenu: {
+      background: string;
+      textColor: string;
+      dividerColor: string;
+      toggleBackground: string;
+      toggleColor: string;
+      toggleBorderColor: string;
+      toggleSize: number;
+      toggleRadius: number;
+      linkSize: number;
+      linkWeight: number;
+      alignment: 'left' | 'center' | 'right';
+    };
   };
   footer: {
     visible: boolean;
     showLogo: boolean;
+    logoUrl: string;
+    logoHeight: number;
     brandText: string;
     description: string;
     background: string;

@@ -59,11 +59,26 @@ export const defaultStorefrontTheme = {
     linkSize: 13,
     linkWeight: 700,
     links: [{ id: 'catalog', label: 'Каталог', url: '/', newTab: false }],
-    socialLinks: []
+    socialLinks: [],
+    mobileMenu: {
+      background: '#ffffff',
+      textColor: '#263248',
+      dividerColor: '#dde5e3',
+      toggleBackground: '#f3f5f7',
+      toggleColor: '#162033',
+      toggleBorderColor: '#d1d8e0',
+      toggleSize: 44,
+      toggleRadius: 10,
+      linkSize: 14,
+      linkWeight: 700,
+      alignment: 'left'
+    }
   },
   footer: {
     visible: true,
     showLogo: true,
+    logoUrl: '',
+    logoHeight: 42,
     brandText: 'Mobile Trend',
     description: 'Перевірені смартфони з гарантією та чесним описом стану.',
     background: '#162033',
@@ -315,7 +330,14 @@ function mergeTheme(defaults, value) {
 }
 
 export function normalizeStorefrontTheme(value) {
-  return mergeTheme(defaultStorefrontTheme, value);
+  const theme = mergeTheme(defaultStorefrontTheme, value);
+  const footer = value && typeof value === 'object' && !Array.isArray(value)
+    && value.footer && typeof value.footer === 'object' && !Array.isArray(value.footer)
+    ? value.footer
+    : null;
+  if (!footer || !Object.hasOwn(footer, 'logoUrl')) theme.footer.logoUrl = theme.header.logoUrl;
+  if (!footer || !Object.hasOwn(footer, 'logoHeight')) theme.footer.logoHeight = theme.header.logoHeight;
+  return theme;
 }
 
 export function normalizeProductCardTheme(value) {
