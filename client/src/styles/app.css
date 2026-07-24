@@ -2596,6 +2596,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .storefront-footer__main { display: grid; grid-template-columns: minmax(220px,1.35fr) repeat(3,minmax(130px,.65fr)); gap: clamp(24px,4vw,64px); padding: var(--sf-footer-padding-top,42px) clamp(22px,4vw,64px) 32px; }
 .storefront-footer__brand { min-width: 0; display: grid; align-content: start; gap: 16px; }
 .storefront-brand--footer { width: fit-content; color: var(--sf-footer-text,#fff); }
+.storefront-brand--footer .storefront-brand__logo { border-radius: 8px; padding: 6px 8px; background: #fff; }
 .storefront-brand--footer .storefront-brand__copy small { color: var(--sf-footer-muted,#aab5c4); }
 .storefront-footer__brand > p { max-width: 460px; margin: 0; color: var(--sf-footer-muted,#aab5c4); font-size: 13px; line-height: 1.65; }
 .storefront-footer__contacts { display: grid; gap: 7px; color: var(--sf-footer-muted,#aab5c4); font-size: 12px; font-style: normal; line-height: 1.45; }
