@@ -8,11 +8,11 @@ import {
 import type { CatalogPhotoParserBatch } from '../types/catalog';
 
 describe('catalog photo parser helpers', () => {
-  it('builds a Google Images query from the product name', () => {
+  it('builds a default Google search query from the product name', () => {
     const url = new URL(catalogPhotoGoogleSearchUrl('  Apple   iPhone 15 Pro  '));
     expect(url.origin).toBe('https://www.google.com');
-    expect(url.searchParams.get('tbm')).toBe('isch');
-    expect(url.searchParams.get('q')).toBe('Apple iPhone 15 Pro фото');
+    expect(url.searchParams.has('tbm')).toBe(false);
+    expect(url.searchParams.get('q')).toBe('Apple iPhone 15 Pro');
   });
 
   it('has a user-facing label for every parser status', () => {

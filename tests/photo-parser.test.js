@@ -21,7 +21,8 @@ const {
   extractPhotoParserPageDataFromHtml
 } = await import('../src/modules/catalog/photo-parser.html.js');
 const {
-  convertPhotoParserImageToWebp
+  convertPhotoParserImageToWebp,
+  loadPhotoParserBatch
 } = await import('../src/modules/catalog/photo-parser.service.js');
 const { pool } = await import('../src/db/pool.js');
 
@@ -118,6 +119,62 @@ test('photo parser blocks local and private network targets before Chromium rece
     resolver: async () => [{ address: '93.184.216.34', family: 4 }]
   });
   assert.equal(safe.hostname, 'public.example');
+});
+
+test('photo parser returns a completed batch even when persisting stale-status repair fails', async () => {
+  const db = {
+    async query(sql) {
+      if (sql.includes('SELECT *') && sql.includes('used_smartphone_photo_parser_batches')) {
+        return {
+          rows: [{
+            id: 'batch-1',
+            status: 'running',
+            created_by: 'user-1',
+            created_at: new Date('2026-07-24T16:00:00.000Z'),
+            started_at: new Date('2026-07-24T16:00:01.000Z'),
+            completed_at: null
+          }]
+        };
+      }
+      if (sql.includes('FROM used_smartphone_photo_parser_runs AS run')) {
+        return {
+          rows: [{
+            id: 'run-1',
+            batch_id: 'batch-1',
+            product_id: 'product-1',
+            product_code: 'SM-000001',
+            product_name: 'Test phone',
+            main_image_url: '',
+            source_url: 'https://shop.example/product',
+            adapter_id: '',
+            status: 'failed',
+            found_count: 0,
+            saved_count: 0,
+            skipped_count: 0,
+            error_message: 'HTTP 403',
+            error_details: [],
+            created_at: new Date('2026-07-24T16:00:00.000Z'),
+            started_at: new Date('2026-07-24T16:00:01.000Z'),
+            completed_at: new Date('2026-07-24T16:00:02.000Z')
+          }]
+        };
+      }
+      if (sql.startsWith('UPDATE used_smartphone_photo_parser_batches')) {
+        throw new Error('simulated repair write failure');
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    }
+  };
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    const batch = await loadPhotoParserBatch('batch-1', { id: 'user-1', role: 'admin' }, db);
+    assert.equal(batch.status, 'completed');
+    assert.equal(batch.counts.failed, 1);
+    assert.ok(batch.completedAt);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });
 
 test('photo parser converts supported source images to bounded WebP', async () => {

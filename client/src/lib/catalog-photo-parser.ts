@@ -9,8 +9,8 @@ export const catalogPhotoParserStatusLabels: Record<CatalogPhotoParserRunStatus,
 };
 
 export function catalogPhotoGoogleSearchUrl(productName: string) {
-  const query = `${String(productName || '').replace(/\s+/g, ' ').trim()} фото`;
-  return `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`;
+  const query = String(productName || '').replace(/\s+/g, ' ').trim();
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
 export function catalogPhotoParserBatchIsComplete(batch: CatalogPhotoParserBatch | null | undefined) {

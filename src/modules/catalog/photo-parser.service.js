@@ -127,6 +127,29 @@ function photoParserBatchStatus(counts) {
   return 'completed';
 }
 
+async function updatePhotoParserBatchStatus(batchId, status, db) {
+  const statements = {
+    queued: `UPDATE used_smartphone_photo_parser_batches
+             SET status = 'queued',
+                 completed_at = NULL
+             WHERE id = $1
+             RETURNING status, started_at, completed_at`,
+    running: `UPDATE used_smartphone_photo_parser_batches
+              SET status = 'running',
+                  started_at = COALESCE(started_at, NOW()),
+                  completed_at = NULL
+              WHERE id = $1
+              RETURNING status, started_at, completed_at`,
+    completed: `UPDATE used_smartphone_photo_parser_batches
+                SET status = 'completed',
+                    started_at = COALESCE(started_at, NOW()),
+                    completed_at = COALESCE(completed_at, NOW())
+                WHERE id = $1
+                RETURNING status, started_at, completed_at`
+  };
+  return db.query(statements[status], [batchId]);
+}
+
 export async function refreshPhotoParserBatch(batchId, db = { query }) {
   const counts = await db.query(
     `SELECT status, COUNT(*)::INTEGER AS count
@@ -137,14 +160,7 @@ export async function refreshPhotoParserBatch(batchId, db = { query }) {
   );
   const summary = Object.fromEntries(counts.rows.map((row) => [row.status, Number(row.count || 0)]));
   const status = photoParserBatchStatus(summary);
-  await db.query(
-    `UPDATE used_smartphone_photo_parser_batches
-     SET status = $2,
-         started_at = CASE WHEN $2 <> 'queued' THEN COALESCE(started_at, NOW()) ELSE started_at END,
-         completed_at = CASE WHEN $2 = 'completed' THEN COALESCE(completed_at, NOW()) ELSE NULL END
-     WHERE id = $1`,
-    [batchId, status]
-  );
+  await updatePhotoParserBatchStatus(batchId, status, db);
   return status;
 }
 
@@ -156,7 +172,11 @@ export async function reconcilePhotoParserBatches(db = { query }) {
      ORDER BY created_at`
   );
   for (const batch of active.rows) {
-    await refreshPhotoParserBatch(batch.id, db);
+    try {
+      await refreshPhotoParserBatch(batch.id, db);
+    } catch (error) {
+      console.error('Photo parser batch reconciliation failed', batch.id, error);
+    }
   }
   return active.rows.length;
 }
@@ -191,19 +211,15 @@ export async function loadPhotoParserBatch(batchId, user, db = { query }) {
   };
   const reconciledStatus = photoParserBatchStatus(counts);
   if (reconciledStatus !== batch.status) {
-    const updated = await db.query(
-      `UPDATE used_smartphone_photo_parser_batches
-       SET status = $2,
-           started_at = CASE WHEN $2 <> 'queued' THEN COALESCE(started_at, NOW()) ELSE started_at END,
-           completed_at = CASE WHEN $2 = 'completed' THEN COALESCE(completed_at, NOW()) ELSE NULL END
-       WHERE id = $1
-       RETURNING status, started_at, completed_at`,
-      [batchId, reconciledStatus]
-    );
-    Object.assign(batch, updated.rows[0] || {
-      status: reconciledStatus,
-      completed_at: reconciledStatus === 'completed' ? new Date() : null
-    });
+    batch.status = reconciledStatus;
+    batch.completed_at = reconciledStatus === 'completed' ? (batch.completed_at || new Date()) : null;
+    if (reconciledStatus !== 'queued') batch.started_at ||= new Date();
+    try {
+      const updated = await updatePhotoParserBatchStatus(batchId, reconciledStatus, db);
+      Object.assign(batch, updated.rows[0] || {});
+    } catch (error) {
+      console.error('Photo parser batch repair failed', batchId, error);
+    }
   }
   return {
     id: batch.id,
