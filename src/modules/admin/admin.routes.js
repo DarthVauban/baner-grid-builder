@@ -29,6 +29,7 @@ import {
   restoreWorkspaceBackup,
   saveBackupSettings
 } from '../backups/backup.service.js';
+import { collectSystemMetrics } from './system-metrics.service.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -82,6 +83,11 @@ const directoryQuerySchema = z.object({
 const userSelect = `id, name, first_name, last_name, email, department, position, avatar_mime,
   role, status, can_manage_tool_access, two_factor_enabled, two_factor_confirmed_at,
   approved_at, created_at, updated_at`;
+
+router.get('/system/metrics', adminOnly, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await collectSystemMetrics() });
+}));
 
 function serializeToolAccessPayload({
   target,

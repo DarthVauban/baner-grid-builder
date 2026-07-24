@@ -93,6 +93,7 @@ import type {
   CatalogStorefrontSettings,
   CatalogSummary
 } from '../types/catalog';
+import type { SystemMetrics } from '../types/system';
 
 interface ApiErrorPayload {
   error?: {
@@ -607,6 +608,7 @@ export const api = {
       { method: 'PUT', body: jsonBody(input), timeoutMs: 45_000 }
     ),
     backups: () => request<BackupAdminState>('/api/admin/backups'),
+    systemMetrics: () => request<SystemMetrics>('/api/admin/system/metrics'),
     saveBackupSettings: (input: Pick<BackupSettings, 'automaticEnabled' | 'scheduleType' | 'scheduleTime' | 'scheduleWeekday' | 'timezone'>) =>
       request<BackupSettings>('/api/admin/backups/settings', { method: 'PUT', body: jsonBody(input) }),
     runBackup: () => request<BackupRun>('/api/admin/backups/run', { method: 'POST', timeoutMs: 900_000 }),

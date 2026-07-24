@@ -138,6 +138,22 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.equal(adminLogin.body.data.role, 'admin');
   await admin.get(registration.body.data.avatarUrl).expect(200).expect('Content-Type', /image\/png/);
 
+  const systemMetrics = await admin
+    .get('/api/admin/system/metrics')
+    .expect(200)
+    .expect('Cache-Control', 'no-store');
+  assert.match(systemMetrics.body.data.sampledAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.ok(['operational', 'degraded', 'critical'].includes(systemMetrics.body.data.status));
+  assert.equal(systemMetrics.body.data.runtime.buildSha, 'test-build-sha');
+  assert.equal(typeof systemMetrics.body.data.cpu.usagePercent, 'number');
+  assert.equal(typeof systemMetrics.body.data.memory.totalBytes, 'number');
+  assert.equal(typeof systemMetrics.body.data.storage.writable, 'boolean');
+  assert.equal(systemMetrics.body.data.database.status, 'operational');
+  assert.deepEqual(
+    systemMetrics.body.data.services.map((service) => service.id),
+    ['api', 'database', 'storage', 'photo-parser', 'backups']
+  );
+
   const initialPermissions = await admin.get('/api/admin/permissions').expect(200);
   assert.equal(
     initialPermissions.body.data.find((item) => (
@@ -229,6 +245,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     .post('/api/auth/login')
     .send({ email: 'user@test.local', password: 'UserPassword123!' })
     .expect(200);
+  await user.get('/api/admin/system/metrics').expect(403);
 
   const profile = await user.put('/api/users/profile').send({
     firstName: 'Test', lastName: 'User', email: 'user@test.local',

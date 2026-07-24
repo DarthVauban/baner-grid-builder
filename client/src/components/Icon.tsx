@@ -68,6 +68,11 @@ import HistoryRounded from '@mui/icons-material/HistoryRounded';
 import BackupRounded from '@mui/icons-material/BackupRounded';
 import UndoRounded from '@mui/icons-material/UndoRounded';
 import SendRounded from '@mui/icons-material/SendRounded';
+import DnsRounded from '@mui/icons-material/DnsRounded';
+import MemoryRounded from '@mui/icons-material/MemoryRounded';
+import MonitorHeartRounded from '@mui/icons-material/MonitorHeartRounded';
+import RefreshRounded from '@mui/icons-material/RefreshRounded';
+import StorageRounded from '@mui/icons-material/StorageRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -105,6 +110,8 @@ export type IconName =
   | 'integrations'
   | 'logout'
   | 'menu'
+  | 'memory'
+  | 'monitor'
   | 'location'
   | 'lightMode'
   | 'offlineMeeting'
@@ -142,7 +149,10 @@ export type IconName =
   | 'password'
   | 'reply'
   | 'link'
-  | 'reaction';
+  | 'reaction'
+  | 'refresh'
+  | 'server'
+  | 'storage';
 
 interface IconProps {
   name: IconName;
@@ -184,6 +194,8 @@ const icons: Record<IconName, SvgIconComponent> = {
   integrations: SettingsInputComponentRounded,
   logout: LogoutRounded,
   menu: MenuRounded,
+  memory: MemoryRounded,
+  monitor: MonitorHeartRounded,
   location: LocationOnOutlined,
   lightMode: LightModeRounded,
   offlineMeeting: MeetingRoomOutlined,
@@ -221,7 +233,10 @@ const icons: Record<IconName, SvgIconComponent> = {
   password: PasswordRounded,
   reply: ReplyRounded,
   link: LinkRounded,
-  reaction: AddReactionOutlined
+  reaction: AddReactionOutlined,
+  refresh: RefreshRounded,
+  server: DnsRounded,
+  storage: StorageRounded
 };
 
 export function Icon({ name, size = 20 }: IconProps) {

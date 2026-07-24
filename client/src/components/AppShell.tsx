@@ -208,6 +208,10 @@ export function AppShell() {
               </NavLink>
               {user.role === 'admin' && (
                 <>
+                  <NavLink aria-label="Технічний стан" title="Технічний стан" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/system" onClick={closeSidebar}>
+                    <Icon name="monitor" size={18} />
+                    <span>Технічний стан</span>
+                  </NavLink>
                   <NavLink aria-label="Інтеграції" title="Інтеграції" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/admin/integrations" onClick={closeSidebar}>
                     <Icon name="integrations" size={18} />
                     <span>Інтеграції</span>

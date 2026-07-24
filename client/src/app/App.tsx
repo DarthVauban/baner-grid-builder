@@ -66,6 +66,9 @@ const CatalogPhotoParserSettingsPage = lazy(() => import('../pages/CatalogPhotoP
 const ProfilePage = lazy(() => import('../pages/ProfilePage').then((module) => ({
   default: module.ProfilePage
 })));
+const AdminSystemPage = lazy(() => import('../pages/AdminSystemPage').then((module) => ({
+  default: module.AdminSystemPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -169,6 +172,7 @@ export function App() {
             <Route path="admin/users" element={<AdminUsersPage />} />
           </Route>
           <Route element={<AdminOnlyRoute />}>
+            <Route path="admin/system" element={<Suspense fallback={<LoadingScreen />}><AdminSystemPage /></Suspense>} />
             <Route path="admin/integrations" element={<AdminIntegrationsPage />} />
             <Route path="admin/backups" element={<AdminBackupsPage />} />
           </Route>
