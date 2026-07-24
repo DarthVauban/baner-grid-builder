@@ -18,6 +18,9 @@ const {
   isPrivateNetworkAddress
 } = await import('../src/modules/catalog/photo-parser.browser.js');
 const {
+  extractPhotoParserPageDataFromHtml
+} = await import('../src/modules/catalog/photo-parser.html.js');
+const {
   convertPhotoParserImageToWebp
 } = await import('../src/modules/catalog/photo-parser.service.js');
 const { pool } = await import('../src/db/pool.js');
@@ -61,6 +64,37 @@ test('photo parser normalizes marketplace image URLs and removes duplicates', ()
     'https://unrelated.example/phone.jpg'
   ], 'https://comfy.ua/product');
   assert.deepEqual(comfy, ['https://cdn.comfy.ua/media/catalog/product/b/phone.jpg']);
+});
+
+test('photo parser extracts a blocked Rozetka gallery from server-rendered JSON-LD', () => {
+  const page = extractPhotoParserPageDataFromHtml(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>Fallback document title</title>
+        <script type="application/ld+json">
+          {
+            "@context": "https://schema.org",
+            "@type": "Product",
+            "name": "Nubia Neo 2",
+            "image": [
+              "https://content.rozetka.com.ua/goods/images/base_action/100.jpg",
+              "https://content1.rozetka.com.ua/goods/images/base_action/101.jpg"
+            ]
+          }
+        </script>
+        <meta content="https://content.rozetka.com.ua/goods/images/base_action/100.jpg" property="og:image">
+      </head>
+    </html>
+  `, { id: 'builtin-rozetka', name: 'Rozetka' });
+
+  assert.equal(page.title, 'Nubia Neo 2');
+  assert.deepEqual(page.images, [
+    'https://content.rozetka.com.ua/goods/images/base_action/100.jpg',
+    'https://content1.rozetka.com.ua/goods/images/base_action/101.jpg'
+  ]);
+  assert.equal(page.diagnostics.structured, 2);
+  assert.equal(page.diagnostics.transport, 'html-fallback');
 });
 
 test('photo parser blocks local and private network targets before Chromium receives them', async () => {

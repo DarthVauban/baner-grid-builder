@@ -55,6 +55,7 @@ test('runtime image carries the build revision used by the health check', () => 
 test('runtime image includes Chromium for the server-side catalog photo parser', () => {
   assert.match(dockerfile, /CHROMIUM_EXECUTABLE_PATH=\/usr\/bin\/chromium/);
   assert.match(dockerfile, /apk add --no-cache chromium/);
+  assert.match(dockerfile, /apk add --no-cache chromium ca-certificates curl/);
 });
 
 test('catalog photos use persistent writable storage in production', () => {

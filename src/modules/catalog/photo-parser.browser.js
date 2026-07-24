@@ -1,16 +1,21 @@
 import { access } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { chromium } from 'playwright-core';
 import { AppError } from '../../lib/app-error.js';
 import { normalizePhotoParserImageUrls } from './photo-parser.adapters.js';
+import { extractPhotoParserPageDataFromHtml } from './photo-parser.html.js';
 
 const pageTimeoutMs = 35_000;
 const imageTimeoutMs = 30_000;
 const maxRemoteImageBytes = 15 * 1024 * 1024;
-const browserUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-  + 'KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+const maxRemotePageBytes = 4 * 1024 * 1024;
+const fallbackHttpStatuses = new Set([401, 403, 429, 503]);
+const curlPageMarker = '\n__PHOTO_PARSER_CURL_METADATA__\n';
+const execFileAsync = promisify(execFile);
 
 let browserPromise = null;
 
@@ -136,7 +141,12 @@ async function getBrowser() {
       .then((executablePath) => chromium.launch({
         executablePath,
         headless: true,
-        args: ['--disable-dev-shm-usage', '--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+          '--disable-blink-features=AutomationControlled',
+          '--disable-dev-shm-usage',
+          '--no-sandbox',
+          '--disable-setuid-sandbox'
+        ]
       }))
       .catch((error) => {
         browserPromise = null;
@@ -149,6 +159,135 @@ async function getBrowser() {
     return getBrowser();
   }
   return browser;
+}
+
+function browserIdentity(browser) {
+  const detectedVersion = String(browser.version() || '').match(/\d+(?:\.\d+){0,3}/)?.[0] || '138.0.0.0';
+  const fullVersion = detectedVersion.split('.').length === 4
+    ? detectedVersion
+    : `${detectedVersion}.0.0.0`.split('.').slice(0, 4).join('.');
+  const majorVersion = fullVersion.split('.')[0];
+  return {
+    fullVersion,
+    majorVersion,
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      + `(KHTML, like Gecko) Chrome/${fullVersion} Safari/537.36`
+  };
+}
+
+function isRozetkaPage(url, adapter) {
+  return adapter?.id === 'builtin-rozetka'
+    || String(url?.hostname || '').toLowerCase().endsWith('rozetka.com.ua');
+}
+
+function supportsHtmlFallback(url, adapter) {
+  return isRozetkaPage(url, adapter) && adapter?.strict !== true;
+}
+
+function parseCurlPageOutput(stdout) {
+  const output = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout || '');
+  const marker = Buffer.from(curlPageMarker);
+  const markerIndex = output.lastIndexOf(marker);
+  if (markerIndex < 0) throw new Error('Резервний HTTP-транспорт повернув некоректну відповідь');
+  const metadata = output.subarray(markerIndex + marker.length).toString('utf8');
+  const status = Number(metadata.match(/^status:(\d+)$/m)?.[1] || 0);
+  const redirectUrl = String(metadata.match(/^redirect:(.*)$/m)?.[1] || '').trim();
+  const body = output.subarray(0, markerIndex);
+  if (body.length > maxRemotePageBytes) throw new Error('Сторінка товару більша за 4 МБ');
+  return { status, redirectUrl, html: body.toString('utf8') };
+}
+
+async function requestPageWithCurl(url) {
+  const command = process.platform === 'win32' ? 'curl.exe' : 'curl';
+  const writeOut = `${curlPageMarker}status:%{http_code}\nredirect:%{redirect_url}\n`;
+  const { stdout } = await execFileAsync(command, [
+    '--silent',
+    '--show-error',
+    '--http1.1',
+    '--compressed',
+    '--connect-timeout',
+    '12',
+    '--max-time',
+    String(Math.ceil(pageTimeoutMs / 1000)),
+    '--proto',
+    '=http,https',
+    '--user-agent',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      + '(KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+    '--header',
+    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    '--header',
+    'Accept-Language: uk-UA,uk;q=0.9,en;q=0.7',
+    '--header',
+    'Cache-Control: no-cache',
+    '--header',
+    'Pragma: no-cache',
+    '--header',
+    'Sec-Fetch-Dest: document',
+    '--header',
+    'Sec-Fetch-Mode: navigate',
+    '--header',
+    'Sec-Fetch-Site: none',
+    '--header',
+    'Upgrade-Insecure-Requests: 1',
+    '--cookie',
+    'slang=ua',
+    '--output',
+    '-',
+    '--write-out',
+    writeOut,
+    url
+  ], {
+    encoding: 'buffer',
+    maxBuffer: maxRemotePageBytes + (256 * 1024),
+    timeout: pageTimeoutMs + 5_000,
+    windowsHide: true
+  });
+  return parseCurlPageOutput(stdout);
+}
+
+export async function fetchPhotoParserPageHtmlWithCurl(url, dnsCache = new Map()) {
+  let currentUrl = (await assertPublicPhotoParserUrl(url, { cache: dnsCache })).href;
+  for (let redirects = 0; redirects <= 5; redirects += 1) {
+    const result = await requestPageWithCurl(currentUrl);
+    if ([301, 302, 303, 307, 308].includes(result.status)) {
+      if (redirects === 5) throw new Error('Забагато перенаправлень під час відкриття сторінки');
+      if (!result.redirectUrl) throw new Error(`HTTP ${result.status} без адреси перенаправлення`);
+      currentUrl = (await assertPublicPhotoParserUrl(
+        new URL(result.redirectUrl, currentUrl).href,
+        { cache: dnsCache }
+      )).href;
+      continue;
+    }
+    if (result.status < 200 || result.status >= 300) {
+      throw new Error(`Сторінка повернула HTTP ${result.status || 'невідомий статус'}`);
+    }
+    return { html: result.html, url: currentUrl };
+  }
+  throw new Error('Не вдалося відкрити сторінку товару');
+}
+
+function installBrowserIdentity(context) {
+  return context.addInitScript(() => {
+    const define = (target, key, value) => {
+      try {
+        Object.defineProperty(target, key, { configurable: true, get: () => value });
+      } catch {
+        // Some Chromium builds expose a non-configurable property.
+      }
+    };
+    define(Navigator.prototype, 'webdriver', undefined);
+    define(Navigator.prototype, 'languages', ['uk-UA', 'uk', 'en-US', 'en']);
+    define(Navigator.prototype, 'platform', 'Win32');
+    define(Navigator.prototype, 'hardwareConcurrency', 8);
+    define(Navigator.prototype, 'deviceMemory', 8);
+    if (!window.chrome) {
+      Object.defineProperty(window, 'chrome', {
+        configurable: true,
+        value: { runtime: {} }
+      });
+    }
+  });
 }
 
 export async function closePhotoParserBrowser() {
@@ -405,13 +544,34 @@ export async function scrapePhotoParserProduct({
   const dnsCache = new Map();
   const safeUrl = await assertPublicPhotoParserUrl(url, { cache: dnsCache });
   const browser = await getBrowser();
+  const identity = browserIdentity(browser);
   const context = await browser.newContext({
-    userAgent: browserUserAgent,
+    userAgent: identity.userAgent,
     locale: 'uk-UA',
     viewport: { width: 1280, height: 900 },
+    screen: { width: 1920, height: 1080 },
+    colorScheme: 'light',
+    deviceScaleFactor: 1,
     serviceWorkers: 'block',
-    acceptDownloads: false
+    acceptDownloads: false,
+    extraHTTPHeaders: {
+      'Accept-Language': 'uk-UA,uk;q=0.9,en;q=0.7',
+      'Sec-CH-UA': `"Not.A/Brand";v="99", "Chromium";v="${identity.majorVersion}", "Google Chrome";v="${identity.majorVersion}"`,
+      'Sec-CH-UA-Mobile': '?0',
+      'Sec-CH-UA-Platform': '"Windows"'
+    }
   });
+  await installBrowserIdentity(context);
+  if (isRozetkaPage(safeUrl, adapter)) {
+    await context.addCookies([{
+      name: 'slang',
+      value: 'ua',
+      domain: '.rozetka.com.ua',
+      path: '/',
+      secure: true,
+      sameSite: 'Lax'
+    }]);
+  }
   const page = await context.newPage();
   await context.route('**/*', async (route) => {
     const requestUrl = route.request().url();
@@ -430,52 +590,73 @@ export async function scrapePhotoParserProduct({
       timeout: pageTimeoutMs
     });
     if (!response) throw new Error('Сторінка не повернула відповідь');
-    if (!response.ok()) throw new Error(`Сторінка повернула HTTP ${response.status()}`);
-    await assertPublicPhotoParserUrl(page.url(), { cache: dnsCache });
-
-    onProgress({ phase: 'page', current: 1, total: 3, message: 'Завантажуємо галерею…' });
-    const waitSelector = adapter?.gallerySelector || [
-      '[data-testid*="gallery" i] img',
-      '[class*="product" i] [class*="gallery" i] img',
-      '[class*="product" i] [class*="slider" i] img',
-      '[class*="gallery" i] img'
-    ].join(',');
-    await page.waitForFunction((selector) => {
-      try {
-        return Array.from(document.querySelectorAll(selector)).some((root) => {
-          const image = root.matches?.('img') ? root : root.querySelector?.('img');
-          return Boolean(image && (
-            image.currentSrc
-            || image.getAttribute('src')
-            || image.getAttribute('data-src')
-            || image.getAttribute('data-lazy-src')
-          ));
-        });
-      } catch {
-        return true;
-      }
-    }, waitSelector, { timeout: 6500 }).catch(() => {});
-    await autoScroll(page);
-    await page.waitForTimeout(500);
-
-    onProgress({ phase: 'page', current: 2, total: 3, message: 'Аналізуємо фотографії…' });
-    const pageData = await page.evaluate(collectProductPageData, adapter ? {
-      id: adapter.id,
-      name: adapter.name,
-      gallerySelector: adapter.gallerySelector,
-      strict: adapter.strict === true,
-      fallback: adapter.fallback === true
-    } : null);
+    let pageUrl = page.url();
+    let pageData;
+    if (response.ok()) {
+      await assertPublicPhotoParserUrl(pageUrl, { cache: dnsCache });
+      onProgress({ phase: 'page', current: 1, total: 3, message: 'Завантажуємо галерею…' });
+      const waitSelector = adapter?.gallerySelector || [
+        '[data-testid*="gallery" i] img',
+        '[class*="product" i] [class*="gallery" i] img',
+        '[class*="product" i] [class*="slider" i] img',
+        '[class*="gallery" i] img'
+      ].join(',');
+      await page.waitForFunction((selector) => {
+        try {
+          return Array.from(document.querySelectorAll(selector)).some((root) => {
+            const image = root.matches?.('img') ? root : root.querySelector?.('img');
+            return Boolean(image && (
+              image.currentSrc
+              || image.getAttribute('src')
+              || image.getAttribute('data-src')
+              || image.getAttribute('data-lazy-src')
+            ));
+          });
+        } catch {
+          return true;
+        }
+      }, waitSelector, { timeout: 6500 }).catch(() => {});
+      await autoScroll(page);
+      await page.waitForTimeout(500);
+      onProgress({ phase: 'page', current: 2, total: 3, message: 'Аналізуємо фотографії…' });
+      pageData = await page.evaluate(collectProductPageData, adapter ? {
+        id: adapter.id,
+        name: adapter.name,
+        gallerySelector: adapter.gallerySelector,
+        strict: adapter.strict === true,
+        fallback: adapter.fallback === true
+      } : null);
+      pageData.diagnostics.transport = 'chromium';
+    } else if (
+      fallbackHttpStatuses.has(response.status())
+      && supportsHtmlFallback(safeUrl, adapter)
+    ) {
+      onProgress({
+        phase: 'page',
+        current: 1,
+        total: 3,
+        message: 'Rozetka обмежила браузерний запит. Читаємо резервну версію сторінки…'
+      });
+      const fallbackPage = await fetchPhotoParserPageHtmlWithCurl(safeUrl.href, dnsCache);
+      pageUrl = fallbackPage.url;
+      pageData = extractPhotoParserPageDataFromHtml(fallbackPage.html, adapter ? {
+        id: adapter.id,
+        name: adapter.name
+      } : null);
+      onProgress({ phase: 'page', current: 2, total: 3, message: 'Аналізуємо фотографії…' });
+    } else {
+      throw new Error(`Сторінка повернула HTTP ${response.status()}`);
+    }
     if (pageData.diagnostics.selectorError) {
       throw new AppError(422, 'PHOTO_PARSER_SELECTOR_INVALID', `CSS-селектор некоректний: ${pageData.diagnostics.selectorError}`);
     }
-    if (adapter?.strict && !pageData.diagnostics.selectorMatches) {
+    if (adapter?.strict && pageData.diagnostics.transport !== 'html-fallback' && !pageData.diagnostics.selectorMatches) {
       throw new AppError(422, 'PHOTO_PARSER_SELECTOR_EMPTY', 'CSS-селектор не знайшов жодного елемента на сторінці.');
     }
-    if (adapter?.strict && !pageData.diagnostics.selectorImages) {
+    if (adapter?.strict && pageData.diagnostics.transport !== 'html-fallback' && !pageData.diagnostics.selectorImages) {
       throw new AppError(422, 'PHOTO_PARSER_SELECTOR_WITHOUT_IMAGES', 'У знайденому контейнері немає доступних зображень.');
     }
-    const candidates = normalizePhotoParserImageUrls(pageData.images, page.url()).slice(0, Math.max(1, Math.min(maxImages, 40)));
+    const candidates = normalizePhotoParserImageUrls(pageData.images, pageUrl).slice(0, Math.max(1, Math.min(maxImages, 40)));
     if (!candidates.length) {
       throw new AppError(
         422,
@@ -494,7 +675,7 @@ export async function scrapePhotoParserProduct({
         nextIndex += 1;
         const candidate = candidates[index];
         try {
-          const downloaded = await downloadImage(context, candidate, page.url(), dnsCache);
+          const downloaded = await downloadImage(context, candidate, pageUrl, dnsCache);
           images[index] = { sourceUrl: candidate, ...downloaded };
         } catch (error) {
           errors.push({
@@ -516,7 +697,7 @@ export async function scrapePhotoParserProduct({
     await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, () => worker()));
     return {
       title: pageData.title,
-      pageUrl: page.url(),
+      pageUrl,
       adapterId: adapter?.id || '',
       diagnostics: {
         ...pageData.diagnostics,
