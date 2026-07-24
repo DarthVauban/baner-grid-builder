@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Icon } from './Icon';
 import type {
   CatalogStorefrontLink,
   CatalogStorefrontSocialLink,
@@ -37,16 +38,27 @@ export function storefrontLinkHref(value: string, fallback = '/') {
   }
 }
 
-function LinkItem({ link, basePath, className }: { link: CatalogStorefrontLink; basePath: string; className: string }) {
+function LinkItem({
+  link,
+  basePath,
+  className,
+  onNavigate
+}: {
+  link: CatalogStorefrontLink;
+  basePath: string;
+  className: string;
+  onNavigate?: () => void;
+}) {
   return <a
     className={className}
     href={storefrontLinkHref(link.url, basePath)}
     target={link.newTab ? '_blank' : undefined}
     rel={link.newTab ? 'noreferrer' : undefined}
+    onClick={onNavigate}
   >{link.label}</a>;
 }
 
-function SocialLinks({ links, className }: { links: CatalogStorefrontSocialLink[]; className: string }) {
+function SocialLinks({ links, className, onNavigate }: { links: CatalogStorefrontSocialLink[]; className: string; onNavigate?: () => void }) {
   if (!links.length) return null;
   return <div className={className} aria-label="Соціальні мережі">
     {links.map((item) => <a
@@ -55,6 +67,7 @@ function SocialLinks({ links, className }: { links: CatalogStorefrontSocialLink[
       rel="noreferrer"
       aria-label={item.label || socialPlatformLabels[item.platform]}
       title={item.label || socialPlatformLabels[item.platform]}
+      onClick={onNavigate}
       key={item.id}
     ><span aria-hidden="true">{socialPlatformMarks[item.platform]}</span></a>)}
   </div>;
@@ -90,15 +103,65 @@ export function StorefrontHeader({
   basePath?: string;
   action?: ReactNode;
 }) {
-  return <header className="storefront-header">
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
+  const headerRef = useRef<HTMLElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const hasAction = Boolean(action) && theme.header.actionVisible;
+  const hasMenuContent = theme.header.links.length > 0 || theme.header.socialLinks.length > 0 || hasAction;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMenuOpen(false);
+      toggleRef.current?.focus();
+    };
+    const closeOutside = (event: PointerEvent) => {
+      if (!headerRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('pointerdown', closeOutside);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('pointerdown', closeOutside);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const desktop = window.matchMedia('(min-width: 701px)');
+    const closeOnDesktop = (event: MediaQueryListEvent) => {
+      if (event.matches) setMenuOpen(false);
+    };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
+
+  const closeMenu = () => setMenuOpen(false);
+
+  return <header ref={headerRef} className={`storefront-header${menuOpen ? ' storefront-header--menu-open' : ''}`}>
     <div className="storefront-header__container">
-      <StorefrontBrand theme={theme} basePath={basePath} />
-      {theme.header.links.length > 0 && <nav className="storefront-header__nav" aria-label="Головна навігація">
-        {theme.header.links.map((link) => <LinkItem link={link} basePath={basePath} className="storefront-header__link" key={link.id} />)}
-      </nav>}
-      {(theme.header.socialLinks.length > 0 || action) && <div className="storefront-header__tools">
-        <SocialLinks links={theme.header.socialLinks} className="storefront-socials storefront-socials--header" />
-        {action}
+      <div className="storefront-header__top">
+        <StorefrontBrand theme={theme} basePath={basePath} />
+        {hasMenuContent && <button
+          ref={toggleRef}
+          className="storefront-header__toggle"
+          type="button"
+          aria-expanded={menuOpen}
+          aria-controls={menuId}
+          aria-label={menuOpen ? 'Закрити меню' : 'Відкрити меню'}
+          onClick={() => setMenuOpen((current) => !current)}
+        ><Icon name={menuOpen ? 'close' : 'menu'} size={25} /></button>}
+      </div>
+      {hasMenuContent && <div id={menuId} className={`storefront-header__menu${menuOpen ? ' storefront-header__menu--open' : ''}`}>
+        {theme.header.links.length > 0 && <nav className="storefront-header__nav" aria-label="Головна навігація">
+          {theme.header.links.map((link) => <LinkItem link={link} basePath={basePath} className="storefront-header__link" onNavigate={closeMenu} key={link.id} />)}
+        </nav>}
+        {(theme.header.socialLinks.length > 0 || hasAction) && <div className="storefront-header__tools" onClickCapture={closeMenu}>
+          <SocialLinks links={theme.header.socialLinks} className="storefront-socials storefront-socials--header" onNavigate={closeMenu} />
+          {hasAction && action}
+        </div>}
       </div>}
     </div>
   </header>;
