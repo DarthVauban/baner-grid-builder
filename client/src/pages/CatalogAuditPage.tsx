@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
+import { CatalogImageLightbox } from '../components/CatalogImageLightbox';
+import type { CatalogLightboxImage } from '../components/CatalogImageLightbox';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
 import type {
@@ -127,9 +129,114 @@ function scalarValue(field: string, value: unknown) {
   return '';
 }
 
-function AuditValue({ field, value }: { field: string; value: unknown }) {
+function readableCharacteristicValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Так' : 'Ні';
+  if (typeof value === 'number') return value.toLocaleString('uk-UA');
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.length ? value.map(readableCharacteristicValue).join(', ') : '—';
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const colorName = typeof record.name === 'string' ? record.name.trim() : '';
+    const colorHex = typeof record.hex === 'string' ? record.hex.trim() : '';
+    if ('name' in record || 'hex' in record) return colorName || colorHex || '—';
+    const parts = Object.entries(record)
+      .map(([key, nestedValue]) => `${key}: ${readableCharacteristicValue(nestedValue)}`)
+      .filter((part) => !part.endsWith(': —'));
+    return parts.length ? parts.join(', ') : '—';
+  }
+  return String(value);
+}
+
+function CharacteristicValues({ value }: { value: unknown }) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return <span>{readableCharacteristicValue(value)}</span>;
+  }
+  return <dl className="catalog-audit-characteristics">
+    {Object.entries(value as Record<string, unknown>).map(([label, characteristicValue]) => {
+      const colorHex = characteristicValue && typeof characteristicValue === 'object' && !Array.isArray(characteristicValue)
+        && typeof (characteristicValue as Record<string, unknown>).hex === 'string'
+        ? String((characteristicValue as Record<string, unknown>).hex).trim()
+        : '';
+      const safeColor = /^#[0-9a-f]{3,8}$/i.test(colorHex) ? colorHex : '';
+      return <div key={label}>
+        <dt>{label}</dt>
+        <dd>
+          {safeColor && <i style={{ backgroundColor: safeColor }} aria-hidden="true" />}
+          {readableCharacteristicValue(characteristicValue)}
+        </dd>
+      </div>;
+    })}
+  </dl>;
+}
+
+function auditMediaImages(field: string, value: unknown, productName: string): CatalogLightboxImage[] {
+  const mediaFields = ['mainImageUrl', 'gallery', 'removedMediaUrl'];
+  if (!mediaFields.includes(field)) return [];
+  const values = Array.isArray(value) ? value : [value];
+  const images: CatalogLightboxImage[] = [];
+  values.forEach((item) => {
+    const url = typeof item === 'string'
+      ? item.trim()
+      : item && typeof item === 'object' && typeof (item as Record<string, unknown>).url === 'string'
+        ? String((item as Record<string, unknown>).url).trim()
+        : '';
+    if (!url || images.some((image) => image.url === url)) return;
+    const alt = item && typeof item === 'object' && typeof (item as Record<string, unknown>).alt === 'string'
+      ? String((item as Record<string, unknown>).alt)
+      : productName;
+    images.push({ url, alt });
+  });
+  return images;
+}
+
+function AuditMediaValue({
+  images,
+  onOpen
+}: {
+  images: CatalogLightboxImage[];
+  onOpen: (images: CatalogLightboxImage[], index: number) => void;
+}) {
+  if (!images.length) return <span>—</span>;
+  const visibleImages = images.slice(0, 5);
+  return <div className="catalog-audit-media">
+    {visibleImages.map((image, index) => <button
+      type="button"
+      key={`${image.url}-${index}`}
+      onClick={() => onOpen(images, index)}
+      aria-label={`Відкрити фото ${index + 1} з ${images.length}`}
+    >
+      <img src={image.url} alt="" loading="lazy" />
+    </button>)}
+    {images.length > visibleImages.length && <button
+      className="catalog-audit-media__more"
+      type="button"
+      onClick={() => onOpen(images, visibleImages.length)}
+      aria-label={`Відкрити ще ${images.length - visibleImages.length} фото`}
+    >
+      +{images.length - visibleImages.length}
+    </button>}
+    <small>{images.length} фото</small>
+  </div>;
+}
+
+function AuditValue({
+  field,
+  value,
+  productName,
+  onOpenImages
+}: {
+  field: string;
+  value: unknown;
+  productName: string;
+  onOpenImages: (images: CatalogLightboxImage[], index: number) => void;
+}) {
+  if (field === 'characteristicValues') return <CharacteristicValues value={value} />;
+  const images = auditMediaImages(field, value, productName);
+  if (['mainImageUrl', 'gallery', 'removedMediaUrl'].includes(field)) {
+    return <AuditMediaValue images={images} onOpen={onOpenImages} />;
+  }
   if (Array.isArray(value)) {
-    if (field === 'gallery') return <span>{value.length ? `${value.length} фото` : '—'}</span>;
     return <span>{value.length ? value.map(String).join(', ') : '—'}</span>;
   }
   if (value && typeof value === 'object') {
@@ -138,7 +245,13 @@ function AuditValue({ field, value }: { field: string; value: unknown }) {
   return <span>{scalarValue(field, value)}</span>;
 }
 
-function AuditChanges({ item }: { item: CatalogAuditHistoryItem }) {
+function AuditChanges({
+  item,
+  onOpenImages
+}: {
+  item: CatalogAuditHistoryItem;
+  onOpenImages: (images: CatalogLightboxImage[], index: number) => void;
+}) {
   const before = item.changes.before && typeof item.changes.before === 'object' && !Array.isArray(item.changes.before)
     ? item.changes.before as Record<string, unknown>
     : {};
@@ -153,13 +266,13 @@ function AuditChanges({ item }: { item: CatalogAuditHistoryItem }) {
   return <div className="catalog-audit-changes">
     {fields.map((field) => <div className="catalog-audit-change" key={field}>
       <strong>{fieldLabels[field] || field}</strong>
-      <div><span>Було</span><AuditValue field={field} value={before[field]} /></div>
+      <div><span>Було</span><AuditValue field={field} value={before[field]} productName={item.product?.name || 'Товар'} onOpenImages={onOpenImages} /></div>
       <Icon name="arrowRight" size={17} />
-      <div><span>Стало</span><AuditValue field={field} value={after[field]} /></div>
+      <div><span>Стало</span><AuditValue field={field} value={after[field]} productName={item.product?.name || 'Товар'} onOpenImages={onOpenImages} /></div>
     </div>)}
     {metadata.map(([field, value]) => <div className="catalog-audit-change catalog-audit-change--metadata" key={field}>
       <strong>{fieldLabels[field] || field}</strong>
-      <AuditValue field={field} value={value} />
+      <AuditValue field={field} value={value} productName={item.product?.name || 'Товар'} onOpenImages={onOpenImages} />
     </div>)}
   </div>;
 }
@@ -210,9 +323,11 @@ function ImportDetails({ importId }: { importId: string }) {
 
 function HistoryItem({ item }: { item: CatalogAuditHistoryItem }) {
   const [expanded, setExpanded] = useState(false);
+  const [lightbox, setLightbox] = useState<{ images: CatalogLightboxImage[]; index: number } | null>(null);
   const title = actionLabels[item.action] || item.action;
   const isImport = item.kind === 'import' && Boolean(item.importId);
-  return <article className={`catalog-audit-event catalog-audit-event--${item.source}`}>
+  return <>
+    <article className={`catalog-audit-event catalog-audit-event--${item.source}`}>
     <div className="catalog-audit-event__marker"><Icon name={isImport ? 'upload' : item.category === 'publication' ? 'visibility' : 'history'} size={20} /></div>
     <div className="catalog-audit-event__body">
       <div className="catalog-audit-event__heading">
@@ -232,10 +347,19 @@ function HistoryItem({ item }: { item: CatalogAuditHistoryItem }) {
       </div>
       {isImport && <ImportSummary summary={item.summary} />}
       {expanded && <div className="catalog-audit-event__details">
-        {isImport && item.importId ? <ImportDetails importId={item.importId} /> : <AuditChanges item={item} />}
+        {isImport && item.importId
+          ? <ImportDetails importId={item.importId} />
+          : <AuditChanges item={item} onOpenImages={(images, index) => setLightbox({ images, index })} />}
       </div>}
     </div>
-  </article>;
+    </article>
+    {lightbox && <CatalogImageLightbox
+      images={lightbox.images}
+      index={lightbox.index}
+      onIndexChange={(index) => setLightbox((current) => current ? { ...current, index } : null)}
+      onClose={() => setLightbox(null)}
+    />}
+  </>;
 }
 
 export function CatalogAuditPage() {

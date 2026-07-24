@@ -6,7 +6,7 @@ import { AppError } from '../../lib/app-error.js';
 import { saveCatalogMediaAsset } from './catalog.media.js';
 import { publishCatalogUpdates, publishPublicCatalogUpdate } from './catalog.events.js';
 import { publishChatUpdates } from '../chat/chat.events.js';
-import { getCatalogRecipientIds, logCatalogAudit } from './catalog.service.js';
+import { catalogAuditChanges, getCatalogRecipientIds, logCatalogAudit } from './catalog.service.js';
 import {
   ensureBuiltInPhotoParserAdapters,
   findPhotoParserAdapter,
@@ -365,6 +365,8 @@ async function attachParsedMedia({
     if (!current) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
     published = current.publication_status === 'PUBLISHED';
     const gallery = Array.isArray(current.gallery) ? current.gallery.filter((item) => item?.url) : [];
+    const previousGallery = gallery.map((item) => ({ ...item }));
+    const previousMainImageUrl = current.main_image_url || '';
     const knownUrls = new Set(gallery.map((item) => item.url));
     if (current.main_image_url) knownUrls.add(current.main_image_url);
     const slots = Math.max(0, maxCatalogGalleryItems - gallery.length);
@@ -403,6 +405,7 @@ async function attachParsedMedia({
     }
 
     const mainImageUrl = current.main_image_url || gallery[0]?.url || '';
+    const nextGallery = gallery.slice(0, maxCatalogGalleryItems);
     for (const [index, image] of attached.entries()) {
       await client.query(
         `INSERT INTO used_smartphone_product_media (
@@ -434,13 +437,18 @@ async function attachParsedMedia({
              updated_at = NOW(),
              version = version + 1
          WHERE id = $1`,
-        [current.id, mainImageUrl, JSON.stringify(gallery.slice(0, maxCatalogGalleryItems)), run.created_by]
+        [current.id, mainImageUrl, JSON.stringify(nextGallery), run.created_by]
       );
       await logCatalogAudit(client, {
         productId: current.id,
         actorId: run.created_by,
         action: 'photo_parser_import',
         changes: {
+          subject: { productCode: current.product_code, name: current.name },
+          ...catalogAuditChanges(
+            { mainImageUrl: previousMainImageUrl, gallery: previousGallery },
+            { mainImageUrl, gallery: nextGallery }
+          ),
           sourceUrl: run.source_url,
           adapterId: scraped.adapterId,
           found: scraped.diagnostics.candidates,

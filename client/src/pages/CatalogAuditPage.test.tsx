@@ -129,4 +129,61 @@ describe('CatalogAuditPage', () => {
     expect(screen.getByText('18 000 ₴')).toBeInTheDocument();
     expect(screen.getByText('18 999 ₴')).toBeInTheDocument();
   });
+
+  it('shows readable characteristics and opens changed photos in a gallery', async () => {
+    vi.spyOn(api.catalog, 'auditHistory').mockResolvedValue({
+      items: [{
+        id: 'audit-media-1',
+        kind: 'audit',
+        source: 'manual',
+        category: 'media',
+        action: 'media_update',
+        actor: { id: 'user-1', name: 'Дмитро' },
+        product: { id: '22222222-2222-4222-8222-222222222222', productCode: 'SM-000123', name: 'iPhone 13' },
+        changes: {
+          fields: ['characteristicValues', 'mainImageUrl', 'gallery'],
+          before: {
+            characteristicValues: { Колір: { hex: '#111111', name: 'Чорний' }, Памʼять: '128 ГБ' },
+            mainImageUrl: '/media/catalog/old-main.webp',
+            gallery: [{ url: '/media/catalog/old-main.webp', alt: 'iPhone 13' }]
+          },
+          after: {
+            characteristicValues: { Колір: { hex: '#ffffff', name: 'Білий' }, Памʼять: '256 ГБ' },
+            mainImageUrl: '/media/catalog/new-main.webp',
+            gallery: [
+              { url: '/media/catalog/new-main.webp', alt: 'iPhone 13' },
+              { url: '/media/catalog/new-side.webp', alt: 'iPhone 13 збоку' }
+            ]
+          }
+        },
+        summary: null,
+        options: null,
+        importId: null,
+        createdAt: '2026-07-24T12:00:00.000Z'
+      }],
+      actors: [{ id: 'user-1', name: 'Дмитро' }],
+      total: 1,
+      page: 1,
+      pageSize: 25,
+      pageCount: 1
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Оновлено фотографії' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Деталі/ }));
+
+    expect(screen.getAllByText('Колір')).toHaveLength(2);
+    expect(screen.getByText('Чорний')).toBeInTheDocument();
+    expect(screen.getByText('Білий')).toBeInTheDocument();
+    expect(screen.queryByText(/"hex"/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Відкрити фото 1 з 2' }));
+    expect(screen.getByRole('dialog', { name: 'Перегляд фото' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'iPhone 13' })).toHaveAttribute('src', '/media/catalog/new-main.webp');
+    await user.click(screen.getByRole('button', { name: 'Наступне фото' }));
+    expect(screen.getByRole('img', { name: 'iPhone 13 збоку' })).toHaveAttribute('src', '/media/catalog/new-side.webp');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Перегляд фото' })).not.toBeInTheDocument();
+  });
 });

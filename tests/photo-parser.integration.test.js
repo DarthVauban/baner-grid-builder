@@ -219,6 +219,18 @@ test('photo parser API queues only products with URLs and isolates per-image fai
   const product = await admin.get(`/api/catalog/products/${withUrl.body.data.id}`).expect(200);
   assert.equal(product.body.data.mainImageUrl, '/media/catalog/parser-2.webp');
   assert.equal(product.body.data.gallery.length, 1);
+  const parserAudit = await query(
+    `SELECT changes
+     FROM used_smartphone_audit_log
+     WHERE product_id = $1 AND action = 'photo_parser_import'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [withUrl.body.data.id]
+  );
+  assert.deepEqual(parserAudit.rows[0].changes.fields, ['mainImageUrl', 'gallery']);
+  assert.equal(parserAudit.rows[0].changes.before.mainImageUrl, '');
+  assert.equal(parserAudit.rows[0].changes.after.mainImageUrl, '/media/catalog/parser-2.webp');
+  assert.equal(parserAudit.rows[0].changes.after.gallery[0].url, '/media/catalog/parser-2.webp');
 
   const errors = await admin.get('/api/catalog/photo-parser/errors?search=Parser Phone').expect(200);
   assert.equal(errors.body.data.total, 1);

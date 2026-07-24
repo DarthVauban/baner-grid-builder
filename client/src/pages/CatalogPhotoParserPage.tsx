@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
 import {
@@ -102,14 +102,25 @@ function ProductRow({
       <RunStatus run={run} />
       {run?.errorMessage && <small title={run.errorMessage}>{run.errorMessage}</small>}
     </div>
-    <button
-      className="button button--secondary button--small"
-      type="button"
-      onClick={() => window.open(catalogPhotoGoogleSearchUrl(product.name), '_blank', 'noopener,noreferrer')}
-      title="Знайти фотографії товару в Google"
-    >
-      <Icon name="search" size={15} /> Google
-    </button>
+    <div className="catalog-photo-parser-product__actions">
+      <Link
+        className="button button--secondary button--small"
+        to={`/catalog/products?product=${encodeURIComponent(product.id)}`}
+        target="_blank"
+        rel="noreferrer"
+        title="Відкрити картку товару"
+      >
+        <Icon name="openInNew" size={15} /> Товар
+      </Link>
+      <button
+        className="button button--secondary button--small"
+        type="button"
+        onClick={() => window.open(catalogPhotoGoogleSearchUrl(product.name), '_blank', 'noopener,noreferrer')}
+        title="Знайти товар у Google"
+      >
+        <Icon name="search" size={15} /> Google
+      </button>
+    </div>
   </article>;
 }
 
