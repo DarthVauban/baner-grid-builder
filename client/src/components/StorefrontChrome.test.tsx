@@ -11,8 +11,9 @@ describe('StorefrontChrome', () => {
       { id: 'delivery', label: 'Доставка', url: 'https://example.com/delivery', newTab: true }
     ];
 
-    render(<StorefrontHeader theme={theme} basePath="/storefront" />);
+    const { container } = render(<StorefrontHeader theme={theme} basePath="/storefront" />);
 
+    expect(container.querySelector('.storefront-header > .storefront-header__container')).toBeInTheDocument();
     expect(screen.getByText('Смартфони з гарантією')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Каталог' })).toHaveAttribute('href', '/storefront');
     expect(screen.getByRole('link', { name: 'Доставка' })).toHaveAttribute('target', '_blank');

@@ -15,7 +15,7 @@ import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import { convertCatalogImageToWebp, maxCatalogImageBytes } from '../lib/catalog-media';
-import { cloneStorefrontTheme, defaultProductCardTheme, defaultStorefrontTheme } from '../lib/storefront-theme';
+import { cloneStorefrontTheme, defaultProductCardTheme, defaultStorefrontTheme, fontWeightOptions } from '../lib/storefront-theme';
 import { useUndoableState } from '../lib/use-undoable-state';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -267,7 +267,14 @@ export function CatalogHeaderFooterSettingsPage() {
           <ThemeTextField label="Знак без логотипу" value={theme.header.brandMark} onChange={(value) => updateTheme('header', { ...theme.header, brandMark: value.slice(0, 8) })} />
           <ThemeTextField label="Посилання логотипу" value={theme.header.logoLink} placeholder="https://example.com або /" onChange={(value) => updateTheme('header', { ...theme.header, logoLink: value })} />
           <ThemeRangeField label="Висота логотипу" value={theme.header.logoHeight} min={20} max={120} onChange={(value) => updateTheme('header', { ...theme.header, logoHeight: value })} />
+          <h3>Типографіка хедера</h3>
           <ThemeRangeField label="Розмір назви" value={theme.header.brandSize} min={10} max={34} onChange={(value) => updateTheme('header', { ...theme.header, brandSize: value })} />
+          <ThemeSelectField label="Вага назви" value={String(theme.header.brandWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('header', { ...theme.header, brandWeight: Number(value) })} />
+          <ThemeRangeField label="Розмір слогана" value={theme.header.taglineSize} min={8} max={24} onChange={(value) => updateTheme('header', { ...theme.header, taglineSize: value })} />
+          <ThemeSelectField label="Вага слогана" value={String(theme.header.taglineWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('header', { ...theme.header, taglineWeight: Number(value) })} />
+          <ThemeRangeField label="Розмір навігації" value={theme.header.linkSize} min={9} max={28} onChange={(value) => updateTheme('header', { ...theme.header, linkSize: value })} />
+          <ThemeSelectField label="Вага навігації" value={String(theme.header.linkWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('header', { ...theme.header, linkWeight: Number(value) })} />
+          <h3>Оформлення хедера</h3>
           <ThemeColorField label="Фон" value={theme.header.background} onChange={(value) => updateTheme('header', { ...theme.header, background: value })} />
           <ThemeColorField label="Основний текст" value={theme.header.textColor} onChange={(value) => updateTheme('header', { ...theme.header, textColor: value })} />
           <ThemeColorField label="Слоган" value={theme.header.mutedColor} onChange={(value) => updateTheme('header', { ...theme.header, mutedColor: value })} />
@@ -295,6 +302,18 @@ export function CatalogHeaderFooterSettingsPage() {
           <ThemeTextField label="Телефон" value={theme.footer.phone} placeholder="+380…" onChange={(value) => updateTheme('footer', { ...theme.footer, phone: value })} />
           <ThemeTextField label="Адреса" value={theme.footer.address} onChange={(value) => updateTheme('footer', { ...theme.footer, address: value })} />
           <ThemeTextField label="Копірайт" value={theme.footer.copyright} placeholder="Можна використати {year}" onChange={(value) => updateTheme('footer', { ...theme.footer, copyright: value })} />
+          <h3>Типографіка футера</h3>
+          <ThemeRangeField label="Розмір назви бренду" value={theme.footer.brandSize} min={10} max={34} onChange={(value) => updateTheme('footer', { ...theme.footer, brandSize: value })} />
+          <ThemeSelectField label="Вага назви бренду" value={String(theme.footer.brandWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('footer', { ...theme.footer, brandWeight: Number(value) })} />
+          <ThemeRangeField label="Розмір опису й контактів" value={theme.footer.bodySize} min={9} max={24} onChange={(value) => updateTheme('footer', { ...theme.footer, bodySize: value })} />
+          <ThemeSelectField label="Вага опису й контактів" value={String(theme.footer.bodyWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('footer', { ...theme.footer, bodyWeight: Number(value) })} />
+          <ThemeRangeField label="Розмір заголовків колонок" value={theme.footer.headingSize} min={9} max={28} onChange={(value) => updateTheme('footer', { ...theme.footer, headingSize: value })} />
+          <ThemeSelectField label="Вага заголовків колонок" value={String(theme.footer.headingWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('footer', { ...theme.footer, headingWeight: Number(value) })} />
+          <ThemeRangeField label="Розмір посилань" value={theme.footer.linkSize} min={9} max={24} onChange={(value) => updateTheme('footer', { ...theme.footer, linkSize: value })} />
+          <ThemeSelectField label="Вага посилань" value={String(theme.footer.linkWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('footer', { ...theme.footer, linkWeight: Number(value) })} />
+          <ThemeRangeField label="Розмір копірайту" value={theme.footer.copyrightSize} min={8} max={20} onChange={(value) => updateTheme('footer', { ...theme.footer, copyrightSize: value })} />
+          <ThemeSelectField label="Вага копірайту" value={String(theme.footer.copyrightWeight)} options={fontWeightOptions} onChange={(value) => updateTheme('footer', { ...theme.footer, copyrightWeight: Number(value) })} />
+          <h3>Оформлення футера</h3>
           <ThemeColorField label="Фон" value={theme.footer.background} onChange={(value) => updateTheme('footer', { ...theme.footer, background: value })} />
           <ThemeColorField label="Основний текст" value={theme.footer.textColor} onChange={(value) => updateTheme('footer', { ...theme.footer, textColor: value })} />
           <ThemeColorField label="Другорядний текст" value={theme.footer.mutedColor} onChange={(value) => updateTheme('footer', { ...theme.footer, mutedColor: value })} />

@@ -27,6 +27,11 @@ describe('storefront theme tokens', () => {
     storefront.typography.bodyFontFamily = 'Unbounded';
     storefront.layout.columnsDesktop = 5;
     storefront.header.logoHeight = 54;
+    storefront.header.linkSize = 16;
+    storefront.header.linkWeight = 800;
+    storefront.footer.headingSize = 15;
+    storefront.footer.headingWeight = 900;
+    storefront.footer.copyrightSize = 12;
     storefront.filters.visible = false;
     storefront.controls.sortVisible = false;
     card.button.label = 'Замовити';
@@ -37,6 +42,11 @@ describe('storefront theme tokens', () => {
       '--sf-font-body': '"Unbounded", sans-serif',
       '--sf-columns-desktop': 5,
       '--sf-brand-logo-height': '54px',
+      '--sf-header-link-size': '16px',
+      '--sf-header-link-weight': 800,
+      '--sf-footer-heading-size': '15px',
+      '--sf-footer-heading-weight': 900,
+      '--sf-footer-copyright-size': '12px',
       '--sf-filter-display': 'none',
       '--sf-catalog-columns': 'minmax(0,1fr)',
       '--sf-controls-columns': 'minmax(240px,1fr)'

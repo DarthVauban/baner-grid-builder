@@ -91,14 +91,16 @@ export function StorefrontHeader({
   action?: ReactNode;
 }) {
   return <header className="storefront-header">
-    <StorefrontBrand theme={theme} basePath={basePath} />
-    {theme.header.links.length > 0 && <nav className="storefront-header__nav" aria-label="Головна навігація">
-      {theme.header.links.map((link) => <LinkItem link={link} basePath={basePath} className="storefront-header__link" key={link.id} />)}
-    </nav>}
-    {(theme.header.socialLinks.length > 0 || action) && <div className="storefront-header__tools">
-      <SocialLinks links={theme.header.socialLinks} className="storefront-socials storefront-socials--header" />
-      {action}
-    </div>}
+    <div className="storefront-header__container">
+      <StorefrontBrand theme={theme} basePath={basePath} />
+      {theme.header.links.length > 0 && <nav className="storefront-header__nav" aria-label="Головна навігація">
+        {theme.header.links.map((link) => <LinkItem link={link} basePath={basePath} className="storefront-header__link" key={link.id} />)}
+      </nav>}
+      {(theme.header.socialLinks.length > 0 || action) && <div className="storefront-header__tools">
+        <SocialLinks links={theme.header.socialLinks} className="storefront-socials storefront-socials--header" />
+        {action}
+      </div>}
+    </div>
   </header>;
 }
 

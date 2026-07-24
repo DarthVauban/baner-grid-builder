@@ -800,9 +800,15 @@ test('catalog products publish to storefront, import stock updates, and create a
   storefrontTheme.header.logoUrl = '/media/catalog/storefront-logo.webp';
   storefrontTheme.header.logoLink = 'https://mobiletrend.com.ua';
   storefrontTheme.header.logoHeight = 54;
+  storefrontTheme.header.linkSize = 16;
+  storefrontTheme.header.linkWeight = 800;
   storefrontTheme.header.links = [{ id: 'delivery', label: 'Доставка', url: '/delivery', newTab: false }];
   storefrontTheme.header.socialLinks = [{ id: 'telegram', platform: 'telegram', label: 'Telegram', url: 'https://t.me/mobiletrend' }];
   storefrontTheme.footer.email = 'hello@mobiletrend.com.ua';
+  storefrontTheme.footer.headingSize = 15;
+  storefrontTheme.footer.headingWeight = 900;
+  storefrontTheme.footer.linkSize = 14;
+  storefrontTheme.footer.linkWeight = 600;
   storefrontTheme.footer.sections = [{
     id: 'support',
     title: 'Підтримка',
@@ -830,9 +836,15 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoUrl, '/media/catalog/storefront-logo.webp');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoLink, 'https://mobiletrend.com.ua');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.logoHeight, 54);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.linkSize, 16);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.linkWeight, 800);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.links[0].label, 'Доставка');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.header.socialLinks[0].platform, 'telegram');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.email, 'hello@mobiletrend.com.ua');
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.headingSize, 15);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.headingWeight, 900);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.linkSize, 14);
+  assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.linkWeight, 600);
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.footer.sections[0].links[0].label, 'Гарантія');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.filters.titleColor, '#102030');
   assert.equal(publicStorefrontSettings.body.data.storefrontTheme.filters.activeColor, '#405060');

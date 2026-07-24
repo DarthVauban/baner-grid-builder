@@ -30,6 +30,10 @@ describe('CatalogHeaderFooterSettingsPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Хедер і футер' })).toBeInTheDocument();
+    expect(await screen.findByText('Типографіка хедера')).toBeInTheDocument();
+    expect(screen.getByText('Типографіка футера')).toBeInTheDocument();
+    expect(screen.getByText('Розмір навігації')).toBeInTheDocument();
+    expect(screen.getByText('Вага заголовків колонок')).toBeInTheDocument();
     const navigationSection = (await screen.findByRole('heading', { name: 'Навігація хедера' })).closest('section');
     expect(navigationSection).not.toBeNull();
     const addButtons = within(navigationSection as HTMLElement).getAllByRole('button', { name: 'Додати' });
