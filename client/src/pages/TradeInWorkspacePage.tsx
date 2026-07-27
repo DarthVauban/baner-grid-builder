@@ -6,7 +6,7 @@ import { UserAvatar } from '../components/UserAvatar';
 
 const tradeInLinks = [
   { to: '/trade-in/overview', icon: 'home' as const, label: 'Огляд' },
-  { to: '/trade-in/prototype', icon: 'formBuilder' as const, label: 'Тестова форма' }
+  { to: '/trade-in/editor', icon: 'formBuilder' as const, label: 'Конструктор' }
 ];
 
 export function TradeInWorkspacePage() {

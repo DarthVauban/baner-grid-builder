@@ -23,6 +23,7 @@ import publicApplicationRoutes from './modules/applications/public.routes.js';
 import catalogRoutes from './modules/catalog/catalog.routes.js';
 import photoParserRoutes from './modules/catalog/photo-parser.routes.js';
 import storefrontRoutes from './modules/catalog/storefront.routes.js';
+import tradeInRoutes, { publicTradeInRoutes } from './modules/trade-in/trade-in.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -32,6 +33,12 @@ import {
   standaloneStorefrontProductPath
 } from './modules/catalog/storefront.domain.js';
 import { injectStorefrontProductSeo } from './modules/catalog/storefront.seo.js';
+import {
+  isAllowedStandaloneTradeInRequest,
+  isStandaloneTradeInRequest,
+  resolveStandaloneTradeInOrigin
+} from './modules/trade-in/trade-in.domain.js';
+import { tradeInToolId } from './modules/trade-in/trade-in.service.js';
 import { env } from './config/env.js';
 import { query } from './db/pool.js';
 import { asyncHandler } from './lib/async-handler.js';
@@ -44,6 +51,7 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const webDistDir = path.resolve(currentDir, '../dist/web');
 const webIndex = path.join(webDistDir, 'index.html');
 const storefrontIndex = path.join(webDistDir, 'storefront.html');
+const tradeInIndex = path.join(webDistDir, 'trade-in.html');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -94,10 +102,25 @@ async function loadSavedStorefrontOrigin() {
   return result.rows[0]?.public_origin || '';
 }
 
+async function loadSavedTradeInOrigin() {
+  const result = await query(
+    `SELECT public_origin
+     FROM trade_in_settings
+     WHERE id = TRUE`
+  );
+  return result.rows[0]?.public_origin || '';
+}
+
 app.use(asyncHandler(async (req, res, next) => {
-  const storefrontOrigin = await resolveStandaloneStorefrontOrigin(loadSavedStorefrontOrigin, env.STOREFRONT_ORIGIN);
+  const [storefrontOrigin, tradeInOrigin] = await Promise.all([
+    resolveStandaloneStorefrontOrigin(loadSavedStorefrontOrigin, env.STOREFRONT_ORIGIN),
+    resolveStandaloneTradeInOrigin(loadSavedTradeInOrigin, env.TRADE_IN_ORIGIN)
+  ]);
   req.isStandaloneStorefront = isStandaloneStorefrontRequest(req, storefrontOrigin);
-  if (!req.isStandaloneStorefront || isAllowedStandaloneStorefrontRequest(req)) return next();
+  req.isStandaloneTradeIn = !req.isStandaloneStorefront && isStandaloneTradeInRequest(req, tradeInOrigin);
+  if (req.isStandaloneStorefront && isAllowedStandaloneStorefrontRequest(req)) return next();
+  if (req.isStandaloneTradeIn && isAllowedStandaloneTradeInRequest(req)) return next();
+  if (!req.isStandaloneStorefront && !req.isStandaloneTradeIn) return next();
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ресурс не знайдено.' } });
   }
@@ -107,6 +130,7 @@ app.use(asyncHandler(async (req, res, next) => {
 if (env.APP_ORIGIN) {
   app.use((req, res, next) => {
     if (req.path.startsWith('/api/public/application-forms')) return next();
+    if (req.path.startsWith('/api/public/trade-in')) return next();
     if (req.path.startsWith('/api/storefront')) return next();
     return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
   });
@@ -147,8 +171,10 @@ app.use('/api/applications', applicationRoutes);
 app.use('/api/forms', formRoutes);
 app.use('/api/catalog/photo-parser', photoParserRoutes);
 app.use('/api/catalog', catalogRoutes);
+app.use('/api/trade-in', tradeInRoutes);
 app.use('/api/storefront', publicEmbedCors, storefrontRoutes);
 app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
+app.use('/api/public/trade-in', publicEmbedCors, publicTradeInRoutes);
 app.use('/api', notFoundHandler);
 
 app.use('/media/catalog', express.static(catalogMediaDir, {
@@ -207,14 +233,21 @@ app.get(/^\/catalog\/preview\/storefront(?:\/.*)?$/, requireAuth, requireToolAcc
   return sendBuiltHtml(res, storefrontIndex, 'Storefront preview');
 });
 
+app.get(/^\/trade-in\/preview(?:\/.*)?$/, requireAuth, requireToolAccess(tradeInToolId), (req, res) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Cache-Control', 'no-store');
+  return sendBuiltHtml(res, tradeInIndex, 'Trade-in preview');
+});
+
 app.get('/smartphones/:slug', asyncHandler(async (req, res, next) => {
   if (!req.isStandaloneStorefront) return next();
   await sendStorefrontProductHtml(req, res);
 }));
 
 app.get('/', (req, res, next) => {
-  if (!req.isStandaloneStorefront) return next();
-  return sendBuiltHtml(res, storefrontIndex, 'Storefront');
+  if (req.isStandaloneStorefront) return sendBuiltHtml(res, storefrontIndex, 'Storefront');
+  if (req.isStandaloneTradeIn) return sendBuiltHtml(res, tradeInIndex, 'Trade-in');
+  return next();
 });
 
 app.get('/storefront', (req, res, next) => {
@@ -232,6 +265,11 @@ app.get('/storefront/smartphones/:slug', asyncHandler(async (req, res) => {
 }));
 
 app.get(/^\/storefront(?:\/.*)?$/, (req, res) => sendBuiltHtml(res, storefrontIndex, 'Storefront'));
+
+app.get('/trade-in', (req, res, next) => {
+  if (!req.isStandaloneTradeIn) return next();
+  return res.redirect(308, '/');
+});
 
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();

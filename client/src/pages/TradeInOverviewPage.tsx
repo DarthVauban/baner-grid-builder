@@ -36,10 +36,10 @@ export function TradeInOverviewPage() {
             щоб він підготував попередню оцінку та пояснив наступні кроки.
           </p>
           <div className="trade-in-hero__actions">
-            <Link className="button button--primary" to="/trade-in/prototype">
-              Відкрити тестову форму <Icon name="arrowRight" size={17} />
+            <Link className="button button--primary" to="/trade-in/editor">
+              Відкрити конструктор <Icon name="arrowRight" size={17} />
             </Link>
-            <span>Зараз форма працює лише як інтерактивний прототип</span>
+            <span>Сторінка та форма зберігаються як окрема чернетка</span>
           </div>
         </div>
 
@@ -81,9 +81,9 @@ export function TradeInOverviewPage() {
         </div>
         <ul>
           <li><Icon name="check" size={17} /> Окремий розділ і навігація Trade-in</li>
-          <li><Icon name="check" size={17} /> Тестова покрокова форма для трьох сценаріїв</li>
-          <li className="is-muted"><Icon name="schedule" size={17} /> Довідники брендів і моделей — пізніше</li>
-          <li className="is-muted"><Icon name="schedule" size={17} /> Збереження та передача менеджеру — пізніше</li>
+          <li><Icon name="check" size={17} /> Конструктор секцій публічної сторінки</li>
+          <li><Icon name="check" size={17} /> Окремий редактор кроків, полів і умов форми</li>
+          <li><Icon name="check" size={17} /> Публікація на піддомені та передача заявок менеджеру</li>
         </ul>
       </section>
     </div>

@@ -195,6 +195,10 @@ export function AppShell() {
             <Icon name="tasks" size={18} />
             <span>Справи</span>
           </NavLink>
+          {hasApplicationsAccess && <NavLink aria-label="Заявки" title="Заявки" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/applications" onClick={closeSidebar}>
+            <Icon name="tasks" size={18} />
+            <span>Заявки</span>
+          </NavLink>}
           {hasChatAccess && <NavLink aria-label="Чат" title="Чат" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/chat" onClick={closeSidebar}>
             <Icon name="chat" size={18} />
             <span>Чат</span>

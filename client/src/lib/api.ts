@@ -94,6 +94,12 @@ import type {
   CatalogSummary
 } from '../types/catalog';
 import type { SystemMetrics } from '../types/system';
+import type {
+  PublicTradeInSettings,
+  TradeInAnswers,
+  TradeInConfig,
+  TradeInSettings
+} from '../types/trade-in';
 
 interface ApiErrorPayload {
   error?: {
@@ -537,6 +543,24 @@ export const api = {
         method: 'POST',
         body: jsonBody(input)
       })
+  },
+  tradeIn: {
+    settings: () => request<TradeInSettings>('/api/trade-in/settings'),
+    save: (input: { publicOrigin: string; config: TradeInConfig }) =>
+      request<TradeInSettings>('/api/trade-in/settings', { method: 'PUT', body: jsonBody(input) }),
+    publish: (input: { publicOrigin: string; config: TradeInConfig }) =>
+      request<TradeInSettings>('/api/trade-in/publish', { method: 'POST', body: jsonBody(input) }),
+    previewSettings: () => request<PublicTradeInSettings>('/api/trade-in/preview-settings'),
+    publicSettings: () => request<PublicTradeInSettings>('/api/public/trade-in/settings'),
+    submitApplication: (input: {
+      values: TradeInAnswers;
+      context: Record<string, unknown>;
+      idempotencyKey: string;
+      honeypot?: string;
+    }) => request<{ id: string; number: string; status: string; duplicate?: boolean }>('/api/public/trade-in/applications', {
+      method: 'POST',
+      body: jsonBody(input)
+    })
   },
   forms: {
     list: () => request<ApplicationForm[]>('/api/forms'),

@@ -30,7 +30,8 @@ export const tools: ToolDefinition[] = [
     name: 'Заявки',
     description: 'Обробка заявок з форм, статуси, коментарі, товарний snapshot і шерінг у чат.',
     path: '/tools/applications',
-    icon: 'tasks'
+    icon: 'tasks',
+    showInTools: false
   },
   {
     id: 'form_builder',

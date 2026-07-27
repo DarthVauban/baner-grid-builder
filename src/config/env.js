@@ -16,6 +16,10 @@ const schema = z.object({
     (value) => String(value || '').trim() || undefined,
     z.string().url().optional()
   ),
+  TRADE_IN_ORIGIN: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().url().optional()
+  ),
   ADMIN_NAME: z.string().optional(),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(10).optional()

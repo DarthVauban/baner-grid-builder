@@ -75,8 +75,8 @@ const TradeInWorkspacePage = lazy(() => import('../pages/TradeInWorkspacePage').
 const TradeInOverviewPage = lazy(() => import('../pages/TradeInOverviewPage').then((module) => ({
   default: module.TradeInOverviewPage
 })));
-const TradeInPrototypePage = lazy(() => import('../pages/TradeInPrototypePage').then((module) => ({
-  default: module.TradeInPrototypePage
+const TradeInBuilderPage = lazy(() => import('../pages/TradeInBuilderPage').then((module) => ({
+  default: module.TradeInBuilderPage
 })));
 
 function ProtectedRoute() {
@@ -152,7 +152,8 @@ export function App() {
           <Route path="trade-in" element={<Suspense fallback={<LoadingScreen />}><TradeInWorkspacePage /></Suspense>}>
             <Route index element={<Navigate to="overview" replace />} />
             <Route path="overview" element={<Suspense fallback={<LoadingScreen />}><TradeInOverviewPage /></Suspense>} />
-            <Route path="prototype" element={<Suspense fallback={<LoadingScreen />}><TradeInPrototypePage /></Suspense>} />
+            <Route path="editor" element={<Suspense fallback={<LoadingScreen />}><TradeInBuilderPage /></Suspense>} />
+            <Route path="prototype" element={<Navigate to="../editor" replace />} />
           </Route>
         </Route>
         <Route element={<WorkspaceShell />}>

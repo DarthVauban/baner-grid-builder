@@ -30,7 +30,7 @@ describe('TradeInWorkspacePage', () => {
     const view = renderWorkspace();
 
     expect(screen.getByRole('link', { name: 'Огляд' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Тестова форма' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Конструктор' })).toBeInTheDocument();
     expect(view.container.querySelector('.trade-in-workspace')).not.toHaveClass('trade-in-workspace--sidebar-collapsed');
 
     await user.click(screen.getByRole('button', { name: 'Згорнути меню Trade-in' }));

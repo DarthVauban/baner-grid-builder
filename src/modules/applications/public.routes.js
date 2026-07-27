@@ -131,6 +131,18 @@ function validateSubmission(form, rawValues) {
     if (field.type === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
       errors.push({ field: field.key, message: 'Вкажіть коректний email.' });
     }
+    if (field.type === 'number' && value) {
+      const numericValue = Number(value);
+      const minimum = Number(field.validation?.min);
+      const maximum = Number(field.validation?.max);
+      if (!Number.isFinite(numericValue)) {
+        errors.push({ field: field.key, message: `Вкажіть коректне число у полі «${field.label}».` });
+      } else if (field.validation?.min != null && Number.isFinite(minimum) && numericValue < minimum) {
+        errors.push({ field: field.key, message: `Значення поля «${field.label}» має бути не менше ${minimum}.` });
+      } else if (field.validation?.max != null && Number.isFinite(maximum) && numericValue > maximum) {
+        errors.push({ field: field.key, message: `Значення поля «${field.label}» має бути не більше ${maximum}.` });
+      }
+    }
     values.set(field.key, value);
   }
   if (errors.length) throw new AppError(422, 'VALIDATION_ERROR', 'Перевірте заповнені поля.', errors);
@@ -356,15 +368,18 @@ export async function createPublicApplication({
   publicId,
   input,
   req,
+  formOverride = null,
+  skipBankRequirement = false,
   productOverride = null,
   contextOverride = {},
   source = 'public_form',
   historyComment = 'Заявку створено з публічної форми'
 }) {
   if (input.honeypot) return { status: 204, data: null };
-  const form = await loadPublishedForm(publicId);
+  const form = formOverride || await loadPublishedForm(publicId);
   if (!form) throw new AppError(404, 'FORM_NOT_FOUND', 'Форма недоступна.');
-  if (!form.banks.length) throw new AppError(422, 'BANK_REQUIRED', 'Оберіть банк.');
+  form.banks ||= [];
+  if (!skipBankRequirement && !form.banks.length) throw new AppError(422, 'BANK_REQUIRED', 'Оберіть банк.');
   const bankField = form.fields.find((field) => field.systemFieldType === 'bank');
   if (bankField) bankField.options = form.banks.map((bank) => ({ label: bank.label, value: bank.value }));
   const values = validateSubmission(form, input.values);

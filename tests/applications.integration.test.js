@@ -474,4 +474,39 @@ test('form builder and applications list have separate access and process public
   assert.ok(notificationsAfterFlexibleSubmission.body.data.items.some((item) => (
     item.type === 'application_created' && item.applicationId === flexibleSubmission.body.data.id
   )));
+
+  const tradeInSettings = await admin.get('/api/trade-in/settings').expect(200);
+  assert.equal(tradeInSettings.body.data.status, 'draft');
+  assert.ok(tradeInSettings.body.data.draftConfig.form.steps.length >= 5);
+  const publishedTradeIn = await admin.post('/api/trade-in/publish').send({
+    publicOrigin: 'https://tradein.example.com',
+    config: tradeInSettings.body.data.draftConfig
+  }).expect(200);
+  assert.equal(publishedTradeIn.body.data.status, 'published');
+  assert.equal(publishedTradeIn.body.data.publicOrigin, 'https://tradein.example.com');
+
+  const publicTradeIn = await request(app).get('/api/public/trade-in/settings').expect(200);
+  assert.equal(publicTradeIn.body.data.config.form.title, tradeInSettings.body.data.draftConfig.form.title);
+  const tradeInSubmission = await request(app).post('/api/public/trade-in/applications').send({
+    values: {
+      category: 'smartphone',
+      operation: 'exchange',
+      brand: 'Samsung',
+      model: 'Galaxy S24',
+      memory: '256 GB',
+      device_condition: 'normal',
+      screen_condition: 'ideal',
+      first_name: 'Олена',
+      phone: '+380501112233',
+      consent: true
+    },
+    context: { sourceUrl: 'https://tradein.example.com/' },
+    idempotencyKey: 'trade-in-customer-1'
+  }).expect(201);
+  const tradeInApplication = await manager.get(`/api/applications/${tradeInSubmission.body.data.id}`).expect(200);
+  assert.equal(tradeInApplication.body.data.formName, 'Trade-in');
+  assert.equal(tradeInApplication.body.data.source, 'trade_in');
+  assert.equal(tradeInApplication.body.data.customer.firstName, 'Олена');
+  assert.equal(tradeInApplication.body.data.customer.phone, '+380501112233');
+  assert.equal(tradeInApplication.body.data.values.some((item) => item.key === 'memory' && item.value === '256 GB'), true);
 });

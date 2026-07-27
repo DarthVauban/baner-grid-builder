@@ -11,7 +11,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         workspace: 'client/index.html',
-        storefront: 'client/storefront.html'
+        storefront: 'client/storefront.html',
+        tradeIn: 'client/trade-in.html'
       }
     }
   },
