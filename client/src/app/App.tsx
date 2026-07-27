@@ -69,6 +69,15 @@ const ProfilePage = lazy(() => import('../pages/ProfilePage').then((module) => (
 const AdminSystemPage = lazy(() => import('../pages/AdminSystemPage').then((module) => ({
   default: module.AdminSystemPage
 })));
+const TradeInWorkspacePage = lazy(() => import('../pages/TradeInWorkspacePage').then((module) => ({
+  default: module.TradeInWorkspacePage
+})));
+const TradeInOverviewPage = lazy(() => import('../pages/TradeInOverviewPage').then((module) => ({
+  default: module.TradeInOverviewPage
+})));
+const TradeInPrototypePage = lazy(() => import('../pages/TradeInPrototypePage').then((module) => ({
+  default: module.TradeInPrototypePage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -137,6 +146,13 @@ export function App() {
             <Route path="photo-parser/settings" element={<Suspense fallback={<LoadingScreen />}><CatalogPhotoParserSettingsPage /></Suspense>} />
             <Route path="preview" element={<Navigate to="/catalog/storefront" replace />} />
             <Route path="audit" element={<Suspense fallback={<LoadingScreen />}><CatalogAuditPage /></Suspense>} />
+          </Route>
+        </Route>
+        <Route element={<ToolAccessRoute tool="trade_in" />}>
+          <Route path="trade-in" element={<Suspense fallback={<LoadingScreen />}><TradeInWorkspacePage /></Suspense>}>
+            <Route index element={<Navigate to="overview" replace />} />
+            <Route path="overview" element={<Suspense fallback={<LoadingScreen />}><TradeInOverviewPage /></Suspense>} />
+            <Route path="prototype" element={<Suspense fallback={<LoadingScreen />}><TradeInPrototypePage /></Suspense>} />
           </Route>
         </Route>
         <Route element={<WorkspaceShell />}>

@@ -73,6 +73,7 @@ import MemoryRounded from '@mui/icons-material/MemoryRounded';
 import MonitorHeartRounded from '@mui/icons-material/MonitorHeartRounded';
 import RefreshRounded from '@mui/icons-material/RefreshRounded';
 import StorageRounded from '@mui/icons-material/StorageRounded';
+import CurrencyExchangeRounded from '@mui/icons-material/CurrencyExchangeRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
@@ -139,6 +140,7 @@ export type IconName =
   | 'undo'
   | 'tasks'
   | 'tools'
+  | 'tradeIn'
   | 'upload'
   | 'users'
   | 'variants'
@@ -223,6 +225,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   undo: UndoRounded,
   tasks: ChecklistRounded,
   tools: GridViewRounded,
+  tradeIn: CurrencyExchangeRounded,
   upload: UploadFileRounded,
   users: GroupRounded,
   variants: AccountTreeRounded,

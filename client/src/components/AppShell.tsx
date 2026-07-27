@@ -32,6 +32,7 @@ export function AppShell() {
   const hasChatAccess = toolAccess.data?.includes('chat') === true;
   const hasApplicationsAccess = toolAccess.data?.includes('applications') === true;
   const hasCatalogAccess = toolAccess.data?.includes('used_smartphones_catalog') === true;
+  const hasTradeInAccess = toolAccess.data?.includes('trade_in') === true;
   const chatUnread = useQuery({
     queryKey: ['chat-unread-count'],
     queryFn: api.chat.unreadCount,
@@ -233,6 +234,10 @@ export function AppShell() {
           {hasCatalogAccess && <NavLink aria-label="Каталог смартфонів" title="Каталог смартфонів" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/catalog/products" onClick={closeSidebar}>
             <Icon name="catalog" size={18} />
             <span>Каталог смартфонів</span>
+          </NavLink>}
+          {hasTradeInAccess && <NavLink aria-label="Trade-in" title="Trade-in" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/trade-in/overview" onClick={closeSidebar}>
+            <Icon name="tradeIn" size={18} />
+            <span>Trade-in</span>
           </NavLink>}
         </nav>
 

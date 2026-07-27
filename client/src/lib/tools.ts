@@ -48,6 +48,14 @@ export const tools: ToolDefinition[] = [
     showInTools: false
   },
   {
+    id: 'trade_in',
+    name: 'Trade-in',
+    description: 'Окремий простір для сценаріїв попередньої оцінки техніки та майбутньої обробки Trade-in заявок.',
+    path: '/trade-in/overview',
+    icon: 'tradeIn',
+    showInTools: false
+  },
+  {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',
