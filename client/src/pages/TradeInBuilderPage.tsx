@@ -499,7 +499,7 @@ export function TradeInBuilderPage() {
         <div><p className="eyebrow">Конструктор публічної сторінки</p><h1>Trade-in</h1><p>Налаштуйте сторінку, багатокрокову форму та публікацію на окремому піддомені.</p></div>
         <div className="trade-in-builder-header__actions">
           <span className={dirty ? 'is-dirty' : ''}>{dirty ? 'Є незбережені зміни' : 'Чернетку збережено'}</span>
-          <a className="button button--secondary button--small" href="/trade-in/preview" target="_blank" rel="noreferrer"><Icon name="visibility" size={16} /> Повне превʼю</a>
+          <a className="button button--secondary button--small" href="/trade-in/preview/storefront" target="_blank" rel="noreferrer"><Icon name="visibility" size={16} /> Тестова сторінка</a>
           <button className="button button--secondary button--small" type="button" disabled={save.isPending || !dirty} onClick={() => save.mutate(false)}><Icon name="save" size={16} /> Зберегти</button>
           <button className="button button--primary button--small" type="button" disabled={save.isPending} onClick={() => save.mutate(true)}><Icon name="publication" size={16} /> Опублікувати</button>
         </div>

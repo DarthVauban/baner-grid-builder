@@ -341,7 +341,14 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
 
   return (
     <main className={`ti-page${compact ? ' ti-page--compact' : ''}`} style={style} ref={rootRef}>
-      {preview && !compact && <div className="ti-preview-banner">Превʼю чернетки — заявки не надсилаються</div>}
+      {preview && !compact && (
+        <div className="ti-preview-banner">
+          <div className="ti-container">
+            <span><strong>Тестова сторінка Trade-in</strong> Збережена чернетка · заявки не надсилаються</span>
+            <a href="/trade-in/editor">← До конструктора</a>
+          </div>
+        </div>
+      )}
       {config.header.visible && (
         <header className={`ti-header${config.header.sticky && !compact ? ' is-sticky' : ''}`}>
           <div className="ti-container">

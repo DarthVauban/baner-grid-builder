@@ -233,7 +233,11 @@ app.get(/^\/catalog\/preview\/storefront(?:\/.*)?$/, requireAuth, requireToolAcc
   return sendBuiltHtml(res, storefrontIndex, 'Storefront preview');
 });
 
-app.get(/^\/trade-in\/preview(?:\/.*)?$/, requireAuth, requireToolAccess(tradeInToolId), (req, res) => {
+app.get('/trade-in/preview', requireAuth, requireToolAccess(tradeInToolId), (req, res) => {
+  return res.redirect(308, '/trade-in/preview/storefront');
+});
+
+app.get(/^\/trade-in\/preview\/storefront(?:\/.*)?$/, requireAuth, requireToolAccess(tradeInToolId), (req, res) => {
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Cache-Control', 'no-store');
   return sendBuiltHtml(res, tradeInIndex, 'Trade-in preview');

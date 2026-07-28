@@ -9,6 +9,8 @@ const tradeInLinks = [
   { to: '/trade-in/editor', icon: 'formBuilder' as const, label: 'Конструктор' }
 ];
 
+const tradeInPreviewPath = '/trade-in/preview/storefront';
+
 export function TradeInWorkspacePage() {
   const { user } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -54,6 +56,18 @@ export function TradeInWorkspacePage() {
               <span>{item.label}</span>
             </NavLink>
           ))}
+          <a
+            className="trade-in-sidebar__link"
+            href={tradeInPreviewPath}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Тестова сторінка"
+            title="Відкрити тестову сторінку в новій вкладці"
+          >
+            <Icon name="visibility" />
+            <span>Тестова сторінка</span>
+            <Icon name="openInNew" size={13} />
+          </a>
         </nav>
 
         <div className="trade-in-sidebar__footer">

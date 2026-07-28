@@ -39,6 +39,9 @@ export function TradeInOverviewPage() {
             <Link className="button button--primary" to="/trade-in/editor">
               Відкрити конструктор <Icon name="arrowRight" size={17} />
             </Link>
+            <a className="button button--secondary" href="/trade-in/preview/storefront" target="_blank" rel="noreferrer">
+              Тестова сторінка <Icon name="openInNew" size={16} />
+            </a>
             <span>Сторінка та форма зберігаються як окрема чернетка</span>
           </div>
         </div>

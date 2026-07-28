@@ -111,6 +111,28 @@ test('health endpoint exposes the exact running build revision', async () => {
     });
 });
 
+test('portal Trade-in preview is protected and uses the canonical storefront route', async () => {
+  await request(app)
+    .get('/trade-in/preview/storefront')
+    .expect(401);
+
+  const admin = request.agent(app);
+  await admin
+    .post('/api/auth/login')
+    .send({ email: 'admin@test.local', password: 'AdminPassword123!' })
+    .expect(200);
+
+  await admin
+    .get('/trade-in/preview')
+    .expect(308)
+    .expect('Location', '/trade-in/preview/storefront');
+
+  const preview = await admin.get('/trade-in/preview/storefront');
+  assert.ok([200, 503].includes(preview.status));
+  assert.equal(preview.headers['x-robots-tag'], 'noindex, nofollow');
+  assert.equal(preview.headers['cache-control'], 'no-store');
+});
+
 test('approval flow and shared banner storage work through REST API', async () => {
   const registration = await registerAndVerify({
     firstName: 'Test', lastName: 'User', email: 'user@test.local',

@@ -31,6 +31,8 @@ describe('TradeInWorkspacePage', () => {
 
     expect(screen.getByRole('link', { name: 'Огляд' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Конструктор' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Тестова сторінка' })).toHaveAttribute('href', '/trade-in/preview/storefront');
+    expect(screen.getByRole('link', { name: 'Тестова сторінка' })).toHaveAttribute('target', '_blank');
     expect(view.container.querySelector('.trade-in-workspace')).not.toHaveClass('trade-in-workspace--sidebar-collapsed');
 
     await user.click(screen.getByRole('button', { name: 'Згорнути меню Trade-in' }));
