@@ -78,6 +78,9 @@ const TradeInOverviewPage = lazy(() => import('../pages/TradeInOverviewPage').th
 const TradeInBuilderPage = lazy(() => import('../pages/TradeInBuilderPage').then((module) => ({
   default: module.TradeInBuilderPage
 })));
+const StoreMapPage = lazy(() => import('../pages/StoreMapPage').then((module) => ({
+  default: module.StoreMapPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -184,6 +187,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="chat" />}>
             <Route path="chat" element={<Suspense fallback={<LoadingScreen />}><ChatPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="store_map" />}>
+            <Route path="tools/store-map" element={<Suspense fallback={<LoadingScreen />}><StoreMapPage /></Suspense>} />
           </Route>
           <Route element={<AccessManagementRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

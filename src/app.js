@@ -24,6 +24,7 @@ import catalogRoutes from './modules/catalog/catalog.routes.js';
 import photoParserRoutes from './modules/catalog/photo-parser.routes.js';
 import storefrontRoutes from './modules/catalog/storefront.routes.js';
 import tradeInRoutes, { publicTradeInRoutes } from './modules/trade-in/trade-in.routes.js';
+import storeMapRoutes, { publicStoreMapRoutes } from './modules/store-map/store-map.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -52,6 +53,7 @@ const webDistDir = path.resolve(currentDir, '../dist/web');
 const webIndex = path.join(webDistDir, 'index.html');
 const storefrontIndex = path.join(webDistDir, 'storefront.html');
 const tradeInIndex = path.join(webDistDir, 'trade-in.html');
+const storeMapIndex = path.join(webDistDir, 'store-map.html');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -131,6 +133,7 @@ if (env.APP_ORIGIN) {
   app.use((req, res, next) => {
     if (req.path.startsWith('/api/public/application-forms')) return next();
     if (req.path.startsWith('/api/public/trade-in')) return next();
+    if (req.path.startsWith('/api/public/store-map')) return next();
     if (req.path.startsWith('/api/storefront')) return next();
     return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
   });
@@ -172,9 +175,11 @@ app.use('/api/forms', formRoutes);
 app.use('/api/catalog/photo-parser', photoParserRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/trade-in', tradeInRoutes);
+app.use('/api/store-map', storeMapRoutes);
 app.use('/api/storefront', publicEmbedCors, storefrontRoutes);
 app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
 app.use('/api/public/trade-in', publicEmbedCors, publicTradeInRoutes);
+app.use('/api/public/store-map', publicEmbedCors, publicStoreMapRoutes);
 app.use('/api', notFoundHandler);
 
 app.use('/media/catalog', express.static(catalogMediaDir, {
@@ -273,6 +278,16 @@ app.get(/^\/storefront(?:\/.*)?$/, (req, res) => sendBuiltHtml(res, storefrontIn
 app.get('/trade-in', (req, res, next) => {
   if (!req.isStandaloneTradeIn) return next();
   return res.redirect(308, '/');
+});
+
+app.get('/store-map/widget', (req, res) => {
+  res.removeHeader('X-Frame-Options');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors *"
+  );
+  res.setHeader('Cache-Control', 'no-cache');
+  return sendBuiltHtml(res, storeMapIndex, 'Store map widget');
 });
 
 app.use((req, res, next) => {

@@ -100,6 +100,14 @@ import type {
   TradeInConfig,
   TradeInSettings
 } from '../types/trade-in';
+import type {
+  PublicStoreMapData,
+  StoreMapImportPreview,
+  StoreMapPoint,
+  StoreMapPointInput,
+  StoreMapPublicationStatus,
+  StoreMapSettings
+} from '../types/store-map';
 
 interface ApiErrorPayload {
   error?: {
@@ -543,6 +551,35 @@ export const api = {
         method: 'POST',
         body: jsonBody(input)
       })
+  },
+  storeMap: {
+    points: (params: { search?: string; publicationStatus?: StoreMapPublicationStatus | '' } = {}) =>
+      request<StoreMapPoint[]>(`/api/store-map/points${queryString(params)}`),
+    createPoint: (input: StoreMapPointInput) =>
+      request<StoreMapPoint>('/api/store-map/points', { method: 'POST', body: jsonBody(input) }),
+    updatePoint: (id: string, input: StoreMapPointInput) =>
+      request<StoreMapPoint>(`/api/store-map/points/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: jsonBody(input)
+      }),
+    removePoint: (id: string) =>
+      request<void>(`/api/store-map/points/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    settings: () => request<StoreMapSettings>('/api/store-map/settings'),
+    updateSettings: (input: Omit<StoreMapSettings, 'publicId' | 'updatedAt'>) =>
+      request<StoreMapSettings>('/api/store-map/settings', { method: 'PUT', body: jsonBody(input) }),
+    previewImport: (rows: Array<Record<string, unknown>>) =>
+      request<StoreMapImportPreview>('/api/store-map/imports/preview', {
+        method: 'POST',
+        body: jsonBody({ rows }),
+        timeoutMs: 120_000
+      }),
+    commitImport: (rows: Array<Record<string, unknown>>, options: { importNew: boolean; updateExisting: boolean }) =>
+      request<StoreMapImportPreview>('/api/store-map/imports/commit', {
+        method: 'POST',
+        body: jsonBody({ rows, ...options }),
+        timeoutMs: 180_000
+      }),
+    publicData: () => request<PublicStoreMapData>('/api/public/store-map')
   },
   tradeIn: {
     settings: () => request<TradeInSettings>('/api/trade-in/settings'),

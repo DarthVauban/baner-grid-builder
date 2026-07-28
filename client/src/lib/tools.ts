@@ -57,6 +57,13 @@ export const tools: ToolDefinition[] = [
     showInTools: false
   },
   {
+    id: 'store_map',
+    name: 'Мапа магазинів',
+    description: 'Торгові точки, XLSX-імпорт, кастомна SVG-мітка та віджет карти для сайту.',
+    path: '/tools/store-map',
+    icon: 'location'
+  },
+  {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',

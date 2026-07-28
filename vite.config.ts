@@ -12,7 +12,8 @@ export default defineConfig({
       input: {
         workspace: 'client/index.html',
         storefront: 'client/storefront.html',
-        tradeIn: 'client/trade-in.html'
+        tradeIn: 'client/trade-in.html',
+        storeMap: 'client/store-map.html'
       }
     }
   },
