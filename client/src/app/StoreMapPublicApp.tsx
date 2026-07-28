@@ -50,10 +50,33 @@ function routeUrl(point: StoreMapPoint) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${point.latitude},${point.longitude}`)}`;
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  })[character] || character);
+}
+
+function popupMarkup(point: StoreMapPoint, opened: boolean) {
+  return `<article class="store-map-popup">
+    <div class="store-map-popup__heading">
+      <strong>${escapeHtml(point.name)}</strong>
+      <span class="store-map-popup__status${opened ? ' store-map-popup__status--open' : ''}">${opened ? 'Відкрито' : 'Закрито'}</span>
+    </div>
+    <p><span aria-hidden="true">⌖</span>${escapeHtml(point.address)}</p>
+    <p><span aria-hidden="true">◷</span>${escapeHtml(point.hoursText || 'Графік уточнюється')}</p>
+    <a href="${routeUrl(point)}" target="_blank" rel="noreferrer">Прокласти маршрут</a>
+  </article>`;
+}
+
 export function StoreMapPublicApp() {
   const mapElementRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const markerRefs = useRef(new Map<string, L.Marker>());
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const [data, setData] = useState<PublicStoreMapData | null>(null);
   const [error, setError] = useState('');
@@ -65,7 +88,11 @@ export function StoreMapPublicApp() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/public/store-map', { signal: controller.signal })
+    const previewToken = new URLSearchParams(window.location.search).get('preview');
+    const dataUrl = previewToken
+      ? `/api/public/store-map?preview=${encodeURIComponent(previewToken)}`
+      : '/api/public/store-map';
+    fetch(dataUrl, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('Не вдалося завантажити торгові точки.');
         const payload = await response.json() as { data: PublicStoreMapData };
@@ -133,9 +160,11 @@ export function StoreMapPublicApp() {
   useEffect(() => {
     if (!data || !mapRef.current || !markerLayerRef.current) return;
     markerLayerRef.current.clearLayers();
+    markerRefs.current.clear();
     const svg = data.settings.markerSvg || defaultMarkerSvg;
     filteredPoints.forEach((point) => {
       const selected = point.id === selectedId;
+      const opened = isOpen(point, clock);
       const icon = L.divIcon({
         className: `store-map-leaflet-icon${selected ? ' store-map-leaflet-icon--selected' : ''}`,
         html: `<span class="store-map-leaflet-icon__art">${svg}</span>`,
@@ -147,13 +176,24 @@ export function StoreMapPublicApp() {
         title: point.name,
         keyboard: true
       }).addTo(markerLayerRef.current!);
+      marker.bindPopup(popupMarkup(point, opened), {
+        className: 'store-map-leaflet-popup',
+        minWidth: 240,
+        maxWidth: 290,
+        offset: [0, -8],
+        autoPanPadding: [24, 24]
+      });
+      markerRefs.current.set(point.id, marker);
       marker.on('click', () => {
         setSelectedId(point.id);
         cardRefs.current.get(point.id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
-      if (selected) marker.setZIndexOffset(1000);
+      if (selected) {
+        marker.setZIndexOffset(1000);
+        marker.openPopup();
+      }
     });
-  }, [data, filteredPoints, selectedId]);
+  }, [clock, data, filteredPoints, selectedId]);
 
   useEffect(() => {
     if (!data || !mapRef.current) return;
@@ -174,6 +214,7 @@ export function StoreMapPublicApp() {
 
   function selectPoint(point: StoreMapPoint) {
     setSelectedId(point.id);
+    markerRefs.current.get(point.id)?.openPopup();
     mapRef.current?.flyTo([point.latitude, point.longitude], Math.max(mapRef.current.getZoom(), 15), {
       duration: 0.6
     });

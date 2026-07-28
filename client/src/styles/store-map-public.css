@@ -39,6 +39,19 @@ button, input, select { font: inherit; }
 .store-map-leaflet-icon__art svg { width: 100%; height: 100%; display: block; }
 .store-map-leaflet-icon--selected .store-map-leaflet-icon__art { transform: scale(1.18); filter: drop-shadow(0 6px 7px rgba(15,23,42,.35)); }
 .leaflet-control-attribution { font-size: 9px; }
+.store-map-leaflet-popup .leaflet-popup-content-wrapper { overflow: hidden; border-radius: 14px; padding: 0; box-shadow: 0 16px 40px rgba(15,23,42,.2); }
+.store-map-leaflet-popup .leaflet-popup-content { margin: 0; }
+.store-map-leaflet-popup .leaflet-popup-close-button { top: 6px; right: 6px; z-index: 1; width: 28px; height: 28px; border-radius: 50%; color: #64748b; background: rgba(255,255,255,.9); font-size: 20px; line-height: 26px; }
+.store-map-leaflet-popup .leaflet-popup-tip { box-shadow: 3px 3px 8px rgba(15,23,42,.08); }
+.store-map-popup { display: grid; gap: 10px; padding: 16px; color: #172033; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.store-map-popup__heading { display: grid; gap: 8px; padding-right: 24px; }
+.store-map-popup__heading strong { font-size: 14px; line-height: 1.35; }
+.store-map-popup__status { width: fit-content; border-radius: 999px; padding: 4px 7px; color: #6b7b90; background: #dce4ed; font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.store-map-popup__status--open { color: #087a54; background: #d9f5e9; }
+.store-map-popup p { display: flex; gap: 7px; margin: 0; color: #728198; font-size: 11px; line-height: 1.45; }
+.store-map-popup p > span { flex: 0 0 auto; }
+.store-map-popup a { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #bcd2ff; border-radius: 9px; padding: 8px 12px; color: #2667e8; background: #fff; font-size: 11px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.store-map-popup a:hover { border-color: #2667e8; background: #f5f8ff; }
 
 .store-map-widget__directory { display: grid; grid-template-rows: auto minmax(0, 1fr); padding: 18px; }
 .store-map-widget__filters { display: grid; gap: 12px; padding-bottom: 13px; }

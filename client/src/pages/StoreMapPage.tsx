@@ -255,6 +255,7 @@ function WidgetSettings({ settings }: { settings: StoreMapSettings }) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(settings);
+  const [previewRevision, setPreviewRevision] = useState(() => Date.now());
   const save = useMutation({
     mutationFn: () => api.storeMap.updateSettings({
       title: draft.title,
@@ -278,6 +279,7 @@ function WidgetSettings({ settings }: { settings: StoreMapSettings }) {
     try {
       await save.mutateAsync();
       await queryClient.invalidateQueries({ queryKey: ['store-map-settings'] });
+      setPreviewRevision(Date.now());
       showToast('Налаштування віджета збережено.');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося зберегти налаштування.', 'error');
@@ -307,34 +309,48 @@ function WidgetSettings({ settings }: { settings: StoreMapSettings }) {
       <div><p className="eyebrow">Публічний модуль</p><h2>Віджет і кастомна мітка</h2><p>Налаштуйте вигляд мітки та скопіюйте готовий код для сторінки сайту.</p></div>
       <a className="button button--secondary" href="/store-map/widget" target="_blank" rel="noreferrer"><Icon name="openInNew" size={18} /> Відкрити віджет</a>
     </div>
-    <div className="store-map-settings-grid">
-      <div className="store-map-marker-settings">
-        <label className="field">
-          <span>Заголовок</span>
-          <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
-        </label>
-        <label className="store-map-marker-upload">
-          <span className="store-map-marker-preview">
-            {draft.markerSvg
-              ? <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(draft.markerSvg)}`} alt="Попередній перегляд мітки" />
-              : <Icon name="location" size={34} />}
-          </span>
-          <span><strong>Завантажити SVG-мітку</strong><small>До 150 КБ, без скриптів і зовнішніх ресурсів</small></span>
-          <input type="file" accept=".svg,image/svg+xml" onChange={(event) => void readMarker(event.target.files?.[0])} />
-        </label>
-        {draft.markerSvg && <button className="button button--secondary button--small" type="button" onClick={() => setDraft({ ...draft, markerSvg: '' })}>Повернути стандартну мітку</button>}
-        <div className="store-map-marker-dimensions">
-          <label className="field"><span>Ширина</span><input type="number" min={16} max={160} value={draft.markerWidth} onChange={(event) => setDraft({ ...draft, markerWidth: Number(event.target.value) })} /></label>
-          <label className="field"><span>Висота</span><input type="number" min={16} max={180} value={draft.markerHeight} onChange={(event) => setDraft({ ...draft, markerHeight: Number(event.target.value) })} /></label>
-          <label className="field"><span>Anchor X</span><input type="number" min={0} max={draft.markerWidth} value={draft.markerAnchorX} onChange={(event) => setDraft({ ...draft, markerAnchorX: Number(event.target.value) })} /></label>
-          <label className="field"><span>Anchor Y</span><input type="number" min={0} max={draft.markerHeight} value={draft.markerAnchorY} onChange={(event) => setDraft({ ...draft, markerAnchorY: Number(event.target.value) })} /></label>
+    <div className="store-map-widget-workspace">
+      <div className="store-map-widget-controls">
+        <div className="store-map-marker-settings">
+          <label className="field">
+            <span>Заголовок</span>
+            <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+          </label>
+          <label className="store-map-marker-upload">
+            <span className="store-map-marker-preview">
+              {draft.markerSvg
+                ? <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(draft.markerSvg)}`} alt="Попередній перегляд мітки" />
+                : <Icon name="location" size={34} />}
+            </span>
+            <span><strong>Завантажити SVG-мітку</strong><small>До 150 КБ, без скриптів і зовнішніх ресурсів</small></span>
+            <input type="file" accept=".svg,image/svg+xml" onChange={(event) => void readMarker(event.target.files?.[0])} />
+          </label>
+          {draft.markerSvg && <button className="button button--secondary button--small" type="button" onClick={() => setDraft({ ...draft, markerSvg: '' })}>Повернути стандартну мітку</button>}
+          <div className="store-map-marker-dimensions">
+            <label className="field"><span>Ширина</span><input type="number" min={16} max={160} value={draft.markerWidth} onChange={(event) => setDraft({ ...draft, markerWidth: Number(event.target.value) })} /></label>
+            <label className="field"><span>Висота</span><input type="number" min={16} max={180} value={draft.markerHeight} onChange={(event) => setDraft({ ...draft, markerHeight: Number(event.target.value) })} /></label>
+            <label className="field"><span>Anchor X</span><input type="number" min={0} max={draft.markerWidth} value={draft.markerAnchorX} onChange={(event) => setDraft({ ...draft, markerAnchorX: Number(event.target.value) })} /></label>
+            <label className="field"><span>Anchor Y</span><input type="number" min={0} max={draft.markerHeight} value={draft.markerAnchorY} onChange={(event) => setDraft({ ...draft, markerAnchorY: Number(event.target.value) })} /></label>
+          </div>
+          <button className="button button--primary" type="button" disabled={save.isPending} onClick={() => void saveSettings()}>{save.isPending ? 'Зберігаємо…' : 'Зберегти налаштування'}</button>
         </div>
-        <button className="button button--primary" type="button" disabled={save.isPending} onClick={() => void saveSettings()}>{save.isPending ? 'Зберігаємо…' : 'Зберегти налаштування'}</button>
+        <div className="store-map-embed-panel">
+          <div><strong>Код для вставки</strong><small>Скрипт автоматично створить адаптивний iframe.</small></div>
+          <pre><code>{embedCode}</code></pre>
+          <button className="button button--secondary" type="button" onClick={() => void copyEmbed()}><Icon name="copy" size={18} /> Копіювати код</button>
+        </div>
       </div>
-      <div className="store-map-embed-panel">
-        <div><strong>Код для вставки</strong><small>Скрипт автоматично створить адаптивний iframe.</small></div>
-        <pre><code>{embedCode}</code></pre>
-        <button className="button button--secondary" type="button" onClick={() => void copyEmbed()}><Icon name="copy" size={18} /> Копіювати код</button>
+      <div className="store-map-live-preview">
+        <div className="store-map-live-preview__heading">
+          <div><strong>Live preview</strong><small>Актуальна опублікована мапа</small></div>
+          <button className="icon-button" type="button" onClick={() => setPreviewRevision(Date.now())} aria-label="Оновити прев’ю"><Icon name="refresh" size={18} /></button>
+        </div>
+        <iframe
+          key={previewRevision}
+          src={`/store-map/widget?preview=${previewRevision}`}
+          title="Попередній перегляд мапи магазинів"
+          loading="eager"
+        />
       </div>
     </div>
   </section>;
@@ -348,6 +364,7 @@ export function StoreMapPage() {
   const [status, setStatus] = useState<'ALL' | StoreMapPublicationStatus>('ALL');
   const [editingPoint, setEditingPoint] = useState<StoreMapPoint | null | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'points' | 'widget'>('points');
   const points = useQuery({ queryKey: ['store-map-points'], queryFn: () => api.storeMap.points() });
   const settings = useQuery({ queryKey: ['store-map-settings'], queryFn: api.storeMap.settings });
   const remove = useMutation({ mutationFn: api.storeMap.removePoint });
@@ -391,46 +408,60 @@ export function StoreMapPage() {
       </div>
     </header>
 
-    <section className="store-map-stats" aria-label="Статистика торгових точок">
-      <article><span>Усього</span><strong>{points.data?.length || 0}</strong></article>
-      <article><span>Активні</span><strong>{points.data?.filter((point) => point.publicationStatus === 'ACTIVE').length || 0}</strong></article>
-      <article><span>Приховані</span><strong>{points.data?.filter((point) => point.publicationStatus === 'HIDDEN').length || 0}</strong></article>
-      <article><span>Міста</span><strong>{new Set(points.data?.map((point) => point.city)).size || 0}</strong></article>
-    </section>
+    <nav className="store-map-tabs" role="tablist" aria-label="Розділи мапи магазинів">
+      <button type="button" role="tab" aria-selected={activeTab === 'points'} onClick={() => setActiveTab('points')}>
+        <Icon name="location" size={18} /> Торгові точки <span>{points.data?.length || 0}</span>
+      </button>
+      <button type="button" role="tab" aria-selected={activeTab === 'widget'} onClick={() => setActiveTab('widget')}>
+        <Icon name="storefront" size={18} /> Віджет
+      </button>
+    </nav>
 
-    <section className="store-map-points-card">
-      <div className="store-map-section-heading">
-        <div><p className="eyebrow">База ТТ</p><h2>Торгові точки</h2></div>
-        <div className="store-map-list-filters">
-          <label className="store-map-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук за назвою, містом або адресою" /></label>
-          <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
-            <option value="ALL">Усі статуси</option>
-            <option value="ACTIVE">Активні</option>
-            <option value="HIDDEN">Приховані</option>
-          </select>
+    {activeTab === 'points' && <div className="store-map-tab-panel" role="tabpanel">
+      <section className="store-map-stats" aria-label="Статистика торгових точок">
+        <article><span>Усього</span><strong>{points.data?.length || 0}</strong></article>
+        <article><span>Активні</span><strong>{points.data?.filter((point) => point.publicationStatus === 'ACTIVE').length || 0}</strong></article>
+        <article><span>Приховані</span><strong>{points.data?.filter((point) => point.publicationStatus === 'HIDDEN').length || 0}</strong></article>
+        <article><span>Міста</span><strong>{new Set(points.data?.map((point) => point.city)).size || 0}</strong></article>
+      </section>
+
+      <section className="store-map-points-card">
+        <div className="store-map-section-heading">
+          <div><p className="eyebrow">База ТТ</p><h2>Торгові точки</h2></div>
+          <div className="store-map-list-filters">
+            <label className="store-map-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук за назвою, містом або адресою" /></label>
+            <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
+              <option value="ALL">Усі статуси</option>
+              <option value="ACTIVE">Активні</option>
+              <option value="HIDDEN">Приховані</option>
+            </select>
+          </div>
         </div>
-      </div>
-      {points.isLoading && <div className="store-map-state">Завантажуємо торгові точки…</div>}
-      {points.isError && <div className="store-map-state store-map-state--error">Не вдалося завантажити торгові точки.</div>}
-      {!points.isLoading && !visiblePoints.length && <div className="store-map-state">За поточними фільтрами торгових точок немає.</div>}
-      {visiblePoints.length > 0 && <div className="store-map-points-list">
-        {visiblePoints.map((point) => <article className="store-map-point-row" key={point.id}>
-          <span className="store-map-point-row__pin"><Icon name="location" size={20} /></span>
-          <div className="store-map-point-row__main">
-            <div><strong>{point.name}</strong><span className={`store-map-publication-badge store-map-publication-badge--${point.publicationStatus.toLowerCase()}`}>{point.publicationStatus === 'ACTIVE' ? 'Активна' : 'Прихована'}</span></div>
-            <p>{point.city} · {point.address}</p>
-            <small>{point.hoursText || 'Графік не вказано'} · {point.latitude}, {point.longitude}</small>
-          </div>
-          <div className="store-map-point-row__actions">
-            <button className="icon-button" type="button" onClick={() => setEditingPoint(point)} aria-label={`Редагувати ${point.name}`}><Icon name="edit" size={18} /></button>
-            <button className="icon-button store-map-delete-button" type="button" onClick={() => void removePoint(point)} aria-label={`Видалити ${point.name}`}><Icon name="delete" size={18} /></button>
-          </div>
-        </article>)}
-      </div>}
-    </section>
+        {points.isLoading && <div className="store-map-state">Завантажуємо торгові точки…</div>}
+        {points.isError && <div className="store-map-state store-map-state--error">Не вдалося завантажити торгові точки.</div>}
+        {!points.isLoading && !visiblePoints.length && <div className="store-map-state">За поточними фільтрами торгових точок немає.</div>}
+        {visiblePoints.length > 0 && <div className="store-map-points-list">
+          {visiblePoints.map((point) => <article className="store-map-point-row" key={point.id}>
+            <span className="store-map-point-row__pin"><Icon name="location" size={20} /></span>
+            <div className="store-map-point-row__main">
+              <div><strong>{point.name}</strong><span className={`store-map-publication-badge store-map-publication-badge--${point.publicationStatus.toLowerCase()}`}>{point.publicationStatus === 'ACTIVE' ? 'Активна' : 'Прихована'}</span></div>
+              <p>{point.city} · {point.address}</p>
+              <small>{point.hoursText || 'Графік не вказано'} · {point.latitude}, {point.longitude}</small>
+            </div>
+            <div className="store-map-point-row__actions">
+              <button className="icon-button" type="button" onClick={() => setEditingPoint(point)} aria-label={`Редагувати ${point.name}`}><Icon name="edit" size={18} /></button>
+              <button className="icon-button store-map-delete-button" type="button" onClick={() => void removePoint(point)} aria-label={`Видалити ${point.name}`}><Icon name="delete" size={18} /></button>
+            </div>
+          </article>)}
+        </div>}
+      </section>
+    </div>}
 
-    {settings.data && <WidgetSettings settings={settings.data} />}
-    {settings.isLoading && <div className="store-map-state">Завантажуємо налаштування віджета…</div>}
+    {activeTab === 'widget' && <div className="store-map-tab-panel" role="tabpanel">
+      {settings.data && <WidgetSettings settings={settings.data} />}
+      {settings.isLoading && <div className="store-map-state">Завантажуємо налаштування віджета…</div>}
+      {settings.isError && <div className="store-map-state store-map-state--error">Не вдалося завантажити налаштування віджета.</div>}
+    </div>}
 
     {editingPoint !== undefined && <PointEditor point={editingPoint} onClose={() => setEditingPoint(undefined)} onSaved={refreshPoints} />}
     {importOpen && <ImportDialog onClose={() => setImportOpen(false)} onCommitted={refreshPoints} />}
