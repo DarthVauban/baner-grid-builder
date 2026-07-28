@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { FormEvent, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   isTradeInFieldComplete,
   tradeInAnswerLabel,
@@ -9,7 +9,8 @@ import type {
   TradeInAnswer,
   TradeInAnswers,
   TradeInConfig,
-  TradeInField
+  TradeInField,
+  TradeInFaqItem
 } from '../../types/trade-in';
 import '../../styles/trade-in-public.css';
 
@@ -25,7 +26,141 @@ interface TradeInPublicPageProps {
 }
 
 function scrollToForm() {
-  document.getElementById('trade-in-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('trade-in-form')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+interface AnimatedNumberParts {
+  prefix: string;
+  suffix: string;
+  target: number;
+  fractionDigits: number;
+  decimalSeparator: '.' | ',';
+}
+
+function parseAnimatedNumber(value: string): AnimatedNumberParts | null {
+  const match = value.match(/^(.*?)(-?\d[\d\s]*(?:[.,]\d+)?)(.*)$/);
+  if (!match) return null;
+  const numericSegment = match[2];
+  const rawNumber = numericSegment.trim();
+  const target = Number(rawNumber.replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(target)) return null;
+  const fractionDigits = rawNumber.match(/[.,](\d+)$/)?.[1].length || 0;
+  const trailingSpace = numericSegment.match(/\s+$/)?.[0] || '';
+  return {
+    prefix: match[1],
+    suffix: `${trailingSpace}${match[3]}`,
+    target,
+    fractionDigits,
+    decimalSeparator: rawNumber.includes(',') ? ',' : '.'
+  };
+}
+
+function formatAnimatedNumber(parts: AnimatedNumberParts, value: number) {
+  const number = parts.fractionDigits > 0
+    ? value.toFixed(parts.fractionDigits).replace('.', parts.decimalSeparator)
+    : Math.round(value).toString();
+  return `${parts.prefix}${number}${parts.suffix}`;
+}
+
+function AnimatedStatValue({ value, animate }: { value: string; animate: boolean }) {
+  const elementRef = useRef<HTMLElement>(null);
+  const parts = useMemo(() => parseAnimatedNumber(value), [value]);
+  const [displayValue, setDisplayValue] = useState(value);
+
+  useEffect(() => {
+    setDisplayValue(value);
+    if (!animate || !parts || prefersReducedMotion() || typeof requestAnimationFrame !== 'function') return;
+    setDisplayValue(formatAnimatedNumber(parts, 0));
+
+    let observer: IntersectionObserver | null = null;
+    let animationFrame = 0;
+    let started = false;
+    let cancelled = false;
+
+    const start = () => {
+      if (started || cancelled) return;
+      started = true;
+      observer?.disconnect();
+      const duration = 1_300;
+      let startedAt: number | null = null;
+
+      const tick = (now: number) => {
+        if (cancelled) return;
+        if (startedAt == null) startedAt = now;
+        const progress = Math.min(1, (now - startedAt) / duration);
+        const easedProgress = 1 - ((1 - progress) ** 3);
+        setDisplayValue(progress === 1 ? value : formatAnimatedNumber(parts, parts.target * easedProgress));
+        if (progress < 1) animationFrame = requestAnimationFrame(tick);
+      };
+
+      animationFrame = requestAnimationFrame(tick);
+    };
+
+    if (typeof IntersectionObserver === 'undefined' || !elementRef.current) {
+      start();
+    } else {
+      observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) start();
+      }, { threshold: 0.35 });
+      observer.observe(elementRef.current);
+    }
+
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      cancelAnimationFrame(animationFrame);
+    };
+  }, [animate, parts, value]);
+
+  return (
+    <strong ref={elementRef} aria-label={value} data-count-up={parts ? 'true' : 'false'}>
+      {displayValue}
+    </strong>
+  );
+}
+
+function TradeInFaqAccordion({ items }: { items: TradeInFaqItem[] }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const baseId = useId().replace(/:/g, '');
+
+  return (
+    <div className="ti-faq__list">
+      {items.map((item, index) => {
+        const open = openId === item.id;
+        const buttonId = `${baseId}-faq-button-${index}`;
+        const panelId = `${baseId}-faq-panel-${index}`;
+        return (
+          <article className={`ti-faq-item${open ? ' is-open' : ''}`} key={item.id}>
+            <h3>
+              <button
+                id={buttonId}
+                type="button"
+                aria-expanded={open}
+                aria-controls={panelId}
+                onClick={() => setOpenId((current) => current === item.id ? null : item.id)}
+              >
+                <span>{item.question}</span>
+                <i aria-hidden="true">+</i>
+              </button>
+            </h3>
+            <div
+              className="ti-faq-item__panel"
+              id={panelId}
+              role="region"
+              aria-labelledby={buttonId}
+              aria-hidden={!open}
+            >
+              <div><p>{item.answer}</p></div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
 }
 
 function TradeInFieldControl({
@@ -165,12 +300,21 @@ function TradeInWizard({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [done, setDone] = useState<SubmissionResult | null>(null);
+  const [stepDirection, setStepDirection] = useState<'forward' | 'backward'>('forward');
+  const [transitioning, setTransitioning] = useState(false);
+  const stepContentRef = useRef<HTMLDivElement>(null);
+  const transitionTimerRef = useRef<number | null>(null);
   const activeSteps = useMemo(() => visibleTradeInSteps(config.form.steps, answers), [answers, config.form.steps]);
   const currentStep = activeSteps[Math.min(stepIndex, Math.max(0, activeSteps.length - 1))];
   const fields = currentStep ? visibleTradeInFields(currentStep, answers) : [];
 
+  useEffect(() => () => {
+    if (transitionTimerRef.current != null) window.clearTimeout(transitionTimerRef.current);
+  }, []);
+
   useEffect(() => {
     if (stepIndex < activeSteps.length) return;
+    setStepDirection('backward');
     setStepIndex(Math.max(0, activeSteps.length - 1));
   }, [activeSteps.length, stepIndex]);
 
@@ -190,13 +334,47 @@ function TradeInWizard({
     return invalid.length === 0;
   }
 
+  function moveToStep(nextIndex: number, direction: 'forward' | 'backward') {
+    const targetIndex = Math.min(Math.max(0, nextIndex), Math.max(0, activeSteps.length - 1));
+    if (targetIndex === stepIndex || transitioning) return;
+
+    const commit = (animated: boolean) => {
+      setStepDirection(direction);
+      setStepIndex(targetIndex);
+      setInvalidKeys(new Set());
+      if (!animated) {
+        setTransitioning(false);
+        return;
+      }
+      if (transitionTimerRef.current != null) window.clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = window.setTimeout(() => setTransitioning(false), 380);
+    };
+
+    const node = stepContentRef.current;
+    if (!node?.animate || prefersReducedMotion()) {
+      commit(false);
+      return;
+    }
+
+    setTransitioning(true);
+    const offset = direction === 'forward' ? -22 : 22;
+    node.animate([
+      { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+      { opacity: 0, transform: `translate3d(${offset}px, 0, 0)` }
+    ], {
+      duration: 150,
+      easing: 'cubic-bezier(.4, 0, 1, 1)',
+      fill: 'forwards'
+    }).finished.then(() => commit(true), () => commit(true));
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (transitioning) return;
     if (!validateCurrentStep()) return;
     if (stepIndex < activeSteps.length - 1) {
-      setStepIndex((current) => current + 1);
-      setInvalidKeys(new Set());
-      document.getElementById('trade-in-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      moveToStep(stepIndex + 1, 'forward');
+      scrollToForm();
       return;
     }
     setSubmitting(true);
@@ -227,6 +405,7 @@ function TradeInWizard({
         {done.number && <div className="ti-success__number"><span>Номер заявки</span><strong>{done.number}</strong></div>}
         <button type="button" className="ti-button ti-button--primary" onClick={() => {
           setAnswers({});
+          setStepDirection('forward');
           setStepIndex(0);
           setDone(null);
         }}>Заповнити ще раз</button>
@@ -245,12 +424,20 @@ function TradeInWizard({
         <h2>{config.form.title}</h2>
         {config.form.description && <p>{config.form.description}</p>}
       </div>
-      <form className="ti-form-shell" onSubmit={(event) => void submit(event)}>
+      <form className="ti-form-shell" aria-busy={transitioning} onSubmit={(event) => void submit(event)}>
         {config.form.showProgress && (
           <ol className="ti-progress" aria-label="Кроки форми">
             {activeSteps.map((step, index) => (
-              <li className={index === stepIndex ? 'is-active' : index < stepIndex ? 'is-complete' : ''} key={step.id}>
-                <button type="button" disabled={index > stepIndex} onClick={() => index < stepIndex && setStepIndex(index)}>
+              <li
+                className={index === stepIndex ? 'is-active' : index < stepIndex ? 'is-complete' : ''}
+                aria-current={index === stepIndex ? 'step' : undefined}
+                key={step.id}
+              >
+                <button
+                  type="button"
+                  disabled={index >= stepIndex || transitioning}
+                  onClick={() => moveToStep(index, 'backward')}
+                >
                   <span>{index < stepIndex ? '✓' : index + 1}</span>
                   <strong>{step.title}</strong>
                 </button>
@@ -258,47 +445,53 @@ function TradeInWizard({
             ))}
           </ol>
         )}
-        <div className="ti-form-shell__heading">
-          {config.form.showStepNumbers && <span>{String(stepIndex + 1).padStart(2, '0')}</span>}
-          <div>
-            <p>Крок {stepIndex + 1} з {activeSteps.length}</p>
-            <h3>{currentStep.title}</h3>
-            {currentStep.description && <small>{currentStep.description}</small>}
+        <div
+          className={`ti-form-step ti-form-step--${stepDirection}`}
+          data-step-direction={stepDirection}
+          ref={stepContentRef}
+          key={`${currentStep.id}-${stepIndex}`}
+        >
+          <div className="ti-form-shell__heading">
+            {config.form.showStepNumbers && <span>{String(stepIndex + 1).padStart(2, '0')}</span>}
+            <div>
+              <p>Крок {stepIndex + 1} з {activeSteps.length}</p>
+              <h3>{currentStep.title}</h3>
+              {currentStep.description && <small>{currentStep.description}</small>}
+            </div>
           </div>
+          <div className="ti-field-grid">
+            {fields.map((field) => (
+              <TradeInFieldControl
+                field={field}
+                value={answers[field.key]}
+                invalid={invalidKeys.has(field.key)}
+                onChange={(value) => setValue(field, value)}
+                key={field.id}
+              />
+            ))}
+          </div>
+          {invalidKeys.size > 0 && <p className="ti-form-error">Заповніть обовʼязкові поля цього кроку.</p>}
+          {submitError && <p className="ti-form-error">{submitError}</p>}
+          {config.form.showSummary && stepIndex === activeSteps.length - 1 && summary.length > 0 && (
+            <aside className="ti-summary">
+              <h4>Підсумок анкети</h4>
+              <dl>{summary.map((item) => <div key={item.key}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
+            </aside>
+          )}
         </div>
-        <div className="ti-field-grid">
-          {fields.map((field) => (
-            <TradeInFieldControl
-              field={field}
-              value={answers[field.key]}
-              invalid={invalidKeys.has(field.key)}
-              onChange={(value) => setValue(field, value)}
-              key={field.id}
-            />
-          ))}
-        </div>
-        {invalidKeys.size > 0 && <p className="ti-form-error">Заповніть обовʼязкові поля цього кроку.</p>}
-        {submitError && <p className="ti-form-error">{submitError}</p>}
-        {config.form.showSummary && stepIndex === activeSteps.length - 1 && summary.length > 0 && (
-          <aside className="ti-summary">
-            <h4>Підсумок анкети</h4>
-            <dl>{summary.map((item) => <div key={item.key}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
-          </aside>
-        )}
         <footer className="ti-form-actions">
           <button
             className="ti-button ti-button--secondary"
             type="button"
-            disabled={stepIndex === 0 || submitting}
+            disabled={stepIndex === 0 || submitting || transitioning}
             onClick={() => {
-              setStepIndex((current) => Math.max(0, current - 1));
-              setInvalidKeys(new Set());
+              moveToStep(stepIndex - 1, 'backward');
             }}
           >
             ← {config.form.backLabel}
           </button>
           <span>Крок {stepIndex + 1} / {activeSteps.length}</span>
-          <button className="ti-button ti-button--primary" type="submit" disabled={submitting}>
+          <button className="ti-button ti-button--primary" type="submit" disabled={submitting || transitioning}>
             {submitting ? 'Надсилаємо…' : stepIndex === activeSteps.length - 1 ? config.form.submitLabel : config.form.nextLabel} →
           </button>
         </footer>
@@ -388,7 +581,12 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
 
       {config.stats.visible && config.stats.items.length > 0 && (
         <section className="ti-stats"><div className="ti-container">
-          {config.stats.items.map((item) => <article key={item.id}><strong>{item.value}</strong><span>{item.label}</span></article>)}
+          {config.stats.items.map((item) => (
+            <article key={item.id}>
+              <AnimatedStatValue value={item.value} animate={!compact} />
+              <span>{item.label}</span>
+            </article>
+          ))}
         </div></section>
       )}
 
@@ -434,7 +632,7 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
               <p className="ti-eyebrow">{config.faq.eyebrow}</p>
               <h2>{config.faq.title}</h2>
             </div>
-            <div>{config.faq.items.map((item) => <details key={item.id}><summary>{item.question}<span>+</span></summary><p>{item.answer}</p></details>)}</div>
+            <TradeInFaqAccordion items={config.faq.items} />
           </div>
         </section>
       )}

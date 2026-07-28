@@ -65,15 +65,19 @@
 .ti-form-shell { border: 1px solid var(--ti-border); border-radius: var(--ti-radius); padding: clamp(24px,4vw,48px); background: var(--ti-surface); box-shadow: 0 24px 70px rgba(20,28,50,.09); }
 .ti-progress { display: grid; grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap: 8px; margin: 0 0 40px; padding: 0; list-style: none; }
 .ti-progress li { position: relative; min-width: 0; }
-.ti-progress li::after { content: ""; position: absolute; top: 18px; left: calc(50% + 22px); right: calc(-50% + 22px); height: 2px; background: var(--ti-border); }
+.ti-progress li::after { content: ""; position: absolute; top: 18px; left: calc(50% + 22px); right: calc(-50% + 22px); height: 2px; background: var(--ti-border); transition: background-color .3s ease; }
 .ti-progress li:last-child::after { display: none; }
 .ti-progress li.is-complete::after { background: var(--ti-primary); }
 .ti-progress button { width: 100%; min-width: 0; display: grid; justify-items: center; gap: 7px; border: 0; padding: 0; color: var(--ti-muted); background: transparent; cursor: default; text-align: center; }
 .ti-progress button:not(:disabled) { cursor: pointer; }
-.ti-progress button > span { position: relative; z-index: 1; width: 36px; height: 36px; display: grid; place-items: center; border: 2px solid var(--ti-border); border-radius: 50%; background: var(--ti-surface); font-size: 12px; font-weight: 900; }
+.ti-progress button > span { position: relative; z-index: 1; width: 36px; height: 36px; display: grid; place-items: center; border: 2px solid var(--ti-border); border-radius: 50%; background: var(--ti-surface); font-size: 12px; font-weight: 900; transition: color .28s ease, border-color .28s ease, background-color .28s ease, transform .28s ease; }
 .ti-progress button > strong { max-width: 100%; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .ti-progress .is-active button, .ti-progress .is-complete button { color: var(--ti-text); }
 .ti-progress .is-active button > span, .ti-progress .is-complete button > span { color: var(--ti-primary-text); border-color: var(--ti-primary); background: var(--ti-primary); }
+.ti-progress .is-active button > span { transform: scale(1.08); }
+.ti-form-step { will-change: opacity, transform; }
+.ti-form-step--forward { animation: ti-form-step-forward .36s cubic-bezier(.22,.8,.3,1) both; }
+.ti-form-step--backward { animation: ti-form-step-backward .36s cubic-bezier(.22,.8,.3,1) both; }
 .ti-form-shell__heading { display: flex; align-items: flex-start; gap: 18px; margin-bottom: 30px; }
 .ti-form-shell__heading > span { flex: 0 0 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; color: var(--ti-primary); background: color-mix(in srgb, var(--ti-primary) 12%, var(--ti-surface)); font-size: 13px; font-weight: 900; }
 .ti-form-shell__heading p { margin: 0 0 4px; color: var(--ti-primary); font-size: 10px; font-weight: 900; text-transform: uppercase; }
@@ -90,11 +94,12 @@
 .ti-field.is-invalid input, .ti-field.is-invalid textarea, .ti-field.is-invalid select, .ti-field.is-invalid .ti-choice label { border-color: #c33c54; }
 .ti-choice legend { margin-bottom: 10px; padding: 0; }
 .ti-choice > div { display: grid; grid-template-columns: repeat(auto-fit,minmax(145px,1fr)); gap: 10px; }
-.ti-choice label { min-height: 68px; display: grid; grid-template-columns: minmax(0,1fr) 22px; align-items: center; gap: 8px; border: 1px solid var(--ti-border); border-radius: calc(var(--ti-button-radius) * .9); padding: 13px 14px; cursor: pointer; background: var(--ti-surface); }
+.ti-choice label { min-height: 68px; display: grid; grid-template-columns: minmax(0,1fr) 22px; align-items: center; gap: 8px; border: 1px solid var(--ti-border); border-radius: calc(var(--ti-button-radius) * .9); padding: 13px 14px; cursor: pointer; background: var(--ti-surface); transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+.ti-choice label:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(20,28,50,.06); }
 .ti-choice label input { position: absolute; opacity: 0; pointer-events: none; }
-.ti-choice label i { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--ti-border); border-radius: 50%; color: transparent; font-size: 11px; font-style: normal; }
+.ti-choice label i { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--ti-border); border-radius: 50%; color: transparent; font-size: 11px; font-style: normal; transition: color .2s ease, border-color .2s ease, background-color .2s ease, transform .2s ease; }
 .ti-choice label.is-selected { border-color: var(--ti-primary); background: color-mix(in srgb, var(--ti-primary) 7%, var(--ti-surface)); }
-.ti-choice label.is-selected i { color: var(--ti-primary-text); border-color: var(--ti-primary); background: var(--ti-primary); }
+.ti-choice label.is-selected i { color: var(--ti-primary-text); border-color: var(--ti-primary); background: var(--ti-primary); transform: scale(1.04); }
 .ti-choice label strong { font-size: 13px; }
 .ti-consent { grid-template-columns: 22px minmax(0,1fr); align-items: start; }
 .ti-consent input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--ti-primary); }
@@ -108,7 +113,7 @@
 .ti-summary dd { margin: 0; font-size: 11px; font-weight: 800; text-align: right; }
 .ti-form-actions { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; border-top: 1px solid var(--ti-border); margin-top: 34px; padding-top: 24px; }
 .ti-form-actions > span { color: var(--ti-muted); font-size: 11px; text-align: center; }
-.ti-success { display: grid; justify-items: center; gap: 10px; max-width: 760px; margin: var(--ti-section-gap) auto; text-align: center; scroll-margin-top: 92px; }
+.ti-success { display: grid; justify-items: center; gap: 10px; max-width: 760px; margin: var(--ti-section-gap) auto; text-align: center; scroll-margin-top: 92px; animation: ti-success-enter .48s cubic-bezier(.22,.8,.3,1) both; }
 .ti-success__icon { width: 70px; height: 70px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--ti-success); font-size: 28px; }
 .ti-success h2 { margin: 3px 0 0; font-size: clamp(28px,4vw,44px); }
 .ti-success > p:not(.ti-eyebrow) { max-width: 520px; margin: 0; color: var(--ti-muted); }
@@ -117,12 +122,16 @@
 .ti-success__number strong { font-size: 24px; letter-spacing: .08em; }
 .ti-empty { margin-block: var(--ti-section-gap); text-align: center; }
 .ti-faq .ti-container { display: grid; grid-template-columns: minmax(260px,.8fr) minmax(0,1.2fr); gap: clamp(30px,7vw,90px); }
-.ti-faq details { border-bottom: 1px solid var(--ti-border); padding: 20px 0; }
-.ti-faq summary { display: flex; justify-content: space-between; gap: 20px; cursor: pointer; font-size: 16px; font-weight: 800; list-style: none; }
-.ti-faq summary::-webkit-details-marker { display: none; }
-.ti-faq summary span { color: var(--ti-primary); font-size: 22px; }
-.ti-faq details[open] summary span { transform: rotate(45deg); }
-.ti-faq details p { margin: 12px 34px 0 0; color: var(--ti-muted); font-size: 14px; }
+.ti-faq__list { min-width: 0; }
+.ti-faq-item { border-bottom: 1px solid var(--ti-border); }
+.ti-faq-item h3 { margin: 0; }
+.ti-faq-item h3 > button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 20px; border: 0; padding: 20px 0; color: var(--ti-text); cursor: pointer; background: transparent; font-size: 16px; font-weight: 800; text-align: left; }
+.ti-faq-item h3 > button i { flex: 0 0 auto; color: var(--ti-primary); font-size: 24px; font-style: normal; line-height: 1; transition: transform .34s cubic-bezier(.22,.8,.3,1); }
+.ti-faq-item.is-open h3 > button i { transform: rotate(45deg); }
+.ti-faq-item__panel { display: grid; grid-template-rows: 0fr; opacity: 0; transform: translateY(-5px); transition: grid-template-rows .4s cubic-bezier(.22,.8,.3,1), opacity .26s ease, transform .4s cubic-bezier(.22,.8,.3,1); }
+.ti-faq-item__panel > div { min-height: 0; overflow: hidden; }
+.ti-faq-item__panel p { margin: 0 34px 20px 0; color: var(--ti-muted); font-size: 14px; }
+.ti-faq-item.is-open .ti-faq-item__panel { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
 .ti-contact { padding: clamp(52px,7vw,86px) 0; color: var(--ti-primary-text); background: var(--ti-primary); }
 .ti-contact .ti-container { display: flex; align-items: center; justify-content: space-between; gap: 40px; }
 .ti-contact .ti-eyebrow { color: color-mix(in srgb, var(--ti-primary-text) 70%, transparent); }
@@ -141,6 +150,18 @@
 .ti-state p { max-width: 560px; margin: 0; color: #667085; }
 .ti-state__loader { width: 34px; height: 34px; border: 3px solid #ddd9ff; border-top-color: #6d5dfc; border-radius: 50%; animation: ti-spin .8s linear infinite; }
 @keyframes ti-spin { to { transform: rotate(360deg); } }
+@keyframes ti-form-step-forward {
+  from { opacity: 0; transform: translate3d(24px,0,0); }
+  to { opacity: 1; transform: translate3d(0,0,0); }
+}
+@keyframes ti-form-step-backward {
+  from { opacity: 0; transform: translate3d(-24px,0,0); }
+  to { opacity: 1; transform: translate3d(0,0,0); }
+}
+@keyframes ti-success-enter {
+  from { opacity: 0; transform: translate3d(0,18px,0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
 
 .ti-page--compact { min-height: 0; font-size: 75%; }
 .ti-page--compact .ti-container { width: min(calc(100% - 22px),var(--ti-max-width)); }
@@ -187,8 +208,8 @@
 .ti-page--compact .ti-choice label { min-height: 43px; border-radius: 8px; padding: 8px; }
 .ti-page--compact .ti-choice label i { width: 15px; height: 15px; font-size: 7px; }
 .ti-page--compact .ti-form-actions { margin-top: 18px; padding-top: 15px; }
-.ti-page--compact .ti-faq summary { font-size: 10px; }
-.ti-page--compact .ti-faq details p { font-size: 8px; }
+.ti-page--compact .ti-faq-item h3 > button { font-size: 10px; }
+.ti-page--compact .ti-faq-item__panel p { font-size: 8px; }
 .ti-page--compact .ti-contact { padding-block: 42px; }
 .ti-page--compact .ti-footer { padding-block: 24px; }
 
@@ -220,4 +241,16 @@
   .ti-contact .ti-button { width: 100%; }
   .ti-footer .ti-container > div:last-child { justify-items: start; }
   .ti-footer small { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ti-form-step,
+  .ti-success { animation: none; }
+  .ti-progress li::after,
+  .ti-progress button > span,
+  .ti-choice label,
+  .ti-choice label i,
+  .ti-faq-item h3 > button i,
+  .ti-faq-item__panel { transition: none; }
+  .ti-choice label:hover { transform: none; }
 }
