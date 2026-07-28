@@ -29,7 +29,8 @@ test('extracts Ukrainian city names from imported titles', () => {
 test('builds a Kyiv schedule and resolves manual overrides', () => {
   const schedule = scheduleFromHoursText('08:00 - 19:30');
   assert.deepEqual(schedule.days.mon, [{ open: '08:00', close: '19:30' }]);
-  assert.equal(isStoreMapPointOpen({ schedule, openStatusOverride: 'OPEN' }), true);
+  assert.equal(isStoreMapPointOpen({ schedule, openStatusOverride: 'AUTO' }, new Date('2026-07-27T07:00:00Z')), true);
+  assert.equal(isStoreMapPointOpen({ schedule, openStatusOverride: 'TEMPORARILY_CLOSED' }), false);
   assert.equal(isStoreMapPointOpen({ schedule, openStatusOverride: 'CLOSED' }), false);
 });
 

@@ -62,8 +62,8 @@ function minutes(value) {
 }
 
 export function isStoreMapPointOpen(point, now = new Date()) {
-  if (point.openStatusOverride === 'OPEN' || point.open_status_override === 'OPEN') return true;
-  if (point.openStatusOverride === 'CLOSED' || point.open_status_override === 'CLOSED') return false;
+  const operatingStatus = point.openStatusOverride || point.open_status_override;
+  if (operatingStatus === 'TEMPORARILY_CLOSED' || operatingStatus === 'CLOSED') return false;
   const schedule = point.schedule && typeof point.schedule === 'object'
     ? point.schedule
     : scheduleFromHoursText(point.hoursText || point.hours_text || '');

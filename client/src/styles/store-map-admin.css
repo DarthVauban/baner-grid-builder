@@ -39,15 +39,18 @@
 .store-map-publication-badge--hidden { color: var(--muted); background: var(--surface-soft); }
 .store-map-state { padding: 32px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); text-align: center; }
 .store-map-state--error { color: var(--danger); }
-.store-map-point-modal { width: min(760px, calc(100vw - 28px)); }
-.store-map-point-form { overflow: auto; }
-.store-map-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 22px; }
+.store-map-point-modal { width: min(760px, calc(100vw - 28px)); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+.store-map-point-form { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
+.store-map-form-grid { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; overflow: auto; padding: 22px; }
+.store-map-point-form .modal__footer, .store-map-import-modal > .modal__footer { padding: 18px 22px 22px; background: var(--surface); }
 .store-map-field--wide { grid-column: 1 / -1; }
 .store-map-form-grid .field select, .store-map-list-filters select { font: inherit; }
 .store-map-form-grid .field select { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; color: var(--ink); background: var(--surface); }
-.store-map-import-modal { width: min(1080px, calc(100vw - 28px)); max-height: min(860px, calc(100vh - 28px)); }
+.store-map-import-modal { width: min(1080px, calc(100vw - 28px)); max-height: min(860px, calc(100vh - 28px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 .store-map-import-content { min-height: 240px; display: grid; gap: 18px; overflow: auto; padding: 22px; }
-.store-map-dropzone { min-height: 106px; display: flex; align-items: center; justify-content: center; gap: 15px; border: 2px dashed var(--line); border-radius: 18px; color: var(--muted); background: var(--surface-soft); text-align: left; }
+.store-map-dropzone { position: relative; min-height: 106px; display: flex; align-items: center; justify-content: center; gap: 15px; border: 2px dashed var(--line); border-radius: 18px; color: var(--muted); background: var(--surface-soft); text-align: left; cursor: pointer; transition: border-color 150ms ease, color 150ms ease, background 150ms ease, box-shadow 150ms ease; }
+.store-map-dropzone:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); color: var(--brand); }
+.store-map-dropzone--active { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-soft) 80%, transparent); }
 .store-map-dropzone input, .store-map-marker-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .store-map-dropzone span { display: grid; gap: 4px; }
 .store-map-dropzone strong { color: var(--ink); }

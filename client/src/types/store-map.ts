@@ -1,5 +1,5 @@
 export type StoreMapPublicationStatus = 'ACTIVE' | 'HIDDEN';
-export type StoreMapOpenStatusOverride = 'AUTO' | 'OPEN' | 'CLOSED';
+export type StoreMapOpenStatusOverride = 'AUTO' | 'TEMPORARILY_CLOSED' | 'CLOSED';
 
 export interface StoreMapScheduleInterval {
   open: string;

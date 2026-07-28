@@ -36,12 +36,13 @@ test('store map CRUD, public feed, settings and embed script work through REST A
     address: 'вул. Якова Гніздовського, 1А',
     hoursText: '08:00 - 19:30',
     publicationStatus: 'ACTIVE',
-    openStatusOverride: 'AUTO',
+    openStatusOverride: 'TEMPORARILY_CLOSED',
     latitude: 50.45165,
     longitude: 30.63891
   }).expect(201);
 
   assert.equal(created.body.data.externalId, 'TT-001');
+  assert.equal(created.body.data.openStatusOverride, 'TEMPORARILY_CLOSED');
   assert.equal(created.body.data.schedule.timezone, 'Europe/Kyiv');
 
   const publicData = await request(app).get('/api/public/store-map').expect(200);

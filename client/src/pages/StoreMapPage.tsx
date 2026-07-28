@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
+import { TimeRangePicker } from '../components/TimeRangePicker';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import type {
   StoreMapImportPreview,
+  StoreMapOpenStatusOverride,
   StoreMapPoint,
   StoreMapPointInput,
   StoreMapPublicationStatus,
@@ -18,6 +21,16 @@ type PointDraft = Omit<StoreMapPointInput, 'latitude' | 'longitude'> & {
   latitude: string;
   longitude: string;
 };
+
+const publicationOptions = [
+  { value: 'ACTIVE' as const, label: 'Активна' },
+  { value: 'HIDDEN' as const, label: 'Прихована' }
+];
+const operatingStatusOptions: Array<{ value: StoreMapOpenStatusOverride; label: string }> = [
+  { value: 'AUTO', label: 'За розкладом' },
+  { value: 'TEMPORARILY_CLOSED', label: 'Тимч. зачинено' },
+  { value: 'CLOSED', label: 'Зачинено' }
+];
 
 const emptyPoint: PointDraft = {
   externalId: '',
@@ -107,25 +120,25 @@ function PointEditor({
             <span>Адреса</span>
             <input value={draft.address} onChange={(event) => setDraft({ ...draft, address: event.target.value })} required maxLength={500} />
           </label>
-          <label className="field">
-            <span>Час роботи</span>
-            <input value={draft.hoursText} onChange={(event) => setDraft({ ...draft, hoursText: event.target.value })} placeholder="08:00 - 19:30" maxLength={120} />
-          </label>
-          <label className="field">
+          <TimeRangePicker label="Час роботи" value={draft.hoursText} onChange={(hoursText) => setDraft({ ...draft, hoursText })} />
+          <div className="field">
             <span>Публікація</span>
-            <select value={draft.publicationStatus} onChange={(event) => setDraft({ ...draft, publicationStatus: event.target.value as StoreMapPublicationStatus })}>
-              <option value="ACTIVE">Активна</option>
-              <option value="HIDDEN">Прихована</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>Статус відкриття</span>
-            <select value={draft.openStatusOverride} onChange={(event) => setDraft({ ...draft, openStatusOverride: event.target.value as PointDraft['openStatusOverride'] })}>
-              <option value="AUTO">За графіком</option>
-              <option value="OPEN">Примусово відкрита</option>
-              <option value="CLOSED">Примусово закрита</option>
-            </select>
-          </label>
+            <StyledSelect
+              value={draft.publicationStatus}
+              options={publicationOptions}
+              onChange={(publicationStatus) => setDraft({ ...draft, publicationStatus })}
+              ariaLabel="Публікація"
+            />
+          </div>
+          <div className="field">
+            <span>Статус роботи</span>
+            <StyledSelect
+              value={draft.openStatusOverride}
+              options={operatingStatusOptions}
+              onChange={(openStatusOverride) => setDraft({ ...draft, openStatusOverride })}
+              ariaLabel="Статус роботи"
+            />
+          </div>
           <span />
           <label className="field">
             <span>Широта</span>
@@ -147,7 +160,7 @@ function PointEditor({
   </div>;
 }
 
-function ImportDialog({
+export function ImportDialog({
   onClose,
   onCommitted
 }: {
@@ -160,6 +173,8 @@ function ImportDialog({
   const [preview, setPreview] = useState<StoreMapImportPreview | null>(null);
   const [importNew, setImportNew] = useState(true);
   const [updateExisting, setUpdateExisting] = useState(true);
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
   const previewMutation = useMutation({ mutationFn: api.storeMap.previewImport });
   const commitMutation = useMutation({
     mutationFn: () => api.storeMap.commitImport(rows, { importNew, updateExisting })
@@ -167,6 +182,10 @@ function ImportDialog({
 
   async function chooseFile(file: File | undefined) {
     if (!file) return;
+    if (!/\.xlsx?$/i.test(file.name)) {
+      showToast('Оберіть файл у форматі XLSX або XLS.', 'error');
+      return;
+    }
     if (file.size > 10 * 1024 * 1024) {
       showToast('XLSX-файл має бути меншим за 10 МБ.', 'error');
       return;
@@ -185,6 +204,30 @@ function ImportDialog({
       setPreview(null);
       showToast(error instanceof Error ? error.message : 'Не вдалося прочитати XLSX.', 'error');
     }
+  }
+
+  function dragEnter(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragActive(true);
+  }
+
+  function dragOver(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function dragLeave(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
+  }
+
+  function dropFile(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    void chooseFile(event.dataTransfer.files?.[0]);
   }
 
   async function commit() {
@@ -207,10 +250,23 @@ function ImportDialog({
         <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" /></button>
       </header>
       <div className="store-map-import-content">
-        <label className="store-map-dropzone">
+        <label
+          className={`store-map-dropzone${dragActive ? ' store-map-dropzone--active' : ''}`}
+          onDragEnter={dragEnter}
+          onDragOver={dragOver}
+          onDragLeave={dragLeave}
+          onDrop={dropFile}
+        >
           <Icon name="upload" size={28} />
-          <span><strong>{fileName || 'Оберіть XLSX-файл'}</strong><small>Аркуш «Магазини» або перший аркуш файлу</small></span>
-          <input type="file" accept=".xlsx,.xls" onChange={(event) => void chooseFile(event.target.files?.[0])} />
+          <span>
+            <strong>{dragActive ? 'Відпустіть файл для завантаження' : fileName || 'Перетягніть або оберіть XLSX-файл'}</strong>
+            <small>Аркуш «Магазини» або перший аркуш файлу</small>
+          </span>
+          <input type="file" accept=".xlsx,.xls" onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            void chooseFile(file);
+          }} />
         </label>
 
         {previewMutation.isPending && <div className="store-map-state">Перевіряємо дані…</div>}

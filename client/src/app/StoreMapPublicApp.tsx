@@ -30,8 +30,7 @@ function timeToMinutes(value: string) {
 }
 
 function isOpen(point: StoreMapPoint, now: Date) {
-  if (point.openStatusOverride === 'OPEN') return true;
-  if (point.openStatusOverride === 'CLOSED') return false;
+  if (point.openStatusOverride === 'TEMPORARILY_CLOSED' || point.openStatusOverride === 'CLOSED') return false;
   const schedule = point.schedule as StoreMapSchedule;
   const clock = currentKyivClock(now);
   const intervals = schedule.days?.[clock.day] || [];
@@ -44,6 +43,16 @@ function isOpen(point: StoreMapPoint, now: Date) {
       ? clock.minutes >= open && clock.minutes < close
       : clock.minutes >= open || clock.minutes < close;
   });
+}
+
+function operatingStatus(point: StoreMapPoint) {
+  if (point.openStatusOverride === 'TEMPORARILY_CLOSED') {
+    return { label: 'Тимч. зачинено', modifier: 'temporary' };
+  }
+  if (point.openStatusOverride === 'CLOSED') {
+    return { label: 'Зачинено', modifier: 'closed' };
+  }
+  return { label: 'За розкладом', modifier: 'schedule' };
 }
 
 function routeUrl(point: StoreMapPoint) {
@@ -60,11 +69,12 @@ function escapeHtml(value: string) {
   })[character] || character);
 }
 
-function popupMarkup(point: StoreMapPoint, opened: boolean) {
+function popupMarkup(point: StoreMapPoint) {
+  const status = operatingStatus(point);
   return `<article class="store-map-popup">
     <div class="store-map-popup__heading">
       <strong>${escapeHtml(point.name)}</strong>
-      <span class="store-map-popup__status${opened ? ' store-map-popup__status--open' : ''}">${opened ? 'Відкрито' : 'Закрито'}</span>
+      <span class="store-map-popup__status store-map-popup__status--${status.modifier}">${status.label}</span>
     </div>
     <p><span aria-hidden="true">⌖</span>${escapeHtml(point.address)}</p>
     <p><span aria-hidden="true">◷</span>${escapeHtml(point.hoursText || 'Графік уточнюється')}</p>
@@ -164,7 +174,6 @@ export function StoreMapPublicApp() {
     const svg = data.settings.markerSvg || defaultMarkerSvg;
     filteredPoints.forEach((point) => {
       const selected = point.id === selectedId;
-      const opened = isOpen(point, clock);
       const icon = L.divIcon({
         className: `store-map-leaflet-icon${selected ? ' store-map-leaflet-icon--selected' : ''}`,
         html: `<span class="store-map-leaflet-icon__art">${svg}</span>`,
@@ -176,7 +185,7 @@ export function StoreMapPublicApp() {
         title: point.name,
         keyboard: true
       }).addTo(markerLayerRef.current!);
-      marker.bindPopup(popupMarkup(point, opened), {
+      marker.bindPopup(popupMarkup(point), {
         className: 'store-map-leaflet-popup',
         minWidth: 240,
         maxWidth: 290,
@@ -249,7 +258,7 @@ export function StoreMapPublicApp() {
       <div className="store-map-widget__list">
         {!filteredPoints.length && <div className="store-map-widget__empty"><strong>Нічого не знайдено</strong><span>Змініть пошук або фільтри.</span></div>}
         {filteredPoints.map((point) => {
-          const opened = isOpen(point, clock);
+          const status = operatingStatus(point);
           return <article
             ref={(node) => {
               if (node) cardRefs.current.set(point.id, node);
@@ -261,7 +270,7 @@ export function StoreMapPublicApp() {
           >
             <div className="store-map-widget-card__heading">
               <h2>{point.name}</h2>
-              <span className={opened ? 'store-map-widget-status store-map-widget-status--open' : 'store-map-widget-status'}>{opened ? 'Відкрито' : 'Закрито'}</span>
+              <span className={`store-map-widget-status store-map-widget-status--${status.modifier}`}>{status.label}</span>
             </div>
             <p><span aria-hidden="true">⌖</span>{point.address}</p>
             <div className="store-map-widget-card__footer">

@@ -47,7 +47,9 @@ button, input, select { font: inherit; }
 .store-map-popup__heading { display: grid; gap: 8px; padding-right: 24px; }
 .store-map-popup__heading strong { font-size: 14px; line-height: 1.35; }
 .store-map-popup__status { width: fit-content; border-radius: 999px; padding: 4px 7px; color: #6b7b90; background: #dce4ed; font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
-.store-map-popup__status--open { color: #087a54; background: #d9f5e9; }
+.store-map-popup__status--schedule { color: #5141dc; background: #eceafe; }
+.store-map-popup__status--temporary { color: #9a5b00; background: #fff0cc; }
+.store-map-popup__status--closed { color: #6b7b90; background: #dce4ed; }
 .store-map-popup p { display: flex; gap: 7px; margin: 0; color: #728198; font-size: 11px; line-height: 1.45; }
 .store-map-popup p > span { flex: 0 0 auto; }
 .store-map-popup a { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #bcd2ff; border-radius: 9px; padding: 8px 12px; color: #2667e8; background: #fff; font-size: 11px; font-weight: 800; text-decoration: none; white-space: nowrap; }
@@ -66,7 +68,9 @@ button, input, select { font: inherit; }
 .store-map-widget-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .store-map-widget-card h2 { min-width: 0; margin: 0; color: #172033; font-size: 14px; line-height: 1.35; }
 .store-map-widget-status { flex: 0 0 auto; border-radius: 999px; padding: 4px 7px; color: #6b7b90; background: #dce4ed; font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
-.store-map-widget-status--open { color: #087a54; background: #d9f5e9; }
+.store-map-widget-status--schedule { color: #5141dc; background: #eceafe; }
+.store-map-widget-status--temporary { color: #9a5b00; background: #fff0cc; }
+.store-map-widget-status--closed { color: #6b7b90; background: #dce4ed; }
 .store-map-widget-card p { display: flex; gap: 7px; margin: 10px 0 7px; color: #728198; font-size: 11px; line-height: 1.4; }
 .store-map-widget-card__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .store-map-widget-card__footer > span { display: flex; gap: 7px; color: #728198; font-size: 11px; }

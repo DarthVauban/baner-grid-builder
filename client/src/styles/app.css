@@ -686,6 +686,22 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .date-time-picker__time > span { color: #58657a; font-size: 11px; font-weight: 850; }
 .date-time-picker__time b { color: #7b8495; text-align: center; }
 .date-time-picker__footer { display: flex; justify-content: space-between; gap: 8px; }
+.time-range-picker { width: min(540px, calc(100vw - 32px)); gap: 16px; }
+.time-range-picker__header { display: grid; grid-template-columns: 42px minmax(0, 1fr) 34px; align-items: center; gap: 11px; }
+.time-range-picker__header > span { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: var(--brand); background: var(--brand-soft); }
+.time-range-picker__header > div { display: grid; gap: 3px; }
+.time-range-picker__header strong { color: var(--ink); font-size: 15px; }
+.time-range-picker__header small { color: var(--muted); font-size: 11px; }
+.time-range-picker__header > button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 10px; color: var(--muted); background: transparent; cursor: pointer; }
+.time-range-picker__header > button:hover { color: var(--brand); background: var(--brand-soft); }
+.time-range-picker__ranges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.time-range-picker__ranges > section { min-width: 0; display: grid; gap: 9px; border: 1px solid var(--line); border-radius: 13px; padding: 13px; background: var(--surface-soft); }
+.time-range-picker__ranges > section > span { color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.time-range-picker__ranges > section > div { display: grid; grid-template-columns: minmax(0, 1fr) 8px minmax(0, 1fr); align-items: center; gap: 6px; }
+.time-range-picker__ranges b { color: var(--muted); text-align: center; }
+.time-range-picker__presets { display: flex; flex-wrap: wrap; gap: 7px; }
+.time-range-picker__presets button { min-height: 32px; border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; color: var(--muted); background: var(--surface); font: inherit; font-size: 10px; font-weight: 750; cursor: pointer; }
+.time-range-picker__presets button:hover, .time-range-picker__presets button.active { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); background: var(--brand-soft); }
 .task-form { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 18px; padding: 24px 28px 28px; }
 .task-form__wide { grid-column: 1 / -1; }
 .check-field { display: flex; align-items: center; gap: 9px; color: #3c485c; font-size: 13px; font-weight: 720; cursor: pointer; }

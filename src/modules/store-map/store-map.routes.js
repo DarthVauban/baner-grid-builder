@@ -30,7 +30,7 @@ const pointInputSchema = z.object({
   address: z.string().trim().min(1).max(500),
   hoursText: z.string().trim().max(120).default(''),
   publicationStatus: z.enum(['ACTIVE', 'HIDDEN']).default('ACTIVE'),
-  openStatusOverride: z.enum(['AUTO', 'OPEN', 'CLOSED']).default('AUTO'),
+  openStatusOverride: z.enum(['AUTO', 'TEMPORARILY_CLOSED', 'CLOSED']).default('AUTO'),
   latitude: z.coerce.number().min(-90).max(90),
   longitude: z.coerce.number().min(-180).max(180)
 });
