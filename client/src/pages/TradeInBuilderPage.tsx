@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
+import { TradeInLogicEditor } from '../components/trade-in/TradeInLogicEditor';
 import { TradeInPublicPage } from '../components/trade-in/TradeInPublicPage';
 import {
   createTradeInField,
@@ -10,6 +11,7 @@ import {
   moveTradeInItem,
   tradeInId
 } from '../lib/trade-in';
+import { formatTradeInCondition, validateTradeInLogic } from '../lib/trade-in-logic';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -21,7 +23,7 @@ import type {
 } from '../types/trade-in';
 import '../styles/trade-in-builder.css';
 
-type BuilderTab = 'page' | 'form' | 'publish';
+type BuilderTab = 'page' | 'form' | 'logic' | 'publish';
 type PreviewDevice = 'desktop' | 'mobile';
 
 function BuilderSection({ title, description, children, open = false }: {
@@ -312,11 +314,13 @@ function FieldEditor({ field, fieldKeys, onChange, onRemove }: {
   );
 }
 
-function FormEditor({ config, mutate }: {
+function FormEditor({ config, mutate, focusedStepId, onOpenLogic }: {
   config: TradeInConfig;
   mutate: (change: (next: TradeInConfig) => void) => void;
+  focusedStepId: string;
+  onOpenLogic: (stepId: string) => void;
 }) {
-  const [selectedStepId, setSelectedStepId] = useState(config.form.steps[0]?.id || '');
+  const [selectedStepId, setSelectedStepId] = useState(focusedStepId || config.form.steps[0]?.id || '');
   const [selectedFieldId, setSelectedFieldId] = useState('');
   const selectedStep = config.form.steps.find((step) => step.id === selectedStepId) || config.form.steps[0];
   const selectedField = selectedStep?.fields.find((field) => field.id === selectedFieldId) || selectedStep?.fields[0];
@@ -327,6 +331,12 @@ function FormEditor({ config, mutate }: {
     if (selectedStep.id !== selectedStepId) setSelectedStepId(selectedStep.id);
     if (!selectedStep.fields.some((field) => field.id === selectedFieldId)) setSelectedFieldId(selectedStep.fields[0]?.id || '');
   }, [selectedFieldId, selectedStep, selectedStepId]);
+
+  useEffect(() => {
+    if (focusedStepId && config.form.steps.some((step) => step.id === focusedStepId)) {
+      setSelectedStepId(focusedStepId);
+    }
+  }, [config.form.steps, focusedStepId]);
 
   function updateSelectedStep(change: (step: NonNullable<typeof selectedStep>) => void) {
     if (!selectedStep) return;
@@ -389,7 +399,14 @@ function FormEditor({ config, mutate }: {
                 <TextField label="Назва кроку" value={selectedStep.title} onChange={(value) => updateSelectedStep((next) => { next.title = value; })} />
                 <TextField label="Опис кроку" value={selectedStep.description} onChange={(value) => updateSelectedStep((next) => { next.description = value; })} />
               </div>
-              <ConditionEditor condition={selectedStep.condition} fieldKeys={allFieldKeys} onChange={(value) => updateSelectedStep((next) => { next.condition = value; })} />
+              <div className="trade-in-step-logic-summary">
+                <span><Icon name={selectedStep.condition.fieldKey ? 'variants' : 'arrowRight'} size={17} /></span>
+                <div>
+                  <strong>{selectedStep.condition.fieldKey ? 'Умовний перехід' : 'Звичайна послідовність'}</strong>
+                  <small>{formatTradeInCondition(config.form.steps, selectedStep.condition)}</small>
+                </div>
+                <button type="button" onClick={() => onOpenLogic(selectedStep.id)}>Налаштувати логіку</button>
+              </div>
             </div>
             <div className="trade-in-fields-toolbar"><div><strong>Поля кроку</strong><small>Оберіть поле для детального налаштування.</small></div><button className="button button--primary button--small" type="button" onClick={() => {
               const field = createTradeInField(selectedStep.fields.length);
@@ -455,6 +472,7 @@ export function TradeInBuilderPage() {
   const [tab, setTab] = useState<BuilderTab>('page');
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop');
   const [previewVisible, setPreviewVisible] = useState(true);
+  const [focusedStepId, setFocusedStepId] = useState('');
 
   useEffect(() => {
     if (!settingsQuery.data || config) return;
@@ -489,12 +507,15 @@ export function TradeInBuilderPage() {
     JSON.stringify(config) !== JSON.stringify(settingsQuery.data.draftConfig)
     || origin !== settingsQuery.data.publicOrigin
   )), [config, origin, settingsQuery.data]);
+  const logicIssues = useMemo(() => validateTradeInLogic(config?.form.steps || []), [config?.form.steps]);
 
   if (settingsQuery.isLoading || !config) return <div className="admin-list-state">Завантажуємо конструктор Trade-in…</div>;
   if (settingsQuery.error || !settingsQuery.data) return <div className="admin-list-state">Не вдалося завантажити конструктор Trade-in.</div>;
 
+  const showEmbeddedPreview = tab === 'page' && previewVisible;
+
   return (
-    <div className={`trade-in-builder-page${previewVisible ? '' : ' trade-in-builder-page--preview-hidden'}`}>
+    <div className={`trade-in-builder-page${showEmbeddedPreview ? '' : ' trade-in-builder-page--preview-hidden'}`}>
       <header className="trade-in-builder-header">
         <div><p className="eyebrow">Конструктор публічної сторінки</p><h1>Trade-in</h1><p>Налаштуйте сторінку, багатокрокову форму та публікацію на окремому піддомені.</p></div>
         <div className="trade-in-builder-header__actions">
@@ -508,17 +529,19 @@ export function TradeInBuilderPage() {
       <nav className="trade-in-builder-tabs">
         <button className={tab === 'page' ? 'is-active' : ''} type="button" onClick={() => setTab('page')}><Icon name="edit" size={17} /><span>Сторінка</span></button>
         <button className={tab === 'form' ? 'is-active' : ''} type="button" onClick={() => setTab('form')}><Icon name="formBuilder" size={17} /><span>Форма</span><i>{config.form.steps.length}</i></button>
+        <button className={tab === 'logic' ? 'is-active' : ''} type="button" onClick={() => setTab('logic')}><Icon name="variants" size={17} /><span>Логіка</span>{logicIssues.length > 0 && <i className={logicIssues.some((issue) => issue.severity === 'error') ? 'has-errors' : ''}>{logicIssues.length}</i>}</button>
         <button className={tab === 'publish' ? 'is-active' : ''} type="button" onClick={() => setTab('publish')}><Icon name="publication" size={17} /><span>Публікація</span></button>
       </nav>
 
       <div className="trade-in-builder-layout">
         <section className="trade-in-builder-controls">
           {tab === 'page' && <PageEditor config={config} mutate={mutate} />}
-          {tab === 'form' && <FormEditor config={config} mutate={mutate} />}
+          {tab === 'form' && <FormEditor config={config} mutate={mutate} focusedStepId={focusedStepId} onOpenLogic={(stepId) => { setFocusedStepId(stepId); setTab('logic'); }} />}
+          {tab === 'logic' && <TradeInLogicEditor config={config} mutate={mutate} onEditStep={(stepId) => { setFocusedStepId(stepId); setTab('form'); }} />}
           {tab === 'publish' && <PublishEditor settings={settingsQuery.data} origin={origin} setOrigin={setOrigin} config={config} busy={save.isPending} onSave={() => save.mutate(false)} onPublish={() => save.mutate(true)} />}
         </section>
 
-        <aside className={`trade-in-builder-preview trade-in-builder-preview--${previewDevice}`}>
+        {showEmbeddedPreview && <aside className={`trade-in-builder-preview trade-in-builder-preview--${previewDevice}`}>
           <header>
             <div><strong>Живе превʼю</strong><small>Зміни відображаються без збереження</small></div>
             <div>
@@ -528,9 +551,9 @@ export function TradeInBuilderPage() {
             </div>
           </header>
           <div className="trade-in-builder-preview__viewport"><TradeInPublicPage config={config} preview compact /></div>
-        </aside>
+        </aside>}
       </div>
-      {!previewVisible && <button className="trade-in-builder-preview-toggle" type="button" onClick={() => setPreviewVisible(true)}><Icon name="visibility" size={16} /> Показати превʼю</button>}
+      {tab === 'page' && !previewVisible && <button className="trade-in-builder-preview-toggle" type="button" onClick={() => setPreviewVisible(true)}><Icon name="visibility" size={16} /> Показати превʼю</button>}
     </div>
   );
 }
