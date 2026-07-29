@@ -40,6 +40,46 @@ const submitLimiter = rateLimit({
   message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Забагато спроб. Спробуйте пізніше.' } }
 });
 
+async function createTradeInApplication({
+  settings,
+  config,
+  linkedForm,
+  input,
+  req,
+  source,
+  historyComment,
+  demo = false
+}) {
+  const form = submissionForm({
+    publicId: settings.publicId,
+    publishedConfig: config
+  }, input.values, linkedForm);
+  if (form.fields.length === 0) {
+    throw new AppError(422, 'TRADE_IN_FORM_EMPTY', 'У формі немає доступних полів.');
+  }
+  const category = cleanText(input.values.category, 120);
+  const brand = category === 'apple' ? 'Apple' : cleanText(input.values.brand, 120);
+  const model = cleanText(input.values.model, 180);
+  const productTitle = [brand, model].filter(Boolean).join(' ') || category || 'Trade-in пристрій';
+  const pageTitle = config.seo.title || config.form.title;
+  return createPublicApplication({
+    publicId: form.publicId,
+    input: {
+      ...input,
+      product: { title: productTitle }
+    },
+    req,
+    formOverride: form,
+    skipBankRequirement: true,
+    productOverride: { title: productTitle },
+    contextOverride: {
+      pageTitle: demo ? `[Демо] ${pageTitle}` : pageTitle
+    },
+    source,
+    historyComment
+  });
+}
+
 adminRouter.use(requireAuth, requireToolAccess(tradeInToolId));
 
 adminRouter.get('/forms', asyncHandler(async (req, res) => {
@@ -122,6 +162,27 @@ adminRouter.get('/preview-settings', asyncHandler(async (req, res) => {
   } });
 }));
 
+adminRouter.post('/preview-applications', submitLimiter, asyncHandler(async (req, res) => {
+  const input = parseInput(submissionSchema, req.body);
+  const settings = await loadTradeInSettings();
+  const linked = await hydrateTradeInWorkflow(settings.draftConfig);
+  if (!settings.draftConfig.formReference.formId || !linked.form) {
+    throw new AppError(422, 'TRADE_IN_FORM_NOT_FOUND', 'Оберіть покрокову форму перед тестовим надсиланням.');
+  }
+  const result = await createTradeInApplication({
+    settings,
+    config: linked.config,
+    linkedForm: linked.form,
+    input,
+    req,
+    source: 'trade_in_demo',
+    historyComment: 'Демо-заявку створено з тестової сторінки Trade-in',
+    demo: true
+  });
+  if (result.status === 204) return res.status(204).end();
+  res.status(result.status).json({ data: result.data });
+}));
+
 publicRouter.get('/settings', asyncHandler(async (req, res) => {
   const settings = await loadTradeInSettings();
   if (!settings.publishedConfig) {
@@ -149,27 +210,12 @@ publicRouter.post('/applications', submitLimiter, asyncHandler(async (req, res) 
       [referenceId]
     )
     : { rows: [] };
-  const form = submissionForm(settings, input.values, linkedResult.rows[0] || null);
-  if (form.fields.length === 0) {
-    throw new AppError(422, 'TRADE_IN_FORM_EMPTY', 'У формі немає доступних полів.');
-  }
-  const category = cleanText(input.values.category, 120);
-  const brand = category === 'apple' ? 'Apple' : cleanText(input.values.brand, 120);
-  const model = cleanText(input.values.model, 180);
-  const productTitle = [brand, model].filter(Boolean).join(' ') || category || 'Trade-in пристрій';
-  const result = await createPublicApplication({
-    publicId: form.publicId,
-    input: {
-      ...input,
-      product: { title: productTitle }
-    },
+  const result = await createTradeInApplication({
+    settings,
+    config: settings.publishedConfig,
+    linkedForm: linkedResult.rows[0] || null,
+    input,
     req,
-    formOverride: form,
-    skipBankRequirement: true,
-    productOverride: { title: productTitle },
-    contextOverride: {
-      pageTitle: settings.publishedConfig.seo.title || settings.publishedConfig.form.title
-    },
     source: 'trade_in',
     historyComment: 'Заявку створено зі сторінки Trade-in'
   });

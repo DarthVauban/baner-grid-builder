@@ -389,9 +389,9 @@ function TradeInWizard({
     setSubmitting(true);
     setSubmitError('');
     try {
-      const result = preview
-        ? { number: 'PREVIEW' }
-        : await onSubmit?.(answers);
+      const result = onSubmit
+        ? await onSubmit(answers)
+        : { number: preview ? 'PREVIEW' : '' };
       setDone(result || { number: '' });
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Не вдалося надіслати заявку. Спробуйте ще раз.');
@@ -410,7 +410,7 @@ function TradeInWizard({
     return (
       <section className="ti-form-shell ti-success" id="trade-in-form">
         <span className="ti-success__icon">✓</span>
-        <p className="ti-eyebrow">{preview ? 'Режим превʼю' : 'Заявку створено'}</p>
+        <p className="ti-eyebrow">{preview ? onSubmit ? 'Демо-заявку створено' : 'Режим превʼю' : 'Заявку створено'}</p>
         <h2>{finishNode?.title || config.form.successTitle}</h2>
         <p>{finishNode?.description || config.form.successText}</p>
         {done.number && <div className="ti-success__number"><span>Номер заявки</span><strong>{done.number}</strong></div>}
@@ -548,7 +548,7 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
       {preview && !compact && (
         <div className="ti-preview-banner">
           <div className="ti-container">
-            <span><strong>Тестова сторінка Trade-in</strong> Збережена чернетка · заявки не надсилаються</span>
+            <span><strong>Тестова сторінка Trade-in</strong> Збережена чернетка · заявки надсилаються менеджерам як демо</span>
             <a href="/trade-in/editor">← До конструктора</a>
           </div>
         </div>

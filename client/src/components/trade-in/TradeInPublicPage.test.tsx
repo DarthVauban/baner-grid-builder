@@ -56,19 +56,30 @@ const previewConfig = {
 } as unknown as TradeInConfig;
 
 describe('TradeInPublicPage preview', () => {
-  it('clearly marks the page as a draft and never submits a real application', async () => {
+  it('clearly marks the page as a draft and submits a demo application', async () => {
     const user = userEvent.setup();
-    const onSubmit = vi.fn();
+    const onSubmit = vi.fn().mockResolvedValue({ number: '00042' });
 
     render(<TradeInPublicPage config={previewConfig} preview onSubmit={onSubmit} />);
 
     expect(screen.getByText('Тестова сторінка Trade-in')).toBeInTheDocument();
+    expect(screen.getByText(/заявки надсилаються менеджерам як демо/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← До конструктора' })).toHaveAttribute('href', '/trade-in/editor');
 
     await user.click(screen.getByRole('button', { name: /Надіслати заявку/ }));
 
+    expect(await screen.findByText('Демо-заявку створено')).toBeInTheDocument();
+    expect(screen.getByText('00042')).toBeInTheDocument();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an embedded preview local when no submission handler is provided', async () => {
+    const user = userEvent.setup();
+
+    render(<TradeInPublicPage config={previewConfig} preview compact />);
+    await user.click(screen.getByRole('button', { name: /Надіслати заявку/ }));
+
     expect(await screen.findByText('Режим превʼю')).toBeInTheDocument();
     expect(screen.getByText('PREVIEW')).toBeInTheDocument();
-    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

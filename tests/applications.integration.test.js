@@ -528,6 +528,33 @@ test('form builder and applications list have separate access and process public
   const tradeInSettings = await admin.get('/api/trade-in/settings').expect(200);
   assert.equal(tradeInSettings.body.data.status, 'draft');
   assert.ok(tradeInSettings.body.data.draftConfig.form.steps.length >= 5);
+  const demoTradeInValues = {
+    category: 'smartphone',
+    operation: 'exchange',
+    brand: 'Samsung',
+    model: 'Galaxy S23',
+    memory: '128 GB',
+    device_condition: 'normal',
+    screen_condition: 'ideal',
+    first_name: 'Демо',
+    phone: '+380501234567',
+    consent: true
+  };
+  await request(app).post('/api/trade-in/preview-applications').send({
+    values: demoTradeInValues,
+    context: { sourceUrl: 'https://mt-panel.sbs/trade-in/preview/storefront' },
+    idempotencyKey: 'trade-in-demo-unauthorized'
+  }).expect(401);
+  const demoTradeInSubmission = await admin.post('/api/trade-in/preview-applications').send({
+    values: demoTradeInValues,
+    context: { sourceUrl: 'https://mt-panel.sbs/trade-in/preview/storefront' },
+    idempotencyKey: 'trade-in-demo-1'
+  }).expect(201);
+  const demoTradeInApplication = await manager.get(`/api/applications/${demoTradeInSubmission.body.data.id}`).expect(200);
+  assert.equal(demoTradeInApplication.body.data.source, 'trade_in_demo');
+  assert.equal(demoTradeInApplication.body.data.customer.firstName, 'Демо');
+  assert.equal(demoTradeInApplication.body.data.pageTitle.startsWith('[Демо] '), true);
+
   const publishedTradeIn = await admin.post('/api/trade-in/publish').send({
     publicOrigin: 'https://tradein.example.com',
     config: tradeInSettings.body.data.draftConfig

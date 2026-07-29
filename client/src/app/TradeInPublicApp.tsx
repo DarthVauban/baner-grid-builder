@@ -18,11 +18,14 @@ export function TradeInPublicApp() {
   if (settings.error || !settings.data) {
     return <main className="ti-state"><strong>MT</strong><h1>Сторінка Trade-in тимчасово недоступна</h1><p>{settings.error instanceof Error ? settings.error.message : 'Спробуйте оновити сторінку пізніше.'}</p></main>;
   }
+  const submitApplication = preview
+    ? api.tradeIn.submitPreviewApplication
+    : api.tradeIn.submitApplication;
   return (
     <TradeInPublicPage
       config={settings.data.config}
       preview={preview}
-      onSubmit={(values) => api.tradeIn.submitApplication({
+      onSubmit={(values) => submitApplication({
         values,
         context: {
           sourceUrl: window.location.href,

@@ -590,6 +590,15 @@ export const api = {
       request<TradeInSettings>('/api/trade-in/publish', { method: 'POST', body: jsonBody(input) }),
     previewSettings: () => request<PublicTradeInSettings>('/api/trade-in/preview-settings'),
     publicSettings: () => request<PublicTradeInSettings>('/api/public/trade-in/settings'),
+    submitPreviewApplication: (input: {
+      values: TradeInAnswers;
+      context: Record<string, unknown>;
+      idempotencyKey: string;
+      honeypot?: string;
+    }) => request<{ id: string; number: string; status: string; duplicate?: boolean }>('/api/trade-in/preview-applications', {
+      method: 'POST',
+      body: jsonBody(input)
+    }),
     submitApplication: (input: {
       values: TradeInAnswers;
       context: Record<string, unknown>;
