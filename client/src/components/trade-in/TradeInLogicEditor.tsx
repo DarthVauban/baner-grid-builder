@@ -189,8 +189,10 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
   return (
     <label className="trade-in-graph-toggle">
       <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <i />
+      <span className="trade-in-graph-toggle__switch">
+        <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+        <i aria-hidden="true" />
+      </span>
     </label>
   );
 }

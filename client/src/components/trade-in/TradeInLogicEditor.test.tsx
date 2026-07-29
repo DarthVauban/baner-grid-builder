@@ -109,4 +109,27 @@ describe('TradeInLogicEditor', () => {
     expect(screen.getByText('Показувати в основній інформації заявки')).toBeInTheDocument();
     expect(screen.queryByText('У підсумку анкети')).not.toBeInTheDocument();
   });
+
+  it('keeps toggle inputs inside their visible switch container', () => {
+    const mutate = vi.fn();
+    render(
+      <TradeInLogicEditor
+        config={config}
+        mutate={mutate}
+        onUndo={vi.fn()}
+        canUndo={false}
+        historyDepth={0}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Пристрій'));
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'Показувати в основній інформації заявки'
+    });
+    expect(checkbox.parentElement).toHaveClass('trade-in-graph-toggle__switch');
+
+    fireEvent.click(checkbox);
+    expect(mutate).toHaveBeenCalledTimes(1);
+  });
 });
