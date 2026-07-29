@@ -366,6 +366,7 @@ function TradeInLogicCanvas({
   const initialNodeId = graph.nodes.find((node) => node.type === 'start')?.id || graph.nodes[0]?.id || '';
   const [selectedNodeId, setSelectedNodeId] = useState(initialNodeId);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(initialNodeId ? [initialNodeId] : []);
+  const selectedNodeIdsRef = useRef(selectedNodeIds);
   const [selectedFieldId, setSelectedFieldId] = useState('');
   const [toolbarPalette, setToolbarPalette] = useState(false);
   const [contextMenu, setContextMenu] = useState<null | { x: number; y: number; position: TradeInFormNodePosition }>(null);
@@ -376,13 +377,12 @@ function TradeInLogicCanvas({
     id: node.id,
     type: node.type,
     position: node.position,
-    selected: selectedNodeIds.includes(node.id),
     data: {
       node,
       issues: issues.filter((issue) => issue.nodeId === node.id),
       conditionLabels: Object.fromEntries(node.branches.map((branch) => [branch.id, formatTradeInCondition(graph, branch.condition)]))
     }
-  })), [graph.nodes, issues, selectedNodeIds]);
+  })), [graph.nodes, issues]);
 
   const flowEdges = useMemo((): GraphEdge[] => graph.edges.map((edge) => {
     const source = graph.nodes.find((node) => node.id === edge.source);
@@ -410,18 +410,36 @@ function TradeInLogicCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<GraphEdge>(flowEdges);
 
+  const selectOnlyNode = (nodeId: string) => {
+    const ids = nodeId ? [nodeId] : [];
+    selectedNodeIdsRef.current = ids;
+    setSelectedNodeIds(ids);
+    setNodes((current) => current.map((node) => (
+      node.selected === (node.id === nodeId)
+        ? node
+        : { ...node, selected: node.id === nodeId }
+    )));
+  };
+
   useEffect(() => {
-    setNodes(flowNodes);
+    setNodes(flowNodes.map((node) => ({
+      ...node,
+      selected: selectedNodeIdsRef.current.includes(node.id)
+    })));
     setEdges(flowEdges);
   }, [flowEdges, flowNodes, setEdges, setNodes]);
 
   useEffect(() => {
     const availableIds = new Set(graph.nodes.map((node) => node.id));
-    setSelectedNodeIds((current) => current.filter((id) => availableIds.has(id)));
+    setSelectedNodeIds((current) => {
+      const filtered = current.filter((id) => availableIds.has(id));
+      selectedNodeIdsRef.current = filtered;
+      return filtered.length === current.length ? current : filtered;
+    });
     if (!selectedNodeId || graph.nodes.some((node) => node.id === selectedNodeId)) return;
     const fallbackNodeId = graph.nodes.find((node) => node.type === 'start')?.id || graph.nodes[0]?.id || '';
     setSelectedNodeId(fallbackNodeId);
-    setSelectedNodeIds(fallbackNodeId ? [fallbackNodeId] : []);
+    selectOnlyNode(fallbackNodeId);
     setSelectedFieldId('');
   }, [graph.nodes, selectedNodeId]);
 
@@ -461,7 +479,7 @@ function TradeInLogicCanvas({
     if (type === 'fields') node.fields.push(createTradeInField(0));
     mutateGraph((nextGraph) => { nextGraph.nodes.push(node); });
     setSelectedNodeId(node.id);
-    setSelectedNodeIds([node.id]);
+    selectOnlyNode(node.id);
     setSelectedFieldId(node.fields[0]?.id || '');
     setToolbarPalette(false);
     setContextMenu(null);
@@ -520,7 +538,7 @@ function TradeInLogicCanvas({
       nextGraph.edges = cleaned.edges;
     });
     setSelectedNodeId(fallbackNodeId);
-    setSelectedNodeIds(fallbackNodeId ? [fallbackNodeId] : []);
+    selectOnlyNode(fallbackNodeId);
     setSelectedFieldId('');
   };
 
@@ -629,7 +647,7 @@ function TradeInLogicCanvas({
             const start = graph.nodes.find((node) => node.type === 'start');
             if (start) {
               setSelectedNodeId(start.id);
-              setSelectedNodeIds([start.id]);
+              selectOnlyNode(start.id);
             }
           }}><Icon name="characteristics" size={15} /> Налаштування</button>
           <button className="button button--secondary button--small" type="button" onClick={autoLayout}><Icon name="refresh" size={15} /> Вирівняти</button>
@@ -669,6 +687,7 @@ function TradeInLogicCanvas({
             onNodeClick={(_, node) => { setSelectedNodeId(node.id); setSelectedFieldId(''); setContextMenu(null); }}
             onSelectionChange={({ nodes: selectedNodes }) => {
               const ids = selectedNodes.map((node) => node.id);
+              selectedNodeIdsRef.current = ids;
               setSelectedNodeIds((current) => (
                 current.length === ids.length && current.every((id, index) => id === ids[index])
                   ? current
@@ -698,7 +717,7 @@ function TradeInLogicCanvas({
             ))}
             onPaneClick={() => {
               setSelectedNodeId('');
-              setSelectedNodeIds([]);
+              selectOnlyNode('');
               setSelectedFieldId('');
               setContextMenu(null);
               setToolbarPalette(false);
@@ -710,7 +729,7 @@ function TradeInLogicCanvas({
             onNodeContextMenu={(event, node) => {
               event.preventDefault();
               setSelectedNodeId(node.id);
-              if (!selectedNodeIds.includes(node.id)) setSelectedNodeIds([node.id]);
+              if (!selectedNodeIds.includes(node.id)) selectOnlyNode(node.id);
               openPaletteAt(event.clientX, event.clientY);
             }}
             panOnDrag={[1]}
