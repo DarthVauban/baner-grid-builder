@@ -657,33 +657,6 @@
   gap: 8px;
 }
 
-.trade-in-graph-application-summary {
-  display: grid;
-  gap: 7px;
-  border: 1px solid #d9d5ff;
-  border-radius: 10px;
-  padding: 10px;
-  background: #f8f7ff;
-}
-
-.trade-in-graph-application-summary .trade-in-graph-toggle {
-  border: 0;
-  padding: 0;
-  background: transparent;
-}
-
-.trade-in-graph-application-summary .trade-in-graph-toggle > span {
-  color: #332a78;
-  font-size: 11px;
-}
-
-.trade-in-graph-application-summary p {
-  margin: 0;
-  color: #68628d;
-  font-size: 10px;
-  line-height: 1.45;
-}
-
 .trade-in-graph-toggle {
   min-height: 40px;
   display: grid;

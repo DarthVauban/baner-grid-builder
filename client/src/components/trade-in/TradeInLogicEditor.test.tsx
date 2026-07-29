@@ -20,7 +20,20 @@ const config = {
       title: 'Пристрій',
       description: '',
       condition: { fieldKey: '', operator: 'equals', value: '' },
-      fields: []
+      fields: [{
+        id: 'field-model',
+        key: 'model',
+        label: 'Модель',
+        type: 'text',
+        placeholder: '',
+        helpText: '',
+        required: true,
+        width: 'full',
+        showInSummary: true,
+        systemFieldType: null,
+        condition: { fieldKey: '', operator: 'equals', value: '' },
+        options: []
+      }]
     }]
   }
 } as unknown as TradeInConfig;
@@ -80,4 +93,20 @@ describe('TradeInLogicEditor', () => {
     });
   });
 
+  it('labels the field setting as application main information', () => {
+    render(
+      <TradeInLogicEditor
+        config={config}
+        mutate={vi.fn()}
+        onUndo={vi.fn()}
+        canUndo={false}
+        historyDepth={0}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Пристрій'));
+
+    expect(screen.getByText('Показувати в основній інформації заявки')).toBeInTheDocument();
+    expect(screen.queryByText('У підсумку анкети')).not.toBeInTheDocument();
+  });
 });

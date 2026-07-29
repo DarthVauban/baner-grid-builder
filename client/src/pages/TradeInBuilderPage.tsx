@@ -298,7 +298,7 @@ function FieldEditor({ field, fieldKeys, onChange, onRemove }: {
       </div>
       <div className="trade-in-builder-switches">
         <SwitchField label="Обовʼязкове" checked={field.required} onChange={(value) => onChange((next) => { next.required = value; })} />
-        <SwitchField label="Показувати в підсумку" checked={field.showInSummary} onChange={(value) => onChange((next) => { next.showInSummary = value; })} />
+        <SwitchField label="Показувати в основній інформації заявки" checked={field.showInSummary} onChange={(value) => onChange((next) => { next.showInSummary = value; })} />
       </div>
       <ConditionEditor condition={field.condition} fieldKeys={fieldKeys.filter((key) => key !== field.key)} onChange={(value) => onChange((next) => { next.condition = value; })} />
       {hasOptions && (

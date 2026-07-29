@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { TradeInConfig } from '../../types/trade-in';
@@ -81,5 +81,32 @@ describe('TradeInPublicPage preview', () => {
 
     expect(await screen.findByText('Режим превʼю')).toBeInTheDocument();
     expect(screen.getByText('PREVIEW')).toBeInTheDocument();
+  });
+
+  it('keeps the questionnaire summary independent from the application main-information setting', async () => {
+    const user = userEvent.setup();
+    const config = structuredClone(previewConfig) as TradeInConfig;
+    config.form.steps[0].fields = [{
+      id: 'comment-field',
+      key: 'comment',
+      label: 'Коментар для менеджера',
+      type: 'textarea',
+      placeholder: '',
+      helpText: '',
+      required: false,
+      width: 'full',
+      showInSummary: false,
+      systemFieldType: null,
+      condition: { fieldKey: '', operator: 'equals', value: '' },
+      options: []
+    }];
+
+    render(<TradeInPublicPage config={config} preview compact />);
+    await user.type(screen.getByRole('textbox', { name: 'Коментар для менеджера' }), 'Тестова відповідь');
+
+    const summaryHeading = screen.getByRole('heading', { name: 'Підсумок анкети' });
+    const summary = summaryHeading.closest('aside');
+    expect(summary).not.toBeNull();
+    expect(within(summary as HTMLElement).getByText('Тестова відповідь')).toBeInTheDocument();
   });
 });

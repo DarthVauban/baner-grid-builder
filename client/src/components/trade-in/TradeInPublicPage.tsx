@@ -403,7 +403,7 @@ function TradeInWizard({
   const summary = useMemo(() => activeSteps.flatMap((step) => step.type === 'fields'
     ? step.fields.filter((field) => matchesTradeInCondition(field.condition, answers))
     : [])
-    .filter((field) => field.showInSummary && tradeInAnswerLabel(field, answers[field.key]))
+    .filter((field) => tradeInAnswerLabel(field, answers[field.key]))
     .map((field) => ({ key: field.key, label: field.label, value: tradeInAnswerLabel(field, answers[field.key]) })), [activeSteps, answers]);
 
   if (done) {

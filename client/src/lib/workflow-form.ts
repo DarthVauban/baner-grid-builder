@@ -41,7 +41,6 @@ export function createDefaultWorkflowForm(): TradeInConfig['form'] {
           position: { x: 40, y: 180 },
           title: 'Початок',
           description: 'Старт сценарію',
-          showInApplicationSummary: false,
           fields: [],
           branches: [],
           defaultBranchLabel: ''
@@ -52,7 +51,6 @@ export function createDefaultWorkflowForm(): TradeInConfig['form'] {
           position: { x: 400, y: 180 },
           title: 'Контактні дані',
           description: 'Дані для зворотного звʼязку.',
-          showInApplicationSummary: false,
           fields: [
             contactField('first_name', 'Імʼя', 'text'),
             contactField('phone', 'Номер телефону', 'phone')
@@ -66,7 +64,6 @@ export function createDefaultWorkflowForm(): TradeInConfig['form'] {
           position: { x: 760, y: 180 },
           title: 'Заявку прийнято',
           description: 'Менеджер звʼяжеться з клієнтом.',
-          showInApplicationSummary: false,
           fields: [],
           branches: [],
           defaultBranchLabel: ''

@@ -37,7 +37,6 @@ function node(id: string, type: TradeInFormNode['type'], fields: TradeInField[] 
     position: { x: 0, y: 0 },
     title: id,
     description: '',
-    showInApplicationSummary: type === 'fields',
     fields,
     branches: [],
     defaultBranchLabel: 'Інші випадки'
@@ -60,7 +59,6 @@ describe('Trade-in graph model', () => {
     const graph = convertTradeInStepsToGraph(steps);
     const condition = graph.nodes.find((item) => item.id === 'condition_apple');
     expect(condition?.type).toBe('condition');
-    expect(graph.nodes.find((item) => item.id === 'category')?.showInApplicationSummary).toBe(true);
     expect(graph.edges).toContainEqual(expect.objectContaining({
       source: 'condition_apple',
       target: 'apple',
@@ -108,22 +106,6 @@ describe('Trade-in graph model', () => {
     expect(position).not.toEqual(existing.position);
     expect(created.type).toBe('fields');
     expect(created.position).toEqual(position);
-    expect(created.showInApplicationSummary).toBe(true);
-  });
-
-  it('preserves the application summary setting when converting legacy steps', () => {
-    const graph = convertTradeInStepsToGraph([
-      {
-        id: 'details',
-        title: 'Деталі',
-        description: '',
-        showInApplicationSummary: false,
-        condition: emptyTradeInCondition(),
-        fields: [field('model-field', 'model')]
-      }
-    ]);
-
-    expect(graph.nodes.find((item) => item.id === 'details')?.showInApplicationSummary).toBe(false);
   });
 
   it('blocks connections that would create a cycle', () => {

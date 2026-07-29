@@ -37,7 +37,6 @@ export interface TradeInStep {
   id: string;
   title: string;
   description: string;
-  showInApplicationSummary?: boolean;
   condition: TradeInCondition;
   fields: TradeInField[];
 }
@@ -61,7 +60,6 @@ export interface TradeInFormNode {
   position: TradeInFormNodePosition;
   title: string;
   description: string;
-  showInApplicationSummary: boolean;
   fields: TradeInField[];
   branches: TradeInConditionBranch[];
   defaultBranchLabel: string;

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { defaultTradeInConfig, normalizeTradeInConfig } from '../src/modules/trade-in/trade-in.defaults.js';
 import { submissionForm, visibleTradeInFields } from '../src/modules/trade-in/trade-in.service.js';
 
-function graphField(id, key) {
+function graphField(id, key, showInSummary = true) {
   return {
     id,
     key,
@@ -13,7 +13,7 @@ function graphField(id, key) {
     helpText: '',
     required: false,
     width: 'full',
-    showInSummary: true,
+    showInSummary,
     systemFieldType: null,
     condition: { fieldKey: '', operator: 'equals', value: '' },
     options: []
@@ -42,7 +42,6 @@ test('graph traversal exposes fields only from the selected condition branch', (
             type: 'fields',
             position: { x: 300, y: 0 },
             title: 'Category',
-            showInApplicationSummary: true,
             fields: [graphField('category-field', 'category')]
           },
           {
@@ -62,8 +61,7 @@ test('graph traversal exposes fields only from the selected condition branch', (
             type: 'fields',
             position: { x: 900, y: -100 },
             title: 'Apple',
-            showInApplicationSummary: false,
-            fields: [graphField('apple-field', 'apple_model')]
+            fields: [graphField('apple-field', 'apple_model', false)]
           },
           {
             id: 'other-fields',
@@ -94,11 +92,6 @@ test('graph traversal exposes fields only from the selected condition branch', (
     visibleTradeInFields(config, { category: 'samsung' }).map((field) => field.key),
     ['category', 'other_model']
   );
-  assert.equal(
-    config.form.graph.nodes.find((node) => node.id === 'other-fields').showInApplicationSummary,
-    true
-  );
-
   const form = submissionForm(
     { publicId: 'legacy-public-id', publishedConfig: config },
     { category: 'apple' },

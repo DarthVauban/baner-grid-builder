@@ -282,7 +282,7 @@ function FieldEditor({
       <div className="trade-in-graph-inspector__toggles">
         <Toggle label="Обов’язкове" checked={field.required} onChange={(value) => onChange((next) => { next.required = value; })} />
         <Toggle label="На всю ширину" checked={field.width === 'full'} onChange={(value) => onChange((next) => { next.width = value ? 'full' : 'half'; })} />
-        <Toggle label="У підсумку анкети" checked={field.showInSummary} onChange={(value) => onChange((next) => { next.showInSummary = value; })} />
+        <Toggle label="Показувати в основній інформації заявки" checked={field.showInSummary} onChange={(value) => onChange((next) => { next.showInSummary = value; })} />
       </div>
 
       {hasOptions && (
@@ -837,14 +837,6 @@ function TradeInLogicCanvas({
                 <div className="trade-in-graph-inspector__body">
                   <InputField label="Назва кроку" value={selectedNode.title} onChange={(value) => updateNode((node) => { node.title = value; })} />
                   <InputField label="Опис кроку" textarea value={selectedNode.description} onChange={(value) => updateNode((node) => { node.description = value; })} />
-                  <section className="trade-in-graph-application-summary">
-                    <Toggle
-                      label="Показувати в основній інформації заявки"
-                      checked={selectedNode.showInApplicationSummary}
-                      onChange={(value) => updateNode((node) => { node.showInApplicationSummary = value; })}
-                    />
-                    <p>Відповіді з цього кроку будуть продубльовані у верхньому блоці заявки менеджера.</p>
-                  </section>
                   <section className="trade-in-graph-fields-list">
                     <header>
                       <div><strong>Поля кроку</strong><small>{selectedNode.fields.length} полів</small></div>
