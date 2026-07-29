@@ -11,7 +11,7 @@ import {
   moveTradeInItem,
   tradeInId
 } from '../lib/trade-in';
-import { formatTradeInCondition, validateTradeInLogic } from '../lib/trade-in-logic';
+import { formatTradeInCondition, getTradeInFormGraph, validateTradeInLogic } from '../lib/trade-in-logic';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import type {
@@ -23,7 +23,7 @@ import type {
 } from '../types/trade-in';
 import '../styles/trade-in-builder.css';
 
-type BuilderTab = 'page' | 'form' | 'logic' | 'publish';
+type BuilderTab = 'page' | 'logic' | 'publish';
 type PreviewDevice = 'desktop' | 'mobile';
 
 function BuilderSection({ title, description, children, open = false }: {
@@ -403,7 +403,7 @@ function FormEditor({ config, mutate, focusedStepId, onOpenLogic }: {
                 <span><Icon name={selectedStep.condition.fieldKey ? 'variants' : 'arrowRight'} size={17} /></span>
                 <div>
                   <strong>{selectedStep.condition.fieldKey ? 'Умовний перехід' : 'Звичайна послідовність'}</strong>
-                  <small>{formatTradeInCondition(config.form.steps, selectedStep.condition)}</small>
+                  <small>{formatTradeInCondition(getTradeInFormGraph(config.form), selectedStep.condition)}</small>
                 </div>
                 <button type="button" onClick={() => onOpenLogic(selectedStep.id)}>Налаштувати логіку</button>
               </div>
@@ -433,17 +433,19 @@ function FormEditor({ config, mutate, focusedStepId, onOpenLogic }: {
   );
 }
 
-function PublishEditor({ settings, origin, setOrigin, config, busy, onSave, onPublish }: {
+function PublishEditor({ settings, origin, setOrigin, config, busy, invalid, onSave, onPublish }: {
   settings: TradeInSettings;
   origin: string;
   setOrigin: (origin: string) => void;
   config: TradeInConfig;
   busy: boolean;
+  invalid: boolean;
   onSave: () => void;
   onPublish: () => void;
 }) {
-  const stepCount = config.form.steps.length;
-  const fieldCount = config.form.steps.reduce((total, step) => total + step.fields.length, 0);
+  const graph = getTradeInFormGraph(config.form);
+  const stepCount = graph.nodes.filter((node) => node.type === 'fields' || node.type === 'information').length;
+  const fieldCount = graph.nodes.reduce((total, node) => total + node.fields.length, 0);
   return (
     <div className="trade-in-publish-editor">
       <section className="trade-in-publication-card">
@@ -457,7 +459,7 @@ function PublishEditor({ settings, origin, setOrigin, config, busy, onSave, onPu
       </section>
       <section className="trade-in-publish-actions">
         <div><h2>Зберегти чи опублікувати?</h2><p>Збереження оновлює лише чернетку. Публікація копіює поточну версію на піддомен.</p></div>
-        <div><button className="button button--secondary" type="button" disabled={busy} onClick={onSave}><Icon name="save" size={16} /> Зберегти чернетку</button><button className="button button--primary" type="button" disabled={busy} onClick={onPublish}><Icon name="publication" size={16} /> Опублікувати</button></div>
+        <div><button className="button button--secondary" type="button" disabled={busy} onClick={onSave}><Icon name="save" size={16} /> Зберегти чернетку</button><button className="button button--primary" type="button" disabled={busy || invalid} onClick={onPublish}><Icon name="publication" size={16} /> Опублікувати</button></div>
       </section>
     </div>
   );
@@ -472,7 +474,6 @@ export function TradeInBuilderPage() {
   const [tab, setTab] = useState<BuilderTab>('page');
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop');
   const [previewVisible, setPreviewVisible] = useState(true);
-  const [focusedStepId, setFocusedStepId] = useState('');
 
   useEffect(() => {
     if (!settingsQuery.data || config) return;
@@ -507,7 +508,7 @@ export function TradeInBuilderPage() {
     JSON.stringify(config) !== JSON.stringify(settingsQuery.data.draftConfig)
     || origin !== settingsQuery.data.publicOrigin
   )), [config, origin, settingsQuery.data]);
-  const logicIssues = useMemo(() => validateTradeInLogic(config?.form.steps || []), [config?.form.steps]);
+  const logicIssues = useMemo(() => config ? validateTradeInLogic(getTradeInFormGraph(config.form)) : [], [config]);
 
   if (settingsQuery.isLoading || !config) return <div className="admin-list-state">Завантажуємо конструктор Trade-in…</div>;
   if (settingsQuery.error || !settingsQuery.data) return <div className="admin-list-state">Не вдалося завантажити конструктор Trade-in.</div>;
@@ -522,13 +523,12 @@ export function TradeInBuilderPage() {
           <span className={dirty ? 'is-dirty' : ''}>{dirty ? 'Є незбережені зміни' : 'Чернетку збережено'}</span>
           <a className="button button--secondary button--small" href="/trade-in/preview/storefront" target="_blank" rel="noreferrer"><Icon name="visibility" size={16} /> Тестова сторінка</a>
           <button className="button button--secondary button--small" type="button" disabled={save.isPending || !dirty} onClick={() => save.mutate(false)}><Icon name="save" size={16} /> Зберегти</button>
-          <button className="button button--primary button--small" type="button" disabled={save.isPending} onClick={() => save.mutate(true)}><Icon name="publication" size={16} /> Опублікувати</button>
+          <button className="button button--primary button--small" type="button" disabled={save.isPending || logicIssues.some((issue) => issue.severity === 'error')} onClick={() => save.mutate(true)}><Icon name="publication" size={16} /> Опублікувати</button>
         </div>
       </header>
 
       <nav className="trade-in-builder-tabs">
         <button className={tab === 'page' ? 'is-active' : ''} type="button" onClick={() => setTab('page')}><Icon name="edit" size={17} /><span>Сторінка</span></button>
-        <button className={tab === 'form' ? 'is-active' : ''} type="button" onClick={() => setTab('form')}><Icon name="formBuilder" size={17} /><span>Форма</span><i>{config.form.steps.length}</i></button>
         <button className={tab === 'logic' ? 'is-active' : ''} type="button" onClick={() => setTab('logic')}><Icon name="variants" size={17} /><span>Логіка</span>{logicIssues.length > 0 && <i className={logicIssues.some((issue) => issue.severity === 'error') ? 'has-errors' : ''}>{logicIssues.length}</i>}</button>
         <button className={tab === 'publish' ? 'is-active' : ''} type="button" onClick={() => setTab('publish')}><Icon name="publication" size={17} /><span>Публікація</span></button>
       </nav>
@@ -536,9 +536,8 @@ export function TradeInBuilderPage() {
       <div className="trade-in-builder-layout">
         <section className="trade-in-builder-controls">
           {tab === 'page' && <PageEditor config={config} mutate={mutate} />}
-          {tab === 'form' && <FormEditor config={config} mutate={mutate} focusedStepId={focusedStepId} onOpenLogic={(stepId) => { setFocusedStepId(stepId); setTab('logic'); }} />}
-          {tab === 'logic' && <TradeInLogicEditor config={config} mutate={mutate} onEditStep={(stepId) => { setFocusedStepId(stepId); setTab('form'); }} />}
-          {tab === 'publish' && <PublishEditor settings={settingsQuery.data} origin={origin} setOrigin={setOrigin} config={config} busy={save.isPending} onSave={() => save.mutate(false)} onPublish={() => save.mutate(true)} />}
+          {tab === 'logic' && <TradeInLogicEditor config={config} mutate={mutate} />}
+          {tab === 'publish' && <PublishEditor settings={settingsQuery.data} origin={origin} setOrigin={setOrigin} config={config} busy={save.isPending} invalid={logicIssues.some((issue) => issue.severity === 'error')} onSave={() => save.mutate(false)} onPublish={() => save.mutate(true)} />}
         </section>
 
         {showEmbeddedPreview && <aside className={`trade-in-builder-preview trade-in-builder-preview--${previewDevice}`}>

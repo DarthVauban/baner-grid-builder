@@ -24,6 +24,37 @@ export async function loadTradeInSettings(db = { query }) {
 }
 
 export function visibleTradeInFields(config, answers) {
+  if (config.form.graph?.nodes?.length) {
+    const graph = config.form.graph;
+    const fields = [];
+    const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const outgoing = new Map();
+    for (const edge of graph.edges) {
+      outgoing.set(`${edge.source}:${edge.sourceHandle || 'next'}`, edge.target);
+    }
+    let node = graph.nodes.find((item) => item.type === 'start') || null;
+    const visited = new Set();
+    while (node && !visited.has(node.id) && visited.size <= graph.nodes.length) {
+      visited.add(node.id);
+      if (node.type === 'fields') {
+        for (const field of node.fields) {
+          if (matchesTradeInCondition(field.condition, answers)) fields.push(field);
+        }
+      }
+      if (node.type === 'finish') break;
+      let sourceHandle = 'next';
+      if (node.type === 'condition') {
+        const branch = node.branches.find((item) => (
+          item.condition.fieldKey && matchesTradeInCondition(item.condition, answers)
+        ));
+        sourceHandle = branch?.id || 'default';
+      }
+      const targetId = outgoing.get(`${node.id}:${sourceHandle}`);
+      node = targetId ? nodesById.get(targetId) || null : null;
+    }
+    return fields;
+  }
+
   const fields = [];
   for (const step of config.form.steps) {
     if (!matchesTradeInCondition(step.condition, answers)) continue;

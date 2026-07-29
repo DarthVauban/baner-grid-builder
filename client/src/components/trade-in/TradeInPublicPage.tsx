@@ -1,10 +1,10 @@
 import { FormEvent, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   isTradeInFieldComplete,
+  matchesTradeInCondition,
   tradeInAnswerLabel,
-  visibleTradeInFields,
-  visibleTradeInSteps
 } from '../../lib/trade-in';
+import { buildTradeInDisplayPath, getTradeInFormGraph } from '../../lib/trade-in-logic';
 import type {
   TradeInAnswer,
   TradeInAnswers,
@@ -304,9 +304,14 @@ function TradeInWizard({
   const [transitioning, setTransitioning] = useState(false);
   const stepContentRef = useRef<HTMLDivElement>(null);
   const transitionTimerRef = useRef<number | null>(null);
-  const activeSteps = useMemo(() => visibleTradeInSteps(config.form.steps, answers), [answers, config.form.steps]);
+  const graph = useMemo(() => getTradeInFormGraph(config.form), [config.form]);
+  const graphPath = useMemo(() => buildTradeInDisplayPath(graph, answers), [answers, graph]);
+  const activeSteps = useMemo(() => graphPath.filter((node) => node.type === 'fields' || node.type === 'information'), [graphPath]);
+  const finishNode = graphPath.find((node) => node.type === 'finish');
   const currentStep = activeSteps[Math.min(stepIndex, Math.max(0, activeSteps.length - 1))];
-  const fields = currentStep ? visibleTradeInFields(currentStep, answers) : [];
+  const fields = currentStep?.type === 'fields'
+    ? currentStep.fields.filter((field) => matchesTradeInCondition(field.condition, answers))
+    : [];
 
   useEffect(() => () => {
     if (transitionTimerRef.current != null) window.clearTimeout(transitionTimerRef.current);
@@ -377,6 +382,10 @@ function TradeInWizard({
       scrollToForm();
       return;
     }
+    if (!finishNode) {
+      setSubmitError('Сценарій форми не має підключеного завершення.');
+      return;
+    }
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -391,7 +400,9 @@ function TradeInWizard({
     }
   }
 
-  const summary = useMemo(() => activeSteps.flatMap((step) => visibleTradeInFields(step, answers))
+  const summary = useMemo(() => activeSteps.flatMap((step) => step.type === 'fields'
+    ? step.fields.filter((field) => matchesTradeInCondition(field.condition, answers))
+    : [])
     .filter((field) => field.showInSummary && tradeInAnswerLabel(field, answers[field.key]))
     .map((field) => ({ key: field.key, label: field.label, value: tradeInAnswerLabel(field, answers[field.key]) })), [activeSteps, answers]);
 
@@ -400,8 +411,8 @@ function TradeInWizard({
       <section className="ti-form-shell ti-success" id="trade-in-form">
         <span className="ti-success__icon">✓</span>
         <p className="ti-eyebrow">{preview ? 'Режим превʼю' : 'Заявку створено'}</p>
-        <h2>{config.form.successTitle}</h2>
-        <p>{config.form.successText}</p>
+        <h2>{finishNode?.title || config.form.successTitle}</h2>
+        <p>{finishNode?.description || config.form.successText}</p>
         {done.number && <div className="ti-success__number"><span>Номер заявки</span><strong>{done.number}</strong></div>}
         <button type="button" className="ti-button ti-button--primary" onClick={() => {
           setAnswers({});

@@ -476,6 +476,171 @@ function normalizeSteps(value) {
   });
 }
 
+function legacyStepsToGraph(steps, successTitle, successText) {
+  const start = {
+    id: 'form_start',
+    type: 'start',
+    position: { x: 0, y: 180 },
+    title: 'Початок',
+    description: '',
+    fields: [],
+    branches: [],
+    defaultBranchLabel: ''
+  };
+  const finish = {
+    id: 'form_finish',
+    type: 'finish',
+    position: { x: Math.max(1, steps.length + 1) * 360, y: 180 },
+    title: successTitle || 'Заявку прийнято',
+    description: successText || 'Менеджер Mobile Trend звʼяжеться з вами найближчим часом.',
+    fields: [],
+    branches: [],
+    defaultBranchLabel: ''
+  };
+  const fieldNodes = steps.map((step, index) => ({
+    id: step.id,
+    type: 'fields',
+    position: { x: (index + 1) * 360, y: 180 },
+    title: step.title,
+    description: step.description,
+    fields: structuredClone(step.fields),
+    branches: [],
+    defaultBranchLabel: ''
+  }));
+  const nodes = [start, ...fieldNodes, finish];
+  const edges = [];
+  let nextEntryId = finish.id;
+
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const step = steps[index];
+    const fieldNode = fieldNodes[index];
+    edges.push({
+      id: `edge_${fieldNode.id}_${nextEntryId}`,
+      source: fieldNode.id,
+      target: nextEntryId,
+      sourceHandle: 'next'
+    });
+    if (step.condition.fieldKey) {
+      const conditionNode = {
+        id: `condition_${step.id}`,
+        type: 'condition',
+        position: { x: fieldNode.position.x - 170, y: fieldNode.position.y + 250 },
+        title: `Умова: ${step.title}`,
+        description: '',
+        fields: [],
+        branches: [{
+          id: `branch_${step.id}`,
+          label: 'Умова виконується',
+          condition: structuredClone(step.condition)
+        }],
+        defaultBranchLabel: 'Інші випадки'
+      };
+      nodes.push(conditionNode);
+      edges.push({
+        id: `edge_${conditionNode.id}_${fieldNode.id}`,
+        source: conditionNode.id,
+        target: fieldNode.id,
+        sourceHandle: conditionNode.branches[0].id
+      });
+      edges.push({
+        id: `edge_${conditionNode.id}_${nextEntryId}_default`,
+        source: conditionNode.id,
+        target: nextEntryId,
+        sourceHandle: 'default'
+      });
+      nextEntryId = conditionNode.id;
+    } else {
+      nextEntryId = fieldNode.id;
+    }
+  }
+  edges.push({
+    id: `edge_${start.id}_${nextEntryId}`,
+    source: start.id,
+    target: nextEntryId,
+    sourceHandle: 'next'
+  });
+  return { nodes, edges };
+}
+
+function normalizeFormGraph(value, legacySteps, successTitle, successText) {
+  const source = object(value);
+  if (!Array.isArray(source.nodes) || source.nodes.length === 0) {
+    return legacyStepsToGraph(legacySteps, successTitle, successText);
+  }
+
+  const nodeIds = new Set();
+  const fieldKeys = new Set();
+  const nodeTypes = ['start', 'fields', 'condition', 'information', 'finish'];
+  const nodes = source.nodes.slice(0, 100).map((item, index) => {
+    const node = object(item);
+    let id = text(node.id, `form_node_${index}_${Date.now()}`, 120);
+    while (nodeIds.has(id)) id = `${id}_${index + 1}`;
+    nodeIds.add(id);
+    const type = nodeTypes.includes(node.type) ? node.type : 'fields';
+    const position = object(node.position);
+    const branchIds = new Set();
+    return {
+      id,
+      type,
+      position: {
+        x: number(position.x, index * 340, -100_000, 100_000),
+        y: number(position.y, 180, -100_000, 100_000)
+      },
+      title: text(node.title, type === 'start' ? 'Початок' : `Нода ${index + 1}`, 220),
+      description: text(node.description, '', 1200),
+      fields: type === 'fields' ? normalizeFields(node.fields, fieldKeys) : [],
+      branches: type === 'condition' && Array.isArray(node.branches)
+        ? node.branches.slice(0, 20).map((item, branchIndex) => {
+          const branch = object(item);
+          let branchId = text(branch.id, `branch_${index}_${branchIndex}_${Date.now()}`, 120);
+          while (branchIds.has(branchId)) branchId = `${branchId}_${branchIndex + 1}`;
+          branchIds.add(branchId);
+          return {
+            id: branchId,
+            label: text(branch.label, `Варіант ${branchIndex + 1}`, 160),
+            condition: normalizeCondition(branch.condition)
+          };
+        })
+        : [],
+      defaultBranchLabel: type === 'condition'
+        ? text(node.defaultBranchLabel, 'Інші випадки', 160)
+        : ''
+    };
+  });
+
+  const validNodeIds = new Set(nodes.map((node) => node.id));
+  const edgeIds = new Set();
+  const edges = Array.isArray(source.edges) ? source.edges.slice(0, 300).flatMap((item, index) => {
+    const edge = object(item);
+    const sourceId = text(edge.source, '', 120);
+    const targetId = text(edge.target, '', 120);
+    if (!validNodeIds.has(sourceId) || !validNodeIds.has(targetId) || sourceId === targetId) return [];
+    let id = text(edge.id, `form_edge_${index}_${Date.now()}`, 120);
+    while (edgeIds.has(id)) id = `${id}_${index + 1}`;
+    edgeIds.add(id);
+    return [{
+      id,
+      source: sourceId,
+      target: targetId,
+      sourceHandle: text(edge.sourceHandle, 'next', 120)
+    }];
+  }) : [];
+
+  if (!nodes.some((node) => node.type === 'start')) {
+    nodes.unshift({
+      id: 'form_start',
+      type: 'start',
+      position: { x: 0, y: 180 },
+      title: 'Початок',
+      description: '',
+      fields: [],
+      branches: [],
+      defaultBranchLabel: ''
+    });
+  }
+  return { nodes, edges };
+}
+
 function normalizeItems(value, defaults, shape) {
   if (!Array.isArray(value)) return structuredClone(defaults);
   return value.slice(0, 30).map((item, index) => {
@@ -505,9 +670,10 @@ export function normalizeTradeInConfig(value) {
   const seo = object(source.seo);
   const form = object(source.form);
   const defaults = defaultTradeInConfig;
+  const legacySteps = normalizeSteps(form.steps);
 
   return {
-    version: 1,
+    version: 2,
     theme: {
       fontFamily: text(theme.fontFamily, defaults.theme.fontFamily, 80),
       backgroundColor: text(theme.backgroundColor, defaults.theme.backgroundColor, 40),
@@ -593,7 +759,13 @@ export function normalizeTradeInConfig(value) {
       submitLabel: text(form.submitLabel, defaults.form.submitLabel, 120),
       successTitle: text(form.successTitle, defaults.form.successTitle, 240),
       successText: text(form.successText, defaults.form.successText, 800),
-      steps: normalizeSteps(form.steps)
+      graph: normalizeFormGraph(
+        form.graph,
+        legacySteps,
+        text(form.successTitle, defaults.form.successTitle, 240),
+        text(form.successText, defaults.form.successText, 800)
+      ),
+      steps: legacySteps
     }
   };
 }

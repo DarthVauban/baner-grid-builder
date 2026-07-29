@@ -1,7 +1,14 @@
+import { emptyTradeInCondition, matchesTradeInCondition, tradeInId } from './trade-in';
 import type {
+  TradeInAnswers,
   TradeInCondition,
   TradeInConditionOperator,
   TradeInField,
+  TradeInFormEdge,
+  TradeInFormGraph,
+  TradeInFormNode,
+  TradeInFormNodePosition,
+  TradeInFormNodeType,
   TradeInStep
 } from '../types/trade-in';
 
@@ -13,158 +20,494 @@ export const tradeInConditionOperatorLabels: Record<TradeInConditionOperator, st
   answered: 'заповнено'
 };
 
-export interface TradeInFieldReference {
-  field: TradeInField;
-  fieldIndex: number;
-  step: TradeInStep;
-  stepIndex: number;
-}
-
 export interface TradeInLogicIssue {
   id: string;
   severity: 'error' | 'warning';
   title: string;
   description: string;
-  stepId?: string;
+  nodeId?: string;
   fieldKey?: string;
 }
 
-export function getTradeInFieldReferences(steps: TradeInStep[]) {
-  return steps.flatMap((step, stepIndex) => step.fields.map((field, fieldIndex) => ({
-    field,
-    fieldIndex,
-    step,
-    stepIndex
-  })));
+export interface TradeInResolvedNode {
+  node: TradeInFormNode;
+  traversedNodeIds: string[];
 }
 
-export function getTradeInConditionSource(
-  steps: TradeInStep[],
-  condition: TradeInCondition
-): TradeInFieldReference | null {
-  if (!condition.fieldKey) return null;
-  return getTradeInFieldReferences(steps).find((reference) => reference.field.key === condition.fieldKey) || null;
-}
+const nextHandle = 'next';
+const defaultHandle = 'default';
 
-export function createTradeInStepCondition(steps: TradeInStep[], sourceStepId: string): TradeInCondition | null {
-  const sourceStep = steps.find((step) => step.id === sourceStepId);
-  const sourceField = sourceStep?.fields.find((field) => field.key.trim());
-  if (!sourceField) return null;
-
-  const hasSelectableOptions = sourceField.options.length > 0;
+function legacyConditionNode(step: TradeInStep, position: TradeInFormNodePosition): TradeInFormNode {
   return {
-    fieldKey: sourceField.key,
-    operator: hasSelectableOptions ? 'equals' : 'answered',
-    value: hasSelectableOptions ? sourceField.options[0]?.value || '' : ''
+    id: `condition_${step.id}`,
+    type: 'condition',
+    position,
+    title: `Умова: ${step.title}`,
+    description: '',
+    fields: [],
+    branches: [{
+      id: `branch_${step.id}`,
+      label: 'Умова виконується',
+      condition: structuredClone(step.condition)
+    }],
+    defaultBranchLabel: 'Інші випадки'
   };
 }
 
-export function canConnectTradeInSteps(steps: TradeInStep[], sourceStepId: string, targetStepId: string) {
-  const sourceIndex = steps.findIndex((step) => step.id === sourceStepId);
-  const targetIndex = steps.findIndex((step) => step.id === targetStepId);
-  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= targetIndex) return false;
-  return steps[sourceIndex].fields.some((field) => field.key.trim());
+export function convertTradeInStepsToGraph(
+  steps: TradeInStep[],
+  successTitle = 'Заявку прийнято',
+  successText = 'Менеджер Mobile Trend звʼяжеться з вами найближчим часом.'
+): TradeInFormGraph {
+  const start: TradeInFormNode = {
+    id: 'form_start',
+    type: 'start',
+    position: { x: 0, y: 180 },
+    title: 'Початок',
+    description: '',
+    fields: [],
+    branches: [],
+    defaultBranchLabel: ''
+  };
+  const finish: TradeInFormNode = {
+    id: 'form_finish',
+    type: 'finish',
+    position: { x: Math.max(1, steps.length + 1) * 360, y: 180 },
+    title: successTitle,
+    description: successText,
+    fields: [],
+    branches: [],
+    defaultBranchLabel: ''
+  };
+  const fieldNodes = steps.map((step, index): TradeInFormNode => ({
+    id: step.id,
+    type: 'fields',
+    position: { x: (index + 1) * 360, y: 180 },
+    title: step.title,
+    description: step.description,
+    fields: structuredClone(step.fields),
+    branches: [],
+    defaultBranchLabel: ''
+  }));
+  const nodes: TradeInFormNode[] = [start, ...fieldNodes, finish];
+  const edges: TradeInFormEdge[] = [];
+  let nextEntryId = finish.id;
+
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const step = steps[index];
+    const fieldNode = fieldNodes[index];
+    edges.push({
+      id: `edge_${fieldNode.id}_${nextEntryId}`,
+      source: fieldNode.id,
+      target: nextEntryId,
+      sourceHandle: nextHandle
+    });
+
+    if (step.condition.fieldKey) {
+      const conditionNode = legacyConditionNode(step, { x: fieldNode.position.x - 170, y: fieldNode.position.y + 250 });
+      nodes.push(conditionNode);
+      edges.push({
+        id: `edge_${conditionNode.id}_${fieldNode.id}`,
+        source: conditionNode.id,
+        target: fieldNode.id,
+        sourceHandle: conditionNode.branches[0].id
+      });
+      edges.push({
+        id: `edge_${conditionNode.id}_${nextEntryId}_default`,
+        source: conditionNode.id,
+        target: nextEntryId,
+        sourceHandle: defaultHandle
+      });
+      nextEntryId = conditionNode.id;
+    } else {
+      nextEntryId = fieldNode.id;
+    }
+  }
+
+  edges.push({
+    id: `edge_${start.id}_${nextEntryId}`,
+    source: start.id,
+    target: nextEntryId,
+    sourceHandle: nextHandle
+  });
+  return { nodes, edges };
 }
 
-export function formatTradeInCondition(steps: TradeInStep[], condition: TradeInCondition) {
-  if (!condition.fieldKey) return 'За порядком';
-  const reference = getTradeInConditionSource(steps, condition);
-  const fieldLabel = reference?.field.label || condition.fieldKey;
+export function getTradeInFormGraph(form: {
+  graph?: TradeInFormGraph;
+  steps: TradeInStep[];
+  successTitle?: string;
+  successText?: string;
+}) {
+  return form.graph?.nodes?.length
+    ? form.graph
+    : convertTradeInStepsToGraph(form.steps || [], form.successTitle, form.successText);
+}
+
+export function createTradeInFormNode(
+  type: Exclude<TradeInFormNodeType, 'start'>,
+  position: TradeInFormNodePosition,
+  index: number
+): TradeInFormNode {
+  const base = {
+    id: tradeInId(`form_${type}`),
+    type,
+    position,
+    title: '',
+    description: '',
+    fields: [] as TradeInField[],
+    branches: [],
+    defaultBranchLabel: ''
+  };
+
+  if (type === 'fields') {
+    return { ...base, title: `Новий крок ${index + 1}`, description: 'Додайте поля, які має заповнити клієнт.' };
+  }
+  if (type === 'condition') {
+    return {
+      ...base,
+      title: `Нова умова ${index + 1}`,
+      description: 'Спрямуйте клієнта різними гілками залежно від відповіді.',
+      branches: [{
+        id: tradeInId('branch'),
+        label: 'Варіант 1',
+        condition: emptyTradeInCondition()
+      }],
+      defaultBranchLabel: 'Інші випадки'
+    };
+  }
+  if (type === 'information') {
+    return { ...base, title: 'Інформація', description: 'Додайте текст, який побачить клієнт.' };
+  }
+  return {
+    ...base,
+    title: 'Заявку прийнято',
+    description: 'Менеджер Mobile Trend звʼяжеться з вами найближчим часом.'
+  };
+}
+
+export function findNearestFreeNodePosition(
+  nodes: TradeInFormNode[],
+  desired: TradeInFormNodePosition,
+  width = 300,
+  height = 190
+) {
+  const grid = 40;
+  const free = (position: TradeInFormNodePosition) => nodes.every((node) => (
+    Math.abs(node.position.x - position.x) >= width || Math.abs(node.position.y - position.y) >= height
+  ));
+  const snapped = {
+    x: Math.round(desired.x / grid) * grid,
+    y: Math.round(desired.y / grid) * grid
+  };
+  if (free(snapped)) return snapped;
+
+  for (let radius = 1; radius <= 20; radius += 1) {
+    for (let x = -radius; x <= radius; x += 1) {
+      for (const y of [-radius, radius]) {
+        const candidate = { x: snapped.x + x * grid, y: snapped.y + y * grid };
+        if (free(candidate)) return candidate;
+      }
+    }
+    for (let y = -radius + 1; y < radius; y += 1) {
+      for (const x of [-radius, radius]) {
+        const candidate = { x: snapped.x + x * grid, y: snapped.y + y * grid };
+        if (free(candidate)) return candidate;
+      }
+    }
+  }
+  return { x: snapped.x + (nodes.length + 1) * grid, y: snapped.y + (nodes.length + 1) * grid };
+}
+
+export function getTradeInGraphFields(graph: TradeInFormGraph) {
+  return graph.nodes.flatMap((node) => node.type === 'fields' ? node.fields : []);
+}
+
+export function formatTradeInCondition(graph: TradeInFormGraph, condition: TradeInCondition) {
+  if (!condition.fieldKey) return 'Оберіть поле';
+  const field = getTradeInGraphFields(graph).find((item) => item.key === condition.fieldKey);
+  const fieldLabel = field?.label || condition.fieldKey;
   const operatorLabel = tradeInConditionOperatorLabels[condition.operator];
   if (condition.operator === 'answered') return `${fieldLabel} — ${operatorLabel}`;
-
   const values = condition.value.split(',').map((value) => value.trim()).filter(Boolean);
-  const formattedValue = values.map((value) => (
-    reference?.field.options.find((option) => option.value === value)?.label || value
-  )).join(', ');
-
-  return `${fieldLabel} ${operatorLabel} ${formattedValue || '…'}`;
+  const valueLabel = values.map((value) => field?.options.find((option) => option.value === value)?.label || value).join(', ');
+  return `${fieldLabel} ${operatorLabel} ${valueLabel || '…'}`;
 }
 
-export function validateTradeInLogic(steps: TradeInStep[]) {
-  const issues: TradeInLogicIssue[] = [];
-  const references = getTradeInFieldReferences(steps);
-  const referencesByKey = new Map<string, TradeInFieldReference[]>();
+export function getTradeInOutgoingEdge(
+  graph: TradeInFormGraph,
+  nodeId: string,
+  sourceHandle = nextHandle
+) {
+  return graph.edges.find((edge) => edge.source === nodeId && edge.sourceHandle === sourceHandle) || null;
+}
 
-  references.forEach((reference) => {
-    const key = reference.field.key.trim();
+export function getTradeInNextNodeId(graph: TradeInFormGraph, node: TradeInFormNode, answers: TradeInAnswers) {
+  let sourceHandle = nextHandle;
+  if (node.type === 'condition') {
+    const matchingBranch = node.branches.find((branch) => (
+      branch.condition.fieldKey && matchesTradeInCondition(branch.condition, answers)
+    ));
+    sourceHandle = matchingBranch?.id || defaultHandle;
+  }
+  return getTradeInOutgoingEdge(graph, node.id, sourceHandle)?.target || null;
+}
+
+export function resolveNextTradeInDisplayNode(
+  graph: TradeInFormGraph,
+  fromNodeId: string,
+  answers: TradeInAnswers
+): TradeInResolvedNode | null {
+  const traversedNodeIds: string[] = [];
+  let current = graph.nodes.find((node) => node.id === fromNodeId) || null;
+  if (!current) return null;
+
+  for (let index = 0; index <= graph.nodes.length; index += 1) {
+    const nextId = getTradeInNextNodeId(graph, current, answers);
+    if (!nextId || traversedNodeIds.includes(nextId)) return null;
+    const next = graph.nodes.find((node) => node.id === nextId) || null;
+    if (!next) return null;
+    traversedNodeIds.push(next.id);
+    if (next.type === 'fields' || next.type === 'information' || next.type === 'finish') {
+      return { node: next, traversedNodeIds };
+    }
+    current = next;
+  }
+  return null;
+}
+
+export function getTradeInInitialNode(graph: TradeInFormGraph, answers: TradeInAnswers) {
+  const start = graph.nodes.find((node) => node.type === 'start');
+  return start ? resolveNextTradeInDisplayNode(graph, start.id, answers) : null;
+}
+
+export function buildTradeInDisplayPath(graph: TradeInFormGraph, answers: TradeInAnswers) {
+  const result: TradeInFormNode[] = [];
+  const visited = new Set<string>();
+  let resolved = getTradeInInitialNode(graph, answers);
+
+  while (resolved?.node && !visited.has(resolved.node.id)) {
+    const node = resolved.node;
+    visited.add(node.id);
+    result.push(node);
+    if (node.type === 'finish') break;
+    resolved = resolveNextTradeInDisplayNode(graph, node.id, answers);
+  }
+  return result;
+}
+
+export function validateTradeInLogic(graph: TradeInFormGraph) {
+  const issues: TradeInLogicIssue[] = [];
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const starts = graph.nodes.filter((node) => node.type === 'start');
+  const finishes = graph.nodes.filter((node) => node.type === 'finish');
+  const fields = getTradeInGraphFields(graph);
+  const fieldNodes = new Map<string, TradeInFormNode>();
+
+  graph.nodes.forEach((node) => {
+    if (node.type === 'fields') node.fields.forEach((field) => fieldNodes.set(field.id, node));
+  });
+
+  if (starts.length !== 1) {
+    issues.push({
+      id: 'start-count',
+      severity: 'error',
+      title: 'Потрібна одна стартова нода',
+      description: `Знайдено стартових нод: ${starts.length}.`
+    });
+  }
+  if (!finishes.length) {
+    issues.push({
+      id: 'finish-count',
+      severity: 'error',
+      title: 'Немає завершення',
+      description: 'Додайте ноду завершення, яка відправлятиме заявку.'
+    });
+  }
+
+  const keyGroups = new Map<string, TradeInField[]>();
+  fields.forEach((field) => {
+    const key = field.key.trim();
     if (!key) {
       issues.push({
-        id: `empty-field-key-${reference.field.id}`,
+        id: `empty-key-${field.id}`,
         severity: 'error',
-        title: 'Поле не має ключа',
-        description: `У кроці «${reference.step.title || `Крок ${reference.stepIndex + 1}`}» є поле без технічного ключа.`,
-        stepId: reference.step.id
+        title: 'Поле без ключа',
+        description: `Поле «${field.label || 'Без назви'}» не можна використати в умовах.`,
+        nodeId: fieldNodes.get(field.id)?.id
       });
       return;
     }
-    referencesByKey.set(key, [...(referencesByKey.get(key) || []), reference]);
+    keyGroups.set(key, [...(keyGroups.get(key) || []), field]);
   });
-
-  referencesByKey.forEach((matchingReferences, key) => {
-    if (matchingReferences.length < 2) return;
+  keyGroups.forEach((group, key) => {
+    if (group.length < 2) return;
     issues.push({
-      id: `duplicate-field-key-${key}`,
+      id: `duplicate-key-${key}`,
       severity: 'error',
       title: 'Неунікальний ключ поля',
-      description: `Ключ «${key}» використовується ${matchingReferences.length} рази. Залежність буде неоднозначною.`,
-      stepId: matchingReferences[0].step.id,
+      description: `Ключ «${key}» використовується ${group.length} рази.`,
+      nodeId: fieldNodes.get(group[0].id)?.id,
       fieldKey: key
     });
   });
 
-  steps.forEach((step, stepIndex) => {
-    if (!step.title.trim()) {
+  graph.edges.forEach((edge) => {
+    if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) {
       issues.push({
-        id: `empty-step-title-${step.id}`,
-        severity: 'warning',
-        title: 'Крок без назви',
-        description: `Крок ${stepIndex + 1} буде складно розпізнати на схемі.`,
-        stepId: step.id
-      });
-    }
-
-    const condition = step.condition;
-    if (!condition.fieldKey) return;
-
-    const matchingReferences = referencesByKey.get(condition.fieldKey) || [];
-    if (!matchingReferences.length) {
-      issues.push({
-        id: `missing-condition-field-${step.id}`,
+        id: `broken-edge-${edge.id}`,
         severity: 'error',
-        title: 'Поле умови не існує',
-        description: `Крок «${step.title || `Крок ${stepIndex + 1}`}» посилається на видалене поле «${condition.fieldKey}».`,
-        stepId: step.id,
-        fieldKey: condition.fieldKey
-      });
-      return;
-    }
-
-    const source = matchingReferences[0];
-    if (stepIndex === 0 || source.stepIndex >= stepIndex) {
-      issues.push({
-        id: `unreachable-condition-${step.id}`,
-        severity: 'error',
-        title: 'Умову неможливо перевірити',
-        description: stepIndex === 0
-          ? 'Перший крок не може залежати від відповіді, якої ще немає.'
-          : `Поле «${source.field.label}» знаходиться у цьому або наступному кроці.`,
-        stepId: step.id,
-        fieldKey: condition.fieldKey
-      });
-    }
-
-    if (condition.operator !== 'answered' && !condition.value.trim()) {
-      issues.push({
-        id: `empty-condition-value-${step.id}`,
-        severity: 'warning',
-        title: 'Не задано значення умови',
-        description: `Заповніть значення переходу до кроку «${step.title || `Крок ${stepIndex + 1}`}».`,
-        stepId: step.id,
-        fieldKey: condition.fieldKey
+        title: 'Пошкоджений зв’язок',
+        description: 'Початкова або кінцева нода цього зв’язку не існує.'
       });
     }
   });
 
+  graph.nodes.forEach((node) => {
+    const outgoing = graph.edges.filter((edge) => edge.source === node.id);
+    if (node.type === 'finish' && outgoing.length) {
+      issues.push({
+        id: `finish-outgoing-${node.id}`,
+        severity: 'error',
+        title: 'Завершення має вихідний зв’язок',
+        description: 'Після відправлення заявки сценарій повинен завершуватися.',
+        nodeId: node.id
+      });
+    }
+    if (['start', 'fields', 'information'].includes(node.type)) {
+      const nextEdges = outgoing.filter((edge) => edge.sourceHandle === nextHandle);
+      if (!nextEdges.length) {
+        issues.push({
+          id: `missing-next-${node.id}`,
+          severity: 'error',
+          title: 'Немає наступного кроку',
+          description: `Нода «${node.title || node.type}» не має вихідного зв’язку.`,
+          nodeId: node.id
+        });
+      }
+      if (nextEdges.length > 1) {
+        issues.push({
+          id: `multiple-next-${node.id}`,
+          severity: 'error',
+          title: 'Забагато вихідних зв’язків',
+          description: 'Звичайна нода може мати лише один наступний крок.',
+          nodeId: node.id
+        });
+      }
+    }
+    if (node.type === 'condition') {
+      node.branches.forEach((branch) => {
+        if (!branch.condition.fieldKey) {
+          issues.push({
+            id: `empty-branch-${node.id}-${branch.id}`,
+            severity: 'error',
+            title: 'Гілка без умови',
+            description: `У гілці «${branch.label || 'Без назви'}» не вибрано поле.`,
+            nodeId: node.id
+          });
+        } else if (!keyGroups.has(branch.condition.fieldKey)) {
+          issues.push({
+            id: `missing-branch-field-${node.id}-${branch.id}`,
+            severity: 'error',
+            title: 'Поле умови не існує',
+            description: `Гілка посилається на поле «${branch.condition.fieldKey}».`,
+            nodeId: node.id,
+            fieldKey: branch.condition.fieldKey
+          });
+        }
+        if (!outgoing.some((edge) => edge.sourceHandle === branch.id)) {
+          issues.push({
+            id: `missing-branch-edge-${node.id}-${branch.id}`,
+            severity: 'error',
+            title: 'Гілка нікуди не веде',
+            description: `Під’єднайте вихід «${branch.label || 'Без назви'}» до наступної ноди.`,
+            nodeId: node.id
+          });
+        }
+      });
+      if (!outgoing.some((edge) => edge.sourceHandle === defaultHandle)) {
+        issues.push({
+          id: `missing-default-edge-${node.id}`,
+          severity: 'warning',
+          title: 'Немає резервного переходу',
+          description: 'Додайте вихід «Інші випадки», щоб форма не зупинилася.',
+          nodeId: node.id
+        });
+      }
+    }
+  });
+
+  const reachable = new Set<string>();
+  const queue = starts[0] ? [starts[0].id] : [];
+  while (queue.length) {
+    const id = queue.shift()!;
+    if (reachable.has(id)) continue;
+    reachable.add(id);
+    graph.edges.filter((edge) => edge.source === id).forEach((edge) => queue.push(edge.target));
+  }
+  graph.nodes.forEach((node) => {
+    if (!reachable.has(node.id)) {
+      issues.push({
+        id: `unreachable-${node.id}`,
+        severity: 'warning',
+        title: 'Нода недосяжна',
+        description: `До ноди «${node.title || node.type}» немає шляху від початку.`,
+        nodeId: node.id
+      });
+    }
+  });
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const findCycle = (nodeId: string): boolean => {
+    if (visiting.has(nodeId)) return true;
+    if (visited.has(nodeId)) return false;
+    visiting.add(nodeId);
+    const cyclic = graph.edges.filter((edge) => edge.source === nodeId).some((edge) => findCycle(edge.target));
+    visiting.delete(nodeId);
+    visited.add(nodeId);
+    return cyclic;
+  };
+  if (starts[0] && findCycle(starts[0].id)) {
+    issues.push({
+      id: 'cycle',
+      severity: 'error',
+      title: 'У сценарії є цикл',
+      description: 'Кроки форми не можуть повертати клієнта у нескінченне коло.'
+    });
+  }
   return issues;
+}
+
+export function canConnectTradeInGraph(
+  graph: TradeInFormGraph,
+  sourceId: string,
+  targetId: string,
+  sourceHandle: string
+) {
+  if (!sourceId || !targetId || sourceId === targetId) return false;
+  const source = graph.nodes.find((node) => node.id === sourceId);
+  const target = graph.nodes.find((node) => node.id === targetId);
+  if (!source || !target || source.type === 'finish' || target.type === 'start') return false;
+  if (graph.edges.some((edge) => edge.source === sourceId && edge.sourceHandle === sourceHandle)) return false;
+
+  const adjacency = new Map<string, string[]>();
+  graph.edges.forEach((edge) => adjacency.set(edge.source, [...(adjacency.get(edge.source) || []), edge.target]));
+  const queue = [targetId];
+  const visited = new Set<string>();
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (current === sourceId) return false;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    queue.push(...(adjacency.get(current) || []));
+  }
+  return true;
+}
+
+export function removeTradeInGraphNode(graph: TradeInFormGraph, nodeId: string) {
+  return {
+    nodes: graph.nodes.filter((node) => node.id !== nodeId),
+    edges: graph.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId)
+  };
 }

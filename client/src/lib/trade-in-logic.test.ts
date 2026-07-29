@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
-  canConnectTradeInSteps,
-  createTradeInStepCondition,
-  formatTradeInCondition,
+  buildTradeInDisplayPath,
+  canConnectTradeInGraph,
+  convertTradeInStepsToGraph,
+  createTradeInFormNode,
+  findNearestFreeNodePosition,
   validateTradeInLogic
 } from './trade-in-logic';
 import { emptyTradeInCondition } from './trade-in';
-import type { TradeInField, TradeInStep } from '../types/trade-in';
+import type { TradeInField, TradeInFormGraph, TradeInFormNode, TradeInStep } from '../types/trade-in';
 
-function field(id: string, key: string, label = key, options: TradeInField['options'] = []): TradeInField {
+function field(id: string, key: string, label = key): TradeInField {
   return {
     id,
     key,
     label,
-    type: options.length ? 'radio' : 'text',
+    type: 'text',
     placeholder: '',
     helpText: '',
     required: false,
@@ -23,82 +25,116 @@ function field(id: string, key: string, label = key, options: TradeInField['opti
     min: null,
     max: null,
     condition: emptyTradeInCondition(),
-    options
+    options: []
   };
 }
 
-function step(id: string, fields: TradeInField[], condition = emptyTradeInCondition()): TradeInStep {
-  return { id, title: id, description: '', fields, condition };
+function node(id: string, type: TradeInFormNode['type'], fields: TradeInField[] = []): TradeInFormNode {
+  return {
+    id,
+    type,
+    position: { x: 0, y: 0 },
+    title: id,
+    description: '',
+    fields,
+    branches: [],
+    defaultBranchLabel: 'Інші випадки'
+  };
 }
 
-describe('trade-in logic graph helpers', () => {
-  it('creates a condition from the first selectable field in the source step', () => {
-    const steps = [
-      step('category', [field('category-field', 'category', 'Категорія', [
-        { id: 'smartphone', label: 'Смартфон', value: 'smartphone' }
-      ])]),
-      step('model', [])
+describe('Trade-in graph model', () => {
+  it('converts legacy conditional steps into condition nodes with true and default branches', () => {
+    const steps: TradeInStep[] = [
+      { id: 'category', title: 'Категорія', description: '', condition: emptyTradeInCondition(), fields: [field('category-field', 'category')] },
+      {
+        id: 'apple',
+        title: 'Apple',
+        description: '',
+        condition: { fieldKey: 'category', operator: 'equals', value: 'apple' },
+        fields: [field('model-field', 'model')]
+      }
     ];
 
-    expect(createTradeInStepCondition(steps, 'category')).toEqual({
-      fieldKey: 'category',
-      operator: 'equals',
-      value: 'smartphone'
-    });
-    expect(canConnectTradeInSteps(steps, 'category', 'model')).toBe(true);
-    expect(canConnectTradeInSteps(steps, 'model', 'category')).toBe(false);
+    const graph = convertTradeInStepsToGraph(steps);
+    const condition = graph.nodes.find((item) => item.id === 'condition_apple');
+    expect(condition?.type).toBe('condition');
+    expect(graph.edges).toContainEqual(expect.objectContaining({
+      source: 'condition_apple',
+      target: 'apple',
+      sourceHandle: 'branch_apple'
+    }));
+    expect(graph.edges.some((edge) => edge.source === 'condition_apple' && edge.sourceHandle === 'default')).toBe(true);
   });
 
-  it('uses the answered operator for a source field without options', () => {
-    const steps = [step('contact', [field('phone-field', 'phone', 'Телефон')])];
+  it('routes the public path through the first matching condition branch', () => {
+    const start = node('start', 'start');
+    const category = node('category', 'fields', [field('category-field', 'category')]);
+    const condition = {
+      ...node('condition', 'condition'),
+      branches: [{
+        id: 'apple-branch',
+        label: 'Apple',
+        condition: { fieldKey: 'category', operator: 'equals' as const, value: 'apple' }
+      }]
+    };
+    const apple = node('apple', 'fields');
+    const other = node('other', 'information');
+    const finish = node('finish', 'finish');
+    const graph: TradeInFormGraph = {
+      nodes: [start, category, condition, apple, other, finish],
+      edges: [
+        { id: '1', source: 'start', target: 'category', sourceHandle: 'next' },
+        { id: '2', source: 'category', target: 'condition', sourceHandle: 'next' },
+        { id: '3', source: 'condition', target: 'apple', sourceHandle: 'apple-branch' },
+        { id: '4', source: 'condition', target: 'other', sourceHandle: 'default' },
+        { id: '5', source: 'apple', target: 'finish', sourceHandle: 'next' },
+        { id: '6', source: 'other', target: 'finish', sourceHandle: 'next' }
+      ]
+    };
 
-    expect(createTradeInStepCondition(steps, 'contact')).toEqual({
-      fieldKey: 'phone',
-      operator: 'answered',
-      value: ''
-    });
+    expect(buildTradeInDisplayPath(graph, { category: 'apple' }).map((item) => item.id)).toEqual(['category', 'apple', 'finish']);
+    expect(buildTradeInDisplayPath(graph, { category: 'samsung' }).map((item) => item.id)).toEqual(['category', 'other', 'finish']);
   });
 
-  it('formats option values using their customer-facing labels', () => {
-    const steps = [
-      step('category', [field('category-field', 'category', 'Категорія', [
-        { id: 'smartphone', label: 'Смартфон', value: 'smartphone' }
-      ])])
-    ];
+  it('creates new nodes detached and finds the nearest collision-free position', () => {
+    const existing = node('existing', 'fields');
+    existing.position = { x: 200, y: 200 };
+    const position = findNearestFreeNodePosition([existing], { x: 200, y: 200 });
+    const created = createTradeInFormNode('fields', position, 1);
 
-    expect(formatTradeInCondition(steps, {
-      fieldKey: 'category',
-      operator: 'equals',
-      value: 'smartphone'
-    })).toBe('Категорія дорівнює Смартфон');
+    expect(position).not.toEqual(existing.position);
+    expect(created.type).toBe('fields');
+    expect(created.position).toEqual(position);
   });
 
-  it('reports missing, ambiguous and unreachable dependencies', () => {
-    const steps = [
-      step('first', [field('first-duplicate', 'duplicate')], {
-        fieldKey: 'future',
-        operator: 'answered',
-        value: ''
-      }),
-      step('second', [field('second-duplicate', 'duplicate'), field('future-field', 'future')], {
-        fieldKey: 'missing',
-        operator: 'equals',
-        value: ''
-      })
-    ];
+  it('blocks connections that would create a cycle', () => {
+    const graph: TradeInFormGraph = {
+      nodes: [node('start', 'start'), node('one', 'fields'), node('two', 'fields')],
+      edges: [
+        { id: '1', source: 'start', target: 'one', sourceHandle: 'next' },
+        { id: '2', source: 'one', target: 'two', sourceHandle: 'next' }
+      ]
+    };
 
-    const issueIds = validateTradeInLogic(steps).map((issue) => issue.id);
-    expect(issueIds).toContain('duplicate-field-key-duplicate');
-    expect(issueIds).toContain('unreachable-condition-first');
-    expect(issueIds).toContain('missing-condition-field-second');
+    expect(canConnectTradeInGraph(graph, 'two', 'start', 'next')).toBe(false);
+    expect(canConnectTradeInGraph(graph, 'two', 'one', 'next')).toBe(false);
   });
 
-  it('accepts a dependency on a field from an earlier step', () => {
-    const steps = [
-      step('category', [field('category-field', 'category', 'Категорія')]),
-      step('details', [], { fieldKey: 'category', operator: 'answered', value: '' })
-    ];
+  it('reports unreachable nodes, missing exits and duplicate field keys', () => {
+    const graph: TradeInFormGraph = {
+      nodes: [
+        node('start', 'start'),
+        node('first', 'fields', [field('field-one', 'duplicate')]),
+        node('second', 'fields', [field('field-two', 'duplicate')]),
+        node('finish', 'finish')
+      ],
+      edges: [{ id: '1', source: 'start', target: 'first', sourceHandle: 'next' }]
+    };
 
-    expect(validateTradeInLogic(steps)).toEqual([]);
+    const ids = validateTradeInLogic(graph).map((issue) => issue.id);
+    expect(ids).toContain('duplicate-key-duplicate');
+    expect(ids).toContain('missing-next-first');
+    expect(ids).toContain('unreachable-second');
+    expect(ids).toContain('unreachable-finish');
   });
 });

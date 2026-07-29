@@ -41,6 +41,42 @@ export interface TradeInStep {
   fields: TradeInField[];
 }
 
+export type TradeInFormNodeType = 'start' | 'fields' | 'condition' | 'information' | 'finish';
+
+export interface TradeInFormNodePosition {
+  x: number;
+  y: number;
+}
+
+export interface TradeInConditionBranch {
+  id: string;
+  label: string;
+  condition: TradeInCondition;
+}
+
+export interface TradeInFormNode {
+  id: string;
+  type: TradeInFormNodeType;
+  position: TradeInFormNodePosition;
+  title: string;
+  description: string;
+  fields: TradeInField[];
+  branches: TradeInConditionBranch[];
+  defaultBranchLabel: string;
+}
+
+export interface TradeInFormEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle: string;
+}
+
+export interface TradeInFormGraph {
+  nodes: TradeInFormNode[];
+  edges: TradeInFormEdge[];
+}
+
 export interface TradeInContentItem {
   id: string;
   title: string;
@@ -143,6 +179,8 @@ export interface TradeInConfig {
     submitLabel: string;
     successTitle: string;
     successText: string;
+    graph?: TradeInFormGraph;
+    /** @deprecated Kept for automatic conversion of saved version 1 forms. */
     steps: TradeInStep[];
   };
 }
