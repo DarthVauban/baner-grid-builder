@@ -442,8 +442,9 @@ export async function createPublicApplication({
         `INSERT INTO application_values (
            application_id, field_id, field_key_snapshot, field_label_snapshot,
            field_type_snapshot, system_field_type, show_in_summary_snapshot,
-           value, option_label_snapshot, sort_order
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+           value, option_label_snapshot, sort_order, step_id_snapshot,
+           step_title_snapshot, step_description_snapshot, step_sort_order_snapshot
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           applicationId,
           field.id || null,
@@ -454,7 +455,11 @@ export async function createPublicApplication({
           field.showInSummary === true,
           value,
           findOptionLabel(field, value),
-          field.sortOrder || index
+          field.sortOrder ?? index,
+          field.stepId || null,
+          field.stepTitle || null,
+          field.stepDescription || null,
+          field.stepSortOrder ?? null
         ]
       );
     }

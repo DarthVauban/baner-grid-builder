@@ -31,6 +31,7 @@ export function AppShell() {
   });
   const hasChatAccess = toolAccess.data?.includes('chat') === true;
   const hasApplicationsAccess = toolAccess.data?.includes('applications') === true;
+  const hasFormsAccess = toolAccess.data?.includes('form_builder') === true;
   const hasCatalogAccess = toolAccess.data?.includes('used_smartphones_catalog') === true;
   const hasTradeInAccess = toolAccess.data?.includes('trade_in') === true;
   const hasStoreMapAccess = toolAccess.data?.includes('store_map') === true;
@@ -199,6 +200,10 @@ export function AppShell() {
           {hasApplicationsAccess && <NavLink aria-label="Заявки" title="Заявки" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/applications" onClick={closeSidebar}>
             <Icon name="tasks" size={18} />
             <span>Заявки</span>
+          </NavLink>}
+          {hasFormsAccess && <NavLink aria-label="Форми" title="Форми" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/forms" onClick={closeSidebar}>
+            <Icon name="formBuilder" size={18} />
+            <span>Форми</span>
           </NavLink>}
           {hasChatAccess && <NavLink aria-label="Чат" title="Чат" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/chat" onClick={closeSidebar}>
             <Icon name="chat" size={18} />

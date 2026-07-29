@@ -1352,6 +1352,17 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .application-answer-list article, .application-comments article, .application-history article { border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: var(--surface-soft); }
 .application-answer-list small, .application-comments time, .application-history small { color: #8b95a6; font-size: 9px; }
 .application-answer-list strong, .application-comments strong, .application-history span { display: block; margin-top: 4px; color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.application-workflow-steps { display: grid; gap: 12px; }
+.application-workflow-step { overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--surface-soft); }
+.application-workflow-step > header { display: flex; align-items: flex-start; gap: 11px; border-bottom: 1px solid var(--line); padding: 13px 14px; background: var(--surface); }
+.application-workflow-step > header > span { flex: 0 0 31px; height: 31px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--brand); background: var(--brand-soft); font-size: 10px; font-weight: 900; }
+.application-workflow-step h4 { margin: 1px 0 3px; color: var(--ink); font-size: 13px; }
+.application-workflow-step header p { color: var(--muted); font-size: 10px; line-height: 1.45; }
+.application-workflow-step dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0; margin: 0; }
+.application-workflow-step dl > div { min-width: 0; display: grid; gap: 5px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 12px 14px; }
+.application-workflow-step dl > div:nth-child(2n) { border-right: 0; }
+.application-workflow-step dt { color: var(--muted); font-size: 9px; font-weight: 800; }
+.application-workflow-step dd { margin: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 12px; font-weight: 750; white-space: pre-wrap; }
 .application-comments p, .application-history p { margin-top: 7px; }
 .application-source-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
 .application-source-grid article { min-width: 0; display: grid; gap: 5px; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: var(--surface-soft); }
@@ -1373,6 +1384,8 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .application-delete-modal__footer { padding: 0 26px 24px; }
 
 .forms-workspace { display: grid; grid-template-columns: minmax(380px,520px) minmax(0,1fr); align-items: start; gap: 18px; }
+.forms-workspace--workflow { grid-template-columns: minmax(240px,300px) minmax(0,1fr); }
+.forms-builder-create-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
 .forms-left-panel { max-height: calc(100vh - 102px); position: sticky; top: 86px; display: grid; align-content: start; gap: 18px; overflow-y: auto; padding-right: 2px; }
 .forms-list { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 18px; padding: 13px; background: var(--surface); }
 .forms-list > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 4px 9px; color: var(--ink); }
@@ -1388,6 +1401,20 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .forms-editor-tabs { display: grid; gap: 14px; }
 .forms-editor-tabs .tool-panel__header { margin-bottom: 0; }
 .forms-editor-tabs .segmented { width: fit-content; }
+.workflow-form-builder { min-width: 0; display: grid; gap: 14px; }
+.workflow-form-builder__header { display: grid; gap: 12px; }
+.workflow-form-builder__header .tool-panel__header { margin-bottom: 0; }
+.workflow-form-builder__header .tool-panel__header p:last-child { max-width: 720px; }
+.workflow-form-builder__issue { align-self: flex-start; border-radius: 999px; padding: 7px 10px; color: var(--success); background: #eaf8f3; font-size: 9px; font-weight: 850; white-space: nowrap; }
+.workflow-form-builder__issue--error { color: #b42318; background: #fff0ee; }
+.workflow-form-settings { overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-soft); }
+.workflow-form-settings > summary { padding: 12px 14px; color: var(--ink); cursor: pointer; font-size: 11px; font-weight: 850; }
+.workflow-form-settings[open] > summary { border-bottom: 1px solid var(--line); }
+.workflow-form-settings__grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding: 14px; }
+.workflow-form-settings__wide { grid-column: 1 / -1; }
+.workflow-form-settings__checks { display: flex; flex-wrap: wrap; gap: 14px; }
+.workflow-form-builder__canvas { min-width: 0; }
+.workflow-form-builder__canvas .trade-in-logic-workspace { height: min(760px,calc(100vh - 230px)); min-height: 590px; }
 .forms-live-preview-panel { min-width: 0; }
 .forms-live-preview-panel .tool-panel__header { margin-bottom: 14px; }
 .form-builder-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
@@ -4124,4 +4151,13 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .catalog-photo-parser-adapter-editor__actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
   .catalog-photo-parser-adapter-editor__actions .button,
   .catalog-photo-parser-adapter-editor > footer .button { width: 100%; justify-content: center; }
+}
+
+@media (max-width: 760px) {
+  .forms-builder-create-actions { width: 100%; justify-content: stretch; }
+  .forms-builder-create-actions .button { flex: 1; }
+  .workflow-form-settings__grid,
+  .application-workflow-step dl { grid-template-columns: 1fr; }
+  .application-workflow-step dl > div { border-right: 0; }
+  .workflow-form-settings__wide { grid-column: auto; }
 }

@@ -7,11 +7,17 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
-import { cleanText } from '../applications/application.service.js';
+import { cleanText, serializeForm } from '../applications/application.service.js';
 import { createPublicApplication } from '../applications/public.routes.js';
 import { cacheSavedTradeInOrigin, normalizeTradeInOrigin } from './trade-in.domain.js';
 import { normalizeTradeInConfig } from './trade-in.defaults.js';
-import { loadTradeInSettings, submissionForm, tradeInToolId } from './trade-in.service.js';
+import {
+  ensureTradeInWorkflowForm,
+  hydrateTradeInWorkflow,
+  loadTradeInSettings,
+  submissionForm,
+  tradeInToolId
+} from './trade-in.service.js';
 
 const adminRouter = Router();
 const publicRouter = Router();
@@ -36,13 +42,30 @@ const submitLimiter = rateLimit({
 
 adminRouter.use(requireAuth, requireToolAccess(tradeInToolId));
 
+adminRouter.get('/forms', asyncHandler(async (req, res) => {
+  await ensureTradeInWorkflowForm(req.user.id);
+  const result = await pool.query(
+    `SELECT *
+     FROM application_forms
+     WHERE form_type = 'workflow' AND status <> 'archived'
+     ORDER BY updated_at DESC`
+  );
+  res.json({ data: result.rows.map((row) => serializeForm(row, [])) });
+}));
+
 adminRouter.get('/settings', asyncHandler(async (req, res) => {
+  await ensureTradeInWorkflowForm(req.user.id);
   res.json({ data: await loadTradeInSettings() });
 }));
 
 adminRouter.put('/settings', asyncHandler(async (req, res) => {
   const input = parseInput(settingsSchema, req.body);
-  const config = normalizeTradeInConfig(input.config);
+  const normalizedConfig = normalizeTradeInConfig(input.config);
+  const linked = await hydrateTradeInWorkflow(normalizedConfig);
+  if (normalizedConfig.formReference.formId && !linked.form) {
+    throw new AppError(422, 'TRADE_IN_FORM_NOT_FOUND', 'Обрану покрокову форму не знайдено.');
+  }
+  const config = linked.config;
   const publicOrigin = normalizeTradeInOrigin(input.publicOrigin);
   if (input.publicOrigin && !publicOrigin) {
     throw new AppError(422, 'TRADE_IN_ORIGIN_INVALID', 'Вкажіть коректну адресу з http:// або https://.');
@@ -62,7 +85,12 @@ adminRouter.put('/settings', asyncHandler(async (req, res) => {
 
 adminRouter.post('/publish', asyncHandler(async (req, res) => {
   const input = parseInput(settingsSchema, req.body);
-  const config = normalizeTradeInConfig(input.config);
+  const normalizedConfig = normalizeTradeInConfig(input.config);
+  const linked = await hydrateTradeInWorkflow(normalizedConfig, { publishedOnly: true });
+  if (!normalizedConfig.formReference.formId || !linked.form) {
+    throw new AppError(422, 'TRADE_IN_FORM_NOT_PUBLISHED', 'Оберіть та опублікуйте покрокову форму перед публікацією сторінки.');
+  }
+  const config = linked.config;
   const publicOrigin = normalizeTradeInOrigin(input.publicOrigin);
   if (input.publicOrigin && !publicOrigin) {
     throw new AppError(422, 'TRADE_IN_ORIGIN_INVALID', 'Вкажіть коректну адресу з http:// або https://.');
@@ -85,8 +113,9 @@ adminRouter.post('/publish', asyncHandler(async (req, res) => {
 
 adminRouter.get('/preview-settings', asyncHandler(async (req, res) => {
   const settings = await loadTradeInSettings();
+  const linked = await hydrateTradeInWorkflow(settings.draftConfig);
   res.json({ data: {
-    config: settings.draftConfig,
+    config: linked.form ? linked.config : settings.draftConfig,
     status: settings.status,
     updatedAt: settings.updatedAt,
     preview: true
@@ -111,7 +140,16 @@ publicRouter.post('/applications', submitLimiter, asyncHandler(async (req, res) 
   if (!settings.publishedConfig) {
     throw new AppError(404, 'TRADE_IN_NOT_PUBLISHED', 'Сторінка Trade-in ще не опублікована.');
   }
-  const form = submissionForm(settings, input.values);
+  const referenceId = settings.publishedConfig.formReference.formId;
+  const linkedResult = referenceId
+    ? await pool.query(
+      `SELECT *
+       FROM application_forms
+       WHERE id = $1 AND form_type = 'workflow'`,
+      [referenceId]
+    )
+    : { rows: [] };
+  const form = submissionForm(settings, input.values, linkedResult.rows[0] || null);
   if (form.fields.length === 0) {
     throw new AppError(422, 'TRADE_IN_FORM_EMPTY', 'У формі немає доступних полів.');
   }
@@ -120,7 +158,7 @@ publicRouter.post('/applications', submitLimiter, asyncHandler(async (req, res) 
   const model = cleanText(input.values.model, 180);
   const productTitle = [brand, model].filter(Boolean).join(' ') || category || 'Trade-in пристрій';
   const result = await createPublicApplication({
-    publicId: settings.publicId,
+    publicId: form.publicId,
     input: {
       ...input,
       product: { title: productTitle }

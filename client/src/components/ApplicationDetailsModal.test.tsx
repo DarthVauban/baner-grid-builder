@@ -87,4 +87,61 @@ describe('ApplicationDetailsModal answer placement', () => {
     expect(within(additionalSection as HTMLElement).getByText('Кількість платежів')).toBeInTheDocument();
     expect(within(additionalSection as HTMLElement).queryByText('По батькові')).not.toBeInTheDocument();
   });
+
+  it('groups workflow answers by the saved step snapshot', () => {
+    const workflowApplication: ApplicationRecord = {
+      ...application,
+      formName: 'Trade-in — основна форма',
+      values: [
+        {
+          ...application.values[0],
+          id: 'workflow-value-1',
+          key: 'category',
+          label: 'Категорія',
+          value: 'laptop',
+          optionLabel: 'Ноутбук',
+          showInSummary: true,
+          stepId: 'step-category',
+          stepTitle: 'Що будемо оцінювати?',
+          stepDescription: 'Оберіть категорію пристрою.',
+          stepSortOrder: 0,
+          sortOrder: 0
+        },
+        {
+          ...application.values[1],
+          id: 'workflow-value-2',
+          key: 'charger',
+          label: 'Є зарядка?',
+          value: 'yes',
+          optionLabel: 'Так',
+          stepId: 'step-condition',
+          stepTitle: 'Стан і комплектація ноутбука',
+          stepDescription: 'Перевірте комплектацію.',
+          stepSortOrder: 1,
+          sortOrder: 1
+        }
+      ]
+    };
+
+    const { container } = render(
+      <ToastProvider>
+        <ApplicationDetailsModal
+          application={workflowApplication}
+          onClose={vi.fn()}
+          onShare={vi.fn()}
+          onStatus={vi.fn()}
+          onClaim={vi.fn()}
+          onComment={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    const workflowSection = container.querySelector('.application-workflow-answers');
+    expect(workflowSection).not.toBeNull();
+    expect(within(workflowSection as HTMLElement).getByText('Що будемо оцінювати?')).toBeInTheDocument();
+    expect(within(workflowSection as HTMLElement).getByText('Стан і комплектація ноутбука')).toBeInTheDocument();
+    expect(within(workflowSection as HTMLElement).getByText('Ноутбук')).toBeInTheDocument();
+    expect(within(workflowSection as HTMLElement).getByText('Так')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Додаткові відповіді/ })).not.toBeInTheDocument();
+  });
 });

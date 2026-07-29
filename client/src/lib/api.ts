@@ -583,6 +583,7 @@ export const api = {
   },
   tradeIn: {
     settings: () => request<TradeInSettings>('/api/trade-in/settings'),
+    forms: () => request<ApplicationForm[]>('/api/trade-in/forms'),
     save: (input: { publicOrigin: string; config: TradeInConfig }) =>
       request<TradeInSettings>('/api/trade-in/settings', { method: 'PUT', body: jsonBody(input) }),
     publish: (input: { publicOrigin: string; config: TradeInConfig }) =>

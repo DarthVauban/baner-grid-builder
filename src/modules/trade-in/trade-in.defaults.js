@@ -3,6 +3,10 @@ const condition = (fieldKey = '', value = '') => ({ fieldKey, operator: 'equals'
 
 export const defaultTradeInConfig = {
   version: 1,
+  formReference: {
+    formId: '',
+    formName: ''
+  },
   theme: {
     fontFamily: 'Inter',
     backgroundColor: '#f6f7fb',
@@ -658,6 +662,7 @@ function normalizeItems(value, defaults, shape) {
 
 export function normalizeTradeInConfig(value) {
   const source = object(value);
+  const formReference = object(source.formReference);
   const theme = object(source.theme);
   const header = object(source.header);
   const hero = object(source.hero);
@@ -673,7 +678,11 @@ export function normalizeTradeInConfig(value) {
   const legacySteps = normalizeSteps(form.steps);
 
   return {
-    version: 2,
+    version: 3,
+    formReference: {
+      formId: text(formReference.formId, '', 80),
+      formName: text(formReference.formName, '', 160)
+    },
     theme: {
       fontFamily: text(theme.fontFamily, defaults.theme.fontFamily, 80),
       backgroundColor: text(theme.backgroundColor, defaults.theme.backgroundColor, 40),

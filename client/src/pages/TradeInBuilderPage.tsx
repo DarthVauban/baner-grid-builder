@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
-import { TradeInLogicEditor } from '../components/trade-in/TradeInLogicEditor';
 import { TradeInPublicPage } from '../components/trade-in/TradeInPublicPage';
 import {
   createTradeInField,
@@ -22,9 +21,10 @@ import type {
   TradeInFieldType,
   TradeInSettings
 } from '../types/trade-in';
+import type { ApplicationForm } from '../types/application';
 import '../styles/trade-in-builder.css';
 
-type BuilderTab = 'page' | 'logic' | 'publish';
+type BuilderTab = 'page' | 'publish';
 type PreviewDevice = 'desktop' | 'mobile';
 
 function BuilderSection({ title, description, children, open = false }: {
@@ -466,17 +466,62 @@ function PublishEditor({ settings, origin, setOrigin, config, busy, invalid, onS
   );
 }
 
+function FormBindingCard({ forms, selectedId, loading, onChange }: {
+  forms: ApplicationForm[];
+  selectedId: string;
+  loading: boolean;
+  onChange: (form: ApplicationForm) => void;
+}) {
+  const selected = forms.find((form) => form.id === selectedId) || null;
+  const graph = selected?.workflow ? getTradeInFormGraph(selected.workflow) : null;
+  const stepCount = graph?.nodes.filter((node) => node.type === 'fields' || node.type === 'information').length || 0;
+  const fieldCount = graph?.nodes.reduce((total, node) => total + node.fields.length, 0) || 0;
+
+  return <section className="trade-in-form-binding">
+    <div>
+      <p className="eyebrow">Форма на сторінці</p>
+      <h2>Підключена покрокова форма</h2>
+      <p>Структура, поля й умови редагуються окремо у спільному розділі «Форми».</p>
+    </div>
+    <label className="field">
+      <span>Форма</span>
+      <select
+        value={selectedId}
+        disabled={loading || forms.length === 0}
+        onChange={(event) => {
+          const form = forms.find((item) => item.id === event.target.value);
+          if (form) onChange(form);
+        }}
+      >
+        {!forms.length && <option value="">Покрокових форм немає</option>}
+        {forms.map((form) => <option value={form.id} key={form.id}>{form.name} · {form.status === 'published' ? 'опублікована' : 'чернетка'}</option>)}
+      </select>
+    </label>
+    {selected && <div className="trade-in-form-binding__summary">
+      <span className={`trade-in-form-binding__status trade-in-form-binding__status--${selected.status}`}>
+        {selected.status === 'published' ? 'Опублікована' : selected.status === 'disabled' ? 'Вимкнена' : 'Чернетка'}
+      </span>
+      <span><strong>{stepCount}</strong> кроків</span>
+      <span><strong>{fieldCount}</strong> полів</span>
+      <a className="button button--secondary button--small" href={`/tools/forms?form=${encodeURIComponent(selected.id)}`}>
+        <Icon name="variants" size={15} /> Відкрити конструктор
+      </a>
+    </div>}
+    {selected && selected.status !== 'published' && <p className="trade-in-form-binding__warning">
+      Сторінку можна зберегти як чернетку, але для публікації спочатку опублікуйте вибрану форму.
+    </p>}
+  </section>;
+}
+
 export function TradeInBuilderPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const settingsQuery = useQuery({ queryKey: ['trade-in-settings'], queryFn: api.tradeIn.settings });
+  const formsQuery = useQuery({ queryKey: ['trade-in-forms'], queryFn: api.tradeIn.forms });
   const {
     state: config,
     setState: setConfig,
     replaceState: replaceConfig,
-    undo,
-    canUndo,
-    historyDepth
   } = useUndoableState<TradeInConfig | null>(null, {
     limit: 50,
     groupWindowMs: 350,
@@ -496,7 +541,13 @@ export function TradeInBuilderPage() {
   const save = useMutation({
     mutationFn: (publish: boolean) => {
       if (!config) throw new Error('Конфігурація не завантажена.');
-      return (publish ? api.tradeIn.publish : api.tradeIn.save)({ publicOrigin: origin, config });
+      const payload = structuredClone(config);
+      const selectedForm = formsQuery.data?.find((form) => form.id === config.formReference.formId);
+      if (selectedForm?.workflow) {
+        payload.form = structuredClone(selectedForm.workflow);
+        payload.formReference = { formId: selectedForm.id, formName: selectedForm.name };
+      }
+      return (publish ? api.tradeIn.publish : api.tradeIn.save)({ publicOrigin: origin, config: payload });
     },
     onSuccess: (result, publish) => {
       queryClient.setQueryData(['trade-in-settings'], result);
@@ -520,44 +571,61 @@ export function TradeInBuilderPage() {
     JSON.stringify(config) !== JSON.stringify(settingsQuery.data.draftConfig)
     || origin !== settingsQuery.data.publicOrigin
   )), [config, origin, settingsQuery.data]);
-  const logicIssues = useMemo(() => config ? validateTradeInLogic(getTradeInFormGraph(config.form)) : [], [config]);
+  const selectedForm = useMemo(
+    () => formsQuery.data?.find((form) => form.id === config?.formReference.formId) || null,
+    [config?.formReference.formId, formsQuery.data]
+  );
+  const effectiveConfig = useMemo(() => {
+    if (!config || !selectedForm?.workflow) return config;
+    const next = structuredClone(config);
+    next.form = structuredClone(selectedForm.workflow);
+    next.formReference = { formId: selectedForm.id, formName: selectedForm.name };
+    return next;
+  }, [config, selectedForm]);
+  const logicIssues = useMemo(
+    () => effectiveConfig ? validateTradeInLogic(getTradeInFormGraph(effectiveConfig.form)) : [],
+    [effectiveConfig]
+  );
+  const publicationInvalid = selectedForm?.status !== 'published'
+    || logicIssues.some((issue) => issue.severity === 'error');
 
-  if (settingsQuery.isLoading || !config) return <div className="admin-list-state">Завантажуємо конструктор Trade-in…</div>;
+  if (settingsQuery.isLoading || !config || formsQuery.isLoading) return <div className="admin-list-state">Завантажуємо конструктор Trade-in…</div>;
   if (settingsQuery.error || !settingsQuery.data) return <div className="admin-list-state">Не вдалося завантажити конструктор Trade-in.</div>;
 
   const showEmbeddedPreview = tab === 'page' && previewVisible;
 
   return (
-    <div className={`trade-in-builder-page${showEmbeddedPreview ? '' : ' trade-in-builder-page--preview-hidden'}${tab === 'logic' ? ' trade-in-builder-page--logic' : ''}`}>
+    <div className={`trade-in-builder-page${showEmbeddedPreview ? '' : ' trade-in-builder-page--preview-hidden'}`}>
       <header className="trade-in-builder-header">
-        <div><p className="eyebrow">Конструктор публічної сторінки</p><h1>Trade-in</h1><p>Налаштуйте сторінку, багатокрокову форму та публікацію на окремому піддомені.</p></div>
+        <div><p className="eyebrow">Конструктор публічної сторінки</p><h1>Trade-in</h1><p>Налаштуйте сторінку, підключіть готову форму та опублікуйте її на окремому піддомені.</p></div>
         <div className="trade-in-builder-header__actions">
           <span className={dirty ? 'is-dirty' : ''}>{dirty ? 'Є незбережені зміни' : 'Чернетку збережено'}</span>
           <a className="button button--secondary button--small" href="/trade-in/preview/storefront" target="_blank" rel="noreferrer"><Icon name="visibility" size={16} /> Тестова сторінка</a>
           <button className="button button--secondary button--small" type="button" disabled={save.isPending || !dirty} onClick={() => save.mutate(false)}><Icon name="save" size={16} /> Зберегти</button>
-          <button className="button button--primary button--small" type="button" disabled={save.isPending || logicIssues.some((issue) => issue.severity === 'error')} onClick={() => save.mutate(true)}><Icon name="publication" size={16} /> Опублікувати</button>
+          <button className="button button--primary button--small" type="button" disabled={save.isPending || publicationInvalid} onClick={() => save.mutate(true)}><Icon name="publication" size={16} /> Опублікувати</button>
         </div>
       </header>
 
       <nav className="trade-in-builder-tabs">
         <button className={tab === 'page' ? 'is-active' : ''} type="button" onClick={() => setTab('page')}><Icon name="edit" size={17} /><span>Сторінка</span></button>
-        <button className={tab === 'logic' ? 'is-active' : ''} type="button" onClick={() => setTab('logic')}><Icon name="variants" size={17} /><span>Конструктор форми</span>{logicIssues.length > 0 && <i className={logicIssues.some((issue) => issue.severity === 'error') ? 'has-errors' : ''}>{logicIssues.length}</i>}</button>
         <button className={tab === 'publish' ? 'is-active' : ''} type="button" onClick={() => setTab('publish')}><Icon name="publication" size={17} /><span>Публікація</span></button>
       </nav>
 
       <div className="trade-in-builder-layout">
         <section className="trade-in-builder-controls">
-          {tab === 'page' && <PageEditor config={config} mutate={mutate} />}
-          {tab === 'logic' && (
-            <TradeInLogicEditor
-              config={config}
-              mutate={mutate}
-              onUndo={undo}
-              canUndo={canUndo}
-              historyDepth={historyDepth}
+          {tab === 'page' && <>
+            <FormBindingCard
+              forms={formsQuery.data || []}
+              selectedId={config.formReference.formId}
+              loading={formsQuery.isLoading}
+              onChange={(form) => mutate((next) => {
+                next.formReference = { formId: form.id, formName: form.name };
+                if (form.workflow) next.form = structuredClone(form.workflow);
+              })}
             />
-          )}
-          {tab === 'publish' && <PublishEditor settings={settingsQuery.data} origin={origin} setOrigin={setOrigin} config={config} busy={save.isPending} invalid={logicIssues.some((issue) => issue.severity === 'error')} onSave={() => save.mutate(false)} onPublish={() => save.mutate(true)} />}
+            <PageEditor config={config} mutate={mutate} />
+          </>}
+          {tab === 'publish' && <PublishEditor settings={settingsQuery.data} origin={origin} setOrigin={setOrigin} config={effectiveConfig || config} busy={save.isPending} invalid={publicationInvalid} onSave={() => save.mutate(false)} onPublish={() => save.mutate(true)} />}
         </section>
 
         {showEmbeddedPreview && <aside className={`trade-in-builder-preview trade-in-builder-preview--${previewDevice}`}>
@@ -569,7 +637,7 @@ export function TradeInBuilderPage() {
               <button type="button" onClick={() => setPreviewVisible(false)} aria-label="Сховати превʼю">×</button>
             </div>
           </header>
-          <div className="trade-in-builder-preview__viewport"><TradeInPublicPage config={config} preview compact /></div>
+          <div className="trade-in-builder-preview__viewport"><TradeInPublicPage config={effectiveConfig || config} preview compact /></div>
         </aside>}
       </div>
       {tab === 'page' && !previewVisible && <button className="trade-in-builder-preview-toggle" type="button" onClick={() => setPreviewVisible(true)}><Icon name="visibility" size={16} /> Показати превʼю</button>}

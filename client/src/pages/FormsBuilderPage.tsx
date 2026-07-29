@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
+import { TradeInLogicEditor } from '../components/trade-in/TradeInLogicEditor';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
+import { getTradeInFormGraph, validateTradeInLogic } from '../lib/trade-in-logic';
+import { useUndoableState } from '../lib/use-undoable-state';
+import { createDefaultWorkflowForm } from '../lib/workflow-form';
 import { useToast } from '../toast/ToastContext';
 import type {
   ApplicationBank,
@@ -15,6 +20,7 @@ import type {
   ApplicationFormField,
   ApplicationFormInput
 } from '../types/application';
+import type { TradeInConfig } from '../types/trade-in';
 
 const fieldTypeLabels: Record<ApplicationFieldType, string> = {
   text: 'Текст',
@@ -91,13 +97,15 @@ function sanitizeProductSelectors(selectors: Record<string, unknown> = {}) {
 }
 
 const emptyForm: Omit<ApplicationFormInput, 'fields'> = {
+  formType: 'simple',
   name: 'Нова форма',
   title: 'Залишити заявку',
   description: '',
   buttonText: 'Надіслати',
   successMessage: 'Заявку надіслано. Менеджер звʼяжеться з вами.',
   settings: {},
-  styles: {}
+  styles: {},
+  workflow: null
 };
 
 function cloneFields(form: ApplicationForm | null): ApplicationFormField[] {
@@ -142,6 +150,7 @@ export function FormsBuilderPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const confirm = useConfirmDialog();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ApplicationFormInput | null>(null);
   const [fields, setFields] = useState<ApplicationFormField[]>([]);
@@ -153,19 +162,40 @@ export function FormsBuilderPage() {
   const [activeTab, setActiveTab] = useState<'form' | 'button'>('form');
   const [draggedFieldIndex, setDraggedFieldIndex] = useState<number | null>(null);
   const [fieldDropTarget, setFieldDropTarget] = useState<{ index: number; placement: 'before' | 'after' } | null>(null);
+  const {
+    state: workflow,
+    setState: setWorkflow,
+    replaceState: replaceWorkflow,
+    undo: undoWorkflow,
+    canUndo: canUndoWorkflow,
+    historyDepth: workflowHistoryDepth
+  } = useUndoableState<TradeInConfig['form'] | null>(null, {
+    limit: 50,
+    groupWindowMs: 350,
+    keyboard: false
+  });
   const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
   const banks = useQuery({ queryKey: ['form-banks'], queryFn: api.forms.banks });
   const buttons = useQuery({ queryKey: ['form-buttons'], queryFn: api.forms.buttons });
-  const selectedForm = useMemo(() => forms.data?.find((form) => form.id === selectedId) || forms.data?.[0] || null, [forms.data, selectedId]);
+  const requestedFormId = searchParams.get('form');
+  const selectedForm = useMemo(
+    () => forms.data?.find((form) => form.id === selectedId)
+      || forms.data?.find((form) => form.id === requestedFormId)
+      || forms.data?.[0]
+      || null,
+    [forms.data, requestedFormId, selectedId]
+  );
 
   useEffect(() => {
     if (!forms.data?.length || selectedId) return;
-    setSelectedId(forms.data[0].id);
-  }, [forms.data, selectedId]);
+    const initial = forms.data.find((form) => form.id === requestedFormId) || forms.data[0];
+    setSelectedId(initial.id);
+  }, [forms.data, requestedFormId, selectedId]);
 
   useEffect(() => {
-    if (!selectedForm) { setDraft(null); setFields([]); return; }
+    if (!selectedForm) { setDraft(null); setFields([]); replaceWorkflow(null); return; }
     setDraft({
+      formType: selectedForm.formType,
       name: selectedForm.name,
       title: selectedForm.title,
       description: selectedForm.description,
@@ -173,9 +203,13 @@ export function FormsBuilderPage() {
       successMessage: selectedForm.successMessage,
       settings: selectedForm.settings,
       styles: selectedForm.styles,
+      workflow: selectedForm.workflow,
       fields: selectedForm.fields
     });
     setFields(cloneFields(selectedForm));
+    replaceWorkflow(selectedForm.formType === 'workflow'
+      ? structuredClone(selectedForm.workflow || createDefaultWorkflowForm())
+      : null);
     setButtonDraft({
       name: `Кнопка ${selectedForm.name}`,
       formId: selectedForm.id,
@@ -200,7 +234,7 @@ export function FormsBuilderPage() {
     setFieldDropTarget(null);
     setScript('');
     setCompactScript('');
-  }, [selectedForm]);
+  }, [replaceWorkflow, selectedForm]);
 
   const createForm = useMutation({ mutationFn: api.forms.create });
   const updateForm = useMutation({ mutationFn: ({ id, input }: { id: string; input: ApplicationFormInput }) => api.forms.update(id, input) });
@@ -225,10 +259,21 @@ export function FormsBuilderPage() {
     ]);
   }
 
-  async function createNewForm() {
+  async function createNewForm(formType: ApplicationFormInput['formType'] = 'simple') {
     try {
-      const form = await createForm.mutateAsync(emptyForm);
+      const workflowDefinition = formType === 'workflow' ? createDefaultWorkflowForm() : null;
+      const form = await createForm.mutateAsync({
+        ...emptyForm,
+        formType,
+        name: formType === 'workflow' ? 'Нова покрокова форма' : emptyForm.name,
+        title: workflowDefinition?.title || emptyForm.title,
+        description: workflowDefinition?.description || emptyForm.description,
+        buttonText: workflowDefinition?.submitLabel || emptyForm.buttonText,
+        successMessage: workflowDefinition?.successText || emptyForm.successMessage,
+        workflow: workflowDefinition
+      });
       setSelectedId(form.id);
+      setSearchParams({ form: form.id }, { replace: true });
       setActiveTab('form');
       showToast('Форму створено.');
       await refresh();
@@ -238,11 +283,31 @@ export function FormsBuilderPage() {
   async function saveForm() {
     if (!selectedForm || !draft) return;
     try {
-      const saved = await updateForm.mutateAsync({ id: selectedForm.id, input: { ...draft, fields: normalizeFormFieldOrder(fields) } });
+      const input: ApplicationFormInput = selectedForm.formType === 'workflow' && workflow
+        ? {
+          ...draft,
+          formType: 'workflow',
+          title: workflow.title,
+          description: workflow.description,
+          buttonText: workflow.submitLabel,
+          successMessage: workflow.successText,
+          workflow
+        }
+        : { ...draft, formType: 'simple', workflow: null, fields: normalizeFormFieldOrder(fields) };
+      const saved = await updateForm.mutateAsync({ id: selectedForm.id, input });
       setSelectedId(saved.id);
       showToast('Форму збережено.');
       await refresh();
     } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося зберегти форму.', 'error'); }
+  }
+
+  function mutateWorkflow(change: (next: TradeInConfig) => void) {
+    setWorkflow((current) => {
+      if (!current) return current;
+      const shell = { form: structuredClone(current) } as TradeInConfig;
+      change(shell);
+      return shell.form;
+    });
   }
 
   async function duplicateSelected() {
@@ -585,23 +650,31 @@ export function FormsBuilderPage() {
   }
 
   const currentPriceCondition = priceCondition();
+  const workflowIssues = useMemo(
+    () => workflow ? validateTradeInLogic(getTradeInFormGraph(workflow)) : [],
+    [workflow]
+  );
+  const workflowHasErrors = workflowIssues.some((issue) => issue.severity === 'error');
 
-  return <div className="forms-builder-page">
+  return <div className={`forms-builder-page${selectedForm?.formType === 'workflow' ? ' forms-builder-page--workflow' : ''}`}>
     <header className="page-heading page-heading--row">
-      <div><p className="eyebrow">Хорошоп</p><h1>Конструктор форм</h1><p>Налаштовуйте pop-up форми, банки, поля, вигляд та скрипти кнопок для сторінок товарів.</p></div>
-      <button className="button button--primary" type="button" onClick={() => void createNewForm()} disabled={createForm.isPending}><Icon name="add" size={18} /> Нова форма</button>
+      <div><p className="eyebrow">Єдиний центр форм</p><h1>Конструктор форм</h1><p>Створюйте прості pop-up форми або покрокові сценарії з умовами та логічними звʼязками.</p></div>
+      <div className="forms-builder-create-actions">
+        <button className="button button--secondary" type="button" onClick={() => void createNewForm('simple')} disabled={createForm.isPending}><Icon name="add" size={18} /> Проста форма</button>
+        <button className="button button--primary" type="button" onClick={() => void createNewForm('workflow')} disabled={createForm.isPending}><Icon name="variants" size={18} /> Покрокова форма</button>
+      </div>
     </header>
 
-    <section className="forms-workspace">
+    <section className={`forms-workspace${selectedForm?.formType === 'workflow' ? ' forms-workspace--workflow' : ''}`}>
       <aside className="forms-left-panel">
         <section className="forms-list">
           <header><strong>Форми</strong><span>{forms.data?.length || 0}</span></header>
           {forms.isLoading && <p>Завантажуємо...</p>}
-          {forms.data?.map((form) => <button className={form.id === selectedForm?.id ? 'forms-list__item forms-list__item--active' : 'forms-list__item'} type="button" key={form.id} onClick={() => { setSelectedId(form.id); setScript(''); setCompactScript(''); }}>
-            <span><strong>{form.name}</strong><small>{statusText(form.status)} · {form.publicId}</small></span><Icon name="arrow" size={18} />
+          {forms.data?.map((form) => <button className={form.id === selectedForm?.id ? 'forms-list__item forms-list__item--active' : 'forms-list__item'} type="button" key={form.id} onClick={() => { setSelectedId(form.id); setSearchParams({ form: form.id }, { replace: true }); setScript(''); setCompactScript(''); }}>
+            <span><strong>{form.name}</strong><small>{form.formType === 'workflow' ? 'Покрокова' : 'Проста'} · {statusText(form.status)}</small></span><Icon name="arrow" size={18} />
           </button>)}
         </section>
-        {selectedForm && draft && <section className="tool-panel forms-live-preview-panel">
+        {selectedForm?.formType === 'simple' && draft && <section className="tool-panel forms-live-preview-panel">
           <header className="tool-panel__header"><div><p className="eyebrow">Live preview</p><h2>{activeTab === 'button' ? 'Кнопка на сайті' : 'Форма заявки'}</h2></div></header>
           {activeTab === 'button' ? renderButtonPreview() : renderFormPreview()}
         </section>}
@@ -609,6 +682,50 @@ export function FormsBuilderPage() {
 
       <div className="forms-editor">
         {!selectedForm || !draft ? <div className="task-list-state"><span className="task-list-state__icon"><Icon name="integrations" size={28} /></span><h2>Оберіть або створіть форму</h2></div> : <>
+          {selectedForm.formType === 'workflow' && workflow ? <div className="workflow-form-builder">
+            <section className="tool-panel workflow-form-builder__header">
+              <header className="tool-panel__header">
+                <div><p className="eyebrow">Покрокова форма</p><h2>{draft.name}</h2><p>Уся структура форми та переходи між кроками будуються на полотні нижче.</p></div>
+                <span className={workflowHasErrors ? 'workflow-form-builder__issue workflow-form-builder__issue--error' : 'workflow-form-builder__issue'}>
+                  {workflowIssues.length ? `${workflowIssues.length} зауважень` : 'Логіка коректна'}
+                </span>
+              </header>
+              <details className="workflow-form-settings">
+                <summary>Назва, тексти та поведінка форми</summary>
+                <div className="workflow-form-settings__grid">
+                  <label className="field"><span>Назва в адмінці</span><input value={draft.name} maxLength={160} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+                  <label className="field"><span>Заголовок форми</span><input value={workflow.title} maxLength={220} onChange={(event) => mutateWorkflow((next) => { next.form.title = event.target.value; })} /></label>
+                  <label className="field workflow-form-settings__wide"><span>Опис</span><textarea value={workflow.description} rows={2} maxLength={1200} onChange={(event) => mutateWorkflow((next) => { next.form.description = event.target.value; })} /></label>
+                  <label className="field"><span>Кнопка «Назад»</span><input value={workflow.backLabel} onChange={(event) => mutateWorkflow((next) => { next.form.backLabel = event.target.value; })} /></label>
+                  <label className="field"><span>Кнопка «Далі»</span><input value={workflow.nextLabel} onChange={(event) => mutateWorkflow((next) => { next.form.nextLabel = event.target.value; })} /></label>
+                  <label className="field"><span>Кнопка відправлення</span><input value={workflow.submitLabel} onChange={(event) => mutateWorkflow((next) => { next.form.submitLabel = event.target.value; })} /></label>
+                  <label className="field"><span>Заголовок успіху</span><input value={workflow.successTitle} onChange={(event) => mutateWorkflow((next) => { next.form.successTitle = event.target.value; })} /></label>
+                  <label className="field workflow-form-settings__wide"><span>Повідомлення після відправлення</span><textarea value={workflow.successText} rows={2} onChange={(event) => mutateWorkflow((next) => { next.form.successText = event.target.value; })} /></label>
+                  <div className="workflow-form-settings__checks workflow-form-settings__wide">
+                    <label className="check-field"><input type="checkbox" checked={workflow.showProgress} onChange={(event) => mutateWorkflow((next) => { next.form.showProgress = event.target.checked; })} /><span>Прогрес проходження</span></label>
+                    <label className="check-field"><input type="checkbox" checked={workflow.showStepNumbers} onChange={(event) => mutateWorkflow((next) => { next.form.showStepNumbers = event.target.checked; })} /><span>Номери кроків</span></label>
+                    <label className="check-field"><input type="checkbox" checked={workflow.showSummary} onChange={(event) => mutateWorkflow((next) => { next.form.showSummary = event.target.checked; })} /><span>Підсумок відповідей</span></label>
+                  </div>
+                </div>
+              </details>
+              <footer className="form-builder-actions">
+                <button className="button button--primary" type="button" disabled={busy} onClick={() => void saveForm()}><Icon name="save" size={17} /> Зберегти</button>
+                <button className="button button--secondary" type="button" disabled={busy || workflowHasErrors} onClick={() => void setFormPublished()}>Опублікувати</button>
+                <button className="button button--secondary" type="button" disabled={busy} onClick={() => void setFormDisabled()}>Вимкнути</button>
+                <button className="button button--secondary" type="button" disabled={busy} onClick={() => void duplicateSelected()}>Дублювати</button>
+                <button className="button button--danger" type="button" disabled={busy} onClick={() => void archiveSelected()}>Архівувати</button>
+              </footer>
+            </section>
+            <section className="workflow-form-builder__canvas">
+              <TradeInLogicEditor
+                config={{ form: workflow } as TradeInConfig}
+                mutate={mutateWorkflow}
+                onUndo={undoWorkflow}
+                canUndo={canUndoWorkflow}
+                historyDepth={workflowHistoryDepth}
+              />
+            </section>
+          </div> : <>
           <section className="tool-panel forms-editor-tabs">
             <header className="tool-panel__header">
               <div><p className="eyebrow">Поточна форма</p><h2>{selectedForm.name}</h2></div>
@@ -752,6 +869,7 @@ export function FormsBuilderPage() {
               <textarea value={compactScript} readOnly rows={3} />
             </section>}
           </section>
+        </>}
         </>}
         </>}
       </div>

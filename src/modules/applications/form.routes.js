@@ -6,6 +6,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
+import { normalizeTradeInConfig } from '../trade-in/trade-in.defaults.js';
 import {
   buildButtonScript,
   buildCompactButtonScript,
@@ -47,6 +48,7 @@ const fieldSchema = z.object({
   options: z.array(optionSchema).max(40).default([])
 });
 const formSchema = z.object({
+  formType: z.enum(['simple', 'workflow']).optional(),
   name: z.string().trim().min(1).max(160),
   title: z.string().trim().min(1).max(220),
   description: z.string().trim().max(5000).default(''),
@@ -54,6 +56,7 @@ const formSchema = z.object({
   successMessage: z.string().trim().min(1).max(240),
   settings: jsonObject,
   styles: jsonObject,
+  workflow: z.record(z.string(), z.unknown()).nullable().optional(),
   fields: z.array(fieldSchema).max(60).optional()
 });
 const bankSchema = z.object({
@@ -159,6 +162,10 @@ function randomSuffix() {
   return Math.random().toString(36).slice(2, 7);
 }
 
+function normalizeWorkflowDefinition(value) {
+  return normalizeTradeInConfig({ form: value || {} }).form;
+}
+
 router.get('/banks', asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT *
@@ -221,28 +228,33 @@ router.get('/', asyncHandler(async (req, res) => {
 
 router.post('/', asyncHandler(async (req, res) => {
   const input = parseInput(formSchema.omit({ fields: true }), req.body);
+  const formType = input.formType || 'simple';
+  const workflow = formType === 'workflow' ? normalizeWorkflowDefinition(input.workflow) : {};
   const client = await pool.connect();
   let formId;
   try {
     await client.query('BEGIN');
     const result = await client.query(
       `INSERT INTO application_forms (
-         created_by, name, title, description, button_text, success_message, settings, styles
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB)
+         created_by, form_type, name, title, description, button_text, success_message,
+         settings, styles, workflow_definition
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9::JSONB, $10::JSONB)
        RETURNING id`,
       [
         req.user.id,
+        formType,
         input.name,
         input.title,
         input.description,
         input.buttonText,
         input.successMessage,
         JSON.stringify(input.settings || {}),
-        JSON.stringify(input.styles || {})
+        JSON.stringify(input.styles || {}),
+        JSON.stringify(workflow)
       ]
     );
     formId = result.rows[0].id;
-    await ensureSystemFields(client, formId);
+    if (formType === 'simple') await ensureSystemFields(client, formId);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -357,12 +369,22 @@ router.put('/:id', asyncHandler(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT form_type
+       FROM application_forms
+       WHERE id = $1 AND status <> 'archived'
+       FOR UPDATE`,
+      [id]
+    );
+    if (!current.rows[0]) throw new AppError(404, 'FORM_NOT_FOUND', 'Форму не знайдено.');
+    const formType = input.formType || current.rows[0].form_type || 'simple';
+    const workflow = formType === 'workflow' ? normalizeWorkflowDefinition(input.workflow) : {};
     const existing = await client.query(
       `UPDATE application_forms
        SET name = $1, title = $2, description = $3, button_text = $4,
            success_message = $5, settings = $6::JSONB, styles = $7::JSONB,
-           updated_at = NOW()
-       WHERE id = $8 AND status <> 'archived'
+           form_type = $8, workflow_definition = $9::JSONB, updated_at = NOW()
+       WHERE id = $10 AND status <> 'archived'
        RETURNING id`,
       [
         input.name,
@@ -372,11 +394,13 @@ router.put('/:id', asyncHandler(async (req, res) => {
         input.successMessage,
         JSON.stringify(input.settings || {}),
         JSON.stringify(input.styles || {}),
+        formType,
+        JSON.stringify(workflow),
         id
       ]
     );
     if (!existing.rows[0]) throw new AppError(404, 'FORM_NOT_FOUND', 'Форму не знайдено.');
-    if (input.fields) await replaceEditableFields(client, id, input.fields);
+    if (formType === 'simple' && input.fields) await replaceEditableFields(client, id, input.fields);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -396,18 +420,21 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
     if (!form) throw new AppError(404, 'FORM_NOT_FOUND', 'Форму не знайдено.');
     const created = await client.query(
       `INSERT INTO application_forms (
-         created_by, name, title, description, button_text, success_message, settings, styles
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB)
+         created_by, form_type, name, title, description, button_text, success_message,
+         settings, styles, workflow_definition
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9::JSONB, $10::JSONB)
        RETURNING id`,
       [
         req.user.id,
+        form.form_type || 'simple',
         `${form.name} копія`,
         form.title,
         form.description,
         form.button_text,
         form.success_message,
         JSON.stringify(form.settings || {}),
-        JSON.stringify(form.styles || {})
+        JSON.stringify(form.styles || {}),
+        JSON.stringify(form.workflow_definition || {})
       ]
     );
     formId = created.rows[0].id;
@@ -464,7 +491,21 @@ router.post('/:id/duplicate', asyncHandler(async (req, res) => {
 
 router.patch('/:id/publish', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
-  const fields = await loadFields(id);
+  const current = await query(
+    `SELECT form_type, workflow_definition
+     FROM application_forms
+     WHERE id = $1 AND status <> 'archived'`,
+    [id]
+  );
+  if (!current.rows[0]) throw new AppError(404, 'FORM_NOT_FOUND', 'Форму не знайдено.');
+  if (current.rows[0].form_type === 'workflow') {
+    const workflow = normalizeWorkflowDefinition(current.rows[0].workflow_definition);
+    const nodes = workflow.graph?.nodes || [];
+    if (!nodes.some((node) => node.type === 'start') || !nodes.some((node) => node.type === 'finish')) {
+      throw new AppError(422, 'WORKFLOW_INCOMPLETE', 'Додайте початок і завершення сценарію перед публікацією.');
+    }
+  }
+  const fields = current.rows[0].form_type === 'simple' ? await loadFields(id) : [];
   if (fields.some((field) => field.active && field.systemFieldType === 'bank')) {
     const activeBanks = await query('SELECT COUNT(*)::INTEGER AS count FROM application_banks WHERE active = TRUE');
     if ((activeBanks.rows[0]?.count || 0) < 1) {

@@ -14,6 +14,20 @@
 .trade-in-builder-page--preview-hidden .trade-in-builder-layout { grid-template-columns: 1fr; }
 .trade-in-builder-controls { min-width: 0; }
 .trade-in-builder-stack { min-width: 0; display: grid; gap: 12px; }
+.trade-in-form-binding { display: grid; gap: 14px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 15px; padding: 17px 18px; background: var(--surface); box-shadow: 0 8px 26px rgba(22,30,50,.035); }
+.trade-in-form-binding h2 { margin: 2px 0 4px; font-size: 17px; }
+.trade-in-form-binding > div:first-child > p:last-child { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.trade-in-form-binding .field { gap: 6px; }
+.trade-in-form-binding .field > span { font-size: 9px; font-weight: 800; }
+.trade-in-form-binding .field select { min-height: 43px; border-radius: 9px; font-size: 11px; }
+.trade-in-form-binding__summary { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 14px; }
+.trade-in-form-binding__summary > span:not(:first-child) { color: var(--muted); font-size: 10px; }
+.trade-in-form-binding__summary > span strong { color: var(--ink); }
+.trade-in-form-binding__summary .button { margin-left: auto; }
+.trade-in-form-binding__status { border-radius: 999px; padding: 6px 9px; color: #9a6700; background: #fff4d6; font-size: 8px; font-weight: 900; text-transform: uppercase; }
+.trade-in-form-binding__status--published { color: var(--success); background: #eaf8f3; }
+.trade-in-form-binding__status--disabled { color: #b42318; background: #fff0ee; }
+.trade-in-form-binding__warning { margin: 0; border-radius: 10px; padding: 9px 11px; color: #8a5a00; background: #fff8e7; font-size: 9px; font-weight: 700; line-height: 1.5; }
 .trade-in-builder-section { overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); box-shadow: 0 8px 26px rgba(22,30,50,.035); }
 .trade-in-builder-section > summary { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; cursor: pointer; list-style: none; }
 .trade-in-builder-section > summary::-webkit-details-marker { display: none; }

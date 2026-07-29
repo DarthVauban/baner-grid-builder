@@ -175,6 +175,56 @@ test('form builder and applications list have separate access and process public
   assert.deepEqual(flexiblePublic.body.data.fields.map((field) => field.key), ['comment', 'phone']);
   assert.equal(flexiblePublic.body.data.fields.some((field) => field.systemFieldType === 'bank'), false);
 
+  const workflowDefinition = {
+    title: 'Device assessment',
+    description: 'Tell us about the device.',
+    showProgress: true,
+    showStepNumbers: true,
+    showSummary: true,
+    backLabel: 'Back',
+    nextLabel: 'Next',
+    submitLabel: 'Submit',
+    successTitle: 'Done',
+    successText: 'A manager will contact you.',
+    steps: [],
+    graph: {
+      nodes: [
+        { id: 'start', type: 'start', position: { x: 0, y: 0 }, title: 'Start' },
+        { id: 'details', type: 'fields', position: { x: 320, y: 0 }, title: 'Device details', fields: [] },
+        { id: 'finish', type: 'finish', position: { x: 640, y: 0 }, title: 'Finish' }
+      ],
+      edges: [
+        { id: 'start-details', source: 'start', target: 'details', sourceHandle: 'next' },
+        { id: 'details-finish', source: 'details', target: 'finish', sourceHandle: 'next' }
+      ]
+    }
+  };
+  const workflowForm = await builder.post('/api/forms').send({
+    formType: 'workflow',
+    name: 'Device workflow',
+    title: workflowDefinition.title,
+    description: workflowDefinition.description,
+    buttonText: workflowDefinition.submitLabel,
+    successMessage: workflowDefinition.successText,
+    settings: {},
+    styles: {},
+    workflow: workflowDefinition
+  }).expect(201);
+  assert.equal(workflowForm.body.data.formType, 'workflow');
+  assert.equal(workflowForm.body.data.fields.length, 0);
+  assert.equal(workflowForm.body.data.workflow.graph.nodes.length, 3);
+  const updatedWorkflow = structuredClone(workflowForm.body.data.workflow);
+  updatedWorkflow.graph.nodes.find((node) => node.id === 'details').title = 'Updated device details';
+  const workflowConfigured = await builder.put(`/api/forms/${workflowForm.body.data.id}`).send({
+    ...workflowForm.body.data,
+    workflow: updatedWorkflow
+  }).expect(200);
+  assert.equal(workflowConfigured.body.data.workflow.graph.nodes.find((node) => node.id === 'details').title, 'Updated device details');
+  await builder.patch(`/api/forms/${workflowForm.body.data.id}/publish`).expect(200);
+  const workflowCopy = await builder.post(`/api/forms/${workflowForm.body.data.id}/duplicate`).expect(201);
+  assert.equal(workflowCopy.body.data.formType, 'workflow');
+  assert.equal(workflowCopy.body.data.workflow.graph.nodes.length, 3);
+
   const formInput = {
     name: form.body.data.name,
     title: form.body.data.title,
@@ -504,9 +554,13 @@ test('form builder and applications list have separate access and process public
     idempotencyKey: 'trade-in-customer-1'
   }).expect(201);
   const tradeInApplication = await manager.get(`/api/applications/${tradeInSubmission.body.data.id}`).expect(200);
-  assert.equal(tradeInApplication.body.data.formName, 'Trade-in');
+  assert.equal(tradeInApplication.body.data.formName, 'Trade-in — основна форма');
   assert.equal(tradeInApplication.body.data.source, 'trade_in');
   assert.equal(tradeInApplication.body.data.customer.firstName, 'Олена');
   assert.equal(tradeInApplication.body.data.customer.phone, '+380501112233');
   assert.equal(tradeInApplication.body.data.values.some((item) => item.key === 'memory' && item.value === '256 GB'), true);
+  assert.equal(
+    tradeInApplication.body.data.values.some((item) => item.key === 'memory' && item.stepTitle === 'Розкажіть про пристрій'),
+    true
+  );
 });

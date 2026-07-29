@@ -97,6 +97,10 @@ export interface TradeInFaqItem {
 
 export interface TradeInConfig {
   version: number;
+  formReference: {
+    formId: string;
+    formName: string;
+  };
   theme: {
     fontFamily: string;
     backgroundColor: string;

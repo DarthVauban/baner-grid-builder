@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { defaultTradeInConfig, normalizeTradeInConfig } from '../src/modules/trade-in/trade-in.defaults.js';
-import { visibleTradeInFields } from '../src/modules/trade-in/trade-in.service.js';
+import { submissionForm, visibleTradeInFields } from '../src/modules/trade-in/trade-in.service.js';
 
 function graphField(id, key) {
   return {
@@ -20,10 +20,10 @@ function graphField(id, key) {
   };
 }
 
-test('legacy Trade-in steps are converted to a version 2 graph', () => {
+test('legacy Trade-in steps are converted to the current graph version', () => {
   const config = normalizeTradeInConfig(defaultTradeInConfig);
 
-  assert.equal(config.version, 2);
+  assert.equal(config.version, 3);
   assert.equal(config.form.graph.nodes.filter((node) => node.type === 'start').length, 1);
   assert.ok(config.form.graph.nodes.some((node) => node.type === 'condition'));
   assert.ok(config.form.graph.nodes.some((node) => node.type === 'finish'));
@@ -91,5 +91,21 @@ test('graph traversal exposes fields only from the selected condition branch', (
   assert.deepEqual(
     visibleTradeInFields(config, { category: 'samsung' }).map((field) => field.key),
     ['category', 'other_model']
+  );
+
+  const form = submissionForm(
+    { publicId: 'legacy-public-id', publishedConfig: config },
+    { category: 'apple' },
+    { id: 'workflow-form-id', public_id: 'workflow-public-id', name: 'Trade-in форма' }
+  );
+  assert.equal(form.id, 'workflow-form-id');
+  assert.equal(form.publicId, 'workflow-public-id');
+  assert.equal(form.name, 'Trade-in форма');
+  assert.deepEqual(
+    form.fields.map((field) => [field.key, field.stepTitle, field.stepSortOrder]),
+    [
+      ['category', 'Category', 0],
+      ['apple_model', 'Apple', 1]
+    ]
   );
 });

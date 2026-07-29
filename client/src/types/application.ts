@@ -1,5 +1,6 @@
 export type ApplicationStatus = 'new' | 'in_progress' | 'rejected' | 'closed';
 export type ApplicationFormStatus = 'draft' | 'published' | 'disabled' | 'archived';
+export type ApplicationFormType = 'simple' | 'workflow';
 export type ApplicationFieldType = 'text' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'email' | 'phone' | 'number';
 export type ApplicationSystemFieldType = 'first_name' | 'last_name' | 'phone' | 'bank';
 
@@ -42,6 +43,7 @@ export interface ApplicationFormField {
 export interface ApplicationForm {
   id: string;
   publicId: string;
+  formType: ApplicationFormType;
   name: string;
   title: string;
   description: string;
@@ -50,6 +52,7 @@ export interface ApplicationForm {
   status: ApplicationFormStatus;
   settings: Record<string, unknown>;
   styles: Record<string, unknown>;
+  workflow: import('./trade-in').TradeInConfig['form'] | null;
   fields: ApplicationFormField[];
   archivedAt: string | null;
   createdAt: string;
@@ -57,6 +60,7 @@ export interface ApplicationForm {
 }
 
 export interface ApplicationFormInput {
+  formType: ApplicationFormType;
   name: string;
   title: string;
   description: string;
@@ -64,6 +68,7 @@ export interface ApplicationFormInput {
   successMessage: string;
   settings: Record<string, unknown>;
   styles: Record<string, unknown>;
+  workflow?: import('./trade-in').TradeInConfig['form'] | null;
   fields?: ApplicationFormField[];
 }
 
@@ -95,6 +100,10 @@ export interface ApplicationValue {
   value: string;
   optionLabel: string;
   sortOrder: number;
+  stepId?: string | null;
+  stepTitle?: string;
+  stepDescription?: string;
+  stepSortOrder?: number | null;
 }
 
 export interface ApplicationComment {

@@ -59,7 +59,27 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
   const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
   const canClaim = application.status === 'new' && !application.assignedManager;
   const summaryValues = application.values.filter((value) => value.showInSummary);
-  const additionalValues = application.values.filter((value) => !value.showInSummary);
+  const workflowValues = application.values.filter((value) => value.stepId || value.stepTitle);
+  const additionalValues = application.values.filter((value) => !value.showInSummary && !value.stepId && !value.stepTitle);
+  const workflowSteps = Array.from(workflowValues.reduce((groups, value) => {
+    const key = value.stepId || value.stepTitle || 'workflow-step';
+    const existing = groups.get(key);
+    if (existing) existing.values.push(value);
+    else groups.set(key, {
+      id: key,
+      title: value.stepTitle || 'Крок форми',
+      description: value.stepDescription || '',
+      sortOrder: value.stepSortOrder ?? Number.MAX_SAFE_INTEGER,
+      values: [value]
+    });
+    return groups;
+  }, new Map<string, {
+    id: string;
+    title: string;
+    description: string;
+    sortOrder: number;
+    values: typeof application.values;
+  }>()).values()).sort((left, right) => left.sortOrder - right.sortOrder);
 
   async function copyProductText(label: string, value: string) {
     const text = value.trim();
@@ -142,6 +162,24 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
             <article><small>UTM</small>{utmEntries.length ? <div className="application-utm-list">{utmEntries.map(([key, value]) => <span key={key}>{key}: {value}</span>)}</div> : <strong>Не передано</strong>}</article>
           </div>
         </section>
+
+        {workflowSteps.length > 0 && <section className="task-details-section application-workflow-answers">
+          <h3>Відповіді за кроками <span>{workflowSteps.length}</span></h3>
+          <div className="application-workflow-steps">
+            {workflowSteps.map((step, stepIndex) => <article className="application-workflow-step" key={step.id}>
+              <header>
+                <span>{String(stepIndex + 1).padStart(2, '0')}</span>
+                <div><h4>{step.title}</h4>{step.description && <p>{step.description}</p>}</div>
+              </header>
+              <dl>
+                {step.values.sort((left, right) => left.sortOrder - right.sortOrder).map((value) => <div key={value.id}>
+                  <dt>{value.label}</dt>
+                  <dd>{value.optionLabel || value.value || 'Не заповнено'}</dd>
+                </div>)}
+              </dl>
+            </article>)}
+          </div>
+        </section>}
 
         {additionalValues.length > 0 && <section className="task-details-section">
           <h3>Додаткові відповіді <span>{additionalValues.length}</span></h3>

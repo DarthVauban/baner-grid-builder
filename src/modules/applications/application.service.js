@@ -116,6 +116,7 @@ export function serializeForm(row, fields = []) {
   return {
     id: row.id,
     publicId: row.public_id,
+    formType: row.form_type || 'simple',
     name: row.name,
     title: row.title,
     description: row.description,
@@ -124,6 +125,7 @@ export function serializeForm(row, fields = []) {
     status: row.status,
     settings: row.settings || {},
     styles: row.styles || {},
+    workflow: (row.form_type || 'simple') === 'workflow' ? (row.workflow_definition || {}) : null,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -298,10 +300,16 @@ export function mapApplicationValues(values) {
       showInSummary: value.show_in_summary_snapshot === true,
       value: value.value,
       optionLabel: value.option_label_snapshot,
-      sortOrder: value.sort_order
+      sortOrder: value.sort_order,
+      stepId: value.step_id_snapshot || null,
+      stepTitle: value.step_title_snapshot || '',
+      stepDescription: value.step_description_snapshot || '',
+      stepSortOrder: value.step_sort_order_snapshot ?? null
     };
-    if (item.systemFieldType) system[item.systemFieldType] = item;
-    else additional.push(item);
+    if (item.systemFieldType) {
+      system[item.systemFieldType] = item;
+      if (item.stepId || item.stepTitle) additional.push(item);
+    } else additional.push(item);
   }
   return {
     customer: {
