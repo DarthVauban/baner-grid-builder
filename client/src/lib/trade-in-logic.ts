@@ -44,6 +44,7 @@ function legacyConditionNode(step: TradeInStep, position: TradeInFormNodePositio
     position,
     title: `Умова: ${step.title}`,
     description: '',
+    showInApplicationSummary: false,
     fields: [],
     branches: [{
       id: `branch_${step.id}`,
@@ -65,6 +66,7 @@ export function convertTradeInStepsToGraph(
     position: { x: 0, y: 180 },
     title: 'Початок',
     description: '',
+    showInApplicationSummary: false,
     fields: [],
     branches: [],
     defaultBranchLabel: ''
@@ -75,6 +77,7 @@ export function convertTradeInStepsToGraph(
     position: { x: Math.max(1, steps.length + 1) * 360, y: 180 },
     title: successTitle,
     description: successText,
+    showInApplicationSummary: false,
     fields: [],
     branches: [],
     defaultBranchLabel: ''
@@ -85,6 +88,7 @@ export function convertTradeInStepsToGraph(
     position: { x: (index + 1) * 360, y: 180 },
     title: step.title,
     description: step.description,
+    showInApplicationSummary: step.showInApplicationSummary ?? step.fields.some((field) => field.showInSummary),
     fields: structuredClone(step.fields),
     branches: [],
     defaultBranchLabel: ''
@@ -155,13 +159,19 @@ export function createTradeInFormNode(
     position,
     title: '',
     description: '',
+    showInApplicationSummary: false,
     fields: [] as TradeInField[],
     branches: [],
     defaultBranchLabel: ''
   };
 
   if (type === 'fields') {
-    return { ...base, title: `Новий крок ${index + 1}`, description: 'Додайте поля, які має заповнити клієнт.' };
+    return {
+      ...base,
+      title: `Новий крок ${index + 1}`,
+      description: 'Додайте поля, які має заповнити клієнт.',
+      showInApplicationSummary: true
+    };
   }
   if (type === 'condition') {
     return {

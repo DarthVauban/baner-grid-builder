@@ -142,6 +142,43 @@ describe('ApplicationDetailsModal answer placement', () => {
     expect(within(workflowSection as HTMLElement).getByText('Стан і комплектація ноутбука')).toBeInTheDocument();
     expect(within(workflowSection as HTMLElement).getByText('Ноутбук')).toBeInTheDocument();
     expect(within(workflowSection as HTMLElement).getByText('Так')).toBeInTheDocument();
+    const tables = within(workflowSection as HTMLElement).getAllByRole('table');
+    expect(tables).toHaveLength(2);
+    expect(within(tables[0]).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['Відповідь', 'Питання']);
+    expect(within(tables[0]).getAllByRole('cell')[0]).toHaveTextContent('Ноутбук');
+    expect(within(tables[0]).getByRole('rowheader')).toHaveTextContent('Категорія');
     expect(screen.queryByRole('heading', { name: /Додаткові відповіді/ })).not.toBeInTheDocument();
+  });
+
+  it('does not duplicate system fields in the primary information grid', () => {
+    const systemFieldApplication: ApplicationRecord = {
+      ...application,
+      values: [{
+        ...application.values[0],
+        id: 'first-name-value',
+        label: 'Ваше імʼя',
+        systemFieldType: 'first_name',
+        showInSummary: true,
+        value: 'Михайло'
+      }]
+    };
+    const { container } = render(
+      <ToastProvider>
+        <ApplicationDetailsModal
+          application={systemFieldApplication}
+          onClose={vi.fn()}
+          onShare={vi.fn()}
+          onStatus={vi.fn()}
+          onClaim={vi.fn()}
+          onComment={vi.fn()}
+        />
+      </ToastProvider>
+    );
+
+    const primaryGrid = container.querySelector('.task-details-grid');
+    expect(primaryGrid).not.toBeNull();
+    expect(within(primaryGrid as HTMLElement).queryByText('Ваше імʼя')).not.toBeInTheDocument();
+    expect(within(primaryGrid as HTMLElement).getByText('Михайло Кошляков')).toBeInTheDocument();
+    expect(within(primaryGrid as HTMLElement).queryByText('Михайло')).not.toBeInTheDocument();
   });
 });

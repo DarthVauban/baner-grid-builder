@@ -145,7 +145,8 @@ export function visibleTradeInFieldEntries(config, answers) {
               stepId: node.id,
               stepTitle: node.title,
               stepDescription: node.description,
-              stepSortOrder
+              stepSortOrder,
+              showInApplicationSummary: node.showInApplicationSummary === true
             });
           }
         }
@@ -175,7 +176,8 @@ export function visibleTradeInFieldEntries(config, answers) {
           stepId: step.id,
           stepTitle: step.title,
           stepDescription: step.description,
-          stepSortOrder
+          stepSortOrder,
+          showInApplicationSummary: step.showInApplicationSummary !== false
         });
       }
     }
@@ -200,7 +202,7 @@ export function submissionForm(settings, answers, linkedForm = null) {
     active: true,
     system: Boolean(entry.field.systemFieldType),
     systemFieldType: entry.field.systemFieldType || null,
-    showInSummary: entry.field.showInSummary === true,
+    showInSummary: entry.showInApplicationSummary === true,
     sortOrder: index,
     stepId: entry.stepId,
     stepTitle: entry.stepTitle,

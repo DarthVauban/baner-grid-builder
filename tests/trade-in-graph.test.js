@@ -42,6 +42,7 @@ test('graph traversal exposes fields only from the selected condition branch', (
             type: 'fields',
             position: { x: 300, y: 0 },
             title: 'Category',
+            showInApplicationSummary: true,
             fields: [graphField('category-field', 'category')]
           },
           {
@@ -61,6 +62,7 @@ test('graph traversal exposes fields only from the selected condition branch', (
             type: 'fields',
             position: { x: 900, y: -100 },
             title: 'Apple',
+            showInApplicationSummary: false,
             fields: [graphField('apple-field', 'apple_model')]
           },
           {
@@ -92,6 +94,10 @@ test('graph traversal exposes fields only from the selected condition branch', (
     visibleTradeInFields(config, { category: 'samsung' }).map((field) => field.key),
     ['category', 'other_model']
   );
+  assert.equal(
+    config.form.graph.nodes.find((node) => node.id === 'other-fields').showInApplicationSummary,
+    true
+  );
 
   const form = submissionForm(
     { publicId: 'legacy-public-id', publishedConfig: config },
@@ -102,10 +108,10 @@ test('graph traversal exposes fields only from the selected condition branch', (
   assert.equal(form.publicId, 'workflow-public-id');
   assert.equal(form.name, 'Trade-in форма');
   assert.deepEqual(
-    form.fields.map((field) => [field.key, field.stepTitle, field.stepSortOrder]),
+    form.fields.map((field) => [field.key, field.stepTitle, field.stepSortOrder, field.showInSummary]),
     [
-      ['category', 'Category', 0],
-      ['apple_model', 'Apple', 1]
+      ['category', 'Category', 0, true],
+      ['apple_model', 'Apple', 1, false]
     ]
   );
 });

@@ -474,6 +474,10 @@ function normalizeSteps(value) {
       id: text(source.id, `step_${index}_${Date.now()}`, 120),
       title: text(source.title, `Крок ${index + 1}`, 220),
       description: text(source.description, '', 800),
+      showInApplicationSummary: boolean(
+        source.showInApplicationSummary,
+        Array.isArray(source.fields) && source.fields.some((field) => object(field).showInSummary === true)
+      ),
       condition: normalizeCondition(source.condition),
       fields: normalizeFields(source.fields, keys)
     };
@@ -487,6 +491,7 @@ function legacyStepsToGraph(steps, successTitle, successText) {
     position: { x: 0, y: 180 },
     title: 'Початок',
     description: '',
+    showInApplicationSummary: false,
     fields: [],
     branches: [],
     defaultBranchLabel: ''
@@ -497,6 +502,7 @@ function legacyStepsToGraph(steps, successTitle, successText) {
     position: { x: Math.max(1, steps.length + 1) * 360, y: 180 },
     title: successTitle || 'Заявку прийнято',
     description: successText || 'Менеджер Mobile Trend звʼяжеться з вами найближчим часом.',
+    showInApplicationSummary: false,
     fields: [],
     branches: [],
     defaultBranchLabel: ''
@@ -507,6 +513,7 @@ function legacyStepsToGraph(steps, successTitle, successText) {
     position: { x: (index + 1) * 360, y: 180 },
     title: step.title,
     description: step.description,
+    showInApplicationSummary: step.showInApplicationSummary !== false,
     fields: structuredClone(step.fields),
     branches: [],
     defaultBranchLabel: ''
@@ -531,6 +538,7 @@ function legacyStepsToGraph(steps, successTitle, successText) {
         position: { x: fieldNode.position.x - 170, y: fieldNode.position.y + 250 },
         title: `Умова: ${step.title}`,
         description: '',
+        showInApplicationSummary: false,
         fields: [],
         branches: [{
           id: `branch_${step.id}`,
@@ -592,6 +600,12 @@ function normalizeFormGraph(value, legacySteps, successTitle, successText) {
       },
       title: text(node.title, type === 'start' ? 'Початок' : `Нода ${index + 1}`, 220),
       description: text(node.description, '', 1200),
+      showInApplicationSummary: type === 'fields'
+        ? boolean(
+          node.showInApplicationSummary,
+          Array.isArray(node.fields) && node.fields.some((field) => object(field).showInSummary === true)
+        )
+        : false,
       fields: type === 'fields' ? normalizeFields(node.fields, fieldKeys) : [],
       branches: type === 'condition' && Array.isArray(node.branches)
         ? node.branches.slice(0, 20).map((item, branchIndex) => {
@@ -637,6 +651,7 @@ function normalizeFormGraph(value, legacySteps, successTitle, successText) {
       position: { x: 0, y: 180 },
       title: 'Початок',
       description: '',
+      showInApplicationSummary: false,
       fields: [],
       branches: [],
       defaultBranchLabel: ''

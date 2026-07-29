@@ -58,9 +58,14 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
   const productCode = application.product?.productCode || '';
   const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
   const canClaim = application.status === 'new' && !application.assignedManager;
-  const summaryValues = application.values.filter((value) => value.showInSummary);
+  const summaryValues = application.values.filter((value) => value.showInSummary && !value.systemFieldType);
   const workflowValues = application.values.filter((value) => value.stepId || value.stepTitle);
-  const additionalValues = application.values.filter((value) => !value.showInSummary && !value.stepId && !value.stepTitle);
+  const additionalValues = application.values.filter((value) => (
+    !value.showInSummary
+    && !value.systemFieldType
+    && !value.stepId
+    && !value.stepTitle
+  ));
   const workflowSteps = Array.from(workflowValues.reduce((groups, value) => {
     const key = value.stepId || value.stepTitle || 'workflow-step';
     const existing = groups.get(key);
@@ -141,16 +146,19 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
           </div>
         </section>
 
-        <section className="task-details-grid">
-          <div><Icon name="users" size={18} /><span><small>Покупець</small><strong>{customerName(application.customer.firstName, application.customer.lastName)}</strong></span></div>
-          <div><Icon name="phone" size={18} /><span><small>Телефон</small><strong>{application.customer.phone ? <a href={`tel:${application.customer.phone}`}>{application.customer.phone}</a> : 'Не вказано'}</strong></span></div>
-          <div><Icon name="publication" size={18} /><span><small>Банк</small><strong>{application.customer.bankLabel || 'Не вказано'}</strong></span></div>
-          <div><Icon name="schedule" size={18} /><span><small>Створено</small><strong>{formatApplicationDate(application.createdAt)}</strong></span></div>
-          <div><Icon name="edit" size={18} /><span><small>Форма</small><strong>{application.formName}</strong></span></div>
-          <div><Icon name="calendar" size={18} /><span><small>Оновлено</small><strong>{formatApplicationDate(application.updatedAt)}</strong></span></div>
-          <div><Icon name="users" size={18} /><span><small>Менеджер</small><strong>{application.assignedManager ? application.assignedManager.name : 'Не взято в роботу'}</strong></span></div>
-          <div><Icon name="schedule" size={18} /><span><small>Взято в роботу</small><strong>{application.assignedManager?.assignedAt ? formatApplicationDate(application.assignedManager.assignedAt) : '—'}</strong></span></div>
-          {summaryValues.map((value) => <div key={value.id}><Icon name="edit" size={18} /><span><small>{value.label}</small><strong>{value.optionLabel || value.value || 'Не заповнено'}</strong></span></div>)}
+        <section className="application-main-information">
+          <h3>Основна інформація</h3>
+          <div className="task-details-grid">
+            <div><Icon name="users" size={18} /><span><small>Покупець</small><strong>{customerName(application.customer.firstName, application.customer.lastName)}</strong></span></div>
+            <div><Icon name="phone" size={18} /><span><small>Телефон</small><strong>{application.customer.phone ? <a href={`tel:${application.customer.phone}`}>{application.customer.phone}</a> : 'Не вказано'}</strong></span></div>
+            <div><Icon name="publication" size={18} /><span><small>Банк</small><strong>{application.customer.bankLabel || 'Не вказано'}</strong></span></div>
+            <div><Icon name="schedule" size={18} /><span><small>Створено</small><strong>{formatApplicationDate(application.createdAt)}</strong></span></div>
+            <div><Icon name="edit" size={18} /><span><small>Форма</small><strong>{application.formName}</strong></span></div>
+            <div><Icon name="calendar" size={18} /><span><small>Оновлено</small><strong>{formatApplicationDate(application.updatedAt)}</strong></span></div>
+            <div><Icon name="users" size={18} /><span><small>Менеджер</small><strong>{application.assignedManager ? application.assignedManager.name : 'Не взято в роботу'}</strong></span></div>
+            <div><Icon name="schedule" size={18} /><span><small>Взято в роботу</small><strong>{application.assignedManager?.assignedAt ? formatApplicationDate(application.assignedManager.assignedAt) : '—'}</strong></span></div>
+            {summaryValues.map((value) => <div key={value.id}><Icon name="edit" size={18} /><span><small>{value.label}</small><strong>{value.optionLabel || value.value || 'Не заповнено'}</strong></span></div>)}
+          </div>
         </section>
 
         <section className="task-details-section">
@@ -171,12 +179,19 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
                 <span>{String(stepIndex + 1).padStart(2, '0')}</span>
                 <div><h4>{step.title}</h4>{step.description && <p>{step.description}</p>}</div>
               </header>
-              <dl>
-                {step.values.sort((left, right) => left.sortOrder - right.sortOrder).map((value) => <div key={value.id}>
-                  <dt>{value.label}</dt>
-                  <dd>{value.optionLabel || value.value || 'Не заповнено'}</dd>
-                </div>)}
-              </dl>
+              <div className="application-workflow-table-wrap">
+                <table className="application-workflow-table">
+                  <thead>
+                    <tr><th scope="col">Відповідь</th><th scope="col">Питання</th></tr>
+                  </thead>
+                  <tbody>
+                    {step.values.sort((left, right) => left.sortOrder - right.sortOrder).map((value) => <tr key={value.id}>
+                      <td>{value.optionLabel || value.value || 'Не заповнено'}</td>
+                      <th scope="row">{value.label}</th>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>
             </article>)}
           </div>
         </section>}

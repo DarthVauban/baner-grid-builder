@@ -1352,17 +1352,25 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .application-answer-list article, .application-comments article, .application-history article { border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: var(--surface-soft); }
 .application-answer-list small, .application-comments time, .application-history small { color: #8b95a6; font-size: 9px; }
 .application-answer-list strong, .application-comments strong, .application-history span { display: block; margin-top: 4px; color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
-.application-workflow-steps { display: grid; gap: 12px; }
-.application-workflow-step { overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--surface-soft); }
-.application-workflow-step > header { display: flex; align-items: flex-start; gap: 11px; border-bottom: 1px solid var(--line); padding: 13px 14px; background: var(--surface); }
-.application-workflow-step > header > span { flex: 0 0 31px; height: 31px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--brand); background: var(--brand-soft); font-size: 10px; font-weight: 900; }
-.application-workflow-step h4 { margin: 1px 0 3px; color: var(--ink); font-size: 13px; }
-.application-workflow-step header p { color: var(--muted); font-size: 10px; line-height: 1.45; }
-.application-workflow-step dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0; margin: 0; }
-.application-workflow-step dl > div { min-width: 0; display: grid; gap: 5px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 12px 14px; }
-.application-workflow-step dl > div:nth-child(2n) { border-right: 0; }
-.application-workflow-step dt { color: var(--muted); font-size: 9px; font-weight: 800; }
-.application-workflow-step dd { margin: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 12px; font-weight: 750; white-space: pre-wrap; }
+.application-main-information { display: grid; gap: 10px; }
+.application-main-information > h3 { margin: 0; color: var(--ink); font-size: 14px; }
+.application-workflow-steps { display: grid; gap: 10px; }
+.application-workflow-step { overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
+.application-workflow-step > header { display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid var(--line); padding: 10px 12px; background: var(--surface-soft); }
+.application-workflow-step > header > span { flex: 0 0 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--brand); background: var(--brand-soft); font-size: 9px; font-weight: 900; }
+.application-workflow-step h4 { margin: 0 0 2px; color: var(--ink); font-size: 12px; }
+.application-workflow-step header p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.application-workflow-table-wrap { overflow-x: auto; }
+.application-workflow-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.application-workflow-table th,
+.application-workflow-table td { width: 50%; border-bottom: 1px solid var(--line); padding: 9px 12px; overflow-wrap: anywhere; text-align: left; vertical-align: top; }
+.application-workflow-table thead th { color: #7b8495; background: #fbfcfd; font-size: 8px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.application-workflow-table tbody th { color: #6f7889; background: #fbfcfd; font-size: 10px; font-weight: 750; }
+.application-workflow-table tbody td { color: var(--ink); font-size: 11px; font-weight: 800; white-space: pre-wrap; }
+.application-workflow-table tbody tr:last-child th,
+.application-workflow-table tbody tr:last-child td { border-bottom: 0; }
+.application-workflow-table th + th,
+.application-workflow-table td + th { border-left: 1px solid var(--line); }
 .application-comments p, .application-history p { margin-top: 7px; }
 .application-source-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
 .application-source-grid article { min-width: 0; display: grid; gap: 5px; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: var(--surface-soft); }
@@ -4296,8 +4304,6 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 760px) {
   .forms-builder-create-actions { width: 100%; justify-content: stretch; }
   .forms-builder-create-actions .button { flex: 1; }
-  .workflow-form-settings__grid,
-  .application-workflow-step dl { grid-template-columns: 1fr; }
-  .application-workflow-step dl > div { border-right: 0; }
+  .workflow-form-settings__grid { grid-template-columns: 1fr; }
   .workflow-form-settings__wide { grid-column: auto; }
 }
