@@ -528,7 +528,7 @@ export function TradeInBuilderPage() {
   const showEmbeddedPreview = tab === 'page' && previewVisible;
 
   return (
-    <div className={`trade-in-builder-page${showEmbeddedPreview ? '' : ' trade-in-builder-page--preview-hidden'}`}>
+    <div className={`trade-in-builder-page${showEmbeddedPreview ? '' : ' trade-in-builder-page--preview-hidden'}${tab === 'logic' ? ' trade-in-builder-page--logic' : ''}`}>
       <header className="trade-in-builder-header">
         <div><p className="eyebrow">Конструктор публічної сторінки</p><h1>Trade-in</h1><p>Налаштуйте сторінку, багатокрокову форму та публікацію на окремому піддомені.</p></div>
         <div className="trade-in-builder-header__actions">

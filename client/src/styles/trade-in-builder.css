@@ -152,6 +152,119 @@
 .trade-in-publish-actions { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .trade-in-publish-actions > div:last-child { display: flex; gap: 8px; }
 
+@media (min-width: 921px) {
+  .trade-in-workspace:has(.trade-in-builder-page--logic) {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .trade-in-workspace__content:has(> .trade-in-builder-page--logic) {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .trade-in-builder-page--logic {
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+    padding: 18px 22px;
+  }
+
+  .trade-in-builder-page--logic .trade-in-builder-header {
+    min-width: 0;
+    align-items: center;
+    flex-direction: row;
+    gap: 16px;
+    margin-bottom: 10px;
+  }
+
+  .trade-in-builder-page--logic .trade-in-builder-header h1 {
+    margin-block: 1px 2px;
+    font-size: clamp(26px, 2vw, 34px);
+  }
+
+  .trade-in-builder-page--logic .trade-in-builder-header > div:first-child > p:last-child {
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .trade-in-builder-page--logic .trade-in-builder-header__actions {
+    flex-wrap: wrap;
+  }
+
+  .trade-in-builder-page--logic .trade-in-builder-tabs {
+    margin-bottom: 10px;
+  }
+
+  .trade-in-builder-page--logic .trade-in-builder-tabs button {
+    padding-block: 10px;
+  }
+
+  .trade-in-builder-page--logic .trade-in-builder-layout,
+  .trade-in-builder-page--logic .trade-in-builder-controls {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) .trade-in-logic-toolbar {
+    min-height: 72px;
+    flex: 0 0 auto;
+    gap: 14px;
+    padding: 11px 14px;
+  }
+
+  .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) .trade-in-logic-toolbar h2 {
+    margin-block: 1px 2px;
+    font-size: 17px;
+  }
+
+  .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) .trade-in-logic-toolbar > div:first-child > p:last-child {
+    font-size: 8px;
+    line-height: 1.35;
+  }
+
+  .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) .trade-in-logic-toolbar__actions {
+    gap: 6px;
+  }
+
+  .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) .trade-in-logic-toolbar__actions > span {
+    padding: 7px 9px;
+  }
+
+  .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) .trade-in-logic-workspace {
+    height: auto;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) .trade-in-logic-help {
+    min-height: 38px;
+    flex: 0 0 auto;
+    gap: 12px;
+    padding: 7px 12px;
+  }
+}
+
+@media (min-width: 921px) and (max-width: 1120px) {
+  .trade-in-builder-page--logic .trade-in-builder-header > div:first-child > p,
+  .trade-in-builder-page--logic .trade-in-logic-toolbar > div:first-child {
+    display: none;
+  }
+}
+
 @media (max-width: 1380px) {
   .trade-in-builder-layout { grid-template-columns: minmax(500px,1fr) minmax(420px,.8fr); }
   .trade-in-builder-header { align-items: flex-start; flex-direction: column; }
