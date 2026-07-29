@@ -160,6 +160,8 @@ export function FormsBuilderPage() {
   const [script, setScript] = useState('');
   const [compactScript, setCompactScript] = useState('');
   const [activeTab, setActiveTab] = useState<'form' | 'button'>('form');
+  const [libraryType, setLibraryType] = useState<'all' | ApplicationForm['formType']>('all');
+  const [librarySearch, setLibrarySearch] = useState('');
   const [draggedFieldIndex, setDraggedFieldIndex] = useState<number | null>(null);
   const [fieldDropTarget, setFieldDropTarget] = useState<{ index: number; placement: 'before' | 'after' } | null>(null);
   const {
@@ -178,18 +180,31 @@ export function FormsBuilderPage() {
   const banks = useQuery({ queryKey: ['form-banks'], queryFn: api.forms.banks });
   const buttons = useQuery({ queryKey: ['form-buttons'], queryFn: api.forms.buttons });
   const requestedFormId = searchParams.get('form');
+  const libraryOpen = searchParams.get('view') === 'library' && !requestedFormId;
   const selectedForm = useMemo(
     () => forms.data?.find((form) => form.id === selectedId)
       || forms.data?.find((form) => form.id === requestedFormId)
-      || forms.data?.[0]
       || null,
     [forms.data, requestedFormId, selectedId]
   );
+  const libraryForms = useMemo(() => {
+    const search = librarySearch.trim().toLocaleLowerCase('uk-UA');
+    return (forms.data || []).filter((form) => {
+      if (libraryType !== 'all' && form.formType !== libraryType) return false;
+      if (!search) return true;
+      return `${form.name} ${form.title} ${form.description}`.toLocaleLowerCase('uk-UA').includes(search);
+    });
+  }, [forms.data, librarySearch, libraryType]);
 
   useEffect(() => {
-    if (!forms.data?.length || selectedId) return;
-    const initial = forms.data.find((form) => form.id === requestedFormId) || forms.data[0];
-    setSelectedId(initial.id);
+    if (!forms.data) return;
+    if (!requestedFormId) {
+      if (selectedId) setSelectedId(null);
+      return;
+    }
+    const requestedForm = forms.data.find((form) => form.id === requestedFormId);
+    if (requestedForm && requestedForm.id !== selectedId) setSelectedId(requestedForm.id);
+    if (!requestedForm && selectedId) setSelectedId(null);
   }, [forms.data, requestedFormId, selectedId]);
 
   useEffect(() => {
@@ -259,6 +274,23 @@ export function FormsBuilderPage() {
     ]);
   }
 
+  function openFormsHome() {
+    setSelectedId(null);
+    setSearchParams({}, { replace: true });
+  }
+
+  function openFormsLibrary() {
+    setSelectedId(null);
+    setSearchParams({ view: 'library' }, { replace: true });
+  }
+
+  function openForm(form: ApplicationForm) {
+    setSelectedId(form.id);
+    setSearchParams({ form: form.id }, { replace: true });
+    setScript('');
+    setCompactScript('');
+  }
+
   async function createNewForm(formType: ApplicationFormInput['formType'] = 'simple') {
     try {
       const workflowDefinition = formType === 'workflow' ? createDefaultWorkflowForm() : null;
@@ -314,6 +346,7 @@ export function FormsBuilderPage() {
     if (!selectedForm) return;
     const form = await duplicateForm.mutateAsync(selectedForm.id);
     setSelectedId(form.id);
+    setSearchParams({ form: form.id }, { replace: true });
     showToast('Копію форми створено.');
     await refresh();
   }
@@ -344,7 +377,7 @@ export function FormsBuilderPage() {
     });
     if (!confirmed) return;
     await archiveForm.mutateAsync(selectedForm.id);
-    setSelectedId(null);
+    openFormsLibrary();
     showToast('Форму перенесено в архів.');
     await refresh();
   }
@@ -658,30 +691,73 @@ export function FormsBuilderPage() {
 
   return <div className={`forms-builder-page${selectedForm?.formType === 'workflow' ? ' forms-builder-page--workflow' : ''}`}>
     <header className="page-heading page-heading--row">
-      <div><p className="eyebrow">Єдиний центр форм</p><h1>Конструктор форм</h1><p>Створюйте прості pop-up форми або покрокові сценарії з умовами та логічними звʼязками.</p></div>
-      <div className="forms-builder-create-actions">
-        <button className="button button--secondary" type="button" onClick={() => void createNewForm('simple')} disabled={createForm.isPending}><Icon name="add" size={18} /> Проста форма</button>
-        <button className="button button--primary" type="button" onClick={() => void createNewForm('workflow')} disabled={createForm.isPending}><Icon name="variants" size={18} /> Покрокова форма</button>
+      <div>
+        <p className="eyebrow">Єдиний центр форм</p>
+        <h1>{selectedForm ? selectedForm.name : libraryOpen ? 'Бібліотека форм' : 'Форми'}</h1>
+        <p>{selectedForm
+          ? selectedForm.formType === 'workflow'
+            ? 'Налаштуйте кроки, поля та логічні переходи покрокової форми.'
+            : 'Налаштуйте поля, вигляд pop-up форми та кнопку для сайту.'
+          : libraryOpen
+            ? 'Переглядайте всі форми, фільтруйте їх за типом і відкривайте потрібний редактор.'
+            : 'Оберіть тип нової форми або перейдіть до вже створених форм.'}</p>
       </div>
+      {(selectedForm || libraryOpen) && <div className="forms-builder-create-actions">
+        {selectedForm && <button className="button button--secondary" type="button" onClick={openFormsLibrary}><Icon name="integrations" size={18} /> Бібліотека</button>}
+        <button className="button button--secondary" type="button" onClick={openFormsHome}>До розділу</button>
+      </div>}
     </header>
 
-    <section className={`forms-workspace${selectedForm?.formType === 'workflow' ? ' forms-workspace--workflow' : ''}`}>
-      <aside className="forms-left-panel">
-        <section className="forms-list">
-          <header><strong>Форми</strong><span>{forms.data?.length || 0}</span></header>
-          {forms.isLoading && <p>Завантажуємо...</p>}
-          {forms.data?.map((form) => <button className={form.id === selectedForm?.id ? 'forms-list__item forms-list__item--active' : 'forms-list__item'} type="button" key={form.id} onClick={() => { setSelectedId(form.id); setSearchParams({ form: form.id }, { replace: true }); setScript(''); setCompactScript(''); }}>
-            <span><strong>{form.name}</strong><small>{form.formType === 'workflow' ? 'Покрокова' : 'Проста'} · {statusText(form.status)}</small></span><Icon name="arrow" size={18} />
-          </button>)}
-        </section>
-        {selectedForm?.formType === 'simple' && draft && <section className="tool-panel forms-live-preview-panel">
-          <header className="tool-panel__header"><div><p className="eyebrow">Live preview</p><h2>{activeTab === 'button' ? 'Кнопка на сайті' : 'Форма заявки'}</h2></div></header>
-          {activeTab === 'button' ? renderButtonPreview() : renderFormPreview()}
-        </section>}
-      </aside>
+    {!selectedForm && !libraryOpen && <section className="forms-hub" aria-label="Дії з формами">
+      <button className="forms-hub-card forms-hub-card--simple" type="button" onClick={() => void createNewForm('simple')} disabled={createForm.isPending}>
+        <span className="forms-hub-card__icon"><Icon name="add" size={26} /></span>
+        <span className="forms-hub-card__copy"><small>Швидкий сценарій</small><strong>Створити просту форму</strong><span>Pop-up форма з полями, стилями та окремою кнопкою для встановлення на сайт.</span></span>
+        <span className="forms-hub-card__action">Перейти до конструктора <Icon name="arrow" size={18} /></span>
+      </button>
+      <button className="forms-hub-card forms-hub-card--workflow" type="button" onClick={() => void createNewForm('workflow')} disabled={createForm.isPending}>
+        <span className="forms-hub-card__icon"><Icon name="variants" size={26} /></span>
+        <span className="forms-hub-card__copy"><small>Складний сценарій</small><strong>Створити покрокову форму</strong><span>Графічний редактор кроків, полів, умов та логічних переходів між ними.</span></span>
+        <span className="forms-hub-card__action">Перейти до конструктора <Icon name="arrow" size={18} /></span>
+      </button>
+      <button className="forms-hub-card forms-hub-card--library" type="button" onClick={openFormsLibrary}>
+        <span className="forms-hub-card__icon"><Icon name="integrations" size={26} /></span>
+        <span className="forms-hub-card__copy"><small>{forms.data?.length || 0} створених</small><strong>Бібліотека форм</strong><span>Усі прості та покрокові форми в одному місці з фільтрами за типом.</span></span>
+        <span className="forms-hub-card__action">Відкрити бібліотеку <Icon name="arrow" size={18} /></span>
+      </button>
+    </section>}
 
+    {!selectedForm && libraryOpen && <section className="forms-library">
+      <div className="forms-library__toolbar">
+        <div className="segmented forms-library__filters" aria-label="Фільтр типу форми">
+          <button className={libraryType === 'all' ? 'active' : undefined} type="button" onClick={() => setLibraryType('all')}>Усі <span>{forms.data?.length || 0}</span></button>
+          <button className={libraryType === 'simple' ? 'active' : undefined} type="button" onClick={() => setLibraryType('simple')}>Прості <span>{forms.data?.filter((form) => form.formType === 'simple').length || 0}</span></button>
+          <button className={libraryType === 'workflow' ? 'active' : undefined} type="button" onClick={() => setLibraryType('workflow')}>Покрокові <span>{forms.data?.filter((form) => form.formType === 'workflow').length || 0}</span></button>
+        </div>
+        <label className="forms-library__search"><span>Пошук</span><input value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder="Назва або заголовок форми" /></label>
+      </div>
+      {forms.isLoading ? <div className="task-list-state"><h2>Завантажуємо форми...</h2></div> : libraryForms.length ? <div className="forms-library__grid">
+        {libraryForms.map((form) => {
+          const graphNodes = form.workflow?.graph?.nodes || [];
+          const workflowFieldCount = graphNodes.reduce((total, node) => total + node.fields.length, 0);
+          return <button className="forms-library-card" type="button" key={form.id} onClick={() => openForm(form)}>
+            <span className="forms-library-card__top">
+              <span className={`forms-library-card__type forms-library-card__type--${form.formType}`}>{form.formType === 'workflow' ? 'Покрокова' : 'Проста'}</span>
+              <span className={`forms-library-card__status forms-library-card__status--${form.status}`}>{statusText(form.status)}</span>
+            </span>
+            <span className="forms-library-card__copy"><strong>{form.name}</strong><span>{form.title || 'Без заголовка'}</span></span>
+            <span className="forms-library-card__meta">
+              <span>{form.formType === 'workflow' ? `${graphNodes.length} нод · ${workflowFieldCount} полів` : `${form.fields.length} полів`}</span>
+              <span>Оновлено {new Date(form.updatedAt).toLocaleDateString('uk-UA')}</span>
+            </span>
+            <span className="forms-library-card__open">Відкрити редактор <Icon name="arrow" size={18} /></span>
+          </button>;
+        })}
+      </div> : <div className="task-list-state"><span className="task-list-state__icon"><Icon name="integrations" size={28} /></span><h2>Форм не знайдено</h2><p>Змініть фільтр або пошуковий запит.</p></div>}
+    </section>}
+
+    {selectedForm && <section className={`forms-workspace forms-workspace--editor${selectedForm.formType === 'workflow' ? ' forms-workspace--workflow' : ''}`}>
       <div className="forms-editor">
-        {!selectedForm || !draft ? <div className="task-list-state"><span className="task-list-state__icon"><Icon name="integrations" size={28} /></span><h2>Оберіть або створіть форму</h2></div> : <>
+        {!draft ? <div className="task-list-state"><h2>Завантажуємо редактор...</h2></div> : <>
           {selectedForm.formType === 'workflow' && workflow ? <div className="workflow-form-builder">
             <section className="tool-panel workflow-form-builder__header">
               <header className="tool-panel__header">
@@ -736,6 +812,13 @@ export function FormsBuilderPage() {
               <button className={activeTab === 'button' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'button'} onClick={() => setActiveTab('button')}>Редактор кнопки</button>
             </div>
           </section>
+          <details className="tool-panel forms-inline-preview">
+            <summary>
+              <span><small>Попередній перегляд</small><strong>{activeTab === 'button' ? 'Кнопка на сайті' : 'Форма заявки'}</strong></span>
+              <span>Розгорнути</span>
+            </summary>
+            <div className="forms-inline-preview__body">{activeTab === 'button' ? renderButtonPreview() : renderFormPreview()}</div>
+          </details>
           {activeTab === 'form' ? <>
           <section className="tool-panel">
             <header className="tool-panel__header"><div><p className="eyebrow">Форма</p><h2>Основні налаштування</h2></div></header>
@@ -873,6 +956,6 @@ export function FormsBuilderPage() {
         </>}
         </>}
       </div>
-    </section>
+    </section>}
   </div>;
 }
