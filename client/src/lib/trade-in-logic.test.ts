@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTradeInDisplayPath,
   canConnectTradeInGraph,
+  connectTradeInGraph,
   convertTradeInStepsToGraph,
   createTradeInFormNode,
   findNearestFreeNodePosition,
@@ -118,6 +119,43 @@ describe('Trade-in graph model', () => {
 
     expect(canConnectTradeInGraph(graph, 'two', 'start', 'next')).toBe(false);
     expect(canConnectTradeInGraph(graph, 'two', 'one', 'next')).toBe(false);
+  });
+
+  it('allows one output to connect to multiple nodes', () => {
+    const graph: TradeInFormGraph = {
+      nodes: [node('start', 'start'), node('one', 'fields'), node('two', 'fields')],
+      edges: [{ id: '1', source: 'start', target: 'one', sourceHandle: 'next' }]
+    };
+
+    expect(canConnectTradeInGraph(graph, 'start', 'two', 'next')).toBe(true);
+  });
+
+  it('replaces the previous incoming edge but keeps multiple outgoing edges', () => {
+    const graph: TradeInFormGraph = {
+      nodes: [node('a', 'fields'), node('b', 'fields'), node('c', 'fields')],
+      edges: [{ id: 'a-b', source: 'a', target: 'b', sourceHandle: 'next' }]
+    };
+
+    const replaced = connectTradeInGraph(graph, {
+      id: 'c-b',
+      source: 'c',
+      target: 'b',
+      sourceHandle: 'next'
+    });
+    expect(replaced.edges).toEqual([
+      { id: 'c-b', source: 'c', target: 'b', sourceHandle: 'next' }
+    ]);
+
+    const branched = connectTradeInGraph(replaced, {
+      id: 'c-a',
+      source: 'c',
+      target: 'a',
+      sourceHandle: 'next'
+    });
+    expect(branched.edges).toEqual([
+      { id: 'c-b', source: 'c', target: 'b', sourceHandle: 'next' },
+      { id: 'c-a', source: 'c', target: 'a', sourceHandle: 'next' }
+    ]);
   });
 
   it('reports unreachable nodes, missing exits and duplicate field keys', () => {

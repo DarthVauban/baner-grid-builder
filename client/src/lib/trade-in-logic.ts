@@ -242,6 +242,19 @@ export function getTradeInOutgoingEdge(
   return graph.edges.find((edge) => edge.source === nodeId && edge.sourceHandle === sourceHandle) || null;
 }
 
+export function connectTradeInGraph(
+  graph: TradeInFormGraph,
+  edge: TradeInFormEdge
+): TradeInFormGraph {
+  return {
+    ...graph,
+    edges: [
+      ...graph.edges.filter((existing) => existing.target !== edge.target && existing.id !== edge.id),
+      edge
+    ]
+  };
+}
+
 export function getTradeInNextNodeId(graph: TradeInFormGraph, node: TradeInFormNode, answers: TradeInAnswers) {
   let sourceHandle = nextHandle;
   if (node.type === 'condition') {
@@ -489,7 +502,6 @@ export function canConnectTradeInGraph(
   const source = graph.nodes.find((node) => node.id === sourceId);
   const target = graph.nodes.find((node) => node.id === targetId);
   if (!source || !target || source.type === 'finish' || target.type === 'start') return false;
-  if (graph.edges.some((edge) => edge.source === sourceId && edge.sourceHandle === sourceHandle)) return false;
 
   const adjacency = new Map<string, string[]>();
   graph.edges.forEach((edge) => adjacency.set(edge.source, [...(adjacency.get(edge.source) || []), edge.target]));

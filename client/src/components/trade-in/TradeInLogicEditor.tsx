@@ -22,6 +22,7 @@ import {
 import { Icon, type IconName } from '../Icon';
 import {
   canConnectTradeInGraph,
+  connectTradeInGraph,
   createTradeInFormNode,
   findNearestFreeNodePosition,
   formatTradeInCondition,
@@ -360,6 +361,7 @@ function TradeInLogicCanvas({
   historyDepth: number;
 }) {
   const canvasRef = useRef<HTMLElement>(null);
+  const lastCanvasPointerRef = useRef<{ x: number; y: number } | null>(null);
   const graph = useMemo(() => getTradeInFormGraph(config.form), [config.form]);
   const issues = useMemo(() => validateTradeInLogic(graph), [graph]);
   const allFields = useMemo(() => getTradeInGraphFields(graph), [graph]);
@@ -523,7 +525,17 @@ function TradeInLogicCanvas({
       target: connection.target,
       sourceHandle
     };
-    mutateGraph((nextGraph) => { nextGraph.edges.push(edge); });
+    mutateGraph((nextGraph) => {
+      nextGraph.edges = connectTradeInGraph(nextGraph, edge).edges;
+    });
+  };
+
+  const removeEdges = (edgeIds: string[]) => {
+    const deletedIds = new Set(edgeIds);
+    if (!deletedIds.size) return;
+    mutateGraph((nextGraph) => {
+      nextGraph.edges = nextGraph.edges.filter((edge) => !deletedIds.has(edge.id));
+    });
   };
 
   const removeSelectedNodes = () => {
@@ -602,7 +614,11 @@ function TradeInLogicCanvas({
       if (event.code === 'Space') {
         event.preventDefault();
         event.stopPropagation();
-        if (!event.repeat) openPaletteAtViewportCenter();
+        if (!event.repeat) {
+          const cursor = lastCanvasPointerRef.current;
+          if (cursor) openPaletteAt(cursor.x, cursor.y);
+          else openPaletteAtViewportCenter();
+        }
         return;
       }
 
@@ -677,6 +693,9 @@ function TradeInLogicCanvas({
           aria-label="Графічний редактор форми"
           ref={canvasRef}
           onContextMenu={(event) => event.preventDefault()}
+          onPointerMove={(event) => {
+            lastCanvasPointerRef.current = { x: event.clientX, y: event.clientY };
+          }}
         >
           <ReactFlow<GraphNode, GraphEdge>
             nodes={nodes}
@@ -705,10 +724,14 @@ function TradeInLogicCanvas({
               draggedNodes.length ? draggedNodes : [draggedNode]
             )}
             onConnect={handleConnect}
-            onEdgesDelete={(deleted) => mutateGraph((nextGraph) => {
-              const deletedIds = new Set(deleted.map((edge) => edge.id));
-              nextGraph.edges = nextGraph.edges.filter((edge) => !deletedIds.has(edge.id));
-            })}
+            onEdgesDelete={(deleted) => removeEdges(deleted.map((edge) => edge.id))}
+            onEdgeContextMenu={(event, edge) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setContextMenu(null);
+              setToolbarPalette(false);
+              if (event.altKey) removeEdges([edge.id]);
+            }}
             isValidConnection={(connection) => Boolean(connection.source && connection.target && canConnectTradeInGraph(
               graph,
               connection.source,
@@ -944,6 +967,7 @@ function TradeInLogicCanvas({
         <span><kbd>ЛКМ</kbd> Рамка вибору</span>
         <span><kbd>Shift</kbd> Мультивибір</span>
         <span><kbd>ПКМ</kbd> Меню додавання</span>
+        <span><kbd>Alt+ПКМ</kbd> Розірвати зв’язок</span>
         <span><kbd>Space</kbd> Додати ноду</span>
         <span><kbd>Del</kbd> Видалити вибрані</span>
         <span><kbd>Ctrl+Z</kbd> Скасувати дію</span>

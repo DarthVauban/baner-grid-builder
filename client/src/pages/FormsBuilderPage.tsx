@@ -407,6 +407,23 @@ export function FormsBuilderPage() {
     await refresh();
   }
 
+  async function deleteLibraryForm(form: ApplicationForm) {
+    const confirmed = await confirm({
+      title: 'Видалити форму?',
+      message: `Форма «${form.name}» буде видалена з бібліотеки. Створені раніше заявки залишаться доступними.`,
+      confirmLabel: 'Видалити',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
+    try {
+      await archiveForm.mutateAsync(form.id);
+      showToast('Форму видалено з бібліотеки.');
+      await refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити форму.', 'error');
+    }
+  }
+
   function updateField(index: number, patch: Partial<ApplicationFormField>) {
     setFields((current) => current.map((field, fieldIndex) => fieldIndex === index ? {
       ...field,
@@ -745,18 +762,34 @@ export function FormsBuilderPage() {
         {libraryForms.map((form) => {
           const graphNodes = form.workflow?.graph?.nodes || [];
           const workflowFieldCount = graphNodes.reduce((total, node) => total + node.fields.length, 0);
-          return <button className="forms-library-card" type="button" key={form.id} onClick={() => openForm(form)}>
-            <span className="forms-library-card__top">
-              <span className={`forms-library-card__type forms-library-card__type--${form.formType}`}>{form.formType === 'workflow' ? 'Покрокова' : 'Проста'}</span>
-              <span className={`forms-library-card__status forms-library-card__status--${form.status}`}>{statusText(form.status)}</span>
-            </span>
-            <span className="forms-library-card__copy"><strong>{form.name}</strong><span>{form.title || 'Без заголовка'}</span></span>
-            <span className="forms-library-card__meta">
-              <span>{form.formType === 'workflow' ? `${graphNodes.length} нод · ${workflowFieldCount} полів` : `${form.fields.length} полів`}</span>
-              <span>Оновлено {new Date(form.updatedAt).toLocaleDateString('uk-UA')}</span>
-            </span>
-            <span className="forms-library-card__open">Відкрити редактор <Icon name="arrow" size={18} /></span>
-          </button>;
+          return <article className="forms-library-card" key={form.id}>
+            <button className="forms-library-card__main" type="button" onClick={() => openForm(form)}>
+              <span className="forms-library-card__top">
+                <span className={`forms-library-card__type forms-library-card__type--${form.formType}`}>{form.formType === 'workflow' ? 'Покрокова' : 'Проста'}</span>
+                <span className={`forms-library-card__status forms-library-card__status--${form.status}`}>{statusText(form.status)}</span>
+              </span>
+              <span className="forms-library-card__copy"><strong>{form.name}</strong><span>{form.title || 'Без заголовка'}</span></span>
+              <span className="forms-library-card__meta">
+                <span>{form.formType === 'workflow' ? `${graphNodes.length} нод · ${workflowFieldCount} полів` : `${form.fields.length} полів`}</span>
+                <span>Оновлено {new Date(form.updatedAt).toLocaleDateString('uk-UA')}</span>
+              </span>
+            </button>
+            <footer className="forms-library-card__actions">
+              <button className="forms-library-card__open" type="button" onClick={() => openForm(form)}>
+                Відкрити редактор <Icon name="arrow" size={18} />
+              </button>
+              <button
+                className="forms-library-card__delete"
+                type="button"
+                disabled={archiveForm.isPending}
+                aria-label={`Видалити форму «${form.name}»`}
+                title="Видалити форму"
+                onClick={() => void deleteLibraryForm(form)}
+              >
+                <Icon name="delete" size={16} />
+              </button>
+            </footer>
+          </article>;
         })}
       </div> : <div className="task-list-state"><span className="task-list-state__icon"><Icon name="integrations" size={28} /></span><h2>Форм не знайдено</h2><p>Змініть фільтр або пошуковий запит.</p></div>}
     </section>}
