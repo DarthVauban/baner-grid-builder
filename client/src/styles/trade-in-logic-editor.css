@@ -8,6 +8,23 @@
   box-shadow: 0 12px 36px rgba(22, 30, 50, .045);
 }
 
+.trade-in-logic-editor.is-fullscreen {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.trade-in-logic-editor.is-fullscreen .trade-in-logic-workspace {
+  height: auto;
+  min-height: 0;
+  flex: 1;
+}
+
 .trade-in-logic-toolbar {
   min-height: 92px;
   display: flex;
@@ -950,6 +967,21 @@
   border-top: 2px solid #695cff;
 }
 
+.trade-in-logic-help kbd {
+  min-width: 26px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #d0d5dd;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 2px 5px;
+  color: #475467;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(16, 24, 40, .04);
+  font: inherit;
+  font-weight: 800;
+}
+
 .trade-in-logic-help p {
   margin: 0 0 0 auto;
   text-align: right;
@@ -979,6 +1011,14 @@
 
   .trade-in-logic-workspace {
     grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .trade-in-logic-editor.is-fullscreen {
+    overflow: auto;
+  }
+
+  .trade-in-logic-editor.is-fullscreen .trade-in-logic-workspace {
     height: auto;
   }
 

@@ -529,7 +529,7 @@ export function TradeInBuilderPage() {
 
       <nav className="trade-in-builder-tabs">
         <button className={tab === 'page' ? 'is-active' : ''} type="button" onClick={() => setTab('page')}><Icon name="edit" size={17} /><span>Сторінка</span></button>
-        <button className={tab === 'logic' ? 'is-active' : ''} type="button" onClick={() => setTab('logic')}><Icon name="variants" size={17} /><span>Логіка</span>{logicIssues.length > 0 && <i className={logicIssues.some((issue) => issue.severity === 'error') ? 'has-errors' : ''}>{logicIssues.length}</i>}</button>
+        <button className={tab === 'logic' ? 'is-active' : ''} type="button" onClick={() => setTab('logic')}><Icon name="variants" size={17} /><span>Конструктор форми</span>{logicIssues.length > 0 && <i className={logicIssues.some((issue) => issue.severity === 'error') ? 'has-errors' : ''}>{logicIssues.length}</i>}</button>
         <button className={tab === 'publish' ? 'is-active' : ''} type="button" onClick={() => setTab('publish')}><Icon name="publication" size={17} /><span>Публікація</span></button>
       </nav>
 

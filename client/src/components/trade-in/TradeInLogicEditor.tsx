@@ -340,6 +340,11 @@ function layoutGraph(graph: TradeInFormGraph) {
   });
 }
 
+function isEditableElement(target: EventTarget | null) {
+  return target instanceof HTMLElement
+    && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
 function TradeInLogicCanvas({
   config,
   mutate
@@ -355,6 +360,7 @@ function TradeInLogicCanvas({
   const [selectedFieldId, setSelectedFieldId] = useState('');
   const [toolbarPalette, setToolbarPalette] = useState(false);
   const [contextMenu, setContextMenu] = useState<null | { x: number; y: number; position: TradeInFormNodePosition }>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const { fitView, screenToFlowPosition } = useReactFlow();
 
   const flowNodes = useMemo((): GraphNode[] => graph.nodes.map((node) => ({
@@ -452,6 +458,27 @@ function TradeInLogicCanvas({
     addNode(type, desired);
   };
 
+  const openPaletteAt = (clientX: number, clientY: number, centered = false) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const paletteWidth = 270;
+    const paletteHeight = 250;
+    const requestedX = clientX - rect.left - (centered ? paletteWidth / 2 : 0);
+    const requestedY = clientY - rect.top - (centered ? paletteHeight / 2 : 0);
+    setToolbarPalette(false);
+    setContextMenu({
+      x: Math.min(Math.max(requestedX, 12), Math.max(12, rect.width - paletteWidth - 12)),
+      y: Math.min(Math.max(requestedY, 12), Math.max(12, rect.height - paletteHeight - 12)),
+      position: screenToFlowPosition({ x: clientX, y: clientY })
+    });
+  };
+
+  const openPaletteAtViewportCenter = () => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    openPaletteAt(rect.left + rect.width / 2, rect.top + rect.height / 2, true);
+  };
+
   const handleConnect = (connection: Connection) => {
     const sourceHandle = connection.sourceHandle || 'next';
     if (!connection.source || !connection.target || !canConnectTradeInGraph(graph, connection.source, connection.target, sourceHandle)) return;
@@ -466,11 +493,14 @@ function TradeInLogicCanvas({
 
   const removeSelectedNode = () => {
     if (!selectedNode || selectedNode.type === 'start') return;
+    const fallbackNodeId = graph.nodes.find((node) => node.type === 'start')?.id || '';
     mutateGraph((nextGraph) => {
       const cleaned = removeTradeInGraphNode(nextGraph, selectedNode.id);
       nextGraph.nodes = cleaned.nodes;
       nextGraph.edges = cleaned.edges;
     });
+    setSelectedNodeId(fallbackNodeId);
+    setSelectedFieldId('');
   };
 
   const autoLayout = () => {
@@ -484,12 +514,62 @@ function TradeInLogicCanvas({
     window.requestAnimationFrame(() => fitView({ padding: 0.15, duration: 360 }));
   };
 
+  useEffect(() => {
+    if (!fullscreen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [fullscreen]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => fitView({ padding: 0.15, duration: 260 }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [fitView, fullscreen]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableElement(event.target)) return;
+
+      if (event.key === 'Delete' && selectedNode && selectedNode.type !== 'start') {
+        event.preventDefault();
+        event.stopPropagation();
+        removeSelectedNode();
+        return;
+      }
+
+      if (event.code === 'Space') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) openPaletteAtViewportCenter();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        if (contextMenu || toolbarPalette) {
+          event.preventDefault();
+          setContextMenu(null);
+          setToolbarPalette(false);
+          return;
+        }
+        if (fullscreen) {
+          event.preventDefault();
+          setFullscreen(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  });
+
   return (
-    <div className="trade-in-logic-editor">
+    <div className={`trade-in-logic-editor${fullscreen ? ' is-fullscreen' : ''}`}>
       <header className="trade-in-logic-toolbar">
         <div>
-          <p className="eyebrow">Конструктор сценарію</p>
-          <h2>Форма та логіка</h2>
+          <p className="eyebrow">Редактор сценарію</p>
+          <h2>Конструктор форми</h2>
           <p>Створюйте кроки, умови й завершення, а потім з’єднуйте їх у потрібному порядку.</p>
         </div>
         <div className="trade-in-logic-toolbar__actions">
@@ -499,6 +579,16 @@ function TradeInLogicCanvas({
             if (start) setSelectedNodeId(start.id);
           }}><Icon name="characteristics" size={15} /> Налаштування</button>
           <button className="button button--secondary button--small" type="button" onClick={autoLayout}><Icon name="refresh" size={15} /> Вирівняти</button>
+          <button
+            className="button button--secondary button--small"
+            type="button"
+            aria-label={fullscreen ? 'Вийти з повноекранного режиму' : 'Відкрити редактор на весь екран'}
+            title={fullscreen ? 'Вийти з повноекранного режиму' : 'Відкрити редактор на весь екран'}
+            onClick={() => setFullscreen((value) => !value)}
+          >
+            <Icon name={fullscreen ? 'fullscreenExit' : 'fullscreen'} size={16} />
+            {fullscreen ? 'Згорнути' : 'На весь екран'}
+          </button>
           <button className="button button--primary button--small" type="button" onClick={() => { setToolbarPalette((value) => !value); setContextMenu(null); }}><Icon name="add" size={15} /> Додати ноду</button>
           {toolbarPalette && <NodePalette toolbar onAdd={addAtViewportCenter} />}
         </div>
@@ -536,24 +626,12 @@ function TradeInLogicCanvas({
             onPaneClick={() => { setContextMenu(null); setToolbarPalette(false); }}
             onPaneContextMenu={(event) => {
               event.preventDefault();
-              const rect = canvasRef.current?.getBoundingClientRect();
-              setToolbarPalette(false);
-              setContextMenu({
-                x: rect ? event.clientX - rect.left : event.clientX,
-                y: rect ? event.clientY - rect.top : event.clientY,
-                position: screenToFlowPosition({ x: event.clientX, y: event.clientY })
-              });
+              openPaletteAt(event.clientX, event.clientY);
             }}
             onNodeContextMenu={(event, node) => {
               event.preventDefault();
-              const rect = canvasRef.current?.getBoundingClientRect();
               setSelectedNodeId(node.id);
-              setToolbarPalette(false);
-              setContextMenu({
-                x: rect ? event.clientX - rect.left : event.clientX,
-                y: rect ? event.clientY - rect.top : event.clientY,
-                position: screenToFlowPosition({ x: event.clientX, y: event.clientY })
-              });
+              openPaletteAt(event.clientX, event.clientY);
             }}
             fitView
             fitViewOptions={{ padding: 0.16 }}
@@ -734,7 +812,9 @@ function TradeInLogicCanvas({
       </div>
       <footer className="trade-in-logic-help">
         <span><i /> Суцільна лінія — перехід між нодами</span>
-        <span>ПКМ — меню додавання нод</span>
+        <span><kbd>ПКМ</kbd> Меню додавання</span>
+        <span><kbd>Space</kbd> Додати ноду</span>
+        <span><kbd>Del</kbd> Видалити вибрану</span>
         <p>Нові ноди створюються окремо й не під’єднуються автоматично.</p>
       </footer>
     </div>
