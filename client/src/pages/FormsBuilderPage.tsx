@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties, DragEvent } from 'react';
+import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
@@ -160,8 +160,12 @@ export function FormsBuilderPage() {
   const [script, setScript] = useState('');
   const [compactScript, setCompactScript] = useState('');
   const [activeTab, setActiveTab] = useState<'form' | 'button'>('form');
+  const [workflowTab, setWorkflowTab] = useState<'builder' | 'settings'>('builder');
   const [libraryType, setLibraryType] = useState<'all' | ApplicationForm['formType']>('all');
   const [librarySearch, setLibrarySearch] = useState('');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [newFormType, setNewFormType] = useState<ApplicationForm['formType'] | null>(null);
+  const [newFormName, setNewFormName] = useState('');
   const [draggedFieldIndex, setDraggedFieldIndex] = useState<number | null>(null);
   const [fieldDropTarget, setFieldDropTarget] = useState<{ index: number; placement: 'before' | 'after' } | null>(null);
   const {
@@ -180,7 +184,6 @@ export function FormsBuilderPage() {
   const banks = useQuery({ queryKey: ['form-banks'], queryFn: api.forms.banks });
   const buttons = useQuery({ queryKey: ['form-buttons'], queryFn: api.forms.buttons });
   const requestedFormId = searchParams.get('form');
-  const libraryOpen = searchParams.get('view') === 'library' && !requestedFormId;
   const selectedForm = useMemo(
     () => forms.data?.find((form) => form.id === selectedId)
       || forms.data?.find((form) => form.id === requestedFormId)
@@ -266,6 +269,15 @@ export function FormsBuilderPage() {
   const buttonScript = useMutation({ mutationFn: api.forms.buttonScript });
   const busy = createForm.isPending || updateForm.isPending || duplicateForm.isPending || publishForm.isPending || disableForm.isPending || archiveForm.isPending;
 
+  useEffect(() => {
+    if (!createModalOpen) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !createForm.isPending) setCreateModalOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [createForm.isPending, createModalOpen]);
+
   async function refresh() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['forms'] }),
@@ -274,30 +286,41 @@ export function FormsBuilderPage() {
     ]);
   }
 
-  function openFormsHome() {
-    setSelectedId(null);
-    setSearchParams({}, { replace: true });
-  }
-
   function openFormsLibrary() {
     setSelectedId(null);
-    setSearchParams({ view: 'library' }, { replace: true });
+    setSearchParams({}, { replace: true });
   }
 
   function openForm(form: ApplicationForm) {
     setSelectedId(form.id);
     setSearchParams({ form: form.id }, { replace: true });
+    setWorkflowTab('builder');
     setScript('');
     setCompactScript('');
   }
 
-  async function createNewForm(formType: ApplicationFormInput['formType'] = 'simple') {
+  function openCreateModal() {
+    setNewFormType(null);
+    setNewFormName('');
+    setCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    if (createForm.isPending) return;
+    setCreateModalOpen(false);
+  }
+
+  async function createNewForm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formType = newFormType;
+    const name = newFormName.trim();
+    if (!formType || !name) return;
     try {
       const workflowDefinition = formType === 'workflow' ? createDefaultWorkflowForm() : null;
       const form = await createForm.mutateAsync({
         ...emptyForm,
         formType,
-        name: formType === 'workflow' ? 'Нова покрокова форма' : emptyForm.name,
+        name,
         title: workflowDefinition?.title || emptyForm.title,
         description: workflowDefinition?.description || emptyForm.description,
         buttonText: workflowDefinition?.submitLabel || emptyForm.buttonText,
@@ -307,6 +330,8 @@ export function FormsBuilderPage() {
       setSelectedId(form.id);
       setSearchParams({ form: form.id }, { replace: true });
       setActiveTab('form');
+      setWorkflowTab('builder');
+      setCreateModalOpen(false);
       showToast('Форму створено.');
       await refresh();
     } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося створити форму.', 'error'); }
@@ -689,44 +714,25 @@ export function FormsBuilderPage() {
   );
   const workflowHasErrors = workflowIssues.some((issue) => issue.severity === 'error');
 
-  return <div className={`forms-builder-page${selectedForm?.formType === 'workflow' ? ' forms-builder-page--workflow' : ''}`}>
+  return <div className={`forms-builder-page${selectedForm?.formType === 'workflow' ? ' forms-builder-page--workflow' : ''}${selectedForm?.formType === 'workflow' && workflowTab === 'builder' ? ' forms-builder-page--workflow-builder' : ''}`}>
     <header className="page-heading page-heading--row">
       <div>
         <p className="eyebrow">Єдиний центр форм</p>
-        <h1>{selectedForm ? selectedForm.name : libraryOpen ? 'Бібліотека форм' : 'Форми'}</h1>
+        <h1>{selectedForm ? selectedForm.name : 'Бібліотека форм'}</h1>
         <p>{selectedForm
           ? selectedForm.formType === 'workflow'
             ? 'Налаштуйте кроки, поля та логічні переходи покрокової форми.'
             : 'Налаштуйте поля, вигляд pop-up форми та кнопку для сайту.'
-          : libraryOpen
-            ? 'Переглядайте всі форми, фільтруйте їх за типом і відкривайте потрібний редактор.'
-            : 'Оберіть тип нової форми або перейдіть до вже створених форм.'}</p>
+          : 'Переглядайте всі форми, фільтруйте їх за типом і відкривайте потрібний редактор.'}</p>
       </div>
-      {(selectedForm || libraryOpen) && <div className="forms-builder-create-actions">
-        {selectedForm && <button className="button button--secondary" type="button" onClick={openFormsLibrary}><Icon name="integrations" size={18} /> Бібліотека</button>}
-        <button className="button button--secondary" type="button" onClick={openFormsHome}>До розділу</button>
-      </div>}
+      <div className="forms-builder-create-actions">
+        {selectedForm
+          ? <button className="button button--secondary" type="button" onClick={openFormsLibrary}><Icon name="integrations" size={18} /> Бібліотека</button>
+          : <button className="button button--primary" type="button" onClick={openCreateModal}><Icon name="add" size={18} /> Створити форму</button>}
+      </div>
     </header>
 
-    {!selectedForm && !libraryOpen && <section className="forms-hub" aria-label="Дії з формами">
-      <button className="forms-hub-card forms-hub-card--simple" type="button" onClick={() => void createNewForm('simple')} disabled={createForm.isPending}>
-        <span className="forms-hub-card__icon"><Icon name="add" size={26} /></span>
-        <span className="forms-hub-card__copy"><small>Швидкий сценарій</small><strong>Створити просту форму</strong><span>Pop-up форма з полями, стилями та окремою кнопкою для встановлення на сайт.</span></span>
-        <span className="forms-hub-card__action">Перейти до конструктора <Icon name="arrow" size={18} /></span>
-      </button>
-      <button className="forms-hub-card forms-hub-card--workflow" type="button" onClick={() => void createNewForm('workflow')} disabled={createForm.isPending}>
-        <span className="forms-hub-card__icon"><Icon name="variants" size={26} /></span>
-        <span className="forms-hub-card__copy"><small>Складний сценарій</small><strong>Створити покрокову форму</strong><span>Графічний редактор кроків, полів, умов та логічних переходів між ними.</span></span>
-        <span className="forms-hub-card__action">Перейти до конструктора <Icon name="arrow" size={18} /></span>
-      </button>
-      <button className="forms-hub-card forms-hub-card--library" type="button" onClick={openFormsLibrary}>
-        <span className="forms-hub-card__icon"><Icon name="integrations" size={26} /></span>
-        <span className="forms-hub-card__copy"><small>{forms.data?.length || 0} створених</small><strong>Бібліотека форм</strong><span>Усі прості та покрокові форми в одному місці з фільтрами за типом.</span></span>
-        <span className="forms-hub-card__action">Відкрити бібліотеку <Icon name="arrow" size={18} /></span>
-      </button>
-    </section>}
-
-    {!selectedForm && libraryOpen && <section className="forms-library">
+    {!selectedForm && <section className="forms-library">
       <div className="forms-library__toolbar">
         <div className="segmented forms-library__filters" aria-label="Фільтр типу форми">
           <button className={libraryType === 'all' ? 'active' : undefined} type="button" onClick={() => setLibraryType('all')}>Усі <span>{forms.data?.length || 0}</span></button>
@@ -758,32 +764,39 @@ export function FormsBuilderPage() {
     {selectedForm && <section className={`forms-workspace forms-workspace--editor${selectedForm.formType === 'workflow' ? ' forms-workspace--workflow' : ''}`}>
       <div className="forms-editor">
         {!draft ? <div className="task-list-state"><h2>Завантажуємо редактор...</h2></div> : <>
-          {selectedForm.formType === 'workflow' && workflow ? <div className="workflow-form-builder">
-            <section className="tool-panel workflow-form-builder__header">
+          {selectedForm.formType === 'workflow' && workflow ? <div className={`workflow-form-builder workflow-form-builder--${workflowTab}`}>
+            <section className="tool-panel workflow-form-tabs">
               <header className="tool-panel__header">
                 <div><p className="eyebrow">Покрокова форма</p><h2>{draft.name}</h2><p>Уся структура форми та переходи між кроками будуються на полотні нижче.</p></div>
                 <span className={workflowHasErrors ? 'workflow-form-builder__issue workflow-form-builder__issue--error' : 'workflow-form-builder__issue'}>
                   {workflowIssues.length ? `${workflowIssues.length} зауважень` : 'Логіка коректна'}
                 </span>
               </header>
-              <details className="workflow-form-settings">
-                <summary>Назва, тексти та поведінка форми</summary>
-                <div className="workflow-form-settings__grid">
-                  <label className="field"><span>Назва в адмінці</span><input value={draft.name} maxLength={160} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-                  <label className="field"><span>Заголовок форми</span><input value={workflow.title} maxLength={220} onChange={(event) => mutateWorkflow((next) => { next.form.title = event.target.value; })} /></label>
-                  <label className="field workflow-form-settings__wide"><span>Опис</span><textarea value={workflow.description} rows={2} maxLength={1200} onChange={(event) => mutateWorkflow((next) => { next.form.description = event.target.value; })} /></label>
-                  <label className="field"><span>Кнопка «Назад»</span><input value={workflow.backLabel} onChange={(event) => mutateWorkflow((next) => { next.form.backLabel = event.target.value; })} /></label>
-                  <label className="field"><span>Кнопка «Далі»</span><input value={workflow.nextLabel} onChange={(event) => mutateWorkflow((next) => { next.form.nextLabel = event.target.value; })} /></label>
-                  <label className="field"><span>Кнопка відправлення</span><input value={workflow.submitLabel} onChange={(event) => mutateWorkflow((next) => { next.form.submitLabel = event.target.value; })} /></label>
-                  <label className="field"><span>Заголовок успіху</span><input value={workflow.successTitle} onChange={(event) => mutateWorkflow((next) => { next.form.successTitle = event.target.value; })} /></label>
-                  <label className="field workflow-form-settings__wide"><span>Повідомлення після відправлення</span><textarea value={workflow.successText} rows={2} onChange={(event) => mutateWorkflow((next) => { next.form.successText = event.target.value; })} /></label>
-                  <div className="workflow-form-settings__checks workflow-form-settings__wide">
-                    <label className="check-field"><input type="checkbox" checked={workflow.showProgress} onChange={(event) => mutateWorkflow((next) => { next.form.showProgress = event.target.checked; })} /><span>Прогрес проходження</span></label>
-                    <label className="check-field"><input type="checkbox" checked={workflow.showStepNumbers} onChange={(event) => mutateWorkflow((next) => { next.form.showStepNumbers = event.target.checked; })} /><span>Номери кроків</span></label>
-                    <label className="check-field"><input type="checkbox" checked={workflow.showSummary} onChange={(event) => mutateWorkflow((next) => { next.form.showSummary = event.target.checked; })} /><span>Підсумок відповідей</span></label>
-                  </div>
+              <div className="segmented workflow-form-tabs__switcher" role="tablist" aria-label="Розділи покрокової форми">
+                <button className={workflowTab === 'builder' ? 'active' : undefined} type="button" role="tab" aria-selected={workflowTab === 'builder'} onClick={() => setWorkflowTab('builder')}>Конструктор форми</button>
+                <button className={workflowTab === 'settings' ? 'active' : undefined} type="button" role="tab" aria-selected={workflowTab === 'settings'} onClick={() => setWorkflowTab('settings')}>Налаштування</button>
+              </div>
+            </section>
+
+            {workflowTab === 'settings' ? <section className="tool-panel workflow-form-builder__settings">
+              <header className="tool-panel__header">
+                <div><p className="eyebrow">Налаштування</p><h2>Назва, тексти та поведінка форми</h2><p>Загальні параметри, які застосовуються до всього покрокового сценарію.</p></div>
+              </header>
+              <div className="workflow-form-settings__grid">
+                <label className="field"><span>Назва в адмінці</span><input value={draft.name} maxLength={160} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+                <label className="field"><span>Заголовок форми</span><input value={workflow.title} maxLength={220} onChange={(event) => mutateWorkflow((next) => { next.form.title = event.target.value; })} /></label>
+                <label className="field workflow-form-settings__wide"><span>Опис</span><textarea value={workflow.description} rows={3} maxLength={1200} onChange={(event) => mutateWorkflow((next) => { next.form.description = event.target.value; })} /></label>
+                <label className="field"><span>Кнопка «Назад»</span><input value={workflow.backLabel} onChange={(event) => mutateWorkflow((next) => { next.form.backLabel = event.target.value; })} /></label>
+                <label className="field"><span>Кнопка «Далі»</span><input value={workflow.nextLabel} onChange={(event) => mutateWorkflow((next) => { next.form.nextLabel = event.target.value; })} /></label>
+                <label className="field"><span>Кнопка відправлення</span><input value={workflow.submitLabel} onChange={(event) => mutateWorkflow((next) => { next.form.submitLabel = event.target.value; })} /></label>
+                <label className="field"><span>Заголовок успіху</span><input value={workflow.successTitle} onChange={(event) => mutateWorkflow((next) => { next.form.successTitle = event.target.value; })} /></label>
+                <label className="field workflow-form-settings__wide"><span>Повідомлення після відправлення</span><textarea value={workflow.successText} rows={3} onChange={(event) => mutateWorkflow((next) => { next.form.successText = event.target.value; })} /></label>
+                <div className="workflow-form-settings__checks workflow-form-settings__wide">
+                  <label className="check-field"><input type="checkbox" checked={workflow.showProgress} onChange={(event) => mutateWorkflow((next) => { next.form.showProgress = event.target.checked; })} /><span>Прогрес проходження</span></label>
+                  <label className="check-field"><input type="checkbox" checked={workflow.showStepNumbers} onChange={(event) => mutateWorkflow((next) => { next.form.showStepNumbers = event.target.checked; })} /><span>Номери кроків</span></label>
+                  <label className="check-field"><input type="checkbox" checked={workflow.showSummary} onChange={(event) => mutateWorkflow((next) => { next.form.showSummary = event.target.checked; })} /><span>Підсумок відповідей</span></label>
                 </div>
-              </details>
+              </div>
               <footer className="form-builder-actions">
                 <button className="button button--primary" type="button" disabled={busy} onClick={() => void saveForm()}><Icon name="save" size={17} /> Зберегти</button>
                 <button className="button button--secondary" type="button" disabled={busy || workflowHasErrors} onClick={() => void setFormPublished()}>Опублікувати</button>
@@ -791,8 +804,7 @@ export function FormsBuilderPage() {
                 <button className="button button--secondary" type="button" disabled={busy} onClick={() => void duplicateSelected()}>Дублювати</button>
                 <button className="button button--danger" type="button" disabled={busy} onClick={() => void archiveSelected()}>Архівувати</button>
               </footer>
-            </section>
-            <section className="workflow-form-builder__canvas">
+            </section> : <section className="workflow-form-builder__canvas">
               <TradeInLogicEditor
                 config={{ form: workflow } as TradeInConfig}
                 mutate={mutateWorkflow}
@@ -800,7 +812,7 @@ export function FormsBuilderPage() {
                 canUndo={canUndoWorkflow}
                 historyDepth={workflowHistoryDepth}
               />
-            </section>
+            </section>}
           </div> : <>
           <section className="tool-panel forms-editor-tabs">
             <header className="tool-panel__header">
@@ -957,5 +969,44 @@ export function FormsBuilderPage() {
         </>}
       </div>
     </section>}
+
+    {createModalOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) closeCreateModal();
+    }}>
+      <section className="modal forms-create-modal" role="dialog" aria-modal="true" aria-labelledby="forms-create-title">
+        <header className="modal__header">
+          <div><p className="eyebrow">Нова форма</p><h2 id="forms-create-title">Створити форму</h2></div>
+          <button className="icon-button" type="button" onClick={closeCreateModal} disabled={createForm.isPending} aria-label="Закрити"><Icon name="close" size={20} /></button>
+        </header>
+        <form onSubmit={(event) => void createNewForm(event)}>
+          <div className="forms-create-modal__content">
+            <div className="forms-create-modal__intro"><strong>Оберіть тип форми</strong><p>Тип визначає доступний редактор і спосіб побудови сценарію.</p></div>
+            <div className="forms-create-modal__types" role="radiogroup" aria-label="Тип нової форми">
+              <button className={newFormType === 'simple' ? 'forms-create-type is-selected' : 'forms-create-type'} type="button" role="radio" aria-checked={newFormType === 'simple'} onClick={() => setNewFormType('simple')}>
+                <span><Icon name="formBuilder" size={22} /></span>
+                <strong>Проста форма</strong>
+                <small>Поля, стилі pop-up і кнопка для сайту.</small>
+              </button>
+              <button className={newFormType === 'workflow' ? 'forms-create-type is-selected' : 'forms-create-type'} type="button" role="radio" aria-checked={newFormType === 'workflow'} onClick={() => setNewFormType('workflow')}>
+                <span><Icon name="variants" size={22} /></span>
+                <strong>Покрокова форма</strong>
+                <small>Ноди, умови та логічні переходи між кроками.</small>
+              </button>
+            </div>
+            {newFormType && <label className="field forms-create-modal__name">
+              <span>Назва форми</span>
+              <input value={newFormName} onChange={(event) => setNewFormName(event.target.value)} maxLength={160} placeholder={newFormType === 'workflow' ? 'Наприклад, Оцінка Trade-in' : 'Наприклад, Оформлення кредиту'} required autoFocus />
+              <small>Цю назву бачитимуть користувачі порталу в бібліотеці форм.</small>
+            </label>}
+          </div>
+          <footer className="modal__footer forms-create-modal__footer">
+            <button className="button button--secondary" type="button" onClick={closeCreateModal} disabled={createForm.isPending}>Скасувати</button>
+            <button className="button button--primary" type="submit" disabled={!newFormType || !newFormName.trim() || createForm.isPending}>
+              {createForm.isPending ? 'Створюємо…' : 'Створити'}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>}
   </div>;
 }

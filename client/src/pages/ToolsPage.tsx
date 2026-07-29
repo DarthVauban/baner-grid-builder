@@ -35,7 +35,7 @@ export function ToolsPage() {
   };
   const accessByTool = new Map(catalog.data?.tools.map((item) => [item.toolId, item]));
   const visibleTools = tools
-    .filter((tool) => tool.id !== 'chat')
+    .filter((tool) => !['chat', 'form_builder', 'store_map'].includes(tool.id))
     .filter((tool) => tool.showInTools !== false)
     .filter((tool) => accessByTool.get(tool.id)?.granted);
 
