@@ -251,10 +251,10 @@
   }
 
   .trade-in-builder-page--logic .trade-in-logic-editor:not(.is-fullscreen) .trade-in-logic-help {
-    min-height: 38px;
+    min-height: 52px;
     flex: 0 0 auto;
-    gap: 12px;
-    padding: 7px 12px;
+    gap: 18px;
+    padding: 10px 16px;
   }
 }
 

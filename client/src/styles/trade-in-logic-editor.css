@@ -469,7 +469,7 @@
   min-width: 0;
   overflow: auto;
   border-left: 1px solid var(--line);
-  padding: 16px;
+  padding: 18px;
   background: #fff;
 }
 
@@ -494,7 +494,7 @@
 
 .trade-in-logic-multi-selection small {
   color: var(--brand);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -507,7 +507,7 @@
 .trade-in-logic-multi-selection p {
   margin: 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -531,7 +531,7 @@
   padding: 6px 9px;
   color: #5145cd;
   background: #efedff;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -563,14 +563,14 @@
 
 .trade-in-logic-inspector > header small {
   color: var(--muted);
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .trade-in-logic-inspector > header h3 {
-  margin: 3px 0 0;
-  font-size: 15px;
+  margin: 4px 0 0;
+  font-size: 18px;
 }
 
 .trade-in-logic-inspector > header button {
@@ -579,9 +579,9 @@
   gap: 5px;
   border: 0;
   border-radius: 7px;
-  padding: 7px 8px;
+  padding: 8px 10px;
   cursor: pointer;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
 }
 
@@ -592,28 +592,28 @@
 
 .trade-in-graph-inspector__body {
   display: grid;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 14px;
+  margin-top: 16px;
 }
 
 .trade-in-graph-inspector__intro {
   margin: 0;
   border-radius: 9px;
-  padding: 10px;
+  padding: 11px 12px;
   color: #475467;
   background: var(--surface-soft);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
 .trade-in-logic-inspector .field {
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 
 .trade-in-logic-inspector .field > span {
   color: #344054;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
 }
 
@@ -622,19 +622,19 @@
 .trade-in-logic-inspector .field textarea,
 .trade-in-graph-options input {
   width: 100%;
-  min-height: 39px;
+  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0 9px;
+  padding: 0 11px;
   color: var(--ink);
   outline: 0;
   background: var(--surface);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .trade-in-logic-inspector .field textarea {
-  min-height: 76px;
-  padding-block: 9px;
+  min-height: 82px;
+  padding-block: 10px;
   resize: vertical;
 }
 
@@ -648,13 +648,13 @@
 .trade-in-graph-inspector__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 9px;
+  gap: 10px;
 }
 
 .trade-in-graph-inspector__toggles {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 7px;
+  gap: 8px;
 }
 
 .trade-in-graph-toggle {
@@ -671,7 +671,7 @@
 }
 
 .trade-in-graph-toggle > span {
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 800;
 }
 
@@ -712,10 +712,10 @@
 .trade-in-graph-options,
 .trade-in-graph-branches {
   display: grid;
-  gap: 7px;
+  gap: 9px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 9px;
+  padding: 11px;
   background: #fafbfc;
 }
 
@@ -738,14 +738,14 @@
 .trade-in-graph-fields-list > header strong,
 .trade-in-graph-options > header strong,
 .trade-in-graph-branches > header strong {
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .trade-in-graph-fields-list > header small,
 .trade-in-graph-options > header small,
 .trade-in-graph-branches > header small {
   color: var(--muted);
-  font-size: 7px;
+  font-size: 10px;
 }
 
 .trade-in-graph-fields-list > header button,
@@ -753,11 +753,11 @@
 .trade-in-graph-branches > header button {
   border: 0;
   border-radius: 7px;
-  padding: 7px 9px;
+  padding: 8px 10px;
   color: var(--brand);
   cursor: pointer;
   background: var(--brand-soft);
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 800;
 }
 
@@ -777,7 +777,7 @@
 .trade-in-graph-fields-list > article > button {
   min-width: 0;
   display: grid;
-  gap: 2px;
+  gap: 3px;
   border: 0;
   padding: 8px;
   color: var(--ink);
@@ -788,14 +788,14 @@
 
 .trade-in-graph-fields-list > article > button span {
   color: var(--brand);
-  font-size: 6px;
+  font-size: 9px;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .trade-in-graph-fields-list > article > button strong {
   overflow: hidden;
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -808,22 +808,22 @@
 }
 
 .trade-in-graph-fields-list > article > div button {
-  width: 19px;
-  height: 19px;
+  width: 23px;
+  height: 23px;
   border: 0;
   border-radius: 4px;
   color: var(--muted);
   cursor: pointer;
   background: var(--surface-soft);
-  font-size: 7px;
+  font-size: 10px;
 }
 
 .trade-in-graph-field-editor {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   border: 1px solid #ddd9ff;
   border-radius: 10px;
-  padding: 11px;
+  padding: 13px;
   background: #f9f8ff;
 }
 
@@ -838,14 +838,14 @@
 
 .trade-in-graph-field-editor > header small {
   color: var(--muted);
-  font-size: 6px;
+  font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .trade-in-graph-field-editor > header h4 {
-  margin: 2px 0 0;
-  font-size: 11px;
+  margin: 3px 0 0;
+  font-size: 14px;
 }
 
 .trade-in-graph-field-editor > header button {
@@ -853,11 +853,11 @@
   align-items: center;
   gap: 4px;
   border: 0;
-  padding: 5px;
+  padding: 6px;
   color: #b42318;
   cursor: pointer;
   background: transparent;
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 800;
 }
 
@@ -869,8 +869,8 @@
 
 .trade-in-graph-options input {
   min-width: 0;
-  min-height: 34px;
-  font-size: 7px;
+  min-height: 38px;
+  font-size: 11px;
 }
 
 .trade-in-graph-options article button {
@@ -893,10 +893,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 9px;
+  padding: 11px;
   cursor: pointer;
   list-style: none;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -928,7 +928,7 @@
 
 .trade-in-graph-branches > article > header strong {
   color: #93370d;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .trade-in-graph-branches > article > header button {
@@ -943,7 +943,7 @@
   padding: 3px 6px;
   color: var(--muted);
   background: #fff;
-  font-size: 6px;
+  font-size: 9px;
 }
 
 .trade-in-graph-branches > article.is-default {
@@ -967,7 +967,7 @@
 }
 
 .trade-in-logic-issues > header strong {
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .trade-in-logic-issues > header span {
@@ -976,7 +976,7 @@
   padding: 3px 6px;
   color: var(--muted);
   background: var(--surface-soft);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 800;
   text-align: center;
 }
@@ -986,7 +986,7 @@
   margin: 0;
   border-radius: 8px;
   padding: 9px;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .trade-in-logic-issues > p.is-valid {
@@ -1016,13 +1016,13 @@
 }
 
 .trade-in-logic-issues article strong {
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .trade-in-logic-issues article p {
   margin: 2px 0 0;
   color: #667085;
-  font-size: 7px;
+  font-size: 10px;
   line-height: 1.45;
 }
 
@@ -1031,27 +1031,27 @@
   display: grid;
   place-content: center;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
 }
 
 .trade-in-logic-help {
-  min-height: 44px;
+  min-height: 52px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 18px;
   flex-wrap: wrap;
   border-top: 1px solid var(--line);
-  padding: 9px 16px;
+  padding: 10px 16px;
   color: var(--muted);
   background: #fafbfc;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .trade-in-logic-help span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   white-space: nowrap;
 }
 
@@ -1062,13 +1062,13 @@
 }
 
 .trade-in-logic-help kbd {
-  min-width: 26px;
+  min-width: 32px;
   display: inline-grid;
   place-items: center;
   border: 1px solid #d0d5dd;
   border-bottom-width: 2px;
   border-radius: 5px;
-  padding: 2px 5px;
+  padding: 3px 7px;
   color: #475467;
   background: #fff;
   box-shadow: 0 1px 1px rgba(16, 24, 40, .04);
