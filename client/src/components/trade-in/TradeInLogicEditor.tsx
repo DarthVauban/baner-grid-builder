@@ -9,6 +9,7 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  SelectionMode,
   useEdgesState,
   useNodesState,
   useReactFlow,
@@ -347,16 +348,24 @@ function isEditableElement(target: EventTarget | null) {
 
 function TradeInLogicCanvas({
   config,
-  mutate
+  mutate,
+  onUndo,
+  canUndo,
+  historyDepth
 }: {
   config: TradeInConfig;
   mutate: (change: (next: TradeInConfig) => void) => void;
+  onUndo: () => void;
+  canUndo: boolean;
+  historyDepth: number;
 }) {
   const canvasRef = useRef<HTMLElement>(null);
   const graph = useMemo(() => getTradeInFormGraph(config.form), [config.form]);
   const issues = useMemo(() => validateTradeInLogic(graph), [graph]);
   const allFields = useMemo(() => getTradeInGraphFields(graph), [graph]);
-  const [selectedNodeId, setSelectedNodeId] = useState(graph.nodes.find((node) => node.type === 'start')?.id || graph.nodes[0]?.id || '');
+  const initialNodeId = graph.nodes.find((node) => node.type === 'start')?.id || graph.nodes[0]?.id || '';
+  const [selectedNodeId, setSelectedNodeId] = useState(initialNodeId);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(initialNodeId ? [initialNodeId] : []);
   const [selectedFieldId, setSelectedFieldId] = useState('');
   const [toolbarPalette, setToolbarPalette] = useState(false);
   const [contextMenu, setContextMenu] = useState<null | { x: number; y: number; position: TradeInFormNodePosition }>(null);
@@ -367,12 +376,13 @@ function TradeInLogicCanvas({
     id: node.id,
     type: node.type,
     position: node.position,
+    selected: selectedNodeIds.includes(node.id),
     data: {
       node,
       issues: issues.filter((issue) => issue.nodeId === node.id),
       conditionLabels: Object.fromEntries(node.branches.map((branch) => [branch.id, formatTradeInCondition(graph, branch.condition)]))
     }
-  })), [graph.nodes, issues]);
+  })), [graph.nodes, issues, selectedNodeIds]);
 
   const flowEdges = useMemo((): GraphEdge[] => graph.edges.map((edge) => {
     const source = graph.nodes.find((node) => node.id === edge.source);
@@ -406,8 +416,12 @@ function TradeInLogicCanvas({
   }, [flowEdges, flowNodes, setEdges, setNodes]);
 
   useEffect(() => {
-    if (graph.nodes.some((node) => node.id === selectedNodeId)) return;
-    setSelectedNodeId(graph.nodes.find((node) => node.type === 'start')?.id || graph.nodes[0]?.id || '');
+    const availableIds = new Set(graph.nodes.map((node) => node.id));
+    setSelectedNodeIds((current) => current.filter((id) => availableIds.has(id)));
+    if (!selectedNodeId || graph.nodes.some((node) => node.id === selectedNodeId)) return;
+    const fallbackNodeId = graph.nodes.find((node) => node.type === 'start')?.id || graph.nodes[0]?.id || '';
+    setSelectedNodeId(fallbackNodeId);
+    setSelectedNodeIds(fallbackNodeId ? [fallbackNodeId] : []);
     setSelectedFieldId('');
   }, [graph.nodes, selectedNodeId]);
 
@@ -419,6 +433,8 @@ function TradeInLogicCanvas({
   };
 
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId) || null;
+  const selectedGraphNodes = graph.nodes.filter((node) => selectedNodeIds.includes(node.id));
+  const deletableSelectedNodeIds = selectedGraphNodes.filter((node) => node.type !== 'start').map((node) => node.id);
   const selectedField = selectedNode?.fields.find((field) => field.id === selectedFieldId) || selectedNode?.fields[0] || null;
   const selectedIssues = issues.filter((issue) => !issue.nodeId || issue.nodeId === selectedNodeId);
   const errorCount = issues.filter((issue) => issue.severity === 'error').length;
@@ -445,6 +461,7 @@ function TradeInLogicCanvas({
     if (type === 'fields') node.fields.push(createTradeInField(0));
     mutateGraph((nextGraph) => { nextGraph.nodes.push(node); });
     setSelectedNodeId(node.id);
+    setSelectedNodeIds([node.id]);
     setSelectedFieldId(node.fields[0]?.id || '');
     setToolbarPalette(false);
     setContextMenu(null);
@@ -491,16 +508,30 @@ function TradeInLogicCanvas({
     mutateGraph((nextGraph) => { nextGraph.edges.push(edge); });
   };
 
-  const removeSelectedNode = () => {
-    if (!selectedNode || selectedNode.type === 'start') return;
+  const removeSelectedNodes = () => {
+    if (!deletableSelectedNodeIds.length) return;
     const fallbackNodeId = graph.nodes.find((node) => node.type === 'start')?.id || '';
     mutateGraph((nextGraph) => {
-      const cleaned = removeTradeInGraphNode(nextGraph, selectedNode.id);
+      let cleaned = nextGraph;
+      deletableSelectedNodeIds.forEach((nodeId) => {
+        cleaned = removeTradeInGraphNode(cleaned, nodeId);
+      });
       nextGraph.nodes = cleaned.nodes;
       nextGraph.edges = cleaned.edges;
     });
     setSelectedNodeId(fallbackNodeId);
+    setSelectedNodeIds(fallbackNodeId ? [fallbackNodeId] : []);
     setSelectedFieldId('');
+  };
+
+  const persistNodePositions = (draggedNodes: GraphNode[]) => {
+    const positions = new Map(draggedNodes.map((node) => [node.id, node.position]));
+    mutateGraph((nextGraph) => {
+      nextGraph.nodes.forEach((node) => {
+        const position = positions.get(node.id);
+        if (position) node.position = position;
+      });
+    });
   };
 
   const autoLayout = () => {
@@ -530,12 +561,23 @@ function TradeInLogicCanvas({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (isEditableElement(event.target)) return;
-
-      if (event.key === 'Delete' && selectedNode && selectedNode.type !== 'start') {
+      const isUndo = (event.ctrlKey || event.metaKey)
+        && !event.altKey
+        && !event.shiftKey
+        && (event.code === 'KeyZ' || event.key.toLowerCase() === 'z');
+      if (isUndo && canUndo) {
         event.preventDefault();
         event.stopPropagation();
-        removeSelectedNode();
+        onUndo();
+        return;
+      }
+
+      if (isEditableElement(event.target)) return;
+
+      if (event.key === 'Delete' && deletableSelectedNodeIds.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        removeSelectedNodes();
         return;
       }
 
@@ -574,11 +616,28 @@ function TradeInLogicCanvas({
         </div>
         <div className="trade-in-logic-toolbar__actions">
           <span className={errorCount ? 'has-errors' : ''}><Icon name={errorCount ? 'alarm' : 'check'} size={15} />{errorCount ? `${errorCount} помилок` : 'Сценарій коректний'}</span>
+          <button
+            className="button button--secondary button--small"
+            type="button"
+            disabled={!canUndo}
+            title={canUndo ? `Скасувати останню дію (${historyDepth} у пам’яті)` : 'Немає дій для скасування'}
+            onClick={onUndo}
+          >
+            <Icon name="undo" size={15} /> Скасувати
+          </button>
           <button className="button button--secondary button--small" type="button" onClick={() => {
             const start = graph.nodes.find((node) => node.type === 'start');
-            if (start) setSelectedNodeId(start.id);
+            if (start) {
+              setSelectedNodeId(start.id);
+              setSelectedNodeIds([start.id]);
+            }
           }}><Icon name="characteristics" size={15} /> Налаштування</button>
           <button className="button button--secondary button--small" type="button" onClick={autoLayout}><Icon name="refresh" size={15} /> Вирівняти</button>
+          {deletableSelectedNodeIds.length > 1 && (
+            <button className="button button--secondary button--small trade-in-logic-delete-selection" type="button" onClick={removeSelectedNodes}>
+              <Icon name="delete" size={15} /> Видалити {deletableSelectedNodeIds.length}
+            </button>
+          )}
           <button
             className="button button--secondary button--small"
             type="button"
@@ -608,10 +667,24 @@ function TradeInLogicCanvas({
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={(_, node) => { setSelectedNodeId(node.id); setSelectedFieldId(''); setContextMenu(null); }}
-            onNodeDragStop={(_, draggedNode) => mutateGraph((nextGraph) => {
-              const node = nextGraph.nodes.find((item) => item.id === draggedNode.id);
-              if (node) node.position = draggedNode.position;
-            })}
+            onSelectionChange={({ nodes: selectedNodes }) => {
+              const ids = selectedNodes.map((node) => node.id);
+              setSelectedNodeIds((current) => (
+                current.length === ids.length && current.every((id, index) => id === ids[index])
+                  ? current
+                  : ids
+              ));
+              if (!ids.length) {
+                setSelectedNodeId('');
+                setSelectedFieldId('');
+              } else if (!ids.includes(selectedNodeId)) {
+                setSelectedNodeId(ids.at(-1) || '');
+                setSelectedFieldId('');
+              }
+            }}
+            onNodeDragStop={(_, draggedNode, draggedNodes) => persistNodePositions(
+              draggedNodes.length ? draggedNodes : [draggedNode]
+            )}
             onConnect={handleConnect}
             onEdgesDelete={(deleted) => mutateGraph((nextGraph) => {
               const deletedIds = new Set(deleted.map((edge) => edge.id));
@@ -623,7 +696,13 @@ function TradeInLogicCanvas({
               connection.target,
               connection.sourceHandle || 'next'
             ))}
-            onPaneClick={() => { setContextMenu(null); setToolbarPalette(false); }}
+            onPaneClick={() => {
+              setSelectedNodeId('');
+              setSelectedNodeIds([]);
+              setSelectedFieldId('');
+              setContextMenu(null);
+              setToolbarPalette(false);
+            }}
             onPaneContextMenu={(event) => {
               event.preventDefault();
               openPaletteAt(event.clientX, event.clientY);
@@ -631,8 +710,20 @@ function TradeInLogicCanvas({
             onNodeContextMenu={(event, node) => {
               event.preventDefault();
               setSelectedNodeId(node.id);
+              if (!selectedNodeIds.includes(node.id)) setSelectedNodeIds([node.id]);
               openPaletteAt(event.clientX, event.clientY);
             }}
+            panOnDrag={[1]}
+            panOnScroll={false}
+            panActivationKeyCode={null}
+            autoPanOnNodeDrag={false}
+            autoPanOnConnect={false}
+            autoPanOnSelection={false}
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
+            selectionKeyCode={null}
+            multiSelectionKeyCode="Shift"
+            deleteKeyCode={null}
             fitView
             fitViewOptions={{ padding: 0.16 }}
             minZoom={0.25}
@@ -645,7 +736,7 @@ function TradeInLogicCanvas({
             <MiniMap nodeColor={(node) => {
               const type = (node.data as GraphNodeData | undefined)?.node.type;
               return type === 'condition' ? '#f79009' : type === 'finish' ? '#12b76a' : type === 'start' ? '#344054' : '#695cff';
-            }} maskColor="rgba(246,247,251,.78)" pannable zoomable />
+            }} maskColor="rgba(246,247,251,.78)" pannable={false} zoomable />
             <Controls showInteractive={false} />
           </ReactFlow>
           {contextMenu && (
@@ -657,11 +748,29 @@ function TradeInLogicCanvas({
         </section>
 
         <aside className="trade-in-logic-inspector">
-          {!selectedNode ? <div className="trade-in-logic-inspector__empty">Оберіть ноду для налаштування.</div> : (
+          {selectedGraphNodes.length > 1 ? (
+            <section className="trade-in-logic-multi-selection">
+              <div className="trade-in-logic-multi-selection__icon"><Icon name="viewGrid" size={24} /></div>
+              <div>
+                <small>Групове виділення</small>
+                <h3>Вибрано нод: {selectedGraphNodes.length}</h3>
+                <p>Перетягніть будь-яку вибрану ноду, щоб перемістити всю групу одночасно.</p>
+              </div>
+              <div className="trade-in-logic-multi-selection__items">
+                {selectedGraphNodes.map((node) => <span key={node.id}>{node.title || typeMeta[node.type].label}</span>)}
+              </div>
+              <button className="button button--secondary trade-in-logic-delete-selection" type="button" onClick={removeSelectedNodes}>
+                <Icon name="delete" size={15} /> Видалити вибрані ({deletableSelectedNodeIds.length})
+              </button>
+              {selectedGraphNodes.some((node) => node.type === 'start') && (
+                <p className="trade-in-logic-multi-selection__note">Стартова нода залишиться — її не можна видалити.</p>
+              )}
+            </section>
+          ) : !selectedNode ? <div className="trade-in-logic-inspector__empty">Оберіть ноду для налаштування.</div> : (
             <>
               <header>
                 <div><small>{typeMeta[selectedNode.type].label}</small><h3>{selectedNode.title || typeMeta[selectedNode.type].label}</h3></div>
-                {selectedNode.type !== 'start' && <button className="is-danger" type="button" onClick={removeSelectedNode}><Icon name="delete" size={14} /> Видалити</button>}
+                {selectedNode.type !== 'start' && <button className="is-danger" type="button" onClick={removeSelectedNodes}><Icon name="delete" size={14} /> Видалити</button>}
               </header>
 
               {selectedNode.type === 'start' && (
@@ -812,10 +921,13 @@ function TradeInLogicCanvas({
       </div>
       <footer className="trade-in-logic-help">
         <span><i /> Суцільна лінія — перехід між нодами</span>
+        <span><kbd>Колесо</kbd> Рух полотна</span>
+        <span><kbd>ЛКМ</kbd> Рамка вибору</span>
+        <span><kbd>Shift</kbd> Мультивибір</span>
         <span><kbd>ПКМ</kbd> Меню додавання</span>
         <span><kbd>Space</kbd> Додати ноду</span>
-        <span><kbd>Del</kbd> Видалити вибрану</span>
-        <p>Нові ноди створюються окремо й не під’єднуються автоматично.</p>
+        <span><kbd>Del</kbd> Видалити вибрані</span>
+        <span><kbd>Ctrl+Z</kbd> Скасувати дію</span>
       </footer>
     </div>
   );
@@ -824,6 +936,9 @@ function TradeInLogicCanvas({
 export function TradeInLogicEditor(props: {
   config: TradeInConfig;
   mutate: (change: (next: TradeInConfig) => void) => void;
+  onUndo: () => void;
+  canUndo: boolean;
+  historyDepth: number;
 }) {
   return <ReactFlowProvider><TradeInLogicCanvas {...props} /></ReactFlowProvider>;
 }

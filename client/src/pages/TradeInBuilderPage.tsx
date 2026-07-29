@@ -13,6 +13,7 @@ import {
 } from '../lib/trade-in';
 import { formatTradeInCondition, getTradeInFormGraph, validateTradeInLogic } from '../lib/trade-in-logic';
 import { api } from '../lib/api';
+import { useUndoableState } from '../lib/use-undoable-state';
 import { useToast } from '../toast/ToastContext';
 import type {
   TradeInCondition,
@@ -469,7 +470,18 @@ export function TradeInBuilderPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const settingsQuery = useQuery({ queryKey: ['trade-in-settings'], queryFn: api.tradeIn.settings });
-  const [config, setConfig] = useState<TradeInConfig | null>(null);
+  const {
+    state: config,
+    setState: setConfig,
+    replaceState: replaceConfig,
+    undo,
+    canUndo,
+    historyDepth
+  } = useUndoableState<TradeInConfig | null>(null, {
+    limit: 50,
+    groupWindowMs: 350,
+    keyboard: false
+  });
   const [origin, setOrigin] = useState('');
   const [tab, setTab] = useState<BuilderTab>('page');
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop');
@@ -477,9 +489,9 @@ export function TradeInBuilderPage() {
 
   useEffect(() => {
     if (!settingsQuery.data || config) return;
-    setConfig(structuredClone(settingsQuery.data.draftConfig));
+    replaceConfig(structuredClone(settingsQuery.data.draftConfig));
     setOrigin(settingsQuery.data.publicOrigin);
-  }, [config, settingsQuery.data]);
+  }, [config, replaceConfig, settingsQuery.data]);
 
   const save = useMutation({
     mutationFn: (publish: boolean) => {
@@ -488,7 +500,7 @@ export function TradeInBuilderPage() {
     },
     onSuccess: (result, publish) => {
       queryClient.setQueryData(['trade-in-settings'], result);
-      setConfig(structuredClone(result.draftConfig));
+      replaceConfig(structuredClone(result.draftConfig));
       setOrigin(result.publicOrigin);
       showToast(publish ? 'Trade-in сторінку опубліковано.' : 'Чернетку Trade-in збережено.');
     },
@@ -536,7 +548,15 @@ export function TradeInBuilderPage() {
       <div className="trade-in-builder-layout">
         <section className="trade-in-builder-controls">
           {tab === 'page' && <PageEditor config={config} mutate={mutate} />}
-          {tab === 'logic' && <TradeInLogicEditor config={config} mutate={mutate} />}
+          {tab === 'logic' && (
+            <TradeInLogicEditor
+              config={config}
+              mutate={mutate}
+              onUndo={undo}
+              canUndo={canUndo}
+              historyDepth={historyDepth}
+            />
+          )}
           {tab === 'publish' && <PublishEditor settings={settingsQuery.data} origin={origin} setOrigin={setOrigin} config={config} busy={save.isPending} invalid={logicIssues.some((issue) => issue.severity === 'error')} onSave={() => save.mutate(false)} onPublish={() => save.mutate(true)} />}
         </section>
 

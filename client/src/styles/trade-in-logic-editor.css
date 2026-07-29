@@ -95,6 +95,20 @@
     #f8f9fc;
 }
 
+.trade-in-logic-canvas .react-flow__pane {
+  cursor: crosshair;
+}
+
+.trade-in-logic-canvas .react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
+.trade-in-logic-canvas .react-flow__selection,
+.trade-in-logic-canvas .react-flow__nodesselection-rect {
+  border: 1px solid #695cff;
+  background: rgba(105, 92, 255, .1);
+}
+
 .trade-in-logic-canvas .react-flow__node {
   width: 300px;
 }
@@ -457,6 +471,85 @@
   border-left: 1px solid var(--line);
   padding: 16px;
   background: #fff;
+}
+
+.trade-in-logic-multi-selection {
+  min-height: 100%;
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 14px;
+  padding: 10px 2px;
+}
+
+.trade-in-logic-multi-selection__icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #5f50ee;
+  background: #efedff;
+}
+
+.trade-in-logic-multi-selection small {
+  color: var(--brand);
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.trade-in-logic-multi-selection h3 {
+  margin: 3px 0 6px;
+  font-size: 17px;
+}
+
+.trade-in-logic-multi-selection p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.trade-in-logic-multi-selection__items {
+  max-height: 280px;
+  display: flex;
+  align-content: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fafbfc;
+}
+
+.trade-in-logic-multi-selection__items span {
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: #5145cd;
+  background: #efedff;
+  font-size: 8px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-in-logic-delete-selection {
+  color: #b42318 !important;
+  border-color: #fecdca !important;
+  background: #fff7f6 !important;
+}
+
+.trade-in-logic-delete-selection:hover {
+  border-color: #fda29b !important;
+  background: #fff0ee !important;
+}
+
+.trade-in-logic-multi-selection__note {
+  color: #b54708 !important;
 }
 
 .trade-in-logic-inspector > header {
@@ -947,6 +1040,7 @@
   display: flex;
   align-items: center;
   gap: 20px;
+  flex-wrap: wrap;
   border-top: 1px solid var(--line);
   padding: 9px 16px;
   color: var(--muted);
