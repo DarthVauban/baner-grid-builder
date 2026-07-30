@@ -45,6 +45,10 @@ describe('TradeInLogicEditor', () => {
       unobserve() {}
       disconnect() {}
     });
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: vi.fn(() => null)
+    });
   });
 
   it('renders without entering a state update loop', () => {
@@ -131,5 +135,92 @@ describe('TradeInLogicEditor', () => {
 
     fireEvent.click(checkbox);
     expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts from an output and completes the connection by clicking a node', () => {
+    const mutate = vi.fn();
+    const { container } = render(
+      <TradeInLogicEditor
+        config={config}
+        mutate={mutate}
+        onUndo={vi.fn()}
+        canUndo={false}
+        historyDepth={0}
+      />
+    );
+
+    const source = container.querySelector<HTMLElement>('.react-flow__handle.source[data-nodeid="form_start"]');
+    const target = container.querySelector<HTMLElement>('.react-flow__node[data-id="step_device"]');
+    expect(source).not.toBeNull();
+    expect(target).not.toBeNull();
+
+    fireEvent.click(source!);
+    expect(source).toHaveClass('clickconnecting');
+    fireEvent.click(target!);
+
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(source).not.toHaveClass('clickconnecting');
+  });
+
+  it('creates and connects a node when a click connection ends on the pane', () => {
+    const mutate = vi.fn();
+    const { container } = render(
+      <TradeInLogicEditor
+        config={config}
+        mutate={mutate}
+        onUndo={vi.fn()}
+        canUndo={false}
+        historyDepth={0}
+      />
+    );
+
+    const canvas = screen.getByLabelText('Графічний редактор форми');
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 20,
+      y: 30,
+      left: 20,
+      top: 30,
+      right: 1020,
+      bottom: 630,
+      width: 1000,
+      height: 600,
+      toJSON: () => ({})
+    });
+    const source = container.querySelector<HTMLElement>('.react-flow__handle.source[data-nodeid="form_start"]');
+    const pane = container.querySelector<HTMLElement>('.react-flow__pane');
+    expect(source).not.toBeNull();
+    expect(pane).not.toBeNull();
+    vi.spyOn(source!, 'getBoundingClientRect').mockReturnValue({
+      x: 300,
+      y: 200,
+      left: 300,
+      top: 200,
+      right: 312,
+      bottom: 212,
+      width: 12,
+      height: 12,
+      toJSON: () => ({})
+    });
+
+    fireEvent.click(source!, { clientX: 306, clientY: 206 });
+    fireEvent.click(pane!, { clientX: 620, clientY: 330 });
+
+    expect(screen.getByText('Створити та з’єднати')).toBeInTheDocument();
+    expect(container.querySelector('.trade-in-pending-connection')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Крок з полями', { selector: '.trade-in-node-palette strong' }));
+    expect(mutate).toHaveBeenCalledTimes(1);
+
+    const nextConfig = structuredClone(config) as TradeInConfig;
+    mutate.mock.calls[0][0](nextConfig);
+    const createdNode = nextConfig.form.graph?.nodes.find((node) => (
+      node.type === 'fields' && node.id !== 'step_device'
+    ));
+    expect(createdNode).toBeDefined();
+    expect(nextConfig.form.graph?.edges).toContainEqual(expect.objectContaining({
+      source: 'form_start',
+      target: createdNode?.id,
+      sourceHandle: 'next'
+    }));
   });
 });

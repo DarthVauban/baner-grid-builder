@@ -13,11 +13,13 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useStoreApi,
   useUpdateNodeInternals,
   type Connection,
   type Edge,
   type Node,
-  type NodeProps
+  type NodeProps,
+  type OnConnectEnd
 } from '@xyflow/react';
 import { Icon, type IconName } from '../Icon';
 import {
@@ -64,6 +66,17 @@ type GraphNodeData = {
 type GraphNode = Node<GraphNodeData, TradeInFormNodeType>;
 type GraphEdge = Edge;
 type AddableNodeType = Exclude<TradeInFormNodeType, 'start'>;
+type PendingConnection = {
+  source: string;
+  sourceHandle: string;
+};
+type NodePaletteState = {
+  x: number;
+  y: number;
+  position: TradeInFormNodePosition;
+  pendingConnection?: PendingConnection;
+  lineStart?: { x: number; y: number };
+};
 
 const nodeTypes = {
   start: TradeInGraphNode,
@@ -307,14 +320,18 @@ function FieldEditor({
   );
 }
 
-function NodePalette({ onAdd, style, toolbar = false }: {
+function NodePalette({ onAdd, style, toolbar = false, connectsNode = false }: {
   onAdd: (type: AddableNodeType) => void;
   style?: CSSProperties;
   toolbar?: boolean;
+  connectsNode?: boolean;
 }) {
   return (
-    <div className={`trade-in-node-palette${toolbar ? ' is-toolbar' : ''}`} style={style} onContextMenu={(event) => event.preventDefault()}>
-      <header><strong>Додати ноду</strong><small>Нода створиться без зв’язків</small></header>
+    <div className={`trade-in-node-palette${toolbar ? ' is-toolbar' : ''}${connectsNode ? ' is-connection' : ''}`} style={style} onContextMenu={(event) => event.preventDefault()}>
+      <header>
+        <strong>{connectsNode ? 'Створити та з’єднати' : 'Додати ноду'}</strong>
+        <small>{connectsNode ? 'Нова нода одразу продовжить цей зв’язок' : 'Нода створиться без зв’язків'}</small>
+      </header>
       {addableTypes.map((type) => {
         const meta = typeMeta[type];
         return (
@@ -349,6 +366,20 @@ function isEditableElement(target: EventTarget | null) {
     && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
+function getConnectionEndPoint(event: MouseEvent | TouchEvent) {
+  if ('changedTouches' in event) {
+    const touch = event.changedTouches[0];
+    return touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+  return { x: event.clientX, y: event.clientY };
+}
+
+function pendingConnectionPath(start: { x: number; y: number }, end: { x: number; y: number }) {
+  const direction = end.x >= start.x ? 1 : -1;
+  const curve = Math.max(70, Math.abs(end.x - start.x) * 0.42);
+  return `M ${start.x} ${start.y} C ${start.x + curve * direction} ${start.y}, ${end.x - curve * direction} ${end.y}, ${end.x} ${end.y}`;
+}
+
 function TradeInLogicCanvas({
   config,
   mutate,
@@ -373,9 +404,17 @@ function TradeInLogicCanvas({
   const selectedNodeIdsRef = useRef(selectedNodeIds);
   const [selectedFieldId, setSelectedFieldId] = useState('');
   const [toolbarPalette, setToolbarPalette] = useState(false);
-  const [contextMenu, setContextMenu] = useState<null | { x: number; y: number; position: TradeInFormNodePosition }>(null);
+  const [contextMenu, setContextMenu] = useState<NodePaletteState | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const clickConnectionRef = useRef<PendingConnection | null>(null);
   const { fitView, screenToFlowPosition } = useReactFlow();
+  const store = useStoreApi();
+
+  const cancelClickConnection = () => {
+    clickConnectionRef.current = null;
+    store.getState().cancelConnection();
+    store.setState({ connectionClickStartHandle: null });
+  };
 
   const flowNodes = useMemo((): GraphNode[] => graph.nodes.map((node) => ({
     id: node.id,
@@ -477,11 +516,31 @@ function TradeInLogicCanvas({
     });
   };
 
-  const addNode = (type: AddableNodeType, desiredPosition: TradeInFormNodePosition) => {
+  const addNode = (
+    type: AddableNodeType,
+    desiredPosition: TradeInFormNodePosition,
+    pendingConnection?: PendingConnection
+  ) => {
     const position = findNearestFreeNodePosition(graph.nodes, desiredPosition);
     const node = createTradeInFormNode(type, position, graph.nodes.filter((item) => item.type === type).length);
     if (type === 'fields') node.fields.push(createTradeInField(0));
-    mutateGraph((nextGraph) => { nextGraph.nodes.push(node); });
+    mutateGraph((nextGraph) => {
+      nextGraph.nodes.push(node);
+      if (pendingConnection && canConnectTradeInGraph(
+        nextGraph,
+        pendingConnection.source,
+        node.id,
+        pendingConnection.sourceHandle
+      )) {
+        const edge: TradeInFormEdge = {
+          id: tradeInId('form_edge'),
+          source: pendingConnection.source,
+          target: node.id,
+          sourceHandle: pendingConnection.sourceHandle
+        };
+        nextGraph.edges = connectTradeInGraph(nextGraph, edge).edges;
+      }
+    });
     setSelectedNodeId(node.id);
     selectOnlyNode(node.id);
     setSelectedFieldId(node.fields[0]?.id || '');
@@ -497,18 +556,38 @@ function TradeInLogicCanvas({
     addNode(type, desired);
   };
 
-  const openPaletteAt = (clientX: number, clientY: number, centered = false) => {
+  const openPaletteAt = (
+    clientX: number,
+    clientY: number,
+    centered = false,
+    pendingConnection?: PendingConnection
+  ) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const paletteWidth = 270;
     const paletteHeight = 250;
     const requestedX = clientX - rect.left - (centered ? paletteWidth / 2 : 0);
     const requestedY = clientY - rect.top - (centered ? paletteHeight / 2 : 0);
+    const sourceHandle = pendingConnection
+      ? Array.from(canvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__handle.source') || []).find((handle) => (
+        handle.dataset.nodeid === pendingConnection.source
+        && (handle.dataset.handleid || 'next') === pendingConnection.sourceHandle
+      ))
+      : null;
+    const sourceRect = sourceHandle?.getBoundingClientRect();
+    cancelClickConnection();
     setToolbarPalette(false);
     setContextMenu({
       x: Math.min(Math.max(requestedX, 12), Math.max(12, rect.width - paletteWidth - 12)),
       y: Math.min(Math.max(requestedY, 12), Math.max(12, rect.height - paletteHeight - 12)),
-      position: screenToFlowPosition({ x: clientX, y: clientY })
+      position: screenToFlowPosition({ x: clientX, y: clientY }),
+      pendingConnection,
+      lineStart: sourceRect
+        ? {
+            x: sourceRect.left + sourceRect.width / 2 - rect.left,
+            y: sourceRect.top + sourceRect.height / 2 - rect.top
+          }
+        : undefined
     });
   };
 
@@ -530,6 +609,47 @@ function TradeInLogicCanvas({
     mutateGraph((nextGraph) => {
       nextGraph.edges = connectTradeInGraph(nextGraph, edge).edges;
     });
+  };
+
+  const finishClickConnectionOnNode = (targetNodeId: string) => {
+    const pendingConnection = clickConnectionRef.current;
+    if (!pendingConnection || !canConnectTradeInGraph(
+      graph,
+      pendingConnection.source,
+      targetNodeId,
+      pendingConnection.sourceHandle
+    )) return false;
+    cancelClickConnection();
+    handleConnect({
+      source: pendingConnection.source,
+      sourceHandle: pendingConnection.sourceHandle,
+      target: targetNodeId,
+      targetHandle: null
+    });
+    return true;
+  };
+
+  const handleConnectionEnd: OnConnectEnd = (event, connectionState) => {
+    if (connectionState.isValid || !connectionState.fromNode || connectionState.fromHandle?.type !== 'source') return;
+    const eventTarget = event.target;
+    if (!(eventTarget instanceof Element) || !eventTarget.classList.contains('react-flow__pane')) return;
+    const point = getConnectionEndPoint(event);
+    if (!point) return;
+    openPaletteAt(point.x, point.y, false, {
+      source: connectionState.fromNode.id,
+      sourceHandle: connectionState.fromHandle.id || 'next'
+    });
+  };
+
+  const finishClickConnectionOnPane = (
+    target: EventTarget | null,
+    clientX: number,
+    clientY: number
+  ) => {
+    const pendingConnection = clickConnectionRef.current;
+    if (!pendingConnection || !(target instanceof Element) || !target.classList.contains('react-flow__pane')) return false;
+    openPaletteAt(clientX, clientY, false, pendingConnection);
+    return true;
   };
 
   const removeEdges = (edgeIds: string[]) => {
@@ -625,6 +745,11 @@ function TradeInLogicCanvas({
       }
 
       if (event.key === 'Escape') {
+        if (clickConnectionRef.current) {
+          event.preventDefault();
+          cancelClickConnection();
+          return;
+        }
         if (contextMenu || toolbarPalette) {
           event.preventDefault();
           setContextMenu(null);
@@ -684,7 +809,11 @@ function TradeInLogicCanvas({
             <Icon name={fullscreen ? 'fullscreenExit' : 'fullscreen'} size={16} />
             {fullscreen ? 'Згорнути' : 'На весь екран'}
           </button>
-          <button className="button button--primary button--small" type="button" onClick={() => { setToolbarPalette((value) => !value); setContextMenu(null); }}><Icon name="add" size={15} /> Додати ноду</button>
+          <button className="button button--primary button--small" type="button" onClick={() => {
+            cancelClickConnection();
+            setToolbarPalette((value) => !value);
+            setContextMenu(null);
+          }}><Icon name="add" size={15} /> Додати ноду</button>
           {toolbarPalette && <NodePalette toolbar onAdd={addAtViewportCenter} />}
         </div>
       </header>
@@ -695,6 +824,9 @@ function TradeInLogicCanvas({
           aria-label="Графічний редактор форми"
           ref={canvasRef}
           onContextMenu={(event) => event.preventDefault()}
+          onClick={(event) => {
+            finishClickConnectionOnPane(event.target, event.clientX, event.clientY);
+          }}
           onPointerMove={(event) => {
             lastCanvasPointerRef.current = { x: event.clientX, y: event.clientY };
           }}
@@ -705,7 +837,12 @@ function TradeInLogicCanvas({
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
-            onNodeClick={(_, node) => { setSelectedNodeId(node.id); setSelectedFieldId(''); setContextMenu(null); }}
+            onNodeClick={(_, node) => {
+              finishClickConnectionOnNode(node.id);
+              setSelectedNodeId(node.id);
+              setSelectedFieldId('');
+              setContextMenu(null);
+            }}
             onSelectionChange={({ nodes: selectedNodes }) => {
               const ids = selectedNodes.map((node) => node.id);
               selectedNodeIdsRef.current = ids;
@@ -726,6 +863,17 @@ function TradeInLogicCanvas({
               draggedNodes.length ? draggedNodes : [draggedNode]
             )}
             onConnect={handleConnect}
+            onConnectEnd={handleConnectionEnd}
+            onClickConnectStart={(_, params) => {
+              clickConnectionRef.current = params.nodeId && params.handleType === 'source'
+                ? { source: params.nodeId, sourceHandle: params.handleId || 'next' }
+                : null;
+              setContextMenu(null);
+              setToolbarPalette(false);
+            }}
+            onClickConnectEnd={() => {
+              clickConnectionRef.current = null;
+            }}
             onEdgesDelete={(deleted) => removeEdges(deleted.map((edge) => edge.id))}
             onEdgeContextMenu={(event, edge) => {
               event.preventDefault();
@@ -740,7 +888,8 @@ function TradeInLogicCanvas({
               connection.target,
               connection.sourceHandle || 'next'
             ))}
-            onPaneClick={() => {
+            onPaneClick={(event) => {
+              if (finishClickConnectionOnPane(event.target, event.clientX, event.clientY)) return;
               setSelectedNodeId('');
               selectOnlyNode('');
               setSelectedFieldId('');
@@ -760,6 +909,7 @@ function TradeInLogicCanvas({
             panOnDrag={[1]}
             panOnScroll={false}
             panActivationKeyCode={null}
+            connectOnClick
             autoPanOnNodeDrag={false}
             autoPanOnConnect={false}
             autoPanOnSelection={false}
@@ -773,6 +923,7 @@ function TradeInLogicCanvas({
             minZoom={0.25}
             maxZoom={1.6}
             edgesReconnectable={false}
+            connectionLineStyle={{ stroke: '#695cff', strokeWidth: 2.2 }}
             defaultEdgeOptions={{ type: 'smoothstep', animated: false }}
             proOptions={{ hideAttribution: true }}
           >
@@ -783,10 +934,17 @@ function TradeInLogicCanvas({
             }} maskColor="rgba(246,247,251,.78)" pannable={false} zoomable />
             <Controls showInteractive={false} />
           </ReactFlow>
+          {contextMenu?.pendingConnection && contextMenu.lineStart && (
+            <svg className="trade-in-pending-connection" aria-hidden="true">
+              <path d={pendingConnectionPath(contextMenu.lineStart, { x: contextMenu.x, y: contextMenu.y + 46 })} />
+              <circle cx={contextMenu.x} cy={contextMenu.y + 46} r="4" />
+            </svg>
+          )}
           {contextMenu && (
             <NodePalette
               style={{ left: contextMenu.x, top: contextMenu.y }}
-              onAdd={(type) => addNode(type, contextMenu.position)}
+              connectsNode={Boolean(contextMenu.pendingConnection)}
+              onAdd={(type) => addNode(type, contextMenu.position, contextMenu.pendingConnection)}
             />
           )}
         </section>
@@ -965,6 +1123,7 @@ function TradeInLogicCanvas({
       </div>
       <footer className="trade-in-logic-help">
         <span><i /> Суцільна лінія — перехід між нодами</span>
+        <span><kbd>Клік / Drag</kbd> Протягнути зв’язок</span>
         <span><kbd>Колесо</kbd> Рух полотна</span>
         <span><kbd>ЛКМ</kbd> Рамка вибору</span>
         <span><kbd>Shift</kbd> Мультивибір</span>
