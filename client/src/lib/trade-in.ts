@@ -2,6 +2,8 @@ import type {
   TradeInAnswer,
   TradeInAnswers,
   TradeInCondition,
+  TradeInConditionBranch,
+  TradeInConditionGroup,
   TradeInField,
   TradeInOption,
   TradeInStep
@@ -15,6 +17,40 @@ export function emptyTradeInCondition(): TradeInCondition {
   return { fieldKey: '', operator: 'equals', value: '' };
 }
 
+export function createTradeInConditionGroup(condition = emptyTradeInCondition()): TradeInConditionGroup {
+  return { combinator: 'all', conditions: [condition] };
+}
+
+const transliterationPairs: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'h', ґ: 'g', д: 'd', е: 'e', є: 'ye', ж: 'zh', з: 'z',
+  и: 'y', і: 'i', ї: 'yi', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p',
+  р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh',
+  щ: 'shch', ь: '', ю: 'yu', я: 'ya', ы: 'y', э: 'e', ё: 'yo', ъ: ''
+};
+
+export function transliterateTradeInFieldKey(label: string, fallback = 'field') {
+  const transliterated = Array.from(label.trim().toLocaleLowerCase('uk-UA'))
+    .map((character) => transliterationPairs[character] ?? character)
+    .join('')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/['’`ʼ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+  const safe = transliterated || fallback;
+  return /^\d/.test(safe) ? `${fallback}_${safe}` : safe;
+}
+
+export function uniqueTradeInFieldKey(label: string, usedKeys: Iterable<string>, fallback = 'field') {
+  const base = transliterateTradeInFieldKey(label, fallback);
+  const taken = new Set(usedKeys);
+  if (!taken.has(base)) return base;
+  let suffix = 2;
+  while (taken.has(`${base}_${suffix}`)) suffix += 1;
+  return `${base}_${suffix}`;
+}
+
 export function createTradeInStep(index: number): TradeInStep {
   return {
     id: tradeInId('step'),
@@ -26,10 +62,11 @@ export function createTradeInStep(index: number): TradeInStep {
 }
 
 export function createTradeInField(index: number): TradeInField {
+  const label = `Нове поле ${index + 1}`;
   return {
     id: tradeInId('field'),
-    key: `new_field_${index + 1}`,
-    label: `Нове поле ${index + 1}`,
+    key: transliterateTradeInFieldKey(label),
+    label,
     type: 'text',
     placeholder: '',
     helpText: '',
@@ -55,19 +92,44 @@ export function createTradeInOption(index: number): TradeInOption {
 export function matchesTradeInCondition(condition: TradeInCondition, answers: TradeInAnswers) {
   if (!condition.fieldKey) return true;
   const actual = answers[condition.fieldKey];
-  if (condition.operator === 'answered') {
-    return Array.isArray(actual) ? actual.length > 0 : Boolean(String(actual ?? '').trim());
-  }
-  if (condition.operator === 'not_equals') return String(actual ?? '') !== condition.value;
+  const answered = Array.isArray(actual) ? actual.length > 0 : Boolean(String(actual ?? '').trim());
+  if (condition.operator === 'answered') return answered;
+  if (condition.operator === 'not_answered') return !answered;
+  const actualValues = Array.isArray(actual) ? actual.map(String) : [String(actual ?? '')];
+  if (condition.operator === 'not_equals') return !actualValues.includes(condition.value);
   if (condition.operator === 'one_of') {
-    return condition.value.split(',').map((item) => item.trim()).filter(Boolean).includes(String(actual ?? ''));
+    const expectedValues = condition.value.split(',').map((item) => item.trim()).filter(Boolean);
+    return actualValues.some((value) => expectedValues.includes(value));
   }
   if (condition.operator === 'contains') {
-    return Array.isArray(actual)
-      ? actual.map(String).includes(condition.value)
-      : String(actual ?? '').includes(condition.value);
+    return actualValues.some((value) => value.includes(condition.value));
   }
-  return String(actual ?? '') === condition.value;
+  if (['greater_than', 'greater_or_equal', 'less_than', 'less_or_equal'].includes(condition.operator)) {
+    const actualNumber = Number(actual);
+    const expectedNumber = Number(condition.value);
+    if (!Number.isFinite(actualNumber) || !Number.isFinite(expectedNumber)) return false;
+    if (condition.operator === 'greater_than') return actualNumber > expectedNumber;
+    if (condition.operator === 'greater_or_equal') return actualNumber >= expectedNumber;
+    if (condition.operator === 'less_than') return actualNumber < expectedNumber;
+    return actualNumber <= expectedNumber;
+  }
+  return actualValues.includes(condition.value);
+}
+
+export function tradeInConditionGroup(branch: TradeInConditionBranch): TradeInConditionGroup {
+  if (branch.conditionGroup?.conditions?.length) return branch.conditionGroup;
+  return {
+    combinator: 'all',
+    conditions: branch.condition?.fieldKey ? [branch.condition] : []
+  };
+}
+
+export function matchesTradeInConditionGroup(group: TradeInConditionGroup, answers: TradeInAnswers) {
+  const conditions = group.conditions.filter((condition) => condition.fieldKey);
+  if (!conditions.length) return false;
+  return group.combinator === 'any'
+    ? conditions.some((condition) => matchesTradeInCondition(condition, answers))
+    : conditions.every((condition) => matchesTradeInCondition(condition, answers));
 }
 
 export function visibleTradeInSteps(steps: TradeInStep[], answers: TradeInAnswers) {

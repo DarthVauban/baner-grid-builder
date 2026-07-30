@@ -27,8 +27,9 @@ import {
   connectTradeInGraph,
   createTradeInFormNode,
   findNearestFreeNodePosition,
-  formatTradeInCondition,
+  formatTradeInConditionBranch,
   getTradeInFormGraph,
+  getTradeInGraphFieldEntries,
   getTradeInGraphFields,
   removeTradeInGraphNode,
   tradeInConditionOperatorLabels,
@@ -36,10 +37,14 @@ import {
   type TradeInLogicIssue
 } from '../../lib/trade-in-logic';
 import {
+  createTradeInConditionGroup,
   createTradeInField,
   createTradeInOption,
   emptyTradeInCondition,
   moveTradeInItem,
+  tradeInConditionGroup,
+  transliterateTradeInFieldKey,
+  uniqueTradeInFieldKey,
   tradeInId
 } from '../../lib/trade-in';
 import type {
@@ -96,6 +101,32 @@ const typeMeta: Record<TradeInFormNodeType, { label: string; description: string
 
 const addableTypes: AddableNodeType[] = ['fields', 'condition', 'information', 'finish'];
 const operatorOptions = Object.entries(tradeInConditionOperatorLabels) as Array<[TradeInConditionOperator, string]>;
+type GraphFieldEntry = ReturnType<typeof getTradeInGraphFieldEntries>[number];
+
+function conditionOperatorOptions(field?: TradeInField) {
+  if (!field) return operatorOptions;
+  const common: TradeInConditionOperator[] = ['equals', 'not_equals', 'answered', 'not_answered'];
+  if (field.type === 'number') {
+    return operatorOptions.filter(([operator]) => [
+      ...common,
+      'greater_than',
+      'greater_or_equal',
+      'less_than',
+      'less_or_equal'
+    ].includes(operator));
+  }
+  if (field.type === 'checkbox') {
+    return operatorOptions.filter(([operator]) => [...common, 'one_of', 'contains'].includes(operator));
+  }
+  if (field.options.length) {
+    return operatorOptions.filter(([operator]) => [...common, 'one_of'].includes(operator));
+  }
+  return operatorOptions.filter(([operator]) => [...common, 'contains'].includes(operator));
+}
+
+function conditionNeedsValue(operator: TradeInConditionOperator) {
+  return operator !== 'answered' && operator !== 'not_answered';
+}
 
 function TradeInGraphNode({ data, selected }: NodeProps<GraphNode>) {
   const { node, issues } = data;
@@ -219,6 +250,7 @@ function FieldConditionEditor({
   fields: TradeInField[];
   onChange: (condition: TradeInCondition) => void;
 }) {
+  const selectedField = fields.find((field) => field.key === condition.fieldKey);
   return (
     <details className="trade-in-graph-field-condition">
       <summary>Додаткова умова видимості поля <i>⌄</i></summary>
@@ -233,10 +265,10 @@ function FieldConditionEditor({
           <>
             <InputField label="Перевірка">
               <select value={condition.operator} onChange={(event) => onChange({ ...condition, operator: event.target.value as TradeInConditionOperator })}>
-                {operatorOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                {conditionOperatorOptions(selectedField).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
               </select>
             </InputField>
-            {condition.operator !== 'answered' && <InputField label="Значення" value={condition.value} onChange={(value) => onChange({ ...condition, value })} />}
+            {conditionNeedsValue(condition.operator) && <InputField label="Значення" value={condition.value} onChange={(value) => onChange({ ...condition, value })} />}
           </>
         )}
       </div>
@@ -244,15 +276,135 @@ function FieldConditionEditor({
   );
 }
 
+function ConditionRuleEditor({
+  condition,
+  entries,
+  index,
+  canRemove,
+  canMoveUp,
+  canMoveDown,
+  onChange,
+  onRemove,
+  onMove
+}: {
+  condition: TradeInCondition;
+  entries: GraphFieldEntry[];
+  index: number;
+  canRemove: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onChange: (condition: TradeInCondition) => void;
+  onRemove: () => void;
+  onMove: (direction: -1 | 1) => void;
+}) {
+  const selectedEntry = entries.find((entry) => entry.field.key === condition.fieldKey);
+  const selectedNodeId = selectedEntry?.nodeId || '';
+  const stepEntries = selectedNodeId ? entries.filter((entry) => entry.nodeId === selectedNodeId) : [];
+  const selectedField = selectedEntry?.field;
+  const options = conditionOperatorOptions(selectedField);
+  const selectedOperator = options.some(([operator]) => operator === condition.operator)
+    ? condition.operator
+    : options[0]?.[0] || 'equals';
+
+  const selectField = (fieldKey: string) => {
+    const field = entries.find((entry) => entry.field.key === fieldKey)?.field;
+    onChange({
+      fieldKey,
+      operator: field?.options.length ? 'equals' : field?.type === 'number' ? 'equals' : 'answered',
+      value: field?.options[0]?.value || ''
+    });
+  };
+
+  return (
+    <section className="trade-in-condition-rule">
+      <header>
+        <strong>Правило {index + 1}</strong>
+        <div>
+          <button type="button" disabled={!canMoveUp} onClick={() => onMove(-1)} aria-label="Перемістити правило вище">↑</button>
+          <button type="button" disabled={!canMoveDown} onClick={() => onMove(1)} aria-label="Перемістити правило нижче">↓</button>
+          <button type="button" disabled={!canRemove} onClick={onRemove} aria-label="Видалити правило">×</button>
+        </div>
+      </header>
+      <div className="trade-in-condition-rule__source">
+        <InputField label="Крок форми">
+          <select value={selectedNodeId} onChange={(event) => {
+            const firstField = entries.find((entry) => entry.nodeId === event.target.value)?.field;
+            selectField(firstField?.key || '');
+          }}>
+            <option value="">Оберіть крок</option>
+            {Array.from(new Map(entries.map((entry) => [entry.nodeId, entry.nodeTitle])).entries()).map(([nodeId, title]) => (
+              <option value={nodeId} key={nodeId}>{title}</option>
+            ))}
+          </select>
+        </InputField>
+        <InputField label="Поле">
+          <select value={condition.fieldKey} disabled={!selectedNodeId} onChange={(event) => selectField(event.target.value)}>
+            <option value="">Оберіть поле</option>
+            {stepEntries.map((entry) => (
+              <option value={entry.field.key} key={entry.field.id}>{entry.field.label} ({entry.field.key})</option>
+            ))}
+          </select>
+        </InputField>
+      </div>
+      {condition.fieldKey && (
+        <div className="trade-in-condition-rule__comparison">
+          <InputField label="Перевірка">
+            <select value={selectedOperator} onChange={(event) => {
+              const operator = event.target.value as TradeInConditionOperator;
+              onChange({ ...condition, operator, value: conditionNeedsValue(operator) ? condition.value : '' });
+            }}>
+              {options.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+            </select>
+          </InputField>
+          {conditionNeedsValue(selectedOperator) && (
+            <InputField label={selectedOperator === 'one_of' ? 'Значення (можна кілька)' : 'Значення'}>
+              {selectedField?.options.length && selectedOperator !== 'one_of' ? (
+                <select value={condition.value} onChange={(event) => onChange({ ...condition, operator: selectedOperator, value: event.target.value })}>
+                  <option value="">Оберіть значення</option>
+                  {selectedField.options.map((option) => <option value={option.value} key={option.id}>{option.label}</option>)}
+                </select>
+              ) : selectedField?.options.length && selectedOperator === 'one_of' ? (
+                <select
+                  multiple
+                  value={condition.value.split(',').map((value) => value.trim()).filter(Boolean)}
+                  onChange={(event) => onChange({
+                    ...condition,
+                    operator: selectedOperator,
+                    value: Array.from(event.target.selectedOptions).map((option) => option.value).join(',')
+                  })}
+                >
+                  {selectedField.options.map((option) => <option value={option.value} key={option.id}>{option.label}</option>)}
+                </select>
+              ) : (
+                <input
+                  type={selectedField?.type === 'number' ? 'number' : 'text'}
+                  value={condition.value}
+                  onChange={(event) => onChange({ ...condition, operator: selectedOperator, value: event.target.value })}
+                />
+              )}
+            </InputField>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function FieldEditor({
   field,
   allFields,
   onChange,
+  onLabelChange,
+  onKeyChange,
+  onCreateCondition,
   onRemove
 }: {
   field: TradeInField;
   allFields: TradeInField[];
   onChange: (change: (field: TradeInField) => void) => void;
+  onLabelChange: (value: string) => void;
+  onKeyChange: (value: string) => void;
+  onCreateCondition: () => void;
   onRemove: () => void;
 }) {
   const hasOptions = ['select', 'radio', 'checkbox'].includes(field.type);
@@ -260,11 +412,14 @@ function FieldEditor({
     <section className="trade-in-graph-field-editor">
       <header>
         <div><small>Поле форми</small><h4>{field.label || 'Нове поле'}</h4></div>
-        <button type="button" onClick={onRemove}><Icon name="delete" size={14} /> Видалити</button>
+        <div className="trade-in-graph-field-editor__actions">
+          <button type="button" className="is-condition" onClick={onCreateCondition}><Icon name="variants" size={14} /> Створити умову</button>
+          <button type="button" onClick={onRemove}><Icon name="delete" size={14} /> Видалити</button>
+        </div>
       </header>
       <div className="trade-in-graph-inspector__grid">
-        <InputField label="Назва поля" value={field.label} onChange={(value) => onChange((next) => { next.label = value; })} />
-        <InputField label="Технічний ключ" value={field.key} onChange={(value) => onChange((next) => { next.key = value.replace(/[^a-zA-Z0-9_]/g, '_'); })} />
+        <InputField label="Назва поля" value={field.label} onChange={onLabelChange} />
+        <InputField label="Технічний ключ" value={field.key} onChange={onKeyChange} />
         <InputField label="Тип поля">
           <select value={field.type} onChange={(event) => onChange((next) => { next.type = event.target.value as TradeInFieldType; })}>
             <option value="text">Текст</option>
@@ -398,6 +553,7 @@ function TradeInLogicCanvas({
   const graph = useMemo(() => getTradeInFormGraph(config.form), [config.form]);
   const issues = useMemo(() => validateTradeInLogic(graph), [graph]);
   const allFields = useMemo(() => getTradeInGraphFields(graph), [graph]);
+  const fieldEntries = useMemo(() => getTradeInGraphFieldEntries(graph), [graph]);
   const initialNodeId = graph.nodes.find((node) => node.type === 'start')?.id || graph.nodes[0]?.id || '';
   const [selectedNodeId, setSelectedNodeId] = useState(initialNodeId);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(initialNodeId ? [initialNodeId] : []);
@@ -407,6 +563,7 @@ function TradeInLogicCanvas({
   const [contextMenu, setContextMenu] = useState<NodePaletteState | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const clickConnectionRef = useRef<PendingConnection | null>(null);
+  const manuallyEditedFieldKeysRef = useRef(new Set<string>());
   const { fitView, screenToFlowPosition } = useReactFlow();
   const store = useStoreApi();
 
@@ -423,9 +580,9 @@ function TradeInLogicCanvas({
     data: {
       node,
       issues: issues.filter((issue) => issue.nodeId === node.id),
-      conditionLabels: Object.fromEntries(node.branches.map((branch) => [branch.id, formatTradeInCondition(graph, branch.condition)]))
+      conditionLabels: Object.fromEntries(node.branches.map((branch) => [branch.id, formatTradeInConditionBranch(graph, branch)]))
     }
-  })), [graph.nodes, issues]);
+  })), [graph, issues]);
 
   const flowEdges = useMemo((): GraphEdge[] => graph.edges.map((edge) => {
     const source = graph.nodes.find((node) => node.id === edge.source);
@@ -516,6 +673,72 @@ function TradeInLogicCanvas({
     });
   };
 
+  const updateSelectedFieldIdentity = (label: string, key: string) => {
+    if (!selectedNode || !selectedField) return;
+    const previousKey = selectedField.key;
+    mutateGraph((nextGraph) => {
+      const owner = nextGraph.nodes.find((node) => node.id === selectedNode.id);
+      const field = owner?.fields.find((item) => item.id === selectedField.id);
+      if (!field) return;
+      field.label = label;
+      field.key = key;
+      if (!previousKey || previousKey === key) return;
+      nextGraph.nodes.forEach((node) => {
+        node.fields.forEach((item) => {
+          if (item.condition.fieldKey === previousKey) item.condition.fieldKey = key;
+        });
+        node.branches.forEach((branch) => {
+          if (branch.condition.fieldKey === previousKey) branch.condition.fieldKey = key;
+          branch.conditionGroup?.conditions.forEach((condition) => {
+            if (condition.fieldKey === previousKey) condition.fieldKey = key;
+          });
+        });
+      });
+    });
+  };
+
+  const updateSelectedFieldLabel = (label: string) => {
+    if (!selectedField) return;
+    const autoKey = transliterateTradeInFieldKey(selectedField.label);
+    const isLegacyAutoKey = /^new_field_\d+$/.test(selectedField.key);
+    const shouldUpdateKey = !manuallyEditedFieldKeysRef.current.has(selectedField.id)
+      && (selectedField.key === autoKey || isLegacyAutoKey);
+    const usedKeys = allFields.filter((field) => field.id !== selectedField.id).map((field) => field.key);
+    updateSelectedFieldIdentity(
+      label,
+      shouldUpdateKey ? uniqueTradeInFieldKey(label, usedKeys) : selectedField.key
+    );
+  };
+
+  const updateSelectedFieldKey = (value: string) => {
+    if (!selectedField) return;
+    manuallyEditedFieldKeysRef.current.add(selectedField.id);
+    updateSelectedFieldIdentity(
+      selectedField.label,
+      value.trim() ? transliterateTradeInFieldKey(value) : ''
+    );
+  };
+
+  const updateBranchGroup = (
+    branchIndex: number,
+    change: (conditions: TradeInCondition[], combinator: 'all' | 'any') => {
+      conditions?: TradeInCondition[];
+      combinator?: 'all' | 'any';
+    } | void
+  ) => {
+    updateNode((node) => {
+      const branch = node.branches[branchIndex];
+      if (!branch) return;
+      const current = structuredClone(tradeInConditionGroup(branch));
+      const result = change(current.conditions, current.combinator);
+      branch.conditionGroup = {
+        combinator: result?.combinator ?? current.combinator,
+        conditions: result?.conditions ?? current.conditions
+      };
+      branch.condition = branch.conditionGroup.conditions[0] || emptyTradeInCondition();
+    });
+  };
+
   const addNode = (
     type: AddableNodeType,
     desiredPosition: TradeInFormNodePosition,
@@ -546,6 +769,50 @@ function TradeInLogicCanvas({
     setSelectedFieldId(node.fields[0]?.id || '');
     setToolbarPalette(false);
     setContextMenu(null);
+  };
+
+  const createConditionFromField = (sourceNode: TradeInFormNode, field: TradeInField) => {
+    const position = findNearestFreeNodePosition(graph.nodes, {
+      x: sourceNode.position.x + 360,
+      y: sourceNode.position.y + 220
+    });
+    const node = createTradeInFormNode(
+      'condition',
+      position,
+      graph.nodes.filter((item) => item.type === 'condition').length
+    );
+    const condition: TradeInCondition = {
+      fieldKey: field.key,
+      operator: field.options.length ? 'equals' : field.type === 'number' ? 'equals' : 'answered',
+      value: field.options[0]?.value || ''
+    };
+    node.title = `Умова: ${field.label || field.key}`;
+    node.branches[0].label = 'Умова виконується';
+    node.branches[0].condition = condition;
+    node.branches[0].conditionGroup = createTradeInConditionGroup(condition);
+    const currentNext = graph.edges.find((edge) => edge.source === sourceNode.id && edge.sourceHandle === 'next');
+
+    mutateGraph((nextGraph) => {
+      nextGraph.nodes.push(node);
+      if (currentNext) nextGraph.edges = nextGraph.edges.filter((edge) => edge.id !== currentNext.id);
+      nextGraph.edges = connectTradeInGraph(nextGraph, {
+        id: tradeInId('form_edge'),
+        source: sourceNode.id,
+        target: node.id,
+        sourceHandle: 'next'
+      }).edges;
+      if (currentNext) {
+        nextGraph.edges = connectTradeInGraph(nextGraph, {
+          id: tradeInId('form_edge'),
+          source: node.id,
+          target: currentNext.target,
+          sourceHandle: 'default'
+        }).edges;
+      }
+    });
+    setSelectedNodeId(node.id);
+    selectOnlyNode(node.id);
+    setSelectedFieldId('');
   };
 
   const addAtViewportCenter = (type: AddableNodeType) => {
@@ -1020,6 +1287,9 @@ function TradeInLogicCanvas({
                     field={selectedField}
                     allFields={allFields}
                     onChange={updateField}
+                    onLabelChange={updateSelectedFieldLabel}
+                    onKeyChange={updateSelectedFieldKey}
+                    onCreateCondition={() => createConditionFromField(selectedNode, selectedField)}
                     onRemove={() => {
                       const index = selectedNode.fields.findIndex((field) => field.id === selectedField.id);
                       updateNode((node) => { node.fields.splice(index, 1); });
@@ -1037,11 +1307,16 @@ function TradeInLogicCanvas({
                     <header>
                       <div><strong>Гілки умови</strong><small>Перевіряються згори вниз</small></div>
                       <button type="button" onClick={() => updateNode((node) => {
-                        node.branches.push({ id: tradeInId('branch'), label: `Варіант ${node.branches.length + 1}`, condition: emptyTradeInCondition() });
+                        node.branches.push({
+                          id: tradeInId('branch'),
+                          label: `Варіант ${node.branches.length + 1}`,
+                          condition: emptyTradeInCondition(),
+                          conditionGroup: createTradeInConditionGroup()
+                        });
                       })}>+ Гілка</button>
                     </header>
                     {selectedNode.branches.map((branch, index) => {
-                      const field = allFields.find((item) => item.key === branch.condition.fieldKey);
+                      const group = tradeInConditionGroup(branch);
                       return (
                         <article key={branch.id}>
                           <header><strong>Гілка {index + 1}</strong><button type="button" onClick={() => mutateGraph((nextGraph) => {
@@ -1051,36 +1326,51 @@ function TradeInLogicCanvas({
                             nextGraph.edges = nextGraph.edges.filter((edge) => !(edge.source === node.id && edge.sourceHandle === removed?.id));
                           })}>×</button></header>
                           <InputField label="Підпис виходу" value={branch.label} onChange={(value) => updateNode((node) => { node.branches[index].label = value; })} />
-                          <InputField label="Поле">
-                            <select value={branch.condition.fieldKey} onChange={(event) => updateNode((node) => {
-                              const selected = allFields.find((item) => item.key === event.target.value);
-                              node.branches[index].condition = {
-                                fieldKey: event.target.value,
-                                operator: selected?.options.length ? 'equals' : 'answered',
-                                value: selected?.options[0]?.value || ''
-                              };
-                            })}>
-                              <option value="">Оберіть поле</option>
-                              {allFields.filter((item) => item.key).map((item) => <option value={item.key} key={item.id}>{item.label} ({item.key})</option>)}
-                            </select>
-                          </InputField>
-                          <InputField label="Перевірка">
-                            <select value={branch.condition.operator} onChange={(event) => updateNode((node) => {
-                              const operator = event.target.value as TradeInConditionOperator;
-                              node.branches[index].condition.operator = operator;
-                              if (operator === 'answered') node.branches[index].condition.value = '';
-                            })}>
-                              {operatorOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-                            </select>
-                          </InputField>
-                          {branch.condition.operator !== 'answered' && <InputField label="Значення">
-                            {field?.options.length ? (
-                              <select value={branch.condition.value} onChange={(event) => updateNode((node) => { node.branches[index].condition.value = event.target.value; })}>
-                                <option value="">Оберіть значення</option>
-                                {field.options.map((option) => <option value={option.value} key={option.id}>{option.label}</option>)}
-                              </select>
-                            ) : <input value={branch.condition.value} onChange={(event) => updateNode((node) => { node.branches[index].condition.value = event.target.value; })} />}
-                          </InputField>}
+                          <div className="trade-in-condition-combinator">
+                            <span>Як поєднати правила</span>
+                            <div>
+                              <button
+                                type="button"
+                                className={group.combinator === 'all' ? 'is-active' : ''}
+                                onClick={() => updateBranchGroup(index, () => ({ combinator: 'all' }))}
+                              >Усі (І)</button>
+                              <button
+                                type="button"
+                                className={group.combinator === 'any' ? 'is-active' : ''}
+                                onClick={() => updateBranchGroup(index, () => ({ combinator: 'any' }))}
+                              >Будь-яке (АБО)</button>
+                            </div>
+                          </div>
+                          <div className="trade-in-condition-rules">
+                            {group.conditions.map((condition, ruleIndex) => (
+                              <ConditionRuleEditor
+                                condition={condition}
+                                entries={fieldEntries}
+                                index={ruleIndex}
+                                canRemove={group.conditions.length > 1}
+                                canMoveUp={ruleIndex > 0}
+                                canMoveDown={ruleIndex < group.conditions.length - 1}
+                                onChange={(nextCondition) => updateBranchGroup(index, (conditions) => {
+                                  conditions[ruleIndex] = nextCondition;
+                                })}
+                                onRemove={() => updateBranchGroup(index, (conditions) => {
+                                  conditions.splice(ruleIndex, 1);
+                                })}
+                                onMove={(direction) => updateBranchGroup(index, (conditions) => ({
+                                  conditions: moveTradeInItem(conditions, ruleIndex, direction)
+                                }))}
+                                key={`${branch.id}-${ruleIndex}`}
+                              />
+                            ))}
+                            {!group.conditions.length && <p className="trade-in-condition-rules__empty">Додайте перше правило для цієї гілки.</p>}
+                            <button
+                              type="button"
+                              className="trade-in-condition-rules__add"
+                              onClick={() => updateBranchGroup(index, (conditions) => {
+                                conditions.push(emptyTradeInCondition());
+                              })}
+                            >+ Додати правило</button>
+                          </div>
                         </article>
                       );
                     })}

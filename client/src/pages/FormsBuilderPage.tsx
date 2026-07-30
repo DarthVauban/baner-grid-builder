@@ -7,6 +7,7 @@ import { StyledSelect } from '../components/StyledSelect';
 import { TradeInLogicEditor } from '../components/trade-in/TradeInLogicEditor';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
+import { transliterateTradeInFieldKey, uniqueTradeInFieldKey } from '../lib/trade-in';
 import { getTradeInFormGraph, validateTradeInLogic } from '../lib/trade-in-logic';
 import { useUndoableState } from '../lib/use-undoable-state';
 import { createDefaultWorkflowForm } from '../lib/workflow-form';
@@ -117,9 +118,11 @@ function cloneFields(form: ApplicationForm | null): ApplicationFormField[] {
 }
 
 function newField(index: number): ApplicationFormField {
+  const label = 'Нове поле';
+  const baseKey = transliterateTradeInFieldKey(label);
   return {
-    key: `field_${Date.now()}_${index}`,
-    label: 'Нове поле',
+    key: index === 0 ? baseKey : `${baseKey}_${index + 1}`,
+    label,
     type: 'text',
     placeholder: '',
     helpText: '',
@@ -425,14 +428,30 @@ export function FormsBuilderPage() {
   }
 
   function updateField(index: number, patch: Partial<ApplicationFormField>) {
-    setFields((current) => current.map((field, fieldIndex) => fieldIndex === index ? {
-      ...field,
-      ...patch,
-      active: field.system ? true : patch.active ?? field.active,
-      required: field.system ? true : patch.required ?? field.required,
-      showInSummary: field.system ? true : patch.showInSummary ?? field.showInSummary,
-      type: field.systemFieldType === 'bank' ? 'select' : field.systemFieldType === 'phone' ? 'phone' : patch.type ?? field.type
-    } : field));
+    setFields((current) => current.map((field, fieldIndex) => {
+      if (fieldIndex !== index) return field;
+      const nextPatch = { ...patch };
+      if (
+        typeof patch.label === 'string'
+        && (
+          field.key === transliterateTradeInFieldKey(field.label)
+          || /^field_\d+_\d+$/.test(field.key)
+        )
+      ) {
+        nextPatch.key = uniqueTradeInFieldKey(
+          patch.label,
+          current.filter((_, otherIndex) => otherIndex !== index).map((item) => item.key)
+        );
+      }
+      return {
+        ...field,
+        ...nextPatch,
+        active: field.system ? true : patch.active ?? field.active,
+        required: field.system ? true : patch.required ?? field.required,
+        showInSummary: field.system ? true : patch.showInSummary ?? field.showInSummary,
+        type: field.systemFieldType === 'bank' ? 'select' : field.systemFieldType === 'phone' ? 'phone' : patch.type ?? field.type
+      };
+    }));
   }
 
   function updateFieldType(index: number, type: ApplicationFieldType) {

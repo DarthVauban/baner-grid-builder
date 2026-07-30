@@ -4,8 +4,11 @@ import {
   emptyTradeInCondition,
   isTradeInFieldComplete,
   matchesTradeInCondition,
+  matchesTradeInConditionGroup,
   moveTradeInItem,
+  transliterateTradeInFieldKey,
   tradeInAnswerLabel,
+  uniqueTradeInFieldKey,
   visibleTradeInSteps
 } from './trade-in';
 
@@ -48,5 +51,31 @@ describe('Trade-in form helpers', () => {
     const original = ['a', 'b', 'c'];
     expect(moveTradeInItem(original, 1, -1)).toEqual(['b', 'a', 'c']);
     expect(original).toEqual(['a', 'b', 'c']);
+  });
+
+  it('evaluates AND/OR groups and numeric comparisons', () => {
+    const conditions = [
+      { fieldKey: 'category', operator: 'equals' as const, value: 'apple' },
+      { fieldKey: 'battery', operator: 'greater_or_equal' as const, value: '85' }
+    ];
+    expect(matchesTradeInConditionGroup(
+      { combinator: 'all', conditions },
+      { category: 'apple', battery: '89' }
+    )).toBe(true);
+    expect(matchesTradeInConditionGroup(
+      { combinator: 'all', conditions },
+      { category: 'apple', battery: '80' }
+    )).toBe(false);
+    expect(matchesTradeInConditionGroup(
+      { combinator: 'any', conditions },
+      { category: 'samsung', battery: '90' }
+    )).toBe(true);
+  });
+
+  it('transliterates Ukrainian field labels and keeps keys unique', () => {
+    expect(transliterateTradeInFieldKey('Обсяг памʼяті')).toBe('obsyah_pamyati');
+    expect(transliterateTradeInFieldKey('Стан АКБ, %')).toBe('stan_akb');
+    expect(uniqueTradeInFieldKey('Обсяг памʼяті', ['obsyah_pamyati', 'obsyah_pamyati_2']))
+      .toBe('obsyah_pamyati_3');
   });
 });

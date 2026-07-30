@@ -1,5 +1,16 @@
 export type TradeInFieldType = 'text' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'email' | 'phone' | 'number';
-export type TradeInConditionOperator = 'equals' | 'not_equals' | 'one_of' | 'contains' | 'answered';
+export type TradeInConditionOperator =
+  | 'equals'
+  | 'not_equals'
+  | 'one_of'
+  | 'contains'
+  | 'answered'
+  | 'not_answered'
+  | 'greater_than'
+  | 'greater_or_equal'
+  | 'less_than'
+  | 'less_or_equal';
+export type TradeInConditionCombinator = 'all' | 'any';
 export type TradeInSystemFieldType = 'first_name' | 'last_name' | 'phone' | null;
 export type TradeInAnswer = string | string[] | boolean;
 export type TradeInAnswers = Record<string, TradeInAnswer>;
@@ -8,6 +19,11 @@ export interface TradeInCondition {
   fieldKey: string;
   operator: TradeInConditionOperator;
   value: string;
+}
+
+export interface TradeInConditionGroup {
+  combinator: TradeInConditionCombinator;
+  conditions: TradeInCondition[];
 }
 
 export interface TradeInOption {
@@ -51,7 +67,12 @@ export interface TradeInFormNodePosition {
 export interface TradeInConditionBranch {
   id: string;
   label: string;
+  /**
+   * Legacy single-rule representation. Kept optional so existing saved forms
+   * remain readable while new editors use conditionGroup.
+   */
   condition: TradeInCondition;
+  conditionGroup?: TradeInConditionGroup;
 }
 
 export interface TradeInFormNode {

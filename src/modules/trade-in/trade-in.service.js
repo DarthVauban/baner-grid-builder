@@ -1,5 +1,10 @@
 import { pool, query } from '../../db/pool.js';
-import { defaultTradeInConfig, matchesTradeInCondition, normalizeTradeInConfig } from './trade-in.defaults.js';
+import {
+  defaultTradeInConfig,
+  matchesTradeInCondition,
+  matchesTradeInConditionGroup,
+  normalizeTradeInConfig
+} from './trade-in.defaults.js';
 
 export const tradeInToolId = 'trade_in';
 
@@ -155,7 +160,9 @@ export function visibleTradeInFieldEntries(config, answers) {
       let sourceHandle = 'next';
       if (node.type === 'condition') {
         const branch = node.branches.find((item) => (
-          item.condition.fieldKey && matchesTradeInCondition(item.condition, answers)
+          item.conditionGroup
+            ? matchesTradeInConditionGroup(item.conditionGroup, answers)
+            : item.condition.fieldKey && matchesTradeInCondition(item.condition, answers)
         ));
         sourceHandle = branch?.id || 'default';
       }

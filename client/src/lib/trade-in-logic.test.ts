@@ -97,6 +97,48 @@ describe('Trade-in graph model', () => {
     expect(buildTradeInDisplayPath(graph, { category: 'samsung' }).map((item) => item.id)).toEqual(['category', 'other', 'finish']);
   });
 
+  it('routes through a branch only when its compound rule matches', () => {
+    const start = node('start', 'start');
+    const answers = node('answers', 'fields', [
+      field('category-field', 'category'),
+      field('battery-field', 'battery')
+    ]);
+    const condition = {
+      ...node('condition', 'condition'),
+      branches: [{
+        id: 'valuable-apple',
+        label: 'Apple з хорошою батареєю',
+        condition: { fieldKey: 'category', operator: 'equals' as const, value: 'apple' },
+        conditionGroup: {
+          combinator: 'all' as const,
+          conditions: [
+            { fieldKey: 'category', operator: 'equals' as const, value: 'apple' },
+            { fieldKey: 'battery', operator: 'greater_or_equal' as const, value: '85' }
+          ]
+        }
+      }]
+    };
+    const matched = node('matched', 'information');
+    const fallback = node('fallback', 'information');
+    const finish = node('finish', 'finish');
+    const graph: TradeInFormGraph = {
+      nodes: [start, answers, condition, matched, fallback, finish],
+      edges: [
+        { id: '1', source: 'start', target: 'answers', sourceHandle: 'next' },
+        { id: '2', source: 'answers', target: 'condition', sourceHandle: 'next' },
+        { id: '3', source: 'condition', target: 'matched', sourceHandle: 'valuable-apple' },
+        { id: '4', source: 'condition', target: 'fallback', sourceHandle: 'default' },
+        { id: '5', source: 'matched', target: 'finish', sourceHandle: 'next' },
+        { id: '6', source: 'fallback', target: 'finish', sourceHandle: 'next' }
+      ]
+    };
+
+    expect(buildTradeInDisplayPath(graph, { category: 'apple', battery: '91' }).map((item) => item.id))
+      .toEqual(['answers', 'matched', 'finish']);
+    expect(buildTradeInDisplayPath(graph, { category: 'apple', battery: '74' }).map((item) => item.id))
+      .toEqual(['answers', 'fallback', 'finish']);
+  });
+
   it('creates new nodes detached and finds the nearest collision-free position', () => {
     const existing = node('existing', 'fields');
     existing.position = { x: 200, y: 200 };

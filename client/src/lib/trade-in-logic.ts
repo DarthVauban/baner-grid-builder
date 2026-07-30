@@ -1,7 +1,14 @@
-import { emptyTradeInCondition, matchesTradeInCondition, tradeInId } from './trade-in';
+import {
+  createTradeInConditionGroup,
+  emptyTradeInCondition,
+  matchesTradeInConditionGroup,
+  tradeInConditionGroup,
+  tradeInId
+} from './trade-in';
 import type {
   TradeInAnswers,
   TradeInCondition,
+  TradeInConditionBranch,
   TradeInConditionOperator,
   TradeInField,
   TradeInFormEdge,
@@ -17,7 +24,12 @@ export const tradeInConditionOperatorLabels: Record<TradeInConditionOperator, st
   not_equals: 'не дорівнює',
   one_of: 'одне зі значень',
   contains: 'містить',
-  answered: 'заповнено'
+  answered: 'заповнено',
+  not_answered: 'не заповнено',
+  greater_than: 'більше ніж',
+  greater_or_equal: 'більше або дорівнює',
+  less_than: 'менше ніж',
+  less_or_equal: 'менше або дорівнює'
 };
 
 export interface TradeInLogicIssue {
@@ -48,7 +60,8 @@ function legacyConditionNode(step: TradeInStep, position: TradeInFormNodePositio
     branches: [{
       id: `branch_${step.id}`,
       label: 'Умова виконується',
-      condition: structuredClone(step.condition)
+      condition: structuredClone(step.condition),
+      conditionGroup: createTradeInConditionGroup(structuredClone(step.condition))
     }],
     defaultBranchLabel: 'Інші випадки'
   };
@@ -175,7 +188,8 @@ export function createTradeInFormNode(
       branches: [{
         id: tradeInId('branch'),
         label: 'Варіант 1',
-        condition: emptyTradeInCondition()
+        condition: emptyTradeInCondition(),
+        conditionGroup: createTradeInConditionGroup()
       }],
       defaultBranchLabel: 'Інші випадки'
     };
@@ -227,15 +241,32 @@ export function getTradeInGraphFields(graph: TradeInFormGraph) {
   return graph.nodes.flatMap((node) => node.type === 'fields' ? node.fields : []);
 }
 
+export function getTradeInGraphFieldEntries(graph: TradeInFormGraph) {
+  return graph.nodes.flatMap((node) => node.type === 'fields'
+    ? node.fields.map((field) => ({
+      nodeId: node.id,
+      nodeTitle: node.title || 'Крок без назви',
+      field
+    }))
+    : []);
+}
+
 export function formatTradeInCondition(graph: TradeInFormGraph, condition: TradeInCondition) {
   if (!condition.fieldKey) return 'Оберіть поле';
   const field = getTradeInGraphFields(graph).find((item) => item.key === condition.fieldKey);
   const fieldLabel = field?.label || condition.fieldKey;
   const operatorLabel = tradeInConditionOperatorLabels[condition.operator];
-  if (condition.operator === 'answered') return `${fieldLabel} — ${operatorLabel}`;
+  if (condition.operator === 'answered' || condition.operator === 'not_answered') return `${fieldLabel} — ${operatorLabel}`;
   const values = condition.value.split(',').map((value) => value.trim()).filter(Boolean);
   const valueLabel = values.map((value) => field?.options.find((option) => option.value === value)?.label || value).join(', ');
   return `${fieldLabel} ${operatorLabel} ${valueLabel || '…'}`;
+}
+
+export function formatTradeInConditionBranch(graph: TradeInFormGraph, branch: TradeInConditionBranch) {
+  const group = tradeInConditionGroup(branch);
+  if (!group.conditions.length) return 'Додайте правило';
+  const separator = group.combinator === 'any' ? ' АБО ' : ' І ';
+  return group.conditions.map((condition) => formatTradeInCondition(graph, condition)).join(separator);
 }
 
 export function getTradeInOutgoingEdge(
@@ -263,7 +294,7 @@ export function getTradeInNextNodeId(graph: TradeInFormGraph, node: TradeInFormN
   let sourceHandle = nextHandle;
   if (node.type === 'condition') {
     const matchingBranch = node.branches.find((branch) => (
-      branch.condition.fieldKey && matchesTradeInCondition(branch.condition, answers)
+      matchesTradeInConditionGroup(tradeInConditionGroup(branch), answers)
     ));
     sourceHandle = matchingBranch?.id || defaultHandle;
   }
@@ -414,24 +445,48 @@ export function validateTradeInLogic(graph: TradeInFormGraph) {
     }
     if (node.type === 'condition') {
       node.branches.forEach((branch) => {
-        if (!branch.condition.fieldKey) {
+        const group = tradeInConditionGroup(branch);
+        if (!group.conditions.length) {
           issues.push({
             id: `empty-branch-${node.id}-${branch.id}`,
             severity: 'error',
             title: 'Гілка без умови',
-            description: `У гілці «${branch.label || 'Без назви'}» не вибрано поле.`,
+            description: `У гілці «${branch.label || 'Без назви'}» немає жодного правила.`,
             nodeId: node.id
           });
-        } else if (!keyGroups.has(branch.condition.fieldKey)) {
-          issues.push({
-            id: `missing-branch-field-${node.id}-${branch.id}`,
-            severity: 'error',
-            title: 'Поле умови не існує',
-            description: `Гілка посилається на поле «${branch.condition.fieldKey}».`,
-            nodeId: node.id,
-            fieldKey: branch.condition.fieldKey
-          });
         }
+        group.conditions.forEach((condition, conditionIndex) => {
+          if (!condition.fieldKey) {
+            issues.push({
+              id: `empty-branch-rule-${node.id}-${branch.id}-${conditionIndex}`,
+              severity: 'error',
+              title: 'Правило без поля',
+              description: `Оберіть поле у правилі ${conditionIndex + 1} гілки «${branch.label || 'Без назви'}».`,
+              nodeId: node.id
+            });
+          } else if (!keyGroups.has(condition.fieldKey)) {
+            issues.push({
+              id: `missing-branch-field-${node.id}-${branch.id}-${conditionIndex}`,
+              severity: 'error',
+              title: 'Поле умови не існує',
+              description: `Гілка посилається на поле «${condition.fieldKey}».`,
+              nodeId: node.id,
+              fieldKey: condition.fieldKey
+            });
+          } else if (
+            !['answered', 'not_answered'].includes(condition.operator)
+            && !condition.value.trim()
+          ) {
+            issues.push({
+              id: `empty-branch-value-${node.id}-${branch.id}-${conditionIndex}`,
+              severity: 'error',
+              title: 'Не вказано значення',
+              description: `Заповніть значення у правилі ${conditionIndex + 1} гілки «${branch.label || 'Без назви'}».`,
+              nodeId: node.id,
+              fieldKey: condition.fieldKey
+            });
+          }
+        });
         if (!outgoing.some((edge) => edge.sourceHandle === branch.id)) {
           issues.push({
             id: `missing-branch-edge-${node.id}-${branch.id}`,

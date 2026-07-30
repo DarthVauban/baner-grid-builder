@@ -23,7 +23,7 @@ function graphField(id, key, showInSummary = true) {
 test('legacy Trade-in steps are converted to the current graph version', () => {
   const config = normalizeTradeInConfig(defaultTradeInConfig);
 
-  assert.equal(config.version, 3);
+  assert.equal(config.version, 4);
   assert.equal(config.form.graph.nodes.filter((node) => node.type === 'start').length, 1);
   assert.ok(config.form.graph.nodes.some((node) => node.type === 'condition'));
   assert.ok(config.form.graph.nodes.some((node) => node.type === 'finish'));
@@ -106,5 +106,81 @@ test('graph traversal exposes fields only from the selected condition branch', (
       ['category', 'Category', 0, true],
       ['apple_model', 'Apple', 1, false]
     ]
+  );
+});
+
+test('graph traversal supports normalized compound branch conditions', () => {
+  const config = normalizeTradeInConfig({
+    form: {
+      ...defaultTradeInConfig.form,
+      graph: {
+        nodes: [
+          { id: 'start', type: 'start', position: { x: 0, y: 0 }, title: 'Start' },
+          {
+            id: 'device',
+            type: 'fields',
+            position: { x: 300, y: 0 },
+            title: 'Device',
+            fields: [
+              graphField('category-field', 'category'),
+              graphField('battery-field', 'battery')
+            ]
+          },
+          {
+            id: 'condition',
+            type: 'condition',
+            position: { x: 600, y: 0 },
+            title: 'Condition',
+            branches: [{
+              id: 'valuable',
+              label: 'Valuable',
+              conditionGroup: {
+                combinator: 'all',
+                conditions: [
+                  { fieldKey: 'category', operator: 'equals', value: 'apple' },
+                  { fieldKey: 'battery', operator: 'greater_or_equal', value: '85' }
+                ]
+              }
+            }],
+            defaultBranchLabel: 'Other'
+          },
+          {
+            id: 'valuable-fields',
+            type: 'fields',
+            position: { x: 900, y: -100 },
+            title: 'Valuable',
+            fields: [graphField('offer-field', 'special_offer')]
+          },
+          {
+            id: 'other-fields',
+            type: 'fields',
+            position: { x: 900, y: 100 },
+            title: 'Other',
+            fields: [graphField('other-field', 'regular_offer')]
+          },
+          { id: 'finish', type: 'finish', position: { x: 1200, y: 0 }, title: 'Finish' }
+        ],
+        edges: [
+          { id: '1', source: 'start', target: 'device', sourceHandle: 'next' },
+          { id: '2', source: 'device', target: 'condition', sourceHandle: 'next' },
+          { id: '3', source: 'condition', target: 'valuable-fields', sourceHandle: 'valuable' },
+          { id: '4', source: 'condition', target: 'other-fields', sourceHandle: 'default' },
+          { id: '5', source: 'valuable-fields', target: 'finish', sourceHandle: 'next' },
+          { id: '6', source: 'other-fields', target: 'finish', sourceHandle: 'next' }
+        ]
+      }
+    }
+  });
+
+  const branch = config.form.graph.nodes.find((node) => node.id === 'condition').branches[0];
+  assert.equal(branch.conditionGroup.combinator, 'all');
+  assert.equal(branch.conditionGroup.conditions.length, 2);
+  assert.deepEqual(
+    visibleTradeInFields(config, { category: 'apple', battery: '90' }).map((field) => field.key),
+    ['category', 'battery', 'special_offer']
+  );
+  assert.deepEqual(
+    visibleTradeInFields(config, { category: 'apple', battery: '70' }).map((field) => field.key),
+    ['category', 'battery', 'regular_offer']
   );
 });

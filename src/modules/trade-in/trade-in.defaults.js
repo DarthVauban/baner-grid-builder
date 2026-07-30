@@ -415,11 +415,34 @@ function number(value, fallback, min, max) {
 
 function normalizeCondition(value) {
   const source = object(value);
-  const operators = ['equals', 'not_equals', 'one_of', 'contains', 'answered'];
+  const operators = [
+    'equals',
+    'not_equals',
+    'one_of',
+    'contains',
+    'answered',
+    'not_answered',
+    'greater_than',
+    'greater_or_equal',
+    'less_than',
+    'less_or_equal'
+  ];
   return {
     fieldKey: text(source.fieldKey, '', 80),
     operator: operators.includes(source.operator) ? source.operator : 'equals',
     value: text(source.value, '', 500)
+  };
+}
+
+function normalizeConditionGroup(value, legacyCondition) {
+  const source = object(value);
+  const conditions = Array.isArray(source.conditions)
+    ? source.conditions.slice(0, 20).map(normalizeCondition)
+    : [];
+  if (!conditions.length && legacyCondition?.fieldKey) conditions.push(legacyCondition);
+  return {
+    combinator: source.combinator === 'any' ? 'any' : 'all',
+    conditions
   };
 }
 
@@ -535,7 +558,11 @@ function legacyStepsToGraph(steps, successTitle, successText) {
         branches: [{
           id: `branch_${step.id}`,
           label: 'Умова виконується',
-          condition: structuredClone(step.condition)
+          condition: structuredClone(step.condition),
+          conditionGroup: {
+            combinator: 'all',
+            conditions: [structuredClone(step.condition)]
+          }
         }],
         defaultBranchLabel: 'Інші випадки'
       };
@@ -599,10 +626,13 @@ function normalizeFormGraph(value, legacySteps, successTitle, successText) {
           let branchId = text(branch.id, `branch_${index}_${branchIndex}_${Date.now()}`, 120);
           while (branchIds.has(branchId)) branchId = `${branchId}_${branchIndex + 1}`;
           branchIds.add(branchId);
+          const legacyCondition = normalizeCondition(branch.condition);
+          const conditionGroup = normalizeConditionGroup(branch.conditionGroup, legacyCondition);
           return {
             id: branchId,
             label: text(branch.label, `Варіант ${branchIndex + 1}`, 160),
-            condition: normalizeCondition(branch.condition)
+            condition: conditionGroup.conditions[0] || legacyCondition,
+            conditionGroup
           };
         })
         : [],
@@ -678,7 +708,7 @@ export function normalizeTradeInConfig(value) {
   const legacySteps = normalizeSteps(form.steps);
 
   return {
-    version: 3,
+    version: 4,
     formReference: {
       formId: text(formReference.formId, '', 80),
       formName: text(formReference.formName, '', 160)
@@ -785,17 +815,37 @@ export function matchesTradeInCondition(value, answers = {}) {
   if (!key) return true;
   const actual = answers[key];
   const expected = text(conditionValue.value, '', 500);
-  if (conditionValue.operator === 'answered') {
-    return Array.isArray(actual) ? actual.length > 0 : Boolean(String(actual ?? '').trim());
-  }
-  if (conditionValue.operator === 'not_equals') return String(actual ?? '') !== expected;
+  const answered = Array.isArray(actual) ? actual.length > 0 : Boolean(String(actual ?? '').trim());
+  if (conditionValue.operator === 'answered') return answered;
+  if (conditionValue.operator === 'not_answered') return !answered;
+  const actualValues = Array.isArray(actual) ? actual.map(String) : [String(actual ?? '')];
+  if (conditionValue.operator === 'not_equals') return !actualValues.includes(expected);
   if (conditionValue.operator === 'one_of') {
-    return expected.split(',').map((item) => item.trim()).filter(Boolean).includes(String(actual ?? ''));
+    const expectedValues = expected.split(',').map((item) => item.trim()).filter(Boolean);
+    return actualValues.some((item) => expectedValues.includes(item));
   }
   if (conditionValue.operator === 'contains') {
-    return Array.isArray(actual)
-      ? actual.map(String).includes(expected)
-      : String(actual ?? '').includes(expected);
+    return actualValues.some((item) => item.includes(expected));
   }
-  return String(actual ?? '') === expected;
+  if (['greater_than', 'greater_or_equal', 'less_than', 'less_or_equal'].includes(conditionValue.operator)) {
+    const actualNumber = Number(actual);
+    const expectedNumber = Number(expected);
+    if (!Number.isFinite(actualNumber) || !Number.isFinite(expectedNumber)) return false;
+    if (conditionValue.operator === 'greater_than') return actualNumber > expectedNumber;
+    if (conditionValue.operator === 'greater_or_equal') return actualNumber >= expectedNumber;
+    if (conditionValue.operator === 'less_than') return actualNumber < expectedNumber;
+    return actualNumber <= expectedNumber;
+  }
+  return actualValues.includes(expected);
+}
+
+export function matchesTradeInConditionGroup(value, answers = {}) {
+  const source = object(value);
+  const conditions = Array.isArray(source.conditions)
+    ? source.conditions.filter((item) => text(object(item).fieldKey, '', 80))
+    : [];
+  if (!conditions.length) return false;
+  return source.combinator === 'any'
+    ? conditions.some((item) => matchesTradeInCondition(item, answers))
+    : conditions.every((item) => matchesTradeInCondition(item, answers));
 }
