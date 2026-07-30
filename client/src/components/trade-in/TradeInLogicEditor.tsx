@@ -276,6 +276,65 @@ function FieldConditionEditor({
   );
 }
 
+function ConditionOptionPicker({
+  field,
+  value,
+  multiple,
+  onChange
+}: {
+  field: TradeInField;
+  value: string;
+  multiple: boolean;
+  onChange: (value: string) => void;
+}) {
+  const selectedValues = value.split(',').map((item) => item.trim()).filter(Boolean);
+  const selectedSet = new Set(selectedValues);
+
+  const toggleOption = (optionValue: string) => {
+    if (!multiple) {
+      onChange(optionValue);
+      return;
+    }
+
+    const nextValues = new Set(selectedValues);
+    if (nextValues.has(optionValue)) nextValues.delete(optionValue);
+    else nextValues.add(optionValue);
+
+    onChange(field.options
+      .filter((option) => nextValues.has(option.value))
+      .map((option) => option.value)
+      .join(','));
+  };
+
+  return (
+    <div className="trade-in-condition-values">
+      <header>
+        <div>
+          <strong>Значення</strong>
+          <small>{multiple ? 'Оберіть один або декілька варіантів' : 'Оберіть один варіант'}</small>
+        </div>
+        <span>Обрано: {selectedSet.size}</span>
+      </header>
+      <div className="trade-in-condition-values__list" role="group" aria-label="Значення умови">
+        {field.options.map((option) => {
+          const checked = selectedSet.has(option.value);
+          return (
+            <label className={checked ? 'is-checked' : ''} key={option.id}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggleOption(option.value)}
+              />
+              <i aria-hidden="true">✓</i>
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ConditionRuleEditor({
   condition,
   entries,
@@ -351,38 +410,37 @@ function ConditionRuleEditor({
           <InputField label="Перевірка">
             <select value={selectedOperator} onChange={(event) => {
               const operator = event.target.value as TradeInConditionOperator;
-              onChange({ ...condition, operator, value: conditionNeedsValue(operator) ? condition.value : '' });
+              const firstValue = condition.value.split(',').map((value) => value.trim()).find(Boolean) || '';
+              onChange({
+                ...condition,
+                operator,
+                value: conditionNeedsValue(operator)
+                  ? selectedField?.options.length && operator !== 'one_of'
+                    ? firstValue || selectedField.options[0]?.value || ''
+                    : condition.value
+                  : ''
+              });
             }}>
               {options.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
             </select>
           </InputField>
           {conditionNeedsValue(selectedOperator) && (
-            <InputField label={selectedOperator === 'one_of' ? 'Значення (можна кілька)' : 'Значення'}>
-              {selectedField?.options.length && selectedOperator !== 'one_of' ? (
-                <select value={condition.value} onChange={(event) => onChange({ ...condition, operator: selectedOperator, value: event.target.value })}>
-                  <option value="">Оберіть значення</option>
-                  {selectedField.options.map((option) => <option value={option.value} key={option.id}>{option.label}</option>)}
-                </select>
-              ) : selectedField?.options.length && selectedOperator === 'one_of' ? (
-                <select
-                  multiple
-                  value={condition.value.split(',').map((value) => value.trim()).filter(Boolean)}
-                  onChange={(event) => onChange({
-                    ...condition,
-                    operator: selectedOperator,
-                    value: Array.from(event.target.selectedOptions).map((option) => option.value).join(',')
-                  })}
-                >
-                  {selectedField.options.map((option) => <option value={option.value} key={option.id}>{option.label}</option>)}
-                </select>
-              ) : (
+            selectedField?.options.length ? (
+              <ConditionOptionPicker
+                field={selectedField}
+                value={condition.value}
+                multiple={selectedOperator === 'one_of'}
+                onChange={(value) => onChange({ ...condition, operator: selectedOperator, value })}
+              />
+            ) : (
+              <InputField label="Значення">
                 <input
                   type={selectedField?.type === 'number' ? 'number' : 'text'}
                   value={condition.value}
                   onChange={(event) => onChange({ ...condition, operator: selectedOperator, value: event.target.value })}
                 />
-              )}
-            </InputField>
+              </InputField>
+            )
           )}
         </div>
       )}
