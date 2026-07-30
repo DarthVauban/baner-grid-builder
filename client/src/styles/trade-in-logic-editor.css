@@ -1166,6 +1166,7 @@
 }
 
 .trade-in-condition-values__list label {
+  position: relative;
   min-width: 0;
   min-height: 42px;
   display: grid;
@@ -1195,12 +1196,14 @@
 
 .trade-in-condition-values__list input {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
+  top: 50%;
+  left: 10px;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  transform: translateY(-50%);
 }
 
 .trade-in-condition-values__list i {
