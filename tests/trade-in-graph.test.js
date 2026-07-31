@@ -30,6 +30,36 @@ test('legacy Trade-in steps are converted to the current graph version', () => {
   assert.ok(config.form.graph.edges.every((edge) => edge.source && edge.target && edge.sourceHandle));
 });
 
+test('graph normalization keeps converging inputs and one path per output', () => {
+  const config = normalizeTradeInConfig({
+    form: {
+      ...defaultTradeInConfig.form,
+      graph: {
+        nodes: [
+          { id: 'start', type: 'start', position: { x: 0, y: 0 }, title: 'Start' },
+          { id: 'left', type: 'fields', position: { x: 300, y: -100 }, title: 'Left' },
+          { id: 'right', type: 'fields', position: { x: 300, y: 100 }, title: 'Right' },
+          { id: 'merge', type: 'information', position: { x: 600, y: 0 }, title: 'Merge' },
+          { id: 'finish', type: 'finish', position: { x: 900, y: 0 }, title: 'Finish' }
+        ],
+        edges: [
+          { id: 'start-left', source: 'start', target: 'left', sourceHandle: 'next' },
+          { id: 'start-right', source: 'start', target: 'right', sourceHandle: 'next' },
+          { id: 'left-merge', source: 'left', target: 'merge', sourceHandle: 'next' },
+          { id: 'right-merge', source: 'right', target: 'merge', sourceHandle: 'next' },
+          { id: 'merge-finish', source: 'merge', target: 'finish', sourceHandle: 'next' }
+        ]
+      }
+    }
+  });
+
+  assert.deepEqual(
+    config.form.graph.edges.map((edge) => edge.id),
+    ['start-right', 'left-merge', 'right-merge', 'merge-finish']
+  );
+  assert.equal(config.form.graph.edges.filter((edge) => edge.target === 'merge').length, 2);
+});
+
 test('graph traversal exposes fields only from the selected condition branch', () => {
   const config = normalizeTradeInConfig({
     form: {

@@ -659,6 +659,13 @@ function normalizeFormGraph(value, legacySteps, successTitle, successText) {
       sourceHandle: text(edge.sourceHandle, 'next', 120)
     }];
   }) : [];
+  const latestEdgeByOutput = new Map();
+  edges.forEach((edge, index) => {
+    latestEdgeByOutput.set(`${edge.source}\u0000${edge.sourceHandle}`, index);
+  });
+  const normalizedEdges = edges.filter((edge, index) => (
+    latestEdgeByOutput.get(`${edge.source}\u0000${edge.sourceHandle}`) === index
+  ));
 
   if (!nodes.some((node) => node.type === 'start')) {
     nodes.unshift({
@@ -672,7 +679,7 @@ function normalizeFormGraph(value, legacySteps, successTitle, successText) {
       defaultBranchLabel: ''
     });
   }
-  return { nodes, edges };
+  return { nodes, edges: normalizedEdges };
 }
 
 function normalizeItems(value, defaults, shape) {

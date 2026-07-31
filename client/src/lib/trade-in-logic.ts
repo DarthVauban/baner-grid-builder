@@ -146,15 +146,27 @@ export function convertTradeInStepsToGraph(
   return { nodes, edges };
 }
 
+function normalizeTradeInGraphOutputs(graph: TradeInFormGraph): TradeInFormGraph {
+  const latestEdgeByOutput = new Map<string, number>();
+  graph.edges.forEach((edge, index) => {
+    latestEdgeByOutput.set(`${edge.source}\u0000${edge.sourceHandle}`, index);
+  });
+  const edges = graph.edges.filter((edge, index) => (
+    latestEdgeByOutput.get(`${edge.source}\u0000${edge.sourceHandle}`) === index
+  ));
+  return edges.length === graph.edges.length ? graph : { ...graph, edges };
+}
+
 export function getTradeInFormGraph(form: {
   graph?: TradeInFormGraph;
   steps: TradeInStep[];
   successTitle?: string;
   successText?: string;
 }) {
-  return form.graph?.nodes?.length
+  const graph = form.graph?.nodes?.length
     ? form.graph
     : convertTradeInStepsToGraph(form.steps || [], form.successTitle, form.successText);
+  return normalizeTradeInGraphOutputs(graph);
 }
 
 export function createTradeInFormNode(
@@ -291,7 +303,9 @@ export function connectTradeInGraph(
         const isSameConnection = existing.source === edge.source
           && existing.target === edge.target
           && existing.sourceHandle === edge.sourceHandle;
-        if (existing.id === edge.id || isSameConnection) return false;
+        const usesSameOutput = existing.source === edge.source
+          && existing.sourceHandle === edge.sourceHandle;
+        if (existing.id === edge.id || isSameConnection || usesSameOutput) return false;
         return acceptsMultipleIncoming || existing.target !== edge.target;
       }),
       edge

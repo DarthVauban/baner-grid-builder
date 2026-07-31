@@ -6,6 +6,7 @@ import {
   convertTradeInStepsToGraph,
   createTradeInFormNode,
   findNearestFreeNodePosition,
+  getTradeInFormGraph,
   validateTradeInLogic
 } from './trade-in-logic';
 import { emptyTradeInCondition } from './trade-in';
@@ -163,13 +164,27 @@ describe('Trade-in graph model', () => {
     expect(canConnectTradeInGraph(graph, 'two', 'one', 'next')).toBe(false);
   });
 
-  it('allows one output to connect to multiple nodes', () => {
+  it('allows reconnecting an occupied output', () => {
     const graph: TradeInFormGraph = {
       nodes: [node('start', 'start'), node('one', 'fields'), node('two', 'fields')],
       edges: [{ id: '1', source: 'start', target: 'one', sourceHandle: 'next' }]
     };
 
     expect(canConnectTradeInGraph(graph, 'start', 'two', 'next')).toBe(true);
+  });
+
+  it('keeps only the latest edge from each output in existing saved graphs', () => {
+    const graph: TradeInFormGraph = {
+      nodes: [node('start', 'start'), node('one', 'fields'), node('two', 'fields')],
+      edges: [
+        { id: 'start-one', source: 'start', target: 'one', sourceHandle: 'next' },
+        { id: 'start-two', source: 'start', target: 'two', sourceHandle: 'next' }
+      ]
+    };
+
+    expect(getTradeInFormGraph({ graph, steps: [] }).edges).toEqual([
+      { id: 'start-two', source: 'start', target: 'two', sourceHandle: 'next' }
+    ]);
   });
 
   it('keeps multiple incoming paths for field and information nodes', () => {
@@ -226,6 +241,31 @@ describe('Trade-in graph model', () => {
     expect(replaced.edges).toEqual([
       { id: 'c-condition', source: 'c', target: 'condition', sourceHandle: 'next' }
     ]);
+  });
+
+  it('replaces the previous path from the same output without reporting multiple exits', () => {
+    const graph: TradeInFormGraph = {
+      nodes: [
+        node('start', 'start'),
+        node('first', 'fields'),
+        node('second', 'fields'),
+        node('finish', 'finish')
+      ],
+      edges: [
+        { id: 'start-first', source: 'start', target: 'first', sourceHandle: 'next' },
+        { id: 'first-finish', source: 'first', target: 'finish', sourceHandle: 'next' }
+      ]
+    };
+
+    const reconnected = connectTradeInGraph(graph, {
+      id: 'first-second',
+      source: 'first',
+      target: 'second',
+      sourceHandle: 'next'
+    });
+
+    expect(reconnected.edges).not.toContainEqual(expect.objectContaining({ id: 'first-finish' }));
+    expect(validateTradeInLogic(reconnected).map((issue) => issue.id)).not.toContain('multiple-next-first');
   });
 
   it('reports unreachable nodes, missing exits and duplicate field keys', () => {
