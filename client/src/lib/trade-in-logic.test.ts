@@ -172,31 +172,59 @@ describe('Trade-in graph model', () => {
     expect(canConnectTradeInGraph(graph, 'start', 'two', 'next')).toBe(true);
   });
 
-  it('replaces the previous incoming edge but keeps multiple outgoing edges', () => {
+  it('keeps multiple incoming paths for field and information nodes', () => {
     const graph: TradeInFormGraph = {
-      nodes: [node('a', 'fields'), node('b', 'fields'), node('c', 'fields')],
-      edges: [{ id: 'a-b', source: 'a', target: 'b', sourceHandle: 'next' }]
+      nodes: [
+        node('a', 'fields'),
+        node('b', 'fields'),
+        node('c', 'fields'),
+        node('d', 'fields'),
+        node('e', 'fields'),
+        node('info', 'information')
+      ],
+      edges: [
+        { id: 'a-b', source: 'a', target: 'b', sourceHandle: 'next' },
+        { id: 'd-info', source: 'd', target: 'info', sourceHandle: 'next' }
+      ]
     };
 
-    const replaced = connectTradeInGraph(graph, {
+    const convergedFields = connectTradeInGraph(graph, {
       id: 'c-b',
       source: 'c',
       target: 'b',
       sourceHandle: 'next'
     });
-    expect(replaced.edges).toEqual([
-      { id: 'c-b', source: 'c', target: 'b', sourceHandle: 'next' }
-    ]);
 
-    const branched = connectTradeInGraph(replaced, {
-      id: 'c-a',
-      source: 'c',
-      target: 'a',
+    const convergedInformation = connectTradeInGraph(convergedFields, {
+      id: 'e-info',
+      source: 'e',
+      target: 'info',
       sourceHandle: 'next'
     });
-    expect(branched.edges).toEqual([
+
+    expect(convergedInformation.edges).toEqual([
+      { id: 'a-b', source: 'a', target: 'b', sourceHandle: 'next' },
+      { id: 'd-info', source: 'd', target: 'info', sourceHandle: 'next' },
       { id: 'c-b', source: 'c', target: 'b', sourceHandle: 'next' },
-      { id: 'c-a', source: 'c', target: 'a', sourceHandle: 'next' }
+      { id: 'e-info', source: 'e', target: 'info', sourceHandle: 'next' }
+    ]);
+  });
+
+  it('still replaces the incoming path for node types with a single entry', () => {
+    const graph: TradeInFormGraph = {
+      nodes: [node('a', 'fields'), node('c', 'fields'), node('condition', 'condition')],
+      edges: [{ id: 'a-condition', source: 'a', target: 'condition', sourceHandle: 'next' }]
+    };
+
+    const replaced = connectTradeInGraph(graph, {
+      id: 'c-condition',
+      source: 'c',
+      target: 'condition',
+      sourceHandle: 'next'
+    });
+
+    expect(replaced.edges).toEqual([
+      { id: 'c-condition', source: 'c', target: 'condition', sourceHandle: 'next' }
     ]);
   });
 

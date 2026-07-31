@@ -281,10 +281,19 @@ export function connectTradeInGraph(
   graph: TradeInFormGraph,
   edge: TradeInFormEdge
 ): TradeInFormGraph {
+  const target = graph.nodes.find((node) => node.id === edge.target);
+  const acceptsMultipleIncoming = target?.type === 'fields' || target?.type === 'information';
+
   return {
     ...graph,
     edges: [
-      ...graph.edges.filter((existing) => existing.target !== edge.target && existing.id !== edge.id),
+      ...graph.edges.filter((existing) => {
+        const isSameConnection = existing.source === edge.source
+          && existing.target === edge.target
+          && existing.sourceHandle === edge.sourceHandle;
+        if (existing.id === edge.id || isSameConnection) return false;
+        return acceptsMultipleIncoming || existing.target !== edge.target;
+      }),
       edge
     ]
   };
