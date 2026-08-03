@@ -17,7 +17,7 @@
     "verify": "npm run lint && npm run check && npm run test:server && npm run test:web && npm run build",
     "db:migrate": "node src/db/migrate-cli.js",
     "test": "npm run test:server && npm run test:web",
-    "test:server": "node --test tests/*.test.js",
+    "test:server": "node --import ./tests/test-env.js --test tests/*.test.js",
     "test:web": "vitest run",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:install": "playwright install chromium"
