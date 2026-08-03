@@ -84,6 +84,9 @@ const StoreMapPage = lazy(() => import('../pages/StoreMapPage').then((module) =>
 const BlogPostEditorPage = lazy(() => import('../pages/BlogPostEditorPage').then((module) => ({
   default: module.BlogPostEditorPage
 })));
+const MediaLibraryPage = lazy(() => import('../pages/MediaLibraryPage').then((module) => ({
+  default: module.MediaLibraryPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -181,6 +184,7 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="blog_publications" />}>
             <Route path="tools/blog-publications" element={<BlogPublicationsPage />} />
+            <Route path="tools/blog-publications/media" element={<Suspense fallback={<LoadingScreen />}><MediaLibraryPage /></Suspense>} />
             <Route path="tools/blog-publications/:publicationId/editor" element={<Suspense fallback={<LoadingScreen />}><BlogPostEditorPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="applications" />}>

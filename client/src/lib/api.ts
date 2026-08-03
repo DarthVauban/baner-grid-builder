@@ -39,6 +39,7 @@ import type {
 import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { BlogPostDocument } from '../types/blog-editor';
+import type { MediaAsset, MediaAssetFeed } from '../types/media';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 import type {
   BackupAdminState,
@@ -183,6 +184,49 @@ export const api = {
       request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}/status`, {
         method: 'PATCH', body: jsonBody({ status, publicationUrl })
       })
+  },
+  media: {
+    list: (params: { search?: string; page?: number; pageSize?: number } = {}) =>
+      request<MediaAssetFeed>(`/api/media${queryString(params)}`),
+    upload: (file: File, onProgress?: (progress: number) => void) => new Promise<MediaAsset>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/media');
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+      xhr.upload.addEventListener('progress', (event) => {
+        if (!event.lengthComputable || event.total <= 0) return;
+        onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      });
+      xhr.addEventListener('load', () => {
+        let payload: ApiSuccessPayload<MediaAsset> & ApiErrorPayload = {} as ApiSuccessPayload<MediaAsset> & ApiErrorPayload;
+        try {
+          payload = JSON.parse(xhr.responseText || '{}') as ApiSuccessPayload<MediaAsset> & ApiErrorPayload;
+        } catch {
+          payload = {} as ApiSuccessPayload<MediaAsset> & ApiErrorPayload;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const error = new ApiError(xhr.status, payload);
+          if (xhr.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
+            window.dispatchEvent(new Event('mt:unauthorized'));
+          }
+          reject(error);
+          return;
+        }
+        onProgress?.(100);
+        resolve(payload.data);
+      });
+      xhr.addEventListener('error', () => reject(new ApiError(0, {
+        error: { code: 'NETWORK_ERROR', message: 'Не вдалося завантажити зображення. Перевірте з’єднання.' }
+      })));
+      xhr.addEventListener('abort', () => reject(new ApiError(0, {
+        error: { code: 'UPLOAD_ABORTED', message: 'Завантаження зображення скасовано.' }
+      })));
+      xhr.send(file);
+    }),
+    update: (id: string, input: Pick<MediaAsset, 'name' | 'altText'>) =>
+      request<MediaAsset>(`/api/media/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+    remove: (id: string) => request<void>(`/api/media/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   chat: {
     contacts: () => request<ChatPerson[]>('/api/chat/contacts'),

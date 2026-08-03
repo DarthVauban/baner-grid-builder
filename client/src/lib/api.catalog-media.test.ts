@@ -11,9 +11,10 @@ class FakeUploadTarget {
 
 class FakeXMLHttpRequest {
   static last: FakeXMLHttpRequest | null = null;
+  static nextResponseText = JSON.stringify({ data: { url: '/media/catalog/phone.webp', mimeType: 'image/webp' } });
   upload = new FakeUploadTarget();
   status = 201;
-  responseText = JSON.stringify({ data: { url: '/media/catalog/phone.webp', mimeType: 'image/webp' } });
+  responseText = FakeXMLHttpRequest.nextResponseText;
   headers = new Map<string, string>();
   listeners = new Map<string, EventListenerOrEventListenerObject>();
   method = '';
@@ -50,6 +51,28 @@ class FakeXMLHttpRequest {
 afterEach(() => {
   vi.unstubAllGlobals();
   FakeXMLHttpRequest.last = null;
+  FakeXMLHttpRequest.nextResponseText = JSON.stringify({ data: { url: '/media/catalog/phone.webp', mimeType: 'image/webp' } });
+});
+
+describe('media library upload', () => {
+  it('uploads the original image for server-side WebP conversion', async () => {
+    FakeXMLHttpRequest.nextResponseText = JSON.stringify({
+      data: { id: 'asset-1', name: 'hero image.png', url: '/media/catalog/library/hero.webp', mimeType: 'image/webp' }
+    });
+    vi.stubGlobal('XMLHttpRequest', FakeXMLHttpRequest);
+    const progress: number[] = [];
+    const file = new File(['png'], 'hero image.png', { type: 'image/png' });
+
+    const result = await api.media.upload(file, (value) => progress.push(value));
+
+    expect(result.url).toBe('/media/catalog/library/hero.webp');
+    expect(FakeXMLHttpRequest.last?.method).toBe('POST');
+    expect(FakeXMLHttpRequest.last?.url).toBe('/api/media');
+    expect(FakeXMLHttpRequest.last?.headers.get('Content-Type')).toBe('image/png');
+    expect(FakeXMLHttpRequest.last?.headers.get('X-File-Name')).toBe('hero%20image.png');
+    expect(FakeXMLHttpRequest.last?.body).toBe(file);
+    expect(progress).toEqual([40, 100]);
+  });
 });
 
 describe('catalog media upload', () => {

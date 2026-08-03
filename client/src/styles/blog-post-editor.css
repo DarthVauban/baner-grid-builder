@@ -19,6 +19,8 @@
 .blog-editor-panel__body { padding-top: 16px; }
 .blog-editor-fields { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
 .blog-editor-field--wide { grid-column: 1 / -1; }
+.blog-editor-image-field { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+.blog-editor-image-field .button { min-height: 40px; white-space: nowrap; }
 .blog-editor-page .field { min-width: 0; }
 .blog-editor-page .field > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 820; letter-spacing: .02em; }
 .blog-editor-page .field input, .blog-editor-page .field textarea, .blog-editor-page .field select,
@@ -96,6 +98,7 @@
   .blog-editor-header__actions > * { flex: 1; }
   .blog-editor-fields { grid-template-columns: 1fr; }
   .blog-editor-field--wide { grid-column: auto; }
+  .blog-editor-image-field { grid-template-columns: 1fr; }
   .blog-editor-preview-panel > header { align-items: flex-start; flex-direction: column; }
   .blog-editor-preview { min-height: 560px; padding: 8px; }
   .blog-editor-preview iframe { min-height: 540px; }

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
+import { MediaPickerDialog, resolveMediaAssetUrl } from '../components/MediaLibraryBrowser';
 import {
   blogBlockLabels,
   createBlogBlock,
@@ -20,9 +21,11 @@ import type {
   BlogPostDocument,
   BlogPostSection
 } from '../types/blog-editor';
+import type { MediaAsset } from '../types/media';
 import '../styles/blog-post-editor.css';
 
 const blockTypes = Object.entries(blogBlockLabels) as Array<[BlogContentBlock['type'], string]>;
+type ImageTarget = { type: 'hero' } | { type: 'block'; sectionId: string; blockId: string };
 
 function moveItem<T>(items: T[], index: number, direction: -1 | 1) {
   const target = index + direction;
@@ -96,11 +99,11 @@ function TextListEditor({ values, onChange, label }: { values: string[]; onChang
   </div>;
 }
 
-function BlockEditor({ block, onChange }: { block: BlogContentBlock; onChange: (block: BlogContentBlock) => void }) {
+function BlockEditor({ block, onChange, onPickImage }: { block: BlogContentBlock; onChange: (block: BlogContentBlock) => void; onPickImage: () => void }) {
   if (block.type === 'paragraph') return <label className="field"><span>Текст</span><MarkdownField value={block.text} onChange={(text) => onChange({ ...block, text })} rows={6} /></label>;
   if (block.type === 'subheading') return <label className="field"><span>Підзаголовок</span><input value={block.text} onChange={(event) => onChange({ ...block, text: event.target.value })} /></label>;
   if (block.type === 'image') return <div className="blog-editor-fields">
-    <label className="field blog-editor-field--wide"><span>HTTPS-посилання на зображення</span><input type="url" value={block.url} placeholder="https://…" onChange={(event) => onChange({ ...block, url: event.target.value })} /></label>
+    <div className="field blog-editor-field--wide"><span>Посилання на зображення</span><div className="blog-editor-image-field"><input type="url" value={block.url} placeholder="https://…" aria-label="Посилання на зображення" onChange={(event) => onChange({ ...block, url: event.target.value })} /><button className="button button--secondary" type="button" onClick={onPickImage}><Icon name="image" size={17} /> Завантажити або обрати</button></div></div>
     <label className="field"><span>Alt-текст</span><input value={block.alt} onChange={(event) => onChange({ ...block, alt: event.target.value })} /></label>
     <label className="field"><span>Підпис</span><input value={block.caption} onChange={(event) => onChange({ ...block, caption: event.target.value })} /></label>
   </div>;
@@ -147,13 +150,14 @@ function BlockEditor({ block, onChange }: { block: BlogContentBlock; onChange: (
   </div>;
 }
 
-function SectionEditor({ section, index, total, onChange, onMove, onRemove }: {
+function SectionEditor({ section, index, total, onChange, onMove, onRemove, onPickImage }: {
   section: BlogPostSection;
   index: number;
   total: number;
   onChange: (section: BlogPostSection) => void;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
+  onPickImage: (blockId: string) => void;
 }) {
   const [blockType, setBlockType] = useState<BlogContentBlock['type']>('paragraph');
   return <details className="blog-editor-section" open>
@@ -169,7 +173,7 @@ function SectionEditor({ section, index, total, onChange, onMove, onRemove }: {
         <label className="field"><span>Фон</span><select value={section.tone} onChange={(event) => onChange({ ...section, tone: event.target.value as BlogPostSection['tone'] })}><option value="default">Білий</option><option value="soft">М’який жовтий</option></select></label>
       </div>
       <div className="blog-editor-section__blocks">
-        {section.blocks.map((block, blockIndex) => <BlockShell key={block.id} block={block} index={blockIndex} total={section.blocks.length} onMove={(direction) => onChange({ ...section, blocks: moveItem(section.blocks, blockIndex, direction) })} onRemove={() => onChange({ ...section, blocks: section.blocks.filter((item) => item.id !== block.id) })}><BlockEditor block={block} onChange={(next) => onChange({ ...section, blocks: section.blocks.map((item) => item.id === block.id ? next : item) })} /></BlockShell>)}
+        {section.blocks.map((block, blockIndex) => <BlockShell key={block.id} block={block} index={blockIndex} total={section.blocks.length} onMove={(direction) => onChange({ ...section, blocks: moveItem(section.blocks, blockIndex, direction) })} onRemove={() => onChange({ ...section, blocks: section.blocks.filter((item) => item.id !== block.id) })}><BlockEditor block={block} onPickImage={() => onPickImage(block.id)} onChange={(next) => onChange({ ...section, blocks: section.blocks.map((item) => item.id === block.id ? next : item) })} /></BlockShell>)}
       </div>
       <div className="blog-editor-add-block"><select value={blockType} onChange={(event) => setBlockType(event.target.value as BlogContentBlock['type'])}>{blockTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="button button--secondary" type="button" onClick={() => onChange({ ...section, blocks: [...section.blocks, createBlogBlock(blockType)] })}><Icon name="add" size={17} /> Додати блок</button></div>
     </div>
@@ -187,6 +191,7 @@ export function BlogPostEditorPage() {
   const [view, setView] = useState<'editor' | 'code'>('editor');
   const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop');
   const [codeTab, setCodeTab] = useState<'combined' | 'html' | 'css' | 'js'>('combined');
+  const [imageTarget, setImageTarget] = useState<ImageTarget | null>(null);
 
   const publication = useQuery({
     queryKey: ['publication-editor', publicationId],
@@ -221,6 +226,26 @@ export function BlogPostEditorPage() {
     setDirty(true);
   }
 
+  function selectImage(asset: MediaAsset) {
+    if (!imageTarget) return;
+    const url = resolveMediaAssetUrl(asset.url);
+    const fallbackAlt = asset.altText || asset.name.replace(/\.[^.]+$/, '');
+    update((current) => {
+      if (imageTarget.type === 'hero') {
+        return { ...current, hero: { ...current.hero, imageUrl: url, imageAlt: current.hero.imageAlt || fallbackAlt } };
+      }
+      return {
+        ...current,
+        sections: current.sections.map((section) => section.id !== imageTarget.sectionId ? section : {
+          ...section,
+          blocks: section.blocks.map((block) => block.id !== imageTarget.blockId || block.type !== 'image'
+            ? block
+            : { ...block, url, alt: block.alt || fallbackAlt })
+        })
+      };
+    });
+  }
+
   async function saveDocument() {
     if (!document || !canEdit) return;
     try {
@@ -250,6 +275,7 @@ export function BlogPostEditorPage() {
     <header className="blog-editor-header">
       <div className="blog-editor-header__title"><Link to="/tools/blog-publications" aria-label="Повернутися до контент-плану"><Icon name="arrowLeft" size={20} /></Link><div><p className="eyebrow">Редактор блогу</p><h1>{publication.data.title}</h1><span>{wordCount} слів · {document.sections.length} секцій · {dirty ? 'є незбережені зміни' : 'збережено'}</span></div></div>
       <div className="blog-editor-header__actions">
+        <Link className="button button--secondary" to="/tools/blog-publications/media"><Icon name="storage" size={17} /> Сховище</Link>
         <div className="blog-editor-view-switch"><button className={view === 'editor' ? 'active' : ''} type="button" onClick={() => setView('editor')}><Icon name="visibility" size={17} /> Редактор</button><button className={view === 'code' ? 'active' : ''} type="button" onClick={() => setView('code')}><Icon name="publication" size={17} /> Код</button></div>
         <button className="button button--primary" type="button" disabled={!canEdit || save.isPending || !dirty} onClick={() => void saveDocument()}><Icon name="save" size={18} /> {save.isPending ? 'Зберігаємо…' : 'Зберегти'}</button>
       </div>
@@ -267,12 +293,12 @@ export function BlogPostEditorPage() {
           <label className="field"><span>Кікер</span><input value={document.hero.kicker} onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, kicker: event.target.value } }))} /></label>
           <label className="field blog-editor-field--wide"><span>H1 заголовок</span><input value={document.hero.title} onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, title: event.target.value } }))} /></label>
           <label className="field blog-editor-field--wide"><span>Лід</span><MarkdownField value={document.hero.lead} onChange={(lead) => update((current) => ({ ...current, hero: { ...current.hero, lead } }))} /></label>
-          <label className="field blog-editor-field--wide"><span>Головне зображення</span><input type="url" value={document.hero.imageUrl} placeholder="https://…" onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, imageUrl: event.target.value } }))} /></label>
+          <div className="field blog-editor-field--wide"><span>Головне зображення</span><div className="blog-editor-image-field"><input type="url" value={document.hero.imageUrl} placeholder="https://…" aria-label="Головне зображення" onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, imageUrl: event.target.value } }))} /><button className="button button--secondary" type="button" onClick={() => setImageTarget({ type: 'hero' })}><Icon name="image" size={17} /> Завантажити або обрати</button></div></div>
           <label className="field"><span>Alt-текст</span><input value={document.hero.imageAlt} onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, imageAlt: event.target.value } }))} /></label>
           <div className="field blog-editor-field--wide"><span>Мета-позначки</span><TextListEditor label="Позначка" values={document.hero.meta} onChange={(meta) => update((current) => ({ ...current, hero: { ...current.hero, meta } }))} /></div>
         </div></details>
         <div className="blog-editor-sections">
-          {document.sections.map((section, index) => <SectionEditor key={section.id} section={section} index={index} total={document.sections.length} onChange={(next) => update((current) => ({ ...current, sections: current.sections.map((item) => item.id === section.id ? next : item) }))} onMove={(direction) => update((current) => ({ ...current, sections: moveItem(current.sections, index, direction) }))} onRemove={() => update((current) => ({ ...current, sections: current.sections.filter((item) => item.id !== section.id) }))} />)}
+          {document.sections.map((section, index) => <SectionEditor key={section.id} section={section} index={index} total={document.sections.length} onChange={(next) => update((current) => ({ ...current, sections: current.sections.map((item) => item.id === section.id ? next : item) }))} onMove={(direction) => update((current) => ({ ...current, sections: moveItem(current.sections, index, direction) }))} onRemove={() => update((current) => ({ ...current, sections: current.sections.filter((item) => item.id !== section.id) }))} onPickImage={(blockId) => setImageTarget({ type: 'block', sectionId: section.id, blockId })} />)}
         </div>
         <button className="button button--secondary blog-editor-add-section" type="button" onClick={() => update((current) => ({ ...current, sections: [...current.sections, createBlogSection()] }))}><Icon name="add" size={18} /> Додати секцію</button>
         <details className="blog-editor-panel"><summary>Власні CSS та JS</summary><div className="blog-editor-panel__body">
@@ -290,5 +316,6 @@ export function BlogPostEditorPage() {
       <nav className="blog-editor-code-tabs" aria-label="Частини коду">{(['combined', 'html', 'css', 'js'] as const).map((tab) => <button key={tab} className={codeTab === tab ? 'active' : ''} type="button" onClick={() => setCodeTab(tab)}>{tab === 'combined' ? 'Усе разом' : tab.toUpperCase()}</button>)}</nav>
       <div className="blog-editor-code"><button type="button" onClick={() => void copyCode(code, codeTab === 'combined' ? 'Повний код' : codeTab.toUpperCase())}><Icon name="copy" size={16} /> Копіювати</button><textarea value={code} readOnly spellCheck={false} aria-label="Згенерований код" /></div>
     </section>}
+    {imageTarget && <MediaPickerDialog onClose={() => setImageTarget(null)} onSelect={selectImage} />}
   </div>;
 }

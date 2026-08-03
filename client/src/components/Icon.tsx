@@ -108,6 +108,7 @@ export type IconName =
   | 'fullscreenExit'
   | 'formBuilder'
   | 'home'
+  | 'image'
   | 'integrations'
   | 'logout'
   | 'menu'
@@ -193,6 +194,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   fullscreenExit: FullscreenExitRounded,
   formBuilder: DynamicFormRounded,
   home: HomeRounded,
+  image: ImageOutlined,
   integrations: SettingsInputComponentRounded,
   logout: LogoutRounded,
   menu: MenuRounded,

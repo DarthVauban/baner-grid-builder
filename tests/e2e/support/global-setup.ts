@@ -1,8 +1,13 @@
 import type { Server } from 'node:http';
+import { rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 const port = 4175;
+const mediaDir = path.join(os.tmpdir(), `mt-workspace-e2e-media-${process.pid}`);
 
 export default async function globalSetup() {
+  await rm(mediaDir, { recursive: true, force: true });
   Object.assign(process.env, {
     NODE_ENV: 'test',
     PORT: String(port),
@@ -14,6 +19,7 @@ export default async function globalSetup() {
     COOKIE_SECURE: 'false',
     APP_BUILD_SHA: 'e2e-test',
     APP_ORIGIN: `http://127.0.0.1:${port}`,
+    CATALOG_MEDIA_DIR: mediaDir,
     ADMIN_NAME: 'E2E Admin',
     ADMIN_EMAIL: 'e2e-admin@test.local',
     ADMIN_PASSWORD: 'E2E-admin-password-2026'
@@ -39,5 +45,6 @@ export default async function globalSetup() {
       server.close((error) => error ? reject(error) : resolve());
     });
     await poolModule.pool.end();
+    await rm(mediaDir, { recursive: true, force: true });
   };
 }
