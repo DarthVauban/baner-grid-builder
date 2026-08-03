@@ -93,6 +93,19 @@ const editorDocumentSchema = z.object({
     id: z.string().min(1).max(120), title: z.string().max(500),
     tone: z.enum(['default', 'soft']), blocks: z.array(editorBlockSchema).max(100)
   })).max(100),
+  typography: z.object({
+    bodyFontSize: z.number().min(12).max(24)
+  }).default({ bodyFontSize: 18 }),
+  linkAppearance: z.object({
+    backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+    textColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+    borderColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+    borderRadius: z.number().min(0).max(999),
+    fontWeight: z.number().int().min(400).max(900)
+  }).default({
+    backgroundColor: '#000000', textColor: '#ffe101', borderColor: '#ffe101',
+    borderRadius: 8, fontWeight: 800
+  }),
   customCss: z.string().max(100_000),
   customJs: z.string().max(100_000)
 });

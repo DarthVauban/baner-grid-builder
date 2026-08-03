@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createBlogBlock, createBlogPostDocument, generateBlogPostExport, normalizeSlug, renderInlineText } from './blog-editor';
+import {
+  createBlogBlock,
+  createBlogPostDocument,
+  generateBlogPostExport,
+  normalizeBlogPostDocument,
+  normalizeSlug,
+  renderInlineText,
+  sanitizeRichTextHtml
+} from './blog-editor';
 
 describe('blog editor export', () => {
   it('creates portable ASCII slugs from Ukrainian titles', () => {
@@ -61,5 +69,55 @@ describe('blog editor export', () => {
     expect(renderInlineText('**Сильний** *текст* [товар](https://example.com/item)')).toContain('<strong>Сильний</strong>');
     expect(renderInlineText('**Сильний** *текст* [товар](https://example.com/item)')).toContain('<em>текст</em>');
     expect(renderInlineText('**Сильний** *текст* [товар](https://example.com/item)')).toContain('class="mt-blog-label"');
+  });
+
+  it('keeps safe pasted rich text while removing executable markup', () => {
+    const result = sanitizeRichTextHtml('<p><strong>Жирний</strong> <em>курсив</em> <a href="https://example.com/item" onclick="alert(1)">товар</a><script>alert(1)</script><a href="javascript:alert(2)">небезпечно</a><span style="font-size:24px;color:red">великий</span><span style="font-weight:700;font-style:italic">стилізований</span></p>');
+
+    expect(result).toContain('<strong>Жирний</strong>');
+    expect(result).toContain('<em>курсив</em>');
+    expect(result).toContain('<a class="mt-blog-label" href="https://example.com/item">товар</a>');
+    expect(result).toContain('<span style="font-size:24px">великий</span>');
+    expect(result).toContain('<em><strong>стилізований</strong></em>');
+    expect(result).not.toContain('onclick');
+    expect(result).not.toContain('<script');
+    expect(result).not.toContain('javascript:');
+  });
+
+  it('exports configurable typography and link plaques', () => {
+    const document = createBlogPostDocument('Стилі посилань', 'Опис');
+    document.typography.bodyFontSize = 20;
+    document.linkAppearance = {
+      backgroundColor: '#ffe101',
+      textColor: '#000000',
+      borderColor: '#ffe101',
+      borderRadius: 999,
+      fontWeight: 900
+    };
+    document.sections[0].blocks = [{
+      id: 'rich-text',
+      type: 'paragraph',
+      text: '<strong>Новинка</strong> <a href="https://example.com/phone">Samsung A56</a>'
+    }];
+
+    const output = generateBlogPostExport(document);
+
+    expect(output.html).toContain('<strong>Новинка</strong>');
+    expect(output.html).toContain('class="mt-blog-label" href="https://example.com/phone"');
+    expect(output.css).toContain('--mt-body-font-size: 20px');
+    expect(output.css).toContain('--mt-link-background: #ffe101');
+    expect(output.css).toContain('--mt-link-radius: 999px');
+    expect(output.css).toContain('--mt-link-weight: 900');
+  });
+
+  it('fills new design defaults for legacy drafts', () => {
+    const current = createBlogPostDocument('Стара чернетка', 'Опис');
+    const legacy = { ...current } as Partial<typeof current>;
+    delete legacy.typography;
+    delete legacy.linkAppearance;
+    const normalized = normalizeBlogPostDocument(legacy as typeof current);
+
+    expect(normalized.typography.bodyFontSize).toBe(18);
+    expect(normalized.linkAppearance.backgroundColor).toBe('#000000');
   });
 });

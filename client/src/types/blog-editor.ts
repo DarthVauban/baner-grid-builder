@@ -1,6 +1,18 @@
 export type BlogSectionTone = 'default' | 'soft';
 export type BlogCardColumns = 2 | 3;
 
+export interface BlogTypography {
+  bodyFontSize: number;
+}
+
+export interface BlogLinkAppearance {
+  backgroundColor: string;
+  textColor: string;
+  borderColor: string;
+  borderRadius: number;
+  fontWeight: number;
+}
+
 export interface BlogHero {
   kicker: string;
   title: string;
@@ -109,6 +121,8 @@ export interface BlogPostDocument {
   sharePreview: string;
   hero: BlogHero;
   sections: BlogPostSection[];
+  typography: BlogTypography;
+  linkAppearance: BlogLinkAppearance;
   customCss: string;
   customJs: string;
 }

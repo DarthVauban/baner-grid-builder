@@ -91,6 +91,18 @@ export async function listMediaAssets({ search = '', folderId = null, page = 1, 
   };
 }
 
+export async function listMediaAssetIds({ folderId = null }, db = { query }) {
+  await getFolder(folderId, db);
+  const result = await db.query(
+    `SELECT id
+     FROM media_library_assets
+     WHERE ${folderId ? 'folder_id = $1' : 'folder_id IS NULL'}
+     ORDER BY created_at DESC`,
+    folderId ? [folderId] : []
+  );
+  return result.rows.map((row) => row.id);
+}
+
 export async function listMediaFolders({ parentId = null }, db = { query }) {
   const all = await db.query(
     `SELECT folder.*, creator.name AS creator_name
@@ -208,4 +220,24 @@ export async function deleteMediaAsset(id, user, db = { query }) {
   }
   await removeMediaImage(asset.storage_key);
   await db.query('DELETE FROM media_library_assets WHERE id = $1', [id]);
+}
+
+export async function deleteMediaAssets(ids, user, db = { query }) {
+  const placeholders = ids.map((_, index) => `$${index + 1}`).join(', ');
+  const existing = await db.query(
+    `SELECT * FROM media_library_assets WHERE id IN (${placeholders})`,
+    ids
+  );
+  const assets = existing.rows;
+  const denied = assets.find((asset) => user.role !== 'admin' && asset.created_by !== user.id);
+  if (denied) {
+    throw new AppError(403, 'MEDIA_DELETE_DENIED', 'Видалити вибрані зображення може їх автор або адміністратор.');
+  }
+  await Promise.all(assets.map((asset) => removeMediaImage(asset.storage_key)));
+  if (assets.length) {
+    const assetIds = assets.map((asset) => asset.id);
+    const deletePlaceholders = assetIds.map((_, index) => `$${index + 1}`).join(', ');
+    await db.query(`DELETE FROM media_library_assets WHERE id IN (${deletePlaceholders})`, assetIds);
+  }
+  return assets.length;
 }

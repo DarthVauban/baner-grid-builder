@@ -9,7 +9,9 @@ import {
   createMediaAsset,
   createMediaFolder,
   deleteMediaAsset,
+  deleteMediaAssets,
   deleteMediaFolder,
+  listMediaAssetIds,
   listMediaAssets,
   listMediaFolders,
   updateMediaAsset,
@@ -37,6 +39,7 @@ const updateSchema = z.object({
   name: z.string().trim().min(1).max(255),
   altText: z.string().trim().max(500).default('')
 });
+const bulkDeleteSchema = z.object({ ids: z.array(z.string().uuid()).min(1).max(500) });
 
 function decodeFileName(value) {
   try {
@@ -54,6 +57,17 @@ router.get('/', asyncHandler(async (req, res) => {
 router.get('/folders', asyncHandler(async (req, res) => {
   const input = parseInput(folderListSchema, req.query);
   res.json({ data: await listMediaFolders(input) });
+}));
+
+router.get('/selection', asyncHandler(async (req, res) => {
+  const input = parseInput(uploadSchema, req.query);
+  res.json({ data: { ids: await listMediaAssetIds({ folderId: input.folderId || null }) } });
+}));
+
+router.post('/bulk-delete', asyncHandler(async (req, res) => {
+  const input = parseInput(bulkDeleteSchema, req.body);
+  const deleted = await deleteMediaAssets(input.ids, req.user);
+  res.json({ data: { deleted } });
 }));
 
 router.post('/folders', asyncHandler(async (req, res) => {

@@ -26,6 +26,12 @@ export const BLOG_TEMPLATE_CSS = `.mt-blog-post {
   --mt-line: rgba(0, 0, 0, .1);
   --mt-soft: #fff8bd;
   --mt-white: #fff;
+  --mt-body-font-size: 18px;
+  --mt-link-background: #000000;
+  --mt-link-text: #ffe101;
+  --mt-link-border: #ffe101;
+  --mt-link-radius: 8px;
+  --mt-link-weight: 800;
   width: 100%;
   max-width: 1120px;
   margin: 0 auto;
@@ -89,9 +95,8 @@ export const BLOG_TEMPLATE_CSS = `.mt-blog-post {
 .mt-blog-post .mt-blog-section-title { position: relative; margin-bottom: 18px; padding-left: 18px; color: var(--mt-black); font-size: clamp(24px, 3.4vw, 38px); font-weight: 900; line-height: 1.14; letter-spacing: -.03em; }
 .mt-blog-post .mt-blog-section-title::before { content: ""; position: absolute; top: .12em; left: 0; width: 6px; height: .95em; border-radius: 99px; background: var(--mt-yellow); box-shadow: 0 0 0 4px rgba(255, 225, 1, .22); }
 .mt-blog-post .mt-blog-subtitle { margin: 26px 0 12px; color: var(--mt-black); font-size: clamp(20px, 2.6vw, 28px); font-weight: 900; line-height: 1.22; letter-spacing: -.02em; }
-.mt-blog-post .mt-blog-text { margin-bottom: 16px; color: var(--mt-text); font-size: clamp(15px, 1.45vw, 18px); line-height: 1.72; }
-.mt-blog-post .mt-blog-label { display: inline; margin: 0 3px; padding: 3px 9px; border: 1px solid rgba(255, 225, 1, .18); border-radius: 8px; color: var(--mt-yellow); background: var(--mt-black); font-size: .92em; font-weight: 800; line-height: 1.55; text-decoration: none; overflow-wrap: anywhere; box-decoration-break: clone; }
-.mt-blog-post .mt-blog-hero .mt-blog-label, .mt-blog-post .mt-blog-callout .mt-blog-label, .mt-blog-post .mt-blog-cta .mt-blog-label { color: var(--mt-black); background: var(--mt-yellow); }
+.mt-blog-post .mt-blog-text { margin-bottom: 16px; color: var(--mt-text); font-size: var(--mt-body-font-size); line-height: 1.72; }
+.mt-blog-post .mt-blog-label { display: inline; margin: 0 3px; padding: 3px 9px; border: 1px solid var(--mt-link-border); border-radius: var(--mt-link-radius); color: var(--mt-link-text); background: var(--mt-link-background); font-size: .92em; font-weight: var(--mt-link-weight); line-height: 1.55; text-decoration: none; overflow-wrap: anywhere; box-decoration-break: clone; }
 .mt-blog-post .mt-blog-list { margin: 0 0 26px; padding-left: 22px; color: #2d2d2d; font-size: 17px; line-height: 1.72; }
 .mt-blog-post .mt-blog-list li { margin-bottom: 8px; }
 .mt-blog-post .mt-blog-table-wrap { width: 100%; margin-bottom: 30px; overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; }
@@ -109,7 +114,7 @@ export const BLOG_TEMPLATE_CSS = `.mt-blog-post {
 .mt-blog-post .mt-blog-faq-question::after { content: "+"; color: #8b7b00; }
 .mt-blog-post .mt-blog-faq-item[open] .mt-blog-faq-question::after { content: "−"; }
 .mt-blog-post .mt-blog-faq-question::-webkit-details-marker { display: none; }
-.mt-blog-post .mt-blog-faq-answer { padding: 0 clamp(16px, 2.5vw, 24px) clamp(16px, 2.5vw, 24px); color: var(--mt-text); font-size: clamp(15px, 1.35vw, 17px); line-height: 1.65; }
+.mt-blog-post .mt-blog-faq-answer { padding: 0 clamp(16px, 2.5vw, 24px) clamp(16px, 2.5vw, 24px); color: var(--mt-text); font-size: var(--mt-body-font-size); line-height: 1.65; }
 .mt-blog-post .mt-blog-cta { margin: 24px 0 0; padding: clamp(24px, 4vw, 40px); border-top: 6px solid var(--mt-yellow); border-radius: 22px; color: var(--mt-white); background: var(--mt-black); }
 .mt-blog-post .mt-blog-cta-title { margin-bottom: 12px; color: var(--mt-yellow); font-size: clamp(24px, 3.4vw, 38px); font-weight: 900; line-height: 1.14; }
 .mt-blog-post .mt-blog-cta .mt-blog-text { color: rgba(255, 255, 255, .92); }
@@ -168,8 +173,47 @@ export function createBlogPostDocument(title = '', description = ''): BlogPostDo
         blocks: [{ id: createId('paragraph'), type: 'paragraph', text: description || 'Додайте основний текст статті.' }]
       }
     ],
+    typography: { bodyFontSize: 18 },
+    linkAppearance: {
+      backgroundColor: '#000000',
+      textColor: '#ffe101',
+      borderColor: '#ffe101',
+      borderRadius: 8,
+      fontWeight: 800
+    },
     customCss: '',
     customJs: ''
+  };
+}
+
+function boundedNumber(value: unknown, fallback: number, min: number, max: number) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function safeHexColor(value: unknown, fallback: string) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value) ? value.toLowerCase() : fallback;
+}
+
+export function normalizeBlogPostDocument(input: BlogPostDocument | null | undefined, title = '', description = ''): BlogPostDocument {
+  const defaults = createBlogPostDocument(title, description);
+  if (!input || typeof input !== 'object') return defaults;
+  return {
+    ...defaults,
+    ...input,
+    version: 1,
+    hero: { ...defaults.hero, ...input.hero },
+    sections: Array.isArray(input.sections) ? input.sections : defaults.sections,
+    typography: {
+      bodyFontSize: boundedNumber(input.typography?.bodyFontSize, defaults.typography.bodyFontSize, 12, 24)
+    },
+    linkAppearance: {
+      backgroundColor: safeHexColor(input.linkAppearance?.backgroundColor, defaults.linkAppearance.backgroundColor),
+      textColor: safeHexColor(input.linkAppearance?.textColor, defaults.linkAppearance.textColor),
+      borderColor: safeHexColor(input.linkAppearance?.borderColor, defaults.linkAppearance.borderColor),
+      borderRadius: boundedNumber(input.linkAppearance?.borderRadius, defaults.linkAppearance.borderRadius, 0, 999),
+      fontWeight: boundedNumber(input.linkAppearance?.fontWeight, defaults.linkAppearance.fontWeight, 400, 900)
+    }
   };
 }
 
@@ -205,7 +249,53 @@ function safeUrl(value: string) {
   }
 }
 
+const discardedRichTextTags = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math']);
+const blockRichTextTags = new Set(['p', 'div', 'section', 'article', 'header', 'footer', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+
+export function sanitizeRichTextHtml(value: string) {
+  if (!value) return '';
+  if (typeof DOMParser === 'undefined') return escapeHtml(value);
+  const parsed = new DOMParser().parseFromString(value, 'text/html');
+
+  function serialize(node: ChildNode): string {
+    if (node.nodeType === 3) return escapeHtml(node.textContent || '');
+    if (node.nodeType !== 1) return '';
+    const element = node as HTMLElement;
+    const tag = element.tagName.toLowerCase();
+    if (discardedRichTextTags.has(tag)) return '';
+    if (tag === 'br') return '<br />';
+    const content = [...element.childNodes].map(serialize).join('');
+    if (tag === 'strong' || tag === 'b') return `<strong>${content}</strong>`;
+    if (tag === 'em' || tag === 'i') return `<em>${content}</em>`;
+    if (tag === 'a') {
+      const href = safeUrl(element.getAttribute('href') || '');
+      return href ? `<a class="mt-blog-label" href="${escapeHtml(href)}">${content}</a>` : content;
+    }
+    if (tag === 'span') {
+      const style = element.getAttribute('style') || '';
+      const sizeMatch = style.match(/font-size\s*:\s*(\d+(?:\.\d+)?)px/iu);
+      const weightMatch = style.match(/font-weight\s*:\s*(bold|[6-9]00)/iu);
+      const italic = /font-style\s*:\s*italic/iu.test(style);
+      let formatted = content;
+      if (weightMatch) formatted = `<strong>${formatted}</strong>`;
+      if (italic) formatted = `<em>${formatted}</em>`;
+      if (sizeMatch) {
+        const size = Math.min(48, Math.max(10, Number(sizeMatch[1])));
+        formatted = `<span style="font-size:${size}px">${formatted}</span>`;
+      }
+      return formatted;
+    }
+    return blockRichTextTags.has(tag) && content ? `${content}<br />` : content;
+  }
+
+  return [...parsed.body.childNodes]
+    .map(serialize)
+    .join('')
+    .replace(/(?:<br \/>\s*){3,}/giu, '<br /><br />');
+}
+
 export function renderInlineText(value: string) {
+  if (/<(?:strong|b|em|i|a|span|br)\b/iu.test(value)) return sanitizeRichTextHtml(value);
   const pattern = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*\n]+)\*\*|\*([^*\n]+)\*)/giu;
   let result = '';
   let cursor = 0;
@@ -274,17 +364,19 @@ function createTemplateJs(rootId: string) {
 }
 
 export function generateBlogPostExport(document: BlogPostDocument): BlogPostExport {
-  const rootId = `mt-blog-${normalizeSlug(document.slug || document.hero.title)}`;
-  const heroImage = safeUrl(document.hero.imageUrl)
-    ? `<figure class="mt-blog-image"><img src="${escapeHtml(safeUrl(document.hero.imageUrl))}" alt="${escapeHtml(document.hero.imageAlt)}" loading="lazy" /></figure>`
+  const normalized = normalizeBlogPostDocument(document);
+  const rootId = `mt-blog-${normalizeSlug(normalized.slug || normalized.hero.title)}`;
+  const heroImage = safeUrl(normalized.hero.imageUrl)
+    ? `<figure class="mt-blog-image"><img src="${escapeHtml(safeUrl(normalized.hero.imageUrl))}" alt="${escapeHtml(normalized.hero.imageAlt)}" loading="lazy" /></figure>`
     : '';
-  const meta = document.hero.meta.filter(Boolean).length
-    ? `<div class="mt-blog-meta">${document.hero.meta.filter(Boolean).map((item) => `<span class="mt-blog-meta-item">${renderInlineText(item)}</span>`).join('')}</div>`
+  const meta = normalized.hero.meta.filter(Boolean).length
+    ? `<div class="mt-blog-meta">${normalized.hero.meta.filter(Boolean).map((item) => `<span class="mt-blog-meta-item">${renderInlineText(item)}</span>`).join('')}</div>`
     : '';
-  const sections = document.sections.map((section) => `<section class="mt-blog-section${section.tone === 'soft' ? ' mt-blog-section--soft' : ''}"><h2 class="mt-blog-section-title">${renderInlineText(section.title)}</h2>${section.blocks.map(renderBlock).join('')}</section>`).join('');
-  const html = `<div class="mt-blog-post" id="${rootId}"><article class="mt-blog-article"><p class="mt-blog-share-preview">${escapeHtml(document.sharePreview)}</p><header class="mt-blog-hero">${heroImage}<div class="mt-blog-kicker">${renderInlineText(document.hero.kicker)}</div><h1 class="mt-blog-title">${renderInlineText(document.hero.title)}</h1>${document.hero.lead ? `<p class="mt-blog-lead">${renderInlineText(document.hero.lead)}</p>` : ''}${meta}</header>${sections}</article></div>`;
-  const css = `${BLOG_TEMPLATE_CSS}${document.customCss.trim() ? `\n${document.customCss.trim()}` : ''}`;
-  const js = `${createTemplateJs(rootId)}${document.customJs.trim() ? `\n\n${document.customJs.trim()}` : ''}`;
+  const sections = normalized.sections.map((section) => `<section class="mt-blog-section${section.tone === 'soft' ? ' mt-blog-section--soft' : ''}"><h2 class="mt-blog-section-title">${renderInlineText(section.title)}</h2>${section.blocks.map(renderBlock).join('')}</section>`).join('');
+  const html = `<div class="mt-blog-post" id="${rootId}"><article class="mt-blog-article"><p class="mt-blog-share-preview">${escapeHtml(normalized.sharePreview)}</p><header class="mt-blog-hero">${heroImage}<div class="mt-blog-kicker">${renderInlineText(normalized.hero.kicker)}</div><h1 class="mt-blog-title">${renderInlineText(normalized.hero.title)}</h1>${normalized.hero.lead ? `<p class="mt-blog-lead">${renderInlineText(normalized.hero.lead)}</p>` : ''}${meta}</header>${sections}</article></div>`;
+  const settingsCss = `#${rootId} {\n  --mt-body-font-size: ${normalized.typography.bodyFontSize}px;\n  --mt-link-background: ${normalized.linkAppearance.backgroundColor};\n  --mt-link-text: ${normalized.linkAppearance.textColor};\n  --mt-link-border: ${normalized.linkAppearance.borderColor};\n  --mt-link-radius: ${normalized.linkAppearance.borderRadius}px;\n  --mt-link-weight: ${normalized.linkAppearance.fontWeight};\n}`;
+  const css = `${BLOG_TEMPLATE_CSS}\n${settingsCss}${normalized.customCss.trim() ? `\n${normalized.customCss.trim()}` : ''}`;
+  const js = `${createTemplateJs(rootId)}${normalized.customJs.trim() ? `\n\n${normalized.customJs.trim()}` : ''}`;
   const combined = `${html}\n<style type="text/css">\n${css}\n</style>\n<script>\n${js.replace(/<\/script/giu, '<\\/script')}\n</script>`;
   const preview = `<!doctype html><html lang="uk"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><style>body{margin:0;padding:24px;background:#eef0f3;font-family:Arial,sans-serif}@media(max-width:480px){body{padding:0}}</style><style>${css}</style></head><body>${html}<script>${js.replace(/<\/script/giu, '<\\/script')}</script></body></html>`;
   return { html, css, js, combined, preview };

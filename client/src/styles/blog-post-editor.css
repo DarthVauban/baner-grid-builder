@@ -28,13 +28,32 @@
 .blog-editor-page .field input, .blog-editor-page .field select, .blog-editor-table-form input, .blog-editor-add-block select { min-height: 40px; padding: 8px 10px; }
 .blog-editor-page .field textarea { padding: 10px; line-height: 1.5; resize: vertical; }
 .blog-editor-page :where(input,textarea,select):focus { outline: 2px solid color-mix(in srgb, var(--accent) 48%, transparent); outline-offset: 1px; border-color: var(--accent); }
-.blog-markdown-field { overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
-.blog-markdown-field:focus-within { outline: 2px solid color-mix(in srgb, var(--accent) 48%, transparent); outline-offset: 1px; border-color: var(--accent); }
-.blog-markdown-field__toolbar { display: flex; align-items: center; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); background: var(--surface-soft); }
-.blog-markdown-field__toolbar button { display: grid; width: 28px; height: 27px; place-items: center; border: 0; border-radius: 7px; color: var(--ink); background: transparent; cursor: pointer; }
-.blog-markdown-field__toolbar button:hover { background: var(--surface); }
-.blog-markdown-field__toolbar > span { margin-left: 4px; color: var(--muted); font-size: 9px; }
-.blog-markdown-field textarea { width: 100%; padding: 10px; border: 0 !important; border-radius: 0 !important; outline: 0 !important; background: transparent !important; font: inherit; font-size: 13px; line-height: 1.55; resize: vertical; }
+.blog-rich-text-field { overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+.blog-rich-text-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent); }
+.blog-rich-text-field__toolbar { display: flex; min-height: 42px; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); background: var(--surface-soft); }
+.blog-rich-text-field__tool { width: 31px; height: 31px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); box-shadow: 0 1px 2px rgba(15,23,42,.08); font: inherit; font-size: 13px; cursor: pointer; transition: border-color .15s ease, color .15s ease, transform .15s ease; }
+.blog-rich-text-field__tool:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.blog-rich-text-field__tool:active { transform: translateY(0); }
+.blog-rich-text-field__size { flex: 0 0 auto; }
+.blog-rich-text-field__size select { width: 91px !important; min-height: 31px !important; border: 1px solid var(--line) !important; border-radius: 8px !important; padding: 4px 7px !important; color: var(--ink); background: var(--surface); font: inherit; font-size: 10px !important; font-weight: 750; cursor: pointer; }
+.blog-rich-text-field__hint { min-width: 0; margin-left: 3px; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.blog-rich-text-field__editor { width: 100%; overflow-y: auto; padding: 11px 12px; outline: 0; color: var(--ink); background: transparent; font: inherit; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.blog-rich-text-field__editor:empty::before { color: var(--muted); content: attr(data-placeholder); pointer-events: none; }
+.blog-rich-text-field__editor a { display: inline; margin: 0 2px; padding: 2px 6px; border-radius: 6px; color: #ffe101; background: #000; font-weight: 800; text-decoration: none; }
+.blog-link-dialog-backdrop { z-index: 190; }
+.blog-link-dialog { width: min(520px,100%); }
+.blog-link-dialog__body { display: grid; gap: 14px; padding: 22px 26px; }
+.blog-link-dialog__body .field { display: grid; gap: 7px; }
+.blog-link-dialog__body .field > span { margin: 0; }
+.blog-link-dialog__body input { width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; }
+.blog-link-dialog__body .form-message { margin: 0; }
+.blog-editor-color-field > div { min-height: 40px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 10px; padding: 5px 8px; background: var(--surface); }
+.blog-editor-color-field input[type="color"] { width: 30px !important; min-height: 28px !important; height: 28px; flex: 0 0 auto; border: 0 !important; border-radius: 7px !important; padding: 0 !important; overflow: hidden; cursor: pointer; }
+.blog-editor-color-field code { color: var(--muted); font: 10px "SFMono-Regular",Consolas,monospace; }
+.blog-editor-link-sample { min-height: 62px; display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; gap: 14px; border: 1px dashed var(--line-strong); border-radius: 11px; padding: 10px 12px; background: var(--surface-soft); }
+.blog-editor-link-sample > span { color: var(--muted); font-size: 10px; font-weight: 800; }
+.blog-editor-link-sample a { display: inline; padding: 4px 10px; border: 1px solid; font-size: 12px; line-height: 1.55; text-decoration: none; }
+.sr-only { width: 1px !important; height: 1px !important; position: absolute !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; }
 .blog-editor-sections { display: grid; gap: 12px; }
 .blog-editor-section > summary { align-items: center; }
 .blog-editor-section > summary > span:first-child { display: grid; min-width: 0; }
@@ -99,6 +118,9 @@
   .blog-editor-fields { grid-template-columns: 1fr; }
   .blog-editor-field--wide { grid-column: auto; }
   .blog-editor-image-field { grid-template-columns: 1fr; }
+  .blog-rich-text-field__toolbar { flex-wrap: wrap; }
+  .blog-rich-text-field__hint { width: 100%; margin: 0; }
+  .blog-editor-link-sample { grid-column: auto; }
   .blog-editor-preview-panel > header { align-items: flex-start; flex-direction: column; }
   .blog-editor-preview { min-height: 560px; padding: 8px; }
   .blog-editor-preview iframe { min-height: 540px; }

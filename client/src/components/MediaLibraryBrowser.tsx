@@ -79,6 +79,7 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
   const [editAlt, setEditAlt] = useState('');
   const [folderDialog, setFolderDialog] = useState<FolderDialog | null>(null);
   const [folderName, setFolderName] = useState('');
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(() => new Set());
 
   const folders = useQuery({
     queryKey: ['media-library-folders', currentFolderId],
@@ -97,6 +98,10 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
     mutationFn: ({ id, name, altText }: { id: string; name: string; altText: string }) => api.media.update(id, { name, altText })
   });
   const remove = useMutation({ mutationFn: api.media.remove });
+  const removeMany = useMutation({ mutationFn: api.media.removeMany });
+  const selectFolderAssets = useMutation({
+    mutationFn: () => api.media.selection(currentFolderId || undefined)
+  });
   const createFolder = useMutation({ mutationFn: api.media.createFolder });
   const renameFolder = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => api.media.updateFolder(id, name)
@@ -112,6 +117,7 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
     setCurrentFolderId(folderId);
     setSearch('');
     setPage(1);
+    setSelectedAssetIds(new Set());
   }
 
   function updateUploadItem(id: string, input: Partial<MediaUploadItem>) {
@@ -219,9 +225,52 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
     try {
       await remove.mutateAsync(asset.id);
       await queryClient.invalidateQueries({ queryKey: ['media-library'] });
+      setSelectedAssetIds((current) => {
+        const next = new Set(current);
+        next.delete(asset.id);
+        return next;
+      });
       showToast('Зображення видалено.');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося видалити зображення.', 'error');
+    }
+  }
+
+  function toggleAssetSelection(assetId: string) {
+    setSelectedAssetIds((current) => {
+      const next = new Set(current);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  }
+
+  async function selectAllInFolder() {
+    try {
+      const result = await selectFolderAssets.mutateAsync();
+      setSelectedAssetIds(new Set(result.ids));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося виділити файли папки.', 'error');
+    }
+  }
+
+  async function deleteSelectedAssets() {
+    const ids = [...selectedAssetIds];
+    if (!ids.length) return;
+    const approved = await confirm({
+      title: 'Видалити вибрані файли?',
+      message: `Буде безповоротно видалено файлів: ${ids.length}. Посилання на них перестануть працювати.`,
+      confirmLabel: `Видалити (${ids.length})`,
+      tone: 'danger'
+    });
+    if (!approved) return;
+    try {
+      const result = await removeMany.mutateAsync(ids);
+      setSelectedAssetIds(new Set());
+      await queryClient.invalidateQueries({ queryKey: ['media-library'] });
+      showToast(`Видалено файлів: ${result.deleted}.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити вибрані файли.', 'error');
     }
   }
 
@@ -341,6 +390,17 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
       <span>{visibleFolders.length} папок · {feed?.total || 0} зображень</span>
     </div>
 
+    {selectedAssetIds.size > 0 && <div className="media-library-selection" role="toolbar" aria-label="Дії з вибраними файлами">
+      <strong><Icon name="check" size={17} /> Вибрано: {selectedAssetIds.size}</strong>
+      <div>
+        <button className="button button--secondary button--small" type="button" disabled={selectFolderAssets.isPending} onClick={() => void selectAllInFolder()}>
+          {selectFolderAssets.isPending ? 'Виділяємо…' : 'Виділити усі'}
+        </button>
+        <button className="button button--secondary button--small" type="button" onClick={() => setSelectedAssetIds(new Set())}>Зняти виділення</button>
+        <button className="button button--danger button--small" type="button" disabled={removeMany.isPending} onClick={() => void deleteSelectedAssets()}><Icon name="delete" size={16} /> {removeMany.isPending ? 'Видаляємо…' : `Видалити (${selectedAssetIds.size})`}</button>
+      </div>
+    </div>}
+
     {isLoading && <div className="media-library-state"><span className="loading-screen__pulse" /><p>Завантажуємо файли…</p></div>}
     {!isLoading && loadError && <div className="media-library-state media-library-state--error"><p>{loadError instanceof Error ? loadError.message : 'Не вдалося завантажити сховище.'}</p><button className="button button--secondary" type="button" onClick={() => { void media.refetch(); void folders.refetch(); }}>Спробувати ще</button></div>}
     {!isLoading && !loadError && !hasContent && <div className="media-library-state"><span className="media-library-state__icon"><Icon name={search ? 'search' : 'folder'} size={30} /></span><h3>{search ? 'Нічого не знайдено' : 'Ця папка порожня'}</h3><p>{search ? 'Змініть пошуковий запит.' : 'Створіть вкладену папку або завантажте перше зображення.'}</p></div>}
@@ -359,18 +419,26 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
     </div>}
 
     {Boolean(feed?.items.length) && <div className="media-library-grid">
-      {feed!.items.map((asset) => <article className="media-asset-card" key={asset.id}>
+      {feed!.items.map((asset) => <article className={`media-asset-card${selectedAssetIds.has(asset.id) ? ' media-asset-card--selected' : ''}`} key={asset.id}>
+        <label className="media-asset-card__select" title={`Виділити ${asset.name}`}>
+          <input type="checkbox" checked={selectedAssetIds.has(asset.id)} aria-label={`Виділити ${asset.name}`} onChange={() => toggleAssetSelection(asset.id)} />
+          <span><Icon name="check" size={13} /></span>
+        </label>
         <div className="media-asset-card__preview"><img src={asset.url} alt={asset.altText || asset.name} loading="lazy" /></div>
         <div className="media-asset-card__body">
-          <strong title={asset.name}>{asset.name}</strong>
-          <span>{asset.width}×{asset.height} · {formatBytes(asset.size)} · WebP</span>
-          <small>{asset.createdBy?.name || 'Системний файл'} · {new Date(asset.createdAt).toLocaleDateString('uk-UA')}</small>
-        </div>
-        <div className="media-asset-card__actions">
-          {onSelect && <button className="button button--primary" type="button" onClick={() => onSelect(asset)}><Icon name="check" size={16} /> Вставити</button>}
-          <button className="icon-button" type="button" title="Копіювати URL" aria-label={`Копіювати URL ${asset.name}`} onClick={() => void copyUrl(asset)}><Icon name="copy" size={17} /></button>
-          <button className="icon-button" type="button" title="Редагувати" aria-label={`Редагувати ${asset.name}`} onClick={() => openEdit(asset)}><Icon name="edit" size={17} /></button>
-          <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label={`Видалити ${asset.name}`} onClick={() => void deleteAsset(asset)}><Icon name="delete" size={17} /></button>
+          <div className="media-asset-card__details">
+            <strong title={asset.name}>{asset.name}</strong>
+            <span>{asset.width}×{asset.height} · {formatBytes(asset.size)} · WebP</span>
+            <small>{asset.createdBy?.name || 'Системний файл'} · {new Date(asset.createdAt).toLocaleDateString('uk-UA')}</small>
+          </div>
+          <div className="media-asset-card__actions">
+            {onSelect && <button className="button button--primary media-asset-card__insert" type="button" onClick={() => onSelect(asset)}><Icon name="check" size={16} /> Вставити</button>}
+            <div className="media-asset-card__tools">
+              <button className="icon-button" type="button" title="Копіювати URL" aria-label={`Копіювати URL ${asset.name}`} onClick={() => void copyUrl(asset)}><Icon name="copy" size={17} /></button>
+              <button className="icon-button" type="button" title="Редагувати" aria-label={`Редагувати ${asset.name}`} onClick={() => openEdit(asset)}><Icon name="edit" size={17} /></button>
+              <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label={`Видалити ${asset.name}`} onClick={() => void deleteAsset(asset)}><Icon name="delete" size={17} /></button>
+            </div>
+          </div>
         </div>
       </article>)}
     </div>}

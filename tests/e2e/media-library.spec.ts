@@ -129,7 +129,17 @@ test('dropped images show progress, become compact WebP cards and can be inserte
   expect(confirmFooterPadding).toBeGreaterThanOrEqual(16);
   await page.getByRole('button', { name: 'Скасувати' }).click();
 
-  for (const asset of feed.items) await page.request.delete(`/api/media/${asset.id}`);
+  await heroCard.getByRole('checkbox', { name: 'Виділити e2e-hero.png' }).check();
+  const selectionToolbar = page.getByRole('toolbar', { name: 'Дії з вибраними файлами' });
+  await expect(selectionToolbar).toContainText('Вибрано: 1');
+  await selectionToolbar.getByRole('button', { name: 'Виділити усі' }).click();
+  await expect(selectionToolbar).toContainText('Вибрано: 2');
+  await expect(page.getByRole('checkbox', { name: 'Виділити e2e-square.png' })).toBeChecked();
+  await selectionToolbar.getByRole('button', { name: 'Видалити (2)' }).click();
+  await expect(page.getByRole('heading', { name: 'Видалити вибрані файли?' })).toBeVisible();
+  await page.locator('.confirm-dialog').getByRole('button', { name: 'Видалити (2)' }).click();
+  await expect(page.locator('.media-asset-card')).toHaveCount(0);
+
   await page.request.delete(`/api/media/folders/${folder!.id}`);
   await page.request.patch(`/api/publications/${publication.id}/status`, {
     data: { status: 'cancelled', publicationUrl: '' }

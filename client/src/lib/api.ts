@@ -188,6 +188,7 @@ export const api = {
   media: {
     list: (params: { search?: string; folderId?: string; page?: number; pageSize?: number } = {}) =>
       request<MediaAssetFeed>(`/api/media${queryString(params)}`),
+    selection: (folderId?: string) => request<{ ids: string[] }>(`/api/media/selection${queryString({ folderId })}`),
     folders: (parentId?: string) => request<MediaFolderFeed>(`/api/media/folders${queryString({ parentId })}`),
     createFolder: (input: { name: string; parentId: string | null }) =>
       request<MediaFolder>('/api/media/folders', { method: 'POST', body: jsonBody(input) }),
@@ -232,6 +233,16 @@ export const api = {
     }),
     update: (id: string, input: Pick<MediaAsset, 'name' | 'altText'>) =>
       request<MediaAsset>(`/api/media/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+    removeMany: async (ids: string[]) => {
+      let deleted = 0;
+      for (let index = 0; index < ids.length; index += 500) {
+        const result = await request<{ deleted: number }>('/api/media/bulk-delete', {
+          method: 'POST', body: jsonBody({ ids: ids.slice(index, index + 500) })
+        });
+        deleted += result.deleted;
+      }
+      return { deleted };
+    },
     remove: (id: string) => request<void>(`/api/media/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   chat: {

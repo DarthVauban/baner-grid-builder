@@ -136,6 +136,46 @@ test('media library creates nested folders and keeps uploads in the selected fol
   assert.equal(emptyFolders.body.data.items.length, 0);
 });
 
+test('media library selects and bulk deletes every asset only inside the requested folder', async () => {
+  const folder = await admin.post('/api/media/folders').send({
+    name: 'Масове видалення',
+    parentId: null
+  }).expect(201);
+  const png = await sharp({
+    create: { width: 180, height: 120, channels: 3, background: '#151515' }
+  }).png().toBuffer();
+
+  const rootAsset = await admin.post('/api/media')
+    .set('Content-Type', 'image/png')
+    .set('X-File-Name', 'root-asset.png')
+    .send(png)
+    .expect(201);
+  const first = await admin.post(`/api/media?folderId=${folder.body.data.id}`)
+    .set('Content-Type', 'image/png')
+    .set('X-File-Name', 'bulk-one.png')
+    .send(png)
+    .expect(201);
+  const second = await admin.post(`/api/media?folderId=${folder.body.data.id}`)
+    .set('Content-Type', 'image/png')
+    .set('X-File-Name', 'bulk-two.png')
+    .send(png)
+    .expect(201);
+
+  const selection = await admin.get(`/api/media/selection?folderId=${folder.body.data.id}`).expect(200);
+  assert.deepEqual(new Set(selection.body.data.ids), new Set([first.body.data.id, second.body.data.id]));
+
+  const deleted = await admin.post('/api/media/bulk-delete').send({ ids: selection.body.data.ids }).expect(200);
+  assert.equal(deleted.body.data.deleted, 2);
+  const folderAssets = await admin.get(`/api/media?folderId=${folder.body.data.id}`).expect(200);
+  assert.equal(folderAssets.body.data.total, 0);
+  const rootAssets = await admin.get('/api/media').expect(200);
+  assert.equal(rootAssets.body.data.total, 1);
+  assert.equal(rootAssets.body.data.items[0].id, rootAsset.body.data.id);
+
+  await admin.delete(`/api/media/${rootAsset.body.data.id}`).expect(204);
+  await admin.delete(`/api/media/folders/${folder.body.data.id}`).expect(204);
+});
+
 test('media library rejects invalid image payloads', async () => {
   const response = await admin.post('/api/media')
     .set('Content-Type', 'image/png')

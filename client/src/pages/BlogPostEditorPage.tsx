@@ -4,12 +4,14 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
 import { MediaPickerDialog, resolveMediaAssetUrl } from '../components/MediaLibraryBrowser';
+import { RichTextField } from '../components/RichTextField';
 import {
   blogBlockLabels,
   createBlogBlock,
   createBlogPostDocument,
   createBlogSection,
   generateBlogPostExport,
+  normalizeBlogPostDocument,
   normalizeSlug
 } from '../lib/blog-editor';
 import { api } from '../lib/api';
@@ -27,45 +29,26 @@ import '../styles/blog-post-editor.css';
 const blockTypes = Object.entries(blogBlockLabels) as Array<[BlogContentBlock['type'], string]>;
 type ImageTarget = { type: 'hero' } | { type: 'block'; sectionId: string; blockId: string };
 
+const linkAppearancePresets = {
+  blackYellow: { backgroundColor: '#000000', textColor: '#ffe101', borderColor: '#ffe101' },
+  yellowBlack: { backgroundColor: '#ffe101', textColor: '#000000', borderColor: '#ffe101' },
+  outline: { backgroundColor: '#ffffff', textColor: '#161616', borderColor: '#d8d8d8' }
+} as const;
+
+function currentLinkPreset(appearance: BlogPostDocument['linkAppearance']) {
+  return (Object.entries(linkAppearancePresets).find(([, preset]) => (
+    preset.backgroundColor === appearance.backgroundColor
+    && preset.textColor === appearance.textColor
+    && preset.borderColor === appearance.borderColor
+  ))?.[0] || 'custom') as keyof typeof linkAppearancePresets | 'custom';
+}
+
 function moveItem<T>(items: T[], index: number, direction: -1 | 1) {
   const target = index + direction;
   if (target < 0 || target >= items.length) return items;
   const next = [...items];
   [next[index], next[target]] = [next[target], next[index]];
   return next;
-}
-
-function MarkdownField({ value, onChange, rows = 4, placeholder = '' }: {
-  value: string;
-  onChange: (value: string) => void;
-  rows?: number;
-  placeholder?: string;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  function wrap(before: string, after: string, sample: string) {
-    const textarea = ref.current;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = value.slice(start, end) || sample;
-    const next = `${value.slice(0, start)}${before}${selected}${after}${value.slice(end)}`;
-    onChange(next);
-    requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + before.length, start + before.length + selected.length);
-    });
-  }
-
-  return <div className="blog-markdown-field">
-    <div className="blog-markdown-field__toolbar" aria-label="Форматування тексту">
-      <button type="button" title="Жирний текст" onClick={() => wrap('**', '**', 'важливий текст')}><strong>B</strong></button>
-      <button type="button" title="Курсив" onClick={() => wrap('*', '*', 'текст')}><em>I</em></button>
-      <button type="button" title="Посилання" onClick={() => wrap('[', '](https://)', 'назва посилання')}><Icon name="link" size={15} /></button>
-      <span>**жирний**, *курсив*, [посилання](https://…)</span>
-    </div>
-    <textarea ref={ref} value={value} rows={rows} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
-  </div>;
 }
 
 function BlockShell({ block, index, total, onMove, onRemove, children }: {
@@ -100,7 +83,7 @@ function TextListEditor({ values, onChange, label }: { values: string[]; onChang
 }
 
 function BlockEditor({ block, onChange, onPickImage }: { block: BlogContentBlock; onChange: (block: BlogContentBlock) => void; onPickImage: () => void }) {
-  if (block.type === 'paragraph') return <label className="field"><span>Текст</span><MarkdownField value={block.text} onChange={(text) => onChange({ ...block, text })} rows={6} /></label>;
+  if (block.type === 'paragraph') return <div className="field"><span>Текст</span><RichTextField value={block.text} onChange={(text) => onChange({ ...block, text })} rows={6} /></div>;
   if (block.type === 'subheading') return <label className="field"><span>Підзаголовок</span><input value={block.text} onChange={(event) => onChange({ ...block, text: event.target.value })} /></label>;
   if (block.type === 'image') return <div className="blog-editor-fields">
     <div className="field blog-editor-field--wide"><span>Посилання на зображення</span><div className="blog-editor-image-field"><input type="url" value={block.url} placeholder="https://…" aria-label="Посилання на зображення" onChange={(event) => onChange({ ...block, url: event.target.value })} /><button className="button button--secondary" type="button" onClick={onPickImage}><Icon name="image" size={17} /> Завантажити або обрати</button></div></div>
@@ -128,23 +111,23 @@ function BlockEditor({ block, onChange, onPickImage }: { block: BlogContentBlock
     {block.items.map((card, index) => <div className="blog-editor-repeat-card" key={index}>
       <header><strong>Картка {index + 1}</strong><button type="button" onClick={() => onChange({ ...block, items: block.items.filter((_, itemIndex) => itemIndex !== index) })}><Icon name="delete" size={16} /></button></header>
       <label className="field"><span>Заголовок</span><input value={card.title} onChange={(event) => onChange({ ...block, items: block.items.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item) })} /></label>
-      <label className="field"><span>Опис</span><MarkdownField value={card.text} rows={3} onChange={(text) => onChange({ ...block, items: block.items.map((item, itemIndex) => itemIndex === index ? { ...item, text } : item) })} /></label>
+      <div className="field"><span>Опис</span><RichTextField value={card.text} rows={3} onChange={(text) => onChange({ ...block, items: block.items.map((item, itemIndex) => itemIndex === index ? { ...item, text } : item) })} /></div>
       <div className="blog-editor-fields"><label className="field"><span>Текст посилання</span><input value={card.linkLabel} onChange={(event) => onChange({ ...block, items: block.items.map((item, itemIndex) => itemIndex === index ? { ...item, linkLabel: event.target.value } : item) })} /></label><label className="field"><span>URL</span><input type="url" value={card.linkUrl} onChange={(event) => onChange({ ...block, items: block.items.map((item, itemIndex) => itemIndex === index ? { ...item, linkUrl: event.target.value } : item) })} /></label></div>
     </div>)}
     <button className="blog-editor-inline-add" type="button" onClick={() => onChange({ ...block, items: [...block.items, { title: 'Нова картка', text: '', linkLabel: '', linkUrl: '' } as BlogCardItem] })}><Icon name="add" size={16} /> Додати картку</button>
   </div>;
-  if (block.type === 'callout') return <div className="blog-editor-fields"><label className="field"><span>Заголовок</span><input value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} /></label><label className="field blog-editor-field--wide"><span>Текст</span><MarkdownField value={block.text} onChange={(text) => onChange({ ...block, text })} /></label></div>;
+  if (block.type === 'callout') return <div className="blog-editor-fields"><label className="field"><span>Заголовок</span><input value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} /></label><div className="field blog-editor-field--wide"><span>Текст</span><RichTextField value={block.text} onChange={(text) => onChange({ ...block, text })} /></div></div>;
   if (block.type === 'faq') return <div className="blog-editor-card-form">
     {block.items.map((item, index) => <div className="blog-editor-repeat-card" key={index}>
       <header><strong>Запитання {index + 1}</strong><button type="button" onClick={() => onChange({ ...block, items: block.items.filter((_, itemIndex) => itemIndex !== index) })}><Icon name="delete" size={16} /></button></header>
       <label className="field"><span>Запитання</span><input value={item.question} onChange={(event) => onChange({ ...block, items: block.items.map((current, itemIndex) => itemIndex === index ? { ...current, question: event.target.value } : current) })} /></label>
-      <label className="field"><span>Відповідь</span><MarkdownField value={item.answer} rows={3} onChange={(answer) => onChange({ ...block, items: block.items.map((current, itemIndex) => itemIndex === index ? { ...current, answer } : current) })} /></label>
+      <div className="field"><span>Відповідь</span><RichTextField value={item.answer} rows={3} onChange={(answer) => onChange({ ...block, items: block.items.map((current, itemIndex) => itemIndex === index ? { ...current, answer } : current) })} /></div>
     </div>)}
     <button className="blog-editor-inline-add" type="button" onClick={() => onChange({ ...block, items: [...block.items, { question: 'Нове запитання?', answer: '' } as BlogFaqItem] })}><Icon name="add" size={16} /> Додати запитання</button>
   </div>;
   return <div className="blog-editor-fields">
     <label className="field"><span>Заголовок</span><input value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} /></label>
-    <label className="field blog-editor-field--wide"><span>Текст</span><MarkdownField value={block.text} onChange={(text) => onChange({ ...block, text })} /></label>
+    <div className="field blog-editor-field--wide"><span>Текст</span><RichTextField value={block.text} onChange={(text) => onChange({ ...block, text })} /></div>
     <label className="field"><span>Текст кнопки</span><input value={block.buttonLabel} onChange={(event) => onChange({ ...block, buttonLabel: event.target.value })} /></label>
     <label className="field"><span>Посилання кнопки</span><input type="url" value={block.buttonUrl} onChange={(event) => onChange({ ...block, buttonUrl: event.target.value })} /></label>
   </div>;
@@ -175,7 +158,7 @@ function SectionEditor({ section, index, total, onChange, onMove, onRemove, onPi
       <div className="blog-editor-section__blocks">
         {section.blocks.map((block, blockIndex) => <BlockShell key={block.id} block={block} index={blockIndex} total={section.blocks.length} onMove={(direction) => onChange({ ...section, blocks: moveItem(section.blocks, blockIndex, direction) })} onRemove={() => onChange({ ...section, blocks: section.blocks.filter((item) => item.id !== block.id) })}><BlockEditor block={block} onPickImage={() => onPickImage(block.id)} onChange={(next) => onChange({ ...section, blocks: section.blocks.map((item) => item.id === block.id ? next : item) })} /></BlockShell>)}
       </div>
-      <div className="blog-editor-add-block"><select value={blockType} onChange={(event) => setBlockType(event.target.value as BlogContentBlock['type'])}>{blockTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="button button--secondary" type="button" onClick={() => onChange({ ...section, blocks: [...section.blocks, createBlogBlock(blockType)] })}><Icon name="add" size={17} /> Додати блок</button></div>
+      <div className="blog-editor-add-block"><select value={blockType} aria-label="Тип нового блоку" onChange={(event) => setBlockType(event.target.value as BlogContentBlock['type'])}>{blockTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="button button--secondary" type="button" onClick={() => onChange({ ...section, blocks: [...section.blocks, createBlogBlock(blockType)] })}><Icon name="add" size={17} /> Додати блок</button></div>
     </div>
   </details>;
 }
@@ -207,7 +190,8 @@ export function BlogPostEditorPage() {
     const localKey = `blog-editor:draft:${publication.data.id}`;
     let localDraft: BlogPostDocument | null = null;
     try { localDraft = JSON.parse(localStorage.getItem(localKey) || 'null') as BlogPostDocument | null; } catch { localDraft = null; }
-    setDocument(localDraft || publication.data.editorDocument || createBlogPostDocument(publication.data.title, publication.data.description));
+    const source = localDraft || publication.data.editorDocument || createBlogPostDocument(publication.data.title, publication.data.description);
+    setDocument(normalizeBlogPostDocument(source, publication.data.title, publication.data.description));
     setDirty(Boolean(localDraft));
   }, [publication.data]);
 
@@ -218,7 +202,7 @@ export function BlogPostEditorPage() {
   }, [dirty, document, publicationId]);
 
   const output = useMemo(() => document ? generateBlogPostExport(document) : null, [document]);
-  const wordCount = useMemo(() => document ? JSON.stringify(document.sections).replace(/[^\p{L}\p{N}'’]+/gu, ' ').trim().split(/\s+/).filter(Boolean).length : 0, [document]);
+  const wordCount = useMemo(() => document ? JSON.stringify(document.sections).replace(/<[^>]+>/gu, ' ').replace(/[^\p{L}\p{N}'’]+/gu, ' ').trim().split(/\s+/).filter(Boolean).length : 0, [document]);
 
   function update(updater: (current: BlogPostDocument) => BlogPostDocument) {
     if (!canEdit) return;
@@ -251,7 +235,7 @@ export function BlogPostEditorPage() {
     try {
       const result = await save.mutateAsync(document);
       localStorage.removeItem(`blog-editor:draft:${publicationId}`);
-      setDocument(result.editorDocument || document);
+      setDocument(normalizeBlogPostDocument(result.editorDocument || document, publication.data?.title || '', publication.data?.description || ''));
       setDirty(false);
       await queryClient.invalidateQueries({ queryKey: ['publications'] });
       showToast('Чернетку статті збережено.');
@@ -289,10 +273,23 @@ export function BlogPostEditorPage() {
           <label className="field"><span>Slug / HTML ID</span><input value={document.slug} maxLength={100} onChange={(event) => update((current) => ({ ...current, slug: normalizeSlug(event.target.value) }))} /></label>
           <label className="field"><span>Текст для share preview</span><textarea value={document.sharePreview} rows={3} maxLength={2000} onChange={(event) => update((current) => ({ ...current, sharePreview: event.target.value }))} /></label>
         </div></details>
+        <details className="blog-editor-panel" open><summary>Типографіка й посилання</summary><div className="blog-editor-panel__body blog-editor-fields">
+          <label className="field"><span>Базовий розмір тексту</span><select value={document.typography.bodyFontSize} onChange={(event) => update((current) => ({ ...current, typography: { ...current.typography, bodyFontSize: Number(event.target.value) } }))}>{[14, 15, 16, 17, 18, 19, 20, 22, 24].map((size) => <option value={size} key={size}>{size} px</option>)}</select></label>
+          <label className="field"><span>Готовий стиль посилань</span><select value={currentLinkPreset(document.linkAppearance)} onChange={(event) => {
+            const preset = linkAppearancePresets[event.target.value as keyof typeof linkAppearancePresets];
+            if (preset) update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, ...preset } }));
+          }}><option value="blackYellow">Чорна плашка / жовтий текст</option><option value="yellowBlack">Жовта плашка / чорний текст</option><option value="outline">Світла контурна плашка</option><option value="custom" disabled>Власні кольори</option></select></label>
+          <label className="field blog-editor-color-field"><span>Фон посилання</span><div><input type="color" value={document.linkAppearance.backgroundColor} aria-label="Колір фону посилання" onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, backgroundColor: event.target.value } }))} /><code>{document.linkAppearance.backgroundColor}</code></div></label>
+          <label className="field blog-editor-color-field"><span>Колір тексту</span><div><input type="color" value={document.linkAppearance.textColor} aria-label="Колір тексту посилання" onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, textColor: event.target.value } }))} /><code>{document.linkAppearance.textColor}</code></div></label>
+          <label className="field blog-editor-color-field"><span>Колір рамки</span><div><input type="color" value={document.linkAppearance.borderColor} aria-label="Колір рамки посилання" onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, borderColor: event.target.value } }))} /><code>{document.linkAppearance.borderColor}</code></div></label>
+          <label className="field"><span>Заокруглення</span><select value={document.linkAppearance.borderRadius} onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, borderRadius: Number(event.target.value) } }))}><option value="0">Без заокруглення</option><option value="6">6 px</option><option value="8">8 px</option><option value="12">12 px</option><option value="999">Капсула</option></select></label>
+          <label className="field"><span>Насиченість посилання</span><select value={document.linkAppearance.fontWeight} onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, fontWeight: Number(event.target.value) } }))}><option value="600">Напівжирний</option><option value="700">Жирний</option><option value="800">Дуже жирний</option><option value="900">Максимальний</option></select></label>
+          <div className="blog-editor-link-sample"><span>Вигляд у статті</span><a style={{ backgroundColor: document.linkAppearance.backgroundColor, color: document.linkAppearance.textColor, borderColor: document.linkAppearance.borderColor, borderRadius: `${document.linkAppearance.borderRadius}px`, fontWeight: document.linkAppearance.fontWeight }}>Samsung A56</a></div>
+        </div></details>
         <details className="blog-editor-panel" open><summary>Hero-блок</summary><div className="blog-editor-panel__body blog-editor-fields">
           <label className="field"><span>Кікер</span><input value={document.hero.kicker} onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, kicker: event.target.value } }))} /></label>
           <label className="field blog-editor-field--wide"><span>H1 заголовок</span><input value={document.hero.title} onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, title: event.target.value } }))} /></label>
-          <label className="field blog-editor-field--wide"><span>Лід</span><MarkdownField value={document.hero.lead} onChange={(lead) => update((current) => ({ ...current, hero: { ...current.hero, lead } }))} /></label>
+          <div className="field blog-editor-field--wide"><span>Лід</span><RichTextField value={document.hero.lead} onChange={(lead) => update((current) => ({ ...current, hero: { ...current.hero, lead } }))} /></div>
           <div className="field blog-editor-field--wide"><span>Головне зображення</span><div className="blog-editor-image-field"><input type="url" value={document.hero.imageUrl} placeholder="https://…" aria-label="Головне зображення" onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, imageUrl: event.target.value } }))} /><button className="button button--secondary" type="button" onClick={() => setImageTarget({ type: 'hero' })}><Icon name="image" size={17} /> Завантажити або обрати</button></div></div>
           <label className="field"><span>Alt-текст</span><input value={document.hero.imageAlt} onChange={(event) => update((current) => ({ ...current, hero: { ...current.hero, imageAlt: event.target.value } }))} /></label>
           <div className="field blog-editor-field--wide"><span>Мета-позначки</span><TextListEditor label="Позначка" values={document.hero.meta} onChange={(meta) => update((current) => ({ ...current, hero: { ...current.hero, meta } }))} /></div>
