@@ -45,10 +45,10 @@ test('rich text editor formats content, preserves pasted links and configures li
 
   const editors = page.locator('.blog-rich-text-field__editor');
   const leadEditor = editors.first();
-  const leadField = leadEditor.locator('..');
+  const leadField = leadEditor.locator('xpath=../..');
   await expect(leadEditor).toContainText('Виділений текст');
   await selectEditorText(leadEditor);
-  await leadField.getByRole('button', { name: 'Додати посилання' }).click();
+  await leadField.getByRole('button', { name: 'Додати або змінити посилання' }).click();
   await expect(page.getByRole('heading', { name: 'Додати посилання' })).toBeVisible();
   await expect(page.getByLabel('Текст посилання')).toHaveValue('Виділений текст');
   await page.getByLabel('Посилання', { exact: true }).fill('example.com/phone');
@@ -59,7 +59,7 @@ test('rich text editor formats content, preserves pasted links and configures li
   await expect(preview.locator('.mt-blog-lead a')).toHaveAttribute('href', 'https://example.com/phone');
 
   const paragraphEditor = editors.nth(1);
-  const paragraphField = paragraphEditor.locator('..');
+  const paragraphField = paragraphEditor.locator('xpath=../..');
   await selectEditorText(paragraphEditor);
   await paragraphField.getByRole('button', { name: 'Жирний текст' }).click();
   await expect(preview.locator('.mt-blog-text strong')).toContainText('Виділений текст');
@@ -83,8 +83,15 @@ test('rich text editor formats content, preserves pasted links and configures li
   await expect(preview.locator('.mt-blog-text a')).toHaveText('посиланням');
 
   await selectEditorText(paragraphEditor, 'strong');
-  await paragraphField.getByLabel('Розмір шрифту').selectOption('24');
+  await paragraphField.getByLabel('Розмір шрифту').selectOption('24px');
   await expect(preview.locator('.mt-blog-text span[style="font-size:24px"]')).toContainText('Форматований');
+
+  await paragraphEditor.click();
+  await page.keyboard.press('End');
+  await paragraphField.getByRole('button', { name: 'Вставити таблицю 3 на 3' }).click();
+  await expect(paragraphEditor.locator('table')).toBeVisible();
+  await expect(paragraphField.getByRole('toolbar', { name: 'Керування таблицею' })).toBeVisible();
+  await expect(preview.locator('.mt-blog-table')).toBeVisible();
 
   await page.getByLabel('Готовий стиль посилань').selectOption('yellowBlack');
   await page.getByLabel('Базовий розмір тексту').selectOption('20');
@@ -93,6 +100,16 @@ test('rich text editor formats content, preserves pasted links and configures li
     background: getComputedStyle(element).backgroundColor,
     color: getComputedStyle(element).color
   }))).toEqual({ background: 'rgb(255, 225, 1)', color: 'rgb(0, 0, 0)' });
+
+  const saveButton = page.getByRole('button', { name: 'Зберегти', exact: true });
+  await saveButton.click();
+  await expect(saveButton).toBeDisabled();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Rich text article' })).toBeVisible();
+  await expect(editors.nth(1).locator('table')).toBeVisible();
+  await expect(preview.locator('.mt-blog-table')).toBeVisible();
+  await expect(page.getByLabel('Готовий стиль посилань')).toHaveValue('yellowBlack');
+  await expect(page.getByLabel('Базовий розмір тексту')).toHaveValue('20');
 
   await page.request.patch(`/api/publications/${publication.id}/status`, {
     data: { status: 'cancelled', publicationUrl: '' }

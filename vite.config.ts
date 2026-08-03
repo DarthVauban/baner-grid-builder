@@ -18,6 +18,10 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           const normalizedId = id.replaceAll('\\', '/');
+          if (normalizedId.includes('/node_modules/@tiptap/')
+            || normalizedId.includes('/node_modules/prosemirror-')) {
+            return 'tiptap-editor';
+          }
           if (normalizedId.includes('/node_modules/@lezer/')
             || normalizedId.includes('/node_modules/@codemirror/language/')
             || normalizedId.includes('/node_modules/@codemirror/lang-')) {

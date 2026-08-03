@@ -127,7 +127,7 @@ test('dropped images show progress, become compact WebP cards and can be inserte
   const confirmFooterPadding = await page.locator('.confirm-dialog__footer').evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingTop));
   expect(confirmZIndex).toBeGreaterThan(pickerZIndex);
   expect(confirmFooterPadding).toBeGreaterThanOrEqual(16);
-  await page.getByRole('button', { name: 'Скасувати' }).click();
+  await page.getByRole('button', { name: 'Скасувати', exact: true }).click();
 
   await heroCard.getByRole('checkbox', { name: 'Виділити e2e-hero.png' }).check();
   const selectionToolbar = page.getByRole('toolbar', { name: 'Дії з вибраними файлами' });

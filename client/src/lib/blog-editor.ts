@@ -96,6 +96,21 @@ export const BLOG_TEMPLATE_CSS = `.mt-blog-post {
 .mt-blog-post .mt-blog-section-title::before { content: ""; position: absolute; top: .12em; left: 0; width: 6px; height: .95em; border-radius: 99px; background: var(--mt-yellow); box-shadow: 0 0 0 4px rgba(255, 225, 1, .22); }
 .mt-blog-post .mt-blog-subtitle { margin: 26px 0 12px; color: var(--mt-black); font-size: clamp(20px, 2.6vw, 28px); font-weight: 900; line-height: 1.22; letter-spacing: -.02em; }
 .mt-blog-post .mt-blog-text { margin-bottom: 16px; color: var(--mt-text); font-size: var(--mt-body-font-size); line-height: 1.72; }
+.mt-blog-post .mt-blog-rich-content > * + * { margin-top: 14px; }
+.mt-blog-post .mt-blog-rich-content :where(p,ul,ol,blockquote,pre) { color: inherit; font: inherit; line-height: inherit; }
+.mt-blog-post .mt-blog-rich-content :where(ul,ol) { padding-left: 24px; }
+.mt-blog-post .mt-blog-rich-content li + li { margin-top: 7px; }
+.mt-blog-post .mt-blog-rich-content :where(h2,h3,h4) { color: var(--mt-black); font-weight: 900; line-height: 1.2; letter-spacing: -.02em; }
+.mt-blog-post .mt-blog-rich-content h2 { font-size: clamp(23px, 3vw, 34px); }
+.mt-blog-post .mt-blog-rich-content h3 { font-size: clamp(20px, 2.5vw, 28px); }
+.mt-blog-post .mt-blog-rich-content h4 { font-size: clamp(18px, 2vw, 23px); }
+.mt-blog-post .mt-blog-rich-content blockquote { padding: 14px 18px; border-left: 5px solid var(--mt-yellow); border-radius: 0 12px 12px 0; background: #fffbe3; }
+.mt-blog-post .mt-blog-callout .mt-blog-rich-content blockquote, .mt-blog-post .mt-blog-cta .mt-blog-rich-content blockquote { color: var(--mt-text); }
+.mt-blog-post .mt-blog-rich-content pre { padding: 16px; overflow-x: auto; border-radius: 12px; color: #f8fafc; background: #111827; font-family: "SFMono-Regular", Consolas, monospace; font-size: .84em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mt-blog-post .mt-blog-rich-content code { padding: .12em .34em; border-radius: 5px; color: #9f1239; background: #fff1f2; font-family: "SFMono-Regular", Consolas, monospace; font-size: .88em; }
+.mt-blog-post .mt-blog-rich-content pre code { padding: 0; color: inherit; background: transparent; }
+.mt-blog-post .mt-blog-rich-content hr { height: 1px; margin: 24px 0; border: 0; background: var(--mt-line); }
+.mt-blog-post .mt-blog-rich-image { width: auto !important; max-width: 100% !important; margin: 18px auto !important; border-radius: 16px; }
 .mt-blog-post .mt-blog-label { display: inline; margin: 0 3px; padding: 3px 9px; border: 1px solid var(--mt-link-border); border-radius: var(--mt-link-radius); color: var(--mt-link-text); background: var(--mt-link-background); font-size: .92em; font-weight: var(--mt-link-weight); line-height: 1.55; text-decoration: none; overflow-wrap: anywhere; box-decoration-break: clone; }
 .mt-blog-post .mt-blog-list { margin: 0 0 26px; padding-left: 22px; color: #2d2d2d; font-size: 17px; line-height: 1.72; }
 .mt-blog-post .mt-blog-list li { margin-bottom: 8px; }
@@ -249,10 +264,24 @@ function safeUrl(value: string) {
   }
 }
 
-const discardedRichTextTags = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math']);
-const blockRichTextTags = new Set(['p', 'div', 'section', 'article', 'header', 'footer', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+const discardedRichTextTags = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math', 'form', 'input', 'button']);
 
-export function sanitizeRichTextHtml(value: string) {
+function safeIntegerAttribute(element: HTMLElement, name: string, min: number, max: number) {
+  const value = Number(element.getAttribute(name));
+  return Number.isInteger(value) && value >= min && value <= max ? ` ${name}="${value}"` : '';
+}
+
+function safeTextAlign(element: HTMLElement) {
+  const match = (element.getAttribute('style') || '').match(/text-align\s*:\s*(left|center|right|justify)/iu);
+  return match ? ` style="text-align:${match[1].toLowerCase()}"` : '';
+}
+
+function richTextHasBlocks(value: string) {
+  return /<(?:p|h[2-4]|blockquote|pre|ul|ol|table|hr)\b/iu.test(value)
+    || /<img\b[^>]*\bsrc=["']https?:\/\//iu.test(value);
+}
+
+function sanitizeRichText(value: string, preserveBlocks: boolean) {
   if (!value) return '';
   if (typeof DOMParser === 'undefined') return escapeHtml(value);
   const parsed = new DOMParser().parseFromString(value, 'text/html');
@@ -264,9 +293,14 @@ export function sanitizeRichTextHtml(value: string) {
     const tag = element.tagName.toLowerCase();
     if (discardedRichTextTags.has(tag)) return '';
     if (tag === 'br') return '<br />';
+    if (tag === 'hr') return preserveBlocks ? '<hr />' : ' — ';
+
     const content = [...element.childNodes].map(serialize).join('');
     if (tag === 'strong' || tag === 'b') return `<strong>${content}</strong>`;
     if (tag === 'em' || tag === 'i') return `<em>${content}</em>`;
+    if (tag === 'u') return `<u>${content}</u>`;
+    if (tag === 's' || tag === 'strike' || tag === 'del') return `<s>${content}</s>`;
+    if (tag === 'code') return `<code>${content}</code>`;
     if (tag === 'a') {
       const href = safeUrl(element.getAttribute('href') || '');
       return href ? `<a class="mt-blog-label" href="${escapeHtml(href)}">${content}</a>` : content;
@@ -285,17 +319,53 @@ export function sanitizeRichTextHtml(value: string) {
       }
       return formatted;
     }
-    return blockRichTextTags.has(tag) && content ? `${content}<br />` : content;
+    if (tag === 'img') {
+      if (!preserveBlocks) return '';
+      const src = safeUrl(element.getAttribute('src') || '');
+      if (!src) return '';
+      const alt = escapeHtml(element.getAttribute('alt') || '');
+      const title = element.getAttribute('title');
+      return `<img class="mt-blog-rich-image" src="${escapeHtml(src)}" alt="${alt}"${title ? ` title="${escapeHtml(title)}"` : ''} loading="lazy" />`;
+    }
+
+    if (!preserveBlocks) {
+      if (['p', 'div', 'section', 'article', 'header', 'footer', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre'].includes(tag)) {
+        return content ? `${content}<br />` : '';
+      }
+      return content;
+    }
+
+    if (tag === 'p') return `<p${safeTextAlign(element)}>${content || '<br />'}</p>`;
+    if (tag === 'h2' || tag === 'h3' || tag === 'h4') return `<${tag}${safeTextAlign(element)}>${content}</${tag}>`;
+    if (tag === 'blockquote') return `<blockquote>${content}</blockquote>`;
+    if (tag === 'pre') return `<pre>${content}</pre>`;
+    if (tag === 'ul' || tag === 'ol') return `<${tag}>${content}</${tag}>`;
+    if (tag === 'li') return `<li>${content}</li>`;
+    if (tag === 'thead' || tag === 'tbody' || tag === 'tfoot') return `<${tag}>${content}</${tag}>`;
+    if (tag === 'tr') return `<tr>${content}</tr>`;
+    if (tag === 'th' || tag === 'td') {
+      const colspan = safeIntegerAttribute(element, 'colspan', 1, 24);
+      const rowspan = safeIntegerAttribute(element, 'rowspan', 1, 100);
+      return `<${tag}${colspan}${rowspan}>${content}</${tag}>`;
+    }
+    if (tag === 'table') return `<div class="mt-blog-table-wrap"><table class="mt-blog-table">${content}</table></div>`;
+    if (tag === 'colgroup') return `<colgroup>${content}</colgroup>`;
+    if (tag === 'col') return '<col />';
+    return content;
   }
 
-  return [...parsed.body.childNodes]
-    .map(serialize)
-    .join('')
-    .replace(/(?:<br \/>\s*){3,}/giu, '<br /><br />');
+  const sanitized = [...parsed.body.childNodes].map(serialize).join('');
+  return preserveBlocks
+    ? sanitized
+    : sanitized.replace(/(?:<br \/>\s*){3,}/giu, '<br /><br />').replace(/(?:<br \/>\s*)+$/iu, '');
+}
+
+export function sanitizeRichTextHtml(value: string) {
+  return sanitizeRichText(value, true);
 }
 
 export function renderInlineText(value: string) {
-  if (/<(?:strong|b|em|i|a|span|br)\b/iu.test(value)) return sanitizeRichTextHtml(value);
+  if (/<(?:strong|b|em|i|u|s|strike|del|code|a|span|br|p|h[1-6]|blockquote|ul|ol|li)\b/iu.test(value)) return sanitizeRichText(value, false);
   const pattern = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*\n]+)\*\*|\*([^*\n]+)\*)/giu;
   let result = '';
   let cursor = 0;
@@ -315,16 +385,25 @@ export function renderInlineText(value: string) {
   return result.replace(/\r?\n/g, '<br />');
 }
 
+function renderRichText(value: string, className: string) {
+  if (richTextHasBlocks(value)) return `<div class="${className} mt-blog-rich-content">${sanitizeRichTextHtml(value)}</div>`;
+  return `<p class="${className}">${renderInlineText(value)}</p>`;
+}
+
+function renderRichTextContents(value: string) {
+  return richTextHasBlocks(value) ? sanitizeRichTextHtml(value) : renderInlineText(value);
+}
+
 function renderCard(card: BlogCardItem) {
   const url = safeUrl(card.linkUrl);
   const link = url && card.linkLabel
     ? `<p><a class="mt-blog-label" href="${escapeHtml(url)}">${escapeHtml(card.linkLabel)}</a></p>`
     : '';
-  return `<article class="mt-blog-card"><h3 class="mt-blog-card-title">${renderInlineText(card.title)}</h3><p class="mt-blog-text">${renderInlineText(card.text)}</p>${link}</article>`;
+  return `<article class="mt-blog-card"><h3 class="mt-blog-card-title">${renderInlineText(card.title)}</h3>${renderRichText(card.text, 'mt-blog-text')}${link}</article>`;
 }
 
 function renderBlock(block: BlogContentBlock) {
-  if (block.type === 'paragraph') return `<p class="mt-blog-text">${renderInlineText(block.text)}</p>`;
+  if (block.type === 'paragraph') return renderRichText(block.text, 'mt-blog-text');
   if (block.type === 'subheading') return `<h3 class="mt-blog-subtitle">${renderInlineText(block.text)}</h3>`;
   if (block.type === 'image') {
     const url = safeUrl(block.url);
@@ -342,14 +421,14 @@ function renderBlock(block: BlogContentBlock) {
     return `<div class="mt-blog-table-wrap"><table class="mt-blog-table">${head}<tbody>${rows}</tbody></table></div>`;
   }
   if (block.type === 'cards') return `<div class="mt-blog-card-grid" style="--mt-card-columns:${block.columns}">${block.items.map(renderCard).join('')}</div>`;
-  if (block.type === 'callout') return `<aside class="mt-blog-callout"><h3 class="mt-blog-subtitle">${renderInlineText(block.title)}</h3><p class="mt-blog-text">${renderInlineText(block.text)}</p></aside>`;
+  if (block.type === 'callout') return `<aside class="mt-blog-callout"><h3 class="mt-blog-subtitle">${renderInlineText(block.title)}</h3>${renderRichText(block.text, 'mt-blog-text')}</aside>`;
   if (block.type === 'faq') {
-    const items = block.items.map((item, index) => `<details class="mt-blog-faq-item"${index === 0 ? ' open' : ''}><summary class="mt-blog-faq-question">${renderInlineText(item.question)}</summary><div class="mt-blog-faq-answer">${renderInlineText(item.answer)}</div></details>`).join('');
+    const items = block.items.map((item, index) => `<details class="mt-blog-faq-item"${index === 0 ? ' open' : ''}><summary class="mt-blog-faq-question">${renderInlineText(item.question)}</summary><div class="mt-blog-faq-answer mt-blog-rich-content">${renderRichTextContents(item.answer)}</div></details>`).join('');
     return `<div class="mt-blog-faq">${items}</div>`;
   }
   const url = safeUrl(block.buttonUrl);
   const button = url && block.buttonLabel ? `<a class="mt-blog-cta-button" href="${escapeHtml(url)}">${escapeHtml(block.buttonLabel)}</a>` : '';
-  return `<aside class="mt-blog-cta"><h3 class="mt-blog-cta-title">${renderInlineText(block.title)}</h3><p class="mt-blog-text">${renderInlineText(block.text)}</p>${button}</aside>`;
+  return `<aside class="mt-blog-cta"><h3 class="mt-blog-cta-title">${renderInlineText(block.title)}</h3>${renderRichText(block.text, 'mt-blog-text')}${button}</aside>`;
 }
 
 function createTemplateJs(rootId: string) {
@@ -373,7 +452,7 @@ export function generateBlogPostExport(document: BlogPostDocument): BlogPostExpo
     ? `<div class="mt-blog-meta">${normalized.hero.meta.filter(Boolean).map((item) => `<span class="mt-blog-meta-item">${renderInlineText(item)}</span>`).join('')}</div>`
     : '';
   const sections = normalized.sections.map((section) => `<section class="mt-blog-section${section.tone === 'soft' ? ' mt-blog-section--soft' : ''}"><h2 class="mt-blog-section-title">${renderInlineText(section.title)}</h2>${section.blocks.map(renderBlock).join('')}</section>`).join('');
-  const html = `<div class="mt-blog-post" id="${rootId}"><article class="mt-blog-article"><p class="mt-blog-share-preview">${escapeHtml(normalized.sharePreview)}</p><header class="mt-blog-hero">${heroImage}<div class="mt-blog-kicker">${renderInlineText(normalized.hero.kicker)}</div><h1 class="mt-blog-title">${renderInlineText(normalized.hero.title)}</h1>${normalized.hero.lead ? `<p class="mt-blog-lead">${renderInlineText(normalized.hero.lead)}</p>` : ''}${meta}</header>${sections}</article></div>`;
+  const html = `<div class="mt-blog-post" id="${rootId}"><article class="mt-blog-article"><p class="mt-blog-share-preview">${escapeHtml(normalized.sharePreview)}</p><header class="mt-blog-hero">${heroImage}<div class="mt-blog-kicker">${renderInlineText(normalized.hero.kicker)}</div><h1 class="mt-blog-title">${renderInlineText(normalized.hero.title)}</h1>${normalized.hero.lead ? renderRichText(normalized.hero.lead, 'mt-blog-lead') : ''}${meta}</header>${sections}</article></div>`;
   const settingsCss = `#${rootId} {\n  --mt-body-font-size: ${normalized.typography.bodyFontSize}px;\n  --mt-link-background: ${normalized.linkAppearance.backgroundColor};\n  --mt-link-text: ${normalized.linkAppearance.textColor};\n  --mt-link-border: ${normalized.linkAppearance.borderColor};\n  --mt-link-radius: ${normalized.linkAppearance.borderRadius}px;\n  --mt-link-weight: ${normalized.linkAppearance.fontWeight};\n}`;
   const css = `${BLOG_TEMPLATE_CSS}\n${settingsCss}${normalized.customCss.trim() ? `\n${normalized.customCss.trim()}` : ''}`;
   const js = `${createTemplateJs(rootId)}${normalized.customJs.trim() ? `\n\n${normalized.customJs.trim()}` : ''}`;

@@ -84,6 +84,39 @@ describe('blog editor export', () => {
     expect(result).not.toContain('javascript:');
   });
 
+  it('preserves Tiptap block content, tables and responsive images', () => {
+    const result = sanitizeRichTextHtml('<h2 style="text-align:center" onclick="alert(1)">Заголовок</h2><p><u>Підкреслений</u> і <s>закреслений</s></p><ul><li>Пункт</li></ul><blockquote>Цитата</blockquote><table><tbody><tr><th colspan="2">Назва</th></tr><tr><td>A</td><td>B</td></tr></tbody></table><img src="https://example.com/photo.webp" alt="Фото" onerror="alert(2)"><iframe src="https://example.com"></iframe>');
+
+    expect(result).toContain('<h2 style="text-align:center">Заголовок</h2>');
+    expect(result).toContain('<u>Підкреслений</u>');
+    expect(result).toContain('<s>закреслений</s>');
+    expect(result).toContain('<ul><li>Пункт</li></ul>');
+    expect(result).toContain('<blockquote>Цитата</blockquote>');
+    expect(result).toContain('<div class="mt-blog-table-wrap"><table class="mt-blog-table">');
+    expect(result).toContain('<th colspan="2">Назва</th>');
+    expect(result).toContain('class="mt-blog-rich-image"');
+    expect(result).not.toContain('onclick');
+    expect(result).not.toContain('onerror');
+    expect(result).not.toContain('<iframe');
+  });
+
+  it('exports Tiptap rich blocks without invalid nested paragraphs', () => {
+    const document = createBlogPostDocument('Tiptap', 'Опис');
+    document.sections[0].blocks = [{
+      id: 'tiptap-content',
+      type: 'paragraph',
+      text: '<p>Перший абзац</p><h3>Підзаголовок</h3><p>Другий абзац</p><table><tbody><tr><td>Комірка</td></tr></tbody></table>'
+    }];
+
+    const output = generateBlogPostExport(document);
+
+    expect(output.html).toContain('class="mt-blog-text mt-blog-rich-content"');
+    expect(output.html).toContain('<p>Перший абзац</p><h3>Підзаголовок</h3><p>Другий абзац</p>');
+    expect(output.html).toContain('class="mt-blog-table-wrap"');
+    expect(output.html).not.toContain('<p class="mt-blog-text"><p>');
+    expect(output.css).toContain('.mt-blog-post .mt-blog-rich-content');
+  });
+
   it('exports configurable typography and link plaques', () => {
     const document = createBlogPostDocument('Стилі посилань', 'Опис');
     document.typography.bodyFontSize = 20;
