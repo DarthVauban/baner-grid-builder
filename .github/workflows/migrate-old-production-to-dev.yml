@@ -1,0 +1,650 @@
+name: Prepare new server from old production
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Snapshot destination on the new server
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prod
+      confirmation:
+        description: Type COPY-TO-DEV, PREPARE-PROD, or CUTOVER-PROD
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  migrate-snapshot:
+    runs-on: ubuntu-latest
+    environment: migration
+    env:
+      OLD_SSH_HOST: ${{ secrets.SSH_HOST }}
+      OLD_SSH_USER: ${{ secrets.SSH_USER }}
+      OLD_SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      OLD_APP_DIR: ${{ secrets.APP_DIR }}
+      TARGET_SSH_HOST: ${{ secrets.TARGET_SSH_HOST }}
+      TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+      TARGET_SSH_PRIVATE_KEY: ${{ secrets.TARGET_SSH_PRIVATE_KEY }}
+      GHCR_USER: ${{ github.actor }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MIGRATION_TARGET: ${{ inputs.target }}
+      MIGRATION_CONFIRMATION: ${{ inputs.confirmation }}
+
+    steps:
+      - name: Validate confirmation, target, and required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$MIGRATION_TARGET:$MIGRATION_CONFIRMATION" in
+            dev:COPY-TO-DEV)
+              TARGET_DIR='/opt/mt-workspace/dev'
+              TARGET_PROJECT='mt-panel-dev'
+              TARGET_PORT='3101'
+              TARGET_ORIGIN='https://dev.mt-panel.sbs'
+              TARGET_COOKIE_NAME='mt_session_dev'
+              START_APP='true'
+              STOP_SOURCE='false'
+              ;;
+            prod:PREPARE-PROD)
+              TARGET_DIR='/opt/mt-workspace/prod'
+              TARGET_PROJECT='mt-panel-prod'
+              TARGET_PORT='3100'
+              TARGET_ORIGIN='https://mt-panel.sbs'
+              TARGET_COOKIE_NAME='mt_session'
+              START_APP='false'
+              STOP_SOURCE='false'
+              ;;
+            prod:CUTOVER-PROD)
+              TARGET_DIR='/opt/mt-workspace/prod'
+              TARGET_PROJECT='mt-panel-prod'
+              TARGET_PORT='3100'
+              TARGET_ORIGIN='https://mt-panel.sbs'
+              TARGET_COOKIE_NAME='mt_session'
+              START_APP='true'
+              STOP_SOURCE='true'
+              ;;
+            *)
+              echo 'Migration cancelled: target and confirmation do not match.' >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "TARGET_DIR=$TARGET_DIR"
+            echo "TARGET_PROJECT=$TARGET_PROJECT"
+            echo "TARGET_PORT=$TARGET_PORT"
+            echo "TARGET_ORIGIN=$TARGET_ORIGIN"
+            echo "TARGET_COOKIE_NAME=$TARGET_COOKIE_NAME"
+            echo "START_APP=$START_APP"
+            echo "STOP_SOURCE=$STOP_SOURCE"
+          } >> "$GITHUB_ENV"
+          for name in OLD_SSH_HOST OLD_SSH_USER OLD_SSH_PASSWORD OLD_APP_DIR TARGET_SSH_HOST TARGET_SSH_USER TARGET_SSH_PRIVATE_KEY; do
+            test -n "${!name:-}" || {
+              echo "Required secret $name is not configured." >&2
+              exit 1
+            }
+          done
+
+      - name: Check out the target deployment revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target == 'prod' && 'main' || 'dev' }}
+
+      - name: Resolve immutable image reference
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          REVISION="$(git rev-parse HEAD)"
+          REPOSITORY="$(echo 'ghcr.io/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          echo "ref=$REPOSITORY:sha-$REVISION" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the target image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.ref }}
+          build-args: |
+            APP_BUILD_SHA=${{ steps.image.outputs.revision }}
+
+      - name: Install migration clients
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends sshpass postgresql-client
+
+      - name: Prepare SSH access
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$TARGET_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/mt-panel-target-key"
+          ssh-keygen -y -f "$RUNNER_TEMP/mt-panel-target-key" >/dev/null
+          : > "$RUNNER_TEMP/mt-panel-known-hosts"
+
+      - name: Stop old production writes for final cutover
+        if: inputs.target == 'prod' && inputs.confirmation == 'CUTOVER-PROD'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP_DIR='${{ secrets.APP_DIR }}'
+            test -n "$APP_DIR"
+            cd "$APP_DIR"
+            test -f docker-compose.yml
+            docker compose stop app
+            test -z "$(docker compose ps -q app)"
+            docker compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+      - name: Export production and prepare the target snapshot
+        id: export
+        shell: bash
+        env:
+          TARGET_IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          EXPORT_DIR="$(mktemp -d "$RUNNER_TEMP/mt-panel-migration.XXXXXX")"
+          echo "dir=$EXPORT_DIR" >> "$GITHUB_OUTPUT"
+
+          export SSHPASS="$OLD_SSH_PASSWORD"
+          OLD_DESTINATION="$OLD_SSH_USER@$OLD_SSH_HOST"
+          OLD_SSH=(
+            sshpass -e ssh
+            -o StrictHostKeyChecking=accept-new
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts"
+            -o ConnectTimeout=20
+            "$OLD_DESTINATION"
+          )
+          printf -v OLD_APP_DIR_QUOTED '%q' "$OLD_APP_DIR"
+
+          "${OLD_SSH[@]}" "cd $OLD_APP_DIR_QUOTED && cat .env" > "$EXPORT_DIR/production.env"
+          "${OLD_SSH[@]}" "cd $OLD_APP_DIR_QUOTED && docker compose exec -T db sh -lc 'pg_dump -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" --format=custom'" > "$EXPORT_DIR/production.dump"
+          "${OLD_SSH[@]}" "cd $OLD_APP_DIR_QUOTED && APP_CONTAINER_ID=\$(docker compose ps -aq app) && test -n \"\$APP_CONTAINER_ID\" && docker cp \"\$APP_CONTAINER_ID:/app/storage/catalog-media/.\" -" > "$EXPORT_DIR/catalog-media.tar"
+
+          test -s "$EXPORT_DIR/production.env"
+          test -s "$EXPORT_DIR/production.dump"
+          test -s "$EXPORT_DIR/catalog-media.tar"
+          pg_restore --list "$EXPORT_DIR/production.dump" >/dev/null
+          tar -tf "$EXPORT_DIR/catalog-media.tar" >/dev/null
+
+          if [ "$MIGRATION_TARGET" = prod ]; then
+            "${OLD_SSH[@]}" "cat /etc/letsencrypt/live/mt-panel.sbs/fullchain.pem" > "$EXPORT_DIR/fullchain.pem"
+            "${OLD_SSH[@]}" "cat /etc/letsencrypt/live/mt-panel.sbs/privkey.pem" > "$EXPORT_DIR/privkey.pem"
+            "${OLD_SSH[@]}" "cat /etc/letsencrypt/live/shop.mt-panel.sbs/fullchain.pem" > "$EXPORT_DIR/shop-fullchain.pem"
+            "${OLD_SSH[@]}" "cat /etc/letsencrypt/live/shop.mt-panel.sbs/privkey.pem" > "$EXPORT_DIR/shop-privkey.pem"
+            test -s "$EXPORT_DIR/fullchain.pem"
+            test -s "$EXPORT_DIR/privkey.pem"
+            test -s "$EXPORT_DIR/shop-fullchain.pem"
+            test -s "$EXPORT_DIR/shop-privkey.pem"
+            chmod 600 "$EXPORT_DIR/privkey.pem"
+            chmod 600 "$EXPORT_DIR/shop-privkey.pem"
+            openssl x509 -in "$EXPORT_DIR/fullchain.pem" -noout -checkhost mt-panel.sbs
+            openssl x509 -in "$EXPORT_DIR/shop-fullchain.pem" -noout -checkhost shop.mt-panel.sbs
+            CERTIFICATE_KEY_HASH="$(openssl x509 -in "$EXPORT_DIR/fullchain.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d ' ' -f 1)"
+            PRIVATE_KEY_HASH="$(openssl pkey -in "$EXPORT_DIR/privkey.pem" -pubout -outform DER | sha256sum | cut -d ' ' -f 1)"
+            test "$CERTIFICATE_KEY_HASH" = "$PRIVATE_KEY_HASH"
+            SHOP_CERTIFICATE_KEY_HASH="$(openssl x509 -in "$EXPORT_DIR/shop-fullchain.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d ' ' -f 1)"
+            SHOP_PRIVATE_KEY_HASH="$(openssl pkey -in "$EXPORT_DIR/shop-privkey.pem" -pubout -outform DER | sha256sum | cut -d ' ' -f 1)"
+            test "$SHOP_CERTIFICATE_KEY_HASH" = "$SHOP_PRIVATE_KEY_HASH"
+          fi
+
+          cp "$EXPORT_DIR/production.env" "$EXPORT_DIR/target.env"
+          set_env() {
+            key="$1"
+            value="$2"
+            file="$EXPORT_DIR/target.env"
+            temporary="$EXPORT_DIR/target.env.tmp"
+            grep -v "^${key}=" "$file" > "$temporary" || true
+            printf '%s=%s\n' "$key" "$value" >> "$temporary"
+            mv "$temporary" "$file"
+          }
+          set_env NODE_ENV production
+          set_env PORT 3000
+          set_env COMPOSE_PROJECT_NAME "$TARGET_PROJECT"
+          set_env APP_IMAGE "$TARGET_IMAGE"
+          set_env APP_BIND_PORT "$TARGET_PORT"
+          set_env APP_ORIGIN "$TARGET_ORIGIN"
+          set_env COOKIE_NAME "$TARGET_COOKIE_NAME"
+          set_env COOKIE_SECURE true
+          chmod 600 "$EXPORT_DIR/target.env"
+
+          printf 'Snapshot ready: database=%s bytes, media=%s bytes\n' \
+            "$(wc -c < "$EXPORT_DIR/production.dump")" \
+            "$(wc -c < "$EXPORT_DIR/catalog-media.tar")"
+
+      - name: Upload the snapshot to the isolated target directory
+        id: upload
+        shell: bash
+        env:
+          EXPORT_DIR: ${{ steps.export.outputs.dir }}
+        run: |
+          set -euo pipefail
+          TARGET_KEY="$RUNNER_TEMP/mt-panel-target-key"
+          KNOWN_HOSTS="$RUNNER_TEMP/mt-panel-known-hosts"
+          TARGET_DESTINATION="$TARGET_SSH_USER@$TARGET_SSH_HOST"
+          TARGET_SSH=(
+            ssh -i "$TARGET_KEY"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=accept-new
+            -o UserKnownHostsFile="$KNOWN_HOSTS"
+            -o ConnectTimeout=20
+            "$TARGET_DESTINATION"
+          )
+          TARGET_SCP=(
+            scp -i "$TARGET_KEY"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=accept-new
+            -o UserKnownHostsFile="$KNOWN_HOSTS"
+            -o ConnectTimeout=20
+          )
+
+          case "$TARGET_DIR" in
+            /opt/mt-workspace/dev|/opt/mt-workspace/prod) ;;
+            *) echo 'Unsafe target directory.' >&2; exit 1 ;;
+          esac
+          MIGRATION_DIR="$TARGET_DIR/.migration-${{ github.run_id }}"
+          printf -v MIGRATION_DIR_QUOTED '%q' "$MIGRATION_DIR"
+          "${TARGET_SSH[@]}" "install -d -m 700 $MIGRATION_DIR_QUOTED"
+          UPLOAD_FILES=(
+            "$EXPORT_DIR/target.env"
+            "$EXPORT_DIR/production.dump"
+            "$EXPORT_DIR/catalog-media.tar"
+            docker-compose.yml
+          )
+          if [ "$MIGRATION_TARGET" = prod ]; then
+            UPLOAD_FILES+=(
+              "$EXPORT_DIR/fullchain.pem"
+              "$EXPORT_DIR/privkey.pem"
+              "$EXPORT_DIR/shop-fullchain.pem"
+              "$EXPORT_DIR/shop-privkey.pem"
+            )
+          fi
+          "${TARGET_SCP[@]}" "${UPLOAD_FILES[@]}" "$TARGET_DESTINATION:$MIGRATION_DIR/"
+          echo "dir=$MIGRATION_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to GHCR on the new server
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GHCR_TOKEN" | ssh \
+            -i "$RUNNER_TEMP/mt-panel-target-key" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            "$TARGET_SSH_USER@$TARGET_SSH_HOST" \
+            "export XDG_RUNTIME_DIR=/run/user/\$(id -u); export DOCKER_HOST=unix://\$XDG_RUNTIME_DIR/docker.sock; docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+
+      - name: Restore database and media on the isolated target
+        shell: bash
+        env:
+          MIGRATION_DIR: ${{ steps.upload.outputs.dir }}
+          TARGET_IMAGE: ${{ steps.image.outputs.ref }}
+          EXPECTED_REVISION: ${{ steps.image.outputs.revision }}
+        run: |
+          set -euo pipefail
+          RESTORE_SCRIPT="$RUNNER_TEMP/restore-mt-panel-target.sh"
+          cat > "$RESTORE_SCRIPT" <<'RESTORE_SCRIPT'
+          set -euo pipefail
+          TARGET_DIR="$1"
+          MIGRATION_DIR="$2"
+          TARGET_IMAGE="$3"
+          TARGET_PROJECT="$4"
+          TARGET_PORT="$5"
+          EXPECTED_REVISION="$6"
+          START_APP="$7"
+
+          case "$TARGET_DIR:$TARGET_PROJECT:$TARGET_PORT:$START_APP" in
+            /opt/mt-workspace/dev:mt-panel-dev:3101:true) ;;
+            /opt/mt-workspace/prod:mt-panel-prod:3100:false) ;;
+            /opt/mt-workspace/prod:mt-panel-prod:3100:true) ;;
+            *) echo 'Unsafe target configuration.' >&2; exit 1 ;;
+          esac
+          case "$MIGRATION_DIR" in
+            "$TARGET_DIR"/.migration-*) ;;
+            *) echo 'Unsafe migration directory.' >&2; exit 1 ;;
+          esac
+          test -d "$MIGRATION_DIR"
+          test -s "$MIGRATION_DIR/target.env"
+          test -s "$MIGRATION_DIR/production.dump"
+          test -s "$MIGRATION_DIR/catalog-media.tar"
+          if [ "$TARGET_PROJECT" = mt-panel-prod ]; then
+            test -s "$MIGRATION_DIR/fullchain.pem"
+            test -s "$MIGRATION_DIR/privkey.pem"
+            test -s "$MIGRATION_DIR/shop-fullchain.pem"
+            test -s "$MIGRATION_DIR/shop-privkey.pem"
+          fi
+
+          cd "$TARGET_DIR"
+          install -m 600 "$MIGRATION_DIR/target.env" .env.next
+          install -m 644 "$MIGRATION_DIR/docker-compose.yml" docker-compose.yml.next
+          mv .env.next .env
+          mv docker-compose.yml.next docker-compose.yml
+
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+          export COMPOSE_PROJECT_NAME="$TARGET_PROJECT"
+          export APP_IMAGE="$TARGET_IMAGE"
+          export APP_BIND_PORT="$TARGET_PORT"
+          test -S "$XDG_RUNTIME_DIR/docker.sock"
+          docker compose config --quiet
+          docker pull "$TARGET_IMAGE"
+
+          docker compose stop app 2>/dev/null || true
+          docker compose up -d --no-build db
+          DB_CONTAINER_ID="$(docker compose ps -q db)"
+          test -n "$DB_CONTAINER_ID"
+          for attempt in $(seq 1 30); do
+            DB_HEALTH="$(docker inspect "$DB_CONTAINER_ID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')"
+            [ "$DB_HEALTH" = healthy ] && break
+            [ "$attempt" -lt 30 ] || { echo 'PostgreSQL did not become healthy.' >&2; exit 1; }
+            sleep 2
+          done
+
+          docker compose exec -T db sh -lc 'dropdb --if-exists --force -U "$POSTGRES_USER" "$POSTGRES_DB"'
+          docker compose exec -T db sh -lc 'createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+          docker compose exec -T db sh -lc 'pg_restore --exit-on-error --no-owner --no-privileges -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$MIGRATION_DIR/production.dump"
+
+          MEDIA_VOLUME="${TARGET_PROJECT}_catalog_media_data"
+          docker volume create "$MEDIA_VOLUME" >/dev/null
+          APP_UID="$(docker run --rm --entrypoint sh "$TARGET_IMAGE" -c 'id -u nodeapp')"
+          APP_GID="$(docker run --rm --entrypoint sh "$TARGET_IMAGE" -c 'id -g nodeapp')"
+          docker run --rm \
+            -v "$MEDIA_VOLUME:/target" \
+            -v "$MIGRATION_DIR:/source:ro" \
+            alpine:3.20 sh -lc '
+              find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+              tar -C /target -xf /source/catalog-media.tar
+              chown -R "$1:$2" /target
+            ' sh "$APP_UID" "$APP_GID"
+
+          if [ "$TARGET_PROJECT" = mt-panel-prod ]; then
+            CERTIFICATE_KEY_HASH="$(openssl x509 -in "$MIGRATION_DIR/fullchain.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d ' ' -f 1)"
+            PRIVATE_KEY_HASH="$(openssl pkey -in "$MIGRATION_DIR/privkey.pem" -pubout -outform DER | sha256sum | cut -d ' ' -f 1)"
+            test "$CERTIFICATE_KEY_HASH" = "$PRIVATE_KEY_HASH"
+            SHOP_CERTIFICATE_KEY_HASH="$(openssl x509 -in "$MIGRATION_DIR/shop-fullchain.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d ' ' -f 1)"
+            SHOP_PRIVATE_KEY_HASH="$(openssl pkey -in "$MIGRATION_DIR/shop-privkey.pem" -pubout -outform DER | sha256sum | cut -d ' ' -f 1)"
+            test "$SHOP_CERTIFICATE_KEY_HASH" = "$SHOP_PRIVATE_KEY_HASH"
+            install -d -m 700 "$TARGET_DIR/tls"
+            install -m 644 "$MIGRATION_DIR/fullchain.pem" "$TARGET_DIR/tls/fullchain.pem.next"
+            install -m 600 "$MIGRATION_DIR/privkey.pem" "$TARGET_DIR/tls/privkey.pem.next"
+            install -m 644 "$MIGRATION_DIR/shop-fullchain.pem" "$TARGET_DIR/tls/shop-fullchain.pem.next"
+            install -m 600 "$MIGRATION_DIR/shop-privkey.pem" "$TARGET_DIR/tls/shop-privkey.pem.next"
+            mv "$TARGET_DIR/tls/fullchain.pem.next" "$TARGET_DIR/tls/fullchain.pem"
+            mv "$TARGET_DIR/tls/privkey.pem.next" "$TARGET_DIR/tls/privkey.pem"
+            mv "$TARGET_DIR/tls/shop-fullchain.pem.next" "$TARGET_DIR/tls/shop-fullchain.pem"
+            mv "$TARGET_DIR/tls/shop-privkey.pem.next" "$TARGET_DIR/tls/shop-privkey.pem"
+          fi
+
+          TABLE_COUNT="$(docker compose exec -T db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM pg_tables WHERE schemaname = '\''public'\''"')"
+          MEDIA_COUNT="$(docker run --rm -v "$MEDIA_VOLUME:/media:ro" alpine:3.20 sh -lc 'find /media -type f | wc -l')"
+          printf 'Restored public tables: %s\n' "$TABLE_COUNT"
+          printf 'Restored catalog media files: %s\n' "$MEDIA_COUNT"
+
+          if [ "$START_APP" = true ]; then
+            docker compose up -d --no-build app
+            for attempt in $(seq 1 40); do
+              if HEALTH="$(curl -fsS "http://127.0.0.1:$TARGET_PORT/api/health" 2>/dev/null)"; then
+                break
+              fi
+              [ "$attempt" -lt 40 ] || { docker compose logs --no-color --tail=120 app db >&2; exit 1; }
+              sleep 3
+            done
+            printf '%s\n' "$HEALTH"
+            printf '%s\n' "$HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
+          else
+            docker compose rm -sf app >/dev/null 2>&1 || true
+            test -z "$(docker compose ps -q app)"
+            printf 'Production snapshot is staged; the application remains stopped.\n'
+          fi
+          docker compose ps
+
+          rm -f -- \
+            "$MIGRATION_DIR/target.env" \
+            "$MIGRATION_DIR/production.dump" \
+            "$MIGRATION_DIR/catalog-media.tar" \
+            "$MIGRATION_DIR/fullchain.pem" \
+            "$MIGRATION_DIR/privkey.pem" \
+            "$MIGRATION_DIR/shop-fullchain.pem" \
+            "$MIGRATION_DIR/shop-privkey.pem" \
+            "$MIGRATION_DIR/docker-compose.yml" \
+            "$MIGRATION_DIR/restore.sh"
+          rmdir "$MIGRATION_DIR"
+          RESTORE_SCRIPT
+
+          scp \
+            -i "$RUNNER_TEMP/mt-panel-target-key" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            "$RESTORE_SCRIPT" \
+            "$TARGET_SSH_USER@$TARGET_SSH_HOST:$MIGRATION_DIR/restore.sh"
+          ssh \
+            -i "$RUNNER_TEMP/mt-panel-target-key" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            "$TARGET_SSH_USER@$TARGET_SSH_HOST" \
+            "bash '$MIGRATION_DIR/restore.sh' '$TARGET_DIR' '$MIGRATION_DIR' '$TARGET_IMAGE' '$TARGET_PROJECT' '$TARGET_PORT' '$EXPECTED_REVISION' '$START_APP'"
+
+      - name: Forward the old domains to the new production
+        id: forward
+        if: inputs.target == 'prod' && inputs.confirmation == 'CUTOVER-PROD'
+        shell: bash
+        env:
+          EXPECTED_REVISION: ${{ steps.image.outputs.revision }}
+        run: |
+          set -euo pipefail
+          export SSHPASS="$OLD_SSH_PASSWORD"
+          OLD_DESTINATION="$OLD_SSH_USER@$OLD_SSH_HOST"
+          CUTOVER_DIR="/tmp/mt-panel-cutover-${{ github.run_id }}"
+          FORWARD_SCRIPT="$RUNNER_TEMP/forward-old-production.sh"
+
+          cat > "$FORWARD_SCRIPT" <<'FORWARD_SCRIPT'
+          set -euo pipefail
+          CUTOVER_DIR="$1"
+          RUN_ID="$2"
+          EXPECTED_REVISION="$3"
+          NEW_IP="$4"
+
+          case "$RUN_ID" in
+            ''|*[!0-9]*) echo 'Invalid workflow run identifier.' >&2; exit 1 ;;
+          esac
+          test "$CUTOVER_DIR" = "/tmp/mt-panel-cutover-$RUN_ID"
+          test "$NEW_IP" = '45.88.191.194'
+          case "$EXPECTED_REVISION" in
+            ''|*[!0-9a-f]*) echo 'Invalid deployment revision.' >&2; exit 1 ;;
+          esac
+          test "${#EXPECTED_REVISION}" -eq 40
+
+          MAIN_CONFIG='/etc/nginx/conf.d/banner-builder.conf'
+          SHOP_CONFIG='/etc/nginx/conf.d/storefront-shop.conf'
+          RELAY_CONFIG='/etc/nginx/conf.d/00-mt-panel-cutover-relay.conf'
+          test -f "$MAIN_CONFIG"
+          test -f "$SHOP_CONFIG"
+          test ! -e "$RELAY_CONFIG"
+          test -s "$CUTOVER_DIR/relay.conf"
+
+          MAIN_HEALTH="$(curl -fsS --resolve "mt-panel.sbs:443:$NEW_IP" https://mt-panel.sbs/api/health)"
+          printf '%s\n' "$MAIN_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
+          curl -fsS --resolve "shop.mt-panel.sbs:443:$NEW_IP" https://shop.mt-panel.sbs/ | grep -Fq '<div id="storefront-root"></div>'
+
+          install -m 644 "$CUTOVER_DIR/relay.conf" "$RELAY_CONFIG"
+          if ! nginx -t; then
+            rm -f -- "$RELAY_CONFIG"
+            nginx -t
+            systemctl restart nginx
+            exit 1
+          fi
+          NGINX_CONFIGURATION="$(nginx -T 2>&1)"
+          case "$NGINX_CONFIGURATION" in
+            *'# configuration file /etc/nginx/conf.d/00-mt-panel-cutover-relay.conf:'*) ;;
+            *) echo 'The local relay was not loaded by Nginx.' >&2; exit 1 ;;
+          esac
+          unset NGINX_CONFIGURATION
+          systemctl restart nginx
+          systemctl is-active --quiet nginx
+          sleep 3
+
+          rm -f -- "$CUTOVER_DIR/relay.conf" "$CUTOVER_DIR/forward.sh"
+          rmdir "$CUTOVER_DIR"
+          FORWARD_SCRIPT
+
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            "$OLD_DESTINATION" \
+            "install -d -m 700 '$CUTOVER_DIR'"
+          sshpass -e scp \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            nginx/old-server-local-relay.conf \
+            "$OLD_DESTINATION:$CUTOVER_DIR/relay.conf"
+          sshpass -e scp \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            "$FORWARD_SCRIPT" \
+            "$OLD_DESTINATION:$CUTOVER_DIR/forward.sh"
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            "$OLD_DESTINATION" \
+            "bash '$CUTOVER_DIR/forward.sh' '$CUTOVER_DIR' '${{ github.run_id }}' '$EXPECTED_REVISION' '45.88.191.194'"
+
+          MAIN_FORWARD_READY='false'
+          for attempt in $(seq 1 20); do
+            if FORWARDED_HEALTH="$(curl -fsS --resolve "mt-panel.sbs:443:$OLD_SSH_HOST" https://mt-panel.sbs/api/health 2>/dev/null)" &&
+              printf '%s\n' "$FORWARDED_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""; then
+              MAIN_FORWARD_READY='true'
+              break
+            fi
+            [ "$attempt" -lt 20 ] || break
+            sleep 2
+          done
+          test "$MAIN_FORWARD_READY" = true
+
+          SHOP_FORWARD_READY='false'
+          for attempt in $(seq 1 20); do
+            if curl -fsS --resolve "shop.mt-panel.sbs:443:$OLD_SSH_HOST" https://shop.mt-panel.sbs/ 2>/dev/null |
+              grep -Fq '<div id="storefront-root"></div>'; then
+              SHOP_FORWARD_READY='true'
+              break
+            fi
+            [ "$attempt" -lt 20 ] || break
+            sleep 2
+          done
+          test "$SHOP_FORWARD_READY" = true
+          echo 'complete=true' >> "$GITHUB_OUTPUT"
+
+      - name: Verify the public dev endpoint
+        if: inputs.target == 'dev'
+        shell: bash
+        env:
+          EXPECTED_REVISION: ${{ steps.image.outputs.revision }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            if HEALTH="$(curl -fsS "$TARGET_ORIGIN/api/health" 2>/dev/null)"; then
+              break
+            fi
+            [ "$attempt" -lt 20 ] || exit 1
+            sleep 3
+          done
+          printf '%s\n' "$HEALTH"
+          printf '%s\n' "$HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
+          curl -fsS "$TARGET_ORIGIN/login" | grep -Fq '<div id="root"></div>'
+
+      - name: Restore old production after a failed cutover
+        if: failure() && inputs.target == 'prod' && inputs.confirmation == 'CUTOVER-PROD' && steps.forward.outputs.complete != 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            RUN_ID='${{ github.run_id }}'
+            APP_DIR='${{ secrets.APP_DIR }}'
+            RELAY_CONFIG='/etc/nginx/conf.d/00-mt-panel-cutover-relay.conf'
+            CONFIG_RESTORED='false'
+
+            if [ -f "$RELAY_CONFIG" ]; then
+              grep -Fq 'listen 127.0.0.1:3000;' "$RELAY_CONFIG"
+              grep -Fq 'proxy_pass https://45.88.191.194;' "$RELAY_CONFIG"
+              rm -f -- "$RELAY_CONFIG"
+              CONFIG_RESTORED='true'
+            fi
+            if [ "$CONFIG_RESTORED" = true ]; then
+              nginx -t
+              systemctl restart nginx
+              systemctl is-active --quiet nginx
+            fi
+
+            test -n "$APP_DIR"
+            cd "$APP_DIR"
+            docker compose up -d app
+            for attempt in $(seq 1 40); do
+              if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+                exit 0
+              fi
+              [ "$attempt" -lt 40 ] || exit 1
+              sleep 3
+            done
+
+      - name: Stop new production after a failed cutover
+        if: failure() && inputs.target == 'prod' && inputs.confirmation == 'CUTOVER-PROD' && steps.forward.outputs.complete != 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.TARGET_SSH_HOST }}
+          username: ${{ secrets.TARGET_SSH_USER }}
+          key: ${{ secrets.TARGET_SSH_PRIVATE_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+            export COMPOSE_PROJECT_NAME='mt-panel-prod'
+            export APP_BIND_PORT='3100'
+            cd /opt/mt-workspace/prod
+            docker compose stop app
+
+      - name: Remove sensitive runner files
+        if: always()
+        shell: bash
+        env:
+          EXPORT_DIR: ${{ steps.export.outputs.dir }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EXPORT_DIR:-}" ]; then
+            case "$EXPORT_DIR" in
+              "$RUNNER_TEMP"/mt-panel-migration.*) rm -rf -- "$EXPORT_DIR" ;;
+              *) echo 'Refusing to remove an unexpected export directory.' >&2 ;;
+            esac
+          fi
+          rm -f -- \
+            "$RUNNER_TEMP/mt-panel-target-key" \
+            "$RUNNER_TEMP/mt-panel-known-hosts" \
+            "$RUNNER_TEMP/restore-mt-panel-target.sh" \
+            "$RUNNER_TEMP/forward-old-production.sh"

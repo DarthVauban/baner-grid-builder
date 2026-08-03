@@ -1,0 +1,146 @@
+name: Audit old production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-old-production:
+    runs-on: ubuntu-latest
+    environment: migration
+
+    steps:
+      - name: Inspect the current production deployment
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            APP_DIR='${{ secrets.APP_DIR }}'
+            test -n "$APP_DIR"
+            cd "$APP_DIR"
+            test -f docker-compose.yml
+            test -f .env
+
+            echo "== Host =="
+            hostname
+            uname -srmo
+            df -h / .
+            docker version --format 'Docker server: {{.Server.Version}}'
+            docker compose version
+
+            echo "== Deployment =="
+            printf 'Application directory is available: %s\n' "$(pwd -P)"
+            docker compose config --services
+            docker compose config --volumes
+            docker compose ps
+
+            APP_CONTAINER_ID="$(docker compose ps -q app)"
+            DB_CONTAINER_ID="$(docker compose ps -q db)"
+            test -n "$APP_CONTAINER_ID"
+            test -n "$DB_CONTAINER_ID"
+
+            echo "== Images and mounts =="
+            docker inspect "$APP_CONTAINER_ID" --format 'app image={{.Config.Image}} status={{.State.Status}}'
+            docker inspect "$DB_CONTAINER_ID" --format 'db image={{.Config.Image}} status={{.State.Status}}'
+            docker inspect "$APP_CONTAINER_ID" --format '{{range .Mounts}}app mount: {{.Type}} {{.Name}} -> {{.Destination}}{{println}}{{end}}'
+            docker inspect "$DB_CONTAINER_ID" --format '{{range .Mounts}}db mount: {{.Type}} {{.Name}} -> {{.Destination}}{{println}}{{end}}'
+
+            echo "== PostgreSQL =="
+            docker compose exec -T db sh -lc '
+              pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null
+              printf "database_bytes="
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT pg_database_size(current_database())"
+              printf "public_tables="
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM pg_tables WHERE schemaname = '\''public'\''"
+            '
+
+            echo "== Catalog media =="
+            docker exec "$APP_CONTAINER_ID" sh -lc '
+              for directory in /app/storage/catalog-media /tmp/mt-panel-catalog-media; do
+                if [ -d "$directory" ]; then
+                  printf "media_directory=%s\n" "$directory"
+                  du -sk "$directory"
+                  printf "media_files="
+                  find "$directory" -type f | wc -l
+                fi
+              done
+            '
+
+            echo "== Environment keys (values are not printed) =="
+            sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env | sort -u
+
+            echo "== TLS certificates (private keys are not printed) =="
+            if command -v certbot >/dev/null 2>&1; then
+              certbot certificates
+            fi
+            if command -v openssl >/dev/null 2>&1 && [ -d /etc/letsencrypt/live ]; then
+              find /etc/letsencrypt/live -mindepth 2 -maxdepth 2 -name fullchain.pem -type l -print0 |
+                while IFS= read -r -d '' certificate; do
+                  printf 'certificate_path=%s\n' "$certificate"
+                  openssl x509 -in "$certificate" -noout -subject -issuer -dates -ext subjectAltName
+                done
+            fi
+
+            echo "== Active mt-panel Nginx configuration =="
+            for directory in /etc/nginx/sites-enabled /etc/nginx/conf.d; do
+              [ -d "$directory" ] || continue
+              grep -R -l -E 'server_name[[:space:]].*mt-panel\.sbs' "$directory" 2>/dev/null |
+                while IFS= read -r configuration; do
+                  printf 'nginx_configuration=%s\n' "$configuration"
+                  sed -n '1,260p' "$configuration"
+                done
+            done
+
+            echo "== Recent Nginx upstream errors =="
+            if [ -r /var/log/nginx/error.log ]; then
+              tail -n 300 /var/log/nginx/error.log |
+                grep -E '45\.88\.191\.194|upstream|SSL' |
+                tail -n 100 || true
+            fi
+            if [ -d /var/log/nginx ]; then
+              find /var/log/nginx -maxdepth 1 -type f -print0 |
+                while IFS= read -r -d '' log_file; do
+                  matches="$(grep -E '45\.88\.191\.194|upstream|SSL|certificate' "$log_file" | tail -n 100 || true)"
+                  if [ -n "$matches" ]; then
+                    printf 'nginx_log=%s\n' "$log_file"
+                    printf '%s\n' "$matches"
+                  fi
+                done
+            fi
+            if command -v journalctl >/dev/null 2>&1; then
+              journalctl -u nginx --since '45 minutes ago' --no-pager |
+                grep -E '45\.88\.191\.194|upstream|SSL|certificate' |
+                tail -n 100 || true
+            fi
+            echo "== Configured Nginx log destinations =="
+            nginx -T 2>&1 | grep -E '^[[:space:]]*(error_log|access_log)[[:space:]]' || true
+
+            echo "== Nginx include order =="
+            nginx -T 2>&1 |
+              grep -E '^# configuration file /etc/nginx/(conf\.d|sites-enabled)/|include[[:space:]].*(conf\.d|sites-enabled)' || true
+            for configuration in \
+              /etc/nginx/conf.d/banner-builder.conf \
+              /etc/nginx/conf.d/storefront-shop.conf; do
+              if [ -e "$configuration" ]; then
+                printf 'configuration_path=%s resolved_path=%s\n' \
+                  "$configuration" "$(readlink -f "$configuration")"
+              fi
+            done
+
+            echo "== Recently modified Nginx error logs =="
+            for root in /var/log/nginx /var/www /var/www/httpd-logs; do
+              [ -d "$root" ] || continue
+              find "$root" -maxdepth 6 -type f -name '*error*.log' -mmin -90 -print0 2>/dev/null |
+                while IFS= read -r -d '' log_file; do
+                  printf 'recent_error_log=%s\n' "$log_file"
+                  tail -n 120 "$log_file" |
+                    grep -E '45\.88\.191\.194|upstream|SSL|certificate|connect\(\)|502' |
+                    tail -n 100 || true
+                done
+            done

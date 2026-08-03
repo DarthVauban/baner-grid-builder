@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main, dev]
+  workflow_dispatch:
 
 concurrency:
   group: mt-panel-${{ github.ref_name }}
@@ -137,7 +138,6 @@ jobs:
             retry 5 10 docker pull "$IMAGE"
             EXPECTED_IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
             docker compose config --quiet
-
             MEDIA_BACKUP="$(mktemp -d)"
             deployment_cleanup() {
               status="$1"
@@ -206,7 +206,6 @@ jobs:
             test "$RUNNING_IMAGE_ID" = "$EXPECTED_IMAGE_ID"
             RUNNING_REVISION="$(docker inspect "$CONTAINER_ID" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
             test "$RUNNING_REVISION" = "${{ github.sha }}"
-
             HEALTH="$(curl -fsS "http://127.0.0.1:$APP_PORT/api/health")"
             echo "$HEALTH"
             grep -Fq '"buildSha":"${{ github.sha }}"' <<< "$HEALTH"
