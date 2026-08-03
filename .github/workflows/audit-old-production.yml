@@ -96,3 +96,10 @@ jobs:
                   sed -n '1,260p' "$configuration"
                 done
             done
+
+            echo "== Recent Nginx upstream errors =="
+            if [ -r /var/log/nginx/error.log ]; then
+              tail -n 300 /var/log/nginx/error.log |
+                grep -E '45\.88\.191\.194|upstream|SSL' |
+                tail -n 100 || true
+            fi
