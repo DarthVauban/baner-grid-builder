@@ -44,7 +44,7 @@ test('admin can build, preview, save and export a blog article', async ({ page }
   await page.getByRole('textbox', { name: 'Опис та інструкції' }).fill('Editor end-to-end description.');
   await page.getByRole('button', { name: 'Створити картку' }).click();
 
-  await page.getByRole('link', { name: 'Стаття' }).click();
+  await page.locator('.publication-card').filter({ hasText: 'E2E blog editor article' }).getByRole('link', { name: 'Стаття' }).click();
   await expect(page.getByRole('heading', { name: 'E2E blog editor article' })).toBeVisible();
   await expect(page.getByTitle('Попередній перегляд статті')).toBeVisible();
 

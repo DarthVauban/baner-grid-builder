@@ -71,4 +71,7 @@ test('uploaded image is converted to WebP and inserted into the hero field', asy
   expect(storedImage.headers()['content-type']).toContain('image/webp');
 
   await page.request.delete(`/api/media/${feed.items[0].id}`);
+  await page.request.patch(`/api/publications/${publication.id}/status`, {
+    data: { status: 'cancelled', publicationUrl: '' }
+  });
 });
