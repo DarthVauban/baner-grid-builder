@@ -158,13 +158,22 @@ jobs:
           if [ "$MIGRATION_TARGET" = prod ]; then
             "${OLD_SSH[@]}" "cat /etc/letsencrypt/live/mt-panel.sbs/fullchain.pem" > "$EXPORT_DIR/fullchain.pem"
             "${OLD_SSH[@]}" "cat /etc/letsencrypt/live/mt-panel.sbs/privkey.pem" > "$EXPORT_DIR/privkey.pem"
+            "${OLD_SSH[@]}" "cat /etc/letsencrypt/live/shop.mt-panel.sbs/fullchain.pem" > "$EXPORT_DIR/shop-fullchain.pem"
+            "${OLD_SSH[@]}" "cat /etc/letsencrypt/live/shop.mt-panel.sbs/privkey.pem" > "$EXPORT_DIR/shop-privkey.pem"
             test -s "$EXPORT_DIR/fullchain.pem"
             test -s "$EXPORT_DIR/privkey.pem"
+            test -s "$EXPORT_DIR/shop-fullchain.pem"
+            test -s "$EXPORT_DIR/shop-privkey.pem"
             chmod 600 "$EXPORT_DIR/privkey.pem"
+            chmod 600 "$EXPORT_DIR/shop-privkey.pem"
             openssl x509 -in "$EXPORT_DIR/fullchain.pem" -noout -checkhost mt-panel.sbs
+            openssl x509 -in "$EXPORT_DIR/shop-fullchain.pem" -noout -checkhost shop.mt-panel.sbs
             CERTIFICATE_KEY_HASH="$(openssl x509 -in "$EXPORT_DIR/fullchain.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d ' ' -f 1)"
             PRIVATE_KEY_HASH="$(openssl pkey -in "$EXPORT_DIR/privkey.pem" -pubout -outform DER | sha256sum | cut -d ' ' -f 1)"
             test "$CERTIFICATE_KEY_HASH" = "$PRIVATE_KEY_HASH"
+            SHOP_CERTIFICATE_KEY_HASH="$(openssl x509 -in "$EXPORT_DIR/shop-fullchain.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d ' ' -f 1)"
+            SHOP_PRIVATE_KEY_HASH="$(openssl pkey -in "$EXPORT_DIR/shop-privkey.pem" -pubout -outform DER | sha256sum | cut -d ' ' -f 1)"
+            test "$SHOP_CERTIFICATE_KEY_HASH" = "$SHOP_PRIVATE_KEY_HASH"
           fi
 
           cp "$EXPORT_DIR/production.env" "$EXPORT_DIR/target.env"
@@ -231,7 +240,12 @@ jobs:
             docker-compose.yml
           )
           if [ "$MIGRATION_TARGET" = prod ]; then
-            UPLOAD_FILES+=("$EXPORT_DIR/fullchain.pem" "$EXPORT_DIR/privkey.pem")
+            UPLOAD_FILES+=(
+              "$EXPORT_DIR/fullchain.pem"
+              "$EXPORT_DIR/privkey.pem"
+              "$EXPORT_DIR/shop-fullchain.pem"
+              "$EXPORT_DIR/shop-privkey.pem"
+            )
           fi
           "${TARGET_SCP[@]}" "${UPLOAD_FILES[@]}" "$TARGET_DESTINATION:$MIGRATION_DIR/"
           echo "dir=$MIGRATION_DIR" >> "$GITHUB_OUTPUT"
@@ -283,6 +297,8 @@ jobs:
           if [ "$TARGET_PROJECT" = mt-panel-prod ]; then
             test -s "$MIGRATION_DIR/fullchain.pem"
             test -s "$MIGRATION_DIR/privkey.pem"
+            test -s "$MIGRATION_DIR/shop-fullchain.pem"
+            test -s "$MIGRATION_DIR/shop-privkey.pem"
           fi
 
           cd "$TARGET_DIR"
@@ -332,11 +348,18 @@ jobs:
             CERTIFICATE_KEY_HASH="$(openssl x509 -in "$MIGRATION_DIR/fullchain.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d ' ' -f 1)"
             PRIVATE_KEY_HASH="$(openssl pkey -in "$MIGRATION_DIR/privkey.pem" -pubout -outform DER | sha256sum | cut -d ' ' -f 1)"
             test "$CERTIFICATE_KEY_HASH" = "$PRIVATE_KEY_HASH"
+            SHOP_CERTIFICATE_KEY_HASH="$(openssl x509 -in "$MIGRATION_DIR/shop-fullchain.pem" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d ' ' -f 1)"
+            SHOP_PRIVATE_KEY_HASH="$(openssl pkey -in "$MIGRATION_DIR/shop-privkey.pem" -pubout -outform DER | sha256sum | cut -d ' ' -f 1)"
+            test "$SHOP_CERTIFICATE_KEY_HASH" = "$SHOP_PRIVATE_KEY_HASH"
             install -d -m 700 "$TARGET_DIR/tls"
             install -m 644 "$MIGRATION_DIR/fullchain.pem" "$TARGET_DIR/tls/fullchain.pem.next"
             install -m 600 "$MIGRATION_DIR/privkey.pem" "$TARGET_DIR/tls/privkey.pem.next"
+            install -m 644 "$MIGRATION_DIR/shop-fullchain.pem" "$TARGET_DIR/tls/shop-fullchain.pem.next"
+            install -m 600 "$MIGRATION_DIR/shop-privkey.pem" "$TARGET_DIR/tls/shop-privkey.pem.next"
             mv "$TARGET_DIR/tls/fullchain.pem.next" "$TARGET_DIR/tls/fullchain.pem"
             mv "$TARGET_DIR/tls/privkey.pem.next" "$TARGET_DIR/tls/privkey.pem"
+            mv "$TARGET_DIR/tls/shop-fullchain.pem.next" "$TARGET_DIR/tls/shop-fullchain.pem"
+            mv "$TARGET_DIR/tls/shop-privkey.pem.next" "$TARGET_DIR/tls/shop-privkey.pem"
           fi
 
           TABLE_COUNT="$(docker compose exec -T db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM pg_tables WHERE schemaname = '\''public'\''"')"
@@ -368,6 +391,8 @@ jobs:
             "$MIGRATION_DIR/catalog-media.tar" \
             "$MIGRATION_DIR/fullchain.pem" \
             "$MIGRATION_DIR/privkey.pem" \
+            "$MIGRATION_DIR/shop-fullchain.pem" \
+            "$MIGRATION_DIR/shop-privkey.pem" \
             "$MIGRATION_DIR/docker-compose.yml" \
             "$MIGRATION_DIR/restore.sh"
           rmdir "$MIGRATION_DIR"
