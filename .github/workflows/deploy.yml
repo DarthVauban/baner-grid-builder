@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - .github/workflows/deploy.yml
       - .github/workflows/audit-old-production.yml
+      - .github/workflows/migrate-old-production-to-dev.yml
 
 jobs:
   build-and-push:
