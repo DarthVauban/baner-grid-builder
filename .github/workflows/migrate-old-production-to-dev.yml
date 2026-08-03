@@ -476,12 +476,12 @@ jobs:
 
           MAIN_CONFIG='/etc/nginx/conf.d/banner-builder.conf'
           SHOP_CONFIG='/etc/nginx/conf.d/storefront-shop.conf'
-          MAIN_BACKUP="${MAIN_CONFIG}.pre-mt-cutover-${RUN_ID}"
-          SHOP_BACKUP="${SHOP_CONFIG}.pre-mt-cutover-${RUN_ID}"
+          BACKUP_DIR="/root/mt-panel-cutover-backups/$RUN_ID"
+          MAIN_BACKUP="$BACKUP_DIR/banner-builder.conf"
+          SHOP_BACKUP="$BACKUP_DIR/storefront-shop.conf"
           test -f "$MAIN_CONFIG"
           test -f "$SHOP_CONFIG"
-          test ! -e "$MAIN_BACKUP"
-          test ! -e "$SHOP_BACKUP"
+          test ! -e "$BACKUP_DIR"
           test -s "$CUTOVER_DIR/mt-panel.conf"
           test -s "$CUTOVER_DIR/shop.conf"
 
@@ -489,6 +489,7 @@ jobs:
           printf '%s\n' "$MAIN_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
           curl -fsS --resolve "shop.mt-panel.sbs:443:$NEW_IP" https://shop.mt-panel.sbs/ | grep -Fq '<div id="storefront-root"></div>'
 
+          install -d -m 700 "$BACKUP_DIR"
           cp -a "$MAIN_CONFIG" "$MAIN_BACKUP"
           cp -a "$SHOP_CONFIG" "$SHOP_BACKUP"
           install -m 644 "$CUTOVER_DIR/mt-panel.conf" "$MAIN_CONFIG"
@@ -501,6 +502,7 @@ jobs:
             exit 1
           fi
           systemctl reload nginx
+          sleep 3
 
           rm -f -- "$CUTOVER_DIR/mt-panel.conf" "$CUTOVER_DIR/shop.conf" "$CUTOVER_DIR/forward.sh"
           rmdir "$CUTOVER_DIR"
@@ -537,9 +539,29 @@ jobs:
             "$OLD_DESTINATION" \
             "bash '$CUTOVER_DIR/forward.sh' '$CUTOVER_DIR' '${{ github.run_id }}' '$EXPECTED_REVISION' '45.88.191.194'"
 
-          FORWARDED_HEALTH="$(curl -fsS --resolve "mt-panel.sbs:443:$OLD_SSH_HOST" https://mt-panel.sbs/api/health)"
-          printf '%s\n' "$FORWARDED_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
-          curl -fsS --resolve "shop.mt-panel.sbs:443:$OLD_SSH_HOST" https://shop.mt-panel.sbs/ | grep -Fq '<div id="storefront-root"></div>'
+          MAIN_FORWARD_READY='false'
+          for attempt in $(seq 1 20); do
+            if FORWARDED_HEALTH="$(curl -fsS --resolve "mt-panel.sbs:443:$OLD_SSH_HOST" https://mt-panel.sbs/api/health 2>/dev/null)" &&
+              printf '%s\n' "$FORWARDED_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""; then
+              MAIN_FORWARD_READY='true'
+              break
+            fi
+            [ "$attempt" -lt 20 ] || break
+            sleep 2
+          done
+          test "$MAIN_FORWARD_READY" = true
+
+          SHOP_FORWARD_READY='false'
+          for attempt in $(seq 1 20); do
+            if curl -fsS --resolve "shop.mt-panel.sbs:443:$OLD_SSH_HOST" https://shop.mt-panel.sbs/ 2>/dev/null |
+              grep -Fq '<div id="storefront-root"></div>'; then
+              SHOP_FORWARD_READY='true'
+              break
+            fi
+            [ "$attempt" -lt 20 ] || break
+            sleep 2
+          done
+          test "$SHOP_FORWARD_READY" = true
           echo 'complete=true' >> "$GITHUB_OUTPUT"
 
       - name: Verify the public dev endpoint
@@ -574,8 +596,9 @@ jobs:
             APP_DIR='${{ secrets.APP_DIR }}'
             MAIN_CONFIG='/etc/nginx/conf.d/banner-builder.conf'
             SHOP_CONFIG='/etc/nginx/conf.d/storefront-shop.conf'
-            MAIN_BACKUP="${MAIN_CONFIG}.pre-mt-cutover-${RUN_ID}"
-            SHOP_BACKUP="${SHOP_CONFIG}.pre-mt-cutover-${RUN_ID}"
+            BACKUP_DIR="/root/mt-panel-cutover-backups/$RUN_ID"
+            MAIN_BACKUP="$BACKUP_DIR/banner-builder.conf"
+            SHOP_BACKUP="$BACKUP_DIR/storefront-shop.conf"
             CONFIG_RESTORED='false'
 
             if [ -f "$MAIN_BACKUP" ]; then
