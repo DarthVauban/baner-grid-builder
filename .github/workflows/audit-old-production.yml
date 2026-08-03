@@ -118,3 +118,17 @@ jobs:
                 grep -E '45\.88\.191\.194|upstream|SSL|certificate' |
                 tail -n 100 || true
             fi
+            echo "== Configured Nginx log destinations =="
+            nginx -T 2>&1 | grep -E '^[[:space:]]*(error_log|access_log)[[:space:]]' || true
+
+            echo "== Recently modified Nginx error logs =="
+            for root in /var/log/nginx /var/www /var/www/httpd-logs; do
+              [ -d "$root" ] || continue
+              find "$root" -maxdepth 6 -type f -name '*error*.log' -mmin -90 -print0 2>/dev/null |
+                while IFS= read -r -d '' log_file; do
+                  printf 'recent_error_log=%s\n' "$log_file"
+                  tail -n 120 "$log_file" |
+                    grep -E '45\.88\.191\.194|upstream|SSL|certificate|connect\(\)|502' |
+                    tail -n 100 || true
+                done
+            done
