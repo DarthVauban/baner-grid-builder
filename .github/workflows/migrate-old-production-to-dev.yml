@@ -12,7 +12,7 @@ on:
           - dev
           - prod
       confirmation:
-        description: Type COPY-TO-DEV for dev or PREPARE-PROD for the stopped production copy
+        description: Type COPY-TO-DEV, PREPARE-PROD, or CUTOVER-PROD
         required: true
         type: string
 
@@ -21,7 +21,7 @@ permissions:
   packages: write
 
 jobs:
-  migrate-to-dev:
+  migrate-snapshot:
     runs-on: ubuntu-latest
     environment: migration
     env:
@@ -50,6 +50,7 @@ jobs:
               TARGET_ORIGIN='https://dev.mt-panel.sbs'
               TARGET_COOKIE_NAME='mt_session_dev'
               START_APP='true'
+              STOP_SOURCE='false'
               ;;
             prod:PREPARE-PROD)
               TARGET_DIR='/opt/mt-workspace/prod'
@@ -58,6 +59,16 @@ jobs:
               TARGET_ORIGIN='https://mt-panel.sbs'
               TARGET_COOKIE_NAME='mt_session'
               START_APP='false'
+              STOP_SOURCE='false'
+              ;;
+            prod:CUTOVER-PROD)
+              TARGET_DIR='/opt/mt-workspace/prod'
+              TARGET_PROJECT='mt-panel-prod'
+              TARGET_PORT='3100'
+              TARGET_ORIGIN='https://mt-panel.sbs'
+              TARGET_COOKIE_NAME='mt_session'
+              START_APP='true'
+              STOP_SOURCE='true'
               ;;
             *)
               echo 'Migration cancelled: target and confirmation do not match.' >&2
@@ -71,6 +82,7 @@ jobs:
             echo "TARGET_ORIGIN=$TARGET_ORIGIN"
             echo "TARGET_COOKIE_NAME=$TARGET_COOKIE_NAME"
             echo "START_APP=$START_APP"
+            echo "STOP_SOURCE=$STOP_SOURCE"
           } >> "$GITHUB_ENV"
           for name in OLD_SSH_HOST OLD_SSH_USER OLD_SSH_PASSWORD OLD_APP_DIR TARGET_SSH_HOST TARGET_SSH_USER TARGET_SSH_PRIVATE_KEY; do
             test -n "${!name:-}" || {
@@ -79,10 +91,10 @@ jobs:
             }
           done
 
-      - name: Check out the dev deployment revision
+      - name: Check out the target deployment revision
         uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: ${{ inputs.target == 'prod' && 'main' || 'dev' }}
 
       - name: Resolve immutable image reference
         id: image
@@ -100,7 +112,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build the dev image
+      - name: Build the target image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -124,7 +136,25 @@ jobs:
           ssh-keygen -y -f "$RUNNER_TEMP/mt-panel-target-key" >/dev/null
           : > "$RUNNER_TEMP/mt-panel-known-hosts"
 
-      - name: Export production and prepare the dev snapshot
+      - name: Stop old production writes for final cutover
+        if: inputs.target == 'prod' && inputs.confirmation == 'CUTOVER-PROD'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP_DIR='${{ secrets.APP_DIR }}'
+            test -n "$APP_DIR"
+            cd "$APP_DIR"
+            test -f docker-compose.yml
+            docker compose stop app
+            test -z "$(docker compose ps -q app)"
+            docker compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+      - name: Export production and prepare the target snapshot
         id: export
         shell: bash
         env:
@@ -147,7 +177,7 @@ jobs:
 
           "${OLD_SSH[@]}" "cd $OLD_APP_DIR_QUOTED && cat .env" > "$EXPORT_DIR/production.env"
           "${OLD_SSH[@]}" "cd $OLD_APP_DIR_QUOTED && docker compose exec -T db sh -lc 'pg_dump -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" --format=custom'" > "$EXPORT_DIR/production.dump"
-          "${OLD_SSH[@]}" "cd $OLD_APP_DIR_QUOTED && APP_CONTAINER_ID=\$(docker compose ps -q app) && test -n \"\$APP_CONTAINER_ID\" && docker exec \"\$APP_CONTAINER_ID\" tar -C /app/storage/catalog-media -cf - ." > "$EXPORT_DIR/catalog-media.tar"
+          "${OLD_SSH[@]}" "cd $OLD_APP_DIR_QUOTED && APP_CONTAINER_ID=\$(docker compose ps -aq app) && test -n \"\$APP_CONTAINER_ID\" && docker cp \"\$APP_CONTAINER_ID:/app/storage/catalog-media/.\" -" > "$EXPORT_DIR/catalog-media.tar"
 
           test -s "$EXPORT_DIR/production.env"
           test -s "$EXPORT_DIR/production.dump"
@@ -284,6 +314,7 @@ jobs:
           case "$TARGET_DIR:$TARGET_PROJECT:$TARGET_PORT:$START_APP" in
             /opt/mt-workspace/dev:mt-panel-dev:3101:true) ;;
             /opt/mt-workspace/prod:mt-panel-prod:3100:false) ;;
+            /opt/mt-workspace/prod:mt-panel-prod:3100:true) ;;
             *) echo 'Unsafe target configuration.' >&2; exit 1 ;;
           esac
           case "$MIGRATION_DIR" in
@@ -413,6 +444,104 @@ jobs:
             "$TARGET_SSH_USER@$TARGET_SSH_HOST" \
             "bash '$MIGRATION_DIR/restore.sh' '$TARGET_DIR' '$MIGRATION_DIR' '$TARGET_IMAGE' '$TARGET_PROJECT' '$TARGET_PORT' '$EXPECTED_REVISION' '$START_APP'"
 
+      - name: Forward the old domains to the new production
+        id: forward
+        if: inputs.target == 'prod' && inputs.confirmation == 'CUTOVER-PROD'
+        shell: bash
+        env:
+          EXPECTED_REVISION: ${{ steps.image.outputs.revision }}
+        run: |
+          set -euo pipefail
+          export SSHPASS="$OLD_SSH_PASSWORD"
+          OLD_DESTINATION="$OLD_SSH_USER@$OLD_SSH_HOST"
+          CUTOVER_DIR="/tmp/mt-panel-cutover-${{ github.run_id }}"
+          FORWARD_SCRIPT="$RUNNER_TEMP/forward-old-production.sh"
+
+          cat > "$FORWARD_SCRIPT" <<'FORWARD_SCRIPT'
+          set -euo pipefail
+          CUTOVER_DIR="$1"
+          RUN_ID="$2"
+          EXPECTED_REVISION="$3"
+          NEW_IP="$4"
+
+          case "$RUN_ID" in
+            ''|*[!0-9]*) echo 'Invalid workflow run identifier.' >&2; exit 1 ;;
+          esac
+          test "$CUTOVER_DIR" = "/tmp/mt-panel-cutover-$RUN_ID"
+          test "$NEW_IP" = '45.88.191.194'
+          case "$EXPECTED_REVISION" in
+            ''|*[!0-9a-f]*) echo 'Invalid deployment revision.' >&2; exit 1 ;;
+          esac
+          test "${#EXPECTED_REVISION}" -eq 40
+
+          MAIN_CONFIG='/etc/nginx/conf.d/banner-builder.conf'
+          SHOP_CONFIG='/etc/nginx/conf.d/storefront-shop.conf'
+          MAIN_BACKUP="${MAIN_CONFIG}.pre-mt-cutover-${RUN_ID}"
+          SHOP_BACKUP="${SHOP_CONFIG}.pre-mt-cutover-${RUN_ID}"
+          test -f "$MAIN_CONFIG"
+          test -f "$SHOP_CONFIG"
+          test ! -e "$MAIN_BACKUP"
+          test ! -e "$SHOP_BACKUP"
+          test -s "$CUTOVER_DIR/mt-panel.conf"
+          test -s "$CUTOVER_DIR/shop.conf"
+
+          MAIN_HEALTH="$(curl -fsS --resolve "mt-panel.sbs:443:$NEW_IP" https://mt-panel.sbs/api/health)"
+          printf '%s\n' "$MAIN_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
+          curl -fsS --resolve "shop.mt-panel.sbs:443:$NEW_IP" https://shop.mt-panel.sbs/ | grep -Fq '<div id="storefront-root"></div>'
+
+          cp -a "$MAIN_CONFIG" "$MAIN_BACKUP"
+          cp -a "$SHOP_CONFIG" "$SHOP_BACKUP"
+          install -m 644 "$CUTOVER_DIR/mt-panel.conf" "$MAIN_CONFIG"
+          install -m 644 "$CUTOVER_DIR/shop.conf" "$SHOP_CONFIG"
+          if ! nginx -t; then
+            cp -a "$MAIN_BACKUP" "$MAIN_CONFIG"
+            cp -a "$SHOP_BACKUP" "$SHOP_CONFIG"
+            nginx -t
+            systemctl reload nginx
+            exit 1
+          fi
+          systemctl reload nginx
+
+          FORWARDED_HEALTH="$(curl -fsS --resolve mt-panel.sbs:443:127.0.0.1 https://mt-panel.sbs/api/health)"
+          printf '%s\n' "$FORWARDED_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
+          curl -fsS --resolve shop.mt-panel.sbs:443:127.0.0.1 https://shop.mt-panel.sbs/ | grep -Fq '<div id="storefront-root"></div>'
+
+          rm -f -- "$CUTOVER_DIR/mt-panel.conf" "$CUTOVER_DIR/shop.conf" "$CUTOVER_DIR/forward.sh"
+          rmdir "$CUTOVER_DIR"
+          FORWARD_SCRIPT
+
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            "$OLD_DESTINATION" \
+            "install -d -m 700 '$CUTOVER_DIR'"
+          sshpass -e scp \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            nginx/old-server-mt-panel-forward.conf \
+            "$OLD_DESTINATION:$CUTOVER_DIR/mt-panel.conf"
+          sshpass -e scp \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            nginx/old-server-shop-forward.conf \
+            "$OLD_DESTINATION:$CUTOVER_DIR/shop.conf"
+          sshpass -e scp \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            "$FORWARD_SCRIPT" \
+            "$OLD_DESTINATION:$CUTOVER_DIR/forward.sh"
+          sshpass -e ssh \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
+            -o ConnectTimeout=20 \
+            "$OLD_DESTINATION" \
+            "bash '$CUTOVER_DIR/forward.sh' '$CUTOVER_DIR' '${{ github.run_id }}' '$EXPECTED_REVISION' '45.88.191.194'"
+          echo 'complete=true' >> "$GITHUB_OUTPUT"
+
       - name: Verify the public dev endpoint
         if: inputs.target == 'dev'
         shell: bash
@@ -431,6 +560,65 @@ jobs:
           printf '%s\n' "$HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
           curl -fsS "$TARGET_ORIGIN/login" | grep -Fq '<div id="root"></div>'
 
+      - name: Restore old production after a failed cutover
+        if: failure() && inputs.target == 'prod' && inputs.confirmation == 'CUTOVER-PROD' && steps.forward.outputs.complete != 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            RUN_ID='${{ github.run_id }}'
+            APP_DIR='${{ secrets.APP_DIR }}'
+            MAIN_CONFIG='/etc/nginx/conf.d/banner-builder.conf'
+            SHOP_CONFIG='/etc/nginx/conf.d/storefront-shop.conf'
+            MAIN_BACKUP="${MAIN_CONFIG}.pre-mt-cutover-${RUN_ID}"
+            SHOP_BACKUP="${SHOP_CONFIG}.pre-mt-cutover-${RUN_ID}"
+            CONFIG_RESTORED='false'
+
+            if [ -f "$MAIN_BACKUP" ]; then
+              cp -a "$MAIN_BACKUP" "$MAIN_CONFIG"
+              CONFIG_RESTORED='true'
+            fi
+            if [ -f "$SHOP_BACKUP" ]; then
+              cp -a "$SHOP_BACKUP" "$SHOP_CONFIG"
+              CONFIG_RESTORED='true'
+            fi
+            if [ "$CONFIG_RESTORED" = true ]; then
+              nginx -t
+              systemctl reload nginx
+            fi
+
+            test -n "$APP_DIR"
+            cd "$APP_DIR"
+            docker compose up -d app
+            for attempt in $(seq 1 40); do
+              if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+                exit 0
+              fi
+              [ "$attempt" -lt 40 ] || exit 1
+              sleep 3
+            done
+
+      - name: Stop new production after a failed cutover
+        if: failure() && inputs.target == 'prod' && inputs.confirmation == 'CUTOVER-PROD' && steps.forward.outputs.complete != 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.TARGET_SSH_HOST }}
+          username: ${{ secrets.TARGET_SSH_USER }}
+          key: ${{ secrets.TARGET_SSH_PRIVATE_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+            export COMPOSE_PROJECT_NAME='mt-panel-prod'
+            export APP_BIND_PORT='3100'
+            cd /opt/mt-workspace/prod
+            docker compose stop app
+
       - name: Remove sensitive runner files
         if: always()
         shell: bash
@@ -447,4 +635,5 @@ jobs:
           rm -f -- \
             "$RUNNER_TEMP/mt-panel-target-key" \
             "$RUNNER_TEMP/mt-panel-known-hosts" \
-            "$RUNNER_TEMP/restore-mt-panel-target.sh"
+            "$RUNNER_TEMP/restore-mt-panel-target.sh" \
+            "$RUNNER_TEMP/forward-old-production.sh"
