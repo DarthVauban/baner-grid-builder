@@ -1,5 +1,6 @@
 export interface MediaAsset {
   id: string;
+  folderId: string | null;
   name: string;
   url: string;
   mimeType: 'image/webp';
@@ -13,9 +14,23 @@ export interface MediaAsset {
   updatedAt: string;
 }
 
+export interface MediaFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdBy: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MediaAssetFeed {
   items: MediaAsset[];
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface MediaFolderFeed {
+  items: MediaFolder[];
+  breadcrumbs: MediaFolder[];
 }

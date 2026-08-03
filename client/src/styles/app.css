@@ -654,6 +654,7 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .modal__header .icon-button { font-size: 25px; }
 .modal__footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 18px; border-top: 1px solid var(--line); }
 .confirm-dialog { width: min(100%, 460px); }
+.modal-backdrop.confirm-dialog-backdrop { z-index: 1000; }
 .confirm-dialog__content { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 13px; padding: 22px 26px; }
 .confirm-dialog__mark { width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; border-radius: 13px; color: var(--brand); background: var(--brand-soft); }
 .confirm-dialog--danger .confirm-dialog__mark { color: #b5364e; background: #fff0f3; }

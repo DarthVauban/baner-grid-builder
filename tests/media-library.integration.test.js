@@ -76,6 +76,66 @@ test('media library converts, lists, updates, serves and deletes uploaded images
   assert.equal(empty.body.data.total, 0);
 });
 
+test('media library creates nested folders and keeps uploads in the selected folder', async () => {
+  const root = await admin.post('/api/media/folders').send({
+    name: 'Блог',
+    parentId: null
+  }).expect(201);
+  assert.equal(root.body.data.name, 'Блог');
+  assert.equal(root.body.data.parentId, null);
+
+  const duplicate = await admin.post('/api/media/folders').send({
+    name: 'блог',
+    parentId: null
+  }).expect(409);
+  assert.equal(duplicate.body.error.code, 'MEDIA_FOLDER_EXISTS');
+
+  const nested = await admin.post('/api/media/folders').send({
+    name: 'Головні банери',
+    parentId: root.body.data.id
+  }).expect(201);
+  assert.equal(nested.body.data.parentId, root.body.data.id);
+
+  const rootFolders = await admin.get('/api/media/folders').expect(200);
+  assert.deepEqual(rootFolders.body.data.breadcrumbs, []);
+  assert.equal(rootFolders.body.data.items.length, 1);
+  assert.equal(rootFolders.body.data.items[0].id, root.body.data.id);
+
+  const nestedFolders = await admin.get(`/api/media/folders?parentId=${root.body.data.id}`).expect(200);
+  assert.deepEqual(nestedFolders.body.data.breadcrumbs.map((folder) => folder.name), ['Блог']);
+  assert.equal(nestedFolders.body.data.items[0].id, nested.body.data.id);
+
+  const png = await sharp({
+    create: { width: 640, height: 360, channels: 3, background: '#ffe101' }
+  }).png().toBuffer();
+  const uploaded = await admin.post(`/api/media?folderId=${nested.body.data.id}`)
+    .set('Content-Type', 'image/png')
+    .set('X-File-Name', encodeURIComponent('folder-banner.png'))
+    .send(png)
+    .expect(201);
+  assert.equal(uploaded.body.data.folderId, nested.body.data.id);
+
+  const rootAssets = await admin.get('/api/media').expect(200);
+  assert.equal(rootAssets.body.data.total, 0);
+  const nestedAssets = await admin.get(`/api/media?folderId=${nested.body.data.id}`).expect(200);
+  assert.equal(nestedAssets.body.data.total, 1);
+  assert.equal(nestedAssets.body.data.items[0].id, uploaded.body.data.id);
+
+  const notEmpty = await admin.delete(`/api/media/folders/${nested.body.data.id}`).expect(409);
+  assert.equal(notEmpty.body.error.code, 'MEDIA_FOLDER_NOT_EMPTY');
+
+  const renamed = await admin.patch(`/api/media/folders/${nested.body.data.id}`).send({
+    name: 'Hero 2026'
+  }).expect(200);
+  assert.equal(renamed.body.data.name, 'Hero 2026');
+
+  await admin.delete(`/api/media/${uploaded.body.data.id}`).expect(204);
+  await admin.delete(`/api/media/folders/${nested.body.data.id}`).expect(204);
+  await admin.delete(`/api/media/folders/${root.body.data.id}`).expect(204);
+  const emptyFolders = await admin.get('/api/media/folders').expect(200);
+  assert.equal(emptyFolders.body.data.items.length, 0);
+});
+
 test('media library rejects invalid image payloads', async () => {
   const response = await admin.post('/api/media')
     .set('Content-Type', 'image/png')

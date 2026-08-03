@@ -39,7 +39,7 @@ import type {
 import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { BlogPostDocument } from '../types/blog-editor';
-import type { MediaAsset, MediaAssetFeed } from '../types/media';
+import type { MediaAsset, MediaAssetFeed, MediaFolder, MediaFolderFeed } from '../types/media';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 import type {
   BackupAdminState,
@@ -186,11 +186,17 @@ export const api = {
       })
   },
   media: {
-    list: (params: { search?: string; page?: number; pageSize?: number } = {}) =>
+    list: (params: { search?: string; folderId?: string; page?: number; pageSize?: number } = {}) =>
       request<MediaAssetFeed>(`/api/media${queryString(params)}`),
-    upload: (file: File, onProgress?: (progress: number) => void) => new Promise<MediaAsset>((resolve, reject) => {
+    folders: (parentId?: string) => request<MediaFolderFeed>(`/api/media/folders${queryString({ parentId })}`),
+    createFolder: (input: { name: string; parentId: string | null }) =>
+      request<MediaFolder>('/api/media/folders', { method: 'POST', body: jsonBody(input) }),
+    updateFolder: (id: string, name: string) =>
+      request<MediaFolder>(`/api/media/folders/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody({ name }) }),
+    removeFolder: (id: string) => request<void>(`/api/media/folders/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    upload: (file: File, onProgress?: (progress: number) => void, folderId?: string) => new Promise<MediaAsset>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/media');
+      xhr.open('POST', `/api/media${queryString({ folderId })}`);
       xhr.withCredentials = true;
       xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
       xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));

@@ -37,6 +37,7 @@ import PhoneOutlined from '@mui/icons-material/PhoneOutlined';
 import FlagOutlined from '@mui/icons-material/FlagOutlined';
 import PublishRounded from '@mui/icons-material/PublishRounded';
 import ImageOutlined from '@mui/icons-material/ImageOutlined';
+import FolderRounded from '@mui/icons-material/FolderRounded';
 import Inventory2Outlined from '@mui/icons-material/Inventory2Outlined';
 import RemoveRounded from '@mui/icons-material/RemoveRounded';
 import SaveRounded from '@mui/icons-material/SaveRounded';
@@ -107,6 +108,7 @@ export type IconName =
   | 'fullscreen'
   | 'fullscreenExit'
   | 'formBuilder'
+  | 'folder'
   | 'home'
   | 'image'
   | 'integrations'
@@ -193,6 +195,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   fullscreen: FullscreenRounded,
   fullscreenExit: FullscreenExitRounded,
   formBuilder: DynamicFormRounded,
+  folder: FolderRounded,
   home: HomeRounded,
   image: ImageOutlined,
   integrations: SettingsInputComponentRounded,

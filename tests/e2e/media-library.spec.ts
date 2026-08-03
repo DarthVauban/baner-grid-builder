@@ -33,6 +33,13 @@ test('uploaded image is converted to WebP and inserted into the hero field', asy
   await page.getByRole('button', { name: 'Завантажити або обрати' }).first().click();
   await expect(page.getByRole('heading', { name: 'Виберіть зображення' })).toBeVisible();
 
+  await page.getByRole('button', { name: 'Нова папка' }).click();
+  await expect(page.getByRole('heading', { name: 'Нова папка' })).toBeVisible();
+  await page.getByLabel('Назва папки').fill('E2E банери');
+  await page.getByRole('button', { name: 'Створити' }).click();
+  await page.locator('.media-folder-card__open').filter({ hasText: 'E2E банери' }).click();
+  await expect(page.getByRole('navigation', { name: 'Шлях у файловому сховищі' })).toContainText('E2E банери');
+
   const png = await sharp({
     create: { width: 640, height: 360, channels: 3, background: '#ffe101' }
   }).png().toBuffer();
@@ -58,10 +65,17 @@ test('uploaded image is converted to WebP and inserted into the hero field', asy
 
   await page.goto('/tools/blog-publications/media');
   await expect(page.getByRole('heading', { name: 'Файлове сховище' })).toBeVisible();
+  await page.locator('.media-folder-card__open').filter({ hasText: 'E2E банери' }).click();
   await expect(page.getByText('e2e-hero.png')).toBeVisible();
   await expect(page.getByText(/640×360 · .* · WebP/)).toBeVisible();
 
-  const feedResponse = await page.request.get('/api/media?search=e2e-hero');
+  const foldersResponse = await page.request.get('/api/media/folders');
+  expect(foldersResponse.ok()).toBe(true);
+  const folderFeed = (await foldersResponse.json()).data as { items: Array<{ id: string; name: string }> };
+  const folder = folderFeed.items.find((item) => item.name === 'E2E банери');
+  expect(folder).toBeTruthy();
+
+  const feedResponse = await page.request.get(`/api/media?folderId=${folder!.id}&search=e2e-hero`);
   expect(feedResponse.ok()).toBe(true);
   const feed = (await feedResponse.json()).data as { items: Array<{ id: string; mimeType: string; url: string }> };
   expect(feed.items).toHaveLength(1);
@@ -70,7 +84,18 @@ test('uploaded image is converted to WebP and inserted into the hero field', asy
   expect(storedImage.ok()).toBe(true);
   expect(storedImage.headers()['content-type']).toContain('image/webp');
 
+  await page.goto(`/tools/blog-publications/${publication.id}/editor`);
+  await page.getByRole('button', { name: 'Завантажити або обрати' }).first().click();
+  await page.locator('.media-folder-card__open').filter({ hasText: 'E2E банери' }).click();
+  await page.getByRole('button', { name: 'Видалити e2e-hero.png' }).click();
+  await expect(page.getByRole('heading', { name: 'Видалити зображення?' })).toBeVisible();
+  const confirmZIndex = await page.locator('.confirm-dialog-backdrop').evaluate((element) => Number(getComputedStyle(element).zIndex));
+  const pickerZIndex = await page.locator('.media-picker-backdrop').evaluate((element) => Number(getComputedStyle(element).zIndex));
+  expect(confirmZIndex).toBeGreaterThan(pickerZIndex);
+  await page.getByRole('button', { name: 'Скасувати' }).click();
+
   await page.request.delete(`/api/media/${feed.items[0].id}`);
+  await page.request.delete(`/api/media/folders/${folder!.id}`);
   await page.request.patch(`/api/publications/${publication.id}/status`, {
     data: { status: 'cancelled', publicationUrl: '' }
   });
