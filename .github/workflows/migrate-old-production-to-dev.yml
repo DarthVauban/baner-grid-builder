@@ -494,13 +494,14 @@ jobs:
           if ! nginx -t; then
             rm -f -- "$MAIN_OVERRIDE" "$SHOP_OVERRIDE"
             nginx -t
-            systemctl reload nginx
+            systemctl restart nginx
             exit 1
           fi
           ACTIVE_ORDER="$(nginx -T 2>&1 | grep '^# configuration file /etc/nginx/conf.d/' | sed -n '1,3p')"
           printf '%s\n' "$ACTIVE_ORDER" | grep -Fq '/00-mt-panel-cutover.conf:'
           printf '%s\n' "$ACTIVE_ORDER" | grep -Fq '/00-shop-mt-panel-cutover.conf:'
-          systemctl reload nginx
+          systemctl restart nginx
+          systemctl is-active --quiet nginx
           sleep 3
 
           rm -f -- "$CUTOVER_DIR/mt-panel.conf" "$CUTOVER_DIR/shop.conf" "$CUTOVER_DIR/forward.sh"
@@ -609,7 +610,8 @@ jobs:
             fi
             if [ "$CONFIG_RESTORED" = true ]; then
               nginx -t
-              systemctl reload nginx
+              systemctl restart nginx
+              systemctl is-active --quiet nginx
             fi
 
             test -n "$APP_DIR"
