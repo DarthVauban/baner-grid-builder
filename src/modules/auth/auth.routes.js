@@ -112,7 +112,7 @@ router.post('/login/2fa', asyncHandler(async (req, res) => {
   let payload;
   try {
     payload = verifyTwoFactorLoginToken(input.challengeToken);
-  } catch (error) {
+  } catch (_error) {
     throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Сесія перевірки 2FA недійсна або завершилась.');
   }
 

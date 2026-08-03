@@ -14,7 +14,6 @@ import {
   catalogConditionOptions,
   catalogPublicationStatusOptions,
   emptyCatalogProductInput,
-  formatCatalogDate,
   productToInput
 } from '../lib/catalog';
 import { convertCatalogImageToWebp, validateCatalogImageFile } from '../lib/catalog-media';

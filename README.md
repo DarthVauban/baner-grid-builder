@@ -10,14 +10,18 @@
 - конструктор сіток банерів із попереднім переглядом та генерацією коду;
 - бібліотеки збережених сіток і банерів;
 - генератор коду для добірки товарів;
-- імпорт, редагування та збереження XLSX-таблиць товарів.
+- імпорт, редагування та збереження XLSX-таблиць товарів;
+- каталог уживаних смартфонів із публічною вітриною, темами та парсером фотографій;
+- конструктор заявок і публічні форми;
+- trade-in, карта магазинів, чат і контент-план;
+- системна діагностика, інтеграції та резервні копії.
 
 ## Технології
 
 - React 19, TypeScript, Vite;
 - React Router і TanStack Query;
 - Express 5, PostgreSQL;
-- Vitest, Testing Library і Node Test Runner.
+- Vitest, Testing Library, Node Test Runner і Playwright.
 
 ## Локальний запуск
 
@@ -44,10 +48,17 @@ npm start
 ## Перевірки
 
 ```bash
-npm run check
-npm test
-npm run build
+npm run verify
 ```
+
+`verify` запускає ESLint, перевіряє TypeScript, серверні й клієнтські тести та production-збірку. Для першого локального запуску browser E2E:
+
+```bash
+npm run test:e2e:install
+npm run test:e2e
+```
+
+E2E використовує ізольовану `pg-mem` базу та не підключається до локальної чи production PostgreSQL. CI автоматично запускає всі перевірки для `dev` і `main`; deployment має власний quality-gate перед складанням Docker-образу.
 
 ## Основні маршрути
 
@@ -56,16 +67,28 @@ npm run build
 - `/tools/banner-grid` — конструктор і бібліотеки банерних сіток;
 - `/tools/product-selection` — генератор добірки товарів;
 - `/tools/product-tables` — таблиці товарів;
+- `/tools/blog-publications` — контент-план;
+- `/tools/applications` — заявки;
+- `/tools/forms` — конструктор публічних форм;
+- `/chat` — особисті й групові чати;
+- `/catalog` — каталог смартфонів, storefront і налаштування;
+- `/trade-in` — огляд і конструктор trade-in;
+- `/tools/store-map` — карта магазинів;
 - `/admin/users` — керування користувачами для адміністратора.
+- `/admin/system`, `/admin/integrations`, `/admin/backups` — системні розділи адміністратора.
 
 ## Структура
 
 ```text
-client/       React-застосунок
-src/          Express API та сервер production-збірки
-migrations/   міграції PostgreSQL
-tests/        інтеграційні тести API
-dist/web/     production-збірка React (генерується)
+client/               React-застосунки й frontend unit-тести
+src/modules/           модулі Express API
+src/migrations/        міграції PostgreSQL
+tests/                 server integration та deployment-тести
+tests/e2e/             Playwright browser smoke-тести
+docs/                  експлуатаційна й архітектурна документація
+dist/web/              production-збірка React (генерується)
 ```
 
 Production-збірка також доступна через `docker compose up --build` після заповнення `.env`.
+
+Детальніше про межі модулів і типовий процес змін: [docs/architecture.md](docs/architecture.md).

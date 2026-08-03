@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
 const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
@@ -13,13 +14,33 @@ test('deployment publishes and pulls the same immutable full-SHA image', () => {
   assert.match(workflow, /REPOSITORY="\$\(echo 'ghcr\.io\/\$\{\{ github\.repository \}\}' \| tr '\[:upper:\]' '\[:lower:\]'\)"/);
   assert.match(workflow, /IMAGE="\$REPOSITORY:sha-\$\{\{ github\.sha \}\}"/);
   assert.match(workflow, /APP_BUILD_SHA=\$\{\{ github\.sha \}\}/);
+  assert.doesNotMatch(workflow, /type=raw,value=latest/);
+});
+
+test('deployment separates development and production by directory, port, project, and environment', () => {
+  assert.match(workflow, /branches: \[main, dev\]/);
+  assert.match(workflow, /environment: \$\{\{ github\.ref_name == 'main' && 'production' \|\| 'development' \}\}/);
+  assert.match(workflow, /APP_DIR: \$\{\{ github\.ref_name == 'main' && '\/opt\/mt-workspace\/prod' \|\| '\/opt\/mt-workspace\/dev' \}\}/);
+  assert.match(workflow, /APP_PORT: \$\{\{ github\.ref_name == 'main' && '3100' \|\| '3101' \}\}/);
+  assert.match(workflow, /COMPOSE_PROJECT: \$\{\{ github\.ref_name == 'main' && 'mt-panel-prod' \|\| 'mt-panel-dev' \}\}/);
+  assert.match(compose, /127\.0\.0\.1:\$\{APP_BIND_PORT:-3000\}:3000/);
+  assert.match(compose, /image: \$\{APP_IMAGE:-ghcr\.io\/darthvauban\/baner-grid-builder:latest\}/);
+});
+
+test('deployment uses a dedicated SSH key and the rootless Docker socket', () => {
+  assert.match(workflow, /username: \$\{\{ secrets\.SSH_USER \}\}/);
+  assert.match(workflow, /key: \$\{\{ secrets\.SSH_PRIVATE_KEY \}\}/);
+  assert.doesNotMatch(workflow, /password: \$\{\{ secrets\.SSH_PASSWORD \}\}/);
+  assert.match(workflow, /XDG_RUNTIME_DIR="\/run\/user\/\$\(id -u\)"/);
+  assert.match(workflow, /DOCKER_HOST="unix:\/\/\$XDG_RUNTIME_DIR\/docker\.sock"/);
+  assert.match(workflow, /test -S "\$XDG_RUNTIME_DIR\/docker\.sock"/);
 });
 
 test('remote deployment fails fast and verifies the running revision', () => {
   assert.match(workflow, /script: \|\r?\n\s+set -euo pipefail/);
   assert.match(workflow, /test "\$RUNNING_IMAGE_ID" = "\$EXPECTED_IMAGE_ID"/);
   assert.match(workflow, /test "\$RUNNING_REVISION" = "\$\{\{ github\.sha \}\}"/);
-  assert.match(workflow, /grep -Fq '\"buildSha\":\"\$\{\{ github\.sha \}\}\"' <<< "\$HEALTH"/);
+  assert.match(workflow, /grep -Fq '"buildSha":"\$\{\{ github\.sha \}\}"' <<< "\$HEALTH"/);
   assert.match(workflow, /grep -Fq 'id="storefront-root"' <<< "\$STOREFRONT"/);
 });
 
@@ -38,12 +59,31 @@ test('remote deployment starts PostgreSQL, waits for readiness, and prints diagn
   assert.match(workflow, /docker compose logs --no-color --tail=120 db app/);
 });
 
-test('remote deployment removes unused tagged images and limits container logs', () => {
-  assert.match(workflow, /docker container prune -f/);
-  assert.match(workflow, /docker image prune -af/);
-  assert.match(workflow, /docker builder prune -af/);
+test('remote deployment only cleans unused Mobile Trend images and limits container logs', () => {
+  assert.doesNotMatch(workflow, /docker container prune/);
+  assert.doesNotMatch(workflow, /docker image prune -af/);
+  assert.doesNotMatch(workflow, /docker builder prune/);
+  assert.match(workflow, /USED_IMAGE_IDS=/);
+  assert.match(workflow, /docker image ls "\$REPOSITORY"/);
+  assert.match(workflow, /docker image prune -f --filter "label=org\.opencontainers\.image\.source=/);
   assert.match(compose, /max-size:\s*"10m"/);
   assert.match(compose, /max-file:\s*"3"/);
+});
+
+test('continuous integration verifies types, server, web and production build', () => {
+  assert.match(ciWorkflow, /pull_request:[\s\S]*branches:\s*\[dev, main\]/);
+  assert.match(ciWorkflow, /push:[\s\S]*branches:\s*\[dev, main\]/);
+  assert.match(ciWorkflow, /npm ci/);
+  assert.match(ciWorkflow, /npm run lint/);
+  assert.match(ciWorkflow, /npm run check/);
+  assert.match(ciWorkflow, /npm run test:server/);
+  assert.match(ciWorkflow, /npm run test:web/);
+  assert.match(ciWorkflow, /npm run build/);
+  assert.match(ciWorkflow, /playwright install --with-deps chromium/);
+  assert.match(ciWorkflow, /npm run test:e2e/);
+  assert.match(workflow, /quality:[\s\S]*npm run verify/);
+  assert.match(workflow, /quality:[\s\S]*npm run test:e2e/);
+  assert.match(workflow, /build-and-push:[\s\S]*needs:\s*quality/);
 });
 
 test('runtime image carries the build revision used by the health check', () => {
@@ -75,7 +115,7 @@ test('reverse proxy accepts Telegram backup restore archives', () => {
 });
 
 test('first persistent-storage deployment migrates media from the legacy container', () => {
-  assert.match(workflow, /uses: appleboy\/scp-action@v1[\s\S]*source: docker-compose\.yml[\s\S]*target: \$\{\{ secrets\.APP_DIR \}\}/);
+  assert.match(workflow, /uses: appleboy\/scp-action@v1[\s\S]*source: docker-compose\.yml[\s\S]*target: \$\{\{ env\.APP_DIR \}\}/);
   assert.match(workflow, /HAS_MEDIA_VOLUME=.*\/app\/storage\/catalog-media/);
   assert.match(workflow, /docker cp "\$OLD_CONTAINER_ID:\/tmp\/mt-panel-catalog-media\/\." "\$MEDIA_BACKUP\/"/);
   assert.match(workflow, /docker cp "\$MEDIA_BACKUP\/\." "\$CONTAINER_ID:\/app\/storage\/catalog-media\/"/);

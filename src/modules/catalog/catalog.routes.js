@@ -1401,41 +1401,6 @@ async function replaceModificationValues(db, parameterId, values) {
   }
 }
 
-async function syncProductModifications(db, productId, groupId, parameterIds, values, actorId) {
-  await db.query('DELETE FROM used_smartphone_product_modification_values WHERE product_id = $1', [productId]);
-  await db.query('DELETE FROM used_smartphone_product_group_items WHERE product_id = $1', [productId]);
-  if (!groupId) return;
-  await db.query(
-    `INSERT INTO used_smartphone_product_group_items (group_id, product_id)
-     VALUES ($1, $2)
-     ON CONFLICT (group_id, product_id) DO NOTHING`,
-    [groupId, productId]
-  );
-  await db.query('DELETE FROM used_smartphone_product_group_parameters WHERE group_id = $1', [groupId]);
-  for (const [index, parameterId] of parameterIds.entries()) {
-    await db.query(
-      `INSERT INTO used_smartphone_product_group_parameters (group_id, parameter_id, sort_order)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (group_id, parameter_id) DO UPDATE SET sort_order = EXCLUDED.sort_order`,
-      [groupId, parameterId, index]
-    );
-    const valueId = values[parameterId];
-    if (!valueId) continue;
-    const valid = await db.query(
-      'SELECT id FROM used_smartphone_modification_values WHERE id = $1 AND parameter_id = $2',
-      [valueId, parameterId]
-    );
-    if (!valid.rows[0]) throw new AppError(422, 'CATALOG_MODIFICATION_VALUE_INVALID', 'Значення модифікації не належить вибраному параметру.');
-    await db.query(
-      `INSERT INTO used_smartphone_product_modification_values (product_id, parameter_id, value_id, updated_by)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (product_id, parameter_id)
-       DO UPDATE SET value_id = EXCLUDED.value_id, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
-      [productId, parameterId, valueId, actorId]
-    );
-  }
-}
-
 async function syncProductGroupModifications(db, groupId, mainProductId, productIds) {
   const uniqueProductIds = [...new Set(productIds)].filter(Boolean);
   if (!groupId) {
@@ -2535,18 +2500,6 @@ router.put('/products/:id/modifications', asyncHandler(async (req, res) => {
            WHERE id = $3`,
           [mainProductId, req.user.id, groupId]
         );
-      }
-    }
-
-    if (false && groupId && input.parameterIds?.length) {
-      const uniqueParameterIds = [...new Set(input.parameterIds)];
-      const placeholders = uniqueParameterIds.map((_, index) => `$${index + 1}`).join(', ');
-      const parameters = await client.query(
-        `SELECT id FROM used_smartphone_modification_parameters WHERE id IN (${placeholders})`,
-        uniqueParameterIds
-      );
-      if (parameters.rows.length !== uniqueParameterIds.length) {
-        throw new AppError(422, 'CATALOG_MODIFICATION_PARAMETER_INVALID', 'Один або кілька параметрів модифікацій не знайдено.');
       }
     }
 

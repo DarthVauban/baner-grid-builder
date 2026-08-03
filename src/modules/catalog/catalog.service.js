@@ -1038,7 +1038,11 @@ export async function loadCatalogImportSchema(db = { query }) {
     version: 2,
     source: importSource,
     clearToken: importClearToken,
-    columns: importCoreColumns.map(({ aliases, ...column }) => column),
+    columns: importCoreColumns.map((column) => {
+      const serialized = { ...column };
+      delete serialized.aliases;
+      return serialized;
+    }),
     templates,
     brands: brandsResult.rows.map((row) => ({
       id: row.id,

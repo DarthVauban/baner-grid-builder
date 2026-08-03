@@ -10,7 +10,6 @@ import { normalizeTradeInConfig } from '../trade-in/trade-in.defaults.js';
 import {
   buildButtonScript,
   buildCompactButtonScript,
-  cleanText,
   ensureSystemFields,
   loadFields,
   loadForm,

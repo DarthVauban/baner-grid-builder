@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [dev]
+    branches: [main, dev]
   workflow_dispatch:
 
 concurrency:
@@ -10,14 +10,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
   build-and-push:
+    needs: quality
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: docker/login-action@v3
         with:
@@ -54,7 +71,7 @@ jobs:
       COMPOSE_PROJECT: ${{ github.ref_name == 'main' && 'mt-panel-prod' || 'mt-panel-dev' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Sync deployment configuration
         uses: appleboy/scp-action@v1
@@ -95,6 +112,7 @@ jobs:
             echo "Deploying $IMAGE to $COMPOSE_PROJECT on 127.0.0.1:$APP_PORT"
             df -h / "$APP_DIR" || true
             docker system df || true
+
             retry() {
               max_attempts="$1"
               delay_seconds="$2"
@@ -111,9 +129,11 @@ jobs:
                 delay_seconds=$((delay_seconds * 2))
               done
             }
+
             login_ghcr() {
               printf '%s\n' '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
             }
+
             retry 4 5 login_ghcr
             retry 5 10 docker pull "$IMAGE"
             EXPECTED_IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
@@ -131,6 +151,7 @@ jobs:
               exit "$status"
             }
             trap 'deployment_cleanup $?' EXIT
+
             MIGRATE_LEGACY_MEDIA=false
             OLD_CONTAINER_ID="$(docker compose ps -q app || true)"
             if [ -n "$OLD_CONTAINER_ID" ]; then
@@ -145,6 +166,7 @@ jobs:
                 fi
               fi
             fi
+
             wait_for_database() {
               DB_CONTAINER_ID="$(docker compose ps -q db)"
               test -n "$DB_CONTAINER_ID" || return 1
@@ -159,6 +181,7 @@ jobs:
               done
               return 1
             }
+
             docker compose up -d --no-build db
             if ! wait_for_database; then
               echo "PostgreSQL did not become healthy. Restarting it once." >&2
@@ -168,6 +191,7 @@ jobs:
             docker compose up -d --no-build --force-recreate app
             docker compose ps app
             sleep 8
+
             CONTAINER_ID="$(docker compose ps -q app)"
             test -n "$CONTAINER_ID"
             MEDIA_MOUNT_TYPE="$(docker inspect "$CONTAINER_ID" --format '{{range .Mounts}}{{if eq .Destination "/app/storage/catalog-media"}}{{.Type}}{{end}}{{end}}')"
@@ -177,6 +201,7 @@ jobs:
               docker cp "$MEDIA_BACKUP/." "$CONTAINER_ID:/app/storage/catalog-media/"
               docker exec -u root "$CONTAINER_ID" chown -R nodeapp:nodeapp /app/storage/catalog-media
             fi
+
             RUNNING_IMAGE_ID="$(docker inspect "$CONTAINER_ID" --format '{{.Image}}')"
             test "$RUNNING_IMAGE_ID" = "$EXPECTED_IMAGE_ID"
             RUNNING_REVISION="$(docker inspect "$CONTAINER_ID" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"

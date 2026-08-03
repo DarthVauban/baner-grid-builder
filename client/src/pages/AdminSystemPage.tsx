@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import type { IconName } from '../components/Icon';
 import { api } from '../lib/api';
-import type { SystemDiagnosticIssue, SystemHealthStatus, SystemMetrics, SystemServiceStatus } from '../types/system';
+import type { SystemDiagnosticIssue, SystemHealthStatus, SystemServiceStatus } from '../types/system';
 
 type HistorySample = {
   sampledAt: string;
