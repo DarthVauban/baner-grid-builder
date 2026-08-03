@@ -76,6 +76,28 @@ test('publication planning, materials and status flow work through REST API', as
   }).expect(200);
   assert.equal(updated.body.data.materials.length, 2);
 
+  const editorDocument = {
+    version: 1,
+    slug: 'first-updated-blog-article',
+    sharePreview: 'Short social preview',
+    hero: {
+      kicker: 'Mobile Trend', title: 'First updated blog article', lead: 'Prepared in the editor.',
+      imageUrl: 'https://example.com/cover.jpg', imageAlt: 'Cover', meta: ['Comparison']
+    },
+    sections: [{
+      id: 'section-intro', title: 'Introduction', tone: 'default',
+      blocks: [
+        { id: 'paragraph-1', type: 'paragraph', text: 'Article body.' },
+        { id: 'faq-1', type: 'faq', items: [{ question: 'A question?', answer: 'An answer.' }] }
+      ]
+    }],
+    customCss: '',
+    customJs: ''
+  };
+  const editor = await creator.put(`/api/publications/${publication.id}/editor`).send({ document: editorDocument }).expect(200);
+  assert.equal(editor.body.data.editorDocument.slug, 'first-updated-blog-article');
+  assert.equal(editor.body.data.editorDocument.sections[0].blocks[1].type, 'faq');
+
   await creator.patch(`/api/publications/${publication.id}/status`).send({ status: 'ready' }).expect(200);
   const published = await assignee.patch(`/api/publications/${publication.id}/status`).send({
     status: 'published', publicationUrl: 'https://example.com/blog/first-article'

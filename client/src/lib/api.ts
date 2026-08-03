@@ -38,6 +38,7 @@ import type {
 } from '../types/workspace';
 import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
+import type { BlogPostDocument } from '../types/blog-editor';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 import type {
   BackupAdminState,
@@ -175,6 +176,9 @@ export const api = {
     createBatch: (items: Array<Pick<PublicationInput, 'title' | 'publishAt' | 'assigneeId'>>) =>
       request<BlogPublication[]>('/api/publications/batch', { method: 'POST', body: jsonBody({ items }) }),
     update: (id: string, input: PublicationInput) => request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    saveEditor: (id: string, document: BlogPostDocument) => request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}/editor`, {
+      method: 'PUT', body: jsonBody({ document })
+    }),
     setStatus: (id: string, status: PublicationStatus, publicationUrl = '') =>
       request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}/status`, {
         method: 'PATCH', body: jsonBody({ status, publicationUrl })

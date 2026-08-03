@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { formatPublicationDate, isPublicationOverdue, materialTypeLabels, publicationStatusLabels } from '../lib/publication';
 import type { BlogPublication } from '../types/publication';
 import { Icon } from './Icon';
@@ -26,7 +27,7 @@ export function PublicationDetailsModal({ publication, onClose, onShare }: { pub
         <section className="task-details-section"><h3>Матеріали <span>{publication.materials.length}</span></h3>{publication.materials.length ? <div className="publication-details-materials">{publication.materials.map((material) => <a href={material.url} target="_blank" rel="noreferrer" key={material.id || material.url}><span><Icon name="openInNew" size={17} /></span><span><strong>{material.label}</strong><small>{materialTypeLabels[material.type]}</small></span><Icon name="arrow" size={16} /></a>)}</div> : <p className="task-details-section__muted">Матеріали ще не додані.</p>}</section>
         {publication.publicationUrl && <a className="task-details-modal__meeting" href={publication.publicationUrl} target="_blank" rel="noreferrer"><Icon name="publication" size={18} /> Відкрити опубліковану статтю <Icon name="openInNew" size={16} /></a>}
       </div>
-      <footer className="task-details-modal__footer"><button className="button button--secondary" type="button" onClick={() => onShare(publication)}><Icon name="share" size={17} /> Поділитися</button><button className="button button--secondary" type="button" onClick={onClose}>Закрити</button></footer>
+      <footer className="task-details-modal__footer"><Link className="button button--primary" to={`/tools/blog-publications/${publication.id}/editor`} onClick={onClose}><Icon name="blogPublications" size={17} /> Відкрити редактор</Link><button className="button button--secondary" type="button" onClick={() => onShare(publication)}><Icon name="share" size={17} /> Поділитися</button><button className="button button--secondary" type="button" onClick={onClose}>Закрити</button></footer>
     </section>
   </div>;
 }

@@ -36,6 +36,38 @@ test('admin can save a banner grid through the browser', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Оновити сітку' })).toBeVisible();
 });
 
+test('admin can build, preview, save and export a blog article', async ({ page }) => {
+  await login(page);
+  await page.goto('/tools/blog-publications');
+  await page.getByRole('button', { name: 'Нова публікація' }).click();
+  await page.getByRole('textbox', { name: 'Робоча назва' }).fill('E2E blog editor article');
+  await page.getByRole('textbox', { name: 'Опис та інструкції' }).fill('Editor end-to-end description.');
+  await page.getByRole('button', { name: 'Створити картку' }).click();
+
+  await page.getByRole('link', { name: 'Стаття' }).click();
+  await expect(page.getByRole('heading', { name: 'E2E blog editor article' })).toBeVisible();
+  await expect(page.getByTitle('Попередній перегляд статті')).toBeVisible();
+
+  await page.getByRole('combobox').nth(1).selectOption('faq');
+  await page.getByRole('button', { name: 'Додати блок' }).click();
+  const preview = page.frameLocator('iframe[title="Попередній перегляд статті"]');
+  const previewFaq = preview.locator('.mt-blog-faq-item');
+  await expect(previewFaq).toHaveAttribute('open', '');
+  await preview.locator('.mt-blog-faq-question').click();
+  await expect(previewFaq).not.toHaveAttribute('open', '');
+
+  await page.getByRole('button', { name: 'Зберегти' }).click();
+  await expect(page.getByText('Чернетку статті збережено.')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('.blog-editor-block > header > span').filter({ hasText: /^FAQ$/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Код', exact: true }).click();
+  const output = page.getByRole('textbox', { name: 'Згенерований код' });
+  expect(await output.inputValue()).toContain('class="mt-blog-post"');
+  expect(await output.inputValue()).toContain("querySelectorAll('a[href^=\"http\"]')");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
 test('critical protected modules render with live API data', async ({ page }) => {
   await login(page);
 

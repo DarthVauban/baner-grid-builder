@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { formatPublicationDate, isPublicationOverdue, materialTypeLabels, publicationStatusLabels } from '../lib/publication';
 import { getInitials } from '../lib/user';
 import type { BlogPublication, PublicationStatus } from '../types/publication';
@@ -33,6 +34,7 @@ export function PublicationCard({ publication, viewMode, canEdit, busy, onOpen, 
       </div>
       <footer>
         <button className="task-action task-action--details" type="button" onClick={() => onOpen(publication)}><Icon name="visibility" size={15} /> Деталі</button>
+        <Link className="task-action" to={`/tools/blog-publications/${publication.id}/editor`}><Icon name="blogPublications" size={15} /> Стаття</Link>
         <button className="task-action" type="button" onClick={() => onShare(publication)}><Icon name="share" size={15} /> Поділитися</button>
         {canEdit && ['planned', 'ready'].includes(publication.status) && <button className="task-action" type="button" disabled={busy} onClick={() => onEdit(publication)}><Icon name="edit" size={15} /> Редагувати</button>}
         {canEdit && publication.status === 'planned' && <button className="task-action task-action--success" type="button" disabled={busy} onClick={() => onStatus(publication, 'ready')}><Icon name="check" size={15} /> Матеріали готові</button>}

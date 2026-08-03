@@ -42,6 +42,61 @@ const rangeSchema = z.object({
   from: z.string().datetime({ offset: true }),
   to: z.string().datetime({ offset: true })
 });
+const editorTextSchema = z.string().max(20_000);
+const editorBlockSchema = z.discriminatedUnion('type', [
+  z.object({ id: z.string().min(1).max(120), type: z.literal('paragraph'), text: editorTextSchema }),
+  z.object({ id: z.string().min(1).max(120), type: z.literal('subheading'), text: z.string().max(500) }),
+  z.object({
+    id: z.string().min(1).max(120), type: z.literal('image'),
+    url: z.string().max(4000), alt: z.string().max(500), caption: z.string().max(1000)
+  }),
+  z.object({
+    id: z.string().min(1).max(120), type: z.literal('list'), ordered: z.boolean(),
+    items: z.array(z.string().max(2000)).max(100)
+  }),
+  z.object({
+    id: z.string().min(1).max(120), type: z.literal('table'),
+    headers: z.array(z.string().max(500)).min(1).max(12),
+    rows: z.array(z.array(z.string().max(2000)).max(12)).max(100)
+  }),
+  z.object({
+    id: z.string().min(1).max(120), type: z.literal('cards'), columns: z.union([z.literal(2), z.literal(3)]),
+    items: z.array(z.object({
+      title: z.string().max(500), text: editorTextSchema,
+      linkLabel: z.string().max(300), linkUrl: z.string().max(4000)
+    })).max(24)
+  }),
+  z.object({
+    id: z.string().min(1).max(120), type: z.literal('callout'),
+    title: z.string().max(500), text: editorTextSchema
+  }),
+  z.object({
+    id: z.string().min(1).max(120), type: z.literal('faq'),
+    items: z.array(z.object({ question: z.string().max(1000), answer: editorTextSchema })).max(50)
+  }),
+  z.object({
+    id: z.string().min(1).max(120), type: z.literal('cta'),
+    title: z.string().max(500), text: editorTextSchema,
+    buttonLabel: z.string().max(300), buttonUrl: z.string().max(4000)
+  })
+]);
+const editorDocumentSchema = z.object({
+  version: z.literal(1),
+  slug: z.string().max(120),
+  sharePreview: z.string().max(2000),
+  hero: z.object({
+    kicker: z.string().max(300), title: z.string().max(500), lead: editorTextSchema,
+    imageUrl: z.string().max(4000), imageAlt: z.string().max(500),
+    meta: z.array(z.string().max(300)).max(20)
+  }),
+  sections: z.array(z.object({
+    id: z.string().min(1).max(120), title: z.string().max(500),
+    tone: z.enum(['default', 'soft']), blocks: z.array(editorBlockSchema).max(100)
+  })).max(100),
+  customCss: z.string().max(100_000),
+  customJs: z.string().max(100_000)
+});
+const editorInputSchema = z.object({ document: editorDocumentSchema });
 
 function canEdit(user, publication) {
   return user.role === 'admin'
@@ -173,9 +228,25 @@ router.post('/', asyncHandler(async (req, res) => {
 
 router.get('/:id', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
-  const publication = await loadPublication(id);
+  const publication = await loadPublication(id, pool, true);
   if (!publication) throw new AppError(404, 'PUBLICATION_NOT_FOUND', 'Публікацію не знайдено.');
   res.json({ data: publication });
+}));
+
+router.put('/:id/editor', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(editorInputSchema, req.body);
+  const current = await loadPublication(id);
+  if (!current) throw new AppError(404, 'PUBLICATION_NOT_FOUND', 'Публікацію не знайдено.');
+  if (!canEdit(req.user, current)) throw new AppError(403, 'FORBIDDEN', 'Недостатньо прав для редагування статті.');
+
+  await query(
+    `UPDATE blog_publications
+     SET editor_document = $1::jsonb, updated_at = NOW()
+     WHERE id = $2`,
+    [JSON.stringify(input.document), id]
+  );
+  res.json({ data: await loadPublication(id, pool, true) });
 }));
 
 router.put('/:id', asyncHandler(async (req, res) => {

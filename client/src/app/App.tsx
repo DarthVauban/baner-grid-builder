@@ -81,6 +81,9 @@ const TradeInBuilderPage = lazy(() => import('../pages/TradeInBuilderPage').then
 const StoreMapPage = lazy(() => import('../pages/StoreMapPage').then((module) => ({
   default: module.StoreMapPage
 })));
+const BlogPostEditorPage = lazy(() => import('../pages/BlogPostEditorPage').then((module) => ({
+  default: module.BlogPostEditorPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -178,6 +181,7 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="blog_publications" />}>
             <Route path="tools/blog-publications" element={<BlogPublicationsPage />} />
+            <Route path="tools/blog-publications/:publicationId/editor" element={<Suspense fallback={<LoadingScreen />}><BlogPostEditorPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="applications" />}>
             <Route path="tools/applications" element={<Suspense fallback={<LoadingScreen />}><ApplicationsPage /></Suspense>} />
