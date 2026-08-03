@@ -103,3 +103,18 @@ jobs:
                 grep -E '45\.88\.191\.194|upstream|SSL' |
                 tail -n 100 || true
             fi
+            if [ -d /var/log/nginx ]; then
+              find /var/log/nginx -maxdepth 1 -type f -print0 |
+                while IFS= read -r -d '' log_file; do
+                  matches="$(grep -E '45\.88\.191\.194|upstream|SSL|certificate' "$log_file" | tail -n 100 || true)"
+                  if [ -n "$matches" ]; then
+                    printf 'nginx_log=%s\n' "$log_file"
+                    printf '%s\n' "$matches"
+                  fi
+                done
+            fi
+            if command -v journalctl >/dev/null 2>&1; then
+              journalctl -u nginx --since '45 minutes ago' --no-pager |
+                grep -E '45\.88\.191\.194|upstream|SSL|certificate' |
+                tail -n 100 || true
+            fi
