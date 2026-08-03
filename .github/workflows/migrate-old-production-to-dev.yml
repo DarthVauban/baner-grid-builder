@@ -476,35 +476,34 @@ jobs:
 
           MAIN_CONFIG='/etc/nginx/conf.d/banner-builder.conf'
           SHOP_CONFIG='/etc/nginx/conf.d/storefront-shop.conf'
-          MAIN_OVERRIDE='/etc/nginx/conf.d/00-mt-panel-cutover.conf'
-          SHOP_OVERRIDE='/etc/nginx/conf.d/00-shop-mt-panel-cutover.conf'
+          RELAY_CONFIG='/etc/nginx/conf.d/00-mt-panel-cutover-relay.conf'
           test -f "$MAIN_CONFIG"
           test -f "$SHOP_CONFIG"
-          test ! -e "$MAIN_OVERRIDE"
-          test ! -e "$SHOP_OVERRIDE"
-          test -s "$CUTOVER_DIR/mt-panel.conf"
-          test -s "$CUTOVER_DIR/shop.conf"
+          test ! -e "$RELAY_CONFIG"
+          test -s "$CUTOVER_DIR/relay.conf"
 
           MAIN_HEALTH="$(curl -fsS --resolve "mt-panel.sbs:443:$NEW_IP" https://mt-panel.sbs/api/health)"
           printf '%s\n' "$MAIN_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
           curl -fsS --resolve "shop.mt-panel.sbs:443:$NEW_IP" https://shop.mt-panel.sbs/ | grep -Fq '<div id="storefront-root"></div>'
 
-          install -m 644 "$CUTOVER_DIR/mt-panel.conf" "$MAIN_OVERRIDE"
-          install -m 644 "$CUTOVER_DIR/shop.conf" "$SHOP_OVERRIDE"
+          install -m 644 "$CUTOVER_DIR/relay.conf" "$RELAY_CONFIG"
           if ! nginx -t; then
-            rm -f -- "$MAIN_OVERRIDE" "$SHOP_OVERRIDE"
+            rm -f -- "$RELAY_CONFIG"
             nginx -t
             systemctl restart nginx
             exit 1
           fi
-          ACTIVE_ORDER="$(nginx -T 2>&1 | grep '^# configuration file /etc/nginx/conf.d/' | sed -n '1,3p')"
-          printf '%s\n' "$ACTIVE_ORDER" | grep -Fq '/00-mt-panel-cutover.conf:'
-          printf '%s\n' "$ACTIVE_ORDER" | grep -Fq '/00-shop-mt-panel-cutover.conf:'
+          NGINX_CONFIGURATION="$(nginx -T 2>&1)"
+          case "$NGINX_CONFIGURATION" in
+            *'# configuration file /etc/nginx/conf.d/00-mt-panel-cutover-relay.conf:'*) ;;
+            *) echo 'The local relay was not loaded by Nginx.' >&2; exit 1 ;;
+          esac
+          unset NGINX_CONFIGURATION
           systemctl restart nginx
           systemctl is-active --quiet nginx
           sleep 3
 
-          rm -f -- "$CUTOVER_DIR/mt-panel.conf" "$CUTOVER_DIR/shop.conf" "$CUTOVER_DIR/forward.sh"
+          rm -f -- "$CUTOVER_DIR/relay.conf" "$CUTOVER_DIR/forward.sh"
           rmdir "$CUTOVER_DIR"
           FORWARD_SCRIPT
 
@@ -518,14 +517,8 @@ jobs:
             -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
             -o ConnectTimeout=20 \
-            nginx/old-server-mt-panel-forward.conf \
-            "$OLD_DESTINATION:$CUTOVER_DIR/mt-panel.conf"
-          sshpass -e scp \
-            -o StrictHostKeyChecking=accept-new \
-            -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
-            -o ConnectTimeout=20 \
-            nginx/old-server-shop-forward.conf \
-            "$OLD_DESTINATION:$CUTOVER_DIR/shop.conf"
+            nginx/old-server-local-relay.conf \
+            "$OLD_DESTINATION:$CUTOVER_DIR/relay.conf"
           sshpass -e scp \
             -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile="$RUNNER_TEMP/mt-panel-known-hosts" \
@@ -594,18 +587,13 @@ jobs:
             set -euo pipefail
             RUN_ID='${{ github.run_id }}'
             APP_DIR='${{ secrets.APP_DIR }}'
-            MAIN_OVERRIDE='/etc/nginx/conf.d/00-mt-panel-cutover.conf'
-            SHOP_OVERRIDE='/etc/nginx/conf.d/00-shop-mt-panel-cutover.conf'
+            RELAY_CONFIG='/etc/nginx/conf.d/00-mt-panel-cutover-relay.conf'
             CONFIG_RESTORED='false'
 
-            if [ -f "$MAIN_OVERRIDE" ]; then
-              grep -Fq 'proxy_pass https://45.88.191.194;' "$MAIN_OVERRIDE"
-              rm -f -- "$MAIN_OVERRIDE"
-              CONFIG_RESTORED='true'
-            fi
-            if [ -f "$SHOP_OVERRIDE" ]; then
-              grep -Fq 'proxy_pass https://45.88.191.194;' "$SHOP_OVERRIDE"
-              rm -f -- "$SHOP_OVERRIDE"
+            if [ -f "$RELAY_CONFIG" ]; then
+              grep -Fq 'listen 127.0.0.1:3000;' "$RELAY_CONFIG"
+              grep -Fq 'proxy_pass https://45.88.191.194;' "$RELAY_CONFIG"
+              rm -f -- "$RELAY_CONFIG"
               CONFIG_RESTORED='true'
             fi
             if [ "$CONFIG_RESTORED" = true ]; then
