@@ -11,6 +11,7 @@ import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requestRegistrationVerification, verifyRegistrationCode } from './registration-verification.service.js';
 import { verifyUserTwoFactor } from './two-factor.service.js';
+import { countUserPasskeys, finishPasskeyLogin, startPasskeyLogin } from './passkey.service.js';
 
 const router = Router();
 
@@ -44,6 +45,20 @@ const verifyRegistrationSchema = z.object({
 const verifyLoginTwoFactorSchema = z.object({
   challengeToken: z.string().trim().min(20, 'Сесія перевірки 2FA недійсна.'),
   code: z.string().trim().regex(/^\d{6}$/, 'Вкажіть 6-значний код 2FA.')
+});
+const passkeyOptionsSchema = z.object({
+  challengeToken: z.string().trim().min(20, 'Сесія перевірки Passkey недійсна.')
+});
+const credentialResponseSchema = z.looseObject({
+  id: z.string().trim().min(1).max(2048),
+  rawId: z.string().trim().min(1).max(2048),
+  type: z.literal('public-key'),
+  response: z.record(z.string(), z.unknown()),
+  clientExtensionResults: z.record(z.string(), z.unknown()).default({})
+});
+const passkeyVerifySchema = z.object({
+  challengeId: z.string().uuid('Запит Passkey недійсний.'),
+  response: credentialResponseSchema
 });
 
 function setSessionCookie(res, token) {
@@ -93,9 +108,11 @@ router.post('/login', asyncHandler(async (req, res) => {
     throw new AppError(403, 'ACCOUNT_REJECTED', 'Обліковий запис відхилено адміністратором.');
   }
   if (user.two_factor_enabled === true) {
+    const passkeyCount = await countUserPasskeys(user.id);
     return res.status(202).json({
       data: {
         twoFactorRequired: true,
+        passkeyAvailable: passkeyCount > 0,
         challengeToken: createTwoFactorLoginToken(user),
         expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
         email: user.email
@@ -103,6 +120,33 @@ router.post('/login', asyncHandler(async (req, res) => {
     });
   }
 
+  setSessionCookie(res, createAccessToken(user));
+  res.json({ data: serializeUser(user) });
+}));
+
+router.post('/login/passkey/options', asyncHandler(async (req, res) => {
+  const input = parseInput(passkeyOptionsSchema, req.body);
+  let payload;
+  try {
+    payload = verifyTwoFactorLoginToken(input.challengeToken);
+  } catch (_error) {
+    throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Сесія перевірки Passkey недійсна або завершилась.');
+  }
+
+  const result = await query('SELECT * FROM users WHERE id = $1', [payload.sub]);
+  const user = result.rows[0];
+  if (!user) throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Користувача не знайдено.');
+  if (user.status !== 'approved') throw new AppError(403, 'ACCOUNT_NOT_APPROVED', 'Обліковий запис ще не активний.');
+  if (user.two_factor_enabled !== true) {
+    throw new AppError(400, 'TWO_FACTOR_NOT_ENABLED', '2FA не увімкнено для цього облікового запису.');
+  }
+
+  res.json({ data: await startPasskeyLogin(user, req) });
+}));
+
+router.post('/login/passkey/verify', asyncHandler(async (req, res) => {
+  const input = parseInput(passkeyVerifySchema, req.body);
+  const user = await finishPasskeyLogin(input.challengeId, input.response);
   setSessionCookie(res, createAccessToken(user));
   res.json({ data: serializeUser(user) });
 }));

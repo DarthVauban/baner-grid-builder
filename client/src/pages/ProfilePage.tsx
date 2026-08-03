@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { browserSupportsWebAuthn, startRegistration } from '@simplewebauthn/browser';
 import { useAuth } from '../auth/AuthContext';
 import { PasswordField } from '../components/PasswordField';
 import { ProfilePhotoField } from '../components/ProfilePhotoField';
@@ -7,7 +8,7 @@ import { roleLabels } from '../lib/user';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import { Icon } from '../components/Icon';
-import type { TwoFactorSetup, TwoFactorStatus } from '../types/user';
+import type { TwoFactorSetup, TwoFactorStatus, UserPasskey } from '../types/user';
 
 const playMarketUrl = 'https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&hl=uk';
 const appStoreUrl = 'https://apps.apple.com/ru/app/google-authenticator/id388497605';
@@ -219,6 +220,97 @@ function TwoFactorDisableModal({ onClose, onDisabled }: { onClose: () => void; o
   </div>;
 }
 
+function PasskeySetupModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => Promise<void> }) {
+  const { showToast } = useToast();
+  const [name, setName] = useState('Мій телефон');
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && !pending && onClose();
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, pending]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    if (!browserSupportsWebAuthn()) {
+      setError('Цей браузер не підтримує Passkeys. Спробуйте актуальну версію Chrome, Edge або Safari.');
+      return;
+    }
+    setPending(true);
+    try {
+      const registration = await api.users.startPasskeyRegistration(code, name);
+      const response = await startRegistration({ optionsJSON: registration.options });
+      await api.users.finishPasskeyRegistration(registration.challengeId, registration.name, response);
+      await onAdded();
+      showToast('Passkey успішно підключено.');
+      onClose();
+    } catch (registrationError) {
+      setError(registrationError instanceof Error
+        ? registrationError.message
+        : 'Не вдалося підключити Passkey.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !pending && onClose()}>
+    <section className="modal passkey-modal" role="dialog" aria-modal="true" aria-labelledby="passkey-setup-title">
+      <header className="modal__header"><div><p className="eyebrow">Passkey</p><h2 id="passkey-setup-title">Підключити телефон</h2></div><button className="icon-button" type="button" onClick={onClose} disabled={pending} aria-label="Закрити"><Icon name="close" size={20} /></button></header>
+      {error && <div className="form-message form-message--error" role="alert">{error}</div>}
+      <form className="passkey-setup-form" onSubmit={submit}>
+        <div className="passkey-setup-intro"><span><Icon name="qrCode" size={28} /></span><p>Браузер покаже захищений QR-код. Відскануйте його телефоном і підтвердьте створення Passkey біометрією або PIN.</p></div>
+        <label className="field"><span>Назва пристрою</span><input value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} placeholder="Наприклад, iPhone Дмитра" required /></label>
+        <label className="field"><span>Поточний код 2FA</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/[^0-9a-z-]/gi, '').slice(0, 20).toUpperCase())} autoComplete="one-time-code" placeholder="000000" minLength={6} maxLength={20} required /></label>
+        <small className="passkey-setup-hint">Якщо ви щойно увійшли, дочекайтеся наступного коду Google Authenticator — використані коди не приймаються повторно.</small>
+        <footer className="modal__footer"><button className="button button--secondary" type="button" onClick={onClose} disabled={pending}>Скасувати</button><button className="button button--primary" type="submit" disabled={pending || code.length < 6 || name.trim().length < 2}><Icon name="phone" size={18} /> {pending ? 'Підключаємо…' : 'Показати QR-код'}</button></footer>
+      </form>
+    </section>
+  </div>;
+}
+
+function PasskeyDeleteModal({ passkey, onClose, onRemoved }: {
+  passkey: UserPasskey;
+  onClose: () => void;
+  onRemoved: () => Promise<void>;
+}) {
+  const { showToast } = useToast();
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setPending(true);
+    try {
+      await api.users.removePasskey(passkey.id, code);
+      await onRemoved();
+      showToast('Passkey видалено.');
+      onClose();
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : 'Не вдалося видалити Passkey.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !pending && onClose()}>
+    <section className="modal password-change-modal" role="dialog" aria-modal="true" aria-labelledby="passkey-delete-title">
+      <header className="modal__header"><div><p className="eyebrow">Безпека</p><h2 id="passkey-delete-title">Видалити Passkey?</h2></div><button className="icon-button" type="button" onClick={onClose} disabled={pending} aria-label="Закрити"><Icon name="close" size={20} /></button></header>
+      {error && <div className="form-message form-message--error" role="alert">{error}</div>}
+      <form className="password-change-form" onSubmit={submit}>
+        <p className="passkey-delete-copy">Пристрій «{passkey.name}» більше не можна буде використовувати для входу.</p>
+        <label className="field"><span>Код 2FA або резервний код</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/[^0-9a-z-]/gi, '').slice(0, 20).toUpperCase())} autoComplete="one-time-code" placeholder="000000" minLength={6} maxLength={20} required /></label>
+        <footer className="modal__footer"><button className="button button--secondary" type="button" onClick={onClose} disabled={pending}>Скасувати</button><button className="button button--danger" type="submit" disabled={pending || code.length < 6}>{pending ? 'Видаляємо…' : 'Видалити'}</button></footer>
+      </form>
+    </section>
+  </div>;
+}
+
 export function ProfilePage() {
   const { user, updateProfile, refreshUser } = useAuth();
   const { showToast } = useToast();
@@ -233,14 +325,21 @@ export function ProfilePage() {
   const [twoFactorSetupOpen, setTwoFactorSetupOpen] = useState(false);
   const [twoFactorDisableOpen, setTwoFactorDisableOpen] = useState(false);
   const [twoFactorStatus, setTwoFactorStatus] = useState<TwoFactorStatus | null>(null);
+  const [passkeys, setPasskeys] = useState<UserPasskey[]>([]);
+  const [passkeySetupOpen, setPasskeySetupOpen] = useState(false);
+  const [passkeyToDelete, setPasskeyToDelete] = useState<UserPasskey | null>(null);
   const [pending, setPending] = useState(false);
+  const userId = user?.id;
 
   useEffect(() => {
-    if (!user) return undefined;
+    if (!userId) return undefined;
     let active = true;
-    api.users.twoFactorStatus()
-      .then((status) => {
-        if (active) setTwoFactorStatus(status);
+    Promise.all([api.users.twoFactorStatus(), api.users.passkeys()])
+      .then(([status, items]) => {
+        if (active) {
+          setTwoFactorStatus(status);
+          setPasskeys(items);
+        }
       })
       .catch(() => {
         if (active) setTwoFactorStatus(null);
@@ -248,14 +347,15 @@ export function ProfilePage() {
     return () => {
       active = false;
     };
-  }, [user?.id]);
+  }, [userId]);
 
   if (!user) return null;
 
   async function refreshSecurity() {
     await refreshUser();
-    const status = await api.users.twoFactorStatus();
+    const [status, items] = await Promise.all([api.users.twoFactorStatus(), api.users.passkeys()]);
     setTwoFactorStatus(status);
+    setPasskeys(items);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -312,6 +412,21 @@ export function ProfilePage() {
             <button className="button button--primary button--small" type="button" onClick={() => setTwoFactorSetupOpen(true)}><Icon name="qrCode" size={16} /> Увімкнути</button>
           )}
         </article>
+        <article className={`passkey-card${passkeys.length ? ' passkey-card--enabled' : ''}`}>
+          <header>
+            <span className="two-factor-card__icon"><Icon name="phone" size={22} /></span>
+            <span><strong>Вхід через телефон</strong><small>{passkeys.length ? `Підключено пристроїв: ${passkeys.length}.` : 'Підключіть Passkey, щоб входити через захищений QR-код без ручного введення коду.'}</small></span>
+            <button className="button button--primary button--small" type="button" disabled={!twoFactorStatus?.enabled} onClick={() => setPasskeySetupOpen(true)}><Icon name="add" size={16} /> Додати Passkey</button>
+          </header>
+          {!twoFactorStatus?.enabled && <p className="passkey-card__notice">Спочатку увімкніть двофакторну автентифікацію.</p>}
+          {passkeys.length > 0 && <div className="passkey-list">
+            {passkeys.map((passkey) => <div className="passkey-list__item" key={passkey.id}>
+              <span className="passkey-list__device"><Icon name="phone" size={18} /></span>
+              <span><strong>{passkey.name}</strong><small>{passkey.deviceType === 'multiDevice' ? 'Синхронізований Passkey' : 'Passkey цього пристрою'} · додано {new Date(passkey.createdAt).toLocaleDateString('uk-UA')}</small></span>
+              <button className="icon-button icon-button--danger" type="button" onClick={() => setPasskeyToDelete(passkey)} aria-label={`Видалити Passkey ${passkey.name}`}><Icon name="delete" size={18} /></button>
+            </div>)}
+          </div>}
+        </article>
       </section>
 
       <div className="profile-form__actions"><button className="button button--primary" type="submit" disabled={pending}>{pending ? 'Зберігаємо…' : 'Зберегти зміни'}</button></div>
@@ -319,5 +434,7 @@ export function ProfilePage() {
     {passwordModalOpen && <ChangePasswordModal onClose={() => setPasswordModalOpen(false)} />}
     {twoFactorSetupOpen && <TwoFactorSetupModal onClose={() => setTwoFactorSetupOpen(false)} onEnabled={refreshSecurity} />}
     {twoFactorDisableOpen && <TwoFactorDisableModal onClose={() => setTwoFactorDisableOpen(false)} onDisabled={refreshSecurity} />}
+    {passkeySetupOpen && <PasskeySetupModal onClose={() => setPasskeySetupOpen(false)} onAdded={refreshSecurity} />}
+    {passkeyToDelete && <PasskeyDeleteModal passkey={passkeyToDelete} onClose={() => setPasskeyToDelete(null)} onRemoved={refreshSecurity} />}
   </div>;
 }

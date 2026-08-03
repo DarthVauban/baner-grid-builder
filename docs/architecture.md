@@ -22,6 +22,15 @@ Vite створює чотири entrypoint-и:
 
 Перевірки доступу на frontend потрібні для навігації, але джерелом істини завжди залишається backend.
 
+## Автентифікація та Passkeys
+
+- Звичайний вхід створює HTTP-only сесію. Для користувачів із 2FA пароль відкриває короткочасний challenge, який можна завершити TOTP-кодом або зареєстрованим Passkey.
+- Passkeys реалізовані через WebAuthn. Приватний ключ ніколи не надходить на сервер; PostgreSQL зберігає лише credential ID, публічний ключ, лічильник і метадані пристрою.
+- QR для входу через телефон є WebAuthn hybrid transport. Його генерує захищений інтерфейс браузера після натискання «Відкрити QR-код»; застосунок не повинен створювати власний QR із JWT, cookie або іншим сесійним секретом.
+- Registration та authentication challenges одноразові, прив'язані до origin/RP ID, мають строк дії п'ять хвилин і позначаються використаними після успішної перевірки.
+- Новий Passkey можна додати лише в авторизованому профілі після повторного підтвердження чинним TOTP або recovery-кодом. Вимкнення 2FA видаляє всі Passkeys користувача.
+- Production `APP_ORIGIN` має бути стабільним HTTPS-origin. Зміна домену/RP ID робить раніше створені Passkeys непридатними для цього origin.
+
 ## Backend-модулі
 
 Код організований за бізнес-доменами у `src/modules`: access, admin, applications, auth, backups, banners, catalog, chat, grids, integrations, notifications, product-tables, publications, store-map, tasks, trade-in та users.

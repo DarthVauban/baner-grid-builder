@@ -10,6 +10,7 @@ import type {
   RegistrationVerifyInput,
   TwoFactorLoginChallenge,
   TwoFactorLoginVerifyInput,
+  PasskeyAuthenticationResponse,
   User
 } from '../types/user';
 
@@ -20,6 +21,7 @@ interface AuthContextValue {
   status: AuthStatus;
   login: (input: LoginInput) => Promise<TwoFactorLoginChallenge | null>;
   verifyLoginTwoFactor: (input: TwoFactorLoginVerifyInput) => Promise<void>;
+  verifyLoginPasskey: (challengeId: string, response: PasskeyAuthenticationResponse) => Promise<void>;
   register: (input: RegisterInput) => Promise<RegistrationStart>;
   verifyRegistration: (input: RegistrationVerifyInput) => Promise<User>;
   updateProfile: (input: ProfileInput) => Promise<User>;
@@ -88,6 +90,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setStatus('authenticated');
   }, []);
 
+  const verifyLoginPasskey = useCallback(async (challengeId: string, response: PasskeyAuthenticationResponse) => {
+    const currentUser = await api.auth.verifyPasskeyLogin(challengeId, response);
+    setUser(currentUser);
+    setStatus('authenticated');
+  }, []);
+
   const register = useCallback((input: RegisterInput) => api.auth.register(input), []);
 
   const verifyRegistration = useCallback(async (input: RegistrationVerifyInput) => {
@@ -133,6 +141,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     status,
     login,
     verifyLoginTwoFactor,
+    verifyLoginPasskey,
     register,
     verifyRegistration,
     updateProfile,
@@ -143,6 +152,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     status,
     login,
     verifyLoginTwoFactor,
+    verifyLoginPasskey,
     register,
     verifyRegistration,
     updateProfile,

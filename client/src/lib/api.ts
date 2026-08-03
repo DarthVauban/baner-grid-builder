@@ -12,10 +12,15 @@ import type {
   UserApplicationNotificationSettings,
   UserDirectory,
   ProfileInput,
+  PasskeyAuthenticationResponse,
+  PasskeyLoginStart,
+  PasskeyRegistrationResponse,
+  PasskeyRegistrationStart,
   TwoFactorConfirmResult,
   TwoFactorLoginVerifyInput,
   TwoFactorSetup,
   TwoFactorStatus,
+  UserPasskey,
   UserRole,
   UserStatus
 } from '../types/user';
@@ -132,6 +137,13 @@ export const api = {
       method: 'POST',
       body: jsonBody(input)
     }),
+    startPasskeyLogin: (challengeToken: string) => request<PasskeyLoginStart>('/api/auth/login/passkey/options', {
+      method: 'POST', body: jsonBody({ challengeToken })
+    }),
+    verifyPasskeyLogin: (challengeId: string, response: PasskeyAuthenticationResponse) =>
+      request<User>('/api/auth/login/passkey/verify', {
+        method: 'POST', body: jsonBody({ challengeId, response })
+      }),
     register: (input: RegisterInput) => request<RegistrationStart>('/api/auth/register', {
       method: 'POST',
       body: jsonBody(input)
@@ -296,6 +308,18 @@ export const api = {
     }),
     disableTwoFactor: (code: string) => request<User>('/api/users/profile/2fa/disable', {
       method: 'POST', body: jsonBody({ code })
+    }),
+    passkeys: () => request<UserPasskey[]>('/api/users/profile/passkeys'),
+    startPasskeyRegistration: (code: string, name: string) =>
+      request<PasskeyRegistrationStart>('/api/users/profile/passkeys/options', {
+        method: 'POST', body: jsonBody({ code, name })
+      }),
+    finishPasskeyRegistration: (challengeId: string, name: string, response: PasskeyRegistrationResponse) =>
+      request<UserPasskey>('/api/users/profile/passkeys/verify', {
+        method: 'POST', body: jsonBody({ challengeId, name, response })
+      }),
+    removePasskey: (id: string, code: string) => request<void>(`/api/users/profile/passkeys/${encodeURIComponent(id)}`, {
+      method: 'DELETE', body: jsonBody({ code })
     })
   },
   notifications: {
