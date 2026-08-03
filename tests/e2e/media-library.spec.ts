@@ -14,7 +14,7 @@ async function login(page: Page) {
   await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
 }
 
-test('uploaded image is converted to WebP and inserted into the hero field', async ({ page }) => {
+test('dropped images show progress, become compact WebP cards and can be inserted', async ({ page }) => {
   await login(page);
   const created = await page.request.post('/api/publications', {
     data: {
@@ -40,14 +40,37 @@ test('uploaded image is converted to WebP and inserted into the hero field', asy
   await page.locator('.media-folder-card__open').filter({ hasText: 'E2E банери' }).click();
   await expect(page.getByRole('navigation', { name: 'Шлях у файловому сховищі' })).toContainText('E2E банери');
 
-  const png = await sharp({
+  const heroPng = await sharp({
     create: { width: 640, height: 360, channels: 3, background: '#ffe101' }
   }).png().toBuffer();
-  await page.getByLabel('Завантажити зображення').setInputFiles({
-    name: 'e2e-hero.png',
-    mimeType: 'image/png',
-    buffer: png
+  const squarePng = await sharp({
+    create: { width: 320, height: 320, channels: 3, background: '#6d55ff' }
+  }).png().toBuffer();
+  await page.route(/\/api\/media\?folderId=/, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await route.fulfill({ response });
   });
+  const dataTransfer = await page.evaluateHandle(({ hero, square }) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(hero)], 'e2e-hero.png', { type: 'image/png' }));
+    transfer.items.add(new File([new Uint8Array(square)], 'e2e-square.png', { type: 'image/png' }));
+    return transfer;
+  }, {
+    hero: Array.from(heroPng),
+    square: Array.from(squarePng)
+  });
+  await page.locator('.media-upload-zone').dispatchEvent('drop', { dataTransfer });
+
+  await expect(page.getByRole('progressbar')).toHaveCount(2);
+  await expect(page.locator('.media-upload-row--success')).toHaveCount(2, { timeout: 10_000 });
+  await expect(page.locator('.media-upload-row')).toHaveCount(0, { timeout: 4_000 });
+  await expect(page.locator('.media-asset-card')).toHaveCount(2);
+  await page.locator('.media-asset-card').filter({ hasText: 'e2e-hero.png' }).getByRole('button', { name: 'Вставити' }).click();
 
   await expect(page.getByRole('heading', { name: 'Виберіть зображення' })).not.toBeVisible();
   const heroUrl = page.getByLabel('Головне зображення');
@@ -67,7 +90,16 @@ test('uploaded image is converted to WebP and inserted into the hero field', asy
   await expect(page.getByRole('heading', { name: 'Файлове сховище' })).toBeVisible();
   await page.locator('.media-folder-card__open').filter({ hasText: 'E2E банери' }).click();
   await expect(page.getByText('e2e-hero.png')).toBeVisible();
+  await expect(page.getByText('e2e-square.png')).toBeVisible();
   await expect(page.getByText(/640×360 · .* · WebP/)).toBeVisible();
+  const heroCard = page.locator('.media-asset-card').filter({ hasText: 'e2e-hero.png' });
+  const cardLayout = await heroCard.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const image = element.querySelector('img');
+    return { ratio: bounds.width / bounds.height, objectFit: image ? getComputedStyle(image).objectFit : '' };
+  });
+  expect(cardLayout.ratio).toBeGreaterThan(2);
+  expect(cardLayout.objectFit).toBe('contain');
 
   const foldersResponse = await page.request.get('/api/media/folders');
   expect(foldersResponse.ok()).toBe(true);
@@ -75,12 +107,13 @@ test('uploaded image is converted to WebP and inserted into the hero field', asy
   const folder = folderFeed.items.find((item) => item.name === 'E2E банери');
   expect(folder).toBeTruthy();
 
-  const feedResponse = await page.request.get(`/api/media?folderId=${folder!.id}&search=e2e-hero`);
+  const feedResponse = await page.request.get(`/api/media?folderId=${folder!.id}`);
   expect(feedResponse.ok()).toBe(true);
-  const feed = (await feedResponse.json()).data as { items: Array<{ id: string; mimeType: string; url: string }> };
-  expect(feed.items).toHaveLength(1);
-  expect(feed.items[0].mimeType).toBe('image/webp');
-  const storedImage = await page.request.get(feed.items[0].url);
+  const feed = (await feedResponse.json()).data as { items: Array<{ id: string; name: string; mimeType: string; url: string }> };
+  expect(feed.items).toHaveLength(2);
+  const heroAsset = feed.items.find((item) => item.name === 'e2e-hero.png');
+  expect(heroAsset?.mimeType).toBe('image/webp');
+  const storedImage = await page.request.get(heroAsset!.url);
   expect(storedImage.ok()).toBe(true);
   expect(storedImage.headers()['content-type']).toContain('image/webp');
 
@@ -91,10 +124,12 @@ test('uploaded image is converted to WebP and inserted into the hero field', asy
   await expect(page.getByRole('heading', { name: 'Видалити зображення?' })).toBeVisible();
   const confirmZIndex = await page.locator('.confirm-dialog-backdrop').evaluate((element) => Number(getComputedStyle(element).zIndex));
   const pickerZIndex = await page.locator('.media-picker-backdrop').evaluate((element) => Number(getComputedStyle(element).zIndex));
+  const confirmFooterPadding = await page.locator('.confirm-dialog__footer').evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingTop));
   expect(confirmZIndex).toBeGreaterThan(pickerZIndex);
+  expect(confirmFooterPadding).toBeGreaterThanOrEqual(16);
   await page.getByRole('button', { name: 'Скасувати' }).click();
 
-  await page.request.delete(`/api/media/${feed.items[0].id}`);
+  for (const asset of feed.items) await page.request.delete(`/api/media/${asset.id}`);
   await page.request.delete(`/api/media/folders/${folder!.id}`);
   await page.request.patch(`/api/publications/${publication.id}/status`, {
     data: { status: 'cancelled', publicationUrl: '' }

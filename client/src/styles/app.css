@@ -659,7 +659,7 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .confirm-dialog__mark { width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; border-radius: 13px; color: var(--brand); background: var(--brand-soft); }
 .confirm-dialog--danger .confirm-dialog__mark { color: #b5364e; background: #fff0f3; }
 .confirm-dialog__content p { margin: 0; color: #455166; font-size: 13px; line-height: 1.55; }
-.confirm-dialog__footer { padding: 0 26px 24px; }
+.confirm-dialog__footer { padding: 18px 26px 24px; }
 .date-time-field { position: relative; }
 .date-time-trigger { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px; border: 1px solid #d8dee8; border-radius: 12px; padding: 10px 13px; color: var(--ink); background: #fff; text-align: left; cursor: pointer; transition: border 140ms ease, box-shadow 140ms ease; }
 .date-time-trigger:hover { border-color: #c8cfdd; }

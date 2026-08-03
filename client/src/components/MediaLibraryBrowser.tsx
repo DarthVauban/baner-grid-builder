@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from './Icon';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
@@ -12,6 +12,42 @@ const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif
 type FolderDialog =
   | { mode: 'create'; folder: null }
   | { mode: 'rename'; folder: MediaFolder };
+
+type MediaUploadStatus = 'queued' | 'uploading' | 'processing' | 'success' | 'error';
+
+interface MediaUploadItem {
+  id: string;
+  name: string;
+  progress: number;
+  status: MediaUploadStatus;
+  error?: string;
+}
+
+const uploadStatusLabels: Record<MediaUploadStatus, string> = {
+  queued: 'У черзі',
+  uploading: 'Завантаження',
+  processing: 'Обробка у WebP',
+  success: 'Готово',
+  error: 'Помилка'
+};
+
+let mediaUploadSequence = 0;
+
+function createUploadItem(file: File): MediaUploadItem {
+  mediaUploadSequence += 1;
+  return {
+    id: `${Date.now()}-${mediaUploadSequence}`,
+    name: file.name,
+    progress: 0,
+    status: 'queued'
+  };
+}
+
+function validateUploadFile(file: File) {
+  if (!acceptedImageTypes.includes(file.type)) return 'Підтримуються PNG, JPG, WebP, AVIF та GIF.';
+  if (file.size > 15 * 1024 * 1024) return 'Зображення має бути до 15 МБ.';
+  return '';
+}
 
 export function resolveMediaAssetUrl(url: string) {
   try {
@@ -32,10 +68,11 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  const completionTimers = useRef(new Set<number>());
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadItems, setUploadItems] = useState<MediaUploadItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [editing, setEditing] = useState<MediaAsset | null>(null);
   const [editName, setEditName] = useState('');
@@ -66,32 +103,81 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
   });
   const removeFolder = useMutation({ mutationFn: api.media.removeFolder });
 
+  useEffect(() => () => {
+    completionTimers.current.forEach((timer) => window.clearTimeout(timer));
+    completionTimers.current.clear();
+  }, []);
+
   function openFolder(folderId: string | null) {
     setCurrentFolderId(folderId);
     setSearch('');
     setPage(1);
   }
 
-  async function uploadFile(file: File) {
-    if (!acceptedImageTypes.includes(file.type)) {
-      showToast('Підтримуються PNG, JPG, WebP, AVIF та GIF.', 'error');
-      return;
-    }
-    if (file.size > 15 * 1024 * 1024) {
-      showToast('Зображення має бути до 15 МБ.', 'error');
-      return;
-    }
-    setUploadProgress(0);
+  function updateUploadItem(id: string, input: Partial<MediaUploadItem>) {
+    setUploadItems((items) => items.map((item) => item.id === id ? { ...item, ...input } : item));
+  }
+
+  function scheduleCompletedUploadRemoval(id: string) {
+    const timer = window.setTimeout(() => {
+      setUploadItems((items) => items.filter((item) => item.id !== id));
+      completionTimers.current.delete(timer);
+    }, 1600);
+    completionTimers.current.add(timer);
+  }
+
+  async function uploadOne(file: File, item: MediaUploadItem) {
+    updateUploadItem(item.id, { status: 'uploading', progress: 0 });
     try {
-      const asset = await api.media.upload(file, setUploadProgress, currentFolderId || undefined);
-      await queryClient.invalidateQueries({ queryKey: ['media-library'] });
-      showToast(`«${file.name}» конвертовано у WebP і збережено.`);
-      onSelect?.(asset);
+      const asset = await api.media.upload(file, (progress) => {
+        updateUploadItem(item.id, {
+          progress,
+          status: progress >= 99 ? 'processing' : 'uploading'
+        });
+      }, currentFolderId || undefined);
+      updateUploadItem(item.id, { status: 'success', progress: 100 });
+      scheduleCompletedUploadRemoval(item.id);
+      return asset;
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося завантажити зображення.', 'error');
-    } finally {
-      setUploadProgress(null);
-      if (inputRef.current) inputRef.current.value = '';
+      updateUploadItem(item.id, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Не вдалося завантажити зображення.'
+      });
+      return null;
+    }
+  }
+
+  async function uploadFiles(files: File[]) {
+    if (!files.length) return;
+    const entries = files.map((file) => ({ file, item: createUploadItem(file), error: validateUploadFile(file) }));
+    setUploadItems((items) => [...items, ...entries.map(({ item, error }) => error
+      ? { ...item, status: 'error' as const, error }
+      : item)]);
+    if (inputRef.current) inputRef.current.value = '';
+
+    const validEntries = entries.filter((entry) => !entry.error);
+    const uploadedAssets: MediaAsset[] = [];
+    let nextIndex = 0;
+    const workers = Array.from({ length: Math.min(3, validEntries.length) }, async () => {
+      while (nextIndex < validEntries.length) {
+        const entry = validEntries[nextIndex];
+        nextIndex += 1;
+        const asset = await uploadOne(entry.file, entry.item);
+        if (asset) uploadedAssets.push(asset);
+      }
+    });
+    await Promise.all(workers);
+    if (uploadedAssets.length) await queryClient.invalidateQueries({ queryKey: ['media-library'] });
+
+    if (files.length === 1 && uploadedAssets[0]) {
+      showToast(`«${files[0].name}» конвертовано у WebP і збережено.`);
+      onSelect?.(uploadedAssets[0]);
+      return;
+    }
+    if (uploadedAssets.length === files.length) {
+      showToast(`Завантажено й оброблено файлів: ${uploadedAssets.length}.`);
+    } else {
+      showToast(`Завантажено ${uploadedAssets.length} із ${files.length} файлів. Перевірте помилки у списку.`, 'error');
     }
   }
 
@@ -205,28 +291,39 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
       onDrop={(event) => {
         event.preventDefault();
         setDragActive(false);
-        const file = event.dataTransfer.files[0];
-        if (file) void uploadFile(file);
+        void uploadFiles(Array.from(event.dataTransfer.files));
       }}
     >
       <span className="media-upload-zone__icon"><Icon name="upload" size={27} /></span>
       <div>
-        <strong>Перетягніть зображення сюди</strong>
-        <small>PNG, JPG, WebP, AVIF або GIF до 15 МБ. Файл автоматично стане WebP{currentFolder ? ` і потрапить у «${currentFolder.name}»` : ''}.</small>
+        <strong>Перетягніть одне або кілька зображень сюди</strong>
+        <small>PNG, JPG, WebP, AVIF або GIF до 15 МБ. Файли автоматично стануть WebP{currentFolder ? ` і потраплять у «${currentFolder.name}»` : ''}.</small>
       </div>
-      <button className="button button--primary" type="button" disabled={uploadProgress !== null} onClick={() => inputRef.current?.click()}>
-        <Icon name="upload" size={18} /> {uploadProgress === null ? 'Завантажити' : `Обробка ${uploadProgress}%`}
+      <button className="button button--primary" type="button" onClick={() => inputRef.current?.click()}>
+        <Icon name="upload" size={18} /> Вибрати файли
       </button>
       <input
         ref={inputRef}
         className="media-upload-input"
         type="file"
+        multiple
         accept={acceptedImageTypes.join(',')}
         aria-label="Завантажити зображення"
-        onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); }}
+        onChange={(event) => void uploadFiles(Array.from(event.target.files || []))}
       />
-      {uploadProgress !== null && <span className="media-upload-progress"><i style={{ width: `${uploadProgress}%` }} /></span>}
     </section>
+
+    {uploadItems.length > 0 && <section className="media-upload-list" aria-label="Прогрес завантаження файлів" aria-live="polite">
+      {uploadItems.map((item) => <article className={`media-upload-row media-upload-row--${item.status}`} key={item.id}>
+        <div className="media-upload-row__heading">
+          <strong title={item.name}>{item.name}</strong>
+          <span>{uploadStatusLabels[item.status]} · {Math.round(item.progress)}%</span>
+        </div>
+        <progress aria-label={`Завантаження ${item.name}`} max={100} value={item.progress}>{item.progress}%</progress>
+        {item.error && <small>{item.error}</small>}
+        {item.status === 'error' && <button className="icon-button" type="button" aria-label={`Прибрати ${item.name}`} onClick={() => setUploadItems((items) => items.filter((candidate) => candidate.id !== item.id))}><Icon name="close" size={16} /></button>}
+      </article>)}
+    </section>}
 
     <div className="media-folder-navigation">
       <nav className="media-folder-breadcrumbs" aria-label="Шлях у файловому сховищі">
