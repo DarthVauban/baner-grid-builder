@@ -502,10 +502,6 @@ jobs:
           fi
           systemctl reload nginx
 
-          FORWARDED_HEALTH="$(curl -fsS --resolve mt-panel.sbs:443:127.0.0.1 https://mt-panel.sbs/api/health)"
-          printf '%s\n' "$FORWARDED_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
-          curl -fsS --resolve shop.mt-panel.sbs:443:127.0.0.1 https://shop.mt-panel.sbs/ | grep -Fq '<div id="storefront-root"></div>'
-
           rm -f -- "$CUTOVER_DIR/mt-panel.conf" "$CUTOVER_DIR/shop.conf" "$CUTOVER_DIR/forward.sh"
           rmdir "$CUTOVER_DIR"
           FORWARD_SCRIPT
@@ -540,6 +536,10 @@ jobs:
             -o ConnectTimeout=20 \
             "$OLD_DESTINATION" \
             "bash '$CUTOVER_DIR/forward.sh' '$CUTOVER_DIR' '${{ github.run_id }}' '$EXPECTED_REVISION' '45.88.191.194'"
+
+          FORWARDED_HEALTH="$(curl -fsS --resolve "mt-panel.sbs:443:$OLD_SSH_HOST" https://mt-panel.sbs/api/health)"
+          printf '%s\n' "$FORWARDED_HEALTH" | grep -Fq "\"buildSha\":\"$EXPECTED_REVISION\""
+          curl -fsS --resolve "shop.mt-panel.sbs:443:$OLD_SSH_HOST" https://shop.mt-panel.sbs/ | grep -Fq '<div id="storefront-root"></div>'
           echo 'complete=true' >> "$GITHUB_OUTPUT"
 
       - name: Verify the public dev endpoint
