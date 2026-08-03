@@ -1,0 +1,76 @@
+name: Audit old production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-old-production:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Inspect the current production deployment
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            APP_DIR='${{ secrets.APP_DIR }}'
+            test -n "$APP_DIR"
+            cd "$APP_DIR"
+            test -f docker-compose.yml
+            test -f .env
+
+            echo "== Host =="
+            hostname
+            uname -srmo
+            df -h / "$APP_DIR"
+            docker version --format 'Docker server: {{.Server.Version}}'
+            docker compose version
+
+            echo "== Deployment =="
+            printf 'Application directory is available: %s\n' "$(pwd -P)"
+            docker compose config --services
+            docker compose config --volumes
+            docker compose ps
+
+            APP_CONTAINER_ID="$(docker compose ps -q app)"
+            DB_CONTAINER_ID="$(docker compose ps -q db)"
+            test -n "$APP_CONTAINER_ID"
+            test -n "$DB_CONTAINER_ID"
+
+            echo "== Images and mounts =="
+            docker inspect "$APP_CONTAINER_ID" --format 'app image={{.Config.Image}} status={{.State.Status}}'
+            docker inspect "$DB_CONTAINER_ID" --format 'db image={{.Config.Image}} status={{.State.Status}}'
+            docker inspect "$APP_CONTAINER_ID" --format '{{range .Mounts}}app mount: {{.Type}} {{.Name}} -> {{.Destination}}{{println}}{{end}}'
+            docker inspect "$DB_CONTAINER_ID" --format '{{range .Mounts}}db mount: {{.Type}} {{.Name}} -> {{.Destination}}{{println}}{{end}}'
+
+            echo "== PostgreSQL =="
+            docker compose exec -T db sh -lc '
+              pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null
+              printf "database_bytes="
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT pg_database_size(current_database())"
+              printf "public_tables="
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM pg_tables WHERE schemaname = '\''public'\''"
+            '
+
+            echo "== Catalog media =="
+            docker exec "$APP_CONTAINER_ID" sh -lc '
+              for directory in /app/storage/catalog-media /tmp/mt-panel-catalog-media; do
+                if [ -d "$directory" ]; then
+                  printf "media_directory=%s\n" "$directory"
+                  du -sk "$directory"
+                  printf "media_files="
+                  find "$directory" -type f | wc -l
+                fi
+              done
+            '
+
+            echo "== Environment keys (values are not printed) =="
+            sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env | sort -u
