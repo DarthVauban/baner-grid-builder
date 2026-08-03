@@ -578,7 +578,7 @@ export function canConnectTradeInGraph(
   graph: TradeInFormGraph,
   sourceId: string,
   targetId: string,
-  sourceHandle: string
+  _sourceHandle: string
 ) {
   if (!sourceId || !targetId || sourceId === targetId) return false;
   const source = graph.nodes.find((node) => node.id === sourceId);

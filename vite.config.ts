@@ -14,6 +14,27 @@ export default defineConfig({
         storefront: 'client/storefront.html',
         tradeIn: 'client/trade-in.html',
         storeMap: 'client/store-map.html'
+      },
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replaceAll('\\', '/');
+          if (normalizedId.includes('/node_modules/@lezer/')
+            || normalizedId.includes('/node_modules/@codemirror/language/')
+            || normalizedId.includes('/node_modules/@codemirror/lang-')) {
+            return 'codemirror-language';
+          }
+          if (normalizedId.includes('/node_modules/@codemirror/state/')
+            || normalizedId.includes('/node_modules/@codemirror/view/')) {
+            return 'codemirror-core';
+          }
+          if (normalizedId.includes('/node_modules/@codemirror/')) {
+            return 'codemirror-features';
+          }
+          if (normalizedId.includes('/node_modules/@uiw/react-codemirror/')) {
+            return 'react-codemirror';
+          }
+          return undefined;
+        }
       }
     }
   },

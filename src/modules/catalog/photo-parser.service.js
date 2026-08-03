@@ -406,7 +406,7 @@ async function attachParsedMedia({
 
     const mainImageUrl = current.main_image_url || gallery[0]?.url || '';
     const nextGallery = gallery.slice(0, maxCatalogGalleryItems);
-    for (const [index, image] of attached.entries()) {
+    for (const image of attached) {
       await client.query(
         `INSERT INTO used_smartphone_product_media (
            product_id, url, storage_key, mime_type, size_bytes, width, height,

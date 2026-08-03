@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
 const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
@@ -39,7 +40,7 @@ test('remote deployment fails fast and verifies the running revision', () => {
   assert.match(workflow, /script: \|\r?\n\s+set -euo pipefail/);
   assert.match(workflow, /test "\$RUNNING_IMAGE_ID" = "\$EXPECTED_IMAGE_ID"/);
   assert.match(workflow, /test "\$RUNNING_REVISION" = "\$\{\{ github\.sha \}\}"/);
-  assert.match(workflow, /grep -Fq '\"buildSha\":\"\$\{\{ github\.sha \}\}\"' <<< "\$HEALTH"/);
+  assert.match(workflow, /grep -Fq '"buildSha":"\$\{\{ github\.sha \}\}"' <<< "\$HEALTH"/);
   assert.match(workflow, /grep -Fq 'id="storefront-root"' <<< "\$STOREFRONT"/);
 });
 
@@ -67,6 +68,22 @@ test('remote deployment only cleans unused Mobile Trend images and limits contai
   assert.match(workflow, /docker image prune -f --filter "label=org\.opencontainers\.image\.source=/);
   assert.match(compose, /max-size:\s*"10m"/);
   assert.match(compose, /max-file:\s*"3"/);
+});
+
+test('continuous integration verifies types, server, web and production build', () => {
+  assert.match(ciWorkflow, /pull_request:[\s\S]*branches:\s*\[dev, main\]/);
+  assert.match(ciWorkflow, /push:[\s\S]*branches:\s*\[dev, main\]/);
+  assert.match(ciWorkflow, /npm ci/);
+  assert.match(ciWorkflow, /npm run lint/);
+  assert.match(ciWorkflow, /npm run check/);
+  assert.match(ciWorkflow, /npm run test:server/);
+  assert.match(ciWorkflow, /npm run test:web/);
+  assert.match(ciWorkflow, /npm run build/);
+  assert.match(ciWorkflow, /playwright install --with-deps chromium/);
+  assert.match(ciWorkflow, /npm run test:e2e/);
+  assert.match(workflow, /quality:[\s\S]*npm run verify/);
+  assert.match(workflow, /quality:[\s\S]*npm run test:e2e/);
+  assert.match(workflow, /build-and-push:[\s\S]*needs:\s*quality/);
 });
 
 test('runtime image carries the build revision used by the health check', () => {

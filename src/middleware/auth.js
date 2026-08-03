@@ -18,7 +18,7 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
   let payload;
   try {
     payload = verifyAccessToken(token);
-  } catch (error) {
+  } catch (_error) {
     throw new AppError(401, 'INVALID_SESSION', 'Сесія недійсна або завершилась.');
   }
 

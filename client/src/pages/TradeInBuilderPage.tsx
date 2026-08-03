@@ -6,7 +6,6 @@ import {
   createTradeInField,
   createTradeInOption,
   createTradeInStep,
-  emptyTradeInCondition,
   moveTradeInItem,
   tradeInId
 } from '../lib/trade-in';

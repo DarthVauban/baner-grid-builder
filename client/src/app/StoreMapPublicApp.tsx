@@ -143,8 +143,6 @@ export function StoreMapPublicApp() {
         && (!needle || `${point.name} ${point.city}`.toLocaleLowerCase('uk-UA').includes(needle));
     });
   }, [city, clock, data?.points, openFilter, search]);
-  const filteredKey = filteredPoints.map((point) => point.id).join('|');
-
   useEffect(() => {
     if (!data || !mapElementRef.current || mapRef.current) return;
     const map = L.map(mapElementRef.current, {
@@ -219,7 +217,7 @@ export function StoreMapPublicApp() {
     }
     const bounds = L.latLngBounds(filteredPoints.map((point) => [point.latitude, point.longitude]));
     mapRef.current.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 });
-  }, [data, filteredKey]);
+  }, [data, filteredPoints]);
 
   function selectPoint(point: StoreMapPoint) {
     setSelectedId(point.id);
