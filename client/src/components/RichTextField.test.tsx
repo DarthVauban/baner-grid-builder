@@ -12,6 +12,8 @@ describe('RichTextField', () => {
     expect(screen.getByRole('button', { name: 'Додати або змінити посилання' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Вставити таблицю 3 на 3' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Вставити зображення зі сховища' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Тип текстового блока' })).toHaveAttribute('aria-haspopup', 'listbox');
+    expect(screen.getByRole('spinbutton', { name: 'Розмір шрифту' })).toHaveValue(16);
   });
 
   it('creates a real table and emits sanitized HTML', async () => {
@@ -38,5 +40,16 @@ describe('RichTextField', () => {
     expect(screen.getByRole('dialog', { name: 'Додати посилання' })).toBeInTheDocument();
     expect(screen.getByLabelText('Посилання')).toBeInTheDocument();
     expect(screen.getByLabelText('Текст посилання')).toBeInTheDocument();
+  });
+
+  it('uses the branded block menu and applies its selection', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<RichTextField value="Звичайний текст" onChange={onChange} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Тип текстового блока' }));
+    await user.click(screen.getByRole('option', { name: 'Заголовок H2' }));
+
+    await waitFor(() => expect(onChange.mock.calls.at(-1)?.[0]).toContain('<h2>Звичайний текст</h2>'));
   });
 });

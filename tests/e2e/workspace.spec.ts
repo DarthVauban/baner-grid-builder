@@ -48,7 +48,8 @@ test('admin can build, preview, save and export a blog article', async ({ page }
   await expect(page.getByRole('heading', { name: 'E2E blog editor article' })).toBeVisible();
   await expect(page.getByTitle('Попередній перегляд статті')).toBeVisible();
 
-  await page.getByLabel('Тип нового блоку').selectOption('faq');
+  await page.getByRole('button', { name: 'Тип нового блоку', exact: true }).click();
+  await page.getByRole('option', { name: 'FAQ', exact: true }).click();
   await page.getByRole('button', { name: 'Додати блок' }).click();
   const preview = page.frameLocator('iframe[title="Попередній перегляд статті"]');
   const previewFaq = preview.locator('.mt-blog-faq-item');

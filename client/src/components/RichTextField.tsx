@@ -10,10 +10,21 @@ import Typography from '@tiptap/extension-typography';
 import type { Editor } from '@tiptap/core';
 import { Icon } from './Icon';
 import { MediaPickerDialog, resolveMediaAssetUrl } from './MediaLibraryBrowser';
+import { StyledSelect, type StyledSelectOption } from './StyledSelect';
 import { renderInlineText, sanitizeRichTextHtml } from '../lib/blog-editor';
 import type { MediaAsset } from '../types/media';
 
-const fontSizes = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48];
+type TextBlockType = 'p' | 'h2' | 'h3' | 'h4';
+
+const textBlockOptions: Array<StyledSelectOption<TextBlockType>> = [
+  { value: 'p', label: 'Абзац' },
+  { value: 'h2', label: 'Заголовок H2' },
+  { value: 'h3', label: 'Заголовок H3' },
+  { value: 'h4', label: 'Заголовок H4' }
+];
+const defaultFontSize = 16;
+const minFontSize = 8;
+const maxFontSize = 96;
 
 function hasBlockMarkup(value: string) {
   return /<(?:p|h[1-6]|blockquote|pre|ul|ol|table|figure|img|hr)\b/iu.test(value);
@@ -67,6 +78,50 @@ function ToolbarButton({
     onMouseDown={(event) => event.preventDefault()}
     onClick={onClick}
   >{children}</button>;
+}
+
+function boundedFontSize(value: string | number, fallback = defaultFontSize) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maxFontSize, Math.max(minFontSize, Math.round(parsed)));
+}
+
+function FontSizeControl({ editor, value }: { editor: Editor; value: string }) {
+  const resolvedValue = boundedFontSize(Number.parseInt(value, 10));
+  const [draft, setDraft] = useState(String(resolvedValue));
+
+  useEffect(() => setDraft(String(resolvedValue)), [resolvedValue]);
+
+  function apply(nextValue: string | number) {
+    const size = boundedFontSize(nextValue, resolvedValue);
+    setDraft(String(size));
+    editor.chain().focus().setFontSize(`${size}px`).run();
+  }
+
+  return <div className="blog-rich-text-field__font-size" role="group" aria-label="Керування розміром шрифту">
+    <button type="button" aria-label="Зменшити розмір шрифту" onMouseDown={(event) => event.preventDefault()} onClick={() => apply(boundedFontSize(draft, resolvedValue) - 1)}>−</button>
+    <input
+      type="number"
+      min={minFontSize}
+      max={maxFontSize}
+      step="1"
+      inputMode="numeric"
+      aria-label="Розмір шрифту"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => apply(draft)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          apply(draft);
+        } else if (event.key === 'Escape') {
+          setDraft(String(resolvedValue));
+          editor.commands.focus();
+        }
+      }}
+    />
+    <button type="button" aria-label="Збільшити розмір шрифту" onMouseDown={(event) => event.preventDefault()} onClick={() => apply(boundedFontSize(draft, resolvedValue) + 1)}>+</button>
+  </div>;
 }
 
 export function RichTextField({ value, onChange, rows = 4, placeholder = '' }: {
@@ -141,6 +196,11 @@ export function RichTextField({ value, onChange, rows = 4, placeholder = '' }: {
   if (!editor) return <div className="blog-rich-text-field blog-rich-text-field--loading" aria-label="Завантаження текстового редактора" />;
 
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
+  const currentBlockType: TextBlockType = editor.isActive('heading', { level: 2 })
+    ? 'h2'
+    : editor.isActive('heading', { level: 3 })
+      ? 'h3'
+      : editor.isActive('heading', { level: 4 }) ? 'h4' : 'p';
   const inTable = editor.isActive('table');
   void revision;
 
@@ -195,23 +255,17 @@ export function RichTextField({ value, onChange, rows = 4, placeholder = '' }: {
   return <div className="blog-rich-text-field">
     <div className="blog-rich-text-field__toolbar" role="toolbar" aria-label="Форматування тексту">
       <div className="blog-rich-text-field__group">
-        <label className="blog-rich-text-field__format">
-          <span className="sr-only">Тип текстового блока</span>
-          <select
-            aria-label="Тип текстового блока"
-            value={editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : editor.isActive('heading', { level: 4 }) ? 'h4' : 'p'}
-            onChange={(event) => {
-              const type = event.target.value;
-              if (type === 'p') editor.chain().focus().setParagraph().run();
-              else editor.chain().focus().toggleHeading({ level: Number(type.slice(1)) as 2 | 3 | 4 }).run();
-            }}
-          >
-            <option value="p">Абзац</option>
-            <option value="h2">Заголовок H2</option>
-            <option value="h3">Заголовок H3</option>
-            <option value="h4">Заголовок H4</option>
-          </select>
-        </label>
+        <StyledSelect
+          className="blog-rich-text-field__format"
+          compact
+          ariaLabel="Тип текстового блока"
+          value={currentBlockType}
+          options={textBlockOptions}
+          onChange={(type) => {
+            if (type === 'p') editor.chain().focus().setParagraph().run();
+            else editor.chain().focus().toggleHeading({ level: Number(type.slice(1)) as 2 | 3 | 4 }).run();
+          }}
+        />
       </div>
 
       <div className="blog-rich-text-field__group">
@@ -225,17 +279,7 @@ export function RichTextField({ value, onChange, rows = 4, placeholder = '' }: {
       <div className="blog-rich-text-field__group">
         <ToolbarButton label="Додати або змінити посилання" active={editor.isActive('link')} onClick={openLinkDialog}><Icon name="link" size={16} /></ToolbarButton>
         {editor.isActive('link') && <ToolbarButton label="Видалити посилання" onClick={() => editor.chain().focus().extendMarkRange('link').unsetLink().run()}>×</ToolbarButton>}
-        <label className="blog-rich-text-field__size">
-          <span className="sr-only">Розмір шрифту</span>
-          <select aria-label="Розмір шрифту" value={currentFontSize} onChange={(event) => {
-            const size = event.target.value;
-            if (size) editor.chain().focus().setFontSize(size).run();
-            else editor.chain().focus().unsetFontSize().run();
-          }}>
-            <option value="">Авто</option>
-            {fontSizes.map((size) => <option key={size} value={`${size}px`}>{size} px</option>)}
-          </select>
-        </label>
+        <FontSizeControl editor={editor} value={currentFontSize} />
       </div>
 
       <div className="blog-rich-text-field__group">

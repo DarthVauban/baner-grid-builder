@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
+import { BlogLivePreview } from '../components/BlogLivePreview';
 import { MediaPickerDialog, resolveMediaAssetUrl } from '../components/MediaLibraryBrowser';
 import { RichTextField } from '../components/RichTextField';
+import { StyledSelect, type StyledSelectOption } from '../components/StyledSelect';
 import {
   blogBlockLabels,
   createBlogBlock,
@@ -27,6 +29,7 @@ import type { MediaAsset } from '../types/media';
 import '../styles/blog-post-editor.css';
 
 const blockTypes = Object.entries(blogBlockLabels) as Array<[BlogContentBlock['type'], string]>;
+const blockTypeOptions: Array<StyledSelectOption<BlogContentBlock['type']>> = blockTypes.map(([value, label]) => ({ value, label }));
 type ImageTarget = { type: 'hero' } | { type: 'block'; sectionId: string; blockId: string };
 
 const linkAppearancePresets = {
@@ -34,6 +37,32 @@ const linkAppearancePresets = {
   yellowBlack: { backgroundColor: '#ffe101', textColor: '#000000', borderColor: '#ffe101' },
   outline: { backgroundColor: '#ffffff', textColor: '#161616', borderColor: '#d8d8d8' }
 } as const;
+
+const cardColumnOptions: Array<StyledSelectOption<2 | 3>> = [{ value: 2, label: '2' }, { value: 3, label: '3' }];
+const sectionToneOptions: Array<StyledSelectOption<BlogPostSection['tone']>> = [
+  { value: 'default', label: 'Білий' },
+  { value: 'soft', label: 'М’який жовтий' }
+];
+const bodyFontSizeOptions: Array<StyledSelectOption<number>> = [14, 15, 16, 17, 18, 19, 20, 22, 24].map((value) => ({ value, label: `${value} px` }));
+const linkPresetOptions: Array<StyledSelectOption<keyof typeof linkAppearancePresets | 'custom'>> = [
+  { value: 'blackYellow', label: 'Чорна плашка / жовтий текст' },
+  { value: 'yellowBlack', label: 'Жовта плашка / чорний текст' },
+  { value: 'outline', label: 'Світла контурна плашка' },
+  { value: 'custom', label: 'Власні кольори', disabled: true }
+];
+const linkRadiusOptions: Array<StyledSelectOption<number>> = [
+  { value: 0, label: 'Без заокруглення' },
+  { value: 6, label: '6 px' },
+  { value: 8, label: '8 px' },
+  { value: 12, label: '12 px' },
+  { value: 999, label: 'Капсула' }
+];
+const linkWeightOptions: Array<StyledSelectOption<number>> = [
+  { value: 600, label: 'Напівжирний' },
+  { value: 700, label: 'Жирний' },
+  { value: 800, label: 'Дуже жирний' },
+  { value: 900, label: 'Максимальний' }
+];
 
 function currentLinkPreset(appearance: BlogPostDocument['linkAppearance']) {
   return (Object.entries(linkAppearancePresets).find(([, preset]) => (
@@ -107,7 +136,7 @@ function BlockEditor({ block, onChange, onPickImage }: { block: BlogContentBlock
     </div>
   </div>;
   if (block.type === 'cards') return <div className="blog-editor-card-form">
-    <label className="field"><span>Кількість колонок</span><select value={block.columns} onChange={(event) => onChange({ ...block, columns: Number(event.target.value) as 2 | 3 })}><option value="2">2</option><option value="3">3</option></select></label>
+    <div className="field"><span>Кількість колонок</span><StyledSelect ariaLabel="Кількість колонок" value={block.columns} options={cardColumnOptions} onChange={(columns) => onChange({ ...block, columns })} /></div>
     {block.items.map((card, index) => <div className="blog-editor-repeat-card" key={index}>
       <header><strong>Картка {index + 1}</strong><button type="button" onClick={() => onChange({ ...block, items: block.items.filter((_, itemIndex) => itemIndex !== index) })}><Icon name="delete" size={16} /></button></header>
       <label className="field"><span>Заголовок</span><input value={card.title} onChange={(event) => onChange({ ...block, items: block.items.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item) })} /></label>
@@ -153,12 +182,12 @@ function SectionEditor({ section, index, total, onChange, onMove, onRemove, onPi
       </div>
       <div className="blog-editor-fields">
         <label className="field"><span>Заголовок секції</span><input value={section.title} onChange={(event) => onChange({ ...section, title: event.target.value })} /></label>
-        <label className="field"><span>Фон</span><select value={section.tone} onChange={(event) => onChange({ ...section, tone: event.target.value as BlogPostSection['tone'] })}><option value="default">Білий</option><option value="soft">М’який жовтий</option></select></label>
+        <div className="field"><span>Фон</span><StyledSelect ariaLabel="Фон секції" value={section.tone} options={sectionToneOptions} onChange={(tone) => onChange({ ...section, tone })} /></div>
       </div>
       <div className="blog-editor-section__blocks">
         {section.blocks.map((block, blockIndex) => <BlockShell key={block.id} block={block} index={blockIndex} total={section.blocks.length} onMove={(direction) => onChange({ ...section, blocks: moveItem(section.blocks, blockIndex, direction) })} onRemove={() => onChange({ ...section, blocks: section.blocks.filter((item) => item.id !== block.id) })}><BlockEditor block={block} onPickImage={() => onPickImage(block.id)} onChange={(next) => onChange({ ...section, blocks: section.blocks.map((item) => item.id === block.id ? next : item) })} /></BlockShell>)}
       </div>
-      <div className="blog-editor-add-block"><select value={blockType} aria-label="Тип нового блоку" onChange={(event) => setBlockType(event.target.value as BlogContentBlock['type'])}>{blockTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="button button--secondary" type="button" onClick={() => onChange({ ...section, blocks: [...section.blocks, createBlogBlock(blockType)] })}><Icon name="add" size={17} /> Додати блок</button></div>
+      <div className="blog-editor-add-block"><StyledSelect ariaLabel="Тип нового блоку" value={blockType} options={blockTypeOptions} onChange={setBlockType} /><button className="button button--secondary" type="button" onClick={() => onChange({ ...section, blocks: [...section.blocks, createBlogBlock(blockType)] })}><Icon name="add" size={17} /> Додати блок</button></div>
     </div>
   </details>;
 }
@@ -274,16 +303,16 @@ export function BlogPostEditorPage() {
           <label className="field"><span>Текст для share preview</span><textarea value={document.sharePreview} rows={3} maxLength={2000} onChange={(event) => update((current) => ({ ...current, sharePreview: event.target.value }))} /></label>
         </div></details>
         <details className="blog-editor-panel" open><summary>Типографіка й посилання</summary><div className="blog-editor-panel__body blog-editor-fields">
-          <label className="field"><span>Базовий розмір тексту</span><select value={document.typography.bodyFontSize} onChange={(event) => update((current) => ({ ...current, typography: { ...current.typography, bodyFontSize: Number(event.target.value) } }))}>{[14, 15, 16, 17, 18, 19, 20, 22, 24].map((size) => <option value={size} key={size}>{size} px</option>)}</select></label>
-          <label className="field"><span>Готовий стиль посилань</span><select value={currentLinkPreset(document.linkAppearance)} onChange={(event) => {
-            const preset = linkAppearancePresets[event.target.value as keyof typeof linkAppearancePresets];
+          <div className="field"><span>Базовий розмір тексту</span><StyledSelect ariaLabel="Базовий розмір тексту" value={document.typography.bodyFontSize} options={bodyFontSizeOptions} onChange={(bodyFontSize) => update((current) => ({ ...current, typography: { ...current.typography, bodyFontSize } }))} /></div>
+          <div className="field"><span>Готовий стиль посилань</span><StyledSelect ariaLabel="Готовий стиль посилань" value={currentLinkPreset(document.linkAppearance)} options={linkPresetOptions} onChange={(value) => {
+            const preset = linkAppearancePresets[value as keyof typeof linkAppearancePresets];
             if (preset) update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, ...preset } }));
-          }}><option value="blackYellow">Чорна плашка / жовтий текст</option><option value="yellowBlack">Жовта плашка / чорний текст</option><option value="outline">Світла контурна плашка</option><option value="custom" disabled>Власні кольори</option></select></label>
+          }} /></div>
           <label className="field blog-editor-color-field"><span>Фон посилання</span><div><input type="color" value={document.linkAppearance.backgroundColor} aria-label="Колір фону посилання" onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, backgroundColor: event.target.value } }))} /><code>{document.linkAppearance.backgroundColor}</code></div></label>
           <label className="field blog-editor-color-field"><span>Колір тексту</span><div><input type="color" value={document.linkAppearance.textColor} aria-label="Колір тексту посилання" onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, textColor: event.target.value } }))} /><code>{document.linkAppearance.textColor}</code></div></label>
           <label className="field blog-editor-color-field"><span>Колір рамки</span><div><input type="color" value={document.linkAppearance.borderColor} aria-label="Колір рамки посилання" onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, borderColor: event.target.value } }))} /><code>{document.linkAppearance.borderColor}</code></div></label>
-          <label className="field"><span>Заокруглення</span><select value={document.linkAppearance.borderRadius} onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, borderRadius: Number(event.target.value) } }))}><option value="0">Без заокруглення</option><option value="6">6 px</option><option value="8">8 px</option><option value="12">12 px</option><option value="999">Капсула</option></select></label>
-          <label className="field"><span>Насиченість посилання</span><select value={document.linkAppearance.fontWeight} onChange={(event) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, fontWeight: Number(event.target.value) } }))}><option value="600">Напівжирний</option><option value="700">Жирний</option><option value="800">Дуже жирний</option><option value="900">Максимальний</option></select></label>
+          <div className="field"><span>Заокруглення</span><StyledSelect ariaLabel="Заокруглення посилань" value={document.linkAppearance.borderRadius} options={linkRadiusOptions} onChange={(borderRadius) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, borderRadius } }))} /></div>
+          <div className="field"><span>Насиченість посилання</span><StyledSelect ariaLabel="Насиченість посилання" value={document.linkAppearance.fontWeight} options={linkWeightOptions} onChange={(fontWeight) => update((current) => ({ ...current, linkAppearance: { ...current.linkAppearance, fontWeight } }))} /></div>
           <div className="blog-editor-link-sample"><span>Вигляд у статті</span><a style={{ backgroundColor: document.linkAppearance.backgroundColor, color: document.linkAppearance.textColor, borderColor: document.linkAppearance.borderColor, borderRadius: `${document.linkAppearance.borderRadius}px`, fontWeight: document.linkAppearance.fontWeight }}>Samsung A56</a></div>
         </div></details>
         <details className="blog-editor-panel" open><summary>Hero-блок</summary><div className="blog-editor-panel__body blog-editor-fields">
@@ -306,7 +335,7 @@ export function BlogPostEditorPage() {
 
       <section className="blog-editor-preview-panel">
         <header><div><strong>Live preview</strong><span>Ізольований від адмін-панелі</span></div><div className="blog-editor-viewport-switch"><button type="button" className={viewport === 'desktop' ? 'active' : ''} onClick={() => setViewport('desktop')}><Icon name="visibility" size={16} /> Desktop</button><button type="button" className={viewport === 'mobile' ? 'active' : ''} onClick={() => setViewport('mobile')}><Icon name="phone" size={16} /> Mobile</button></div></header>
-        <div className={`blog-editor-preview blog-editor-preview--${viewport}`}><iframe title="Попередній перегляд статті" sandbox="allow-scripts" srcDoc={output?.preview || ''} /></div>
+        <div className={`blog-editor-preview blog-editor-preview--${viewport}`}><BlogLivePreview html={output?.preview || ''} /></div>
       </section>
     </div> : <section className="blog-editor-export">
       <header><div><p className="eyebrow">Готовий результат</p><h2>HTML / CSS / JS для вставки</h2><p>Скопіюйте повний пакет або потрібну частину окремо.</p></div><button className="button button--primary" type="button" onClick={() => void copyCode(output?.combined || '', 'Повний код')}><Icon name="copy" size={18} /> Копіювати все</button></header>
