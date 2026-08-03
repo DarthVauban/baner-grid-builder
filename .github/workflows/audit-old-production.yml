@@ -74,3 +74,15 @@ jobs:
 
             echo "== Environment keys (values are not printed) =="
             sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env | sort -u
+
+            echo "== TLS certificates (private keys are not printed) =="
+            if command -v certbot >/dev/null 2>&1; then
+              certbot certificates
+            fi
+            if command -v openssl >/dev/null 2>&1 && [ -d /etc/letsencrypt/live ]; then
+              find /etc/letsencrypt/live -mindepth 2 -maxdepth 2 -name fullchain.pem -type l -print0 |
+                while IFS= read -r -d '' certificate; do
+                  printf 'certificate_path=%s\n' "$certificate"
+                  openssl x509 -in "$certificate" -noout -subject -issuer -dates -ext subjectAltName
+                done
+            fi
