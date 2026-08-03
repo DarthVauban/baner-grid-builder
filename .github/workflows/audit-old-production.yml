@@ -30,7 +30,7 @@ jobs:
             echo "== Host =="
             hostname
             uname -srmo
-            df -h / "$APP_DIR"
+            df -h / .
             docker version --format 'Docker server: {{.Server.Version}}'
             docker compose version
 
