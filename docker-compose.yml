@@ -20,7 +20,7 @@ services:
       retries: 12
 
   app:
-    image: ghcr.io/darthvauban/baner-grid-builder:latest
+    image: ${APP_IMAGE:-ghcr.io/darthvauban/baner-grid-builder:latest}
     build: .
     restart: unless-stopped
     logging:
@@ -37,7 +37,7 @@ services:
       DATABASE_SSL: "false"
       CATALOG_MEDIA_DIR: /app/storage/catalog-media
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${APP_BIND_PORT:-3000}:3000"
     volumes:
       - catalog_media_data:/app/storage/catalog-media
     depends_on:

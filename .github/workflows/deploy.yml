@@ -2,7 +2,11 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
+
+concurrency:
+  group: mt-panel-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   build-and-push:
@@ -10,9 +14,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-
-    outputs:
-      image: ${{ steps.meta.outputs.tags }}
 
     steps:
       - uses: actions/checkout@v4
@@ -29,10 +30,8 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=sha,prefix=sha-,format=long
-            type=raw,value=latest
 
-      - id: build
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -44,10 +43,14 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
     permissions:
       contents: read
       packages: read
+    env:
+      APP_DIR: ${{ github.ref_name == 'main' && '/opt/mt-workspace/prod' || '/opt/mt-workspace/dev' }}
+      APP_PORT: ${{ github.ref_name == 'main' && '3100' || '3101' }}
+      COMPOSE_PROJECT: ${{ github.ref_name == 'main' && 'mt-panel-prod' || 'mt-panel-dev' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -57,9 +60,9 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: docker-compose.yml
-          target: ${{ secrets.APP_DIR }}
+          target: ${{ env.APP_DIR }}
           overwrite: true
 
       - name: Deploy via SSH
@@ -67,25 +70,31 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 20m
           script: |
             set -euo pipefail
-            cd ${{ secrets.APP_DIR }}
+            APP_DIR='${{ env.APP_DIR }}'
+            APP_PORT='${{ env.APP_PORT }}'
+            COMPOSE_PROJECT='${{ env.COMPOSE_PROJECT }}'
+            cd "$APP_DIR"
+            test "$(pwd -P)" = "$APP_DIR"
+            test -f .env
+
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+            test -S "$XDG_RUNTIME_DIR/docker.sock"
+
             REPOSITORY="$(echo 'ghcr.io/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
             IMAGE="$REPOSITORY:sha-${{ github.sha }}"
-            LATEST="$REPOSITORY:latest"
-            echo "Storage usage before Docker cleanup:"
-            df -h / "$(pwd)" || true
+            export APP_IMAGE="$IMAGE"
+            export APP_BIND_PORT="$APP_PORT"
+            export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT"
+
+            echo "Deploying $IMAGE to $COMPOSE_PROJECT on 127.0.0.1:$APP_PORT"
+            df -h / "$APP_DIR" || true
             docker system df || true
-            # Immutable sha-* tags from every deploy are not removed by the
-            # default image prune and eventually exhaust the server disk.
-            docker container prune -f
-            docker image prune -af
-            docker builder prune -af
-            echo "Storage usage after Docker cleanup:"
-            df -h / "$(pwd)" || true
-            docker system df || true
+
             retry() {
               max_attempts="$1"
               delay_seconds="$2"
@@ -102,13 +111,16 @@ jobs:
                 delay_seconds=$((delay_seconds * 2))
               done
             }
+
             login_ghcr() {
               printf '%s\n' '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
             }
+
             retry 4 5 login_ghcr
             retry 5 10 docker pull "$IMAGE"
             EXPECTED_IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
-            docker tag "$IMAGE" "$LATEST"
+            docker compose config --quiet
+
             MEDIA_BACKUP="$(mktemp -d)"
             deployment_cleanup() {
               status="$1"
@@ -122,6 +134,7 @@ jobs:
               exit "$status"
             }
             trap 'deployment_cleanup $?' EXIT
+
             MIGRATE_LEGACY_MEDIA=false
             OLD_CONTAINER_ID="$(docker compose ps -q app || true)"
             if [ -n "$OLD_CONTAINER_ID" ]; then
@@ -136,6 +149,7 @@ jobs:
                 fi
               fi
             fi
+
             wait_for_database() {
               DB_CONTAINER_ID="$(docker compose ps -q db)"
               test -n "$DB_CONTAINER_ID" || return 1
@@ -150,15 +164,17 @@ jobs:
               done
               return 1
             }
+
             docker compose up -d --no-build db
             if ! wait_for_database; then
-              echo "PostgreSQL did not recover after cleanup. Restarting it once." >&2
+              echo "PostgreSQL did not become healthy. Restarting it once." >&2
               docker compose restart db
               wait_for_database
             fi
             docker compose up -d --no-build --force-recreate app
             docker compose ps app
             sleep 8
+
             CONTAINER_ID="$(docker compose ps -q app)"
             test -n "$CONTAINER_ID"
             MEDIA_MOUNT_TYPE="$(docker inspect "$CONTAINER_ID" --format '{{range .Mounts}}{{if eq .Destination "/app/storage/catalog-media"}}{{.Type}}{{end}}{{end}}')"
@@ -168,16 +184,30 @@ jobs:
               docker cp "$MEDIA_BACKUP/." "$CONTAINER_ID:/app/storage/catalog-media/"
               docker exec -u root "$CONTAINER_ID" chown -R nodeapp:nodeapp /app/storage/catalog-media
             fi
+
             RUNNING_IMAGE_ID="$(docker inspect "$CONTAINER_ID" --format '{{.Image}}')"
             test "$RUNNING_IMAGE_ID" = "$EXPECTED_IMAGE_ID"
             RUNNING_REVISION="$(docker inspect "$CONTAINER_ID" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
             test "$RUNNING_REVISION" = "${{ github.sha }}"
-            HEALTH="$(curl -fsS http://127.0.0.1:3000/api/health)"
+
+            HEALTH="$(curl -fsS "http://127.0.0.1:$APP_PORT/api/health")"
             echo "$HEALTH"
             grep -Fq '"buildSha":"${{ github.sha }}"' <<< "$HEALTH"
-            STOREFRONT="$(curl -fsS http://127.0.0.1:3000/storefront)"
+            STOREFRONT="$(curl -fsS "http://127.0.0.1:$APP_PORT/storefront")"
             grep -Fq 'id="storefront-root"' <<< "$STOREFRONT"
             grep -Fq '/web-assets/storefront-' <<< "$STOREFRONT"
-            LOADER="$(curl -fsS http://127.0.0.1:3000/api/public/application-forms/loader.js)"
-            grep -Fq "MTApplicationForms" <<< "$LOADER"
-            docker image prune -af
+            LOADER="$(curl -fsS "http://127.0.0.1:$APP_PORT/api/public/application-forms/loader.js")"
+            grep -Fq 'MTApplicationForms' <<< "$LOADER"
+
+            USED_IMAGE_IDS="$(docker ps -aq | xargs -r docker inspect --format '{{.Image}}' | sort -u)"
+            while read -r image_ref image_id; do
+              case "$image_ref" in
+                "$REPOSITORY":sha-*) ;;
+                *) continue ;;
+              esac
+              if [ "$image_ref" = "$IMAGE" ] || printf '%s\n' "$USED_IMAGE_IDS" | grep -Fqx "$image_id"; then
+                continue
+              fi
+              docker image rm "$image_ref" || true
+            done < <(docker image ls "$REPOSITORY" --format '{{.Repository}}:{{.Tag}} {{.ID}}')
+            docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/${{ github.repository }}" || true
