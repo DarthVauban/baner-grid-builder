@@ -94,6 +94,38 @@ test('user registers a passkey and chooses code or phone QR on one login screen'
     await page.goto('/profile');
     await page.getByRole('button', { name: 'Додати Passkey' }).click();
     await expect(page.getByRole('heading', { name: 'Підключити телефон' })).toBeVisible();
+
+    const passkeyModal = page.getByRole('dialog', { name: 'Підключити телефон' });
+    const desktopLayout = await passkeyModal.evaluate((element) => {
+      const body = element.querySelector<HTMLElement>('.modal__body')!;
+      const footer = element.querySelector<HTMLElement>('.modal__footer')!;
+      const bodyStyle = getComputedStyle(body);
+      const footerStyle = getComputedStyle(footer);
+      return {
+        modalOverflowY: getComputedStyle(element).overflowY,
+        bodyOverflowY: bodyStyle.overflowY,
+        footerPadding: [footerStyle.paddingTop, footerStyle.paddingRight, footerStyle.paddingBottom, footerStyle.paddingLeft]
+          .map((value) => Number.parseFloat(value))
+      };
+    });
+    expect(desktopLayout.modalOverflowY).toBe('hidden');
+    expect(desktopLayout.bodyOverflowY).toBe('auto');
+    expect(desktopLayout.footerPadding.every((value) => value >= 16)).toBe(true);
+
+    await page.setViewportSize({ width: 390, height: 430 });
+    const compactLayout = await passkeyModal.evaluate((element) => {
+      const body = element.querySelector<HTMLElement>('.modal__body')!;
+      const footer = element.querySelector<HTMLElement>('.modal__footer')!;
+      const modalRect = element.getBoundingClientRect();
+      const footerRect = footer.getBoundingClientRect();
+      return {
+        bodyScrolls: body.scrollHeight > body.clientHeight,
+        footerVisible: footerRect.top >= modalRect.top && footerRect.bottom <= modalRect.bottom + 1
+      };
+    });
+    expect(compactLayout).toEqual({ bodyScrolls: true, footerVisible: true });
+    await page.setViewportSize({ width: 1280, height: 720 });
+
     await page.getByLabel('Назва пристрою').fill('E2E phone');
     await page.getByLabel('Поточний код 2FA').fill(currentTotpCode(secret));
     await page.getByRole('button', { name: 'Показати QR-код' }).click();

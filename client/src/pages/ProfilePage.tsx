@@ -4,6 +4,7 @@ import { browserSupportsWebAuthn, startRegistration } from '@simplewebauthn/brow
 import { useAuth } from '../auth/AuthContext';
 import { PasswordField } from '../components/PasswordField';
 import { ProfilePhotoField } from '../components/ProfilePhotoField';
+import { ModalDialog } from '../components/ModalDialog';
 import { roleLabels } from '../lib/user';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
@@ -227,12 +228,6 @@ function PasskeySetupModal({ onClose, onAdded }: { onClose: () => void; onAdded:
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && !pending && onClose();
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, pending]);
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
@@ -257,19 +252,26 @@ function PasskeySetupModal({ onClose, onAdded }: { onClose: () => void; onAdded:
     }
   }
 
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !pending && onClose()}>
-    <section className="modal passkey-modal" role="dialog" aria-modal="true" aria-labelledby="passkey-setup-title">
-      <header className="modal__header"><div><p className="eyebrow">Passkey</p><h2 id="passkey-setup-title">Підключити телефон</h2></div><button className="icon-button" type="button" onClick={onClose} disabled={pending} aria-label="Закрити"><Icon name="close" size={20} /></button></header>
-      {error && <div className="form-message form-message--error" role="alert">{error}</div>}
-      <form className="passkey-setup-form" onSubmit={submit}>
-        <div className="passkey-setup-intro"><span><Icon name="qrCode" size={28} /></span><p>Браузер покаже захищений QR-код. Відскануйте його телефоном і підтвердьте створення Passkey біометрією або PIN.</p></div>
-        <label className="field"><span>Назва пристрою</span><input value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} placeholder="Наприклад, iPhone Дмитра" required /></label>
-        <label className="field"><span>Поточний код 2FA</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/[^0-9a-z-]/gi, '').slice(0, 20).toUpperCase())} autoComplete="one-time-code" placeholder="000000" minLength={6} maxLength={20} required /></label>
-        <small className="passkey-setup-hint">Якщо ви щойно увійшли, дочекайтеся наступного коду Google Authenticator — використані коди не приймаються повторно.</small>
-        <footer className="modal__footer"><button className="button button--secondary" type="button" onClick={onClose} disabled={pending}>Скасувати</button><button className="button button--primary" type="submit" disabled={pending || code.length < 6 || name.trim().length < 2}><Icon name="phone" size={18} /> {pending ? 'Підключаємо…' : 'Показати QR-код'}</button></footer>
-      </form>
-    </section>
-  </div>;
+  return <ModalDialog
+    ariaLabelledBy="passkey-setup-title"
+    eyebrow="Passkey"
+    title="Підключити телефон"
+    className="passkey-modal"
+    bodyClassName="passkey-setup-form"
+    onClose={onClose}
+    onSubmit={submit}
+    closeDisabled={pending}
+    footer={<>
+      <button className="button button--secondary" type="button" onClick={onClose} disabled={pending}>Скасувати</button>
+      <button className="button button--primary" type="submit" disabled={pending || code.length < 6 || name.trim().length < 2}><Icon name="phone" size={18} /> {pending ? 'Підключаємо…' : 'Показати QR-код'}</button>
+    </>}
+  >
+    {error && <div className="form-message form-message--error" role="alert">{error}</div>}
+    <div className="passkey-setup-intro"><span><Icon name="qrCode" size={28} /></span><p>Браузер покаже захищений QR-код. Відскануйте його телефоном і підтвердьте створення Passkey біометрією або PIN.</p></div>
+    <label className="field"><span>Назва пристрою</span><input value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} placeholder="Наприклад, iPhone Дмитра" required /></label>
+    <label className="field"><span>Поточний код 2FA</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/[^0-9a-z-]/gi, '').slice(0, 20).toUpperCase())} autoComplete="one-time-code" placeholder="000000" minLength={6} maxLength={20} required /></label>
+    <small className="passkey-setup-hint">Якщо ви щойно увійшли, дочекайтеся наступного коду Google Authenticator — використані коди не приймаються повторно.</small>
+  </ModalDialog>;
 }
 
 function PasskeyDeleteModal({ passkey, onClose, onRemoved }: {
@@ -298,17 +300,24 @@ function PasskeyDeleteModal({ passkey, onClose, onRemoved }: {
     }
   }
 
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !pending && onClose()}>
-    <section className="modal password-change-modal" role="dialog" aria-modal="true" aria-labelledby="passkey-delete-title">
-      <header className="modal__header"><div><p className="eyebrow">Безпека</p><h2 id="passkey-delete-title">Видалити Passkey?</h2></div><button className="icon-button" type="button" onClick={onClose} disabled={pending} aria-label="Закрити"><Icon name="close" size={20} /></button></header>
-      {error && <div className="form-message form-message--error" role="alert">{error}</div>}
-      <form className="password-change-form" onSubmit={submit}>
-        <p className="passkey-delete-copy">Пристрій «{passkey.name}» більше не можна буде використовувати для входу.</p>
-        <label className="field"><span>Код 2FA або резервний код</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/[^0-9a-z-]/gi, '').slice(0, 20).toUpperCase())} autoComplete="one-time-code" placeholder="000000" minLength={6} maxLength={20} required /></label>
-        <footer className="modal__footer"><button className="button button--secondary" type="button" onClick={onClose} disabled={pending}>Скасувати</button><button className="button button--danger" type="submit" disabled={pending || code.length < 6}>{pending ? 'Видаляємо…' : 'Видалити'}</button></footer>
-      </form>
-    </section>
-  </div>;
+  return <ModalDialog
+    ariaLabelledBy="passkey-delete-title"
+    eyebrow="Безпека"
+    title="Видалити Passkey?"
+    className="password-change-modal"
+    bodyClassName="passkey-delete-form"
+    onClose={onClose}
+    onSubmit={submit}
+    closeDisabled={pending}
+    footer={<>
+      <button className="button button--secondary" type="button" onClick={onClose} disabled={pending}>Скасувати</button>
+      <button className="button button--danger" type="submit" disabled={pending || code.length < 6}>{pending ? 'Видаляємо…' : 'Видалити'}</button>
+    </>}
+  >
+    {error && <div className="form-message form-message--error" role="alert">{error}</div>}
+    <p className="passkey-delete-copy">Пристрій «{passkey.name}» більше не можна буде використовувати для входу.</p>
+    <label className="field"><span>Код 2FA або резервний код</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/[^0-9a-z-]/gi, '').slice(0, 20).toUpperCase())} autoComplete="one-time-code" placeholder="000000" minLength={6} maxLength={20} required /></label>
+  </ModalDialog>;
 }
 
 export function ProfilePage() {

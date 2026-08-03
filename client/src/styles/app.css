@@ -542,13 +542,11 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .passkey-list__item { min-width: 0; display: grid; grid-template-columns: 34px minmax(0,1fr) 34px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; padding: 9px 10px; background: var(--surface); }
 .passkey-list__device { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; color: var(--brand-dark); background: var(--brand-soft); }
 .passkey-modal { width: min(100%, 560px); }
-.passkey-modal > .form-message { margin: 18px 26px 0; }
-.passkey-setup-form { display: grid; gap: 16px; padding: 22px 26px 0; }
+.passkey-setup-form, .passkey-delete-form { display: grid; align-content: start; gap: 16px; }
 .passkey-setup-intro { display: grid; grid-template-columns: 48px minmax(0,1fr); align-items: center; gap: 13px; border: 1px solid rgba(108,92,231,.2); border-radius: 13px; padding: 13px; background: var(--brand-soft); }
 .passkey-setup-intro > span { width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; color: var(--brand); background: var(--surface); }
 .passkey-setup-intro p, .passkey-delete-copy { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .passkey-setup-hint { margin-top: -6px; color: var(--muted); font-size: 10px; line-height: 1.5; }
-.passkey-setup-form .modal__footer { margin: 2px -26px 0; }
 .profile-form__actions .button { min-width: 190px; }
 
 .hero-card {
@@ -686,6 +684,11 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .modal__header h2 { margin: 0; font-size: 24px; letter-spacing: -.03em; }
 .modal__header .icon-button { font-size: 25px; }
 .modal__footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 18px; border-top: 1px solid var(--line); }
+.modal--structured { display: grid; grid-template-rows: auto minmax(0,1fr); overflow: hidden; }
+.modal--structured .modal__header { position: relative; top: auto; }
+.modal__frame { min-height: 0; display: grid; grid-template-rows: minmax(0,1fr) auto; overflow: hidden; }
+.modal__body { min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 24px 28px; scrollbar-gutter: stable; }
+.modal--structured .modal__footer { flex: 0 0 auto; margin: 0; padding: 16px 28px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(255,255,255,.98); box-shadow: 0 -10px 28px rgba(16,24,40,.035); }
 .confirm-dialog { width: min(100%, 460px); }
 .modal-backdrop.confirm-dialog-backdrop { z-index: 1000; }
 .confirm-dialog__content { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 13px; padding: 22px 26px; }
@@ -3597,8 +3600,6 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .two-factor-modal > .form-message { margin: 16px 19px 0; }
   .two-factor-setup,
   .two-factor-recovery { padding: 20px 19px; }
-  .passkey-setup-form { padding: 20px 19px 0; }
-  .passkey-setup-form .modal__footer { margin-right: -19px; margin-left: -19px; }
   .two-factor-setup__grid,
   .two-factor-confirm-form,
   .two-factor-recovery__codes { grid-template-columns: 1fr; }
@@ -3836,6 +3837,8 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .date-time-picker__time { grid-template-columns: 1fr 88px 10px 88px; }
   .modal { max-height: 94vh; border-radius: 22px 22px 0 0; }
   .modal__header { padding: 20px 19px 16px; }
+  .modal__body { padding: 20px 19px; }
+  .modal--structured .modal__footer { padding: 14px 19px calc(14px + env(safe-area-inset-bottom)); }
   .task-form { grid-template-columns: 1fr; padding: 19px; }
   .task-form__wide { grid-column: 1; }
   .reminder-grid { grid-template-columns: 1fr; }
