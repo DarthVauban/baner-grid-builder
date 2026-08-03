@@ -51,14 +51,24 @@ export const BLOG_TEMPLATE_CSS = `.mt-blog-post {
 .mt-blog-post .mt-blog-image, .mt-blog-post .mt-blog-promo-banner {
   width: 100%;
   margin: clamp(18px, 3vw, 34px) 0;
+  padding: 0 !important;
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, .08);
   border-radius: 22px;
   background: linear-gradient(135deg, #f3f3f3, #fff);
 }
 .mt-blog-post .mt-blog-hero .mt-blog-image { margin-top: 0; border: 2px solid rgba(255, 225, 1, .65); box-shadow: 0 18px 45px rgba(0, 0, 0, .35); }
-.mt-blog-post .mt-blog-image img, .mt-blog-post .mt-blog-promo-banner img { display: block; width: 100%; height: auto; min-height: 180px; object-fit: contain; background: #f6f6f6; }
-.mt-blog-post .mt-blog-image figcaption, .mt-blog-post .mt-blog-promo-banner figcaption { padding: 10px 14px; color: var(--mt-muted); font-size: 13px; }
+.mt-blog-post img {
+  display: block !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  object-fit: contain !important;
+}
+.mt-blog-post .mt-blog-image img, .mt-blog-post .mt-blog-promo-banner img { width: 100% !important; margin: 0 !important; border: 0 !important; background: transparent; }
+.mt-blog-post .mt-blog-image figcaption, .mt-blog-post .mt-blog-promo-banner figcaption { padding: 10px 14px; color: var(--mt-muted); font-size: 13px; line-height: 1.45; }
 .mt-blog-post .mt-blog-kicker {
   display: inline-flex;
   margin: 0 0 14px;
@@ -109,7 +119,8 @@ export const BLOG_TEMPLATE_CSS = `.mt-blog-post {
 @media (max-width: 768px) {
   .mt-blog-post .mt-blog-article { border-radius: 20px; }
   .mt-blog-post .mt-blog-hero, .mt-blog-post .mt-blog-section { padding: 18px; }
-  .mt-blog-post .mt-blog-image, .mt-blog-post .mt-blog-promo-banner { border-radius: 16px; }
+  .mt-blog-post .mt-blog-image, .mt-blog-post .mt-blog-promo-banner { margin: 14px 0; border-radius: 16px; }
+  .mt-blog-post .mt-blog-hero .mt-blog-image { margin-top: 0; }
 }`;
 
 const ukrainianTransliteration: Record<string, string> = {
@@ -275,6 +286,6 @@ export function generateBlogPostExport(document: BlogPostDocument): BlogPostExpo
   const css = `${BLOG_TEMPLATE_CSS}${document.customCss.trim() ? `\n${document.customCss.trim()}` : ''}`;
   const js = `${createTemplateJs(rootId)}${document.customJs.trim() ? `\n\n${document.customJs.trim()}` : ''}`;
   const combined = `${html}\n<style type="text/css">\n${css}\n</style>\n<script>\n${js.replace(/<\/script/giu, '<\\/script')}\n</script>`;
-  const preview = `<!doctype html><html lang="uk"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><style>body{margin:0;padding:24px;background:#eef0f3;font-family:Arial,sans-serif}</style><style>${css}</style></head><body>${html}<script>${js.replace(/<\/script/giu, '<\\/script')}</script></body></html>`;
+  const preview = `<!doctype html><html lang="uk"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><style>body{margin:0;padding:24px;background:#eef0f3;font-family:Arial,sans-serif}@media(max-width:480px){body{padding:0}}</style><style>${css}</style></head><body>${html}<script>${js.replace(/<\/script/giu, '<\\/script')}</script></body></html>`;
   return { html, css, js, combined, preview };
 }

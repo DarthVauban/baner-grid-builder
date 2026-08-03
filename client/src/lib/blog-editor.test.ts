@@ -23,6 +23,28 @@ describe('blog editor export', () => {
     expect(output.combined).toContain('<script>');
   });
 
+  it('keeps every image responsive without forcing empty space on mobile', () => {
+    const document = createBlogPostDocument('Responsive images', 'Description');
+    document.hero.imageUrl = 'https://example.com/wide-hero.jpg';
+    document.sections[0].blocks.push({
+      id: 'content-image',
+      type: 'image',
+      url: 'https://example.com/tall-content.jpg',
+      alt: 'Content image',
+      caption: 'Caption'
+    });
+
+    const output = generateBlogPostExport(document);
+
+    expect(output.html).toContain('src="https://example.com/wide-hero.jpg"');
+    expect(output.html).toContain('src="https://example.com/tall-content.jpg"');
+    expect(output.css).toContain('height: auto !important;');
+    expect(output.css).toContain('min-height: 0 !important;');
+    expect(output.css).toContain('aspect-ratio: auto !important;');
+    expect(output.css).not.toContain('min-height: 180px');
+    expect(output.preview).toContain('@media(max-width:480px){body{padding:0}}');
+  });
+
   it('escapes untrusted text and ignores unsafe media URLs', () => {
     const document = createBlogPostDocument('<script>alert(1)</script>', 'Опис');
     document.hero.imageUrl = 'javascript:alert(1)';
