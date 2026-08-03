@@ -121,6 +121,18 @@ jobs:
             echo "== Configured Nginx log destinations =="
             nginx -T 2>&1 | grep -E '^[[:space:]]*(error_log|access_log)[[:space:]]' || true
 
+            echo "== Nginx include order =="
+            nginx -T 2>&1 |
+              grep -E '^# configuration file /etc/nginx/(conf\.d|sites-enabled)/|include[[:space:]].*(conf\.d|sites-enabled)' || true
+            for configuration in \
+              /etc/nginx/conf.d/banner-builder.conf \
+              /etc/nginx/conf.d/storefront-shop.conf; do
+              if [ -e "$configuration" ]; then
+                printf 'configuration_path=%s resolved_path=%s\n' \
+                  "$configuration" "$(readlink -f "$configuration")"
+              fi
+            done
+
             echo "== Recently modified Nginx error logs =="
             for root in /var/log/nginx /var/www /var/www/httpd-logs; do
               [ -d "$root" ] || continue
