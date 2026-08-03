@@ -86,3 +86,13 @@ jobs:
                   openssl x509 -in "$certificate" -noout -subject -issuer -dates -ext subjectAltName
                 done
             fi
+
+            echo "== Active mt-panel Nginx configuration =="
+            for directory in /etc/nginx/sites-enabled /etc/nginx/conf.d; do
+              [ -d "$directory" ] || continue
+              grep -R -l -E 'server_name[[:space:]].*mt-panel\.sbs' "$directory" 2>/dev/null |
+                while IFS= read -r configuration; do
+                  printf 'nginx_configuration=%s\n' "$configuration"
+                  sed -n '1,260p' "$configuration"
+                done
+            done
