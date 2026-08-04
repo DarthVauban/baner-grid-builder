@@ -1,5 +1,9 @@
 import * as XLSX from 'xlsx';
-import type { FacebookPublicationWorkbookRows } from '../types/facebook-publication';
+import type {
+  FacebookPublicationGroup,
+  FacebookPublicationStore,
+  FacebookPublicationWorkbookRows
+} from '../types/facebook-publication';
 
 export const FACEBOOK_STORES_SHEET = 'Магазини';
 export const FACEBOOK_GROUPS_SHEET = 'Facebook-групи';
@@ -58,6 +62,42 @@ export function createFacebookPublicationTemplateWorkbook() {
 
 export function downloadFacebookPublicationTemplate() {
   XLSX.writeFile(createFacebookPublicationTemplateWorkbook(), 'facebook-groups-import-template.xlsx', {
+    compression: true
+  });
+}
+
+export function createFacebookGroupsExportWorkbook(
+  groups: Array<Pick<FacebookPublicationGroup, 'name' | 'url'>>
+) {
+  const workbook = XLSX.utils.book_new();
+  const sheet = worksheetWithWidths([
+    ['Назва групи', 'Посилання'],
+    ...groups.map((group) => [group.name, group.url])
+  ], [42, 72]);
+  XLSX.utils.book_append_sheet(workbook, sheet, FACEBOOK_GROUPS_SHEET);
+  return workbook;
+}
+
+export function downloadFacebookGroupsExport(groups: FacebookPublicationGroup[]) {
+  XLSX.writeFile(createFacebookGroupsExportWorkbook(groups), 'facebook-groups.xlsx', {
+    compression: true
+  });
+}
+
+export function createFacebookStoresExportWorkbook(
+  stores: Array<Pick<FacebookPublicationStore, 'city' | 'address'>>
+) {
+  const workbook = XLSX.utils.book_new();
+  const sheet = worksheetWithWidths([
+    ['Місто', 'Адреса'],
+    ...stores.map((store) => [store.city, store.address])
+  ], [24, 64]);
+  XLSX.utils.book_append_sheet(workbook, sheet, FACEBOOK_STORES_SHEET);
+  return workbook;
+}
+
+export function downloadFacebookStoresExport(stores: FacebookPublicationStore[]) {
+  XLSX.writeFile(createFacebookStoresExportWorkbook(stores), 'mobile-trend-stores.xlsx', {
     compression: true
   });
 }

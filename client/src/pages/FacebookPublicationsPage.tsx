@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { copyToClipboard } from '../lib/banner-generator';
 import {
+  downloadFacebookGroupsExport,
   downloadFacebookPublicationTemplate,
+  downloadFacebookStoresExport,
   readFacebookPublicationWorkbook
 } from '../lib/facebook-publication-xlsx';
 import type {
@@ -583,7 +585,13 @@ export function FacebookPublicationsPage() {
     <section className="facebook-section">
       <header className="facebook-section-heading">
         <div><p className="eyebrow">{tab === 'campaigns' ? 'План і виконання' : tab === 'groups' ? 'Довідник аудиторій' : tab === 'stores' ? 'Джерело адрес' : 'Журнал спроб'}</p><h2>{tab === 'campaigns' ? 'Промокампанії' : tab === 'groups' ? 'Міські Facebook-групи' : tab === 'stores' ? 'Магазини Mobile Trend' : 'Історія публікацій'}</h2></div>
-        <div className="facebook-section-actions"><label className="facebook-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук" /></label>{isAdmin && tab === 'groups' && <button className="button button--primary" type="button" disabled={!stores.data?.length} onClick={() => setEditingGroup(null)}><Icon name="add" size={17} /> Додати групу</button>}{isAdmin && tab === 'stores' && <button className="button button--primary" type="button" onClick={() => setEditingStore(null)}><Icon name="add" size={17} /> Додати магазин</button>}</div>
+        <div className="facebook-section-actions">
+          <label className="facebook-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук" /></label>
+          {tab === 'groups' && <button className="button button--secondary" type="button" disabled={groups.isLoading} onClick={() => downloadFacebookGroupsExport(groups.data || [])}><Icon name="save" size={17} /> Експорт груп</button>}
+          {tab === 'stores' && <button className="button button--secondary" type="button" disabled={stores.isLoading} onClick={() => downloadFacebookStoresExport(stores.data || [])}><Icon name="save" size={17} /> Експорт магазинів</button>}
+          {isAdmin && tab === 'groups' && <button className="button button--primary" type="button" disabled={!stores.data?.length} onClick={() => setEditingGroup(null)}><Icon name="add" size={17} /> Додати групу</button>}
+          {isAdmin && tab === 'stores' && <button className="button button--primary" type="button" onClick={() => setEditingStore(null)}><Icon name="add" size={17} /> Додати магазин</button>}
+        </div>
       </header>
 
       {tab === 'campaigns' && <div className="facebook-campaign-grid">

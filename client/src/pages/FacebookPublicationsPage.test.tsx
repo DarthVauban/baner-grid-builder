@@ -35,7 +35,11 @@ describe('FacebookPublicationsPage', () => {
     expect(screen.getByText('Фінальна публікація завжди ручна')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Імпорт XLSX/ })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: /Facebook-групи/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Експорт груп/ })).toBeInTheDocument());
+
     fireEvent.click(screen.getByRole('button', { name: /Магазини/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Експорт магазинів/ })).toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole('button', { name: /Додати магазин/ })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Додати магазин/ }));
     expect(screen.getByRole('dialog', { name: 'Новий магазин' })).toBeInTheDocument();
