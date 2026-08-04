@@ -389,6 +389,8 @@ export const api = {
         request<{ created: CatalogBrand[]; skipped: string[]; total: number }>('/api/catalog/brands/bulk', { method: 'POST', body: jsonBody(input) }),
       updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'directoryId' | 'label' | 'logoUrl' | 'active' | 'sortOrder'>>) =>
         request<CatalogBrand>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+      removeBrand: (id: string) =>
+        request<{ detachedProductCount: number }>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       characteristicTemplates: () => request<CatalogCharacteristicTemplate[]>('/api/catalog/characteristic-templates'),
       createCharacteristicTemplate: (input: CatalogCharacteristicTemplateInput) =>
         request<CatalogCharacteristicTemplate>('/api/catalog/characteristic-templates', { method: 'POST', body: jsonBody(input) }),
@@ -410,6 +412,8 @@ export const api = {
       request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
     remove: (id: string, expectedVersion: number, options?: { groupAction?: 'disband' | 'promote'; newMainProductId?: string | null }) =>
       request<void>(`/api/catalog/products/${encodeURIComponent(id)}`, { method: 'DELETE', body: jsonBody({ expectedVersion, ...options }) }),
+    permanentlyRemove: (id: string, expectedVersion: number) =>
+      request<void>(`/api/catalog/products/${encodeURIComponent(id)}/permanent`, { method: 'DELETE', body: jsonBody({ expectedVersion }) }),
       setPublicationStatus: (id: string, status: CatalogPublicationStatus, expectedVersion: number) =>
         request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/publication-status`, {
           method: 'PATCH',

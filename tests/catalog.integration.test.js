@@ -59,6 +59,12 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.deepEqual(directoryBrands.body.data.map((brand) => brand.label), ['Apple', 'Google', 'Samsung', 'Xiaomi']);
   const appleBrand = directoryBrands.body.data.find((brand) => brand.label === 'Apple');
   assert.equal(appleBrand.directoryId, brandDirectory.body.data.id);
+  const removableBrand = directoryBrands.body.data.find((brand) => brand.label === 'Google');
+  const removedBrand = await admin.delete(`/api/catalog/brands/${removableBrand.id}`).expect(200);
+  assert.equal(removedBrand.body.data.detachedProductCount, 0);
+  const directoryBrandsAfterDelete = await admin.get(`/api/catalog/brands?directoryId=${brandDirectory.body.data.id}`).expect(200);
+  assert.deepEqual(directoryBrandsAfterDelete.body.data.map((brand) => brand.label), ['Apple', 'Samsung', 'Xiaomi']);
+  await admin.delete(`/api/catalog/brands/${removableBrand.id}`).expect(404);
 
   const media = await admin.post('/api/catalog/media')
     .set('Content-Type', 'image/webp')
@@ -501,6 +507,11 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(childModificationSelection.body.data.items[0].id, variant.body.data.id);
   assert.deepEqual(childModificationSelection.body.data.items[0].modificationChildren, []);
 
+  const activePermanentDelete = await admin.delete(`/api/catalog/products/${variant.body.data.id}/permanent`).send({
+    expectedVersion: variantWithCharacteristics.body.data.version
+  }).expect(409);
+  assert.equal(activePermanentDelete.body.error.code, 'CATALOG_PRODUCT_NOT_ARCHIVED');
+
   await admin.delete(`/api/catalog/products/${variant.body.data.id}`).send({
     expectedVersion: variantWithCharacteristics.body.data.version
   }).expect(204);
@@ -512,6 +523,37 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.equal(catalogAfterVariantDelete.body.data.items.some((item) => item.id === variant.body.data.id), false);
   const mainAfterVariantDelete = catalogAfterVariantDelete.body.data.items.find((item) => item.id === created.body.data.id);
   assert.equal(mainAfterVariantDelete.modificationGroup.childCount, 0);
+
+  const archivedCatalog = await admin.get('/api/catalog/products').query({
+    search: variant.body.data.productCode,
+    status: 'ARCHIVED',
+    pageSize: 25
+  }).expect(200);
+  assert.equal(archivedCatalog.body.data.total, 1);
+  assert.equal(archivedCatalog.body.data.items[0].id, variant.body.data.id);
+
+  await pool.query(
+    `INSERT INTO used_smartphone_product_import_keys (source, identity_key, product_id)
+     VALUES ('archive_permanent_delete_test', $1, $2)`,
+    [variant.body.data.productCode, variant.body.data.id]
+  );
+
+  await admin.delete(`/api/catalog/products/${variant.body.data.id}/permanent`).send({
+    expectedVersion: archivedVariant.body.data.version
+  }).expect(204);
+  await admin.get(`/api/catalog/products/${variant.body.data.id}`).expect(404);
+
+  const deletedProductRows = await pool.query('SELECT id FROM used_smartphone_products WHERE id = $1', [variant.body.data.id]);
+  assert.equal(deletedProductRows.rowCount, 0);
+  const deletedImportKeys = await pool.query('SELECT id FROM used_smartphone_product_import_keys WHERE product_id = $1', [variant.body.data.id]);
+  assert.equal(deletedImportKeys.rowCount, 0);
+
+  const archiveAfterPermanentDelete = await admin.get('/api/catalog/products').query({
+    search: variant.body.data.productCode,
+    status: 'ARCHIVED',
+    pageSize: 25
+  }).expect(200);
+  assert.equal(archiveAfterPermanentDelete.body.data.total, 0);
 
   async function createDeleteGroupProduct(name) {
     return admin.post('/api/catalog/products').send({

@@ -39,6 +39,7 @@ import PublishRounded from '@mui/icons-material/PublishRounded';
 import ImageOutlined from '@mui/icons-material/ImageOutlined';
 import FolderRounded from '@mui/icons-material/FolderRounded';
 import Inventory2Outlined from '@mui/icons-material/Inventory2Outlined';
+import ArchiveOutlined from '@mui/icons-material/ArchiveOutlined';
 import RemoveRounded from '@mui/icons-material/RemoveRounded';
 import SaveRounded from '@mui/icons-material/SaveRounded';
 import SearchRounded from '@mui/icons-material/SearchRounded';
@@ -87,6 +88,7 @@ export type IconName =
   | 'arrowRight'
   | 'arrowUp'
   | 'arrowDown'
+  | 'archive'
   | 'bell'
   | 'backup'
   | 'bannerGrid'
@@ -174,6 +176,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   arrowRight: ArrowForwardRounded,
   arrowUp: KeyboardArrowUpRounded,
   arrowDown: KeyboardArrowDownRounded,
+  archive: ArchiveOutlined,
   bell: NotificationsNoneRounded,
   backup: BackupRounded,
   bannerGrid: DashboardCustomizeRounded,

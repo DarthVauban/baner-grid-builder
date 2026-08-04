@@ -27,6 +27,7 @@ describe('CatalogWorkspacePage', () => {
 
   it('keeps history in the sidebar without separate import and preview entries', () => {
     renderCatalog();
+    expect(screen.getByRole('link', { name: 'Архів товарів' })).toHaveAttribute('href', '/catalog/archive');
     expect(screen.getByRole('link', { name: 'Історія змін' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Імпорт XLSX' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Preview магазину' })).not.toBeInTheDocument();
