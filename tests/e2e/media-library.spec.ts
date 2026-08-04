@@ -129,7 +129,34 @@ test('dropped images show progress, become compact WebP cards and can be inserte
   expect(confirmFooterPadding).toBeGreaterThanOrEqual(16);
   await page.getByRole('button', { name: 'Скасувати', exact: true }).click();
 
-  await heroCard.getByRole('checkbox', { name: 'Виділити e2e-hero.png' }).check();
+  const heroCheckbox = heroCard.getByRole('checkbox', { name: 'Виділити e2e-hero.png' });
+  const unselectedVisual = await heroCard.evaluate((element) => {
+    const checkbox = element.querySelector('.media-asset-card__select span');
+    return {
+      border: getComputedStyle(element).borderColor,
+      background: getComputedStyle(element).backgroundColor,
+      checkboxBackground: checkbox ? getComputedStyle(checkbox).backgroundColor : ''
+    };
+  });
+  await heroCheckbox.check();
+  await expect(heroCard).toHaveClass(/media-asset-card--selected/);
+  await expect(heroCard.locator('.media-asset-card__selected-label')).toHaveText('Вибрано');
+  await expect.poll(() => heroCard.evaluate((element) => getComputedStyle(element).borderColor)).not.toBe(unselectedVisual.border);
+  await expect.poll(() => heroCard.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(unselectedVisual.background);
+  const selectedVisual = await heroCard.evaluate((element) => {
+    const checkbox = element.querySelector('.media-asset-card__select span');
+    const checkboxIcon = element.querySelector('.media-asset-card__select .icon');
+    return {
+      border: getComputedStyle(element).borderColor,
+      background: getComputedStyle(element).backgroundColor,
+      checkboxBackground: checkbox ? getComputedStyle(checkbox).backgroundColor : '',
+      checkboxIconOpacity: checkboxIcon ? getComputedStyle(checkboxIcon).opacity : ''
+    };
+  });
+  expect(selectedVisual.border).not.toBe(unselectedVisual.border);
+  expect(selectedVisual.background).not.toBe(unselectedVisual.background);
+  expect(selectedVisual.checkboxBackground).not.toBe(unselectedVisual.checkboxBackground);
+  expect(selectedVisual.checkboxIconOpacity).toBe('1');
   const selectionToolbar = page.getByRole('toolbar', { name: 'Дії з вибраними файлами' });
   await expect(selectionToolbar).toContainText('Вибрано: 1');
   await selectionToolbar.getByRole('button', { name: 'Виділити усі' }).click();

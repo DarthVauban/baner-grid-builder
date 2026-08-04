@@ -419,28 +419,32 @@ export function MediaLibraryBrowser({ onSelect }: { onSelect?: (asset: MediaAsse
     </div>}
 
     {Boolean(feed?.items.length) && <div className="media-library-grid">
-      {feed!.items.map((asset) => <article className={`media-asset-card${selectedAssetIds.has(asset.id) ? ' media-asset-card--selected' : ''}`} key={asset.id}>
-        <label className="media-asset-card__select" title={`Виділити ${asset.name}`}>
-          <input type="checkbox" checked={selectedAssetIds.has(asset.id)} aria-label={`Виділити ${asset.name}`} onChange={() => toggleAssetSelection(asset.id)} />
-          <span><Icon name="check" size={13} /></span>
-        </label>
-        <div className="media-asset-card__preview"><img src={asset.url} alt={asset.altText || asset.name} loading="lazy" /></div>
-        <div className="media-asset-card__body">
-          <div className="media-asset-card__details">
-            <strong title={asset.name}>{asset.name}</strong>
-            <span>{asset.width}×{asset.height} · {formatBytes(asset.size)} · WebP</span>
-            <small>{asset.createdBy?.name || 'Системний файл'} · {new Date(asset.createdAt).toLocaleDateString('uk-UA')}</small>
-          </div>
-          <div className="media-asset-card__actions">
-            {onSelect && <button className="button button--primary media-asset-card__insert" type="button" onClick={() => onSelect(asset)}><Icon name="check" size={16} /> Вставити</button>}
-            <div className="media-asset-card__tools">
-              <button className="icon-button" type="button" title="Копіювати URL" aria-label={`Копіювати URL ${asset.name}`} onClick={() => void copyUrl(asset)}><Icon name="copy" size={17} /></button>
-              <button className="icon-button" type="button" title="Редагувати" aria-label={`Редагувати ${asset.name}`} onClick={() => openEdit(asset)}><Icon name="edit" size={17} /></button>
-              <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label={`Видалити ${asset.name}`} onClick={() => void deleteAsset(asset)}><Icon name="delete" size={17} /></button>
+      {feed!.items.map((asset) => {
+        const selected = selectedAssetIds.has(asset.id);
+        return <article className={`media-asset-card${selected ? ' media-asset-card--selected' : ''}`} key={asset.id}>
+          <label className="media-asset-card__select" title={`Виділити ${asset.name}`}>
+            <input type="checkbox" checked={selected} aria-label={`Виділити ${asset.name}`} onChange={() => toggleAssetSelection(asset.id)} />
+            <span><Icon name="check" size={17} /></span>
+          </label>
+          {selected && <span className="media-asset-card__selected-label" aria-hidden="true"><Icon name="check" size={14} /> Вибрано</span>}
+          <div className="media-asset-card__preview"><img src={asset.url} alt={asset.altText || asset.name} loading="lazy" /></div>
+          <div className="media-asset-card__body">
+            <div className="media-asset-card__details">
+              <strong title={asset.name}>{asset.name}</strong>
+              <span>{asset.width}×{asset.height} · {formatBytes(asset.size)} · WebP</span>
+              <small>{asset.createdBy?.name || 'Системний файл'} · {new Date(asset.createdAt).toLocaleDateString('uk-UA')}</small>
+            </div>
+            <div className="media-asset-card__actions">
+              {onSelect && <button className="button button--primary media-asset-card__insert" type="button" onClick={() => onSelect(asset)}><Icon name="check" size={16} /> Вставити</button>}
+              <div className="media-asset-card__tools">
+                <button className="icon-button" type="button" title="Копіювати URL" aria-label={`Копіювати URL ${asset.name}`} onClick={() => void copyUrl(asset)}><Icon name="copy" size={17} /></button>
+                <button className="icon-button" type="button" title="Редагувати" aria-label={`Редагувати ${asset.name}`} onClick={() => openEdit(asset)}><Icon name="edit" size={17} /></button>
+                <button className="icon-button icon-button--danger" type="button" title="Видалити" aria-label={`Видалити ${asset.name}`} onClick={() => void deleteAsset(asset)}><Icon name="delete" size={17} /></button>
+              </div>
             </div>
           </div>
-        </div>
-      </article>)}
+        </article>;
+      })}
     </div>}
 
     {pageCount > 1 && <nav className="media-library-pagination" aria-label="Сторінки файлового сховища">
