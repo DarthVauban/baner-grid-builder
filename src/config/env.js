@@ -11,6 +11,10 @@ const schema = z.object({
   COOKIE_NAME: z.string().default('mt_session'),
   COOKIE_SECURE: z.enum(['true', 'false', 'auto']).default('auto'),
   APP_BUILD_SHA: z.string().min(7).default('development'),
+  APP_ENVIRONMENT: z.preprocess(
+    (value) => String(value || '').trim().toLowerCase() || undefined,
+    z.enum(['development', 'production']).optional()
+  ),
   APP_ORIGIN: z.string().optional(),
   STOREFRONT_ORIGIN: z.preprocess(
     (value) => String(value || '').trim() || undefined,

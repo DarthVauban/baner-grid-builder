@@ -13,6 +13,10 @@ const SAFE_TELEGRAM_DOCUMENT_LIMIT_BYTES = 49 * 1024 * 1024;
 const MAX_BACKUP_SOURCE_BYTES = 128 * 1024 * 1024;
 const BACKUP_FORMAT = 'mt-workspace-backup';
 const BACKUP_FORMAT_VERSION = 1;
+const BACKUP_ENVIRONMENTS = Object.freeze({
+  development: Object.freeze({ key: 'development', slug: 'dev', label: 'DEV', marker: '🟦' }),
+  production: Object.freeze({ key: 'production', slug: 'prod', label: 'PROD', marker: '🟩' })
+});
 const backupSigningKey = crypto.scryptSync(env.JWT_SECRET, 'mt-workspace-backups-v1', 32);
 const excludedDataTables = new Set(['schema_migrations']);
 let backupOperationActive = false;
@@ -36,6 +40,28 @@ function sha256(value) {
 
 function signManifest(manifest) {
   return crypto.createHmac('sha256', backupSigningKey).update(JSON.stringify(manifest)).digest('hex');
+}
+
+function appHostname(origin) {
+  try {
+    return new URL(String(origin || '')).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+export function resolveBackupEnvironment({
+  appEnvironment = env.APP_ENVIRONMENT,
+  appOrigin = env.APP_ORIGIN,
+  nodeEnvironment = env.NODE_ENV
+} = {}) {
+  const hostname = appHostname(appOrigin);
+  const developmentHostname = hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || /^(dev|development|staging|stage|test|preview)[.-]/.test(hostname);
+  const key = appEnvironment
+    || (developmentHostname || nodeEnvironment !== 'production' ? 'development' : 'production');
+  return { ...BACKUP_ENVIRONMENTS[key], hostname };
 }
 
 function serializeDatabaseValue(value) {
@@ -234,12 +260,13 @@ async function latestMigration(db = { query }) {
   return result.rows[0]?.name || '';
 }
 
-function backupFileName(createdAt) {
+function backupFileName(createdAt, backupEnvironment = resolveBackupEnvironment()) {
   const stamp = createdAt.toISOString().replace(/\.\d{3}Z$/, 'Z').replaceAll(':', '-').replace('T', '_');
-  return `mt-workspace-backup_${stamp}.tar.gz`;
+  return `mt-workspace-backup_${backupEnvironment.slug}_${stamp}.tar.gz`;
 }
 
 export async function buildWorkspaceBackup({ now = new Date(), db = { query }, mediaDir = catalogMediaDir } = {}) {
+  const backupEnvironment = resolveBackupEnvironment();
   const snapshot = await databaseSnapshot(db);
   const databaseData = Buffer.from(JSON.stringify(snapshot), 'utf8');
   if (databaseData.length > MAX_BACKUP_SOURCE_BYTES) {
@@ -270,6 +297,7 @@ export async function buildWorkspaceBackup({ now = new Date(), db = { query }, m
     formatVersion: BACKUP_FORMAT_VERSION,
     createdAt: now.toISOString(),
     buildSha: env.APP_BUILD_SHA,
+    environment: backupEnvironment.key,
     schemaMigration: await latestMigration(db),
     databaseSha256: sha256(databaseData),
     tableCount: snapshot.tables.length,
@@ -281,7 +309,8 @@ export async function buildWorkspaceBackup({ now = new Date(), db = { query }, m
 
   return {
     archive,
-    fileName: backupFileName(now),
+    fileName: backupFileName(now, backupEnvironment),
+    environment: backupEnvironment,
     createdAt: now,
     tableCount: snapshot.tables.length,
     mediaCount: mediaEntries.length
@@ -546,7 +575,8 @@ export async function createAndSendBackup({ trigger = 'manual', userId = null, n
     }
     const form = new FormData();
     form.append('chat_id', credentials.chatId);
-    form.append('caption', `Резервна копія MT Workspace\nСтворено: ${readableBackupDate(now, settings.timezone)} (${settings.timezone})\nТаблиць: ${backup.tableCount}; медіафайлів: ${backup.mediaCount}`);
+    const environmentOrigin = backup.environment.hostname ? ` · ${backup.environment.hostname}` : '';
+    form.append('caption', `${backup.environment.marker} ${backup.environment.label} · Резервна копія MT Workspace\nСередовище: ${backup.environment.label}${environmentOrigin}\nСтворено: ${readableBackupDate(now, settings.timezone)} (${settings.timezone})\nТаблиць: ${backup.tableCount}; медіафайлів: ${backup.mediaCount}`);
     form.append('document', new Blob([backup.archive], { type: 'application/gzip' }), backup.fileName);
     const message = await telegramApiRequest(credentials.token, 'sendDocument', form, { timeoutMs: 120_000 });
     const run = await recordBackupRun({
@@ -584,7 +614,10 @@ export async function restoreWorkspaceBackup(archive, { userId = null, now = new
     stage = null;
     const run = await recordBackupRun({
       trigger: 'restore', status: 'success',
-      fileName: backupFileName(new Date(verified.manifest.createdAt)),
+      fileName: backupFileName(
+        new Date(verified.manifest.createdAt),
+        BACKUP_ENVIRONMENTS[verified.manifest.environment] || resolveBackupEnvironment()
+      ),
       sizeBytes: archive.length, createdBy: null, startedAt: now
     });
     return { run, backupCreatedAt: verified.manifest.createdAt };

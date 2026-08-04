@@ -8,9 +8,10 @@ process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.APP_BUILD_SHA = 'backup-test-build';
+process.env.APP_ENVIRONMENT = 'development';
 
 const { createBackupArchive, readBackupArchive } = await import('../src/modules/backups/backup-archive.js');
-const { buildWorkspaceBackup, calculateNextBackupAt } = await import('../src/modules/backups/backup.service.js');
+const { buildWorkspaceBackup, calculateNextBackupAt, resolveBackupEnvironment } = await import('../src/modules/backups/backup.service.js');
 
 test('backup archive round-trips manifest, database and binary media', () => {
   const archive = createBackupArchive([
@@ -43,6 +44,15 @@ test('backup schedule respects local daily and weekly time', () => {
   assert.equal(weekly.toISOString(), '2026-07-27T06:00:00.000Z');
 });
 
+test('backup environment is explicit and falls back to the deployment origin', () => {
+  assert.deepEqual(
+    resolveBackupEnvironment({ appEnvironment: 'production', appOrigin: 'https://dev.mt-panel.sbs', nodeEnvironment: 'production' }),
+    { key: 'production', slug: 'prod', label: 'PROD', marker: '🟩', hostname: 'dev.mt-panel.sbs' }
+  );
+  assert.equal(resolveBackupEnvironment({ appEnvironment: '', appOrigin: 'https://dev.mt-panel.sbs', nodeEnvironment: 'production' }).key, 'development');
+  assert.equal(resolveBackupEnvironment({ appEnvironment: '', appOrigin: 'https://mt-panel.sbs', nodeEnvironment: 'production' }).key, 'production');
+});
+
 test('workspace backup includes a signed dated manifest and catalog media', async () => {
   const mediaDir = await mkdtemp(path.join(os.tmpdir(), 'mt-backup-test-'));
   try {
@@ -66,8 +76,9 @@ test('workspace backup includes a signed dated manifest and catalog media', asyn
     const entries = readBackupArchive(result.archive);
     const manifest = JSON.parse(entries.get('manifest.json').toString('utf8'));
     const database = JSON.parse(entries.get('database.json').toString('utf8'));
-    assert.match(result.fileName, /2026-07-22_12-34-56Z/);
+    assert.equal(result.fileName, 'mt-workspace-backup_dev_2026-07-22_12-34-56Z.tar.gz');
     assert.equal(manifest.format, 'mt-workspace-backup');
+    assert.equal(manifest.environment, 'development');
     assert.equal(manifest.schemaMigration, '033_telegram_backups.sql');
     assert.match(manifest.signature, /^[a-f0-9]{64}$/);
     assert.deepEqual(database.tables[0].rows[0].payload, { ready: true });
