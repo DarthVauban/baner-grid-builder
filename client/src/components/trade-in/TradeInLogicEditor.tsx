@@ -49,6 +49,7 @@ import {
 } from '../../lib/trade-in';
 import type {
   TradeInCondition,
+  TradeInConditionBranch,
   TradeInConditionOperator,
   TradeInConfig,
   TradeInField,
@@ -100,6 +101,7 @@ const typeMeta: Record<TradeInFormNodeType, { label: string; description: string
 };
 
 const addableTypes: AddableNodeType[] = ['fields', 'condition', 'information', 'finish'];
+const maxConditionBranches = 20;
 const operatorOptions = Object.entries(tradeInConditionOperatorLabels) as Array<[TradeInConditionOperator, string]>;
 type GraphFieldEntry = ReturnType<typeof getTradeInGraphFieldEntries>[number];
 
@@ -167,12 +169,17 @@ function TradeInGraphNode({ data, selected }: NodeProps<GraphNode>) {
       {node.type === 'condition' && (
         <div className="trade-in-graph-node__branches">
           {node.branches.map((branch) => (
-            <div key={branch.id}>
+            <div className="trade-in-graph-node__branch" key={branch.id}>
               <span>{branch.label || 'Гілка'}</span>
               <small>{data.conditionLabels[branch.id]}</small>
+              <Handle id={branch.id} type="source" position={Position.Right} />
             </div>
           ))}
-          <div><span>{node.defaultBranchLabel || 'Інші випадки'}</span><small>Резервна гілка</small></div>
+          <div className="trade-in-graph-node__branch is-default">
+            <span>{node.defaultBranchLabel || 'Інші випадки'}</span>
+            <small>Резервна гілка</small>
+            <Handle id="default" type="source" position={Position.Right} />
+          </div>
         </div>
       )}
 
@@ -180,25 +187,6 @@ function TradeInGraphNode({ data, selected }: NodeProps<GraphNode>) {
 
       {node.type !== 'finish' && node.type !== 'condition' && (
         <Handle id="next" type="source" position={Position.Right} />
-      )}
-      {node.type === 'condition' && (
-        <>
-          {node.branches.map((branch, index) => (
-            <Handle
-              id={branch.id}
-              type="source"
-              position={Position.Right}
-              style={{ top: 116 + index * 32 } as CSSProperties}
-              key={branch.id}
-            />
-          ))}
-          <Handle
-            id="default"
-            type="source"
-            position={Position.Right}
-            style={{ top: 116 + node.branches.length * 32 } as CSSProperties}
-          />
-        </>
       )}
     </article>
   );
@@ -280,12 +268,16 @@ function ConditionOptionPicker({
   field,
   value,
   multiple,
-  onChange
+  onChange,
+  disabledValues = new Set<string>(),
+  disabledHint = 'Гілка вже існує'
 }: {
   field: TradeInField;
   value: string;
   multiple: boolean;
   onChange: (value: string) => void;
+  disabledValues?: ReadonlySet<string>;
+  disabledHint?: string;
 }) {
   const selectedValues = value.split(',').map((item) => item.trim()).filter(Boolean);
   const selectedSet = new Set(selectedValues);
@@ -318,20 +310,131 @@ function ConditionOptionPicker({
       <div className="trade-in-condition-values__list" role="group" aria-label="Значення умови">
         {field.options.map((option) => {
           const checked = selectedSet.has(option.value);
+          const disabled = disabledValues.has(option.value);
           return (
-            <label className={checked ? 'is-checked' : ''} key={option.id}>
+            <label className={`${checked ? 'is-checked' : ''}${disabled ? ' is-disabled' : ''}`} key={option.id}>
               <input
                 type="checkbox"
                 checked={checked}
+                disabled={disabled}
                 onChange={() => toggleOption(option.value)}
               />
               <i aria-hidden="true">✓</i>
               <span>{option.label}</span>
+              {disabled && <em>{disabledHint}</em>}
             </label>
           );
         })}
       </div>
     </div>
+  );
+}
+
+function branchValuesForField(branch: TradeInConditionBranch, fieldKey: string) {
+  const group = tradeInConditionGroup(branch);
+  if (group.conditions.length !== 1) return [];
+  const condition = group.conditions[0];
+  if (condition.fieldKey !== fieldKey || !['equals', 'one_of'].includes(condition.operator)) return [];
+  return condition.value.split(',').map((value) => value.trim()).filter(Boolean);
+}
+
+function ConditionRouteGenerator({
+  entries,
+  branches,
+  maxBranches,
+  onCreate
+}: {
+  entries: GraphFieldEntry[];
+  branches: TradeInConditionBranch[];
+  maxBranches: number;
+  onCreate: (field: TradeInField, optionValues: string[]) => void;
+}) {
+  const optionEntries = entries.filter((entry) => entry.field.options.length > 0);
+  const stepOptions = Array.from(new Map(optionEntries.map((entry) => [entry.nodeId, entry.nodeTitle])).entries());
+  const [stepId, setStepId] = useState('');
+  const [fieldKey, setFieldKey] = useState('');
+  const [selectedValues, setSelectedValues] = useState('');
+  const stepEntries = stepId ? optionEntries.filter((entry) => entry.nodeId === stepId) : [];
+  const selectedEntry = optionEntries.find((entry) => entry.field.key === fieldKey);
+  const selectedField = selectedEntry?.field;
+  const existingValues = new Set(selectedField
+    ? branches.flatMap((branch) => branchValuesForField(branch, selectedField.key))
+    : []);
+  const selectedCount = selectedValues.split(',').map((value) => value.trim()).filter(Boolean).length;
+  const availableSlots = Math.max(0, maxBranches - branches.length);
+
+  const selectStep = (nextStepId: string) => {
+    const firstEntry = optionEntries.find((entry) => entry.nodeId === nextStepId);
+    setStepId(nextStepId);
+    setFieldKey(firstEntry?.field.key || '');
+    setSelectedValues('');
+  };
+
+  const createRoutes = () => {
+    if (!selectedField) return;
+    const values = selectedValues.split(',').map((value) => value.trim()).filter(Boolean);
+    if (!values.length) return;
+    onCreate(selectedField, values);
+    setSelectedValues('');
+  };
+
+  return (
+    <section className="trade-in-condition-route-generator">
+      <header>
+        <div>
+          <strong>Швидке розгалуження за варіантами</strong>
+          <small>Кожне вибране значення стане окремою плашкою з власним виходом.</small>
+        </div>
+        <span>{branches.length}/{maxBranches}</span>
+      </header>
+      {!optionEntries.length ? (
+        <p className="trade-in-condition-route-generator__empty">Спочатку додайте поле типу «Список», «Один варіант» або «Прапорці» з варіантами відповіді.</p>
+      ) : (
+        <>
+          <div className="trade-in-condition-route-generator__source">
+            <InputField label="Крок із варіантами">
+              <select value={stepId} onChange={(event) => selectStep(event.target.value)}>
+                <option value="">Оберіть крок</option>
+                {stepOptions.map(([nodeId, title]) => <option value={nodeId} key={nodeId}>{title}</option>)}
+              </select>
+            </InputField>
+            <InputField label="Поле для розгалуження">
+              <select
+                value={fieldKey}
+                disabled={!stepId}
+                onChange={(event) => {
+                  setFieldKey(event.target.value);
+                  setSelectedValues('');
+                }}
+              >
+                <option value="">Оберіть поле</option>
+                {stepEntries.map((entry) => <option value={entry.field.key} key={entry.field.id}>{entry.field.label}</option>)}
+              </select>
+            </InputField>
+          </div>
+          {selectedField && (
+            <>
+              <ConditionOptionPicker
+                field={selectedField}
+                value={selectedValues}
+                multiple
+                disabledValues={existingValues}
+                onChange={setSelectedValues}
+              />
+              <button
+                className="trade-in-condition-route-generator__create"
+                type="button"
+                disabled={!selectedCount || !availableSlots}
+                onClick={createRoutes}
+              >
+                Створити окремі гілки{selectedCount ? ` (${Math.min(selectedCount, availableSlots)})` : ''}
+              </button>
+              {!availableSlots && <p className="trade-in-condition-route-generator__limit">Досягнуто максимуму у {maxBranches} гілок для однієї ноди.</p>}
+            </>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -794,6 +897,45 @@ function TradeInLogicCanvas({
         conditions: result?.conditions ?? current.conditions
       };
       branch.condition = branch.conditionGroup.conditions[0] || emptyTradeInCondition();
+    });
+  };
+
+  const addBranchesFromOptions = (field: TradeInField, optionValues: string[]) => {
+    if (!selectedNode || selectedNode.type !== 'condition') return;
+    mutateGraph((nextGraph) => {
+      const node = nextGraph.nodes.find((item) => item.id === selectedNode.id);
+      if (!node) return;
+      const connectedHandles = new Set(nextGraph.edges
+        .filter((edge) => edge.source === node.id)
+        .map((edge) => edge.sourceHandle));
+
+      node.branches = node.branches.filter((branch) => {
+        const group = tradeInConditionGroup(branch);
+        const isUnusedPlaceholder = !group.conditions.some((condition) => condition.fieldKey)
+          && !connectedHandles.has(branch.id)
+          && /^Варіант \d+$/u.test(branch.label);
+        return !isUnusedPlaceholder;
+      });
+
+      const existingValues = new Set(node.branches.flatMap((branch) => branchValuesForField(branch, field.key)));
+      const capacity = Math.max(0, maxConditionBranches - node.branches.length);
+      const requestedValues = new Set(optionValues);
+      field.options
+        .filter((option) => requestedValues.has(option.value) && !existingValues.has(option.value))
+        .slice(0, capacity)
+        .forEach((option) => {
+          const condition: TradeInCondition = {
+            fieldKey: field.key,
+            operator: 'equals',
+            value: option.value
+          };
+          node.branches.push({
+            id: tradeInId('branch'),
+            label: option.label,
+            condition,
+            conditionGroup: createTradeInConditionGroup(condition)
+          });
+        });
     });
   };
 
@@ -1361,28 +1503,53 @@ function TradeInLogicCanvas({
                 <div className="trade-in-graph-inspector__body">
                   <InputField label="Назва умови" value={selectedNode.title} onChange={(value) => updateNode((node) => { node.title = value; })} />
                   <InputField label="Опис" textarea value={selectedNode.description} onChange={(value) => updateNode((node) => { node.description = value; })} />
+                  <ConditionRouteGenerator
+                    key={selectedNode.id}
+                    entries={fieldEntries}
+                    branches={selectedNode.branches}
+                    maxBranches={maxConditionBranches}
+                    onCreate={addBranchesFromOptions}
+                  />
                   <section className="trade-in-graph-branches">
                     <header>
-                      <div><strong>Гілки умови</strong><small>Перевіряються згори вниз</small></div>
-                      <button type="button" onClick={() => updateNode((node) => {
+                      <div><strong>Маршрути умови</strong><small>Кожен маршрут має окремий вихід і перевіряється згори вниз</small></div>
+                      <button type="button" disabled={selectedNode.branches.length >= maxConditionBranches} onClick={() => updateNode((node) => {
+                        if (node.branches.length >= maxConditionBranches) return;
                         node.branches.push({
                           id: tradeInId('branch'),
                           label: `Варіант ${node.branches.length + 1}`,
                           condition: emptyTradeInCondition(),
                           conditionGroup: createTradeInConditionGroup()
                         });
-                      })}>+ Гілка</button>
+                      })}>+ Власний маршрут</button>
                     </header>
                     {selectedNode.branches.map((branch, index) => {
                       const group = tradeInConditionGroup(branch);
                       return (
                         <article key={branch.id}>
-                          <header><strong>Гілка {index + 1}</strong><button type="button" onClick={() => mutateGraph((nextGraph) => {
-                            const node = nextGraph.nodes.find((item) => item.id === selectedNode.id);
-                            if (!node) return;
-                            const removed = node.branches.splice(index, 1)[0];
-                            nextGraph.edges = nextGraph.edges.filter((edge) => !(edge.source === node.id && edge.sourceHandle === removed?.id));
-                          })}>×</button></header>
+                          <header>
+                            <div><strong>Маршрут {index + 1}</strong><span>{branch.label || 'Без підпису'}</span></div>
+                            <div className="trade-in-condition-branch-actions">
+                              <button
+                                type="button"
+                                disabled={index === 0}
+                                onClick={() => updateNode((node) => { node.branches = moveTradeInItem(node.branches, index, -1); })}
+                                aria-label="Перемістити маршрут вище"
+                              >↑</button>
+                              <button
+                                type="button"
+                                disabled={index === selectedNode.branches.length - 1}
+                                onClick={() => updateNode((node) => { node.branches = moveTradeInItem(node.branches, index, 1); })}
+                                aria-label="Перемістити маршрут нижче"
+                              >↓</button>
+                              <button type="button" onClick={() => mutateGraph((nextGraph) => {
+                                const node = nextGraph.nodes.find((item) => item.id === selectedNode.id);
+                                if (!node) return;
+                                const removed = node.branches.splice(index, 1)[0];
+                                nextGraph.edges = nextGraph.edges.filter((edge) => !(edge.source === node.id && edge.sourceHandle === removed?.id));
+                              })} aria-label="Видалити маршрут">×</button>
+                            </div>
+                          </header>
                           <InputField label="Підпис виходу" value={branch.label} onChange={(value) => updateNode((node) => { node.branches[index].label = value; })} />
                           <div className="trade-in-condition-combinator">
                             <span>Як поєднати правила</span>
@@ -1433,7 +1600,7 @@ function TradeInLogicCanvas({
                       );
                     })}
                     <article className="is-default">
-                      <header><strong>Резервна гілка</strong><span>default</span></header>
+                      <header><div><strong>Резервний маршрут</strong><span>Спрацьовує, якщо жодна умова вище не підійшла</span></div><span>default</span></header>
                       <InputField label="Підпис виходу" value={selectedNode.defaultBranchLabel} onChange={(value) => updateNode((node) => { node.defaultBranchLabel = value; })} />
                     </article>
                   </section>
