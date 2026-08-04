@@ -5,8 +5,10 @@ import { api } from '../lib/api';
 import { copyToClipboard } from '../lib/banner-generator';
 import {
   downloadFacebookGroupsExport,
-  downloadFacebookPublicationTemplate,
+  downloadFacebookGroupsImportTemplate,
   downloadFacebookStoresExport,
+  downloadFacebookStoresImportTemplate,
+  type FacebookPublicationImportType,
   readFacebookPublicationWorkbook
 } from '../lib/facebook-publication-xlsx';
 import type {
@@ -209,7 +211,45 @@ function GroupEditor({
   </ModalDialog>;
 }
 
-function ImportDialog({ onClose, onCommitted }: { onClose: () => void; onCommitted: () => void }) {
+function ImportChoiceDialog({
+  onClose,
+  onSelect
+}: {
+  onClose: () => void;
+  onSelect: (type: FacebookPublicationImportType) => void;
+}) {
+  return <ModalDialog
+    ariaLabelledBy="facebook-import-choice-title"
+    eyebrow="Масове наповнення"
+    title="Що потрібно імпортувати?"
+    onClose={onClose}
+    className="facebook-modal facebook-modal--choice"
+    footer={<button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button>}
+  >
+    <div className="facebook-import-choice">
+      <button type="button" onClick={() => onSelect('groups')}>
+        <span><Icon name="users" size={24} /></span>
+        <strong>Facebook-групи</strong>
+        <small>Назви, посилання, міста, магазини та правила публікацій.</small>
+      </button>
+      <button type="button" onClick={() => onSelect('stores')}>
+        <span><Icon name="location" size={24} /></span>
+        <strong>Магазини</strong>
+        <small>Адреси магазинів, які підставляються в локалізовані пости.</small>
+      </button>
+    </div>
+  </ModalDialog>;
+}
+
+function ImportDialog({
+  importType,
+  onClose,
+  onCommitted
+}: {
+  importType: FacebookPublicationImportType;
+  onClose: () => void;
+  onCommitted: () => void;
+}) {
   const { showToast } = useToast();
   const [fileName, setFileName] = useState('');
   const [rows, setRows] = useState<FacebookPublicationWorkbookRows | null>(null);
@@ -222,7 +262,7 @@ function ImportDialog({ onClose, onCommitted }: { onClose: () => void; onCommitt
     setFileName(file.name);
     setPreview(null);
     try {
-      const parsed = await readFacebookPublicationWorkbook(file);
+      const parsed = await readFacebookPublicationWorkbook(file, importType);
       const result = await api.facebookPublications.previewImport(parsed);
       setRows(parsed);
       setPreview(result);
@@ -239,7 +279,8 @@ function ImportDialog({ onClose, onCommitted }: { onClose: () => void; onCommitt
     setPending(true);
     try {
       const result = await api.facebookPublications.commitImport(rows);
-      showToast(`Імпорт завершено: ${result.stores.created + result.groups.created} створено, ${result.stores.updated + result.groups.updated} оновлено.`);
+      const imported = result[importType];
+      showToast(`Імпорт завершено: ${imported.created} створено, ${imported.updated} оновлено.`);
       onCommitted();
       onClose();
     } catch (error) {
@@ -249,13 +290,15 @@ function ImportDialog({ onClose, onCommitted }: { onClose: () => void; onCommitt
     }
   }
 
-  const errors = (preview?.stores.summary.error || 0) + (preview?.stores.summary.conflict || 0)
-    + (preview?.groups.summary.error || 0) + (preview?.groups.summary.conflict || 0);
+  const previewSection = preview?.[importType];
+  const errors = (previewSection?.summary.error || 0) + (previewSection?.summary.conflict || 0);
+  const isGroupsImport = importType === 'groups';
+  const previewRows = previewSection?.rows || [];
 
   return <ModalDialog
     ariaLabelledBy="facebook-import-title"
     eyebrow="Масове наповнення"
-    title="Імпорт магазинів і Facebook-груп"
+    title={isGroupsImport ? 'Імпорт Facebook-груп' : 'Імпорт магазинів'}
     onClose={onClose}
     closeDisabled={pending}
     className="facebook-modal facebook-modal--wide"
@@ -265,21 +308,19 @@ function ImportDialog({ onClose, onCommitted }: { onClose: () => void; onCommitt
     </>}
   >
     <div className="facebook-import-actions">
-      <button className="button button--secondary" type="button" onClick={downloadFacebookPublicationTemplate}><Icon name="upload" size={17} /> Завантажити шаблон XLSX</button>
+      <button className="button button--secondary" type="button" onClick={isGroupsImport ? downloadFacebookGroupsImportTemplate : downloadFacebookStoresImportTemplate}><Icon name="save" size={17} /> {isGroupsImport ? 'Шаблон груп' : 'Шаблон магазинів'}</button>
       <label className="button button--primary facebook-file-button"><Icon name="folder" size={17} /> {fileName || 'Вибрати XLSX'}<input type="file" accept=".xlsx,.xls" disabled={pending} onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
     </div>
-    <p className="facebook-help">Повторний імпорт оновлює магазини за кодом, а Facebook-групи — за посиланням. Рядки з помилками не імпортуються.</p>
+    <p className="facebook-help">{isGroupsImport ? 'Повторний імпорт оновлює Facebook-групи за посиланням. Коди магазинів мають уже існувати в довіднику.' : 'Повторний імпорт оновлює магазини за стабільним кодом.'} Рядки з помилками не імпортуються.</p>
     {pending && <div className="facebook-state">Аналізуємо файл…</div>}
     {preview && <>
       <div className="facebook-import-summary">
-        <article><span>Магазини</span><strong>{preview.stores.summary.total}</strong><small>{preview.stores.summary.create} нових · {preview.stores.summary.update} оновлень</small></article>
-        <article><span>Групи</span><strong>{preview.groups.summary.total}</strong><small>{preview.groups.summary.create} нових · {preview.groups.summary.update} оновлень</small></article>
+        <article><span>{isGroupsImport ? 'Групи' : 'Магазини'}</span><strong>{previewSection?.summary.total || 0}</strong><small>{previewSection?.summary.create || 0} нових · {previewSection?.summary.update || 0} оновлень</small></article>
         <article className={errors ? 'has-errors' : ''}><span>Проблеми</span><strong>{errors}</strong><small>Не будуть імпортовані</small></article>
       </div>
       <div className="facebook-import-preview">
-        {[...preview.stores.rows.map((row) => ({ ...row, type: 'Магазин', label: `${row.code} · ${row.name}` })),
-          ...preview.groups.rows.map((row) => ({ ...row, type: 'Група', label: row.name }))].slice(0, 200).map((row) => <div className={`facebook-import-row facebook-import-row--${row.action}`} key={`${row.type}-${row.rowNumber}`}>
-            <span>{row.rowNumber}</span><strong>{row.type}</strong><p>{row.label}</p><em>{row.action === 'create' ? 'Створити' : row.action === 'update' ? 'Оновити' : row.reason}</em>
+        {previewRows.slice(0, 200).map((row) => <div className={`facebook-import-row facebook-import-row--${row.action}`} key={`${importType}-${row.rowNumber}`}>
+            <span>{row.rowNumber}</span><strong>{isGroupsImport ? 'Група' : 'Магазин'}</strong><p>{'code' in row ? `${row.code} · ${row.name}` : row.name}</p><em>{row.action === 'create' ? 'Створити' : row.action === 'update' ? 'Оновити' : row.reason}</em>
           </div>)}
       </div>
     </>}
@@ -520,7 +561,8 @@ export function FacebookPublicationsPage() {
   const [search, setSearch] = useState('');
   const [editingStore, setEditingStore] = useState<FacebookPublicationStore | null | undefined>(undefined);
   const [editingGroup, setEditingGroup] = useState<FacebookPublicationGroup | null | undefined>(undefined);
-  const [importOpen, setImportOpen] = useState(false);
+  const [importChoiceOpen, setImportChoiceOpen] = useState(false);
+  const [importType, setImportType] = useState<FacebookPublicationImportType | null>(null);
   const [campaignEditorOpen, setCampaignEditorOpen] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const stores = useQuery({ queryKey: ['facebook-stores'], queryFn: () => api.facebookPublications.stores() });
@@ -566,7 +608,7 @@ export function FacebookPublicationsPage() {
     <header className="page-heading facebook-page-heading">
       <div><p className="eyebrow">Ручний workflow</p><h1>Публікації у міські Facebook-групи</h1><p>Готуйте локалізовані промопости, відкривайте групи вручну та фіксуйте результати без автопостингу.</p></div>
       <div className="facebook-heading-actions">
-        {isAdmin && <button className="button button--secondary" type="button" onClick={() => setImportOpen(true)}><Icon name="upload" size={18} /> Імпорт XLSX</button>}
+        {isAdmin && <button className="button button--secondary" type="button" onClick={() => setImportChoiceOpen(true)}><Icon name="upload" size={18} /> Імпорт XLSX</button>}
         <button className="button button--primary" type="button" disabled={!groups.data?.length || !stores.data?.length} onClick={() => setCampaignEditorOpen(true)}><Icon name="add" size={18} /> Нова кампанія</button>
       </div>
     </header>
@@ -589,6 +631,8 @@ export function FacebookPublicationsPage() {
           <label className="facebook-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук" /></label>
           {tab === 'groups' && <button className="button button--secondary" type="button" disabled={groups.isLoading} onClick={() => downloadFacebookGroupsExport(groups.data || [])}><Icon name="save" size={17} /> Експорт груп</button>}
           {tab === 'stores' && <button className="button button--secondary" type="button" disabled={stores.isLoading} onClick={() => downloadFacebookStoresExport(stores.data || [])}><Icon name="save" size={17} /> Експорт магазинів</button>}
+          {isAdmin && tab === 'groups' && <button className="button button--secondary" type="button" onClick={() => setImportType('groups')}><Icon name="upload" size={17} /> Імпорт груп</button>}
+          {isAdmin && tab === 'stores' && <button className="button button--secondary" type="button" onClick={() => setImportType('stores')}><Icon name="upload" size={17} /> Імпорт магазинів</button>}
           {isAdmin && tab === 'groups' && <button className="button button--primary" type="button" disabled={!stores.data?.length} onClick={() => setEditingGroup(null)}><Icon name="add" size={17} /> Додати групу</button>}
           {isAdmin && tab === 'stores' && <button className="button button--primary" type="button" onClick={() => setEditingStore(null)}><Icon name="add" size={17} /> Додати магазин</button>}
         </div>
@@ -631,7 +675,8 @@ export function FacebookPublicationsPage() {
 
     {editingStore !== undefined && <StoreEditor store={editingStore} onClose={() => setEditingStore(undefined)} onSaved={refreshDirectories} />}
     {editingGroup !== undefined && <GroupEditor group={editingGroup} stores={stores.data || []} onClose={() => setEditingGroup(undefined)} onSaved={refreshDirectories} />}
-    {importOpen && <ImportDialog onClose={() => setImportOpen(false)} onCommitted={refreshDirectories} />}
+    {importChoiceOpen && <ImportChoiceDialog onClose={() => setImportChoiceOpen(false)} onSelect={(type) => { setImportChoiceOpen(false); setImportType(type); }} />}
+    {importType && <ImportDialog importType={importType} onClose={() => setImportType(null)} onCommitted={refreshDirectories} />}
     {campaignEditorOpen && <CampaignEditor groups={groups.data || []} stores={stores.data || []} onClose={() => setCampaignEditorOpen(false)} onCreated={(campaign) => { setCampaignEditorOpen(false); void queryClient.invalidateQueries({ queryKey: ['facebook-campaigns'] }); setWorkspaceId(campaign.id); }} />}
     {workspaceId && <CampaignWorkspace campaignId={workspaceId} onClose={() => setWorkspaceId(null)} />}
   </div>;

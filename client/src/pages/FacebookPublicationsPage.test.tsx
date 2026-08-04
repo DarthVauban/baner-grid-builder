@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../lib/api';
 import { FacebookPublicationsPage } from './FacebookPublicationsPage';
@@ -35,11 +35,20 @@ describe('FacebookPublicationsPage', () => {
     expect(screen.getByText('Фінальна публікація завжди ручна')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Імпорт XLSX/ })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: /Імпорт XLSX/ }));
+    const choiceDialog = screen.getByRole('dialog', { name: 'Що потрібно імпортувати?' });
+    fireEvent.click(within(choiceDialog).getByRole('button', { name: /Facebook-групи/ }));
+    const importDialog = screen.getByRole('dialog', { name: 'Імпорт Facebook-груп' });
+    expect(within(importDialog).getByRole('button', { name: /Шаблон груп/ })).toBeInTheDocument();
+    fireEvent.click(within(importDialog).getAllByRole('button', { name: 'Закрити' }).at(-1)!);
+
     fireEvent.click(screen.getByRole('button', { name: /Facebook-групи/ }));
     await waitFor(() => expect(screen.getByRole('button', { name: /Експорт груп/ })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Імпорт груп/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Магазини/ }));
     await waitFor(() => expect(screen.getByRole('button', { name: /Експорт магазинів/ })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Імпорт магазинів/ })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: /Додати магазин/ })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Додати магазин/ }));
     expect(screen.getByRole('dialog', { name: 'Новий магазин' })).toBeInTheDocument();

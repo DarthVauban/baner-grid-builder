@@ -36,6 +36,22 @@
   gap: 10px;
 }
 
+.facebook-heading-actions,
+.facebook-section-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.facebook-heading-actions {
+  flex: 0 0 auto;
+}
+
+.facebook-heading-actions .button,
+.facebook-section-actions .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .facebook-principle,
 .facebook-risk {
   display: flex;
@@ -364,6 +380,10 @@
   width: min(980px, calc(100vw - 24px));
 }
 
+.facebook-modal--choice {
+  width: min(640px, calc(100vw - 24px));
+}
+
 .facebook-modal--campaign,
 .facebook-modal--workspace {
   width: min(1280px, calc(100vw - 24px));
@@ -383,6 +403,56 @@
   flex-wrap: wrap;
 }
 
+.facebook-import-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.facebook-import-choice > button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.facebook-import-choice > button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, #1877f2 45%, var(--border-color));
+  box-shadow: 0 12px 30px color-mix(in srgb, #1877f2 12%, transparent);
+}
+
+.facebook-import-choice > button > span {
+  display: inline-flex;
+  grid-row: 1 / span 2;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: color-mix(in srgb, #1877f2 10%, var(--surface));
+  color: #1877f2;
+}
+
+.facebook-import-choice strong {
+  align-self: end;
+  font-size: 16px;
+}
+
+.facebook-import-choice small {
+  align-self: start;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
 .facebook-file-button {
   position: relative;
   overflow: hidden;
@@ -398,7 +468,7 @@
 
 .facebook-import-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin: 16px 0;
 }
@@ -713,7 +783,8 @@
   .facebook-form-grid,
   .facebook-target-result,
   .facebook-group-picker__filters,
-  .facebook-import-summary {
+  .facebook-import-summary,
+  .facebook-import-choice {
     grid-template-columns: 1fr;
   }
 
