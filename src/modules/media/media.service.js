@@ -141,6 +141,23 @@ export async function createMediaFolder({ name, parentId = null, userId }, db = 
   return serializeMediaFolder(inserted.rows[0]);
 }
 
+export async function ensureMediaFolder({ name, parentId = null, userId }, db = { query }) {
+  await getFolder(parentId, db);
+  const params = parentId ? [parentId, name] : [name];
+  const existing = await db.query(
+    parentId
+      ? `SELECT * FROM media_library_folders
+         WHERE parent_id = $1 AND LOWER(name) = LOWER($2)
+         LIMIT 1`
+      : `SELECT * FROM media_library_folders
+         WHERE parent_id IS NULL AND LOWER(name) = LOWER($1)
+         LIMIT 1`,
+    params
+  );
+  if (existing.rows[0]) return serializeMediaFolder(existing.rows[0]);
+  return createMediaFolder({ name, parentId, userId }, db);
+}
+
 export async function updateMediaFolder(id, input, user, db = { query }) {
   const folder = await getFolder(id, db);
   if (user.role !== 'admin' && folder.created_by !== user.id) {

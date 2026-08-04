@@ -4,7 +4,7 @@ import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireToolAccess } from '../access/access.service.js';
+import { requireAnyToolAccess } from '../access/access.service.js';
 import {
   createMediaAsset,
   createMediaFolder,
@@ -19,7 +19,7 @@ import {
 } from './media.service.js';
 
 const router = Router();
-router.use(requireAuth, requireToolAccess('blog_publications'));
+router.use(requireAuth, requireAnyToolAccess(['blog_publications', 'used_smartphones_catalog']));
 
 const idSchema = z.string().uuid();
 const listSchema = z.object({

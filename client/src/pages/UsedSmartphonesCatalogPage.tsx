@@ -5,9 +5,8 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { AutoHeightSandbox } from '../components/AutoHeightSandbox';
 import { CatalogAdvancedFilters } from '../components/CatalogAdvancedFilters';
-import { CatalogPhotoUploadProgress } from '../components/CatalogPhotoUploadProgress';
-import type { CatalogPhotoUploadItem } from '../components/CatalogPhotoUploadProgress';
 import { Icon } from '../components/Icon';
+import { MediaPickerDialog } from '../components/MediaLibraryBrowser';
 import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import {
@@ -16,7 +15,6 @@ import {
   emptyCatalogProductInput,
   productToInput
 } from '../lib/catalog';
-import { convertCatalogImageToWebp, validateCatalogImageFile } from '../lib/catalog-media';
 import { buildCatalogExportWorkbook, catalogExportFileName } from '../lib/catalog-export';
 import { buildCatalogImportWorkbook } from '../lib/catalog-import';
 import {
@@ -46,6 +44,7 @@ import type {
   CatalogPublicationStatus,
   CatalogSummary
 } from '../types/catalog';
+import type { MediaAsset } from '../types/media';
 
 const CatalogSourceCodeEditor = lazy(() => import('../components/CatalogSourceCodeEditor').then((module) => ({ default: module.CatalogSourceCodeEditor })));
 
@@ -128,18 +127,6 @@ type CatalogDeleteChoice = {
   newMainProductId?: string | null;
 };
 
-let catalogPhotoUploadSequence = 0;
-
-function createCatalogPhotoUploadItem(file: File): CatalogPhotoUploadItem {
-  catalogPhotoUploadSequence += 1;
-  return {
-    id: `${Date.now()}-${catalogPhotoUploadSequence}`,
-    name: file.name,
-    progress: 0,
-    status: 'queued'
-  };
-}
-
 const editorTabs: Array<{ id: CatalogEditorTab; label: string }> = [
   { id: 'main', label: 'Основне' },
   { id: 'availability', label: 'Ціна і наявність' },
@@ -158,15 +145,6 @@ function diagnosticText(diagnostics: Record<string, unknown>, key: string) {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.map(String).join('\n');
   return '';
-}
-
-function mediaAltFromFile(file: File) {
-  return file.name
-    .replace(/\.[^.]+$/, '')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 240);
 }
 
 function catalogPreviewPath(product: Pick<CatalogProduct, 'slug' | 'publicPath'>) {
@@ -425,9 +403,7 @@ function ProductEditorScreen({
     product ? productToInput(product) : { ...emptyCatalogProductInput }
   ));
   const [activeTab, setActiveTab] = useState<CatalogEditorTab>('main');
-  const [mediaBusy, setMediaBusy] = useState('');
-  const [mediaError, setMediaError] = useState('');
-  const [photoUploads, setPhotoUploads] = useState<CatalogPhotoUploadItem[]>([]);
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const [draggedGalleryIndex, setDraggedGalleryIndex] = useState<number | null>(null);
   const [galleryDropTarget, setGalleryDropTarget] = useState<{ index: number; placement: 'before' | 'after' } | null>(null);
   const [linkedSaveBusy, setLinkedSaveBusy] = useState(false);
@@ -482,7 +458,7 @@ function ProductEditorScreen({
     () => (productGroups.data || []).find((group) => group.id === selectedModificationGroupId) || null,
     [productGroups.data, selectedModificationGroupId]
   );
-  const editorBusy = busy || linkedSaveBusy || Boolean(mediaBusy);
+  const editorBusy = busy || linkedSaveBusy;
   const groupSwitchItems = productModifications.data?.items || [];
   const sortedBrandDirectories = useMemo(
     () => [...brandDirectories]
@@ -538,9 +514,7 @@ function ProductEditorScreen({
     setMainModificationProductId(product?.id || '');
     setCharacteristicsLoaded(!product?.id);
     setModificationsLoaded(!product?.id);
-    setMediaBusy('');
-    setMediaError('');
-    setPhotoUploads([]);
+    setMediaPickerOpen(false);
     setSavedSnapshot('');
     setLeavePrompt(null);
     browserUnloadArmedRef.current = false;
@@ -857,65 +831,21 @@ function ProductEditorScreen({
     setGalleryDropTarget(null);
   }
 
-  async function uploadProductPhotos(files: FileList | null) {
-    const allFiles = Array.from(files || []);
-    const remainingSlots = Math.max(0, 20 - draft.gallery.length);
-    const selected = allFiles.slice(0, remainingSlots);
-    if (!selected.length) return;
-    const uploadItems = selected.map(createCatalogPhotoUploadItem);
-    const uploaded: Array<{ url: string; alt: string }> = [];
-    const uploadErrors: string[] = [];
-
-    function updateUpload(id: string, patch: Partial<CatalogPhotoUploadItem>) {
-      setPhotoUploads((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+  function addMediaAsset(asset: MediaAsset) {
+    if (draft.gallery.some((item) => item.url === asset.url)) {
+      showToast('Це зображення вже є в галереї товару.', 'error');
+      return;
     }
-
-    setMediaError('');
-    setMediaBusy('gallery-batch');
-    setPhotoUploads(uploadItems);
-
-    for (let index = 0; index < selected.length; index += 1) {
-      const file = selected[index];
-      const uploadItem = uploadItems[index];
-      try {
-        validateCatalogImageFile(file);
-        updateUpload(uploadItem.id, { status: 'converting', progress: 5 });
-        const webp = await convertCatalogImageToWebp(file);
-        updateUpload(uploadItem.id, { status: 'uploading', progress: 20 });
-        const media = await api.catalog.uploadMedia(
-          webp,
-          file.name.replace(/\.[^.]+$/, '.webp'),
-          (progress) => updateUpload(uploadItem.id, {
-            status: 'uploading',
-            progress: Math.min(99, 20 + Math.round(progress * 0.79))
-          })
-        );
-        uploaded.push({ url: media.url, alt: mediaAltFromFile(file) });
-        updateUpload(uploadItem.id, { status: 'done', progress: 100 });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Не вдалося завантажити фото.';
-        uploadErrors.push(`${file.name}: ${message}`);
-        updateUpload(uploadItem.id, {
-          status: 'error',
-          error: message
-        });
-      }
+    if (draft.gallery.length >= 20) {
+      showToast('У галереї може бути максимум 20 фото.', 'error');
+      return;
     }
-
-    if (uploaded.length) {
-      setDraft((current) => ({
-        ...current,
-        mainImageUrl: current.mainImageUrl || uploaded[0]?.url || '',
-        gallery: [...current.gallery, ...uploaded].slice(0, 20)
-      }));
-    }
-
-    const messages: string[] = [];
-    if (uploadErrors.length) messages.push(`Не вдалося завантажити ${uploadErrors.length} фото: ${uploadErrors.join(' ')}`);
-    if (allFiles.length > selected.length) messages.push(`Додано лише доступні фото. Максимум у галереї: 20 фото.`);
-    setMediaError(messages.join(' '));
-    setPhotoUploads([]);
-    setMediaBusy('');
+    const alt = asset.altText.trim() || asset.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
+    setDraft((current) => ({
+      ...current,
+      mainImageUrl: current.mainImageUrl || asset.url,
+      gallery: [...current.gallery, { url: asset.url, alt: alt.slice(0, 240) }]
+    }));
   }
 
   async function submitAll() {
@@ -983,7 +913,7 @@ function ProductEditorScreen({
           return <button
             className={`catalog-editor-group-switcher__item${active ? ' active' : ''}`}
             type="button"
-            disabled={active || Boolean(mediaBusy)}
+            disabled={active}
             key={item.id}
             onClick={() => requestGuardedAction(() => onSwitchProduct(item.id))}
           >
@@ -1038,15 +968,12 @@ function ProductEditorScreen({
           <header>
             <h2>Медіа</h2>
             <div className="catalog-editor-header-actions">
-              <label className="button button--secondary button--small">
-                <Icon name="upload" size={15} /> {mediaBusy === 'gallery-batch' ? 'Завантаження...' : 'Завантажити фото'}
-                <input className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple disabled={Boolean(mediaBusy) || draft.gallery.length >= 20} onChange={(event) => { void uploadProductPhotos(event.target.files); event.currentTarget.value = ''; }} />
-              </label>
+              <button className="button button--secondary button--small" type="button" disabled={draft.gallery.length >= 20} onClick={() => setMediaPickerOpen(true)}>
+                <Icon name="folder" size={15} /> Додати з медіасховища
+              </button>
             </div>
           </header>
-          <p className="catalog-editor-muted">PNG, JPG або WebP до 5 МБ. Перед завантаженням кожне фото автоматично конвертується у WebP.</p>
-          {mediaError && <p className="form-message form-message--error">{mediaError}</p>}
-          <CatalogPhotoUploadProgress items={photoUploads} />
+          <p className="catalog-editor-muted">Виберіть готове зображення або завантажте нове у файлове сховище. Нові файли автоматично конвертуються у WebP.</p>
           <div className="catalog-gallery-editor">
             <div className="catalog-gallery-grid">
               {draft.gallery.map((item, index) => {
@@ -1214,6 +1141,7 @@ function ProductEditorScreen({
         </section>}
       </section>
     </div>
+    {mediaPickerOpen && <MediaPickerDialog onClose={() => setMediaPickerOpen(false)} onSelect={addMediaAsset} />}
     {leavePrompt && <div className="modal-backdrop modal-backdrop--nested" role="presentation">
       <section className="modal catalog-unsaved-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-unsaved-title">
         <header className="modal__header">

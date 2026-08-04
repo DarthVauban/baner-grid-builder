@@ -119,6 +119,23 @@ export function requireToolAccess(toolId) {
   });
 }
 
+export function requireAnyToolAccess(allowedToolIds) {
+  if (!Array.isArray(allowedToolIds) || !allowedToolIds.length || allowedToolIds.some((toolId) => !toolIds.includes(toolId))) {
+    throw new Error('At least one known tool is required.');
+  }
+  return asyncHandler(async (req, res, next) => {
+    const state = await getUserToolAccessState(req.user);
+    if (allowedToolIds.some((toolId) => state.tools.includes(toolId))) {
+      next();
+      return;
+    }
+    if (allowedToolIds.some((toolId) => state.blockedTools.includes(toolId))) {
+      throw new AppError(403, 'TOOL_2FA_REQUIRED', 'Для цього інструмента потрібно увімкнути 2FA.');
+    }
+    throw new AppError(403, 'TOOL_ACCESS_DENIED', 'У вас немає доступу до цього інструмента.');
+  });
+}
+
 export async function canViewAllSavedData(user, resource) {
   if (user.role === 'admin') return true;
   if (!savedDataResources.includes(resource)) return false;

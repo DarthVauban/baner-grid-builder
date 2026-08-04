@@ -3,9 +3,9 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
-import { saveCatalogMediaAsset } from './catalog.media.js';
 import { publishCatalogUpdates, publishPublicCatalogUpdate } from './catalog.events.js';
 import { publishChatUpdates } from '../chat/chat.events.js';
+import { createMediaAsset, ensureMediaFolder } from '../media/media.service.js';
 import { catalogAuditChanges, getCatalogRecipientIds, logCatalogAudit } from './catalog.service.js';
 import {
   ensureBuiltInPhotoParserAdapters,
@@ -183,9 +183,10 @@ export async function reconcilePhotoParserBatches(db = { query }) {
 
 export async function loadPhotoParserBatch(batchId, user, db = { query }) {
   const batchResult = await db.query(
-    `SELECT *
-     FROM used_smartphone_photo_parser_batches
-     WHERE id = $1`,
+    `SELECT batch.*, folder.name AS target_folder_name
+     FROM used_smartphone_photo_parser_batches AS batch
+     LEFT JOIN media_library_folders AS folder ON folder.id = batch.target_folder_id
+     WHERE batch.id = $1`,
     [batchId]
   );
   const batch = batchResult.rows[0];
@@ -225,6 +226,10 @@ export async function loadPhotoParserBatch(batchId, user, db = { query }) {
     id: batch.id,
     status: batch.status,
     requestedCount: items.length,
+    targetFolder: batch.target_folder_id ? {
+      id: batch.target_folder_id,
+      name: batch.target_folder_name || ''
+    } : null,
     counts,
     items,
     createdAt: batch.created_at,
@@ -253,7 +258,7 @@ export async function findActivePhotoParserBatch(user, db = { query }) {
   return loadPhotoParserBatch(result.rows[0].id, user, db);
 }
 
-export async function createPhotoParserBatch({ search = '', photoStatus = 'all', user }) {
+export async function createPhotoParserBatch({ search = '', photoStatus = 'all', targetFolderId = null, user }) {
   await ensureBuiltInPhotoParserAdapters();
   const params = [];
   const where = [
@@ -272,6 +277,10 @@ export async function createPhotoParserBatch({ search = '', photoStatus = 'all',
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (targetFolderId) {
+      const folder = await client.query('SELECT id FROM media_library_folders WHERE id = $1', [targetFolderId]);
+      if (!folder.rows[0]) throw new AppError(404, 'MEDIA_FOLDER_NOT_FOUND', 'Папку медіасховища не знайдено.');
+    }
     const products = await client.query(
       `SELECT product.id, product.photo_parser_url
        FROM used_smartphone_products AS product
@@ -286,10 +295,10 @@ export async function createPhotoParserBatch({ search = '', photoStatus = 'all',
       throw new AppError(422, 'PHOTO_PARSER_BATCH_EMPTY', 'Немає товарів із заповненими посиланнями для цього фільтра.');
     }
     const batch = await client.query(
-      `INSERT INTO used_smartphone_photo_parser_batches (requested_count, created_by)
-       VALUES (0, $1)
+      `INSERT INTO used_smartphone_photo_parser_batches (requested_count, target_folder_id, created_by)
+       VALUES (0, $1, $2)
        RETURNING *`,
-      [user.id]
+      [targetFolderId, user.id]
     );
     let requestedCount = 0;
     for (const product of products.rows) {
@@ -347,7 +356,7 @@ async function attachParsedMedia({
   scraped,
   prepared,
   errors,
-  saveAsset = saveCatalogMediaAsset
+  saveAsset
 }) {
   const client = await pool.connect();
   const attached = [];
@@ -370,6 +379,11 @@ async function attachParsedMedia({
     const knownUrls = new Set(gallery.map((item) => item.url));
     if (current.main_image_url) knownUrls.add(current.main_image_url);
     const slots = Math.max(0, maxCatalogGalleryItems - gallery.length);
+    const targetFolder = await ensureMediaFolder({
+      name: String(current.name || current.product_code || 'Товар').trim().slice(0, 120),
+      parentId: run.target_folder_id || null,
+      userId: run.created_by
+    }, client);
 
     for (const [index, image] of prepared.slice(0, slots).entries()) {
       const duplicate = await client.query(
@@ -388,7 +402,10 @@ async function attachParsedMedia({
       try {
         asset = await saveAsset({
           webpBuffer: image.buffer,
-          webpName: parserImageName(image.sourceUrl, index)
+          webpName: parserImageName(image.sourceUrl, index),
+          folderId: targetFolder.id,
+          userId: run.created_by,
+          db: client
         });
       } catch (error) {
         errors.push({
@@ -468,9 +485,26 @@ async function attachParsedMedia({
   return { attached, published };
 }
 
+async function savePhotoParserMediaAsset({ webpBuffer, webpName, folderId, userId, db }) {
+  const asset = await createMediaAsset({
+    buffer: webpBuffer,
+    originalName: webpName,
+    folderId,
+    userId
+  }, db);
+  return {
+    url: asset.url,
+    filename: path.posix.basename(asset.url),
+    size: asset.size,
+    mimeType: asset.mimeType,
+    width: asset.width,
+    height: asset.height
+  };
+}
+
 export async function processPhotoParserRun(run, {
   scrape = scrapePhotoParserProduct,
-  saveAsset = saveCatalogMediaAsset
+  saveAsset = savePhotoParserMediaAsset
 } = {}) {
   try {
     const productResult = await query(
@@ -623,11 +657,12 @@ export async function claimNextPhotoParserRun({ lockRows = true } = {}) {
   try {
     if (lockRows) await client.query('BEGIN');
     const result = await client.query(
-      `SELECT *
-       FROM used_smartphone_photo_parser_runs
-       WHERE status = 'queued'
-       ORDER BY created_at
-       ${lockRows ? 'FOR UPDATE SKIP LOCKED' : ''}
+      `SELECT run.*, batch.target_folder_id
+       FROM used_smartphone_photo_parser_runs AS run
+       INNER JOIN used_smartphone_photo_parser_batches AS batch ON batch.id = run.batch_id
+       WHERE run.status = 'queued'
+       ORDER BY run.created_at
+       ${lockRows ? 'FOR UPDATE OF run SKIP LOCKED' : ''}
        LIMIT 1`
     );
     const run = result.rows[0];

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from './Icon';
+import { ModalDialog } from './ModalDialog';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
@@ -55,6 +56,11 @@ export function resolveMediaAssetUrl(url: string) {
   } catch {
     return url;
   }
+}
+
+export interface MediaFolderSelection {
+  folder: MediaFolder | null;
+  breadcrumbs: MediaFolder[];
 }
 
 function formatBytes(value: number) {
@@ -483,4 +489,106 @@ export function MediaPickerDialog({ onClose, onSelect }: { onClose: () => void; 
       <div className="media-picker-modal__body"><MediaLibraryBrowser onSelect={(asset) => { onSelect(asset); onClose(); }} /></div>
     </section>
   </div>;
+}
+
+export function MediaFolderPickerDialog({
+  initialFolderId = null,
+  onClose,
+  onSelect
+}: {
+  initialFolderId?: string | null;
+  onClose: () => void;
+  onSelect: (selection: MediaFolderSelection) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(initialFolderId);
+  const [creating, setCreating] = useState(false);
+  const [folderName, setFolderName] = useState('');
+  const folders = useQuery({
+    queryKey: ['media-library-folders', currentFolderId],
+    queryFn: () => api.media.folders(currentFolderId || undefined),
+    retry: false
+  });
+  const createFolder = useMutation({ mutationFn: api.media.createFolder });
+  const breadcrumbs = folders.data?.breadcrumbs || [];
+  const currentFolder = currentFolderId
+    ? breadcrumbs.find((folder) => folder.id === currentFolderId) || null
+    : null;
+
+  function openFolder(folderId: string | null) {
+    setCurrentFolderId(folderId);
+    setCreating(false);
+    setFolderName('');
+  }
+
+  async function createAndOpenFolder() {
+    const name = folderName.trim();
+    if (!name) return;
+    try {
+      const folder = await createFolder.mutateAsync({ name, parentId: currentFolderId });
+      await queryClient.invalidateQueries({ queryKey: ['media-library-folders'] });
+      setFolderName('');
+      setCreating(false);
+      setCurrentFolderId(folder.id);
+      showToast(`Папку «${folder.name}» створено.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося створити папку.', 'error');
+    }
+  }
+
+  return <ModalDialog
+    ariaLabelledBy="media-folder-picker-title"
+    eyebrow="Файлове сховище"
+    title="Виберіть батьківську папку"
+    className="media-folder-picker-modal"
+    bodyClassName="media-folder-picker-modal__body"
+    onClose={onClose}
+    footer={<>
+      <button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button>
+      <button
+        className="button button--primary"
+        type="button"
+        disabled={folders.isLoading || folders.isError || Boolean(currentFolderId && !currentFolder)}
+        onClick={() => onSelect({ folder: currentFolder, breadcrumbs })}
+      >
+        <Icon name="check" size={17} /> Вибрати цю папку
+      </button>
+    </>}
+  >
+    <p className="media-folder-picker-hint">Для кожного товару тут автоматично з’явиться окрема підпапка з його назвою.</p>
+    <div className="media-folder-navigation">
+      <nav className="media-folder-breadcrumbs" aria-label="Шлях до папки">
+        <button className={currentFolderId ? '' : 'is-current'} type="button" onClick={() => openFolder(null)}><Icon name="folder" size={16} /> Сховище</button>
+        {breadcrumbs.map((folder) => <span key={folder.id}>
+          <Icon name="arrowRight" size={13} />
+          <button className={folder.id === currentFolderId ? 'is-current' : ''} type="button" onClick={() => openFolder(folder.id)}>{folder.name}</button>
+        </span>)}
+      </nav>
+      <button className="button button--secondary button--small" type="button" onClick={() => setCreating((value) => !value)}><Icon name="folder" size={16} /> Нова папка</button>
+    </div>
+
+    {creating && <div className="media-folder-picker-create">
+      <label className="field"><span>Назва нової папки</span><input value={folderName} maxLength={120} autoFocus onChange={(event) => setFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void createAndOpenFolder(); }} /></label>
+      <button className="button button--primary button--small" type="button" disabled={!folderName.trim() || createFolder.isPending} onClick={() => void createAndOpenFolder()}>{createFolder.isPending ? 'Створюємо…' : 'Створити й відкрити'}</button>
+    </div>}
+
+    {folders.isLoading && <div className="media-library-state media-folder-picker-state"><span className="loading-screen__pulse" /><p>Завантажуємо папки…</p></div>}
+    {folders.isError && <div className="media-library-state media-library-state--error media-folder-picker-state">
+      <p>{folders.error instanceof Error ? folders.error.message : 'Не вдалося завантажити папки.'}</p>
+      <button className="button button--secondary" type="button" onClick={() => openFolder(null)}>Повернутися в корінь</button>
+    </div>}
+    {!folders.isLoading && !folders.isError && folders.data?.items.length === 0 && <div className="media-library-state media-folder-picker-state">
+      <span className="media-library-state__icon"><Icon name="folder" size={28} /></span>
+      <h3>Вкладених папок немає</h3>
+      <p>Можна вибрати поточну папку або створити нову.</p>
+    </div>}
+    {!folders.isLoading && !folders.isError && Boolean(folders.data?.items.length) && <div className="media-folder-grid media-folder-picker-grid">
+      {folders.data!.items.map((folder) => <button className="media-folder-card media-folder-picker-card" type="button" key={folder.id} onClick={() => openFolder(folder.id)}>
+        <span className="media-folder-card__icon"><Icon name="folder" size={26} /></span>
+        <span><strong title={folder.name}>{folder.name}</strong><small>Відкрити папку</small></span>
+        <Icon name="arrowRight" size={16} />
+      </button>)}
+    </div>}
+  </ModalDialog>;
 }

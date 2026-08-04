@@ -482,7 +482,7 @@ export const api = {
       activeBatch: () => request<CatalogPhotoParserBatch | null>('/api/catalog/photo-parser/batches/active'),
       batch: (batchId: string) =>
         request<CatalogPhotoParserBatch>(`/api/catalog/photo-parser/batches/${encodeURIComponent(batchId)}`),
-      startBatch: (input: { search?: string; photoStatus?: CatalogPhotoParserPhotoStatus }) =>
+      startBatch: (input: { search?: string; photoStatus?: CatalogPhotoParserPhotoStatus; targetFolderId?: string | null }) =>
         request<CatalogPhotoParserBatch>('/api/catalog/photo-parser/batches', {
           method: 'POST',
           body: jsonBody(input)
