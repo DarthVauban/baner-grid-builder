@@ -138,6 +138,9 @@ const deleteProductSchema = z.object({
   groupAction: z.enum(['disband', 'promote']).optional(),
   newMainProductId: z.string().uuid().nullable().optional()
 });
+const permanentDeleteProductSchema = z.object({
+  expectedVersion: z.coerce.number().int().min(1)
+});
 const brandDirectoryInputSchema = z.object({
   label: z.string().trim().min(1).max(180),
   description: z.string().trim().max(2000).default(''),
@@ -2723,6 +2726,45 @@ router.delete('/products/:id', asyncHandler(async (req, res) => {
   publishCatalogUpdates(recipients, { type: 'product_archived', productId: id, groupIds: touchedGroups });
   publishChatUpdates(recipients, { type: 'entity', entityType: 'catalog_product', entityId: id, senderId: req.user.id });
   if (previousStatus === 'PUBLISHED') publishPublicCatalogUpdate({ type: 'product_archived', productId: id });
+  res.status(204).end();
+}));
+
+router.delete('/products/:id/permanent', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(permanentDeleteProductSchema, req.body || {});
+  const client = await pool.connect();
+  let recipients = [];
+  try {
+    await client.query('BEGIN');
+    const currentResult = await client.query('SELECT * FROM used_smartphone_products WHERE id = $1 FOR UPDATE', [id]);
+    const current = currentResult.rows[0];
+    if (!current) throw new AppError(404, 'CATALOG_PRODUCT_NOT_FOUND', 'Товар не знайдено.');
+    if (Number(current.version) !== input.expectedVersion) {
+      throw new AppError(409, 'CATALOG_PRODUCT_VERSION_CONFLICT', 'Товар уже оновлено іншим користувачем. Відкрийте актуальну версію.');
+    }
+    if (current.publication_status !== 'ARCHIVED') {
+      throw new AppError(409, 'CATALOG_PRODUCT_NOT_ARCHIVED', 'Повністю видалити можна лише товар, який уже перенесено до архіву.');
+    }
+    await logCatalogAudit(client, {
+      productId: id,
+      actorId: req.user.id,
+      action: 'permanent_delete',
+      changes: {
+        subject: { productCode: current.product_code, name: current.name },
+        permanent: true
+      }
+    });
+    recipients = await getCatalogRecipientIds(client);
+    await client.query('DELETE FROM used_smartphone_products WHERE id = $1', [id]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+  publishCatalogUpdates(recipients, { type: 'product_deleted', productId: id });
+  publishChatUpdates(recipients, { type: 'entity', entityType: 'catalog_product', entityId: id, senderId: req.user.id });
   res.status(204).end();
 }));
 

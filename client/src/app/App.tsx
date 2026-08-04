@@ -33,6 +33,9 @@ const FormsBuilderPage = lazy(() => import('../pages/FormsBuilderPage').then((mo
 const UsedSmartphonesCatalogPage = lazy(() => import('../pages/UsedSmartphonesCatalogPage').then((module) => ({
   default: module.UsedSmartphonesCatalogPage
 })));
+const CatalogArchivePage = lazy(() => import('../pages/CatalogArchivePage').then((module) => ({
+  default: module.CatalogArchivePage
+})));
 const CatalogCharacteristicsPage = lazy(() => import('../pages/CatalogCharacteristicsPage').then((module) => ({
   default: module.CatalogCharacteristicsPage
 })));
@@ -146,6 +149,7 @@ export function App() {
           <Route path="catalog" element={<Suspense fallback={<LoadingScreen />}><CatalogWorkspacePage /></Suspense>}>
             <Route index element={<Navigate to="products" replace />} />
             <Route path="products" element={<Suspense fallback={<LoadingScreen />}><UsedSmartphonesCatalogPage /></Suspense>} />
+            <Route path="archive" element={<Suspense fallback={<LoadingScreen />}><CatalogArchivePage /></Suspense>} />
             <Route path="imports" element={<Navigate to="/catalog/audit?source=xlsx" replace />} />
             <Route path="brands" element={<Suspense fallback={<LoadingScreen />}><CatalogBrandsPage /></Suspense>} />
             <Route path="characteristics" element={<Suspense fallback={<LoadingScreen />}><CatalogCharacteristicsPage /></Suspense>} />

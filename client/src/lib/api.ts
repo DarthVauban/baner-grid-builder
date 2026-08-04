@@ -410,6 +410,8 @@ export const api = {
       request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
     remove: (id: string, expectedVersion: number, options?: { groupAction?: 'disband' | 'promote'; newMainProductId?: string | null }) =>
       request<void>(`/api/catalog/products/${encodeURIComponent(id)}`, { method: 'DELETE', body: jsonBody({ expectedVersion, ...options }) }),
+    permanentlyRemove: (id: string, expectedVersion: number) =>
+      request<void>(`/api/catalog/products/${encodeURIComponent(id)}/permanent`, { method: 'DELETE', body: jsonBody({ expectedVersion }) }),
       setPublicationStatus: (id: string, status: CatalogPublicationStatus, expectedVersion: number) =>
         request<CatalogProduct>(`/api/catalog/products/${encodeURIComponent(id)}/publication-status`, {
           method: 'PATCH',

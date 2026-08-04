@@ -18,6 +18,7 @@ const actionLabels: Record<string, string> = {
   create: 'Товар створено',
   update: 'Товар оновлено',
   archive: 'Товар архівовано',
+  permanent_delete: 'Товар видалено назавжди',
   publication_status: 'Змінено статус публікації',
   media_update: 'Оновлено фотографії',
   media_delete: 'Видалено фотографію',

@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 
 const catalogLinks = [
   { to: '/catalog/products', icon: 'productSelection' as const, label: 'Товари' },
+  { to: '/catalog/archive', icon: 'archive' as const, label: 'Архів товарів' },
   { to: '/catalog/brands', icon: 'brands' as const, label: 'Бренди' },
   { to: '/catalog/characteristics', icon: 'characteristics' as const, label: 'Характеристики' },
   { to: '/catalog/storefront', icon: 'storefront' as const, label: 'Налаштування вітрини' },
