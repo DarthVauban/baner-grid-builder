@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import type { BlogPublication } from '../types/publication';
 import { PublicationCard } from './PublicationCard';
 
@@ -14,6 +15,7 @@ const publication: BlogPublication = {
   creator: { id: 'creator-1', name: 'Content Planner', email: 'planner@example.com' },
   assignee: null,
   materials: [{ id: 'material-1', type: 'google_doc', label: 'Article draft', url: 'https://docs.google.com/document/d/example/edit' }],
+  editorDocument: null,
   publishedAt: '2099-07-10T09:05:00.000Z',
   cancelledAt: null,
   createdAt: '2099-07-01T09:00:00.000Z',
@@ -24,7 +26,7 @@ describe('PublicationCard', () => {
   it('keeps resources visible and opens only from the details button', async () => {
     const onOpen = vi.fn();
     const { container } = render(
-      <PublicationCard publication={publication} viewMode="list" canEdit={false} busy={false} onOpen={onOpen} onShare={vi.fn()} onEdit={vi.fn()} onStatus={vi.fn()} />
+      <MemoryRouter><PublicationCard publication={publication} viewMode="list" canEdit={false} busy={false} onOpen={onOpen} onShare={vi.fn()} onEdit={vi.fn()} onStatus={vi.fn()} /></MemoryRouter>
     );
 
     expect(screen.getByRole('link', { name: /Article draft/ })).toHaveAttribute('href', publication.materials[0].url);

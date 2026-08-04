@@ -223,4 +223,105 @@ describe('TradeInLogicEditor', () => {
       sourceHandle: 'next'
     }));
   });
+
+  it('creates one independent condition route for every selected field option', () => {
+    const routeConfig = structuredClone(config) as TradeInConfig;
+    const brandField = {
+      ...structuredClone(routeConfig.form.steps[0].fields[0]),
+      id: 'field-brand',
+      key: 'brand',
+      label: 'Бренд смартфона',
+      type: 'select' as const,
+      options: [
+        { id: 'apple', label: 'Apple', value: 'apple' },
+        { id: 'samsung', label: 'Samsung', value: 'samsung' },
+        { id: 'infinix', label: 'Infinix', value: 'infinix' }
+      ]
+    };
+    routeConfig.form.graph = {
+      nodes: [
+        {
+          id: 'form_start',
+          type: 'start',
+          position: { x: 0, y: 0 },
+          title: 'Початок',
+          description: '',
+          fields: [],
+          branches: [],
+          defaultBranchLabel: ''
+        },
+        {
+          id: 'brand-step',
+          type: 'fields',
+          position: { x: 360, y: 0 },
+          title: 'Вибір бренду',
+          description: '',
+          fields: [brandField],
+          branches: [],
+          defaultBranchLabel: ''
+        },
+        {
+          id: 'brand-condition',
+          type: 'condition',
+          position: { x: 720, y: 0 },
+          title: 'Маршрути брендів',
+          description: '',
+          fields: [],
+          branches: [{
+            id: 'placeholder-branch',
+            label: 'Варіант 1',
+            condition: { fieldKey: '', operator: 'equals', value: '' },
+            conditionGroup: { combinator: 'all', conditions: [{ fieldKey: '', operator: 'equals', value: '' }] }
+          }],
+          defaultBranchLabel: 'Інші випадки'
+        },
+        {
+          id: 'finish',
+          type: 'finish',
+          position: { x: 1080, y: 0 },
+          title: 'Готово',
+          description: '',
+          fields: [],
+          branches: [],
+          defaultBranchLabel: ''
+        }
+      ],
+      edges: [
+        { id: 'start-brand', source: 'form_start', target: 'brand-step', sourceHandle: 'next' },
+        { id: 'brand-condition', source: 'brand-step', target: 'brand-condition', sourceHandle: 'next' },
+        { id: 'condition-finish', source: 'brand-condition', target: 'finish', sourceHandle: 'default' }
+      ]
+    };
+    const mutate = vi.fn();
+    const { container } = render(
+      <TradeInLogicEditor
+        config={routeConfig}
+        mutate={mutate}
+        onUndo={vi.fn()}
+        canUndo={false}
+        historyDepth={0}
+      />
+    );
+
+    fireEvent.click(container.querySelector<HTMLElement>('.react-flow__node[data-id="brand-condition"]')!);
+    fireEvent.change(screen.getByLabelText('Крок із варіантами'), { target: { value: 'brand-step' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Apple' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Samsung' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Створити окремі гілки (2)' }));
+
+    expect(mutate).toHaveBeenCalledTimes(1);
+    const nextConfig = structuredClone(routeConfig);
+    mutate.mock.calls[0][0](nextConfig);
+    const conditionNode = nextConfig.form.graph?.nodes.find((node) => node.id === 'brand-condition');
+    expect(conditionNode?.branches).toEqual([
+      expect.objectContaining({
+        label: 'Apple',
+        condition: { fieldKey: 'brand', operator: 'equals', value: 'apple' }
+      }),
+      expect.objectContaining({
+        label: 'Samsung',
+        condition: { fieldKey: 'brand', operator: 'equals', value: 'samsung' }
+      })
+    ]);
+  });
 });

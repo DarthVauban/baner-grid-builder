@@ -40,7 +40,8 @@ const sourceUrlSchema = z.object({
 });
 const batchSchema = z.object({
   search: z.string().trim().max(120).default(''),
-  photoStatus: z.enum(['all', 'present', 'missing']).default('all')
+  photoStatus: z.enum(['all', 'present', 'missing']).default('all'),
+  targetFolderId: z.string().uuid().nullable().default(null)
 });
 const adapterSchema = z.object({
   id: z.string().trim().max(80).optional(),

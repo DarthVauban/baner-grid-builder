@@ -369,6 +369,27 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(200);
   assert.equal(twoFactorConfirm.body.data.user.twoFactorEnabled, true);
   assert.equal(twoFactorConfirm.body.data.recoveryCodes.length, 10);
+  const initialPasskeys = await secondUser.get('/api/users/profile/passkeys').expect(200);
+  assert.deepEqual(initialPasskeys.body.data, []);
+  const registrationOptions = await secondUser
+    .post('/api/users/profile/passkeys/options')
+    .send({ code: twoFactorConfirm.body.data.recoveryCodes[0], name: 'Test phone' })
+    .expect(200);
+  assert.match(registrationOptions.body.data.challengeId, /^[0-9a-f-]{36}$/i);
+  assert.equal(registrationOptions.body.data.name, 'Test phone');
+  assert.deepEqual(registrationOptions.body.data.options.hints, ['hybrid']);
+  assert.equal(registrationOptions.body.data.options.user.name, 'second@test.local');
+
+  const fakeCredentialId = Buffer.from('fake-passkey-credential').toString('base64url');
+  await query(
+    `INSERT INTO user_passkeys
+       (user_id, credential_id, public_key, counter, device_type, backed_up, transports, name)
+     VALUES ($1, $2, $3, 0, 'multiDevice', TRUE, $4::JSONB, 'Test phone')`,
+    [secondPendingUser.id, fakeCredentialId, Buffer.from('fake-public-key').toString('base64url'), JSON.stringify(['hybrid'])]
+  );
+  const configuredPasskeys = await secondUser.get('/api/users/profile/passkeys').expect(200);
+  assert.equal(configuredPasskeys.body.data.length, 1);
+  assert.equal(configuredPasskeys.body.data[0].name, 'Test phone');
   const directoryAfterTwoFactor = await admin.get('/api/admin/directory?search=second@test.local').expect(200);
   assert.equal(directoryAfterTwoFactor.body.data.items[0].twoFactorEnabled, true);
 
@@ -378,6 +399,13 @@ test('approval flow and shared banner storage work through REST API', async () =
     .send({ email: 'second@test.local', password: 'SecondPassword123!' })
     .expect(202);
   assert.equal(secondUserChallenge.body.data.twoFactorRequired, true);
+  assert.equal(secondUserChallenge.body.data.passkeyAvailable, true);
+  const passkeyLoginOptions = await secondUser
+    .post('/api/auth/login/passkey/options')
+    .send({ challengeToken: secondUserChallenge.body.data.challengeToken })
+    .expect(200);
+  assert.deepEqual(passkeyLoginOptions.body.data.options.hints, ['hybrid']);
+  assert.equal(passkeyLoginOptions.body.data.options.allowCredentials[0].id, fakeCredentialId);
   await secondUser
     .post('/api/auth/login/2fa')
     .send({

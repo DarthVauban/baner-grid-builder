@@ -348,6 +348,8 @@ export async function disableTwoFactor(userId, code) {
     [userId]
   );
   await query('DELETE FROM user_two_factor_recovery_codes WHERE user_id = $1', [userId]);
+  await query('DELETE FROM user_passkeys WHERE user_id = $1', [userId]);
+  await query('DELETE FROM user_passkey_challenges WHERE user_id = $1', [userId]);
 
   return result.rows[0];
 }

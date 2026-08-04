@@ -221,6 +221,7 @@ jobs:
           set_env COMPOSE_PROJECT_NAME "$TARGET_PROJECT"
           set_env APP_IMAGE "$TARGET_IMAGE"
           set_env APP_BIND_PORT "$TARGET_PORT"
+          set_env APP_ENVIRONMENT development
           set_env APP_ORIGIN "$TARGET_ORIGIN"
           set_env COOKIE_NAME "$TARGET_COOKIE_NAME"
           set_env COOKIE_SECURE true

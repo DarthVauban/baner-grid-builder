@@ -64,6 +64,14 @@ export const tools: ToolDefinition[] = [
     icon: 'location'
   },
   {
+    id: 'facebook_group_publications',
+    name: 'Публікації у міські Facebook-групи',
+    description: 'Підготовка локалізованих промопостів, ручна черга публікацій та історія роботи з міськими Facebook-групами.',
+    path: '/tools/facebook-publications',
+    icon: 'publication',
+    showInTools: true
+  },
+  {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',

@@ -14,6 +14,12 @@ import {
   getTwoFactorStatus,
   startTwoFactorSetup
 } from '../auth/two-factor.service.js';
+import {
+  finishPasskeyRegistration,
+  listUserPasskeys,
+  removeUserPasskey,
+  startPasskeyRegistration
+} from '../auth/passkey.service.js';
 import { parseAvatarDataUrl } from './avatar.service.js';
 
 const router = Router();
@@ -43,6 +49,22 @@ const passwordSchema = z.object({
 });
 const twoFactorCodeSchema = z.object({
   code: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.')
+});
+const passkeyOptionsSchema = z.object({
+  code: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.'),
+  name: z.string().trim().min(2, 'Вкажіть назву Passkey.').max(120)
+});
+const credentialResponseSchema = z.looseObject({
+  id: z.string().trim().min(1).max(2048),
+  rawId: z.string().trim().min(1).max(2048),
+  type: z.literal('public-key'),
+  response: z.record(z.string(), z.unknown()),
+  clientExtensionResults: z.record(z.string(), z.unknown()).default({})
+});
+const passkeyVerifySchema = z.object({
+  challengeId: z.string().uuid('Запит Passkey недійсний.'),
+  name: z.string().trim().min(2, 'Вкажіть назву Passkey.').max(120),
+  response: credentialResponseSchema
 });
 
 const userSelect = `id, name, first_name, last_name, email, department, position, avatar_mime,
@@ -80,6 +102,28 @@ router.post('/profile/2fa/disable', asyncHandler(async (req, res) => {
   const input = parseInput(twoFactorCodeSchema, req.body);
   const user = await disableTwoFactor(req.user.id, input.code);
   res.json({ data: serializeUser(user) });
+}));
+
+router.get('/profile/passkeys', asyncHandler(async (req, res) => {
+  res.json({ data: await listUserPasskeys(req.user.id) });
+}));
+
+router.post('/profile/passkeys/options', asyncHandler(async (req, res) => {
+  const input = parseInput(passkeyOptionsSchema, req.body);
+  res.json({ data: await startPasskeyRegistration(req.user, req, input.code, input.name) });
+}));
+
+router.post('/profile/passkeys/verify', asyncHandler(async (req, res) => {
+  const input = parseInput(passkeyVerifySchema, req.body);
+  const passkey = await finishPasskeyRegistration(req.user.id, input.challengeId, input.name, input.response);
+  res.status(201).json({ data: passkey });
+}));
+
+router.delete('/profile/passkeys/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(twoFactorCodeSchema, req.body);
+  await removeUserPasskey(req.user.id, id, input.code);
+  res.status(204).end();
 }));
 
 router.get('/:id/avatar', asyncHandler(async (req, res) => {

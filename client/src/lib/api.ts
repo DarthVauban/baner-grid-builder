@@ -12,10 +12,15 @@ import type {
   UserApplicationNotificationSettings,
   UserDirectory,
   ProfileInput,
+  PasskeyAuthenticationResponse,
+  PasskeyLoginStart,
+  PasskeyRegistrationResponse,
+  PasskeyRegistrationStart,
   TwoFactorConfirmResult,
   TwoFactorLoginVerifyInput,
   TwoFactorSetup,
   TwoFactorStatus,
+  UserPasskey,
   UserRole,
   UserStatus
 } from '../types/user';
@@ -38,6 +43,8 @@ import type {
 } from '../types/workspace';
 import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
+import type { BlogPostDocument } from '../types/blog-editor';
+import type { MediaAsset, MediaAssetFeed, MediaFolder, MediaFolderFeed } from '../types/media';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 import type {
   BackupAdminState,
@@ -108,6 +115,22 @@ import type {
   StoreMapPublicationStatus,
   StoreMapSettings
 } from '../types/store-map';
+import type {
+  FacebookPublicationAsset,
+  FacebookPublicationCampaign,
+  FacebookPublicationCampaignInput,
+  FacebookPublicationGroup,
+  FacebookPublicationGroupInput,
+  FacebookPublicationHistoryItem,
+  FacebookPublicationImportCommit,
+  FacebookPublicationImportPreview,
+  FacebookPublicationRiskSummary,
+  FacebookPublicationStore,
+  FacebookPublicationStoreInput,
+  FacebookPublicationTarget,
+  FacebookPublicationWorkbookRows,
+  FacebookTargetStatus
+} from '../types/facebook-publication';
 import {
   ApiError,
   jsonBody,
@@ -130,6 +153,13 @@ export const api = {
       method: 'POST',
       body: jsonBody(input)
     }),
+    startPasskeyLogin: (challengeToken: string) => request<PasskeyLoginStart>('/api/auth/login/passkey/options', {
+      method: 'POST', body: jsonBody({ challengeToken })
+    }),
+    verifyPasskeyLogin: (challengeId: string, response: PasskeyAuthenticationResponse) =>
+      request<User>('/api/auth/login/passkey/verify', {
+        method: 'POST', body: jsonBody({ challengeId, response })
+      }),
     register: (input: RegisterInput) => request<RegistrationStart>('/api/auth/register', {
       method: 'POST',
       body: jsonBody(input)
@@ -175,10 +205,73 @@ export const api = {
     createBatch: (items: Array<Pick<PublicationInput, 'title' | 'publishAt' | 'assigneeId'>>) =>
       request<BlogPublication[]>('/api/publications/batch', { method: 'POST', body: jsonBody({ items }) }),
     update: (id: string, input: PublicationInput) => request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+    saveEditor: (id: string, document: BlogPostDocument) => request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}/editor`, {
+      method: 'PUT', body: jsonBody({ document })
+    }),
     setStatus: (id: string, status: PublicationStatus, publicationUrl = '') =>
       request<BlogPublication>(`/api/publications/${encodeURIComponent(id)}/status`, {
         method: 'PATCH', body: jsonBody({ status, publicationUrl })
       })
+  },
+  media: {
+    list: (params: { search?: string; folderId?: string; page?: number; pageSize?: number } = {}) =>
+      request<MediaAssetFeed>(`/api/media${queryString(params)}`),
+    selection: (folderId?: string) => request<{ ids: string[] }>(`/api/media/selection${queryString({ folderId })}`),
+    folders: (parentId?: string) => request<MediaFolderFeed>(`/api/media/folders${queryString({ parentId })}`),
+    createFolder: (input: { name: string; parentId: string | null }) =>
+      request<MediaFolder>('/api/media/folders', { method: 'POST', body: jsonBody(input) }),
+    updateFolder: (id: string, name: string) =>
+      request<MediaFolder>(`/api/media/folders/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody({ name }) }),
+    removeFolder: (id: string) => request<void>(`/api/media/folders/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    upload: (file: File, onProgress?: (progress: number) => void, folderId?: string) => new Promise<MediaAsset>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/api/media${queryString({ folderId })}`);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+      xhr.upload.addEventListener('progress', (event) => {
+        if (!event.lengthComputable || event.total <= 0) return;
+        onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      });
+      xhr.addEventListener('load', () => {
+        let payload: ApiSuccessPayload<MediaAsset> & ApiErrorPayload = {} as ApiSuccessPayload<MediaAsset> & ApiErrorPayload;
+        try {
+          payload = JSON.parse(xhr.responseText || '{}') as ApiSuccessPayload<MediaAsset> & ApiErrorPayload;
+        } catch {
+          payload = {} as ApiSuccessPayload<MediaAsset> & ApiErrorPayload;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const error = new ApiError(xhr.status, payload);
+          if (xhr.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
+            window.dispatchEvent(new Event('mt:unauthorized'));
+          }
+          reject(error);
+          return;
+        }
+        onProgress?.(100);
+        resolve(payload.data);
+      });
+      xhr.addEventListener('error', () => reject(new ApiError(0, {
+        error: { code: 'NETWORK_ERROR', message: 'Не вдалося завантажити зображення. Перевірте з’єднання.' }
+      })));
+      xhr.addEventListener('abort', () => reject(new ApiError(0, {
+        error: { code: 'UPLOAD_ABORTED', message: 'Завантаження зображення скасовано.' }
+      })));
+      xhr.send(file);
+    }),
+    update: (id: string, input: Pick<MediaAsset, 'name' | 'altText'>) =>
+      request<MediaAsset>(`/api/media/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+    removeMany: async (ids: string[]) => {
+      let deleted = 0;
+      for (let index = 0; index < ids.length; index += 500) {
+        const result = await request<{ deleted: number }>('/api/media/bulk-delete', {
+          method: 'POST', body: jsonBody({ ids: ids.slice(index, index + 500) })
+        });
+        deleted += result.deleted;
+      }
+      return { deleted };
+    },
+    remove: (id: string) => request<void>(`/api/media/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   chat: {
     contacts: () => request<ChatPerson[]>('/api/chat/contacts'),
@@ -231,6 +324,18 @@ export const api = {
     }),
     disableTwoFactor: (code: string) => request<User>('/api/users/profile/2fa/disable', {
       method: 'POST', body: jsonBody({ code })
+    }),
+    passkeys: () => request<UserPasskey[]>('/api/users/profile/passkeys'),
+    startPasskeyRegistration: (code: string, name: string) =>
+      request<PasskeyRegistrationStart>('/api/users/profile/passkeys/options', {
+        method: 'POST', body: jsonBody({ code, name })
+      }),
+    finishPasskeyRegistration: (challengeId: string, name: string, response: PasskeyRegistrationResponse) =>
+      request<UserPasskey>('/api/users/profile/passkeys/verify', {
+        method: 'POST', body: jsonBody({ challengeId, name, response })
+      }),
+    removePasskey: (id: string, code: string) => request<void>(`/api/users/profile/passkeys/${encodeURIComponent(id)}`, {
+      method: 'DELETE', body: jsonBody({ code })
     })
   },
   notifications: {
@@ -377,7 +482,7 @@ export const api = {
       activeBatch: () => request<CatalogPhotoParserBatch | null>('/api/catalog/photo-parser/batches/active'),
       batch: (batchId: string) =>
         request<CatalogPhotoParserBatch>(`/api/catalog/photo-parser/batches/${encodeURIComponent(batchId)}`),
-      startBatch: (input: { search?: string; photoStatus?: CatalogPhotoParserPhotoStatus }) =>
+      startBatch: (input: { search?: string; photoStatus?: CatalogPhotoParserPhotoStatus; targetFolderId?: string | null }) =>
         request<CatalogPhotoParserBatch>('/api/catalog/photo-parser/batches', {
           method: 'POST',
           body: jsonBody(input)
@@ -481,6 +586,59 @@ export const api = {
         timeoutMs: 180_000
       }),
     publicData: () => request<PublicStoreMapData>('/api/public/store-map')
+  },
+  facebookPublications: {
+    stores: (params: { search?: string; status?: string } = {}) =>
+      request<FacebookPublicationStore[]>(`/api/facebook-publications/stores${queryString(params)}`),
+    createStore: (input: FacebookPublicationStoreInput) =>
+      request<FacebookPublicationStore>('/api/facebook-publications/stores', { method: 'POST', body: jsonBody(input) }),
+    updateStore: (id: string, input: FacebookPublicationStoreInput) =>
+      request<FacebookPublicationStore>(`/api/facebook-publications/stores/${encodeURIComponent(id)}`, {
+        method: 'PUT', body: jsonBody(input)
+      }),
+    removeStore: (id: string) => request<void>(`/api/facebook-publications/stores/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    groups: (params: { search?: string; status?: string } = {}) =>
+      request<FacebookPublicationGroup[]>(`/api/facebook-publications/groups${queryString(params)}`),
+    createGroup: (input: FacebookPublicationGroupInput) =>
+      request<FacebookPublicationGroup>('/api/facebook-publications/groups', { method: 'POST', body: jsonBody(input) }),
+    updateGroup: (id: string, input: FacebookPublicationGroupInput) =>
+      request<FacebookPublicationGroup>(`/api/facebook-publications/groups/${encodeURIComponent(id)}`, {
+        method: 'PUT', body: jsonBody(input)
+      }),
+    removeGroup: (id: string) => request<void>(`/api/facebook-publications/groups/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    previewImport: (rows: FacebookPublicationWorkbookRows) =>
+      request<FacebookPublicationImportPreview>('/api/facebook-publications/imports/preview', {
+        method: 'POST', body: jsonBody(rows), timeoutMs: 120_000
+      }),
+    commitImport: (rows: FacebookPublicationWorkbookRows) =>
+      request<FacebookPublicationImportCommit>('/api/facebook-publications/imports/commit', {
+        method: 'POST', body: jsonBody(rows), timeoutMs: 180_000
+      }),
+    uploadAsset: (file: File) => request<FacebookPublicationAsset>('/api/facebook-publications/assets', {
+      method: 'POST',
+      headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) },
+      body: file,
+      timeoutMs: 120_000
+    }),
+    campaigns: (params: { search?: string; status?: string } = {}) =>
+      request<FacebookPublicationCampaign[]>(`/api/facebook-publications/campaigns${queryString(params)}`),
+    campaign: (id: string) => request<FacebookPublicationCampaign>(`/api/facebook-publications/campaigns/${encodeURIComponent(id)}`),
+    createCampaign: (input: FacebookPublicationCampaignInput) =>
+      request<FacebookPublicationCampaign>('/api/facebook-publications/campaigns', { method: 'POST', body: jsonBody(input) }),
+    updateTarget: (id: string, input: Partial<Pick<FacebookPublicationTarget, 'renderedText' | 'postUrl' | 'note'>> & { status?: FacebookTargetStatus }) =>
+      request<FacebookPublicationTarget>(`/api/facebook-publications/targets/${encodeURIComponent(id)}`, {
+        method: 'PATCH', body: jsonBody(input)
+      }),
+    recordActivity: (id: string, activity: 'opened' | 'copied' | 'image_opened') =>
+      request<FacebookPublicationTarget>(`/api/facebook-publications/targets/${encodeURIComponent(id)}/activity`, {
+        method: 'POST', body: jsonBody({ activity })
+      }),
+    retryTarget: (id: string) => request<FacebookPublicationTarget>(
+      `/api/facebook-publications/targets/${encodeURIComponent(id)}/retry`, { method: 'POST' }
+    ),
+    history: (params: { search?: string; status?: string } = {}) =>
+      request<FacebookPublicationHistoryItem[]>(`/api/facebook-publications/history${queryString(params)}`),
+    riskSummary: () => request<FacebookPublicationRiskSummary>('/api/facebook-publications/risk-summary')
   },
   tradeIn: {
     settings: () => request<TradeInSettings>('/api/trade-in/settings'),

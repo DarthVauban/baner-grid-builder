@@ -1,3 +1,5 @@
+import type { startAuthentication, startRegistration } from '@simplewebauthn/browser';
+
 export type UserRole = 'admin' | 'editor' | 'content_manager' | 'manager';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
 
@@ -28,6 +30,7 @@ export interface LoginInput {
 
 export interface TwoFactorLoginChallenge {
   twoFactorRequired: true;
+  passkeyAvailable: boolean;
   challengeToken: string;
   expiresAt: string;
   email: string;
@@ -38,6 +41,34 @@ export type LoginResponse = User | TwoFactorLoginChallenge;
 export interface TwoFactorLoginVerifyInput {
   challengeToken: string;
   code: string;
+}
+
+export type PasskeyAuthenticationResponse = Awaited<ReturnType<typeof startAuthentication>>;
+export type PasskeyRegistrationResponse = Awaited<ReturnType<typeof startRegistration>>;
+export type PasskeyAuthenticationOptions = Parameters<typeof startAuthentication>[0]['optionsJSON'];
+export type PasskeyRegistrationOptions = Parameters<typeof startRegistration>[0]['optionsJSON'];
+
+export interface PasskeyLoginStart {
+  challengeId: string;
+  expiresAt: string;
+  options: PasskeyAuthenticationOptions;
+}
+
+export interface PasskeyRegistrationStart {
+  challengeId: string;
+  expiresAt: string;
+  name: string;
+  options: PasskeyRegistrationOptions;
+}
+
+export interface UserPasskey {
+  id: string;
+  name: string;
+  deviceType: 'singleDevice' | 'multiDevice';
+  backedUp: boolean;
+  transports: string[];
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 export interface RegisterInput extends LoginInput {

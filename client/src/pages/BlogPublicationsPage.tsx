@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
 import { PublicationBatchModal } from '../components/PublicationBatchModal';
@@ -149,7 +149,7 @@ export function BlogPublicationsPage() {
   return <div className="publications-page">
     <header className="page-heading page-heading--row">
       <div><p className="eyebrow">Контент-план</p><h1>Публікації блогу</h1><p>Плануйте статті, передавайте матеріали та контролюйте готовність до публікації.</p></div>
-      <div className="page-heading__actions"><button className="button button--secondary" type="button" onClick={() => setBatchOpen(true)}><Icon name="add" size={18} /> Швидке планування</button><button className="button button--primary" type="button" onClick={() => { setEditing(null); setFormOpen(true); }}><Icon name="blogPublications" size={18} /> Нова публікація</button></div>
+      <div className="page-heading__actions"><Link className="button button--secondary" to="/tools/blog-publications/media"><Icon name="storage" size={18} /> Файлове сховище</Link><button className="button button--secondary" type="button" onClick={() => setBatchOpen(true)}><Icon name="add" size={18} /> Швидке планування</button><button className="button button--primary" type="button" onClick={() => { setEditing(null); setFormOpen(true); }}><Icon name="blogPublications" size={18} /> Нова публікація</button></div>
     </header>
 
     <section className="task-toolbar" aria-label="Фільтри публікацій">

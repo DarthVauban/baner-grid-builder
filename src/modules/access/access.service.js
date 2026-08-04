@@ -4,7 +4,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 
 export const savedDataResources = ['banner_grids', 'saved_banners', 'product_tables'];
 export const assignableRoles = ['admin', 'editor', 'content_manager', 'manager'];
-export const toolIds = ['banner_grid', 'product_selection', 'product_tables', 'blog_publications', 'chat', 'applications', 'form_builder', 'used_smartphones_catalog', 'trade_in', 'store_map'];
+export const toolIds = ['banner_grid', 'product_selection', 'product_tables', 'blog_publications', 'chat', 'applications', 'form_builder', 'used_smartphones_catalog', 'trade_in', 'store_map', 'facebook_group_publications'];
 const defaultToolIds = ['banner_grid', 'product_selection', 'product_tables', 'blog_publications'];
 
 export async function getToolSecurityRequirements(db = { query }) {
@@ -116,6 +116,23 @@ export function requireToolAccess(toolId) {
       throw new AppError(403, 'TOOL_ACCESS_DENIED', 'У вас немає доступу до цього інструмента.');
     }
     next();
+  });
+}
+
+export function requireAnyToolAccess(allowedToolIds) {
+  if (!Array.isArray(allowedToolIds) || !allowedToolIds.length || allowedToolIds.some((toolId) => !toolIds.includes(toolId))) {
+    throw new Error('At least one known tool is required.');
+  }
+  return asyncHandler(async (req, res, next) => {
+    const state = await getUserToolAccessState(req.user);
+    if (allowedToolIds.some((toolId) => state.tools.includes(toolId))) {
+      next();
+      return;
+    }
+    if (allowedToolIds.some((toolId) => state.blockedTools.includes(toolId))) {
+      throw new AppError(403, 'TOOL_2FA_REQUIRED', 'Для цього інструмента потрібно увімкнути 2FA.');
+    }
+    throw new AppError(403, 'TOOL_ACCESS_DENIED', 'У вас немає доступу до цього інструмента.');
   });
 }
 

@@ -124,7 +124,7 @@ test('photo parser blocks local and private network targets before Chromium rece
 test('photo parser returns a completed batch even when persisting stale-status repair fails', async () => {
   const db = {
     async query(sql) {
-      if (sql.includes('SELECT *') && sql.includes('used_smartphone_photo_parser_batches')) {
+      if (sql.includes('FROM used_smartphone_photo_parser_batches AS batch')) {
         return {
           rows: [{
             id: 'batch-1',

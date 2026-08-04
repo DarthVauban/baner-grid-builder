@@ -112,15 +112,25 @@ test('photo parser API queues only products with URLs and isolates per-image fai
     'https://shop.example.com/products/phone-one'
   );
 
+  const parserFolder = await admin.post('/api/media/folders').send({
+    name: 'Смартфони парсера',
+    parentId: null
+  }).expect(201);
+
   const batch = await admin.post('/api/catalog/photo-parser/batches').send({
     search: 'Parser Phone',
-    photoStatus: 'missing'
+    photoStatus: 'missing',
+    targetFolderId: parserFolder.body.data.id
   }).expect(201);
   assert.equal(batch.body.data.requestedCount, 1);
+  assert.equal(batch.body.data.targetFolder.id, parserFolder.body.data.id);
   assert.equal(batch.body.data.items[0].productId, withUrl.body.data.id);
 
   const runResult = await query(
-    'SELECT * FROM used_smartphone_photo_parser_runs WHERE batch_id = $1',
+    `SELECT run.*, batch.target_folder_id
+     FROM used_smartphone_photo_parser_runs AS run
+     INNER JOIN used_smartphone_photo_parser_batches AS batch ON batch.id = run.batch_id
+     WHERE run.batch_id = $1`,
     [batch.body.data.id]
   );
   const run = runResult.rows[0];
@@ -153,10 +163,11 @@ test('photo parser API queues only products with URLs and isolates per-image fai
         message: 'HTTP 404'
       }]
     }),
-    saveAsset: async ({ webpBuffer }) => {
+    saveAsset: async ({ webpBuffer, folderId }) => {
       storageAttempts += 1;
       const metadata = await sharp(webpBuffer).metadata();
       assert.equal(metadata.format, 'webp');
+      assert.ok(folderId);
       if (storageAttempts === 1) throw new Error('Temporary storage error');
       return {
         url: `/media/catalog/parser-${storageAttempts}.webp`,
@@ -170,6 +181,9 @@ test('photo parser API queues only products with URLs and isolates per-image fai
   assert.equal(processed.savedCount, 1);
   assert.equal(processed.errors.length, 3);
   assert.deepEqual(processed.errors.map((error) => error.stage).sort(), ['convert', 'download', 'storage']);
+
+  const productFolders = await admin.get(`/api/media/folders?parentId=${parserFolder.body.data.id}`).expect(200);
+  assert.deepEqual(productFolders.body.data.items.map((folder) => folder.name), ['Parser Phone One']);
 
   const completedBatch = await admin
     .get(`/api/catalog/photo-parser/batches/${batch.body.data.id}`)
@@ -261,4 +275,54 @@ test('photo parser API queues only products with URLs and isolates per-image fai
   }).expect(422);
 
   await admin.delete(`/api/catalog/photo-parser/adapters/${customAdapter.body.data.id}`).expect(204);
+});
+
+test('photo parser saves optimized product photos in the selected media-library subtree', async () => {
+  const parent = await admin.post('/api/media/folders').send({
+    name: 'Смартфони media library',
+    parentId: null
+  }).expect(201);
+  const product = await admin.post('/api/catalog/products').send(productInput('Samsung S25 Ultra')).expect(201);
+  await admin.patch(`/api/catalog/photo-parser/products/${product.body.data.id}/source-url`).send({
+    sourceUrl: 'https://shop.example.com/products/samsung-s25-ultra'
+  }).expect(200);
+  const batch = await admin.post('/api/catalog/photo-parser/batches').send({
+    search: 'Samsung S25 Ultra',
+    photoStatus: 'missing',
+    targetFolderId: parent.body.data.id
+  }).expect(201);
+  const runResult = await query(
+    `SELECT run.*, batch.target_folder_id
+     FROM used_smartphone_photo_parser_runs AS run
+     INNER JOIN used_smartphone_photo_parser_batches AS batch ON batch.id = run.batch_id
+     WHERE run.batch_id = $1`,
+    [batch.body.data.id]
+  );
+  const source = await sharp({
+    create: { width: 720, height: 960, channels: 3, background: '#20283b' }
+  }).png().toBuffer();
+
+  const processed = await processPhotoParserRun(runResult.rows[0], {
+    scrape: async () => ({
+      title: 'Samsung S25 Ultra',
+      pageUrl: 'https://shop.example.com/products/samsung-s25-ultra',
+      adapterId: 'example',
+      diagnostics: { candidates: 1, selectorMatches: 1, selectorImages: 1, downloaded: 1 },
+      images: [{ sourceUrl: 'https://cdn.example.com/s25-ultra.png', buffer: source }],
+      errors: []
+    })
+  });
+  assert.equal(processed.status, 'success');
+  assert.equal(processed.savedCount, 1);
+
+  const folders = await admin.get(`/api/media/folders?parentId=${parent.body.data.id}`).expect(200);
+  assert.equal(folders.body.data.items.length, 1);
+  assert.equal(folders.body.data.items[0].name, 'Samsung S25 Ultra');
+  const assets = await admin.get(`/api/media?folderId=${folders.body.data.items[0].id}`).expect(200);
+  assert.equal(assets.body.data.total, 1);
+  assert.equal(assets.body.data.items[0].mimeType, 'image/webp');
+
+  const savedProduct = await admin.get(`/api/catalog/products/${product.body.data.id}`).expect(200);
+  assert.equal(savedProduct.body.data.mainImageUrl, assets.body.data.items[0].url);
+  assert.equal(savedProduct.body.data.gallery[0].url, assets.body.data.items[0].url);
 });

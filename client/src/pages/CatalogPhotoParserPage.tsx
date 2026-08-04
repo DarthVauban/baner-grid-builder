@@ -2,6 +2,8 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { MediaFolderPickerDialog } from '../components/MediaLibraryBrowser';
+import type { MediaFolderSelection } from '../components/MediaLibraryBrowser';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import {
@@ -19,6 +21,16 @@ import type {
 } from '../types/catalog';
 
 const pageSize = 50;
+const parserFolderStorageKey = 'mt-catalog-photo-parser-folder';
+
+function loadStoredFolderSelection(): MediaFolderSelection | null {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(parserFolderStorageKey) || 'null') as MediaFolderSelection | null;
+    return stored?.folder?.id ? stored : null;
+  } catch {
+    return null;
+  }
+}
 
 function formatDate(value: string | null) {
   if (!value) return '—';
@@ -227,6 +239,8 @@ export function CatalogPhotoParserPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
   const [batchId, setBatchId] = useState('');
+  const [folderSelection, setFolderSelection] = useState<MediaFolderSelection | null>(loadStoredFolderSelection);
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const dirtyIds = useRef(new Set<string>());
   const completedBatchId = useRef('');
 
@@ -296,6 +310,19 @@ export function CatalogPhotoParserPage() {
   ), [batch.data?.items]);
   const displayedBatch = batch.data || activeBatch.data || null;
   const parserBusy = catalogPhotoParserBatchIsBusy(displayedBatch);
+  const selectedFolderPath = folderSelection?.breadcrumbs.map((folder) => folder.name).join(' / ') || '';
+
+  function chooseFolder(selection: MediaFolderSelection) {
+    setFolderSelection(selection.folder ? selection : null);
+    setFolderPickerOpen(false);
+    if (selection.folder) window.localStorage.setItem(parserFolderStorageKey, JSON.stringify(selection));
+    else window.localStorage.removeItem(parserFolderStorageKey);
+  }
+
+  function resetFolder() {
+    setFolderSelection(null);
+    window.localStorage.removeItem(parserFolderStorageKey);
+  }
 
   function updateDraft(productId: string, value: string) {
     dirtyIds.current.add(productId);
@@ -328,7 +355,11 @@ export function CatalogPhotoParserPage() {
     const saveResults = await Promise.all(pending.map(saveSourceUrl));
     if (saveResults.some((saved) => !saved)) return;
     try {
-      const created = await startBatch.mutateAsync({ search: deferredSearch, photoStatus });
+      const created = await startBatch.mutateAsync({
+        search: deferredSearch,
+        photoStatus,
+        targetFolderId: folderSelection?.folder?.id || null
+      });
       completedBatchId.current = '';
       setBatchId(created.id);
       showToast(`Додано в чергу: ${created.requestedCount} товарів.`, 'success');
@@ -381,6 +412,23 @@ export function CatalogPhotoParserPage() {
       </div>}
     </section>
 
+    {tab === 'parser' && <section className="catalog-photo-parser-folder-setting">
+      <div className="catalog-photo-parser-folder-setting__copy">
+        <span className="catalog-photo-parser-folder-setting__icon"><Icon name="folder" size={20} /></span>
+        <span>
+          <strong>Спільна батьківська папка</strong>
+          <small>У ній парсер створить окрему підпапку для кожного товару.</small>
+        </span>
+      </div>
+      <div className={`catalog-photo-parser-folder-setting__value${folderSelection?.folder ? ' is-selected' : ''}`}>
+        <span title={selectedFolderPath || 'Корінь файлового сховища'}>{selectedFolderPath || 'Корінь файлового сховища'}</span>
+      </div>
+      <div className="catalog-photo-parser-folder-setting__actions">
+        <button className="button button--secondary" type="button" disabled={parserBusy} onClick={() => setFolderPickerOpen(true)}><Icon name="folder" size={17} /> Вибрати</button>
+        <button className="button button--secondary" type="button" disabled={parserBusy || !folderSelection} onClick={resetFolder}>Скинути</button>
+      </div>
+    </section>}
+
     {displayedBatch && tab === 'parser' && <BatchProgress batch={displayedBatch} />}
 
     {tab === 'errors'
@@ -405,5 +453,10 @@ export function CatalogPhotoParserPage() {
             <button className="button button--secondary button--small" type="button" disabled={page >= products.data.pageCount} onClick={() => setPage((value) => value + 1)}>Далі</button>
           </div>}
         </>}
+    {folderPickerOpen && <MediaFolderPickerDialog
+      initialFolderId={folderSelection?.folder?.id || null}
+      onClose={() => setFolderPickerOpen(false)}
+      onSelect={chooseFolder}
+    />}
   </div>;
 }

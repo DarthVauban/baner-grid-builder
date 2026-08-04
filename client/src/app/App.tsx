@@ -81,6 +81,15 @@ const TradeInBuilderPage = lazy(() => import('../pages/TradeInBuilderPage').then
 const StoreMapPage = lazy(() => import('../pages/StoreMapPage').then((module) => ({
   default: module.StoreMapPage
 })));
+const BlogPostEditorPage = lazy(() => import('../pages/BlogPostEditorPage').then((module) => ({
+  default: module.BlogPostEditorPage
+})));
+const MediaLibraryPage = lazy(() => import('../pages/MediaLibraryPage').then((module) => ({
+  default: module.MediaLibraryPage
+})));
+const FacebookPublicationsPage = lazy(() => import('../pages/FacebookPublicationsPage').then((module) => ({
+  default: module.FacebookPublicationsPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -178,6 +187,8 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="blog_publications" />}>
             <Route path="tools/blog-publications" element={<BlogPublicationsPage />} />
+            <Route path="tools/blog-publications/media" element={<Suspense fallback={<LoadingScreen />}><MediaLibraryPage /></Suspense>} />
+            <Route path="tools/blog-publications/:publicationId/editor" element={<Suspense fallback={<LoadingScreen />}><BlogPostEditorPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="applications" />}>
             <Route path="tools/applications" element={<Suspense fallback={<LoadingScreen />}><ApplicationsPage /></Suspense>} />
@@ -190,6 +201,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="store_map" />}>
             <Route path="tools/store-map" element={<Suspense fallback={<LoadingScreen />}><StoreMapPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="facebook_group_publications" />}>
+            <Route path="tools/facebook-publications" element={<Suspense fallback={<LoadingScreen />}><FacebookPublicationsPage /></Suspense>} />
           </Route>
           <Route element={<AccessManagementRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

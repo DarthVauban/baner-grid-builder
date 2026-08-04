@@ -30,6 +30,7 @@ describe('catalog photo parser helpers', () => {
       id: 'batch-1',
       status: 'running',
       requestedCount: 1,
+      targetFolder: null,
       counts: { queued: 0, running: 0, success: 0, partial: 0, failed: 1 },
       items: [],
       createdAt: '2026-07-24T16:00:00.000Z',

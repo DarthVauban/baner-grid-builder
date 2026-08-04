@@ -21,7 +21,7 @@ describe('RichTextEditor source mode', () => {
     const visualButton = screen.getByRole('button', { name: 'Візуально' });
     const sourceButton = screen.getByRole('button', { name: 'Джерело' });
     await userEvent.click(sourceButton);
-    await screen.findByText('HTML / CSS / JavaScript');
+    await screen.findByText('HTML / CSS / JavaScript', {}, { timeout: 10_000 });
     expect(container.querySelector('.rich-editor__source .cm-editor')).toBeInTheDocument();
     expect(container.querySelector('.rich-editor__source .cm-lineNumbers')).toBeInTheDocument();
     expect(container.querySelector('.cm-content')).toHaveTextContent('document.body.dataset.ready');

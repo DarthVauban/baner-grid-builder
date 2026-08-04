@@ -23,6 +23,9 @@ test('deployment separates development and production by directory, port, projec
   assert.match(workflow, /APP_DIR: \$\{\{ github\.ref_name == 'main' && '\/opt\/mt-workspace\/prod' \|\| '\/opt\/mt-workspace\/dev' \}\}/);
   assert.match(workflow, /APP_PORT: \$\{\{ github\.ref_name == 'main' && '3100' \|\| '3101' \}\}/);
   assert.match(workflow, /COMPOSE_PROJECT: \$\{\{ github\.ref_name == 'main' && 'mt-panel-prod' \|\| 'mt-panel-dev' \}\}/);
+  assert.match(workflow, /APP_ENVIRONMENT: \$\{\{ github\.ref_name == 'main' && 'production' \|\| 'development' \}\}/);
+  assert.match(workflow, /export APP_ENVIRONMENT/);
+  assert.match(compose, /APP_ENVIRONMENT: \$\{APP_ENVIRONMENT:-production\}/);
   assert.match(compose, /127\.0\.0\.1:\$\{APP_BIND_PORT:-3000\}:3000/);
   assert.match(compose, /image: \$\{APP_IMAGE:-ghcr\.io\/darthvauban\/baner-grid-builder:latest\}/);
 });

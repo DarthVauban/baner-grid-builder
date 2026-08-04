@@ -1,3 +1,5 @@
+import type { BlogPostDocument } from './blog-editor';
+
 export type PublicationStatus = 'planned' | 'ready' | 'published' | 'cancelled';
 export type PublicationMaterialType = 'google_doc' | 'drive_folder' | 'drive_file' | 'image' | 'link';
 
@@ -24,6 +26,7 @@ export interface BlogPublication {
   creator: PublicationPerson;
   assignee: PublicationPerson | null;
   materials: PublicationMaterial[];
+  editorDocument: BlogPostDocument | null;
   publishedAt: string | null;
   cancelledAt: string | null;
   createdAt: string;

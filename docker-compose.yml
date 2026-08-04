@@ -32,6 +32,7 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-banner_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-banner_builder}
       DATABASE_SSL: "false"

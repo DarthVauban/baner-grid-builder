@@ -7,6 +7,8 @@ process.env.DATABASE_URL = 'pg-mem://backup-integration-tests';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.COOKIE_SECURE = 'false';
 process.env.APP_BUILD_SHA = 'backup-integration-build';
+process.env.APP_ENVIRONMENT = 'development';
+process.env.APP_ORIGIN = 'https://dev.mt-panel.sbs';
 process.env.ADMIN_NAME = 'Backup Admin';
 process.env.ADMIN_EMAIL = 'backup-admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
@@ -88,10 +90,14 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
 
   const backup = await agent.post('/api/admin/backups/run').expect(201);
   assert.equal(backup.body.data.status, 'success');
-  assert.match(backup.body.data.fileName, /^mt-workspace-backup_.*\.tar\.gz$/);
+  assert.match(backup.body.data.fileName, /^mt-workspace-backup_dev_.*\.tar\.gz$/);
   assert.equal(telegramCalls.at(-1).method, 'sendDocument');
   assert.ok(telegramCalls.at(-1).options.body instanceof FormData);
-  const backupDocument = telegramCalls.at(-1).options.body.get('document');
+  const telegramForm = telegramCalls.at(-1).options.body;
+  assert.match(telegramForm.get('caption'), /^🟦 DEV · Резервна копія MT Workspace/);
+  assert.match(telegramForm.get('caption'), /Середовище: DEV · dev\.mt-panel\.sbs/);
+  const backupDocument = telegramForm.get('document');
+  assert.equal(backupDocument.name, backup.body.data.fileName);
   const invalidArchive = Buffer.from(await backupDocument.arrayBuffer());
   invalidArchive[0] = 0;
 

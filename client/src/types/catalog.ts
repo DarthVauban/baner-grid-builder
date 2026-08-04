@@ -913,6 +913,7 @@ export interface CatalogPhotoParserBatch {
   id: string;
   status: CatalogPhotoParserBatchStatus;
   requestedCount: number;
+  targetFolder: { id: string; name: string } | null;
   counts: Record<CatalogPhotoParserRunStatus, number>;
   items: CatalogPhotoParserRun[];
   createdAt: string;

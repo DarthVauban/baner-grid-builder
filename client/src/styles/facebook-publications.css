@@ -1,0 +1,814 @@
+.facebook-publications-page {
+  display: grid;
+  gap: 22px;
+}
+
+.facebook-page-heading,
+.facebook-section-heading,
+.facebook-heading-actions,
+.facebook-section-actions,
+.facebook-tabs,
+.facebook-target-actions,
+.facebook-campaign-counts,
+.facebook-campaign-card footer,
+.facebook-directory-row,
+.facebook-directory-row__actions,
+.facebook-import-actions,
+.facebook-variants-heading,
+.facebook-workspace-toolbar {
+  display: flex;
+  align-items: center;
+}
+
+.facebook-page-heading,
+.facebook-section-heading,
+.facebook-campaign-card footer,
+.facebook-workspace-toolbar {
+  justify-content: space-between;
+}
+
+.facebook-heading-actions,
+.facebook-section-actions,
+.facebook-tabs,
+.facebook-target-actions,
+.facebook-directory-row__actions,
+.facebook-import-actions {
+  gap: 10px;
+}
+
+.facebook-heading-actions,
+.facebook-section-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.facebook-heading-actions {
+  flex: 0 0 auto;
+}
+
+.facebook-heading-actions .button,
+.facebook-section-actions .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.facebook-principle,
+.facebook-risk {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, #1877f2 30%, var(--border-color));
+  border-radius: 14px;
+  background: color-mix(in srgb, #1877f2 8%, var(--surface));
+  color: var(--text-primary);
+}
+
+.facebook-principle svg,
+.facebook-risk svg {
+  flex: 0 0 auto;
+  color: #1877f2;
+}
+
+.facebook-principle div,
+.facebook-risk div {
+  display: grid;
+  gap: 3px;
+}
+
+.facebook-principle span,
+.facebook-risk span,
+.facebook-help {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.facebook-risk--urgent {
+  border-color: color-mix(in srgb, #ef4444 45%, var(--border-color));
+  background: color-mix(in srgb, #ef4444 9%, var(--surface));
+}
+
+.facebook-risk--urgent svg {
+  color: #ef4444;
+}
+
+.facebook-tabs {
+  flex-wrap: wrap;
+  padding: 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.facebook-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.facebook-tabs button:hover,
+.facebook-tabs button.active {
+  background: color-mix(in srgb, #1877f2 12%, var(--surface));
+  color: #1877f2;
+}
+
+.facebook-tabs button span {
+  min-width: 24px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 12px;
+  text-align: center;
+}
+
+.facebook-section {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.facebook-section-heading {
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.facebook-section-heading h2 {
+  margin: 2px 0 0;
+}
+
+.facebook-search,
+.facebook-group-picker__filters label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 260px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.facebook-search input,
+.facebook-group-picker__filters input {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.facebook-campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr));
+  gap: 16px;
+}
+
+.facebook-campaign-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--surface-muted);
+}
+
+.facebook-campaign-card > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  gap: 16px;
+}
+
+.facebook-campaign-card header p,
+.facebook-target-card header p {
+  margin: 0 0 4px;
+  color: #1877f2;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.facebook-campaign-card h3,
+.facebook-target-card h3 {
+  margin: 0 0 5px;
+}
+
+.facebook-campaign-card header span,
+.facebook-target-card header span,
+.facebook-campaign-card footer > span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.facebook-campaign-card img {
+  width: 92px;
+  height: 70px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #111;
+}
+
+.facebook-campaign-progress {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-secondary) 14%, transparent);
+}
+
+.facebook-campaign-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1877f2, #4f9cf9);
+}
+
+.facebook-campaign-counts {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.facebook-campaign-counts span {
+  display: grid;
+  min-width: 90px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.facebook-campaign-counts strong {
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+.facebook-directory-list,
+.facebook-history-list,
+.facebook-target-list,
+.facebook-variant-list,
+.facebook-import-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.facebook-directory-row {
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 13px;
+  background: var(--surface-muted);
+}
+
+.facebook-directory-row__icon {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, #1877f2 13%, var(--surface));
+  color: #1877f2;
+}
+
+.facebook-directory-row__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.facebook-directory-row__main > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.facebook-directory-row__main p {
+  margin: 5px 0;
+}
+
+.facebook-directory-row__main small {
+  display: block;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.facebook-policy,
+.facebook-status,
+.facebook-picker-flags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.facebook-policy--allowed,
+.facebook-policy--active,
+.facebook-status--published {
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  color: #16833a;
+}
+
+.facebook-policy--forbidden,
+.facebook-policy--do_not_publish,
+.facebook-status--rejected {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  color: #dc2626;
+}
+
+.facebook-status--pending_moderation {
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
+  color: #b76e00;
+}
+
+.facebook-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.facebook-form-grid__wide,
+.facebook-target-result__wide {
+  grid-column: 1 / -1;
+}
+
+.facebook-checkbox {
+  display: flex;
+  align-items: center;
+  align-self: end;
+  gap: 9px;
+  min-height: 44px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.facebook-checkbox input,
+.facebook-picker-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #1877f2;
+}
+
+.facebook-modal--form {
+  width: min(720px, calc(100vw - 24px));
+}
+
+.facebook-modal--wide {
+  width: min(980px, calc(100vw - 24px));
+}
+
+.facebook-modal--choice {
+  width: min(640px, calc(100vw - 24px));
+}
+
+.facebook-modal--campaign,
+.facebook-modal--workspace {
+  width: min(1280px, calc(100vw - 24px));
+  height: min(920px, calc(100dvh - 24px));
+}
+
+.facebook-modal .modal__footer {
+  gap: 10px;
+}
+
+.facebook-modal-counter {
+  margin-right: auto;
+  color: var(--text-secondary);
+}
+
+.facebook-import-actions {
+  flex-wrap: wrap;
+}
+
+.facebook-import-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.facebook-import-choice > button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.facebook-import-choice > button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, #1877f2 45%, var(--border-color));
+  box-shadow: 0 12px 30px color-mix(in srgb, #1877f2 12%, transparent);
+}
+
+.facebook-import-choice > button > span {
+  display: inline-flex;
+  grid-row: 1 / span 2;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: color-mix(in srgb, #1877f2 10%, var(--surface));
+  color: #1877f2;
+}
+
+.facebook-import-choice strong {
+  align-self: end;
+  font-size: 16px;
+}
+
+.facebook-import-choice small {
+  align-self: start;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.facebook-file-button {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.facebook-file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.facebook-import-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.facebook-import-summary article {
+  display: grid;
+  gap: 3px;
+  padding: 13px;
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.facebook-import-summary strong {
+  font-size: 24px;
+}
+
+.facebook-import-summary small {
+  color: var(--text-secondary);
+}
+
+.facebook-import-summary .has-errors strong {
+  color: #dc2626;
+}
+
+.facebook-import-row {
+  display: grid;
+  grid-template-columns: 42px 90px minmax(160px, 1fr) minmax(180px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-left: 3px solid #22c55e;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  font-size: 12px;
+}
+
+.facebook-import-row p,
+.facebook-import-row em {
+  margin: 0;
+}
+
+.facebook-import-row em {
+  color: var(--text-secondary);
+}
+
+.facebook-import-row--error,
+.facebook-import-row--conflict {
+  border-left-color: #ef4444;
+}
+
+.facebook-campaign-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, .85fr) minmax(420px, 1.15fr);
+  gap: 18px;
+}
+
+.facebook-campaign-form,
+.facebook-group-picker {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.facebook-group-picker {
+  padding-left: 18px;
+  border-left: 1px solid var(--border-color);
+}
+
+.facebook-variants-heading {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.facebook-variants-heading div,
+.facebook-group-picker > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.facebook-variants-heading span,
+.facebook-group-picker > header span {
+  font-weight: 800;
+}
+
+.facebook-variants-heading small,
+.facebook-group-picker > header small {
+  color: var(--text-secondary);
+}
+
+.facebook-text-action {
+  justify-self: start;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #dc2626;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.facebook-group-picker__filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 8px;
+}
+
+.facebook-group-picker__filters label {
+  min-width: 0;
+}
+
+.facebook-group-picker__list {
+  display: grid;
+  gap: 8px;
+  max-height: 590px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.facebook-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  background: var(--surface-muted);
+}
+
+.facebook-picker-row > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.facebook-picker-row > label span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.facebook-picker-row small {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.facebook-picker-row.is-blocked {
+  opacity: .62;
+}
+
+.facebook-picker-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-left: 28px;
+}
+
+.facebook-workspace-toolbar {
+  gap: 14px;
+  margin: 14px 0;
+}
+
+.facebook-workspace-toolbar p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.facebook-target-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-left: 4px solid #94a3b8;
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+
+.facebook-target-card--published {
+  border-left-color: #22c55e;
+}
+
+.facebook-target-card--pending_moderation {
+  border-left-color: #f59e0b;
+}
+
+.facebook-target-card--rejected {
+  border-left-color: #ef4444;
+}
+
+.facebook-target-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.facebook-warning-list {
+  display: grid;
+  gap: 6px;
+}
+
+.facebook-warning-list p,
+.facebook-retry-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #f59e0b 10%, var(--surface));
+  color: #a76300;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.facebook-target-actions {
+  flex-wrap: wrap;
+}
+
+.facebook-target-result {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.facebook-target-card > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.facebook-history-list > article {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.facebook-history-list p,
+.facebook-history-list small {
+  margin: 3px 0 0;
+  color: var(--text-secondary);
+}
+
+.facebook-empty,
+.facebook-state {
+  display: grid;
+  grid-column: 1 / -1;
+  justify-items: center;
+  gap: 6px;
+  padding: 44px 20px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.facebook-empty strong {
+  color: var(--text-primary);
+}
+
+.facebook-state--error {
+  color: #dc2626;
+}
+
+@media (max-width: 900px) {
+  .facebook-campaign-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .facebook-group-picker {
+    padding-top: 16px;
+    padding-left: 0;
+    border-top: 1px solid var(--border-color);
+    border-left: 0;
+  }
+
+  .facebook-history-list > article {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .facebook-page-heading,
+  .facebook-section-heading,
+  .facebook-section-actions,
+  .facebook-workspace-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .facebook-heading-actions,
+  .facebook-section-actions,
+  .facebook-search {
+    width: 100%;
+  }
+
+  .facebook-heading-actions .button,
+  .facebook-section-actions .button {
+    flex: 1;
+  }
+
+  .facebook-section {
+    padding: 14px;
+  }
+
+  .facebook-form-grid,
+  .facebook-target-result,
+  .facebook-group-picker__filters,
+  .facebook-import-summary,
+  .facebook-import-choice {
+    grid-template-columns: 1fr;
+  }
+
+  .facebook-directory-row {
+    align-items: flex-start;
+  }
+
+  .facebook-directory-row__icon {
+    display: none;
+  }
+
+  .facebook-directory-row__actions {
+    flex-direction: column;
+  }
+
+  .facebook-import-row {
+    grid-template-columns: 34px 70px minmax(0, 1fr);
+  }
+
+  .facebook-import-row em {
+    grid-column: 2 / -1;
+  }
+
+  .facebook-target-actions .button {
+    width: 100%;
+  }
+}

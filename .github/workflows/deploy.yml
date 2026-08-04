@@ -69,6 +69,7 @@ jobs:
       APP_DIR: ${{ github.ref_name == 'main' && '/opt/mt-workspace/prod' || '/opt/mt-workspace/dev' }}
       APP_PORT: ${{ github.ref_name == 'main' && '3100' || '3101' }}
       COMPOSE_PROJECT: ${{ github.ref_name == 'main' && 'mt-panel-prod' || 'mt-panel-dev' }}
+      APP_ENVIRONMENT: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     steps:
       - uses: actions/checkout@v5
@@ -95,6 +96,7 @@ jobs:
             APP_DIR='${{ env.APP_DIR }}'
             APP_PORT='${{ env.APP_PORT }}'
             COMPOSE_PROJECT='${{ env.COMPOSE_PROJECT }}'
+            APP_ENVIRONMENT='${{ env.APP_ENVIRONMENT }}'
             cd "$APP_DIR"
             test "$(pwd -P)" = "$APP_DIR"
             test -f .env
@@ -108,6 +110,7 @@ jobs:
             export APP_IMAGE="$IMAGE"
             export APP_BIND_PORT="$APP_PORT"
             export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT"
+            export APP_ENVIRONMENT
 
             echo "Deploying $IMAGE to $COMPOSE_PROJECT on 127.0.0.1:$APP_PORT"
             df -h / "$APP_DIR" || true

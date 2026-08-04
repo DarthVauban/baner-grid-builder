@@ -9,7 +9,7 @@ export function serializeMaterial(row) {
   };
 }
 
-export function serializePublication(row, materials = []) {
+export function serializePublication(row, materials = [], includeEditor = false) {
   return {
     id: row.id,
     title: row.title,
@@ -20,6 +20,7 @@ export function serializePublication(row, materials = []) {
     creator: { id: row.creator_id, name: row.creator_name, email: row.creator_email },
     assignee: row.assignee_id ? { id: row.assignee_id, name: row.assignee_name, email: row.assignee_email } : null,
     materials,
+    editorDocument: includeEditor ? row.editor_document || null : null,
     publishedAt: row.published_at,
     cancelledAt: row.cancelled_at,
     createdAt: row.created_at,
@@ -27,7 +28,7 @@ export function serializePublication(row, materials = []) {
   };
 }
 
-export async function loadPublication(id, db = pool) {
+export async function loadPublication(id, db = pool, includeEditor = false) {
   const result = await db.query(
     `SELECT publication.*,
             creator.name AS creator_name, creator.email AS creator_email,
@@ -46,7 +47,7 @@ export async function loadPublication(id, db = pool) {
      ORDER BY position, created_at`,
     [id]
   );
-  return serializePublication(result.rows[0], materials.rows.map(serializeMaterial));
+  return serializePublication(result.rows[0], materials.rows.map(serializeMaterial), includeEditor);
 }
 
 export async function assertApprovedAssignees(db, ids) {

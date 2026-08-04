@@ -45,7 +45,7 @@ export function ConfirmDialogProvider({ children }: PropsWithChildren) {
 
   return <ConfirmDialogContext.Provider value={confirm}>
     {children}
-    {pending && <div className="modal-backdrop modal-backdrop--nested" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && settle(false)}>
+    {pending && <div className="modal-backdrop modal-backdrop--nested confirm-dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && settle(false)}>
       <section className={`modal confirm-dialog confirm-dialog--${tone}`} role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
         <header className="modal__header">
           <div>
