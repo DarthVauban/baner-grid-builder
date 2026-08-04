@@ -87,6 +87,9 @@ const BlogPostEditorPage = lazy(() => import('../pages/BlogPostEditorPage').then
 const MediaLibraryPage = lazy(() => import('../pages/MediaLibraryPage').then((module) => ({
   default: module.MediaLibraryPage
 })));
+const FacebookPublicationsPage = lazy(() => import('../pages/FacebookPublicationsPage').then((module) => ({
+  default: module.FacebookPublicationsPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -198,6 +201,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="store_map" />}>
             <Route path="tools/store-map" element={<Suspense fallback={<LoadingScreen />}><StoreMapPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="facebook_group_publications" />}>
+            <Route path="tools/facebook-publications" element={<Suspense fallback={<LoadingScreen />}><FacebookPublicationsPage /></Suspense>} />
           </Route>
           <Route element={<AccessManagementRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

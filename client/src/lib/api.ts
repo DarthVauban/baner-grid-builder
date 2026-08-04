@@ -115,6 +115,22 @@ import type {
   StoreMapPublicationStatus,
   StoreMapSettings
 } from '../types/store-map';
+import type {
+  FacebookPublicationAsset,
+  FacebookPublicationCampaign,
+  FacebookPublicationCampaignInput,
+  FacebookPublicationGroup,
+  FacebookPublicationGroupInput,
+  FacebookPublicationHistoryItem,
+  FacebookPublicationImportCommit,
+  FacebookPublicationImportPreview,
+  FacebookPublicationRiskSummary,
+  FacebookPublicationStore,
+  FacebookPublicationStoreInput,
+  FacebookPublicationTarget,
+  FacebookPublicationWorkbookRows,
+  FacebookTargetStatus
+} from '../types/facebook-publication';
 import {
   ApiError,
   jsonBody,
@@ -570,6 +586,59 @@ export const api = {
         timeoutMs: 180_000
       }),
     publicData: () => request<PublicStoreMapData>('/api/public/store-map')
+  },
+  facebookPublications: {
+    stores: (params: { search?: string; status?: string } = {}) =>
+      request<FacebookPublicationStore[]>(`/api/facebook-publications/stores${queryString(params)}`),
+    createStore: (input: FacebookPublicationStoreInput) =>
+      request<FacebookPublicationStore>('/api/facebook-publications/stores', { method: 'POST', body: jsonBody(input) }),
+    updateStore: (id: string, input: FacebookPublicationStoreInput) =>
+      request<FacebookPublicationStore>(`/api/facebook-publications/stores/${encodeURIComponent(id)}`, {
+        method: 'PUT', body: jsonBody(input)
+      }),
+    removeStore: (id: string) => request<void>(`/api/facebook-publications/stores/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    groups: (params: { search?: string; status?: string } = {}) =>
+      request<FacebookPublicationGroup[]>(`/api/facebook-publications/groups${queryString(params)}`),
+    createGroup: (input: FacebookPublicationGroupInput) =>
+      request<FacebookPublicationGroup>('/api/facebook-publications/groups', { method: 'POST', body: jsonBody(input) }),
+    updateGroup: (id: string, input: FacebookPublicationGroupInput) =>
+      request<FacebookPublicationGroup>(`/api/facebook-publications/groups/${encodeURIComponent(id)}`, {
+        method: 'PUT', body: jsonBody(input)
+      }),
+    removeGroup: (id: string) => request<void>(`/api/facebook-publications/groups/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    previewImport: (rows: FacebookPublicationWorkbookRows) =>
+      request<FacebookPublicationImportPreview>('/api/facebook-publications/imports/preview', {
+        method: 'POST', body: jsonBody(rows), timeoutMs: 120_000
+      }),
+    commitImport: (rows: FacebookPublicationWorkbookRows) =>
+      request<FacebookPublicationImportCommit>('/api/facebook-publications/imports/commit', {
+        method: 'POST', body: jsonBody(rows), timeoutMs: 180_000
+      }),
+    uploadAsset: (file: File) => request<FacebookPublicationAsset>('/api/facebook-publications/assets', {
+      method: 'POST',
+      headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) },
+      body: file,
+      timeoutMs: 120_000
+    }),
+    campaigns: (params: { search?: string; status?: string } = {}) =>
+      request<FacebookPublicationCampaign[]>(`/api/facebook-publications/campaigns${queryString(params)}`),
+    campaign: (id: string) => request<FacebookPublicationCampaign>(`/api/facebook-publications/campaigns/${encodeURIComponent(id)}`),
+    createCampaign: (input: FacebookPublicationCampaignInput) =>
+      request<FacebookPublicationCampaign>('/api/facebook-publications/campaigns', { method: 'POST', body: jsonBody(input) }),
+    updateTarget: (id: string, input: Partial<Pick<FacebookPublicationTarget, 'renderedText' | 'postUrl' | 'note'>> & { status?: FacebookTargetStatus }) =>
+      request<FacebookPublicationTarget>(`/api/facebook-publications/targets/${encodeURIComponent(id)}`, {
+        method: 'PATCH', body: jsonBody(input)
+      }),
+    recordActivity: (id: string, activity: 'opened' | 'copied' | 'image_opened') =>
+      request<FacebookPublicationTarget>(`/api/facebook-publications/targets/${encodeURIComponent(id)}/activity`, {
+        method: 'POST', body: jsonBody({ activity })
+      }),
+    retryTarget: (id: string) => request<FacebookPublicationTarget>(
+      `/api/facebook-publications/targets/${encodeURIComponent(id)}/retry`, { method: 'POST' }
+    ),
+    history: (params: { search?: string; status?: string } = {}) =>
+      request<FacebookPublicationHistoryItem[]>(`/api/facebook-publications/history${queryString(params)}`),
+    riskSummary: () => request<FacebookPublicationRiskSummary>('/api/facebook-publications/risk-summary')
   },
   tradeIn: {
     settings: () => request<TradeInSettings>('/api/trade-in/settings'),

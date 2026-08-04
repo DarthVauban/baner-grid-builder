@@ -33,7 +33,9 @@ Vite створює чотири entrypoint-и:
 
 ## Backend-модулі
 
-Код організований за бізнес-доменами у `src/modules`: access, admin, applications, auth, backups, banners, catalog, chat, grids, integrations, notifications, product-tables, publications, store-map, tasks, trade-in та users.
+Код організований за бізнес-доменами у `src/modules`: access, admin, applications, auth, backups, banners, catalog, chat, facebook-publications, grids, integrations, notifications, product-tables, publications, store-map, tasks, trade-in та users.
+
+`facebook-publications` не інтегрується з Facebook API і не виконує автопостинг. Модуль зберігає окремі довідники магазинів і груп, створює snapshot-и тексту, адреси, групи та банера для кожної ручної спроби, а повтор після відхилення оформлює новим повʼязаним записом без переписування історії.
 
 Новий функціонал слід додавати всередині відповідного домену. Якщо зростає великий route/service, його варто ділити за ресурсами або сценаріями, зберігаючи публічний URL і формат відповіді.
 

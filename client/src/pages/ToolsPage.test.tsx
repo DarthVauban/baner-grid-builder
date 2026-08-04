@@ -42,3 +42,23 @@ describe('ToolsPage loading recovery', () => {
     expect(screen.getByText('Завантажуємо інструменти…')).toBeInTheDocument();
   });
 });
+
+describe('ToolsPage catalog', () => {
+  it('shows Facebook group publications as a separate tool tile', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
+      tools: [{
+        toolId: 'facebook_group_publications',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    });
+
+    renderPage();
+
+    const tile = await screen.findByRole('link', { name: /Публікації у міські Facebook-групи/ });
+    expect(tile).toHaveAttribute('href', '/tools/facebook-publications');
+  });
+});
