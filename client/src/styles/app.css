@@ -17,6 +17,8 @@
   --success: #0f8a5f;
   --danger: #c33c54;
   --shadow: 0 18px 50px rgba(22, 30, 50, 0.08);
+  --admin-scrollbar-thumb: rgba(100, 116, 139, 0.34);
+  --admin-scrollbar-thumb-hover: rgba(71, 85, 105, 0.58);
 }
 
 :root[data-theme="brand"] {
@@ -35,6 +37,8 @@
   --success: #55c997;
   --danger: #ff7186;
   --shadow: 0 18px 55px rgba(0,0,0,.34);
+  --admin-scrollbar-thumb: rgba(203, 213, 225, 0.28);
+  --admin-scrollbar-thumb-hover: rgba(226, 232, 240, 0.5);
 }
 
 * { box-sizing: border-box; }
@@ -49,6 +53,47 @@ a { color: inherit; }
 button:focus-visible, a:focus-visible, input:focus-visible {
   outline: 3px solid rgba(109, 93, 252, 0.26);
   outline-offset: 2px;
+}
+
+/* Compact scrollbars for internal admin surfaces. */
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) * {
+  scrollbar-color: var(--admin-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) *::-webkit-scrollbar-track,
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) *::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-color: var(--admin-scrollbar-thumb);
+  background-clip: padding-box;
+}
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) *::-webkit-scrollbar-thumb:hover {
+  background-color: var(--admin-scrollbar-thumb-hover);
+}
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) *::-webkit-scrollbar-thumb:vertical {
+  min-height: 40px;
+}
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) *::-webkit-scrollbar-thumb:horizontal {
+  min-width: 40px;
+}
+:where(.app-shell, .catalog-workspace, .trade-in-workspace, .modal-backdrop) *::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.sidebar,
+.catalog-sidebar,
+.trade-in-sidebar {
+  --admin-scrollbar-thumb: rgba(184, 195, 214, 0.34);
+  --admin-scrollbar-thumb-hover: rgba(215, 223, 236, 0.58);
 }
 
 .icon { display: block; flex: 0 0 auto; }
