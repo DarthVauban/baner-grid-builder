@@ -389,6 +389,8 @@ export const api = {
         request<{ created: CatalogBrand[]; skipped: string[]; total: number }>('/api/catalog/brands/bulk', { method: 'POST', body: jsonBody(input) }),
       updateBrand: (id: string, input: Partial<Pick<CatalogBrand, 'directoryId' | 'label' | 'logoUrl' | 'active' | 'sortOrder'>>) =>
         request<CatalogBrand>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'PATCH', body: jsonBody(input) }),
+      removeBrand: (id: string) =>
+        request<{ detachedProductCount: number }>(`/api/catalog/brands/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       characteristicTemplates: () => request<CatalogCharacteristicTemplate[]>('/api/catalog/characteristic-templates'),
       createCharacteristicTemplate: (input: CatalogCharacteristicTemplateInput) =>
         request<CatalogCharacteristicTemplate>('/api/catalog/characteristic-templates', { method: 'POST', body: jsonBody(input) }),

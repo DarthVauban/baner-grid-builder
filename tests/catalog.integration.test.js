@@ -59,6 +59,12 @@ test('catalog products publish to storefront, import stock updates, and create a
   assert.deepEqual(directoryBrands.body.data.map((brand) => brand.label), ['Apple', 'Google', 'Samsung', 'Xiaomi']);
   const appleBrand = directoryBrands.body.data.find((brand) => brand.label === 'Apple');
   assert.equal(appleBrand.directoryId, brandDirectory.body.data.id);
+  const removableBrand = directoryBrands.body.data.find((brand) => brand.label === 'Google');
+  const removedBrand = await admin.delete(`/api/catalog/brands/${removableBrand.id}`).expect(200);
+  assert.equal(removedBrand.body.data.detachedProductCount, 0);
+  const directoryBrandsAfterDelete = await admin.get(`/api/catalog/brands?directoryId=${brandDirectory.body.data.id}`).expect(200);
+  assert.deepEqual(directoryBrandsAfterDelete.body.data.map((brand) => brand.label), ['Apple', 'Samsung', 'Xiaomi']);
+  await admin.delete(`/api/catalog/brands/${removableBrand.id}`).expect(404);
 
   const media = await admin.post('/api/catalog/media')
     .set('Content-Type', 'image/webp')

@@ -1966,6 +1966,52 @@ router.patch('/brands/:id', asyncHandler(async (req, res) => {
   }
 }));
 
+router.delete('/brands/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const client = await pool.connect();
+  let deletedBrand;
+  let detachedProductCount = 0;
+  let recipients = [];
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      'SELECT id, directory_id, label FROM used_smartphone_brands WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    deletedBrand = current.rows[0];
+    if (!deletedBrand) throw new AppError(404, 'CATALOG_BRAND_NOT_FOUND', 'Бренд не знайдено.');
+
+    const detachedProducts = await client.query(
+      `UPDATE used_smartphone_products
+       SET brand_id = NULL,
+           updated_by = $2,
+           updated_at = NOW(),
+           version = version + 1
+       WHERE brand_id = $1
+       RETURNING id`,
+      [id, req.user.id]
+    );
+    detachedProductCount = detachedProducts.rowCount || 0;
+    await client.query('DELETE FROM used_smartphone_brands WHERE id = $1', [id]);
+    recipients = await getCatalogRecipientIds(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  publishCatalogUpdates(recipients, {
+    type: 'brand_deleted',
+    brandId: id,
+    directoryId: deletedBrand.directory_id,
+    detachedProductCount
+  });
+  publishPublicCatalogUpdate({ type: 'brand_deleted', brandId: id });
+  res.json({ data: { detachedProductCount } });
+}));
+
 router.get('/characteristic-templates', asyncHandler(async (req, res) => {
   const templates = await query(
     `SELECT *

@@ -2810,6 +2810,8 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .catalog-brand-logo__actions { display: flex; align-items: center; gap: 6px; }
 .catalog-brand-logo__actions .button { min-height: 30px; padding: 5px 8px; font-size: 11px; }
 .catalog-brand-logo__actions .icon-button { width: 30px; height: 30px; border-radius: 8px; }
+.catalog-brand-row__actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.catalog-brand-row__actions .button { min-height: 38px; white-space: nowrap; }
 .catalog-brands-bulk-modal { width: min(100%,680px); }
 .catalog-brands-bulk-modal__content { display: grid; gap: 13px; padding: 22px 26px; }
 .catalog-brands-bulk-modal textarea { min-height: 260px; font-family: inherit; }

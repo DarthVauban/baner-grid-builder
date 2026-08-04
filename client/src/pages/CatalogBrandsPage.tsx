@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { convertCatalogImageToWebp } from '../lib/catalog-media';
 import { useToast } from '../toast/ToastContext';
@@ -92,6 +93,7 @@ function BulkBrandsModal({
 
 export function CatalogBrandsPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirmDialog();
   const { showToast } = useToast();
   const [selectedId, setSelectedId] = useState('');
   const [directoryDraft, setDirectoryDraft] = useState<DirectoryDraft>(() => emptyDirectoryDraft());
@@ -136,8 +138,9 @@ export function CatalogBrandsPage() {
       sortOrder: brand.sortOrder
     })
   });
+  const deleteBrand = useMutation({ mutationFn: (id: string) => api.catalog.removeBrand(id) });
   const bulkCreateBrands = useMutation({ mutationFn: api.catalog.bulkCreateBrands });
-  const busy = saveDirectory.isPending || createBrand.isPending || updateBrand.isPending || bulkCreateBrands.isPending;
+  const busy = saveDirectory.isPending || createBrand.isPending || updateBrand.isPending || deleteBrand.isPending || bulkCreateBrands.isPending;
 
   useEffect(() => {
     if (selectedId || !sortedDirectories.length) return;
@@ -211,6 +214,25 @@ export function CatalogBrandsPage() {
     await updateBrand.mutateAsync({ brand, draft });
     await refreshBrands(brand.directoryId);
     showToast('Бренд оновлено.', 'success');
+  }
+
+  async function removeBrand(brand: CatalogBrand) {
+    const accepted = await confirm({
+      title: 'Видалити бренд?',
+      message: `Бренд «${brand.label}» буде видалено з довідника. У товарів та рядків історії імпорту, де він використовується, бренд буде очищено.`,
+      confirmLabel: 'Видалити бренд',
+      tone: 'danger'
+    });
+    if (!accepted) return;
+
+    try {
+      const result = await deleteBrand.mutateAsync(brand.id);
+      await refreshBrands(brand.directoryId);
+      const detached = result.detachedProductCount ? ` Відв’язано товарів: ${result.detachedProductCount}.` : '';
+      showToast(`Бренд «${brand.label}» видалено.${detached}`, 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити бренд.', 'error');
+    }
   }
 
   async function submitBulk(labels: string[]) {
@@ -347,7 +369,13 @@ export function CatalogBrandsPage() {
                 </div>
                 <label className="field"><span>Назва</span><input value={draft.label} onChange={(event) => setBrandDraft(brand.id, { label: event.target.value })} maxLength={160} /></label>
                 <label className="toggle-row"><input type="checkbox" checked={draft.active} onChange={(event) => setBrandDraft(brand.id, { active: event.target.checked })} /> Активний</label>
-                <button className="button button--secondary button--small" type="button" disabled={busy || !changed || !draft.label.trim()} onClick={() => void saveBrand(brand)}><Icon name="save" size={15} /> Зберегти</button>
+                <div className="catalog-brand-row__actions">
+                  <button className="button button--secondary button--small" type="button" disabled={busy || !changed || !draft.label.trim()} onClick={() => void saveBrand(brand)}><Icon name="save" size={15} /> Зберегти</button>
+                  <button className="button button--danger button--small" type="button" disabled={busy} onClick={() => void removeBrand(brand)} aria-label={`Видалити бренд ${brand.label}`}>
+                    <Icon name="delete" size={15} />
+                    {deleteBrand.isPending && deleteBrand.variables === brand.id ? 'Видалення…' : 'Видалити'}
+                  </button>
+                </div>
               </article>;
             })}
             {!brands.isLoading && !sortedBrands.length && <div className="empty-state">
