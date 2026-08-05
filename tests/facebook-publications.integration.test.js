@@ -29,34 +29,25 @@ before(async () => {
 after(async () => pool.end());
 
 test('manual Facebook campaign keeps snapshots, optional post URL and rejected retry history', async () => {
-  const kyiv = await admin.post('/api/facebook-publications/stores').send({
-    code: 'KYIV-01',
-    name: 'Mobile Trend Київ Центр',
-    city: 'Київ',
-    address: 'вул. Хрещатик, 1',
-    notes: '',
-    status: 'active'
-  }).expect(201);
-  const otherKyiv = await admin.post('/api/facebook-publications/stores').send({
-    code: 'KYIV-02',
-    name: 'Mobile Trend Київ Позняки',
-    city: 'Київ',
-    address: 'вул. Анни Ахматової, 14',
-    notes: '',
-    status: 'active'
-  }).expect(201);
   const group = await admin.post('/api/facebook-publications/groups').send({
     name: 'Новини Києва',
     url: 'https://facebook.com/groups/kyiv.news/',
-    city: 'Київ',
-    defaultStoreId: kyiv.body.data.id,
-    notes: 'Публікація у будні',
     advertisingPolicy: 'allowed',
     moderationRequired: true,
-    recommendedIntervalDays: 14,
     status: 'active'
   }).expect(201);
   assert.equal(group.body.data.url, 'https://www.facebook.com/groups/kyiv.news');
+  assert.equal(group.body.data.defaultStoreId, undefined);
+
+  const kyiv = await admin.post('/api/facebook-publications/stores').send({
+    city: 'Київ',
+    address: 'вул. Хрещатик, 1'
+  }).expect(201);
+  assert.equal(kyiv.body.data.city, 'Київ');
+  const otherKyiv = await admin.post('/api/facebook-publications/stores').send({
+    city: 'Бровари',
+    address: 'вул. Київська, 14'
+  }).expect(201);
 
   const image = await admin.post('/api/facebook-publications/assets')
     .set('Content-Type', 'image/png')
@@ -75,8 +66,8 @@ test('manual Facebook campaign keeps snapshots, optional post URL and rejected r
   });
   assert.equal(campaign.status, 201, campaign.text);
   assert.equal(campaign.body.data.targets.length, 1);
-  assert.equal(campaign.body.data.targets[0].address, 'вул. Анни Ахматової, 14');
-  assert.equal(campaign.body.data.targets[0].renderedText, 'Акція до -15% у місті Київ. Адреса: вул. Анни Ахматової, 14');
+  assert.equal(campaign.body.data.targets[0].address, 'вул. Київська, 14');
+  assert.equal(campaign.body.data.targets[0].renderedText, 'Акція до -15% у місті Бровари. Адреса: вул. Київська, 14');
   assert.ok(campaign.body.data.targets[0].warnings.some((warning) => warning.includes('модерацію')));
 
   const targetId = campaign.body.data.targets[0].id;
@@ -124,44 +115,40 @@ test('XLSX-shaped stores and groups preview row errors and commit valid rows', a
   const payload = {
     stores: [
       {
-        'Код магазину': 'BILA-01',
-        'Назва': 'Mobile Trend Біла Церква',
         'Місто': 'Біла Церква',
-        'Адреса': 'вул. Ярослава Мудрого, 10',
-        'Активний': 'Так'
+        'Адреса': 'вул. Ярослава Мудрого, 10'
       }
     ],
     groups: [
       {
         'Назва групи': 'Біла Церква Online',
         'Посилання': 'https://www.facebook.com/groups/bila.online',
-        'Місто': 'Біла Церква',
-        'Код магазину': 'BILA-01',
-        'Реклама': 'Дозволена',
-        'Модерація': 'Ні',
-        'Частота, днів': '10',
-        'Статус': 'Активна'
+        'Реклама дозволена': 'Так',
+        'Модерація': 'Ні'
+      },
+      {
+        'Назва групи': 'Біла Церква без позначок',
+        'Посилання': 'https://www.facebook.com/groups/bila.simple'
       },
       {
         'Назва групи': 'Некоректна група',
-        'Посилання': 'https://example.com/not-facebook',
-        'Місто': 'Біла Церква',
-        'Код магазину': 'BILA-01'
+        'Посилання': 'https://example.com/not-facebook'
       }
     ]
   };
 
   const preview = await admin.post('/api/facebook-publications/imports/preview').send(payload).expect(200);
   assert.equal(preview.body.data.stores.summary.create, 1);
-  assert.equal(preview.body.data.groups.summary.create, 1);
+  assert.equal(preview.body.data.groups.summary.create, 2);
   assert.equal(preview.body.data.groups.summary.error, 1);
 
   const committed = await admin.post('/api/facebook-publications/imports/commit').send(payload).expect(201);
   assert.equal(committed.body.data.stores.created, 1);
-  assert.equal(committed.body.data.groups.created, 1);
+  assert.equal(committed.body.data.groups.created, 2);
   assert.equal(committed.body.data.groups.errors, 1);
 
   const importedGroups = await admin.get('/api/facebook-publications/groups?search=Біла').expect(200);
-  assert.equal(importedGroups.body.data.length, 1);
-  assert.equal(importedGroups.body.data[0].recommendedIntervalDays, 10);
+  assert.equal(importedGroups.body.data.length, 2);
+  assert.ok(importedGroups.body.data.every((item) => item.recommendedIntervalDays === 14));
+  assert.equal(importedGroups.body.data.find((item) => item.name.includes('без позначок')).advertisingPolicy, 'unknown');
 });

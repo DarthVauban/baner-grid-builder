@@ -21,7 +21,7 @@ describe('facebook publication XLSX template', () => {
       FACEBOOK_INSTRUCTIONS_SHEET
     ]);
     const groupRows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets[FACEBOOK_GROUPS_SHEET]);
-    expect(groupRows[0]['Код магазину']).toBe('KYIV-01');
+    expect(groupRows[0]['Реклама дозволена']).toBe('Так');
     expect(groupRows[0].Посилання).toContain('facebook.com/groups/');
   });
 
@@ -75,13 +75,11 @@ describe('facebook publication separate import templates', () => {
     expect(Object.keys(rows[0])).toEqual([
       'Назва групи',
       'Посилання',
-      'Місто',
-      'Код магазину',
-      'Примітки',
-      'Реклама',
+      'Реклама дозволена',
+      'Реклама заборонена',
       'Модерація',
-      'Частота, днів',
-      'Статус'
+      'Неактивна',
+      'Не публікувати'
     ]);
   });
 
@@ -90,14 +88,7 @@ describe('facebook publication separate import templates', () => {
     expect(workbook.SheetNames).toEqual([FACEBOOK_STORES_SHEET, FACEBOOK_INSTRUCTIONS_SHEET]);
 
     const rows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets[FACEBOOK_STORES_SHEET]);
-    expect(Object.keys(rows[0])).toEqual([
-      'Код магазину',
-      'Назва',
-      'Місто',
-      'Адреса',
-      'Примітка',
-      'Активний'
-    ]);
+    expect(Object.keys(rows[0])).toEqual(['Місто', 'Адреса']);
   });
 
   it('reads only the selected directory from a workbook', async () => {

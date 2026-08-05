@@ -354,6 +354,13 @@
   grid-column: 1 / -1;
 }
 
+.facebook-optional-heading {
+  margin: 2px 0 -2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .facebook-checkbox {
   display: flex;
   align-items: center;
@@ -573,7 +580,7 @@
 
 .facebook-group-picker__filters {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 

@@ -45,12 +45,20 @@ describe('FacebookPublicationsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Facebook-групи/ }));
     await waitFor(() => expect(screen.getByRole('button', { name: /Експорт груп/ })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Імпорт груп/ })).toBeInTheDocument();
+    const addGroup = screen.getByRole('button', { name: /Додати групу/ });
+    expect(addGroup).toBeEnabled();
+    fireEvent.click(addGroup);
+    const groupDialog = screen.getByRole('dialog', { name: 'Нова Facebook-група' });
+    expect(within(groupDialog).getAllByRole('textbox')).toHaveLength(2);
+    expect(within(groupDialog).getAllByRole('checkbox')).toHaveLength(5);
+    fireEvent.click(within(groupDialog).getByRole('button', { name: 'Скасувати' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /Магазини/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /Експорт магазинів/ })).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /Імпорт магазинів/ })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Додати магазин/ })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Додати магазин/ }));
-    expect(screen.getByRole('dialog', { name: 'Новий магазин' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Міста й адреси/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Експорт міст/ })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Імпорт міст/ })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Додати місто/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Додати місто/ }));
+    const cityDialog = screen.getByRole('dialog', { name: 'Нове місто' });
+    expect(within(cityDialog).getAllByRole('textbox')).toHaveLength(2);
   });
 });

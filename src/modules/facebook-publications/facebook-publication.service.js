@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 
@@ -12,8 +13,13 @@ export function normalizeFacebookPublicationText(value) {
     .trim();
 }
 
-export function normalizeStoreCode(value) {
-  return normalizeFacebookPublicationText(value).replace(/\s+/g, '-').slice(0, 80);
+export function facebookPublicationStoreIdentity(city) {
+  const normalizedCity = normalizeFacebookPublicationText(city);
+  const digest = createHash('sha256').update(normalizedCity).digest('hex').slice(0, 20);
+  return {
+    code: `CITY-${digest}`,
+    normalizedCode: `city:${digest}`
+  };
 }
 
 export function normalizeFacebookGroupUrl(value) {
@@ -55,12 +61,8 @@ export function renderFacebookPublicationText(template, values) {
 export function serializeFacebookPublicationStore(row) {
   return {
     id: row.id,
-    code: row.code,
-    name: row.name,
     city: row.city,
     address: row.address,
-    notes: row.notes || '',
-    status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -71,17 +73,6 @@ export function serializeFacebookPublicationGroup(row) {
     id: row.id,
     name: row.name,
     url: row.url,
-    city: row.city,
-    defaultStoreId: row.default_store_id,
-    store: row.store_id ? {
-      id: row.store_id,
-      code: row.store_code,
-      name: row.store_name,
-      city: row.store_city,
-      address: row.store_address,
-      status: row.store_status
-    } : null,
-    notes: row.notes || '',
     advertisingPolicy: row.advertising_policy,
     moderationRequired: row.moderation_required === true,
     recommendedIntervalDays: Number(row.recommended_interval_days || 0),
@@ -187,12 +178,6 @@ function parseBoolean(value) {
   return ['так', 'yes', 'true', '1', '+'].includes(normalizeFacebookPublicationText(value));
 }
 
-function parseStoreStatus(value) {
-  return ['неактивний', 'неактивна', 'inactive', 'ні', 'no'].includes(normalizeFacebookPublicationText(value))
-    ? 'inactive'
-    : 'active';
-}
-
 function parseGroupStatus(value) {
   const normalized = normalizeFacebookPublicationText(value);
   if (['не публікувати', 'do not publish', 'do_not_publish', 'заблокована'].includes(normalized)) return 'do_not_publish';
@@ -218,48 +203,39 @@ function importSummary(rows) {
 export async function analyzeFacebookPublicationImport({ stores: rawStores, groups: rawGroups }, db = { query }) {
   const existingStores = await db.query('SELECT * FROM facebook_publication_stores ORDER BY created_at');
   const existingGroups = await db.query('SELECT * FROM facebook_publication_groups ORDER BY created_at');
-  const storesByCode = new Map(existingStores.rows.map((store) => [store.normalized_code, store]));
+  const storesByCity = new Map(existingStores.rows.map((store) => [normalizeFacebookPublicationText(store.city), store]));
   const groupsByUrl = new Map(existingGroups.rows.map((group) => [group.normalized_url, group]));
   const seenStores = new Map();
   const seenGroups = new Map();
 
   const stores = (Array.isArray(rawStores) ? rawStores : []).map((raw, index) => {
     const lookup = lookupRow(raw);
-    const code = String(firstValue(lookup, ['Код магазину', 'Код', 'Store code'])).trim().slice(0, 80);
-    const normalizedCode = normalizeStoreCode(code);
+    const city = String(firstValue(lookup, ['Місто', 'City'])).trim().slice(0, 120);
+    const normalizedCity = normalizeFacebookPublicationText(city);
+    const existing = storesByCity.get(normalizedCity);
     const row = {
       rowNumber: index + 2,
-      code,
-      normalizedCode,
-      name: String(firstValue(lookup, ['Назва', 'Назва магазину', 'Store name'])).trim().slice(0, 200),
-      city: String(firstValue(lookup, ['Місто', 'City'])).trim().slice(0, 120),
+      city,
       address: String(firstValue(lookup, ['Адреса', 'Address'])).trim().slice(0, 500),
-      notes: String(firstValue(lookup, ['Примітка', 'Примітки', 'Notes'])).trim().slice(0, 4000),
-      status: parseStoreStatus(firstValue(lookup, ['Активний', 'Статус', 'Active'])),
-      storeId: storesByCode.get(normalizedCode)?.id || null,
-      action: storesByCode.has(normalizedCode) ? 'update' : 'create',
+      normalizedCity,
+      storeId: existing?.id || null,
+      action: existing ? 'update' : 'create',
       reason: ''
     };
-    if (!code || !row.name || !row.city || !row.address) {
+    if (!row.city || !row.address) {
       row.action = 'error';
-      row.reason = 'Код, назва, місто та адреса магазину є обовʼязковими.';
-    } else if (seenStores.has(normalizedCode)) {
+      row.reason = 'Місто та адреса є обовʼязковими.';
+    } else if (seenStores.has(normalizedCity)) {
       row.action = 'conflict';
-      row.reason = `Дублікат коду магазину в рядку ${seenStores.get(normalizedCode)}.`;
+      row.reason = `Дублікат міста в рядку ${seenStores.get(normalizedCity)}.`;
     } else {
-      seenStores.set(normalizedCode, row.rowNumber);
+      seenStores.set(normalizedCity, row.rowNumber);
     }
     return row;
   });
 
-  const availableStores = new Map(storesByCode);
-  stores.filter((row) => ['create', 'update'].includes(row.action)).forEach((row) => {
-    availableStores.set(row.normalizedCode, { id: row.storeId, ...row });
-  });
-
   const groups = (Array.isArray(rawGroups) ? rawGroups : []).map((raw, index) => {
     const lookup = lookupRow(raw);
-    const storeCode = String(firstValue(lookup, ['Код магазину', 'Store code'])).trim().slice(0, 80);
     let normalizedUrl = '';
     let urlError = '';
     try {
@@ -267,31 +243,40 @@ export async function analyzeFacebookPublicationImport({ stores: rawStores, grou
     } catch (error) {
       urlError = error instanceof Error ? error.message : 'Некоректне посилання.';
     }
-    const store = availableStores.get(normalizeStoreCode(storeCode));
     const existing = groupsByUrl.get(normalizedUrl);
-    const intervalValue = Number(firstValue(lookup, ['Частота, днів', 'Частота', 'Interval days']) || 14);
+    const advertisingAllowed = parseBoolean(firstValue(lookup, ['Реклама дозволена', 'Advertising allowed']));
+    const advertisingForbidden = parseBoolean(firstValue(lookup, ['Реклама заборонена', 'Advertising forbidden']));
+    const inactive = parseBoolean(firstValue(lookup, ['Неактивна', 'Inactive']));
+    const doNotPublish = parseBoolean(firstValue(lookup, ['Не публікувати', 'Do not publish']));
     const row = {
       rowNumber: index + 2,
       name: String(firstValue(lookup, ['Назва групи', 'Назва', 'Group name'])).trim().slice(0, 300),
       url: normalizedUrl,
       normalizedUrl,
-      city: String(firstValue(lookup, ['Місто', 'City'])).trim().slice(0, 120),
-      storeCode,
-      storeId: store?.id || null,
-      notes: String(firstValue(lookup, ['Примітки', 'Примітка', 'Notes'])).trim().slice(0, 4000),
-      advertisingPolicy: parseAdvertisingPolicy(firstValue(lookup, ['Реклама', 'Advertising'])),
+      advertisingPolicy: advertisingForbidden
+        ? 'forbidden'
+        : advertisingAllowed
+          ? 'allowed'
+          : parseAdvertisingPolicy(firstValue(lookup, ['Реклама', 'Advertising'])),
       moderationRequired: parseBoolean(firstValue(lookup, ['Модерація', 'Moderation'])),
-      recommendedIntervalDays: Number.isInteger(intervalValue) && intervalValue >= 0 && intervalValue <= 365 ? intervalValue : 14,
-      status: parseGroupStatus(firstValue(lookup, ['Статус', 'Status'])),
+      status: doNotPublish
+        ? 'do_not_publish'
+        : inactive
+          ? 'inactive'
+          : parseGroupStatus(firstValue(lookup, ['Статус', 'Status'])),
       groupId: existing?.id || null,
       action: existing ? 'update' : 'create',
       reason: ''
     };
-    if (!row.name || !row.city || !normalizedUrl || !store) {
+    if (!row.name || !normalizedUrl) {
       row.action = 'error';
-      row.reason = urlError || (!store
-        ? `Магазин з кодом «${storeCode || '—'}» не знайдено.`
-        : 'Назва, URL і місто групи є обовʼязковими.');
+      row.reason = urlError || 'Назва та URL групи є обовʼязковими.';
+    } else if (advertisingAllowed && advertisingForbidden) {
+      row.action = 'error';
+      row.reason = 'Не можна одночасно дозволити й заборонити рекламу.';
+    } else if (inactive && doNotPublish) {
+      row.action = 'error';
+      row.reason = 'Оберіть лише одну позначку: «Неактивна» або «Не публікувати».';
     } else if (seenGroups.has(normalizedUrl)) {
       row.action = 'conflict';
       row.reason = `Дублікат посилання на групу в рядку ${seenGroups.get(normalizedUrl)}.`;
@@ -313,35 +298,34 @@ export async function commitFacebookPublicationImport(payload, userId) {
     await client.query('BEGIN');
     const preview = await analyzeFacebookPublicationImport(payload, client);
     const result = { stores: { created: 0, updated: 0, errors: 0 }, groups: { created: 0, updated: 0, errors: 0 } };
-    const storeIds = new Map();
     for (const row of preview.stores.rows) {
       if (!['create', 'update'].includes(row.action)) {
         result.stores.errors += 1;
         continue;
       }
-      const saved = await client.query(
-        `INSERT INTO facebook_publication_stores (
-           code, normalized_code, name, city, address, notes, status, created_by
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (normalized_code) DO UPDATE
-         SET code = EXCLUDED.code, name = EXCLUDED.name, city = EXCLUDED.city,
-             address = EXCLUDED.address, notes = EXCLUDED.notes, status = EXCLUDED.status,
-             updated_at = NOW()
-         RETURNING id`,
-        [row.code, row.normalizedCode, row.name, row.city, row.address, row.notes, row.status, userId]
-      );
-      storeIds.set(row.normalizedCode, saved.rows[0].id);
+      if (row.storeId) {
+        await client.query(
+          `UPDATE facebook_publication_stores
+           SET name = $2, city = $2, address = $3, notes = '', status = 'active', updated_at = NOW()
+           WHERE id = $1`,
+          [row.storeId, row.city, row.address]
+        );
+      } else {
+        const identity = facebookPublicationStoreIdentity(row.city);
+        await client.query(
+          `INSERT INTO facebook_publication_stores (
+             code, normalized_code, name, city, address, notes, status, created_by
+           ) VALUES ($1, $2, $3, $3, $4, '', 'active', $5)
+           ON CONFLICT (normalized_code) DO UPDATE
+           SET name = EXCLUDED.name, city = EXCLUDED.city, address = EXCLUDED.address,
+               notes = '', status = 'active', updated_at = NOW()`,
+          [identity.code, identity.normalizedCode, row.city, row.address, userId]
+        );
+      }
       result.stores[row.action === 'create' ? 'created' : 'updated'] += 1;
     }
-    const currentStores = await client.query('SELECT id, normalized_code FROM facebook_publication_stores');
-    currentStores.rows.forEach((store) => storeIds.set(store.normalized_code, store.id));
     for (const row of preview.groups.rows) {
       if (!['create', 'update'].includes(row.action)) {
-        result.groups.errors += 1;
-        continue;
-      }
-      const storeId = storeIds.get(normalizeStoreCode(row.storeCode));
-      if (!storeId) {
         result.groups.errors += 1;
         continue;
       }
@@ -349,16 +333,14 @@ export async function commitFacebookPublicationImport(payload, userId) {
         `INSERT INTO facebook_publication_groups (
            name, url, normalized_url, city, default_store_id, notes,
            advertising_policy, moderation_required, recommended_interval_days, status, created_by
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ) VALUES ($1, $2, $3, '', NULL, '', $4, $5, 14, $6, $7)
          ON CONFLICT (normalized_url) DO UPDATE
-         SET name = EXCLUDED.name, url = EXCLUDED.url, city = EXCLUDED.city,
-             default_store_id = EXCLUDED.default_store_id, notes = EXCLUDED.notes,
+         SET name = EXCLUDED.name, url = EXCLUDED.url, city = '', default_store_id = NULL,
              advertising_policy = EXCLUDED.advertising_policy,
              moderation_required = EXCLUDED.moderation_required,
-             recommended_interval_days = EXCLUDED.recommended_interval_days,
              status = EXCLUDED.status, updated_at = NOW()`,
-        [row.name, row.url, row.normalizedUrl, row.city, storeId, row.notes,
-          row.advertisingPolicy, row.moderationRequired, row.recommendedIntervalDays, row.status, userId]
+        [row.name, row.url, row.normalizedUrl, row.advertisingPolicy,
+          row.moderationRequired, row.status, userId]
       );
       result.groups[row.action === 'create' ? 'created' : 'updated'] += 1;
     }
@@ -375,7 +357,6 @@ export async function commitFacebookPublicationImport(payload, userId) {
 async function publicationWarnings(group, lastPublishedAt, plannedDate) {
   const warnings = [];
   if (group.status !== 'active') warnings.push('Група неактивна або позначена «Не публікувати».');
-  if (group.store_status !== 'active') warnings.push('Привʼязаний магазин неактивний.');
   if (group.advertising_policy === 'forbidden') warnings.push('У групі реклама заборонена.');
   if (group.advertising_policy === 'unknown') warnings.push('Правила реклами для групи не підтверджені.');
   if (group.moderation_required) warnings.push('Публікація в цій групі проходить модерацію.');
@@ -397,12 +378,8 @@ export async function createFacebookPublicationCampaign(input, user) {
     const groupIds = input.selections.map((selection) => selection.groupId);
     const groupPlaceholders = groupIds.map((_, index) => `$${index + 1}`).join(', ');
     const groups = await client.query(
-      `SELECT groups.*, stores.id AS store_id, stores.code AS store_code,
-              stores.name AS store_name, stores.city AS store_city,
-              stores.address AS store_address, stores.status AS store_status,
-              last_publication.last_published_at
+      `SELECT groups.*, last_publication.last_published_at
        FROM facebook_publication_groups AS groups
-       JOIN facebook_publication_stores AS stores ON stores.id = groups.default_store_id
        LEFT JOIN (
          SELECT group_id, MAX(published_at) AS last_published_at
          FROM facebook_publication_targets
@@ -418,13 +395,13 @@ export async function createFacebookPublicationCampaign(input, user) {
     const selectedStoreIds = [...new Set(input.selections.map((selection) => selection.storeId))];
     const storePlaceholders = selectedStoreIds.map((_, index) => `$${index + 1}`).join(', ');
     const selectedStores = await client.query(
-      `SELECT id, code, name, city, address, status
+      `SELECT id, city, address
        FROM facebook_publication_stores
        WHERE id IN (${storePlaceholders})`,
       selectedStoreIds
     );
     if (selectedStores.rows.length !== selectedStoreIds.length) {
-      throw new AppError(422, 'FACEBOOK_CAMPAIGN_STORES_INVALID', 'Частину вибраних магазинів не знайдено.');
+      throw new AppError(422, 'FACEBOOK_CAMPAIGN_STORES_INVALID', 'Частину вибраних міст і адрес не знайдено.');
     }
     const campaign = await client.query(
       `INSERT INTO facebook_publication_campaigns (
@@ -441,12 +418,11 @@ export async function createFacebookPublicationCampaign(input, user) {
       const selectedStore = storesById.get(selection.storeId);
       const variantIndex = index % input.textVariants.length;
       const renderedText = renderFacebookPublicationText(input.textVariants[variantIndex], {
-        city: group.city,
+        city: selectedStore.city,
         address: selectedStore.address,
         promotion: input.promotion
       });
-      const warnings = await publicationWarnings({ ...group, store_status: selectedStore.status }, group.last_published_at, input.plannedDate);
-      if (selectedStore.status !== 'active') warnings.push('Вибраний для кампанії магазин неактивний.');
+      const warnings = await publicationWarnings(group, group.last_published_at, input.plannedDate);
       const textKey = normalizeFacebookPublicationText(renderedText);
       if (normalizedTexts.has(textKey)) {
         warnings.push(`Такий самий готовий текст уже використовується для групи «${normalizedTexts.get(textKey)}».`);
@@ -460,8 +436,8 @@ export async function createFacebookPublicationCampaign(input, user) {
            warnings, created_by, updated_by
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::JSONB, $13, $13)
          RETURNING id`,
-        [campaign.rows[0].id, group.id, selectedStore.id, group.name, group.url, group.city,
-          selectedStore.name, selectedStore.address, renderedText, variantIndex, input.assetId,
+        [campaign.rows[0].id, group.id, selectedStore.id, group.name, group.url, selectedStore.city,
+          selectedStore.city, selectedStore.address, renderedText, variantIndex, input.assetId,
           JSON.stringify(warnings), user.id]
       );
       await client.query(
