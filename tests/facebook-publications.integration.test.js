@@ -152,3 +152,39 @@ test('XLSX-shaped stores and groups preview row errors and commit valid rows', a
   assert.ok(importedGroups.body.data.every((item) => item.recommendedIntervalDays === 14));
   assert.equal(importedGroups.body.data.find((item) => item.name.includes('без позначок')).advertisingPolicy, 'unknown');
 });
+
+test('group import warns about existing and in-file duplicate links without overwriting groups', async () => {
+  const payload = {
+    stores: [],
+    groups: [
+      {
+        'Назва групи': 'Назва, яка не повинна перезаписати довідник',
+        'Посилання': 'https://facebook.com/groups/bila.online/'
+      },
+      {
+        'Назва групи': 'Повтор у цьому ж файлі',
+        'Посилання': 'https://www.facebook.com/groups/bila.online?source=xlsx'
+      },
+      {
+        'Назва групи': 'Нова унікальна група',
+        'Посилання': 'https://www.facebook.com/groups/unique.import'
+      }
+    ]
+  };
+
+  const preview = await admin.post('/api/facebook-publications/imports/preview').send(payload).expect(200);
+  assert.equal(preview.body.data.groups.summary.create, 1);
+  assert.equal(preview.body.data.groups.summary.update, 0);
+  assert.equal(preview.body.data.groups.summary.conflict, 2);
+  assert.match(preview.body.data.groups.rows[0].reason, /уже є в довіднику/);
+  assert.match(preview.body.data.groups.rows[1].reason, /Дублікат посилання.*рядку 2/);
+
+  const committed = await admin.post('/api/facebook-publications/imports/commit').send(payload).expect(201);
+  assert.equal(committed.body.data.groups.created, 1);
+  assert.equal(committed.body.data.groups.updated, 0);
+  assert.equal(committed.body.data.groups.errors, 2);
+
+  const existing = await admin.get('/api/facebook-publications/groups?search=Біла Церква Online').expect(200);
+  assert.equal(existing.body.data.length, 1);
+  assert.equal(existing.body.data[0].name, 'Біла Церква Online');
+});

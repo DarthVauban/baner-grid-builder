@@ -34,6 +34,11 @@ describe('FacebookPublicationsPage', () => {
     expect(screen.getByRole('heading', { name: 'Публікації у міські Facebook-групи' })).toBeInTheDocument();
     expect(screen.getByText('Фінальна публікація завжди ручна')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Імпорт XLSX/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Шаблони XLSX/ }));
+    const templateDialog = screen.getByRole('dialog', { name: 'Який шаблон завантажити?' });
+    expect(within(templateDialog).getByRole('button', { name: /Шаблон Facebook-груп/ })).toBeInTheDocument();
+    expect(within(templateDialog).getByRole('button', { name: /Шаблон міст і адрес/ })).toBeInTheDocument();
+    fireEvent.click(within(templateDialog).getByRole('button', { name: 'Скасувати' }));
 
     fireEvent.click(screen.getByRole('button', { name: /Імпорт XLSX/ }));
     const choiceDialog = screen.getByRole('dialog', { name: 'Що потрібно імпортувати?' });

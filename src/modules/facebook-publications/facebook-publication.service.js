@@ -265,7 +265,7 @@ export async function analyzeFacebookPublicationImport({ stores: rawStores, grou
           ? 'inactive'
           : parseGroupStatus(firstValue(lookup, ['Статус', 'Status'])),
       groupId: existing?.id || null,
-      action: existing ? 'update' : 'create',
+      action: 'create',
       reason: ''
     };
     if (!row.name || !normalizedUrl) {
@@ -282,6 +282,10 @@ export async function analyzeFacebookPublicationImport({ stores: rawStores, grou
       row.reason = `Дублікат посилання на групу в рядку ${seenGroups.get(normalizedUrl)}.`;
     } else {
       seenGroups.set(normalizedUrl, row.rowNumber);
+      if (existing) {
+        row.action = 'conflict';
+        row.reason = 'Група з таким посиланням уже є в довіднику.';
+      }
     }
     return row;
   });
@@ -325,24 +329,22 @@ export async function commitFacebookPublicationImport(payload, userId) {
       result.stores[row.action === 'create' ? 'created' : 'updated'] += 1;
     }
     for (const row of preview.groups.rows) {
-      if (!['create', 'update'].includes(row.action)) {
+      if (row.action !== 'create') {
         result.groups.errors += 1;
         continue;
       }
-      await client.query(
+      const inserted = await client.query(
         `INSERT INTO facebook_publication_groups (
            name, url, normalized_url, city, default_store_id, notes,
            advertising_policy, moderation_required, recommended_interval_days, status, created_by
          ) VALUES ($1, $2, $3, '', NULL, '', $4, $5, 14, $6, $7)
-         ON CONFLICT (normalized_url) DO UPDATE
-         SET name = EXCLUDED.name, url = EXCLUDED.url, city = '', default_store_id = NULL,
-             advertising_policy = EXCLUDED.advertising_policy,
-             moderation_required = EXCLUDED.moderation_required,
-             status = EXCLUDED.status, updated_at = NOW()`,
+         ON CONFLICT (normalized_url) DO NOTHING
+         RETURNING id`,
         [row.name, row.url, row.normalizedUrl, row.advertisingPolicy,
           row.moderationRequired, row.status, userId]
       );
-      result.groups[row.action === 'create' ? 'created' : 'updated'] += 1;
+      if (inserted.rowCount) result.groups.created += 1;
+      else result.groups.errors += 1;
     }
     await client.query('COMMIT');
     return { ...result, preview };

@@ -3,6 +3,17 @@
   gap: 22px;
 }
 
+.facebook-page-heading {
+  width: 100%;
+  max-width: none;
+  gap: 32px;
+}
+
+.facebook-page-heading > div:first-child {
+  min-width: 0;
+  max-width: 760px;
+}
+
 .facebook-page-heading,
 .facebook-section-heading,
 .facebook-heading-actions,
