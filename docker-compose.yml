@@ -37,6 +37,13 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-banner_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-banner_builder}
       DATABASE_SSL: "false"
       CATALOG_MEDIA_DIR: /app/storage/catalog-media
+      SEARCH_FEATURE_ENABLED: ${SEARCH_FEATURE_ENABLED:-false}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+      OPENSEARCH_INDEX_PREFIX: ${OPENSEARCH_INDEX_PREFIX:-mt-search}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      SEARCH_WIDGET_ORIGIN: ${SEARCH_WIDGET_ORIGIN:-}
+      SEARCH_SYNC_INTERVAL_MINUTES: ${SEARCH_SYNC_INTERVAL_MINUTES:-15}
+      SEARCH_ANALYTICS_RAW_RETENTION_DAYS: ${SEARCH_ANALYTICS_RAW_RETENTION_DAYS:-90}
     ports:
       - "127.0.0.1:${APP_BIND_PORT:-3000}:3000"
     volumes:
@@ -45,6 +52,56 @@ services:
       db:
         condition: service_healthy
 
+  redis:
+    image: redis:7.2-alpine
+    profiles: ["search"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "127.0.0.1:${REDIS_BIND_PORT:-6379}:6379"
+    volumes:
+      - search_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  opensearch:
+    build:
+      context: .
+      dockerfile: docker/opensearch/Dockerfile
+      args:
+        OPENSEARCH_VERSION: ${OPENSEARCH_VERSION:-3.7.0}
+    profiles: ["search"]
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms512m -Xmx512m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "127.0.0.1:${OPENSEARCH_BIND_PORT:-9200}:9200"
+    volumes:
+      - search_opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
 volumes:
   banner_db_data:
   catalog_media_data:
+  search_redis_data:
+  search_opensearch_data:
