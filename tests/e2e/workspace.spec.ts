@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import sharp from 'sharp';
 
 const admin = {
   email: 'e2e-admin@test.local',
@@ -28,7 +29,18 @@ test('admin can save a banner grid through the browser', async ({ page }) => {
   await page.getByLabel('Назва банерної сітки').fill('E2E smoke grid');
   await page.getByLabel('Заголовок *').fill('E2E banner');
   await page.getByLabel('Дата завершення *').fill('2030-12-31');
-  await page.getByLabel('Посилання на зображення *').fill('https://example.com/banner.jpg');
+  await page.getByRole('button', { name: 'Вибрати зображення банера з медіасховища' }).click();
+  await expect(page.getByRole('heading', { name: 'Виберіть зображення' })).toBeVisible();
+  const bannerPng = await sharp({
+    create: { width: 640, height: 360, channels: 3, background: '#6d55ff' }
+  }).png().toBuffer();
+  await page.getByLabel('Завантажити зображення').setInputFiles({
+    name: 'e2e-banner.png',
+    mimeType: 'image/png',
+    buffer: bannerPng
+  });
+  await expect(page.getByRole('heading', { name: 'Виберіть зображення' })).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Змінити зображення банера у медіасховищі' })).toBeVisible();
   await page.getByLabel('Посилання банера *').fill('https://example.com/sale');
   await page.getByRole('button', { name: 'Зберегти сітку' }).click();
 
