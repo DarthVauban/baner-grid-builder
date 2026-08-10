@@ -271,6 +271,11 @@ export function buildGridExport(banners: BannerData[], shareDescription = ''): s
   return meta ? `${meta}\n${body}` : body;
 }
 
+export function buildGridEmbedScriptTag(gridId: string, origin = window.location.origin): string {
+  const source = new URL(`/api/public/banner-grids/${encodeURIComponent(gridId.trim())}/embed.js`, origin);
+  return `<script async src="${escapeHtml(source.href)}"></script>`;
+}
+
 export async function copyToClipboard(text: string): Promise<void> {
   if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
   const helper = document.createElement('textarea');

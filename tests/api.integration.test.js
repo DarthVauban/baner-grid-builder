@@ -311,6 +311,17 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.equal(createdGrid.body.data.banners.length, 1);
 
   const gridId = createdGrid.body.data.id;
+  const publicEmbed = await request(app)
+    .get(`/api/public/banner-grids/${gridId}/embed.js`)
+    .set('Origin', 'https://shop.example.com')
+    .expect(200)
+    .expect('Content-Type', /application\/javascript/)
+    .expect('Access-Control-Allow-Origin', '*');
+  assert.match(publicEmbed.text, new RegExp(gridId));
+  assert.match(publicEmbed.text, /https:\/\/example\.com\/banner\.jpg/);
+  assert.match(publicEmbed.text, /data-mt-grid-id/);
+  assert.doesNotMatch(publicEmbed.text, /Campaign/);
+
   await user
     .put(`/api/grids/${gridId}`)
     .send({ name: 'Updated grid', shareDescription: 'Updated', banners: [bannerData] })
@@ -519,6 +530,7 @@ test('approval flow and shared banner storage work through REST API', async () =
 
   await request(app).get('/api/grids').expect(401);
   await user.delete(`/api/grids/${gridId}`).expect(204);
+  await request(app).get(`/api/public/banner-grids/${gridId}/embed.js`).expect(404);
   await user.delete(`/api/banners/${createdBanner.body.data.id}`).expect(204);
   await user.delete(`/api/product-tables/${tableId}`).expect(204);
   await user.get(`/api/product-tables/${tableId}`).expect(404);
