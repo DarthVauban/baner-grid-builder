@@ -1,0 +1,206 @@
+name: Configure Trade-in TLS
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CONFIGURE-TRADEIN-TLS to continue
+        required: true
+        type: string
+      notification_email:
+        description: Optional Let's Encrypt expiry notification email
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tradein-tls-production
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: ${{ inputs.confirmation == 'CONFIGURE-TRADEIN-TLS' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate the public DNS target
+        shell: bash
+        run: |
+          set -euo pipefail
+          DOMAIN='tradein.mobiletrend.com.ua'
+          EXPECTED_IP='45.88.191.194'
+          DNS_IPS="$(getent ahostsv4 "$DOMAIN" | awk '{ print $1 }' | sort -u)"
+          printf 'Resolved IPv4 addresses:\n%s\n' "$DNS_IPS"
+          printf '%s\n' "$DNS_IPS" | grep -Fqx "$EXPECTED_IP"
+
+      - name: Upload guarded Nginx configurations
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: nginx/tradein.mobiletrend-bootstrap.conf,nginx/tradein.mobiletrend-host.conf
+          target: /tmp/mt-tradein-tls-${{ github.run_id }}
+          strip_components: 1
+          overwrite: true
+
+      - name: Issue the certificate and enable HTTPS
+        uses: appleboy/ssh-action@v1
+        env:
+          TLS_NOTIFICATION_EMAIL: ${{ inputs.notification_email }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: TLS_NOTIFICATION_EMAIL
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+
+            DOMAIN='tradein.mobiletrend.com.ua'
+            EXPECTED_IP='45.88.191.194'
+            RUN_ID='${{ github.run_id }}'
+            WORK_DIR="/tmp/mt-tradein-tls-$RUN_ID"
+            BOOTSTRAP_CONFIG="$WORK_DIR/tradein.mobiletrend-bootstrap.conf"
+            HTTPS_CONFIG="$WORK_DIR/tradein.mobiletrend-host.conf"
+            ACTIVE_CONFIG='/etc/nginx/conf.d/tradein.mobiletrend.com.ua.conf'
+            ACME_ROOT='/var/www/certbot'
+            CERTIFICATE_DIR="/etc/letsencrypt/live/$DOMAIN"
+            HAD_ORIGINAL='false'
+            ROLLBACK_REQUIRED='false'
+
+            case "$RUN_ID" in
+              ''|*[!0-9]*) echo 'Invalid workflow run identifier.' >&2; exit 1 ;;
+            esac
+            test "$WORK_DIR" = "/tmp/mt-tradein-tls-$RUN_ID"
+            test -s "$BOOTSTRAP_CONFIG"
+            test -s "$HTTPS_CONFIG"
+
+            run_root() {
+              if [ "$(id -u)" -eq 0 ]; then
+                "$@"
+              else
+                sudo -n "$@"
+              fi
+            }
+
+            NGINX_BIN="$(command -v nginx || true)"
+            if [ -z "$NGINX_BIN" ] && [ -x /usr/sbin/nginx ]; then
+              NGINX_BIN='/usr/sbin/nginx'
+            fi
+            test -n "$NGINX_BIN"
+            test -x "$NGINX_BIN"
+            run_root true
+
+            cleanup() {
+              status="$?"
+              trap - EXIT
+              if [ "$status" -ne 0 ] && [ "$ROLLBACK_REQUIRED" = 'true' ]; then
+                echo 'TLS configuration failed; restoring the previous Nginx host.' >&2
+                if [ "$HAD_ORIGINAL" = 'true' ]; then
+                  run_root install -m 644 "$WORK_DIR/original.conf" "$ACTIVE_CONFIG"
+                else
+                  run_root rm -f -- "$ACTIVE_CONFIG"
+                fi
+                run_root "$NGINX_BIN" -t
+                run_root systemctl reload nginx
+              fi
+              case "$WORK_DIR" in
+                /tmp/mt-tradein-tls-[0-9]*) run_root rm -rf -- "$WORK_DIR" ;;
+                *) echo 'Refusing to remove an unexpected work directory.' >&2 ;;
+              esac
+              exit "$status"
+            }
+            trap cleanup EXIT
+
+            DNS_IPS="$(getent ahostsv4 "$DOMAIN" | awk '{ print $1 }' | sort -u)"
+            printf '%s\n' "$DNS_IPS" | grep -Fqx "$EXPECTED_IP"
+            curl -fsS http://127.0.0.1:3100/api/health >/dev/null
+
+            if run_root test -f "$ACTIVE_CONFIG"; then
+              run_root cp -a "$ACTIVE_CONFIG" "$WORK_DIR/original.conf"
+              HAD_ORIGINAL='true'
+            fi
+
+            run_root install -d -m 755 "$ACME_ROOT/.well-known/acme-challenge"
+            run_root install -m 644 "$BOOTSTRAP_CONFIG" "$ACTIVE_CONFIG"
+            ROLLBACK_REQUIRED='true'
+            run_root "$NGINX_BIN" -t
+            run_root systemctl reload nginx
+
+            CHALLENGE_TOKEN="mt-tradein-$RUN_ID"
+            printf '%s' "$CHALLENGE_TOKEN" | run_root tee "$ACME_ROOT/.well-known/acme-challenge/$CHALLENGE_TOKEN" >/dev/null
+            CHALLENGE_RESPONSE="$(curl -fsS --retry 5 --retry-delay 2 "http://$DOMAIN/.well-known/acme-challenge/$CHALLENGE_TOKEN")"
+            test "$CHALLENGE_RESPONSE" = "$CHALLENGE_TOKEN"
+            run_root rm -f -- "$ACME_ROOT/.well-known/acme-challenge/$CHALLENGE_TOKEN"
+
+            if ! command -v certbot >/dev/null 2>&1; then
+              command -v apt-get >/dev/null 2>&1
+              run_root apt-get update
+              run_root env DEBIAN_FRONTEND=noninteractive apt-get install -y certbot
+            fi
+            CERTBOT_BIN="$(command -v certbot)"
+
+            CERTBOT_REGISTRATION_ARGS=(--register-unsafely-without-email)
+            if [ -n "${TLS_NOTIFICATION_EMAIL:-}" ]; then
+              case "$TLS_NOTIFICATION_EMAIL" in
+                *@*.*) ;;
+                *) echo 'The notification email is invalid.' >&2; exit 1 ;;
+              esac
+              CERTBOT_REGISTRATION_ARGS=(--email "$TLS_NOTIFICATION_EMAIL")
+            fi
+
+            run_root "$CERTBOT_BIN" certonly \
+              --non-interactive \
+              --agree-tos \
+              "${CERTBOT_REGISTRATION_ARGS[@]}" \
+              --webroot \
+              --webroot-path "$ACME_ROOT" \
+              --domain "$DOMAIN" \
+              --cert-name "$DOMAIN" \
+              --keep-until-expiring \
+              --deploy-hook 'systemctl reload nginx'
+
+            run_root test -s "$CERTIFICATE_DIR/fullchain.pem"
+            run_root test -s "$CERTIFICATE_DIR/privkey.pem"
+            run_root openssl x509 -in "$CERTIFICATE_DIR/fullchain.pem" -noout -checkhost "$DOMAIN"
+            run_root openssl x509 -in "$CERTIFICATE_DIR/fullchain.pem" -noout -checkend 2592000
+
+            run_root install -m 644 "$HTTPS_CONFIG" "$ACTIVE_CONFIG"
+            run_root "$NGINX_BIN" -t
+            run_root systemctl reload nginx
+
+            HTTPS_HEADERS="$(curl -fsSI --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/")"
+            printf '%s\n' "$HTTPS_HEADERS" | grep -Eq '^HTTP/[^ ]+ 2[0-9][0-9]'
+            REDIRECT_HEADERS="$(curl -sSI --resolve "$DOMAIN:80:127.0.0.1" "http://$DOMAIN/")"
+            printf '%s\n' "$REDIRECT_HEADERS" | grep -Eiq "^location: https://$DOMAIN/"
+            ROLLBACK_REQUIRED='false'
+
+            if run_root systemctl list-unit-files certbot.timer --no-legend | grep -Fq 'certbot.timer'; then
+              run_root systemctl enable --now certbot.timer
+              run_root systemctl is-active --quiet certbot.timer
+            elif run_root systemctl list-unit-files snap.certbot.renew.timer --no-legend | grep -Fq 'snap.certbot.renew.timer'; then
+              run_root systemctl enable --now snap.certbot.renew.timer
+              run_root systemctl is-active --quiet snap.certbot.renew.timer
+            else
+              echo 'No Certbot renewal timer is available.' >&2
+              exit 1
+            fi
+
+            run_root "$CERTBOT_BIN" renew \
+              --cert-name "$DOMAIN" \
+              --dry-run \
+              --deploy-hook 'systemctl reload nginx'
+
+            run_root openssl x509 \
+              -in "$CERTIFICATE_DIR/fullchain.pem" \
+              -noout \
+              -subject \
+              -issuer \
+              -dates
