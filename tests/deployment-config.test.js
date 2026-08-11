@@ -8,6 +8,8 @@ const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
 const nginx = readFileSync(new URL('../nginx/nginx.conf', import.meta.url), 'utf8');
+const tradeInNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-host.conf', import.meta.url), 'utf8');
+const tradeInBootstrapNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-bootstrap.conf', import.meta.url), 'utf8');
 
 test('deployment publishes and pulls the same immutable full-SHA image', () => {
   assert.match(workflow, /type=sha,prefix=sha-,format=long/);
@@ -115,6 +117,20 @@ test('reverse proxy accepts Telegram backup restore archives', () => {
   assert.match(nginx, /client_max_body_size\s+55m/);
   assert.match(nginx, /location \/api\/admin\/backups\/\s*\{[\s\S]*client_body_timeout\s+900s/);
   assert.match(nginx, /location \/api\/admin\/backups\/\s*\{[\s\S]*proxy_read_timeout\s+900s/);
+});
+
+test('standalone Trade-in domain has an ACME bootstrap and isolated HTTPS proxy', () => {
+  assert.match(tradeInBootstrapNginx, /server_name\s+tradein\.mobiletrend\.com\.ua/);
+  assert.match(tradeInBootstrapNginx, /location \^~ \/\.well-known\/acme-challenge\//);
+  assert.doesNotMatch(tradeInBootstrapNginx, /listen\s+443/);
+
+  assert.match(tradeInNginx, /return 301 https:\/\/tradein\.mobiletrend\.com\.ua\$request_uri/);
+  assert.match(tradeInNginx, /ssl_certificate \/etc\/letsencrypt\/live\/tradein\.mobiletrend\.com\.ua\/fullchain\.pem/);
+  assert.match(tradeInNginx, /ssl_certificate_key \/etc\/letsencrypt\/live\/tradein\.mobiletrend\.com\.ua\/privkey\.pem/);
+  assert.match(tradeInNginx, /location ~ \^\/\(\?:\$\|trade-in\$\|api\/public\/trade-in\/\|web-assets\/\|favicon\\\.ico\$\)/);
+  assert.match(tradeInNginx, /proxy_pass http:\/\/127\.0\.0\.1:3100/);
+  assert.match(tradeInNginx, /proxy_set_header X-Forwarded-Host \$host/);
+  assert.match(tradeInNginx, /location \/\s*\{\s*return 404;/);
 });
 
 test('first persistent-storage deployment migrates media from the legacy container', () => {
