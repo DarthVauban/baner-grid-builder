@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TradeInConfig } from '../../types/trade-in';
 import { TradeInPublicPage } from './TradeInPublicPage';
 
@@ -10,12 +10,12 @@ const previewConfig = {
     fontFamily: 'Inter',
     backgroundColor: '#ffffff',
     surfaceColor: '#ffffff',
-    textColor: '#111111',
+    textColor: '#000000',
     mutedColor: '#666666',
-    primaryColor: '#6d5dfc',
-    primaryTextColor: '#ffffff',
+    primaryColor: '#ffe101',
+    primaryTextColor: '#000000',
     borderColor: '#dddddd',
-    successColor: '#16845b',
+    successColor: '#000000',
     maxWidth: 1180,
     borderRadius: 24,
     buttonRadius: 14,
@@ -56,6 +56,17 @@ const previewConfig = {
 } as unknown as TradeInConfig;
 
 describe('TradeInPublicPage preview', () => {
+  const scrollIntoView = vi.fn();
+
+  beforeEach(() => {
+    scrollIntoView.mockReset();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      writable: true,
+      value: scrollIntoView
+    });
+  });
+
   it('clearly marks the page as a draft and submits a demo application', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue({ number: '00042' });
@@ -71,6 +82,22 @@ describe('TradeInPublicPage preview', () => {
     expect(await screen.findByText('Демо-заявку створено')).toBeInTheDocument();
     expect(screen.getByText('00042')).toBeInTheDocument();
     expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status')).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+  });
+
+  it('uses the Mobile Trend palette and hides the obsolete form heading', () => {
+    const config = structuredClone(previewConfig) as TradeInConfig;
+    config.form.title = 'Нова покрокова форма';
+
+    const { container } = render(<TradeInPublicPage config={config} preview />);
+    const page = container.querySelector('.ti-page');
+
+    expect(page).toHaveStyle('--ti-primary: #ffe101');
+    expect(page).toHaveStyle('--ti-primary-text: #000000');
+    expect(page).toHaveStyle('--ti-text: #000000');
+    expect(screen.queryByRole('heading', { name: 'Нова покрокова форма' })).not.toBeInTheDocument();
+    expect(screen.getByText('Онлайн-анкета')).toBeInTheDocument();
   });
 
   it('keeps an embedded preview local when no submission handler is provided', async () => {

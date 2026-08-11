@@ -11,12 +11,12 @@ export const defaultTradeInConfig = {
     fontFamily: 'Inter',
     backgroundColor: '#f6f7fb',
     surfaceColor: '#ffffff',
-    textColor: '#172033',
+    textColor: '#000000',
     mutedColor: '#667085',
-    primaryColor: '#6d5dfc',
-    primaryTextColor: '#ffffff',
+    primaryColor: '#ffe101',
+    primaryTextColor: '#000000',
     borderColor: '#e4e7ec',
-    successColor: '#0f8a5f',
+    successColor: '#000000',
     maxWidth: 1180,
     borderRadius: 24,
     buttonRadius: 14,
@@ -713,6 +713,31 @@ export function normalizeTradeInConfig(value) {
   const form = object(source.form);
   const defaults = defaultTradeInConfig;
   const legacySteps = normalizeSteps(form.steps);
+  const normalizedTheme = {
+    fontFamily: text(theme.fontFamily, defaults.theme.fontFamily, 80),
+    backgroundColor: text(theme.backgroundColor, defaults.theme.backgroundColor, 40),
+    surfaceColor: text(theme.surfaceColor, defaults.theme.surfaceColor, 40),
+    textColor: text(theme.textColor, defaults.theme.textColor, 40),
+    mutedColor: text(theme.mutedColor, defaults.theme.mutedColor, 40),
+    primaryColor: text(theme.primaryColor, defaults.theme.primaryColor, 40),
+    primaryTextColor: text(theme.primaryTextColor, defaults.theme.primaryTextColor, 40),
+    borderColor: text(theme.borderColor, defaults.theme.borderColor, 40),
+    successColor: text(theme.successColor, defaults.theme.successColor, 40),
+    maxWidth: number(theme.maxWidth, defaults.theme.maxWidth, 720, 1800),
+    borderRadius: number(theme.borderRadius, defaults.theme.borderRadius, 0, 60),
+    buttonRadius: number(theme.buttonRadius, defaults.theme.buttonRadius, 0, 60),
+    sectionSpacing: number(theme.sectionSpacing, defaults.theme.sectionSpacing, 24, 180)
+  };
+  const usesLegacyPalette = normalizedTheme.textColor.toLowerCase() === '#172033'
+    && normalizedTheme.primaryColor.toLowerCase() === '#6d5dfc'
+    && normalizedTheme.primaryTextColor.toLowerCase() === '#ffffff'
+    && normalizedTheme.successColor.toLowerCase() === '#0f8a5f';
+  if (usesLegacyPalette) {
+    normalizedTheme.textColor = '#000000';
+    normalizedTheme.primaryColor = '#ffe101';
+    normalizedTheme.primaryTextColor = '#000000';
+    normalizedTheme.successColor = '#000000';
+  }
 
   return {
     version: 4,
@@ -720,21 +745,7 @@ export function normalizeTradeInConfig(value) {
       formId: text(formReference.formId, '', 80),
       formName: text(formReference.formName, '', 160)
     },
-    theme: {
-      fontFamily: text(theme.fontFamily, defaults.theme.fontFamily, 80),
-      backgroundColor: text(theme.backgroundColor, defaults.theme.backgroundColor, 40),
-      surfaceColor: text(theme.surfaceColor, defaults.theme.surfaceColor, 40),
-      textColor: text(theme.textColor, defaults.theme.textColor, 40),
-      mutedColor: text(theme.mutedColor, defaults.theme.mutedColor, 40),
-      primaryColor: text(theme.primaryColor, defaults.theme.primaryColor, 40),
-      primaryTextColor: text(theme.primaryTextColor, defaults.theme.primaryTextColor, 40),
-      borderColor: text(theme.borderColor, defaults.theme.borderColor, 40),
-      successColor: text(theme.successColor, defaults.theme.successColor, 40),
-      maxWidth: number(theme.maxWidth, defaults.theme.maxWidth, 720, 1800),
-      borderRadius: number(theme.borderRadius, defaults.theme.borderRadius, 0, 60),
-      buttonRadius: number(theme.buttonRadius, defaults.theme.buttonRadius, 0, 60),
-      sectionSpacing: number(theme.sectionSpacing, defaults.theme.sectionSpacing, 24, 180)
-    },
+    theme: normalizedTheme,
     header: {
       visible: boolean(header.visible, defaults.header.visible),
       sticky: boolean(header.sticky, defaults.header.sticky),

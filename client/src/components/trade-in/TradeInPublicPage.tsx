@@ -288,10 +288,12 @@ function TradeInFieldControl({
 function TradeInWizard({
   config,
   preview,
+  autoRevealSuccess,
   onSubmit
 }: {
   config: TradeInConfig;
   preview: boolean;
+  autoRevealSuccess: boolean;
   onSubmit?: TradeInPublicPageProps['onSubmit'];
 }) {
   const [answers, setAnswers] = useState<TradeInAnswers>({});
@@ -303,6 +305,7 @@ function TradeInWizard({
   const [stepDirection, setStepDirection] = useState<'forward' | 'backward'>('forward');
   const [transitioning, setTransitioning] = useState(false);
   const stepContentRef = useRef<HTMLDivElement>(null);
+  const successRef = useRef<HTMLElement>(null);
   const transitionTimerRef = useRef<number | null>(null);
   const graph = useMemo(() => getTradeInFormGraph(config.form), [config.form]);
   const graphPath = useMemo(() => buildTradeInDisplayPath(graph, answers), [answers, graph]);
@@ -322,6 +325,17 @@ function TradeInWizard({
     setStepDirection('backward');
     setStepIndex(Math.max(0, activeSteps.length - 1));
   }, [activeSteps.length, stepIndex]);
+
+  useEffect(() => {
+    if (!done || !autoRevealSuccess) return;
+    const success = successRef.current;
+    if (!success) return;
+    success.scrollIntoView?.({
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      block: 'center'
+    });
+    success.focus({ preventScroll: true });
+  }, [autoRevealSuccess, done]);
 
   function setValue(field: TradeInField, nextValue: TradeInAnswer) {
     setAnswers((current) => ({ ...current, [field.key]: nextValue }));
@@ -408,7 +422,14 @@ function TradeInWizard({
 
   if (done) {
     return (
-      <section className="ti-form-shell ti-success" id="trade-in-form">
+      <section
+        className="ti-form-shell ti-success"
+        id="trade-in-form"
+        ref={successRef}
+        role="status"
+        aria-live="polite"
+        tabIndex={-1}
+      >
         <span className="ti-success__icon">✓</span>
         <p className="ti-eyebrow">{preview ? onSubmit ? 'Демо-заявку створено' : 'Режим превʼю' : 'Заявку створено'}</p>
         <h2>{finishNode?.title || config.form.successTitle}</h2>
@@ -432,7 +453,7 @@ function TradeInWizard({
     <section className="ti-form-section" id="trade-in-form">
       <div className="ti-section-heading ti-section-heading--center">
         <p className="ti-eyebrow">Онлайн-анкета</p>
-        <h2>{config.form.title}</h2>
+        {config.form.title.trim().toLocaleLowerCase('uk-UA') !== 'нова покрокова форма' && <h2>{config.form.title}</h2>}
         {config.form.description && <p>{config.form.description}</p>}
       </div>
       <form className="ti-form-shell" aria-busy={transitioning} onSubmit={(event) => void submit(event)}>
@@ -634,7 +655,7 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
         </section>
       )}
 
-      <div className="ti-container"><TradeInWizard config={config} preview={preview} onSubmit={onSubmit} /></div>
+      <div className="ti-container"><TradeInWizard config={config} preview={preview} autoRevealSuccess={!compact} onSubmit={onSubmit} /></div>
 
       {config.faq.visible && config.faq.items.length > 0 && (
         <section className="ti-section ti-faq">
