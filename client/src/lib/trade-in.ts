@@ -51,6 +51,26 @@ export function uniqueTradeInFieldKey(label: string, usedKeys: Iterable<string>,
   return `${base}_${suffix}`;
 }
 
+export function nextTradeInGeneratedKey(
+  label: string,
+  currentKey: string,
+  previousLabel: string,
+  usedKeys: Iterable<string>,
+  fallback = 'field'
+) {
+  const previousGeneratedKey = transliterateTradeInFieldKey(previousLabel, fallback);
+  const escapedPreviousKey = previousGeneratedKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const hasGeneratedSuffix = new RegExp(`^${escapedPreviousKey}_\\d+$`).test(currentKey);
+  const isLegacyGeneratedKey = fallback === 'option'
+    ? /^option_\d+$/.test(currentKey)
+    : /^new_field_\d+$/.test(currentKey);
+
+  if (currentKey && currentKey !== previousGeneratedKey && !hasGeneratedSuffix && !isLegacyGeneratedKey) {
+    return currentKey;
+  }
+  return uniqueTradeInFieldKey(label, usedKeys, fallback);
+}
+
 export function createTradeInStep(index: number): TradeInStep {
   return {
     id: tradeInId('step'),
@@ -81,11 +101,12 @@ export function createTradeInField(index: number): TradeInField {
   };
 }
 
-export function createTradeInOption(index: number): TradeInOption {
+export function createTradeInOption(index: number, usedValues: Iterable<string> = []): TradeInOption {
+  const label = `Варіант ${index + 1}`;
   return {
     id: tradeInId('option'),
-    label: `Варіант ${index + 1}`,
-    value: `option_${index + 1}`
+    label,
+    value: uniqueTradeInFieldKey(label, usedValues, 'option')
   };
 }
 

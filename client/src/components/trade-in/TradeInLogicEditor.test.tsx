@@ -137,6 +137,36 @@ describe('TradeInLogicEditor', () => {
     expect(mutate).toHaveBeenCalledTimes(1);
   });
 
+  it('generates an option key from its label and updates matching conditions', () => {
+    const radioConfig = structuredClone(config);
+    const field = radioConfig.form.steps[0].fields[0];
+    field.type = 'radio';
+    field.options = [{ id: 'option-1', label: 'Варіант 1', value: 'option_1' }];
+    field.condition = { fieldKey: 'model', operator: 'equals', value: 'option_1' };
+    const mutate = vi.fn();
+
+    render(
+      <TradeInLogicEditor
+        config={radioConfig}
+        mutate={mutate}
+        onUndo={vi.fn()}
+        canUndo={false}
+        historyDepth={0}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Пристрій'));
+    fireEvent.change(screen.getByPlaceholderText('Назва'), { target: { value: 'Чорний колір' } });
+
+    const nextConfig = structuredClone(radioConfig);
+    mutate.mock.calls[0][0](nextConfig);
+    const changedField = nextConfig.form.graph?.nodes
+      .flatMap((node) => node.fields)
+      .find((item) => item.id === field.id);
+    expect(changedField?.options[0]).toMatchObject({ label: 'Чорний колір', value: 'chornyy_kolir' });
+    expect(changedField?.condition.value).toBe('chornyy_kolir');
+  });
+
   it('starts from an output and completes the connection by clicking a node', () => {
     const mutate = vi.fn();
     const { container } = render(
