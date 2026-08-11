@@ -1,6 +1,8 @@
 import type {
   LoginInput,
   LoginResponse,
+  MobileLoginStatus,
+  MobileLoginStatusInput,
   MobileDeviceFeed,
   MobilePairing,
   PermissionRole,
@@ -154,6 +156,14 @@ export const api = {
     verifyLoginTwoFactor: (input: TwoFactorLoginVerifyInput) => request<User>('/api/auth/login/2fa', {
       method: 'POST',
       body: jsonBody(input)
+    }),
+    mobileLoginStatus: (input: MobileLoginStatusInput) => request<MobileLoginStatus>('/api/auth/login/mobile/status', {
+      method: 'POST',
+      body: jsonBody(input)
+    }),
+    cancelMobileLogin: (challengeToken: string) => request<void>('/api/auth/login/mobile/cancel', {
+      method: 'POST',
+      body: jsonBody({ challengeToken })
     }),
     startPasskeyLogin: (challengeToken: string) => request<PasskeyLoginStart>('/api/auth/login/passkey/options', {
       method: 'POST', body: jsonBody({ challengeToken })

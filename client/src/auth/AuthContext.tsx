@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import type {
   LoginInput,
+  MobileLoginStatus,
+  MobileLoginStatusInput,
   ProfileInput,
   RegisterInput,
   RegistrationStart,
@@ -21,6 +23,7 @@ interface AuthContextValue {
   status: AuthStatus;
   login: (input: LoginInput) => Promise<TwoFactorLoginChallenge | null>;
   verifyLoginTwoFactor: (input: TwoFactorLoginVerifyInput) => Promise<void>;
+  verifyMobileLogin: (input: MobileLoginStatusInput) => Promise<MobileLoginStatus>;
   verifyLoginPasskey: (challengeId: string, response: PasskeyAuthenticationResponse) => Promise<void>;
   register: (input: RegisterInput) => Promise<RegistrationStart>;
   verifyRegistration: (input: RegistrationVerifyInput) => Promise<User>;
@@ -90,6 +93,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setStatus('authenticated');
   }, []);
 
+  const verifyMobileLogin = useCallback(async (input: MobileLoginStatusInput) => {
+    const result = await api.auth.mobileLoginStatus(input);
+    if (result.user) {
+      setUser(result.user);
+      setStatus('authenticated');
+    }
+    return result;
+  }, []);
+
   const verifyLoginPasskey = useCallback(async (challengeId: string, response: PasskeyAuthenticationResponse) => {
     const currentUser = await api.auth.verifyPasskeyLogin(challengeId, response);
     setUser(currentUser);
@@ -141,6 +153,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     status,
     login,
     verifyLoginTwoFactor,
+    verifyMobileLogin,
     verifyLoginPasskey,
     register,
     verifyRegistration,
@@ -152,6 +165,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     status,
     login,
     verifyLoginTwoFactor,
+    verifyMobileLogin,
     verifyLoginPasskey,
     register,
     verifyRegistration,

@@ -47,6 +47,10 @@ export function hashFcmToken(value) {
   return hmac('fcm-token', String(value || '').trim());
 }
 
+export function hashLoginChallengeId(value) {
+  return hmac('login-challenge', String(value || '').trim());
+}
+
 export function encryptMobileValue(value, purpose) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);

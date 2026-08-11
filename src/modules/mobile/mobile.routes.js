@@ -14,6 +14,10 @@ import {
 } from './mobile-device.service.js';
 import { hashPairingManualCode, hashPairingQrToken } from './mobile-crypto.js';
 import { claimMobilePairing } from './mobile-pairing.service.js';
+import {
+  decideMobileLoginRequest,
+  listMobileLoginRequests
+} from './mobile-login.service.js';
 
 const router = Router();
 const idSchema = z.string().uuid();
@@ -75,6 +79,32 @@ router.put('/devices/:deviceId/push-token', requireMobileDeviceAuth, asyncHandle
   }
   await setMobileDevicePushToken(req.user.id, deviceId, input.token, input.platform);
   res.status(204).end();
+}));
+
+router.get('/login-requests', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
+  res.json({ data: { items: await listMobileLoginRequests(req.user.id) } });
+}));
+
+router.post('/login-requests/:requestId/approve', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
+  const requestId = parseInput(idSchema, req.params.requestId);
+  const loginRequest = await decideMobileLoginRequest(
+    req.user.id,
+    req.mobileDevice.id,
+    requestId,
+    'approve'
+  );
+  res.json({ data: loginRequest });
+}));
+
+router.post('/login-requests/:requestId/deny', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
+  const requestId = parseInput(idSchema, req.params.requestId);
+  const loginRequest = await decideMobileLoginRequest(
+    req.user.id,
+    req.mobileDevice.id,
+    requestId,
+    'deny'
+  );
+  res.json({ data: loginRequest });
 }));
 
 router.delete(

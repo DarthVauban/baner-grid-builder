@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { env } from '../../config/env.js';
-import { query } from '../../db/pool.js';
+import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { createAccessToken, createTwoFactorLoginToken, verifyTwoFactorLoginToken } from '../../lib/jwt.js';
@@ -12,6 +12,12 @@ import { requireAuth } from '../../middleware/auth.js';
 import { requestRegistrationVerification, verifyRegistrationCode } from './registration-verification.service.js';
 import { verifyUserTwoFactor } from './two-factor.service.js';
 import { countUserPasskeys, finishPasskeyLogin, startPasskeyLogin } from './passkey.service.js';
+import {
+  cancelMobileLoginRequest,
+  completeMobileLoginWithFallback,
+  consumeMobileLoginRequest,
+  createMobileLoginRequest
+} from '../mobile/mobile-login.service.js';
 
 const router = Router();
 
@@ -44,7 +50,17 @@ const verifyRegistrationSchema = z.object({
 });
 const verifyLoginTwoFactorSchema = z.object({
   challengeToken: z.string().trim().min(20, 'Сесія перевірки 2FA недійсна.'),
-  code: z.string().trim().regex(/^\d{6}$/, 'Вкажіть 6-значний код 2FA.')
+  code: z.string().trim().regex(
+    /^(?:\d{6}|[23456789A-HJ-NP-Z]{4}-?[23456789A-HJ-NP-Z]{6})$/i,
+    'Вкажіть 6-значний код 2FA або коректний recovery code.'
+  )
+});
+const mobileLoginStatusSchema = z.object({
+  challengeToken: z.string().trim().min(20, 'Сесія перевірки входу недійсна.'),
+  requestId: z.string().uuid('Запит підтвердження входу недійсний.')
+});
+const mobileLoginCancelSchema = z.object({
+  challengeToken: z.string().trim().min(20, 'Сесія перевірки входу недійсна.')
 });
 const passkeyOptionsSchema = z.object({
   challengeToken: z.string().trim().min(20, 'Сесія перевірки Passkey недійсна.')
@@ -109,9 +125,32 @@ router.post('/login', asyncHandler(async (req, res) => {
   }
   if (user.two_factor_enabled === true) {
     const passkeyCount = await countUserPasskeys(user.id);
+    if (user.two_factor_method === 'mt_workspace') {
+      const mobileLogin = await createMobileLoginRequest(user, req);
+      return res.status(202).json({
+        data: {
+          twoFactorRequired: true,
+          twoFactorMethod: 'mt_workspace',
+          passkeyAvailable: passkeyCount > 0,
+          challengeToken: createTwoFactorLoginToken(user, {
+            mobileLoginRequestId: mobileLogin.request.id,
+            jwtId: mobileLogin.jwtId
+          }),
+          expiresAt: mobileLogin.request.expiresAt,
+          email: user.email,
+          mobileApproval: {
+            requestId: mobileLogin.request.id,
+            status: mobileLogin.request.status,
+            pollingIntervalMs: 2000,
+            activeDeviceCount: mobileLogin.activeDeviceCount
+          }
+        }
+      });
+    }
     return res.status(202).json({
       data: {
         twoFactorRequired: true,
+        twoFactorMethod: 'totp',
         passkeyAvailable: passkeyCount > 0,
         challengeToken: createTwoFactorLoginToken(user),
         expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
@@ -141,7 +180,7 @@ router.post('/login/passkey/options', asyncHandler(async (req, res) => {
     throw new AppError(400, 'TWO_FACTOR_NOT_ENABLED', '2FA не увімкнено для цього облікового запису.');
   }
 
-  res.json({ data: await startPasskeyLogin(user, req) });
+  res.json({ data: await startPasskeyLogin(user, req, payload.mobileLoginRequestId || null) });
 }));
 
 router.post('/login/passkey/verify', asyncHandler(async (req, res) => {
@@ -160,19 +199,63 @@ router.post('/login/2fa', asyncHandler(async (req, res) => {
     throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Сесія перевірки 2FA недійсна або завершилась.');
   }
 
-  const result = await query('SELECT * FROM users WHERE id = $1', [payload.sub]);
-  const user = result.rows[0];
-  if (!user) throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Користувача не знайдено.');
-  if (user.status !== 'approved') {
-    throw new AppError(403, 'ACCOUNT_NOT_APPROVED', 'Обліковий запис ще не активний.');
-  }
-  if (user.two_factor_enabled !== true) {
-    throw new AppError(400, 'TWO_FACTOR_NOT_ENABLED', '2FA не увімкнено для цього облікового запису.');
-  }
+  const client = await pool.connect();
+  let user;
+  try {
+    await client.query('BEGIN');
+    const result = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [payload.sub]);
+    user = result.rows[0];
+    if (!user) throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Користувача не знайдено.');
+    if (user.status !== 'approved') {
+      throw new AppError(403, 'ACCOUNT_NOT_APPROVED', 'Обліковий запис ще не активний.');
+    }
+    if (user.two_factor_enabled !== true) {
+      throw new AppError(400, 'TWO_FACTOR_NOT_ENABLED', '2FA не увімкнено для цього облікового запису.');
+    }
 
-  await verifyUserTwoFactor(user.id, input.code);
+    const verification = await verifyUserTwoFactor(user.id, input.code, client);
+    await completeMobileLoginWithFallback(client, payload, verification.method);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
   setSessionCookie(res, createAccessToken(user));
   res.json({ data: serializeUser(user) });
+}));
+
+router.post('/login/mobile/status', asyncHandler(async (req, res) => {
+  const input = parseInput(mobileLoginStatusSchema, req.body);
+  let payload;
+  try {
+    payload = verifyTwoFactorLoginToken(input.challengeToken);
+  } catch (_error) {
+    throw new AppError(401, 'INVALID_TWO_FACTOR_CHALLENGE', 'Сесія підтвердження входу недійсна або завершилась.');
+  }
+  const result = await consumeMobileLoginRequest(payload, input.requestId);
+  if (result.consumed && result.user) setSessionCookie(res, createAccessToken(result.user));
+  res.json({
+    data: {
+      requestId: result.request.id,
+      status: result.request.status,
+      expiresAt: result.request.expiresAt,
+      user: result.user ? serializeUser(result.user) : null
+    }
+  });
+}));
+
+router.post('/login/mobile/cancel', asyncHandler(async (req, res) => {
+  const input = parseInput(mobileLoginCancelSchema, req.body);
+  let payload;
+  try {
+    payload = verifyTwoFactorLoginToken(input.challengeToken);
+  } catch (_error) {
+    return res.status(204).end();
+  }
+  await cancelMobileLoginRequest(payload);
+  res.status(204).end();
 }));
 
 router.post('/logout', (req, res) => {

@@ -97,6 +97,147 @@ test('mobile pairing and device APIs preserve the fixed app contract', async () 
   });
   assert.match(twoFactorStatus.body.data.confirmedAt, /^\d{4}-\d{2}-\d{2}T/);
 
+  const loginBrowser = request.agent(app);
+  const loginRequest = await loginBrowser
+    .post('/api/auth/login')
+    .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151.0.0.0 Safari/537.36')
+    .send({ email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
+    .expect(202);
+  assert.deepEqual(Object.keys(loginRequest.body.data).sort(), [
+    'challengeToken',
+    'email',
+    'expiresAt',
+    'mobileApproval',
+    'passkeyAvailable',
+    'twoFactorMethod',
+    'twoFactorRequired'
+  ]);
+  assert.equal(loginRequest.body.data.twoFactorMethod, 'mt_workspace');
+  assert.equal(loginRequest.body.data.mobileApproval.status, 'pending');
+  assert.equal(loginRequest.body.data.mobileApproval.pollingIntervalMs, 2000);
+  assert.equal(loginRequest.body.data.mobileApproval.activeDeviceCount, 1);
+
+  const mobileLoginRequests = await request(app)
+    .get('/api/mobile/login-requests')
+    .set('Authorization', `Bearer ${firstClaim.body.data.accessToken}`)
+    .expect(200);
+  assert.equal(mobileLoginRequests.body.data.items.length, 1);
+  assert.deepEqual(Object.keys(mobileLoginRequests.body.data.items[0]).sort(), [
+    'browser',
+    'expiresAt',
+    'id',
+    'ipAddress',
+    'location',
+    'operatingSystem',
+    'requestedAt',
+    'status'
+  ]);
+  assert.equal(mobileLoginRequests.body.data.items[0].browser, 'Chrome 151');
+  assert.equal(mobileLoginRequests.body.data.items[0].operatingSystem, 'Windows');
+  assert.equal(mobileLoginRequests.body.data.items[0].location, 'Місце не визначено');
+
+  const pendingStatus = await loginBrowser
+    .post('/api/auth/login/mobile/status')
+    .send({
+      challengeToken: loginRequest.body.data.challengeToken,
+      requestId: loginRequest.body.data.mobileApproval.requestId
+    })
+    .expect(200);
+  assert.equal(pendingStatus.body.data.status, 'pending');
+  assert.equal(pendingStatus.body.data.user, null);
+  assert.equal(pendingStatus.headers['set-cookie'], undefined);
+
+  await request(app)
+    .post(`/api/mobile/login-requests/${loginRequest.body.data.mobileApproval.requestId}/approve`)
+    .set('Authorization', `Bearer ${firstClaim.body.data.accessToken}`)
+    .expect(200)
+    .expect((response) => assert.equal(response.body.data.status, 'approved'));
+
+  const approvedStatus = await loginBrowser
+    .post('/api/auth/login/mobile/status')
+    .send({
+      challengeToken: loginRequest.body.data.challengeToken,
+      requestId: loginRequest.body.data.mobileApproval.requestId
+    })
+    .expect(200);
+  assert.equal(approvedStatus.body.data.status, 'approved');
+  assert.equal(approvedStatus.body.data.user.id, userId);
+  assert.ok(approvedStatus.headers['set-cookie']);
+
+  const repeatedStatus = await request(app)
+    .post('/api/auth/login/mobile/status')
+    .send({
+      challengeToken: loginRequest.body.data.challengeToken,
+      requestId: loginRequest.body.data.mobileApproval.requestId
+    })
+    .expect(200);
+  assert.equal(repeatedStatus.body.data.status, 'approved');
+  assert.equal(repeatedStatus.body.data.user, null);
+  assert.equal(repeatedStatus.headers['set-cookie'], undefined);
+
+  const deniedLogin = await request(app)
+    .post('/api/auth/login')
+    .send({ email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
+    .expect(202);
+  await request(app)
+    .post(`/api/mobile/login-requests/${deniedLogin.body.data.mobileApproval.requestId}/deny`)
+    .set('Authorization', `Bearer ${firstClaim.body.data.accessToken}`)
+    .expect(200);
+  const deniedStatus = await request(app)
+    .post('/api/auth/login/mobile/status')
+    .send({
+      challengeToken: deniedLogin.body.data.challengeToken,
+      requestId: deniedLogin.body.data.mobileApproval.requestId
+    })
+    .expect(200);
+  assert.equal(deniedStatus.body.data.status, 'denied');
+  assert.equal(deniedStatus.body.data.user, null);
+  assert.equal(deniedStatus.headers['set-cookie'], undefined);
+
+  const expiredLogin = await request(app)
+    .post('/api/auth/login')
+    .send({ email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
+    .expect(202);
+  await query('UPDATE mobile_login_requests SET expires_at = $1 WHERE id = $2', [
+    new Date(Date.now() - 60_000),
+    expiredLogin.body.data.mobileApproval.requestId
+  ]);
+  await request(app)
+    .post(`/api/mobile/login-requests/${expiredLogin.body.data.mobileApproval.requestId}/approve`)
+    .set('Authorization', `Bearer ${firstClaim.body.data.accessToken}`)
+    .expect(410)
+    .expect((response) => assert.equal(response.body.error.code, 'LOGIN_REQUEST_EXPIRED'));
+  const expiredStatus = await request(app)
+    .post('/api/auth/login/mobile/status')
+    .send({
+      challengeToken: expiredLogin.body.data.challengeToken,
+      requestId: expiredLogin.body.data.mobileApproval.requestId
+    })
+    .expect(200);
+  assert.equal(expiredStatus.body.data.status, 'expired');
+  assert.equal(expiredStatus.headers['set-cookie'], undefined);
+
+  const fallbackLogin = await request(app)
+    .post('/api/auth/login')
+    .send({ email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD })
+    .expect(202);
+  const fallback = await request(app)
+    .post('/api/auth/login/2fa')
+    .send({
+      challengeToken: fallbackLogin.body.data.challengeToken,
+      code: recoveryCodes[4]
+    })
+    .expect(200);
+  assert.equal(fallback.body.data.id, userId);
+  assert.ok(fallback.headers['set-cookie']);
+  const fallbackRequest = await query(
+    'SELECT status, consumed_at, decision_method FROM mobile_login_requests WHERE id = $1',
+    [fallbackLogin.body.data.mobileApproval.requestId]
+  );
+  assert.equal(fallbackRequest.rows[0].status, 'approved');
+  assert.ok(fallbackRequest.rows[0].consumed_at);
+  assert.equal(fallbackRequest.rows[0].decision_method, 'recovery');
+
   await request(app)
     .post('/api/mobile/pairings/claim')
     .send({

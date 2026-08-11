@@ -306,8 +306,8 @@ export async function confirmTwoFactorSetup(userId, code) {
   }
 }
 
-export async function verifyUserTwoFactor(userId, code) {
-  const userResult = await query(
+export async function verifyUserTwoFactor(userId, code, db = { query }) {
+  const userResult = await db.query(
     `SELECT id, two_factor_enabled, two_factor_secret_ciphertext, two_factor_secret_iv,
             two_factor_secret_tag, two_factor_last_used_step
      FROM users
@@ -322,7 +322,7 @@ export async function verifyUserTwoFactor(userId, code) {
   const secret = decryptSecret(user.two_factor_secret_ciphertext, user.two_factor_secret_iv, user.two_factor_secret_tag);
   const matchingStep = findTotpStep(secret, code, user.two_factor_last_used_step);
   if (matchingStep !== null) {
-    const updated = await query(
+    const updated = await db.query(
       `UPDATE users
        SET two_factor_last_used_step = $1, updated_at = NOW()
        WHERE id = $2
@@ -334,7 +334,7 @@ export async function verifyUserTwoFactor(userId, code) {
 
   const recoveryCode = normalizeRecoveryCode(code);
   if (recoveryCode.length >= 8) {
-    const recoveryResult = await query(
+    const recoveryResult = await db.query(
       `UPDATE user_two_factor_recovery_codes
        SET used_at = NOW()
        WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL

@@ -31,10 +31,17 @@ export interface LoginInput {
 
 export interface TwoFactorLoginChallenge {
   twoFactorRequired: true;
+  twoFactorMethod: 'totp' | 'mt_workspace';
   passkeyAvailable: boolean;
   challengeToken: string;
   expiresAt: string;
   email: string;
+  mobileApproval?: {
+    requestId: string;
+    status: MobileLoginRequestStatus;
+    pollingIntervalMs: number;
+    activeDeviceCount: number;
+  };
 }
 
 export type LoginResponse = User | TwoFactorLoginChallenge;
@@ -42,6 +49,20 @@ export type LoginResponse = User | TwoFactorLoginChallenge;
 export interface TwoFactorLoginVerifyInput {
   challengeToken: string;
   code: string;
+}
+
+export type MobileLoginRequestStatus = 'pending' | 'approved' | 'denied' | 'expired';
+
+export interface MobileLoginStatusInput {
+  challengeToken: string;
+  requestId: string;
+}
+
+export interface MobileLoginStatus {
+  requestId: string;
+  status: MobileLoginRequestStatus;
+  expiresAt: string;
+  user: User | null;
 }
 
 export type PasskeyAuthenticationResponse = Awaited<ReturnType<typeof startAuthentication>>;
