@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
 const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+const tradeInTlsWorkflow = readFileSync(new URL('../.github/workflows/configure-trade-in-tls.yml', import.meta.url), 'utf8');
 const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
@@ -131,6 +132,19 @@ test('standalone Trade-in domain has an ACME bootstrap and isolated HTTPS proxy'
   assert.match(tradeInNginx, /proxy_pass http:\/\/127\.0\.0\.1:3100/);
   assert.match(tradeInNginx, /proxy_set_header X-Forwarded-Host \$host/);
   assert.match(tradeInNginx, /location \/\s*\{\s*return 404;/);
+});
+
+test('Trade-in TLS workflow is guarded, validates DNS, and verifies renewal', () => {
+  assert.match(tradeInTlsWorkflow, /workflow_dispatch:/);
+  assert.match(tradeInTlsWorkflow, /inputs\.confirmation == 'CONFIGURE-TRADEIN-TLS'/);
+  assert.match(tradeInTlsWorkflow, /environment: production/);
+  assert.match(tradeInTlsWorkflow, /EXPECTED_IP='45\.88\.191\.194'/);
+  assert.match(tradeInTlsWorkflow, /key: \$\{\{ secrets\.SSH_PRIVATE_KEY \}\}/);
+  assert.match(tradeInTlsWorkflow, /certbot" certonly|CERTBOT_BIN" certonly/);
+  assert.match(tradeInTlsWorkflow, /--webroot-path "\$ACME_ROOT"/);
+  assert.match(tradeInTlsWorkflow, /run_root "\$NGINX_BIN" -t/);
+  assert.match(tradeInTlsWorkflow, /--dry-run/);
+  assert.match(tradeInTlsWorkflow, /ROLLBACK_REQUIRED='true'/);
 });
 
 test('first persistent-storage deployment migrates media from the legacy container', () => {
