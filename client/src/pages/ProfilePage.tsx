@@ -269,7 +269,9 @@ export function MobilePairingModal({ purpose, onClose, onConnected }: {
         const current = await api.users.mobilePairing(pairing.id);
         if (!active) return;
         setPairing((previous) => previous ? { ...previous, ...current } : current);
-        if (current.status === 'claimed') await onConnectedRef.current();
+        if (current.status === 'claimed' && purpose === 'add_device') {
+          await onConnectedRef.current();
+        }
       } catch (pollError) {
         if (active) setError(pollError instanceof Error ? pollError.message : 'Не вдалося перевірити підключення.');
       } finally {
@@ -284,7 +286,7 @@ export function MobilePairingModal({ purpose, onClose, onConnected }: {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [pairing?.id, pairing?.status]);
+  }, [pairing?.id, pairing?.status, purpose]);
 
   async function copyManualCode() {
     if (!pairing?.manualCode) return;
@@ -323,6 +325,7 @@ export function MobilePairingModal({ purpose, onClose, onConnected }: {
     setPending(true);
     try {
       await api.users.acknowledgeMobilePairing(pairing.id);
+      await onConnectedRef.current();
       showToast('MT Workspace підключено.');
       onClose();
     } catch (acknowledgeError) {

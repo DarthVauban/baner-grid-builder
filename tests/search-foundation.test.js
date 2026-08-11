@@ -6,7 +6,10 @@ const agents = readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const opensearchDockerfile = readFileSync(new URL('../docker/opensearch/Dockerfile', import.meta.url), 'utf8');
 const envExample = readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
-const appService = compose.match(/\n {2}app:\n([\s\S]*?)\n {2}redis:\n/)?.[1] || '';
+const normalizedCompose = compose.replace(/\r\n/g, '\n');
+const appService = normalizedCompose.match(
+  /\n {2}app:\n([\s\S]*?)(?=\n {2}[a-z0-9_-]+:\n|\n[a-z0-9_-]+:\n|$)/i
+)?.[1] || '';
 
 test('search infrastructure stays opt-in and binds data services to loopback', () => {
   assert.match(compose, /redis:[\s\S]*profiles:\s*\["search"\]/);
