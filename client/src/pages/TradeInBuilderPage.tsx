@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
 import { TradeInPublicPage } from '../components/trade-in/TradeInPublicPage';
@@ -7,6 +7,8 @@ import {
   createTradeInOption,
   createTradeInStep,
   moveTradeInItem,
+  nextTradeInGeneratedKey,
+  transliterateTradeInFieldKey,
   tradeInId
 } from '../lib/trade-in';
 import { formatTradeInCondition, getTradeInFormGraph, validateTradeInLogic } from '../lib/trade-in-logic';
@@ -275,12 +277,51 @@ function FieldEditor({ field, fieldKeys, onChange, onRemove }: {
   onRemove: () => void;
 }) {
   const hasOptions = ['select', 'radio', 'checkbox'].includes(field.type);
+  const manuallyEditedFieldKeysRef = useRef(new Set<string>());
+  const manuallyEditedOptionValuesRef = useRef(new Set<string>());
+  const updateFieldLabel = (label: string) => {
+    const usedKeys = fieldKeys.filter((key) => key !== field.key);
+    const nextKey = manuallyEditedFieldKeysRef.current.has(field.id)
+      ? field.key
+      : nextTradeInGeneratedKey(label, field.key, field.label, usedKeys);
+    onChange((next) => {
+      next.label = label;
+      next.key = nextKey;
+    });
+  };
+  const updateFieldKey = (value: string) => {
+    manuallyEditedFieldKeysRef.current.add(field.id);
+    onChange((next) => {
+      next.key = value.trim() ? transliterateTradeInFieldKey(value) : '';
+    });
+  };
+  const updateOptionLabel = (optionId: string, label: string) => {
+    const option = field.options.find((item) => item.id === optionId);
+    if (!option) return;
+    const usedValues = field.options.filter((item) => item.id !== optionId).map((item) => item.value);
+    const nextValue = manuallyEditedOptionValuesRef.current.has(optionId)
+      ? option.value
+      : nextTradeInGeneratedKey(label, option.value, option.label, usedValues, 'option');
+    onChange((next) => {
+      const target = next.options.find((item) => item.id === optionId);
+      if (!target) return;
+      target.label = label;
+      target.value = nextValue;
+    });
+  };
+  const updateOptionValue = (optionId: string, value: string) => {
+    manuallyEditedOptionValuesRef.current.add(optionId);
+    onChange((next) => {
+      const option = next.options.find((item) => item.id === optionId);
+      if (option) option.value = value.trim() ? transliterateTradeInFieldKey(value, 'option') : '';
+    });
+  };
   return (
     <div className="trade-in-field-editor">
       <header><div><p className="eyebrow">Налаштування поля</p><h3>{field.label}</h3></div><button className="button button--danger button--small" type="button" onClick={onRemove}>Видалити поле</button></header>
       <div className="trade-in-builder-grid">
-        <TextField label="Назва поля" value={field.label} onChange={(value) => onChange((next) => { next.label = value; })} />
-        <TextField label="Системний ключ" value={field.key} onChange={(value) => onChange((next) => { next.key = value.replace(/[^a-zA-Z0-9_]/g, '_'); })} help="Латиниця, цифри та _; ключ має бути унікальним." />
+        <TextField label="Назва поля" value={field.label} onChange={updateFieldLabel} />
+        <TextField label="Системний ключ" value={field.key} onChange={updateFieldKey} help="Створюється автоматично з назви; за потреби його можна відредагувати." />
         <label className="field"><span>Тип поля</span><select value={field.type} onChange={(event) => onChange((next) => {
           next.type = event.target.value as TradeInFieldType;
           if (!['select', 'radio', 'checkbox'].includes(next.type)) next.options = [];
@@ -302,10 +343,12 @@ function FieldEditor({ field, fieldKeys, onChange, onRemove }: {
       <ConditionEditor condition={field.condition} fieldKeys={fieldKeys.filter((key) => key !== field.key)} onChange={(value) => onChange((next) => { next.condition = value; })} />
       {hasOptions && (
         <section className="trade-in-options-editor">
-          <header><div><strong>Варіанти відповіді</strong><small>Для чекбокса без варіантів буде показано один прапорець згоди.</small></div><button type="button" onClick={() => onChange((next) => { next.options.push(createTradeInOption(next.options.length)); })}>+ Додати</button></header>
+          <header><div><strong>Варіанти відповіді</strong><small>Для чекбокса без варіантів буде показано один прапорець згоди.</small></div><button type="button" onClick={() => onChange((next) => {
+            next.options.push(createTradeInOption(next.options.length, next.options.map((option) => option.value)));
+          })}>+ Додати</button></header>
           <div>{field.options.map((option, index) => <article key={option.id}>
-            <input aria-label="Назва варіанта" value={option.label} onChange={(event) => onChange((next) => { next.options[index].label = event.target.value; })} />
-            <input aria-label="Значення варіанта" value={option.value} onChange={(event) => onChange((next) => { next.options[index].value = event.target.value; })} />
+            <input aria-label="Назва варіанта" value={option.label} onChange={(event) => updateOptionLabel(option.id, event.target.value)} />
+            <input aria-label="Значення варіанта" value={option.value} onChange={(event) => updateOptionValue(option.id, event.target.value)} />
             <RepeaterActions index={index} count={field.options.length} onMove={(direction) => onChange((next) => { next.options = moveTradeInItem(next.options, index, direction); })} onRemove={() => onChange((next) => { next.options.splice(index, 1); })} />
           </article>)}</div>
         </section>

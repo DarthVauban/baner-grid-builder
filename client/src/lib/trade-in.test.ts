@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { TradeInField, TradeInStep } from '../types/trade-in';
 import {
+  createTradeInOption,
   emptyTradeInCondition,
   isTradeInFieldComplete,
   matchesTradeInCondition,
   matchesTradeInConditionGroup,
   moveTradeInItem,
+  nextTradeInGeneratedKey,
   transliterateTradeInFieldKey,
   tradeInAnswerLabel,
   uniqueTradeInFieldKey,
@@ -77,5 +79,18 @@ describe('Trade-in form helpers', () => {
     expect(transliterateTradeInFieldKey('Стан АКБ, %')).toBe('stan_akb');
     expect(uniqueTradeInFieldKey('Обсяг памʼяті', ['obsyah_pamyati', 'obsyah_pamyati_2']))
       .toBe('obsyah_pamyati_3');
+  });
+
+  it('updates generated field and option keys from their labels', () => {
+    expect(nextTradeInGeneratedKey('Колір пристрою', 'model', 'Модель', [], 'field'))
+      .toBe('kolir_prystroyu');
+    expect(nextTradeInGeneratedKey('Чорний', 'option_1', 'Варіант 1', [], 'option'))
+      .toBe('chornyy');
+    expect(nextTradeInGeneratedKey('Чорний', 'variant_1', 'Варіант 1', ['chornyy'], 'option'))
+      .toBe('chornyy_2');
+    expect(nextTradeInGeneratedKey('Нова назва', 'custom_api_key', 'Стара назва', [], 'field'))
+      .toBe('custom_api_key');
+    expect(createTradeInOption(0)).toMatchObject({ label: 'Варіант 1', value: 'variant_1' });
+    expect(createTradeInOption(0, ['variant_1'])).toMatchObject({ value: 'variant_1_2' });
   });
 });

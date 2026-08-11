@@ -42,9 +42,9 @@ import {
   createTradeInOption,
   emptyTradeInCondition,
   moveTradeInItem,
+  nextTradeInGeneratedKey,
   tradeInConditionGroup,
   transliterateTradeInFieldKey,
-  uniqueTradeInFieldKey,
   tradeInId
 } from '../../lib/trade-in';
 import type {
@@ -557,6 +557,8 @@ function FieldEditor({
   onChange,
   onLabelChange,
   onKeyChange,
+  onOptionLabelChange,
+  onOptionValueChange,
   onCreateCondition,
   onRemove
 }: {
@@ -565,6 +567,8 @@ function FieldEditor({
   onChange: (change: (field: TradeInField) => void) => void;
   onLabelChange: (value: string) => void;
   onKeyChange: (value: string) => void;
+  onOptionLabelChange: (optionId: string, value: string) => void;
+  onOptionValueChange: (optionId: string, value: string) => void;
   onCreateCondition: () => void;
   onRemove: () => void;
 }) {
@@ -620,12 +624,14 @@ function FieldEditor({
         <section className="trade-in-graph-options">
           <header>
             <div><strong>Варіанти відповіді</strong><small>{field.options.length} варіантів</small></div>
-            <button type="button" onClick={() => onChange((next) => { next.options.push(createTradeInOption(next.options.length)); })}>+ Додати</button>
+            <button type="button" onClick={() => onChange((next) => {
+              next.options.push(createTradeInOption(next.options.length, next.options.map((option) => option.value)));
+            })}>+ Додати</button>
           </header>
           {field.options.map((option, index) => (
             <article key={option.id}>
-              <input value={option.label} onChange={(event) => onChange((next) => { next.options[index].label = event.target.value; })} placeholder="Назва" />
-              <input value={option.value} onChange={(event) => onChange((next) => { next.options[index].value = event.target.value; })} placeholder="Значення" />
+              <input value={option.label} onChange={(event) => onOptionLabelChange(option.id, event.target.value)} placeholder="Назва" />
+              <input value={option.value} onChange={(event) => onOptionValueChange(option.id, event.target.value)} placeholder="Значення" />
               <button type="button" onClick={() => onChange((next) => { next.options.splice(index, 1); })}>×</button>
             </article>
           ))}
@@ -725,6 +731,7 @@ function TradeInLogicCanvas({
   const [fullscreen, setFullscreen] = useState(false);
   const clickConnectionRef = useRef<PendingConnection | null>(null);
   const manuallyEditedFieldKeysRef = useRef(new Set<string>());
+  const manuallyEditedOptionValuesRef = useRef(new Set<string>());
   const { fitView, screenToFlowPosition } = useReactFlow();
   const store = useStoreApi();
 
@@ -860,14 +867,12 @@ function TradeInLogicCanvas({
 
   const updateSelectedFieldLabel = (label: string) => {
     if (!selectedField) return;
-    const autoKey = transliterateTradeInFieldKey(selectedField.label);
-    const isLegacyAutoKey = /^new_field_\d+$/.test(selectedField.key);
-    const shouldUpdateKey = !manuallyEditedFieldKeysRef.current.has(selectedField.id)
-      && (selectedField.key === autoKey || isLegacyAutoKey);
     const usedKeys = allFields.filter((field) => field.id !== selectedField.id).map((field) => field.key);
     updateSelectedFieldIdentity(
       label,
-      shouldUpdateKey ? uniqueTradeInFieldKey(label, usedKeys) : selectedField.key
+      manuallyEditedFieldKeysRef.current.has(selectedField.id)
+        ? selectedField.key
+        : nextTradeInGeneratedKey(label, selectedField.key, selectedField.label, usedKeys)
     );
   };
 
@@ -877,6 +882,63 @@ function TradeInLogicCanvas({
     updateSelectedFieldIdentity(
       selectedField.label,
       value.trim() ? transliterateTradeInFieldKey(value) : ''
+    );
+  };
+
+  const updateSelectedFieldOptionIdentity = (optionId: string, label: string, value: string) => {
+    if (!selectedNode || !selectedField) return;
+    const previousOption = selectedField.options.find((option) => option.id === optionId);
+    if (!previousOption) return;
+    const previousValue = previousOption.value;
+    const replaceConditionValue = (condition: TradeInCondition) => {
+      if (!previousValue || previousValue === value || condition.fieldKey !== selectedField.key) return;
+      condition.value = condition.value
+        .split(',')
+        .map((item) => item.trim() === previousValue ? value : item.trim())
+        .join(',');
+    };
+
+    mutateGraph((nextGraph) => {
+      const owner = nextGraph.nodes.find((node) => node.id === selectedNode.id);
+      const field = owner?.fields.find((item) => item.id === selectedField.id);
+      const option = field?.options.find((item) => item.id === optionId);
+      if (!option) return;
+      option.label = label;
+      option.value = value;
+      if (!previousValue || previousValue === value) return;
+      nextGraph.nodes.forEach((node) => {
+        node.fields.forEach((item) => replaceConditionValue(item.condition));
+        node.branches.forEach((branch) => {
+          replaceConditionValue(branch.condition);
+          branch.conditionGroup?.conditions.forEach(replaceConditionValue);
+        });
+      });
+    });
+  };
+
+  const updateSelectedFieldOptionLabel = (optionId: string, label: string) => {
+    if (!selectedField) return;
+    const option = selectedField.options.find((item) => item.id === optionId);
+    if (!option) return;
+    const usedValues = selectedField.options.filter((item) => item.id !== optionId).map((item) => item.value);
+    updateSelectedFieldOptionIdentity(
+      optionId,
+      label,
+      manuallyEditedOptionValuesRef.current.has(optionId)
+        ? option.value
+        : nextTradeInGeneratedKey(label, option.value, option.label, usedValues, 'option')
+    );
+  };
+
+  const updateSelectedFieldOptionValue = (optionId: string, value: string) => {
+    if (!selectedField) return;
+    const option = selectedField.options.find((item) => item.id === optionId);
+    if (!option) return;
+    manuallyEditedOptionValuesRef.current.add(optionId);
+    updateSelectedFieldOptionIdentity(
+      optionId,
+      option.label,
+      value.trim() ? transliterateTradeInFieldKey(value, 'option') : ''
     );
   };
 
@@ -1489,6 +1551,8 @@ function TradeInLogicCanvas({
                     onChange={updateField}
                     onLabelChange={updateSelectedFieldLabel}
                     onKeyChange={updateSelectedFieldKey}
+                    onOptionLabelChange={updateSelectedFieldOptionLabel}
+                    onOptionValueChange={updateSelectedFieldOptionValue}
                     onCreateCondition={() => createConditionFromField(selectedNode, selectedField)}
                     onRemove={() => {
                       const index = selectedNode.fields.findIndex((field) => field.id === selectedField.id);
