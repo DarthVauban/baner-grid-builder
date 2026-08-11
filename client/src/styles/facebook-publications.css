@@ -3,6 +3,17 @@
   gap: 22px;
 }
 
+.facebook-page-heading {
+  width: 100%;
+  max-width: none;
+  gap: 32px;
+}
+
+.facebook-page-heading > div:first-child {
+  min-width: 0;
+  max-width: 760px;
+}
+
 .facebook-page-heading,
 .facebook-section-heading,
 .facebook-heading-actions,
@@ -354,6 +365,13 @@
   grid-column: 1 / -1;
 }
 
+.facebook-optional-heading {
+  margin: 2px 0 -2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .facebook-checkbox {
   display: flex;
   align-items: center;
@@ -573,7 +591,7 @@
 
 .facebook-group-picker__filters {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 

@@ -10,6 +10,7 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './modules/auth/auth.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import gridRoutes from './modules/grids/grid.routes.js';
+import publicGridRoutes from './modules/grids/grid.public.routes.js';
 import bannerRoutes from './modules/banners/banner.routes.js';
 import productTableRoutes from './modules/product-tables/product-table.routes.js';
 import taskRoutes from './modules/tasks/task.routes.js';
@@ -136,6 +137,7 @@ if (env.APP_ORIGIN) {
     if (req.path.startsWith('/api/public/application-forms')) return next();
     if (req.path.startsWith('/api/public/trade-in')) return next();
     if (req.path.startsWith('/api/public/store-map')) return next();
+    if (req.path.startsWith('/api/public/banner-grids')) return next();
     if (req.path.startsWith('/api/storefront')) return next();
     return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
   });
@@ -184,6 +186,7 @@ app.use('/api/storefront', publicEmbedCors, storefrontRoutes);
 app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
 app.use('/api/public/trade-in', publicEmbedCors, publicTradeInRoutes);
 app.use('/api/public/store-map', publicEmbedCors, publicStoreMapRoutes);
+app.use('/api/public/banner-grids', publicEmbedCors, publicGridRoutes);
 app.use('/api', notFoundHandler);
 
 app.use('/media/catalog', express.static(catalogMediaDir, {

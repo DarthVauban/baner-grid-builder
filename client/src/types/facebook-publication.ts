@@ -1,4 +1,3 @@
-export type FacebookStoreStatus = 'active' | 'inactive';
 export type FacebookGroupStatus = 'active' | 'inactive' | 'do_not_publish';
 export type FacebookAdvertisingPolicy = 'allowed' | 'forbidden' | 'unknown';
 export type FacebookCampaignStatus = 'draft' | 'active' | 'completed';
@@ -6,36 +5,19 @@ export type FacebookTargetStatus = 'not_started' | 'published' | 'pending_modera
 
 export interface FacebookPublicationStore {
   id: string;
-  code: string;
-  name: string;
   city: string;
   address: string;
-  notes: string;
-  status: FacebookStoreStatus;
   createdAt: string;
   updatedAt: string;
 }
 
 export type FacebookPublicationStoreInput = Pick<FacebookPublicationStore,
-  'code' | 'name' | 'city' | 'address' | 'notes' | 'status'>;
-
-export interface FacebookPublicationGroupStore {
-  id: string;
-  code: string;
-  name: string;
-  city: string;
-  address: string;
-  status: FacebookStoreStatus;
-}
+  'city' | 'address'>;
 
 export interface FacebookPublicationGroup {
   id: string;
   name: string;
   url: string;
-  city: string;
-  defaultStoreId: string;
-  store: FacebookPublicationGroupStore | null;
-  notes: string;
   advertisingPolicy: FacebookAdvertisingPolicy;
   moderationRequired: boolean;
   recommendedIntervalDays: number;
@@ -48,12 +30,8 @@ export interface FacebookPublicationGroup {
 export interface FacebookPublicationGroupInput {
   name: string;
   url: string;
-  city: string;
-  defaultStoreId: string;
-  notes: string;
   advertisingPolicy: FacebookAdvertisingPolicy;
   moderationRequired: boolean;
-  recommendedIntervalDays: number;
   status: FacebookGroupStatus;
 }
 
@@ -134,21 +112,15 @@ export interface FacebookImportRowBase {
 }
 
 export interface FacebookStoreImportRow extends FacebookImportRowBase {
-  code: string;
-  name: string;
   city: string;
   address: string;
-  status: FacebookStoreStatus;
 }
 
 export interface FacebookGroupImportRow extends FacebookImportRowBase {
   name: string;
   url: string;
-  city: string;
-  storeCode: string;
   advertisingPolicy: FacebookAdvertisingPolicy;
   moderationRequired: boolean;
-  recommendedIntervalDays: number;
   status: FacebookGroupStatus;
 }
 

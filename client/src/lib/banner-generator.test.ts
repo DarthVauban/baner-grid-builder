@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBannerHtml, buildGridExport, getBannerDatePhrase, isBannerValid } from './banner-generator';
+import { buildBannerHtml, buildGridEmbedScriptTag, buildGridExport, getBannerDatePhrase, isBannerValid } from './banner-generator';
 import type { BannerData } from '../types/workspace';
 
 const banner: BannerData = {
@@ -29,5 +29,10 @@ describe('banner generator', () => {
 
   it('derives a readable deadline phrase', () => {
     expect(getBannerDatePhrase(banner, new Date('2099-12-30T00:00:00Z').getTime())).toContain('До закінчення акції');
+  });
+
+  it('builds a short dynamic embed tag for a saved grid', () => {
+    const result = buildGridEmbedScriptTag('93ef3263-9d9b-4709-b6a2-65ff9a05a95d', 'https://workspace.example.com/tools/banner-grid');
+    expect(result).toBe('<script async src="https://workspace.example.com/api/public/banner-grids/93ef3263-9d9b-4709-b6a2-65ff9a05a95d/embed.js"></script>');
   });
 });

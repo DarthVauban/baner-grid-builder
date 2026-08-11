@@ -20,7 +20,10 @@
     "test:server": "node --import ./tests/test-env.js --test tests/*.test.js",
     "test:web": "vitest run",
     "test:e2e": "npm run build && playwright test",
-    "test:e2e:install": "playwright install chromium"
+    "test:e2e:install": "playwright install chromium",
+    "infra:search:config": "docker compose --profile search config --quiet",
+    "infra:search:up": "docker compose --profile search up -d redis opensearch",
+    "infra:search:stop": "docker compose --profile search stop redis opensearch"
   },
   "dependencies": {
     "@codemirror/lang-html": "^6.4.11",

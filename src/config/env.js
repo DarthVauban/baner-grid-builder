@@ -26,7 +26,17 @@ const schema = z.object({
   ),
   ADMIN_NAME: z.string().optional(),
   ADMIN_EMAIL: z.string().email().optional(),
-  ADMIN_PASSWORD: z.string().min(10).optional()
+  ADMIN_PASSWORD: z.string().min(10).optional(),
+  SEARCH_FEATURE_ENABLED: z.enum(['true', 'false']).default('false'),
+  OPENSEARCH_URL: z.string().url().default('http://localhost:9200'),
+  OPENSEARCH_INDEX_PREFIX: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/).default('mt-search'),
+  REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  SEARCH_WIDGET_ORIGIN: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().url().optional()
+  ),
+  SEARCH_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  SEARCH_ANALYTICS_RAW_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90)
 });
 
 const result = schema.safeParse(process.env);
@@ -40,6 +50,7 @@ export const env = {
   ...result.data,
   isProduction: result.data.NODE_ENV === 'production',
   databaseSsl: result.data.DATABASE_SSL === 'true',
+  searchFeatureEnabled: result.data.SEARCH_FEATURE_ENABLED === 'true',
   cookieSecure: result.data.COOKIE_SECURE === 'auto'
     ? result.data.NODE_ENV === 'production'
     : result.data.COOKIE_SECURE === 'true'

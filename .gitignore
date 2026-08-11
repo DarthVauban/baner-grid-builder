@@ -9,3 +9,7 @@ storage/
 playwright-report/
 test-results/
 .DS_Store
+search-linguistics/exports/*
+!search-linguistics/exports/.gitkeep
+search-linguistics/snapshots/*
+!search-linguistics/snapshots/.gitkeep

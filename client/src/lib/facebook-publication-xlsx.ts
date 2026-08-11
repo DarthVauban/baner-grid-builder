@@ -5,22 +5,20 @@ import type {
   FacebookPublicationWorkbookRows
 } from '../types/facebook-publication';
 
-export const FACEBOOK_STORES_SHEET = 'Магазини';
+export const FACEBOOK_STORES_SHEET = 'Міста';
 export const FACEBOOK_GROUPS_SHEET = 'Facebook-групи';
 export const FACEBOOK_INSTRUCTIONS_SHEET = 'Інструкція';
 export type FacebookPublicationImportType = 'stores' | 'groups';
 
-const storeHeaders = ['Код магазину', 'Назва', 'Місто', 'Адреса', 'Примітка', 'Активний'];
+const storeHeaders = ['Місто', 'Адреса'];
 const groupHeaders = [
   'Назва групи',
   'Посилання',
-  'Місто',
-  'Код магазину',
-  'Примітки',
-  'Реклама',
+  'Реклама дозволена',
+  'Реклама заборонена',
   'Модерація',
-  'Частота, днів',
-  'Статус'
+  'Неактивна',
+  'Не публікувати'
 ];
 
 function worksheetWithWidths(rows: unknown[][], widths: number[]) {
@@ -34,26 +32,24 @@ export function createFacebookPublicationTemplateWorkbook() {
   const workbook = XLSX.utils.book_new();
   const stores = worksheetWithWidths([
     storeHeaders,
-    ['KYIV-01', 'Mobile Trend — Центр', 'Київ', 'вул. Хрещатик, 1', 'Основний магазин', 'Так']
-  ], [18, 30, 18, 42, 32, 14]);
+    ['Київ', 'вул. Хрещатик, 1']
+  ], [24, 64]);
   const groups = worksheetWithWidths([
     groupHeaders,
-    ['Новини Києва', 'https://www.facebook.com/groups/example.kyiv', 'Київ', 'KYIV-01', 'Публікувати у будні', 'Дозволена', 'Так', 14, 'Активна']
-  ], [32, 56, 18, 18, 34, 18, 16, 18, 22]);
+    ['Новини Києва', 'https://www.facebook.com/groups/example.kyiv', 'Так', '', 'Так', '', '']
+  ], [32, 56, 22, 24, 16, 16, 22]);
   const instructions = worksheetWithWidths([
     ['Аркуш', 'Колонка', 'Обовʼязково', 'Допустимі значення / пояснення'],
-    ['Магазини', 'Код магазину', 'Так', 'Унікальний стабільний код, наприклад KYIV-01.'],
-    ['Магазини', 'Назва', 'Так', 'Внутрішня зрозуміла назва магазину.'],
-    ['Магазини', 'Місто', 'Так', 'Назва міста українською.'],
-    ['Магазини', 'Адреса', 'Так', 'Повна адреса, яка підставлятиметься в текст.'],
-    ['Магазини', 'Активний', 'Ні', 'Так або Ні. За замовчуванням — Так.'],
+    ['Міста', 'Місто', 'Так', 'Назва міста українською. Повторний імпорт оновлює адресу за містом.'],
+    ['Міста', 'Адреса', 'Так', 'Повна адреса, яка підставлятиметься в текст.'],
+    ['Facebook-групи', 'Назва групи', 'Так', 'Назва Facebook-групи.'],
     ['Facebook-групи', 'Посилання', 'Так', 'HTTPS-посилання виду facebook.com/groups/...'],
-    ['Facebook-групи', 'Код магазину', 'Так', 'Код із аркуша «Магазини» або з уже наявного довідника.'],
-    ['Facebook-групи', 'Реклама', 'Ні', 'Дозволена, Заборонена або Невідома.'],
+    ['Facebook-групи', 'Реклама дозволена', 'Ні', 'Так або порожньо. Не поєднуйте з «Реклама заборонена».'],
+    ['Facebook-групи', 'Реклама заборонена', 'Ні', 'Так або порожньо. Не поєднуйте з «Реклама дозволена».'],
     ['Facebook-групи', 'Модерація', 'Ні', 'Так або Ні.'],
-    ['Facebook-групи', 'Частота, днів', 'Ні', 'Ціле число від 0 до 365. За замовчуванням — 14.'],
-    ['Facebook-групи', 'Статус', 'Ні', 'Активна, Неактивна або Не публікувати.'],
-    ['', '', '', 'Перед імпортом видаліть приклади або замініть їх власними даними. Повторний імпорт оновлює магазини за кодом, а групи — за URL.']
+    ['Facebook-групи', 'Неактивна', 'Ні', 'Так або порожньо.'],
+    ['Facebook-групи', 'Не публікувати', 'Ні', 'Так або порожньо.'],
+    ['', '', '', 'Групи та міста імпортуються незалежно. Перед імпортом видаліть приклади або замініть їх власними даними.']
   ], [22, 24, 16, 90]);
   XLSX.utils.book_append_sheet(workbook, stores, FACEBOOK_STORES_SHEET);
   XLSX.utils.book_append_sheet(workbook, groups, FACEBOOK_GROUPS_SHEET);
@@ -71,16 +67,12 @@ export function createFacebookStoresImportTemplateWorkbook() {
   const workbook = XLSX.utils.book_new();
   const stores = worksheetWithWidths([
     storeHeaders,
-    ['KYIV-01', 'Mobile Trend — Центр', 'Київ', 'вул. Хрещатик, 1', 'Основний магазин', 'Так']
-  ], [18, 30, 18, 42, 32, 14]);
+    ['Київ', 'вул. Хрещатик, 1']
+  ], [24, 64]);
   const instructions = worksheetWithWidths([
     ['Колонка', 'Обовʼязково', 'Допустимі значення / пояснення'],
-    ['Код магазину', 'Так', 'Унікальний стабільний код, наприклад KYIV-01. Повторний імпорт оновлює магазин за цим кодом.'],
-    ['Назва', 'Так', 'Внутрішня зрозуміла назва магазину.'],
-    ['Місто', 'Так', 'Назва міста українською.'],
+    ['Місто', 'Так', 'Назва міста українською. Повторний імпорт оновлює адресу за містом.'],
     ['Адреса', 'Так', 'Повна адреса, яка підставлятиметься в текст.'],
-    ['Примітка', 'Ні', 'Внутрішня примітка про магазин.'],
-    ['Активний', 'Ні', 'Так або Ні. За замовчуванням — Так.'],
     ['', '', 'Перед імпортом видаліть приклад або замініть його власними даними.']
   ], [24, 16, 90]);
   XLSX.utils.book_append_sheet(workbook, stores, FACEBOOK_STORES_SHEET);
@@ -89,7 +81,7 @@ export function createFacebookStoresImportTemplateWorkbook() {
 }
 
 export function downloadFacebookStoresImportTemplate() {
-  XLSX.writeFile(createFacebookStoresImportTemplateWorkbook(), 'facebook-stores-import-template.xlsx', {
+  XLSX.writeFile(createFacebookStoresImportTemplateWorkbook(), 'facebook-cities-import-template.xlsx', {
     compression: true
   });
 }
@@ -98,19 +90,17 @@ export function createFacebookGroupsImportTemplateWorkbook() {
   const workbook = XLSX.utils.book_new();
   const groups = worksheetWithWidths([
     groupHeaders,
-    ['Новини Києва', 'https://www.facebook.com/groups/example.kyiv', 'Київ', 'KYIV-01', 'Публікувати у будні', 'Дозволена', 'Так', 14, 'Активна']
-  ], [32, 56, 18, 18, 34, 18, 16, 18, 22]);
+    ['Новини Києва', 'https://www.facebook.com/groups/example.kyiv', 'Так', '', 'Так', '', '']
+  ], [32, 56, 22, 24, 16, 16, 22]);
   const instructions = worksheetWithWidths([
     ['Колонка', 'Обовʼязково', 'Допустимі значення / пояснення'],
     ['Назва групи', 'Так', 'Назва Facebook-групи.'],
     ['Посилання', 'Так', 'HTTPS-посилання виду facebook.com/groups/... Повторний імпорт оновлює групу за посиланням.'],
-    ['Місто', 'Так', 'Місто, до якого належить група.'],
-    ['Код магазину', 'Так', 'Код уже наявного магазину з довідника «Магазини».'],
-    ['Примітки', 'Ні', 'Внутрішні правила або примітки по групі.'],
-    ['Реклама', 'Ні', 'Дозволена, Заборонена або Невідома.'],
+    ['Реклама дозволена', 'Ні', 'Так або порожньо. Не поєднуйте з «Реклама заборонена».'],
+    ['Реклама заборонена', 'Ні', 'Так або порожньо. Не поєднуйте з «Реклама дозволена».'],
     ['Модерація', 'Ні', 'Так або Ні.'],
-    ['Частота, днів', 'Ні', 'Ціле число від 0 до 365. За замовчуванням — 14.'],
-    ['Статус', 'Ні', 'Активна, Неактивна або Не публікувати.'],
+    ['Неактивна', 'Ні', 'Так або порожньо.'],
+    ['Не публікувати', 'Ні', 'Так або порожньо.'],
     ['', '', 'Перед імпортом видаліть приклад або замініть його власними даними.']
   ], [24, 16, 90]);
   XLSX.utils.book_append_sheet(workbook, groups, FACEBOOK_GROUPS_SHEET);
@@ -155,7 +145,7 @@ export function createFacebookStoresExportWorkbook(
 }
 
 export function downloadFacebookStoresExport(stores: FacebookPublicationStore[]) {
-  XLSX.writeFile(createFacebookStoresExportWorkbook(stores), 'mobile-trend-stores.xlsx', {
+  XLSX.writeFile(createFacebookStoresExportWorkbook(stores), 'mobile-trend-cities.xlsx', {
     compression: true
   });
 }
@@ -181,7 +171,7 @@ export async function readFacebookPublicationWorkbook(
 ): Promise<FacebookPublicationWorkbookRows> {
   const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
   const firstSheet = workbook.SheetNames[0] ? workbook.Sheets[workbook.SheetNames[0]] : undefined;
-  const storesSheet = findSheet(workbook, [FACEBOOK_STORES_SHEET, 'Stores', 'Магазини Mobile Trend'])
+  const storesSheet = findSheet(workbook, [FACEBOOK_STORES_SHEET, 'Магазини', 'Stores', 'Магазини Mobile Trend'])
     || (importType === 'stores' ? firstSheet : undefined);
   const groupsSheet = findSheet(workbook, [FACEBOOK_GROUPS_SHEET, 'Facebook groups', 'Групи'])
     || (importType === 'groups' ? firstSheet : undefined);
@@ -191,10 +181,10 @@ export async function readFacebookPublicationWorkbook(
   };
   if (!rows.stores.length && !rows.groups.length) {
     throw new Error(importType === 'stores'
-      ? 'У файлі немає заповненого списку магазинів.'
+      ? 'У файлі немає заповненого списку міст і адрес.'
       : importType === 'groups'
         ? 'У файлі немає заповненого списку Facebook-груп.'
-        : 'У файлі немає заповнених аркушів «Магазини» або «Facebook-групи».');
+        : 'У файлі немає заповнених аркушів «Міста» або «Facebook-групи».');
   }
   return rows;
 }

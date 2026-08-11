@@ -1,0 +1,50 @@
+version: 1
+tenant_id: replace-with-tenant-id
+description: >-
+  Starter schema only. Replace examples with catalog-grounded products after the first Horoshop
+  synchronization. Do not invent production product identifiers.
+
+queries:
+  - id: exact-sku-template
+    enabled: false
+    locale: uk
+    query: replace-with-real-sku
+    expected:
+      product_ids: []
+      category_ids: []
+    forbidden:
+      product_ids: []
+      category_ids: []
+    checks:
+      top_k: 10
+      exact_product_rank_lte: 1
+    notes: Enable after a real catalog SKU is available.
+
+  - id: ukrainian-morphology-template
+    enabled: false
+    locale: uk
+    query: replace-with-real-inflected-query
+    expected:
+      product_ids: []
+      category_ids: []
+    forbidden:
+      product_ids: []
+      category_ids: []
+    checks:
+      top_k: 10
+    notes: Use a real catalog term and an observed inflected form.
+
+  - id: scoped-synonym-template
+    enabled: false
+    locale: uk
+    query: replace-with-observed-colloquial-query
+    expected:
+      product_ids: []
+      category_ids: []
+    forbidden:
+      product_ids: []
+      category_ids: []
+    checks:
+      top_k: 10
+    notes: Include at least one forbidden category to detect over-broad expansion.
+

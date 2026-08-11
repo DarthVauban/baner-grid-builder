@@ -10,11 +10,11 @@ import {
   analyzeFacebookPublicationImport,
   commitFacebookPublicationImport,
   createFacebookPublicationCampaign,
+  facebookPublicationStoreIdentity,
   facebookPublicationRiskSummary,
   facebookPublicationToolId,
   loadFacebookPublicationCampaign,
   normalizeFacebookGroupUrl,
-  normalizeStoreCode,
   recordFacebookPublicationActivity,
   retryFacebookPublicationTarget,
   serializeFacebookPublicationAsset,
@@ -34,29 +34,21 @@ const searchSchema = z.object({
   status: z.string().trim().max(40).default('')
 });
 const storeSchema = z.object({
-  code: z.string().trim().min(1, 'Вкажіть код магазину.').max(80),
-  name: z.string().trim().min(1, 'Вкажіть назву магазину.').max(200),
   city: z.string().trim().min(1, 'Вкажіть місто.').max(120),
-  address: z.string().trim().min(1, 'Вкажіть адресу.').max(500),
-  notes: z.string().max(4000).default(''),
-  status: z.enum(['active', 'inactive']).default('active')
+  address: z.string().trim().min(1, 'Вкажіть адресу.').max(500)
 });
 const groupSchema = z.object({
   name: z.string().trim().min(1, 'Вкажіть назву групи.').max(300),
   url: z.string().trim().min(1).max(2000),
-  city: z.string().trim().min(1, 'Вкажіть місто.').max(120),
-  defaultStoreId: z.string().uuid(),
-  notes: z.string().max(4000).default(''),
   advertisingPolicy: z.enum(['allowed', 'forbidden', 'unknown']).default('unknown'),
   moderationRequired: z.boolean().default(false),
-  recommendedIntervalDays: z.number().int().min(0).max(365).default(14),
   status: z.enum(['active', 'inactive', 'do_not_publish']).default('active')
 });
 const importSchema = z.object({
   stores: z.array(z.record(z.string(), z.unknown())).max(10000).default([]),
   groups: z.array(z.record(z.string(), z.unknown())).max(20000).default([])
 }).refine((input) => input.stores.length > 0 || input.groups.length > 0, {
-  message: 'Файл не містить магазинів або Facebook-груп.'
+  message: 'Файл не містить міст, адрес або Facebook-груп.'
 });
 const campaignSchema = z.object({
   title: z.string().trim().min(1, 'Вкажіть назву кампанії.').max(200),
@@ -101,26 +93,24 @@ router.get('/stores', asyncHandler(async (req, res) => {
   const input = parseInput(searchSchema, req.query);
   const result = await query(
     `SELECT * FROM facebook_publication_stores
-     WHERE ($1 = '' OR name ILIKE '%' || $1 || '%' OR city ILIKE '%' || $1 || '%'
-       OR address ILIKE '%' || $1 || '%' OR code ILIKE '%' || $1 || '%')
-       AND ($2 = '' OR status = $2)
-     ORDER BY lower(city), lower(name)`,
-    [input.search, input.status]
+     WHERE ($1 = '' OR city ILIKE '%' || $1 || '%' OR address ILIKE '%' || $1 || '%')
+     ORDER BY lower(city), lower(address)`,
+    [input.search]
   );
   res.json({ data: result.rows.map(serializeFacebookPublicationStore) });
 }));
 
 router.post('/stores', requireRole('admin'), asyncHandler(async (req, res) => {
   const input = parseInput(storeSchema, req.body);
-  const normalizedCode = normalizeStoreCode(input.code);
-  const existing = await query('SELECT id FROM facebook_publication_stores WHERE normalized_code = $1', [normalizedCode]);
-  if (existing.rows[0]) throw new AppError(409, 'FACEBOOK_STORE_CODE_EXISTS', 'Магазин із таким кодом уже існує.');
+  const identity = facebookPublicationStoreIdentity(input.city);
+  const existing = await query('SELECT id FROM facebook_publication_stores WHERE lower(city) = lower($1)', [input.city]);
+  if (existing.rows[0]) throw new AppError(409, 'FACEBOOK_CITY_EXISTS', 'Таке місто вже є в довіднику. Відредагуйте його адресу.');
   const result = await query(
     `INSERT INTO facebook_publication_stores (
        code, normalized_code, name, city, address, notes, status, created_by
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
-    [input.code, normalizedCode, input.name, input.city, input.address, input.notes, input.status, req.user.id]
+    [identity.code, identity.normalizedCode, input.city, input.city, input.address, '', 'active', req.user.id]
   );
   res.status(201).json({ data: serializeFacebookPublicationStore(result.rows[0]) });
 }));
@@ -128,6 +118,7 @@ router.post('/stores', requireRole('admin'), asyncHandler(async (req, res) => {
 router.put('/stores/:id', requireRole('admin'), asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const input = parseInput(storeSchema, req.body);
+  const identity = facebookPublicationStoreIdentity(input.city);
   const result = await query(
     `UPDATE facebook_publication_stores
      SET code = $2, normalized_code = $3, name = $4, city = $5,
@@ -135,13 +126,14 @@ router.put('/stores/:id', requireRole('admin'), asyncHandler(async (req, res) =>
      WHERE id = $1
        AND NOT EXISTS (
          SELECT 1 FROM facebook_publication_stores AS duplicate
-         WHERE duplicate.normalized_code = $3 AND duplicate.id <> $1
+         WHERE (lower(duplicate.city) = lower($5) OR duplicate.normalized_code = $3)
+           AND duplicate.id <> $1
        )
      RETURNING *`,
-    [id, input.code, normalizeStoreCode(input.code), input.name, input.city,
-      input.address, input.notes, input.status]
+    [id, identity.code, identity.normalizedCode, input.city, input.city,
+      input.address, '', 'active']
   );
-  if (!result.rows[0]) throw new AppError(409, 'FACEBOOK_STORE_UPDATE_CONFLICT', 'Магазин не знайдено або такий код уже використовується.');
+  if (!result.rows[0]) throw new AppError(409, 'FACEBOOK_CITY_UPDATE_CONFLICT', 'Місто не знайдено або така назва вже використовується.');
   res.json({ data: serializeFacebookPublicationStore(result.rows[0]) });
 }));
 
@@ -149,37 +141,31 @@ router.delete('/stores/:id', requireRole('admin'), asyncHandler(async (req, res)
   const id = parseInput(idSchema, req.params.id);
   const references = await query(
     `SELECT
-       (SELECT COUNT(*) FROM facebook_publication_groups WHERE default_store_id = $1)::INTEGER AS groups,
        (SELECT COUNT(*) FROM facebook_publication_targets WHERE store_id = $1)::INTEGER AS targets`,
     [id]
   );
-  if (Number(references.rows[0]?.groups || 0) || Number(references.rows[0]?.targets || 0)) {
-    throw new AppError(409, 'FACEBOOK_STORE_IN_USE', 'Магазин використовується групами або історією. Змініть його статус на «Неактивний».');
+  if (Number(references.rows[0]?.targets || 0)) {
+    throw new AppError(409, 'FACEBOOK_CITY_IN_USE', 'Місто й адреса використовуються в історії кампаній і не можуть бути видалені.');
   }
   const result = await query('DELETE FROM facebook_publication_stores WHERE id = $1', [id]);
-  if (!result.rowCount) throw new AppError(404, 'FACEBOOK_STORE_NOT_FOUND', 'Магазин не знайдено.');
+  if (!result.rowCount) throw new AppError(404, 'FACEBOOK_CITY_NOT_FOUND', 'Місто не знайдено.');
   res.status(204).end();
 }));
 
 router.get('/groups', asyncHandler(async (req, res) => {
   const input = parseInput(searchSchema, req.query);
   const result = await query(
-    `SELECT groups.*, stores.id AS store_id, stores.code AS store_code,
-            stores.name AS store_name, stores.city AS store_city,
-            stores.address AS store_address, stores.status AS store_status,
-            last_publication.last_published_at
+    `SELECT groups.*, last_publication.last_published_at
      FROM facebook_publication_groups AS groups
-     JOIN facebook_publication_stores AS stores ON stores.id = groups.default_store_id
      LEFT JOIN (
        SELECT group_id, MAX(published_at) AS last_published_at
        FROM facebook_publication_targets
        WHERE status = 'published'
        GROUP BY group_id
      ) AS last_publication ON last_publication.group_id = groups.id
-     WHERE ($1 = '' OR groups.name ILIKE '%' || $1 || '%' OR groups.city ILIKE '%' || $1 || '%'
-       OR stores.name ILIKE '%' || $1 || '%' OR groups.url ILIKE '%' || $1 || '%')
+     WHERE ($1 = '' OR groups.name ILIKE '%' || $1 || '%' OR groups.url ILIKE '%' || $1 || '%')
        AND ($2 = '' OR groups.status = $2)
-     ORDER BY lower(groups.city), lower(groups.name)`,
+     ORDER BY lower(groups.name)`,
     [input.search, input.status]
   );
   res.json({ data: result.rows.map(serializeFacebookPublicationGroup) });
@@ -188,26 +174,19 @@ router.get('/groups', asyncHandler(async (req, res) => {
 router.post('/groups', requireRole('admin'), asyncHandler(async (req, res) => {
   const input = parseInput(groupSchema, req.body);
   const normalizedUrl = normalizeFacebookGroupUrl(input.url);
-  const store = await query('SELECT id FROM facebook_publication_stores WHERE id = $1', [input.defaultStoreId]);
-  if (!store.rows[0]) throw new AppError(422, 'FACEBOOK_STORE_NOT_FOUND', 'Вибраний магазин не знайдено.');
   const existing = await query('SELECT id FROM facebook_publication_groups WHERE normalized_url = $1', [normalizedUrl]);
   if (existing.rows[0]) throw new AppError(409, 'FACEBOOK_GROUP_URL_EXISTS', 'Група з таким посиланням уже існує.');
   const result = await query(
     `INSERT INTO facebook_publication_groups (
        name, url, normalized_url, city, default_store_id, notes,
        advertising_policy, moderation_required, recommended_interval_days, status, created_by
-     ) VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ) VALUES ($1, $2, $2, '', NULL, '', $3, $4, 14, $5, $6)
      RETURNING id`,
-    [input.name, normalizedUrl, input.city, input.defaultStoreId, input.notes,
-      input.advertisingPolicy, input.moderationRequired, input.recommendedIntervalDays, input.status, req.user.id]
+    [input.name, normalizedUrl, input.advertisingPolicy, input.moderationRequired, input.status, req.user.id]
   );
   const loaded = await query(
-    `SELECT groups.*, stores.id AS store_id, stores.code AS store_code,
-            stores.name AS store_name, stores.city AS store_city,
-            stores.address AS store_address, stores.status AS store_status,
-            NULL AS last_published_at
+    `SELECT groups.*, NULL AS last_published_at
      FROM facebook_publication_groups AS groups
-     JOIN facebook_publication_stores AS stores ON stores.id = groups.default_store_id
      WHERE groups.id = $1`,
     [result.rows[0].id]
   );
@@ -220,28 +199,21 @@ router.put('/groups/:id', requireRole('admin'), asyncHandler(async (req, res) =>
   const normalizedUrl = normalizeFacebookGroupUrl(input.url);
   const result = await query(
     `UPDATE facebook_publication_groups
-     SET name = $2, url = $3, normalized_url = $3, city = $4,
-         default_store_id = $5, notes = $6, advertising_policy = $7,
-         moderation_required = $8, recommended_interval_days = $9,
-         status = $10, updated_at = NOW()
+     SET name = $2, url = $3, normalized_url = $3, city = '',
+         default_store_id = NULL, advertising_policy = $4,
+         moderation_required = $5, status = $6, updated_at = NOW()
      WHERE id = $1
-       AND EXISTS (SELECT 1 FROM facebook_publication_stores WHERE id = $5)
        AND NOT EXISTS (
          SELECT 1 FROM facebook_publication_groups AS duplicate
          WHERE duplicate.normalized_url = $3 AND duplicate.id <> $1
        )
      RETURNING id`,
-    [id, input.name, normalizedUrl, input.city, input.defaultStoreId, input.notes,
-      input.advertisingPolicy, input.moderationRequired, input.recommendedIntervalDays, input.status]
+    [id, input.name, normalizedUrl, input.advertisingPolicy, input.moderationRequired, input.status]
   );
-  if (!result.rows[0]) throw new AppError(409, 'FACEBOOK_GROUP_UPDATE_CONFLICT', 'Групу не знайдено, магазин недоступний або URL уже використовується.');
+  if (!result.rows[0]) throw new AppError(409, 'FACEBOOK_GROUP_UPDATE_CONFLICT', 'Групу не знайдено або URL уже використовується.');
   const loaded = await query(
-    `SELECT groups.*, stores.id AS store_id, stores.code AS store_code,
-            stores.name AS store_name, stores.city AS store_city,
-            stores.address AS store_address, stores.status AS store_status,
-            last_publication.last_published_at
+    `SELECT groups.*, last_publication.last_published_at
      FROM facebook_publication_groups AS groups
-     JOIN facebook_publication_stores AS stores ON stores.id = groups.default_store_id
      LEFT JOIN (
        SELECT group_id, MAX(published_at) AS last_published_at
        FROM facebook_publication_targets

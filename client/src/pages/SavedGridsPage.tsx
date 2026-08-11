@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon';
 import { LibraryCard } from '../components/LibraryCard';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
-import { buildGridExport, copyToClipboard } from '../lib/banner-generator';
+import { buildGridEmbedScriptTag, buildGridExport, copyToClipboard } from '../lib/banner-generator';
 import { useBannerWorkspace } from '../workspace/BannerWorkspaceContext';
 import { useToast } from '../toast/ToastContext';
 
@@ -46,6 +46,7 @@ export function SavedGridsPage({ embedded = false }: { embedded?: boolean }) {
             actions={<>
               <button className="button button--primary button--small" onClick={() => { workspace.loadGrid(grid); navigate('/tools/banner-grid'); }}><Icon name="edit" size={16} /> {grid.isOwner ? 'Редагувати' : 'Використати як копію'}</button>
               <button className="button button--secondary button--small" onClick={() => void copyToClipboard(buildGridExport(grid.banners, grid.shareDescription)).then(() => showToast('Код сітки скопійовано.')).catch(() => showToast('Не вдалося скопіювати код.', 'error'))}><Icon name="copy" size={16} /> Копіювати код</button>
+              <button className="button button--secondary button--small" onClick={() => void copyToClipboard(buildGridEmbedScriptTag(grid.id)).then(() => showToast('Скрипт сітки скопійовано.')).catch(() => showToast('Не вдалося скопіювати скрипт.', 'error'))}><Icon name="copy" size={16} /> Копіювати скрипт</button>
               {grid.isOwner && <button className="button button--danger button--small" onClick={() => void remove(grid.id, grid.name)}><Icon name="delete" size={16} /> Видалити</button>}
             </>}
           />

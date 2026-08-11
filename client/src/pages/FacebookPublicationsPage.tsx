@@ -12,8 +12,6 @@ import {
   readFacebookPublicationWorkbook
 } from '../lib/facebook-publication-xlsx';
 import type {
-  FacebookAdvertisingPolicy,
-  FacebookGroupStatus,
   FacebookPublicationCampaign,
   FacebookPublicationGroup,
   FacebookPublicationGroupInput,
@@ -22,7 +20,6 @@ import type {
   FacebookPublicationStoreInput,
   FacebookPublicationTarget,
   FacebookPublicationWorkbookRows,
-  FacebookStoreStatus,
   FacebookTargetStatus
 } from '../types/facebook-publication';
 import { Icon } from '../components/Icon';
@@ -90,13 +87,9 @@ function StoreEditor({
 }) {
   const { showToast } = useToast();
   const [input, setInput] = useState<FacebookPublicationStoreInput>(() => store ? {
-    code: store.code,
-    name: store.name,
     city: store.city,
-    address: store.address,
-    notes: store.notes,
-    status: store.status
-  } : { code: '', name: '', city: '', address: '', notes: '', status: 'active' });
+    address: store.address
+  } : { city: '', address: '' });
   const save = useMutation({
     mutationFn: () => store
       ? api.facebookPublications.updateStore(store.id, input)
@@ -107,18 +100,18 @@ function StoreEditor({
     event.preventDefault();
     try {
       await save.mutateAsync();
-      showToast(store ? 'Магазин оновлено.' : 'Магазин додано.');
+      showToast(store ? 'Місто й адресу оновлено.' : 'Місто й адресу додано.');
       onSaved();
       onClose();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти магазин.', 'error');
+      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти місто й адресу.', 'error');
     }
   }
 
   return <ModalDialog
     ariaLabelledBy="facebook-store-editor-title"
-    eyebrow="Довідник магазинів"
-    title={store ? 'Редагувати магазин' : 'Новий магазин'}
+    eyebrow="Довідник міст"
+    title={store ? 'Редагувати місто' : 'Нове місто'}
     onClose={onClose}
     onSubmit={submit}
     closeDisabled={save.isPending}
@@ -129,42 +122,30 @@ function StoreEditor({
     </>}
   >
     <div className="facebook-form-grid">
-      <label className="field"><span>Код магазину</span><input required maxLength={80} value={input.code} onChange={(event) => setInput({ ...input, code: event.target.value })} placeholder="KYIV-01" /></label>
-      <label className="field"><span>Назва</span><input required maxLength={200} value={input.name} onChange={(event) => setInput({ ...input, name: event.target.value })} /></label>
       <label className="field"><span>Місто</span><input required maxLength={120} value={input.city} onChange={(event) => setInput({ ...input, city: event.target.value })} /></label>
-      <label className="field"><span>Статус</span><StyledSelect<FacebookStoreStatus> value={input.status} onChange={(status) => setInput({ ...input, status })} ariaLabel="Статус магазину" options={[{ value: 'active', label: 'Активний' }, { value: 'inactive', label: 'Неактивний' }]} /></label>
-      <label className="field facebook-form-grid__wide"><span>Адреса</span><input required maxLength={500} value={input.address} onChange={(event) => setInput({ ...input, address: event.target.value })} /></label>
-      <label className="field facebook-form-grid__wide"><span>Примітка</span><textarea rows={3} maxLength={4000} value={input.notes} onChange={(event) => setInput({ ...input, notes: event.target.value })} /></label>
+      <label className="field"><span>Адреса</span><input required maxLength={500} value={input.address} onChange={(event) => setInput({ ...input, address: event.target.value })} /></label>
     </div>
   </ModalDialog>;
 }
 
 function GroupEditor({
   group,
-  stores,
   onClose,
   onSaved
 }: {
   group: FacebookPublicationGroup | null;
-  stores: FacebookPublicationStore[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { showToast } = useToast();
-  const defaultStoreId = group?.defaultStoreId || stores.find((store) => store.status === 'active')?.id || stores[0]?.id || '';
   const [input, setInput] = useState<FacebookPublicationGroupInput>(() => group ? {
     name: group.name,
     url: group.url,
-    city: group.city,
-    defaultStoreId: group.defaultStoreId,
-    notes: group.notes,
     advertisingPolicy: group.advertisingPolicy,
     moderationRequired: group.moderationRequired,
-    recommendedIntervalDays: group.recommendedIntervalDays,
     status: group.status
   } : {
-    name: '', url: '', city: '', defaultStoreId, notes: '', advertisingPolicy: 'unknown',
-    moderationRequired: false, recommendedIntervalDays: 14, status: 'active'
+    name: '', url: '', advertisingPolicy: 'unknown', moderationRequired: false, status: 'active'
   });
   const save = useMutation({
     mutationFn: () => group
@@ -194,19 +175,18 @@ function GroupEditor({
     className="facebook-modal facebook-modal--form"
     footer={<>
       <button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button>
-      <button className="button button--primary" type="submit" disabled={save.isPending || !input.defaultStoreId}>{save.isPending ? 'Зберігаємо…' : 'Зберегти'}</button>
+      <button className="button button--primary" type="submit" disabled={save.isPending}>{save.isPending ? 'Зберігаємо…' : 'Зберегти'}</button>
     </>}
   >
     <div className="facebook-form-grid">
       <label className="field facebook-form-grid__wide"><span>Назва групи</span><input required maxLength={300} value={input.name} onChange={(event) => setInput({ ...input, name: event.target.value })} /></label>
       <label className="field facebook-form-grid__wide"><span>Посилання на Facebook-групу</span><input required type="url" maxLength={2000} value={input.url} onChange={(event) => setInput({ ...input, url: event.target.value })} placeholder="https://www.facebook.com/groups/..." /></label>
-      <label className="field"><span>Місто</span><input required maxLength={120} value={input.city} onChange={(event) => setInput({ ...input, city: event.target.value })} /></label>
-      <label className="field"><span>Магазин за замовчуванням</span><StyledSelect value={input.defaultStoreId} onChange={(defaultStoreId) => setInput({ ...input, defaultStoreId })} searchable ariaLabel="Магазин за замовчуванням" options={stores.map((store) => ({ value: store.id, label: `${store.code} · ${store.city} · ${store.address}`, disabled: store.status !== 'active' }))} /></label>
-      <label className="field"><span>Реклама</span><StyledSelect<FacebookAdvertisingPolicy> value={input.advertisingPolicy} onChange={(advertisingPolicy) => setInput({ ...input, advertisingPolicy })} ariaLabel="Правила реклами" options={[{ value: 'allowed', label: 'Дозволена' }, { value: 'forbidden', label: 'Заборонена' }, { value: 'unknown', label: 'Невідома' }]} /></label>
-      <label className="field"><span>Статус групи</span><StyledSelect<FacebookGroupStatus> value={input.status} onChange={(status) => setInput({ ...input, status })} ariaLabel="Статус групи" options={[{ value: 'active', label: 'Активна' }, { value: 'inactive', label: 'Неактивна' }, { value: 'do_not_publish', label: 'Не публікувати' }]} /></label>
-      <label className="field"><span>Інтервал повтору, днів</span><input type="number" min={0} max={365} value={input.recommendedIntervalDays} onChange={(event) => setInput({ ...input, recommendedIntervalDays: Number(event.target.value) })} /></label>
+      <p className="facebook-form-grid__wide facebook-optional-heading">Необов’язкові позначки</p>
+      <label className="facebook-checkbox"><input type="checkbox" checked={input.advertisingPolicy === 'allowed'} onChange={(event) => setInput({ ...input, advertisingPolicy: event.target.checked ? 'allowed' : 'unknown' })} /><span>Реклама дозволена</span></label>
+      <label className="facebook-checkbox"><input type="checkbox" checked={input.advertisingPolicy === 'forbidden'} onChange={(event) => setInput({ ...input, advertisingPolicy: event.target.checked ? 'forbidden' : 'unknown' })} /><span>Реклама заборонена</span></label>
       <label className="facebook-checkbox"><input type="checkbox" checked={input.moderationRequired} onChange={(event) => setInput({ ...input, moderationRequired: event.target.checked })} /><span>Публікація проходить модерацію</span></label>
-      <label className="field facebook-form-grid__wide"><span>Примітки</span><textarea rows={3} maxLength={4000} value={input.notes} onChange={(event) => setInput({ ...input, notes: event.target.value })} /></label>
+      <label className="facebook-checkbox"><input type="checkbox" checked={input.status === 'inactive'} onChange={(event) => setInput({ ...input, status: event.target.checked ? 'inactive' : 'active' })} /><span>Група тимчасово неактивна</span></label>
+      <label className="facebook-checkbox facebook-form-grid__wide"><input type="checkbox" checked={input.status === 'do_not_publish'} onChange={(event) => setInput({ ...input, status: event.target.checked ? 'do_not_publish' : 'active' })} /><span>Не публікувати в цій групі</span></label>
     </div>
   </ModalDialog>;
 }
@@ -230,12 +210,42 @@ function ImportChoiceDialog({
       <button type="button" onClick={() => onSelect('groups')}>
         <span><Icon name="users" size={24} /></span>
         <strong>Facebook-групи</strong>
-        <small>Назви, посилання, міста, магазини та правила публікацій.</small>
+        <small>Назви, посилання та необов’язкові позначки публікацій.</small>
       </button>
       <button type="button" onClick={() => onSelect('stores')}>
         <span><Icon name="location" size={24} /></span>
-        <strong>Магазини</strong>
-        <small>Адреси магазинів, які підставляються в локалізовані пости.</small>
+        <strong>Міста й адреси</strong>
+        <small>Адреси, які вибираються під час створення кампанії.</small>
+      </button>
+    </div>
+  </ModalDialog>;
+}
+
+function TemplateChoiceDialog({ onClose }: { onClose: () => void }) {
+  function download(type: FacebookPublicationImportType) {
+    if (type === 'groups') downloadFacebookGroupsImportTemplate();
+    else downloadFacebookStoresImportTemplate();
+    onClose();
+  }
+
+  return <ModalDialog
+    ariaLabelledBy="facebook-template-choice-title"
+    eyebrow="Шаблони імпорту"
+    title="Який шаблон завантажити?"
+    onClose={onClose}
+    className="facebook-modal facebook-modal--choice"
+    footer={<button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button>}
+  >
+    <div className="facebook-import-choice">
+      <button type="button" onClick={() => download('groups')}>
+        <span><Icon name="users" size={24} /></span>
+        <strong>Шаблон Facebook-груп</strong>
+        <small>Назва групи, посилання та необов’язкові позначки публікації.</small>
+      </button>
+      <button type="button" onClick={() => download('stores')}>
+        <span><Icon name="location" size={24} /></span>
+        <strong>Шаблон міст і адрес</strong>
+        <small>Дві обов’язкові колонки: місто та адреса магазину.</small>
       </button>
     </div>
   </ModalDialog>;
@@ -298,7 +308,7 @@ function ImportDialog({
   return <ModalDialog
     ariaLabelledBy="facebook-import-title"
     eyebrow="Масове наповнення"
-    title={isGroupsImport ? 'Імпорт Facebook-груп' : 'Імпорт магазинів'}
+    title={isGroupsImport ? 'Імпорт Facebook-груп' : 'Імпорт міст і адрес'}
     onClose={onClose}
     closeDisabled={pending}
     className="facebook-modal facebook-modal--wide"
@@ -308,19 +318,19 @@ function ImportDialog({
     </>}
   >
     <div className="facebook-import-actions">
-      <button className="button button--secondary" type="button" onClick={isGroupsImport ? downloadFacebookGroupsImportTemplate : downloadFacebookStoresImportTemplate}><Icon name="save" size={17} /> {isGroupsImport ? 'Шаблон груп' : 'Шаблон магазинів'}</button>
+      <button className="button button--secondary" type="button" onClick={isGroupsImport ? downloadFacebookGroupsImportTemplate : downloadFacebookStoresImportTemplate}><Icon name="save" size={17} /> {isGroupsImport ? 'Шаблон груп' : 'Шаблон міст'}</button>
       <label className="button button--primary facebook-file-button"><Icon name="folder" size={17} /> {fileName || 'Вибрати XLSX'}<input type="file" accept=".xlsx,.xls" disabled={pending} onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
     </div>
-    <p className="facebook-help">{isGroupsImport ? 'Повторний імпорт оновлює Facebook-групи за посиланням. Коди магазинів мають уже існувати в довіднику.' : 'Повторний імпорт оновлює магазини за стабільним кодом.'} Рядки з помилками не імпортуються.</p>
+    <p className="facebook-help">{isGroupsImport ? 'Групи, які вже є в довіднику, та повторні посилання всередині файлу позначаються як дублікати й не імпортуються. Групи не прив’язуються до міст.' : 'Повторний імпорт оновлює адресу за назвою міста.'} Рядки з помилками не імпортуються.</p>
     {pending && <div className="facebook-state">Аналізуємо файл…</div>}
     {preview && <>
       <div className="facebook-import-summary">
-        <article><span>{isGroupsImport ? 'Групи' : 'Магазини'}</span><strong>{previewSection?.summary.total || 0}</strong><small>{previewSection?.summary.create || 0} нових · {previewSection?.summary.update || 0} оновлень</small></article>
-        <article className={errors ? 'has-errors' : ''}><span>Проблеми</span><strong>{errors}</strong><small>Не будуть імпортовані</small></article>
+        <article><span>{isGroupsImport ? 'Групи' : 'Міста'}</span><strong>{previewSection?.summary.total || 0}</strong><small>{previewSection?.summary.create || 0} нових · {previewSection?.summary.update || 0} оновлень</small></article>
+        <article className={errors ? 'has-errors' : ''}><span>{isGroupsImport ? 'Дублікати / помилки' : 'Проблеми'}</span><strong>{errors}</strong><small>Не будуть імпортовані</small></article>
       </div>
       <div className="facebook-import-preview">
         {previewRows.slice(0, 200).map((row) => <div className={`facebook-import-row facebook-import-row--${row.action}`} key={`${importType}-${row.rowNumber}`}>
-            <span>{row.rowNumber}</span><strong>{isGroupsImport ? 'Група' : 'Магазин'}</strong><p>{'code' in row ? `${row.code} · ${row.name}` : row.name}</p><em>{row.action === 'create' ? 'Створити' : row.action === 'update' ? 'Оновити' : row.reason}</em>
+            <span>{row.rowNumber}</span><strong>{isGroupsImport ? 'Група' : 'Місто'}</strong><p>{'city' in row ? `${row.city} · ${row.address}` : row.name}</p><em>{row.action === 'create' ? 'Створити' : row.action === 'update' ? 'Оновити' : row.reason}</em>
           </div>)}
       </div>
     </>}
@@ -346,20 +356,17 @@ function CampaignEditor({
   const [image, setImage] = useState<File | null>(null);
   const [selections, setSelections] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
-  const [city, setCity] = useState('ALL');
   const [pending, setPending] = useState(false);
-  const activeStores = stores.filter((store) => store.status === 'active');
-  const cities = [...new Set(groups.map((group) => group.city))].sort((left, right) => left.localeCompare(right, 'uk-UA'));
+  const activeStores = stores;
   const visibleGroups = groups.filter((group) => {
     const needle = search.trim().toLocaleLowerCase('uk-UA');
-    return (city === 'ALL' || group.city === city)
-      && (!needle || `${group.name} ${group.city} ${group.store?.address || ''}`.toLocaleLowerCase('uk-UA').includes(needle));
+    return !needle || `${group.name} ${group.url}`.toLocaleLowerCase('uk-UA').includes(needle);
   });
 
   function toggleGroup(group: FacebookPublicationGroup, checked: boolean) {
     setSelections((current) => {
       const next = { ...current };
-      if (checked) next[group.id] = group.defaultStoreId;
+      if (checked && activeStores[0]) next[group.id] = activeStores[0].id;
       else delete next[group.id];
       return next;
     });
@@ -416,23 +423,22 @@ function CampaignEditor({
         <div className="facebook-variant-list">{variants.map((variant, index) => <label className="field" key={index}><span>Варіант {index + 1}</span><textarea required rows={7} maxLength={5000} value={variant} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} />{variants.length > 1 && <button className="facebook-text-action" type="button" onClick={() => setVariants(variants.filter((_, itemIndex) => itemIndex !== index))}>Видалити варіант</button>}</label>)}</div>
       </section>
       <section className="facebook-group-picker">
-        <header><div><span>Групи та адреси</span><small>Для кожної групи можна змінити магазин цієї кампанії.</small></div></header>
+        <header><div><span>Групи та адреси</span><small>Для кожної групи виберіть місто й адресу цієї кампанії.</small></div></header>
         <div className="facebook-group-picker__filters">
           <label><Icon name="search" size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук групи" /></label>
-          <StyledSelect value={city} onChange={setCity} compact searchable ariaLabel="Фільтр міста" options={[{ value: 'ALL', label: 'Усі міста' }, ...cities.map((item) => ({ value: item, label: item }))]} />
         </div>
         <div className="facebook-group-picker__list">{visibleGroups.map((group) => {
           const hardBlocked = group.status !== 'active' || group.advertisingPolicy === 'forbidden';
           const selected = Boolean(selections[group.id]);
           return <article className={`facebook-picker-row${hardBlocked ? ' is-blocked' : ''}`} key={group.id}>
-            <label><input type="checkbox" disabled={hardBlocked} checked={selected} onChange={(event) => toggleGroup(group, event.target.checked)} /><span><strong>{group.name}</strong><small>{group.city} · {group.store?.address || 'Магазин не вибрано'}</small></span></label>
+            <label><input type="checkbox" disabled={hardBlocked} checked={selected} onChange={(event) => toggleGroup(group, event.target.checked)} /><span><strong>{group.name}</strong><small>{group.url}</small></span></label>
             <div className="facebook-picker-flags">
               {group.moderationRequired && <span>Модерація</span>}
               {group.advertisingPolicy === 'unknown' && <span>Правила невідомі</span>}
               {isRecentlyPublished(group) && <span>Публікували нещодавно</span>}
               {hardBlocked && <span>{group.advertisingPolicy === 'forbidden' ? 'Реклама заборонена' : 'Неактивна'}</span>}
             </div>
-            {selected && <StyledSelect value={selections[group.id]} onChange={(storeId) => setSelections({ ...selections, [group.id]: storeId })} compact searchable ariaLabel={`Магазин для ${group.name}`} options={activeStores.map((store) => ({ value: store.id, label: `${store.city} · ${store.address}` }))} />}
+            {selected && <StyledSelect value={selections[group.id]} onChange={(storeId) => setSelections({ ...selections, [group.id]: storeId })} compact searchable ariaLabel={`Місто й адреса для ${group.name}`} options={activeStores.map((store) => ({ value: store.id, label: `${store.city} · ${store.address}` }))} />}
           </article>;
         })}</div>
       </section>
@@ -495,7 +501,7 @@ function TargetCard({ target, onChanged }: { target: FacebookPublicationTarget; 
   }
 
   return <article className={`facebook-target-card facebook-target-card--${target.status}`}>
-    <header><div><p>{target.city}</p><h3>{target.groupName}</h3><span>{target.storeName} · {target.address}</span></div><span className={`facebook-status facebook-status--${target.status}`}>{targetLabels[target.status]}</span></header>
+    <header><div><p>{target.city}</p><h3>{target.groupName}</h3><span>{target.address}</span></div><span className={`facebook-status facebook-status--${target.status}`}>{targetLabels[target.status]}</span></header>
     {target.retryOfTargetId && <p className="facebook-retry-note"><Icon name="refresh" size={16} /> Повторна спроба після відхилення</p>}
     {target.warnings.length > 0 && <div className="facebook-warning-list">{target.warnings.map((warning) => <p key={warning}><Icon name="security" size={16} /> {warning}</p>)}</div>}
     <label className="field"><span>Готовий текст</span><textarea rows={9} maxLength={5000} value={renderedText} onChange={(event) => setRenderedText(event.target.value)} /></label>
@@ -562,6 +568,7 @@ export function FacebookPublicationsPage() {
   const [editingStore, setEditingStore] = useState<FacebookPublicationStore | null | undefined>(undefined);
   const [editingGroup, setEditingGroup] = useState<FacebookPublicationGroup | null | undefined>(undefined);
   const [importChoiceOpen, setImportChoiceOpen] = useState(false);
+  const [templateChoiceOpen, setTemplateChoiceOpen] = useState(false);
   const [importType, setImportType] = useState<FacebookPublicationImportType | null>(null);
   const [campaignEditorOpen, setCampaignEditorOpen] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -577,19 +584,19 @@ export function FacebookPublicationsPage() {
     void queryClient.invalidateQueries({ queryKey: ['facebook-groups'] });
   };
   const needle = search.trim().toLocaleLowerCase('uk-UA');
-  const visibleStores = (stores.data || []).filter((store) => !needle || `${store.code} ${store.name} ${store.city} ${store.address}`.toLocaleLowerCase('uk-UA').includes(needle));
-  const visibleGroups = (groups.data || []).filter((group) => !needle || `${group.name} ${group.city} ${group.store?.address || ''}`.toLocaleLowerCase('uk-UA').includes(needle));
+  const visibleStores = (stores.data || []).filter((store) => !needle || `${store.city} ${store.address}`.toLocaleLowerCase('uk-UA').includes(needle));
+  const visibleGroups = (groups.data || []).filter((group) => !needle || `${group.name} ${group.url}`.toLocaleLowerCase('uk-UA').includes(needle));
   const visibleCampaigns = (campaigns.data || []).filter((campaign) => !needle || `${campaign.title} ${campaign.promotion}`.toLocaleLowerCase('uk-UA').includes(needle));
   const visibleHistory = (history.data || []).filter((item) => !needle || `${item.campaignTitle} ${item.groupName} ${item.city}`.toLocaleLowerCase('uk-UA').includes(needle));
 
   async function deleteStore(store: FacebookPublicationStore) {
-    if (!await confirm({ title: 'Видалити магазин?', message: 'Видалення можливе лише якщо магазин не використовується групами або історією.', confirmLabel: 'Видалити', tone: 'danger' })) return;
+    if (!await confirm({ title: 'Видалити місто й адресу?', message: 'Видалення можливе, якщо адреса ще не використовується в історії кампаній.', confirmLabel: 'Видалити', tone: 'danger' })) return;
     try {
       await removeStore.mutateAsync(store.id);
       refreshDirectories();
-      showToast('Магазин видалено.');
+      showToast('Місто й адресу видалено.');
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося видалити магазин.', 'error');
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити місто й адресу.', 'error');
     }
   }
 
@@ -608,6 +615,7 @@ export function FacebookPublicationsPage() {
     <header className="page-heading facebook-page-heading">
       <div><p className="eyebrow">Ручний workflow</p><h1>Публікації у міські Facebook-групи</h1><p>Готуйте локалізовані промопости, відкривайте групи вручну та фіксуйте результати без автопостингу.</p></div>
       <div className="facebook-heading-actions">
+        {isAdmin && <button className="button button--secondary" type="button" onClick={() => setTemplateChoiceOpen(true)}><Icon name="save" size={18} /> Шаблони XLSX</button>}
         {isAdmin && <button className="button button--secondary" type="button" onClick={() => setImportChoiceOpen(true)}><Icon name="upload" size={18} /> Імпорт XLSX</button>}
         <button className="button button--primary" type="button" disabled={!groups.data?.length || !stores.data?.length} onClick={() => setCampaignEditorOpen(true)}><Icon name="add" size={18} /> Нова кампанія</button>
       </div>
@@ -619,22 +627,22 @@ export function FacebookPublicationsPage() {
       {([
         ['campaigns', 'publication', 'Кампанії', campaigns.data?.length || 0],
         ['groups', 'users', 'Facebook-групи', groups.data?.length || 0],
-        ['stores', 'location', 'Магазини', stores.data?.length || 0],
+        ['stores', 'location', 'Міста й адреси', stores.data?.length || 0],
         ['history', 'history', 'Історія', null]
       ] as const).map(([value, icon, label, count]) => <button className={tab === value ? 'active' : ''} type="button" key={value} onClick={() => { setTab(value); setSearch(''); }}><Icon name={icon} size={18} /> {label}{count !== null && <span>{count}</span>}</button>)}
     </nav>
 
     <section className="facebook-section">
       <header className="facebook-section-heading">
-        <div><p className="eyebrow">{tab === 'campaigns' ? 'План і виконання' : tab === 'groups' ? 'Довідник аудиторій' : tab === 'stores' ? 'Джерело адрес' : 'Журнал спроб'}</p><h2>{tab === 'campaigns' ? 'Промокампанії' : tab === 'groups' ? 'Міські Facebook-групи' : tab === 'stores' ? 'Магазини Mobile Trend' : 'Історія публікацій'}</h2></div>
+        <div><p className="eyebrow">{tab === 'campaigns' ? 'План і виконання' : tab === 'groups' ? 'Довідник аудиторій' : tab === 'stores' ? 'Джерело адрес' : 'Журнал спроб'}</p><h2>{tab === 'campaigns' ? 'Промокампанії' : tab === 'groups' ? 'Facebook-групи' : tab === 'stores' ? 'Міста й адреси Mobile Trend' : 'Історія публікацій'}</h2></div>
         <div className="facebook-section-actions">
           <label className="facebook-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук" /></label>
           {tab === 'groups' && <button className="button button--secondary" type="button" disabled={groups.isLoading} onClick={() => downloadFacebookGroupsExport(groups.data || [])}><Icon name="save" size={17} /> Експорт груп</button>}
-          {tab === 'stores' && <button className="button button--secondary" type="button" disabled={stores.isLoading} onClick={() => downloadFacebookStoresExport(stores.data || [])}><Icon name="save" size={17} /> Експорт магазинів</button>}
+          {tab === 'stores' && <button className="button button--secondary" type="button" disabled={stores.isLoading} onClick={() => downloadFacebookStoresExport(stores.data || [])}><Icon name="save" size={17} /> Експорт міст</button>}
           {isAdmin && tab === 'groups' && <button className="button button--secondary" type="button" onClick={() => setImportType('groups')}><Icon name="upload" size={17} /> Імпорт груп</button>}
-          {isAdmin && tab === 'stores' && <button className="button button--secondary" type="button" onClick={() => setImportType('stores')}><Icon name="upload" size={17} /> Імпорт магазинів</button>}
-          {isAdmin && tab === 'groups' && <button className="button button--primary" type="button" disabled={!stores.data?.length} onClick={() => setEditingGroup(null)}><Icon name="add" size={17} /> Додати групу</button>}
-          {isAdmin && tab === 'stores' && <button className="button button--primary" type="button" onClick={() => setEditingStore(null)}><Icon name="add" size={17} /> Додати магазин</button>}
+          {isAdmin && tab === 'stores' && <button className="button button--secondary" type="button" onClick={() => setImportType('stores')}><Icon name="upload" size={17} /> Імпорт міст</button>}
+          {isAdmin && tab === 'groups' && <button className="button button--primary" type="button" onClick={() => setEditingGroup(null)}><Icon name="add" size={17} /> Додати групу</button>}
+          {isAdmin && tab === 'stores' && <button className="button button--primary" type="button" onClick={() => setEditingStore(null)}><Icon name="add" size={17} /> Додати місто</button>}
         </div>
       </header>
 
@@ -651,7 +659,7 @@ export function FacebookPublicationsPage() {
       {tab === 'groups' && <div className="facebook-directory-list">
         {visibleGroups.map((group) => <article className="facebook-directory-row" key={group.id}>
           <div className="facebook-directory-row__icon"><Icon name="users" size={20} /></div>
-          <div className="facebook-directory-row__main"><div><strong>{group.name}</strong><span className={`facebook-policy facebook-policy--${group.advertisingPolicy}`}>{group.advertisingPolicy === 'allowed' ? 'Реклама дозволена' : group.advertisingPolicy === 'forbidden' ? 'Реклама заборонена' : 'Правила невідомі'}</span><span className={`facebook-policy facebook-policy--${group.status}`}>{group.status === 'active' ? 'Активна' : group.status === 'inactive' ? 'Неактивна' : 'Не публікувати'}</span></div><p>{group.city} · {group.store?.name || 'Без магазину'} · {group.store?.address || 'Адресу не вказано'}</p><small>Інтервал: {group.recommendedIntervalDays} днів · Остання публікація: {formatDate(group.lastPublishedAt, true)}{group.moderationRequired ? ' · Після модерації' : ''}</small></div>
+          <div className="facebook-directory-row__main"><div><strong>{group.name}</strong><span className={`facebook-policy facebook-policy--${group.advertisingPolicy}`}>{group.advertisingPolicy === 'allowed' ? 'Реклама дозволена' : group.advertisingPolicy === 'forbidden' ? 'Реклама заборонена' : 'Правила невідомі'}</span><span className={`facebook-policy facebook-policy--${group.status}`}>{group.status === 'active' ? 'Активна' : group.status === 'inactive' ? 'Неактивна' : 'Не публікувати'}</span></div><p>{group.url}</p><small>Остання публікація: {formatDate(group.lastPublishedAt, true)}{group.moderationRequired ? ' · Після модерації' : ''}</small></div>
           <div className="facebook-directory-row__actions"><a className="icon-button" href={group.url} target="_blank" rel="noreferrer" aria-label={`Відкрити ${group.name}`}><Icon name="openInNew" size={18} /></a>{isAdmin && <><button className="icon-button" type="button" onClick={() => setEditingGroup(group)} aria-label={`Редагувати ${group.name}`}><Icon name="edit" size={18} /></button><button className="icon-button" type="button" onClick={() => void deleteGroup(group)} aria-label={`Видалити ${group.name}`}><Icon name="delete" size={18} /></button></>}</div>
         </article>)}
         {!groups.isLoading && !visibleGroups.length && <div className="facebook-empty"><strong>Груп не знайдено</strong><span>Додайте групу вручну або імпортуйте XLSX.</span></div>}
@@ -660,10 +668,10 @@ export function FacebookPublicationsPage() {
       {tab === 'stores' && <div className="facebook-directory-list">
         {visibleStores.map((store) => <article className="facebook-directory-row" key={store.id}>
           <div className="facebook-directory-row__icon"><Icon name="location" size={20} /></div>
-          <div className="facebook-directory-row__main"><div><strong>{store.name}</strong><span className={`facebook-policy facebook-policy--${store.status}`}>{store.status === 'active' ? 'Активний' : 'Неактивний'}</span></div><p>{store.city} · {store.address}</p><small>Код: {store.code}{store.notes ? ` · ${store.notes}` : ''}</small></div>
-          {isAdmin && <div className="facebook-directory-row__actions"><button className="icon-button" type="button" onClick={() => setEditingStore(store)} aria-label={`Редагувати ${store.name}`}><Icon name="edit" size={18} /></button><button className="icon-button" type="button" onClick={() => void deleteStore(store)} aria-label={`Видалити ${store.name}`}><Icon name="delete" size={18} /></button></div>}
+          <div className="facebook-directory-row__main"><div><strong>{store.city}</strong></div><p>{store.address}</p></div>
+          {isAdmin && <div className="facebook-directory-row__actions"><button className="icon-button" type="button" onClick={() => setEditingStore(store)} aria-label={`Редагувати ${store.city}`}><Icon name="edit" size={18} /></button><button className="icon-button" type="button" onClick={() => void deleteStore(store)} aria-label={`Видалити ${store.city}`}><Icon name="delete" size={18} /></button></div>}
         </article>)}
-        {!stores.isLoading && !visibleStores.length && <div className="facebook-empty"><strong>Магазинів не знайдено</strong><span>Додайте магазин вручну або імпортуйте XLSX.</span></div>}
+        {!stores.isLoading && !visibleStores.length && <div className="facebook-empty"><strong>Міст і адрес не знайдено</strong><span>Додайте місто вручну або імпортуйте XLSX.</span></div>}
       </div>}
 
       {tab === 'history' && <div className="facebook-history-list">
@@ -674,7 +682,8 @@ export function FacebookPublicationsPage() {
     </section>
 
     {editingStore !== undefined && <StoreEditor store={editingStore} onClose={() => setEditingStore(undefined)} onSaved={refreshDirectories} />}
-    {editingGroup !== undefined && <GroupEditor group={editingGroup} stores={stores.data || []} onClose={() => setEditingGroup(undefined)} onSaved={refreshDirectories} />}
+    {editingGroup !== undefined && <GroupEditor group={editingGroup} onClose={() => setEditingGroup(undefined)} onSaved={refreshDirectories} />}
+    {templateChoiceOpen && <TemplateChoiceDialog onClose={() => setTemplateChoiceOpen(false)} />}
     {importChoiceOpen && <ImportChoiceDialog onClose={() => setImportChoiceOpen(false)} onSelect={(type) => { setImportChoiceOpen(false); setImportType(type); }} />}
     {importType && <ImportDialog importType={importType} onClose={() => setImportType(null)} onCommitted={refreshDirectories} />}
     {campaignEditorOpen && <CampaignEditor groups={groups.data || []} stores={stores.data || []} onClose={() => setCampaignEditorOpen(false)} onCreated={(campaign) => { setCampaignEditorOpen(false); void queryClient.invalidateQueries({ queryKey: ['facebook-campaigns'] }); setWorkspaceId(campaign.id); }} />}

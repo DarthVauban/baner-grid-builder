@@ -123,7 +123,7 @@ describe('AdminSystemPage', () => {
     expect(screen.getByRole('link', { name: /Переглянути помилки парсера/ })).toHaveAttribute('href', '/catalog/photo-parser?tab=errors');
     expect(screen.getByText('8 логічних ядер')).toBeInTheDocument();
     expect(screen.getByText('PostgreSQL')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /Графік навантаження CPU 27% та RAM 50%/ })).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: /Графік навантаження CPU 27% та RAM 50%/ })).toBeInTheDocument();
     expect(screen.getAllByText('Потребує уваги').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Критичний стан').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Неактивно').length).toBeGreaterThan(0);
