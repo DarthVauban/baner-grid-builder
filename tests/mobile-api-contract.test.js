@@ -15,6 +15,7 @@ const { default: app } = await import('../src/app.js');
 const { pool, query } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
+const { createNotification } = await import('../src/modules/notifications/notification.service.js');
 
 before(async () => {
   await runMigrations();
@@ -96,6 +97,83 @@ test('mobile pairing and device APIs preserve the fixed app contract', async () 
     activeMobileDeviceCount: 1
   });
   assert.match(twoFactorStatus.body.data.confirmedAt, /^\d{4}-\d{2}-\d{2}T/);
+
+  const firstNotificationId = await createNotification(pool, {
+    userId,
+    type: 'application_created',
+    title: 'Нове робоче сповіщення',
+    message: 'Перевірка спільного стану прочитання.'
+  });
+  const queuedNotification = await query(
+    'SELECT kind, payload FROM mobile_push_outbox WHERE notification_id = $1',
+    [firstNotificationId]
+  );
+  assert.equal(queuedNotification.rows.length, 1);
+  assert.equal(queuedNotification.rows[0].kind, 'workspace_notification');
+  assert.deepEqual(queuedNotification.rows[0].payload, {
+    kind: 'workspace_notification',
+    notificationId: firstNotificationId
+  });
+
+  const mobileNotifications = await request(app)
+    .get('/api/mobile/notifications')
+    .set('Authorization', `Bearer ${firstClaim.body.data.accessToken}`)
+    .expect(200);
+  assert.equal(mobileNotifications.body.data.unreadCount, 1);
+  assert.deepEqual(Object.keys(mobileNotifications.body.data.items[0]).sort(), [
+    'applicationId',
+    'createdAt',
+    'id',
+    'message',
+    'publicationId',
+    'readAt',
+    'taskId',
+    'title',
+    'type'
+  ]);
+  assert.equal(mobileNotifications.body.data.items[0].id, firstNotificationId);
+  assert.equal(mobileNotifications.body.data.items[0].readAt, null);
+
+  const mobileRead = await request(app)
+    .patch(`/api/mobile/notifications/${firstNotificationId}/read`)
+    .set('Authorization', `Bearer ${firstClaim.body.data.accessToken}`)
+    .expect(200);
+  assert.match(mobileRead.body.data.readAt, /^\d{4}-\d{2}-\d{2}T/);
+  const webAfterMobileRead = await web.get('/api/notifications').expect(200);
+  assert.equal(webAfterMobileRead.body.data.unreadCount, 0);
+  assert.equal(webAfterMobileRead.body.data.items[0].readAt, mobileRead.body.data.readAt);
+
+  const secondNotificationId = await createNotification(pool, {
+    userId,
+    type: 'application_status_changed',
+    title: 'Друге сповіщення',
+    message: 'Позначається прочитаним у web.'
+  });
+  const webRead = await web
+    .patch(`/api/notifications/${secondNotificationId}/read`)
+    .expect(200);
+  const mobileAfterWebRead = await request(app)
+    .get('/api/mobile/notifications')
+    .set('Authorization', `Bearer ${firstClaim.body.data.accessToken}`)
+    .expect(200);
+  assert.equal(mobileAfterWebRead.body.data.unreadCount, 0);
+  assert.equal(
+    mobileAfterWebRead.body.data.items.find((item) => item.id === secondNotificationId).readAt,
+    webRead.body.data.readAt
+  );
+
+  await createNotification(pool, {
+    userId,
+    type: 'application_comment_added',
+    title: 'Третє сповіщення',
+    message: 'Перевірка read-all.'
+  });
+  await request(app)
+    .post('/api/mobile/notifications/read-all')
+    .set('Authorization', `Bearer ${firstClaim.body.data.accessToken}`)
+    .expect(204);
+  const webAfterReadAll = await web.get('/api/notifications').expect(200);
+  assert.equal(webAfterReadAll.body.data.unreadCount, 0);
 
   const loginBrowser = request.agent(app);
   const loginRequest = await loginBrowser

@@ -15,6 +15,11 @@ import {
 import { hashPairingManualCode, hashPairingQrToken } from './mobile-crypto.js';
 import { claimMobilePairing } from './mobile-pairing.service.js';
 import {
+  listUserNotifications,
+  markAllUserNotificationsRead,
+  markUserNotificationRead
+} from '../notifications/notification.service.js';
+import {
   decideMobileLoginRequest,
   listMobileLoginRequests
 } from './mobile-login.service.js';
@@ -83,6 +88,20 @@ router.put('/devices/:deviceId/push-token', requireMobileDeviceAuth, asyncHandle
 
 router.get('/login-requests', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
   res.json({ data: { items: await listMobileLoginRequests(req.user.id) } });
+}));
+
+router.get('/notifications', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
+  res.json({ data: await listUserNotifications(req.user.id) });
+}));
+
+router.patch('/notifications/:notificationId/read', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
+  const notificationId = parseInput(idSchema, req.params.notificationId);
+  res.json({ data: await markUserNotificationRead(req.user.id, notificationId) });
+}));
+
+router.post('/notifications/read-all', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
+  await markAllUserNotificationsRead(req.user.id);
+  res.status(204).end();
 }));
 
 router.post('/login-requests/:requestId/approve', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
