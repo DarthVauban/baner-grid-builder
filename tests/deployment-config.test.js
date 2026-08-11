@@ -140,6 +140,8 @@ test('Trade-in TLS workflow is guarded, validates DNS, and verifies renewal', ()
   assert.match(tradeInTlsWorkflow, /environment: production/);
   assert.match(tradeInTlsWorkflow, /EXPECTED_IP='45\.88\.191\.194'/);
   assert.match(tradeInTlsWorkflow, /key: \$\{\{ secrets\.SSH_PRIVATE_KEY \}\}/);
+  assert.match(tradeInTlsWorkflow, /SUDO_PASSWORD: \$\{\{ secrets\.SSH_PASSWORD \}\}/);
+  assert.match(tradeInTlsWorkflow, /sudo -S -p ''/);
   assert.match(tradeInTlsWorkflow, /certbot" certonly|CERTBOT_BIN" certonly/);
   assert.match(tradeInTlsWorkflow, /--webroot-path "\$ACME_ROOT"/);
   assert.match(tradeInTlsWorkflow, /run_root "\$NGINX_BIN" -t/);
