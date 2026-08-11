@@ -1,6 +1,8 @@
 import type {
   LoginInput,
   LoginResponse,
+  MobileDeviceFeed,
+  MobilePairing,
   PermissionRole,
   PasswordChangeInput,
   RegisterInput,
@@ -325,6 +327,26 @@ export const api = {
     disableTwoFactor: (code: string) => request<User>('/api/users/profile/2fa/disable', {
       method: 'POST', body: jsonBody({ code })
     }),
+    createMobilePairing: (purpose: 'enable_2fa' | 'add_device', code: string | null = null) =>
+      request<MobilePairing>('/api/users/profile/mobile-pairings', {
+        method: 'POST', body: jsonBody({ purpose, code })
+      }),
+    mobilePairing: (pairingId: string) => request<MobilePairing>(
+      `/api/users/profile/mobile-pairings/${encodeURIComponent(pairingId)}`
+    ),
+    acknowledgeMobilePairing: (pairingId: string) => request<void>(
+      `/api/users/profile/mobile-pairings/${encodeURIComponent(pairingId)}/acknowledge`,
+      { method: 'POST' }
+    ),
+    cancelMobilePairing: (pairingId: string) => request<void>(
+      `/api/users/profile/mobile-pairings/${encodeURIComponent(pairingId)}`,
+      { method: 'DELETE' }
+    ),
+    mobileDevices: () => request<MobileDeviceFeed>('/api/users/profile/mobile-devices'),
+    revokeMobileDevice: (deviceId: string, code: string) => request<void>(
+      `/api/users/profile/mobile-devices/${encodeURIComponent(deviceId)}`,
+      { method: 'DELETE', body: jsonBody({ code }) }
+    ),
     passkeys: () => request<UserPasskey[]>('/api/users/profile/passkeys'),
     startPasskeyRegistration: (code: string, name: string) =>
       request<PasskeyRegistrationStart>('/api/users/profile/passkeys/options', {
