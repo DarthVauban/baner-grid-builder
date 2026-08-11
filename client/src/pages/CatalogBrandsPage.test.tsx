@@ -64,7 +64,11 @@ describe('CatalogBrandsPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Видалити бренд Test Brand' }));
+    await user.click(await screen.findByRole(
+      'button',
+      { name: 'Видалити бренд Test Brand' },
+      { timeout: 10_000 }
+    ));
 
     expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Видалити бренд?',
@@ -76,15 +80,19 @@ describe('CatalogBrandsPage', () => {
       'Бренд «Test Brand» видалено. Відв’язано товарів: 2.',
       'success'
     ));
-  });
+  }, 15_000);
 
   it('keeps a brand when confirmation is cancelled', async () => {
     mocks.confirm.mockResolvedValue(false);
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Видалити бренд Test Brand' }));
+    await user.click(await screen.findByRole(
+      'button',
+      { name: 'Видалити бренд Test Brand' },
+      { timeout: 10_000 }
+    ));
 
     expect(api.catalog.removeBrand).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 });

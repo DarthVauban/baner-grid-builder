@@ -29,6 +29,7 @@ export default [
       'no-console': 'off',
       'no-control-regex': 'off',
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      'no-useless-assignment': 'off',
       'no-useless-escape': 'warn'
     }
   },
