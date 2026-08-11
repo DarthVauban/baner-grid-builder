@@ -35,6 +35,15 @@ const schema = z.object({
     (value) => String(value || '').trim() || undefined,
     z.string().min(32, 'MOBILE_TOKEN_PEPPER must contain at least 32 characters').optional()
   ),
+  MOBILE_PUSH_ENABLED: z.enum(['true', 'false']).default('false'),
+  FIREBASE_PROJECT_ID: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().min(1).optional()
+  ),
+  FIREBASE_SERVICE_ACCOUNT_BASE64: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().min(1).optional()
+  ),
   SEARCH_WIDGET_ORIGIN: z.preprocess(
     (value) => String(value || '').trim() || undefined,
     z.string().url().optional()
@@ -56,6 +65,7 @@ export const env = {
   databaseSsl: result.data.DATABASE_SSL === 'true',
   searchFeatureEnabled: result.data.SEARCH_FEATURE_ENABLED === 'true',
   mobileTokenPepper: result.data.MOBILE_TOKEN_PEPPER || result.data.JWT_SECRET,
+  mobilePushEnabled: result.data.MOBILE_PUSH_ENABLED === 'true',
   cookieSecure: result.data.COOKIE_SECURE === 'auto'
     ? result.data.NODE_ENV === 'production'
     : result.data.COOKIE_SECURE === 'true'
