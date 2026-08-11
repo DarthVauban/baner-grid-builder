@@ -254,6 +254,17 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .passkey-login-card strong { color: var(--ink); font-size: 14px; }
 .passkey-login-card p { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .login-verification__back { margin-top: 14px; }
+.mobile-login-approval { position: relative; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 16px; margin-bottom: 18px; border: 1px solid rgba(108,92,231,.24); border-radius: 18px; padding: 20px; overflow: hidden; background: linear-gradient(145deg, var(--surface), var(--brand-soft)); }
+.mobile-login-approval__visual { width: 54px; height: 54px; display: inline-flex; align-items: center; justify-content: center; border-radius: 16px; color: var(--brand); background: var(--surface); box-shadow: 0 10px 24px rgba(38,31,89,.08); }
+.mobile-login-approval__copy { display: grid; gap: 5px; min-width: 0; }
+.mobile-login-approval__copy strong { color: var(--ink); font-size: 16px; }
+.mobile-login-approval__copy p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.mobile-login-approval__copy small { color: var(--brand-dark); font-size: 11px; font-weight: 800; }
+.mobile-login-approval__pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 0 rgba(108,92,231,.34); animation: mobile-login-pulse 1.6s ease-out infinite; }
+.mobile-login-approval--denied, .mobile-login-approval--expired { border-color: rgba(208,45,74,.22); background: linear-gradient(145deg, var(--surface), #fff2f4); }
+.mobile-login-approval--denied .mobile-login-approval__visual, .mobile-login-approval--expired .mobile-login-approval__visual { color: var(--danger); }
+.mobile-login-alternatives { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+@keyframes mobile-login-pulse { 70% { box-shadow: 0 0 0 10px rgba(108,92,231,0); } 100% { box-shadow: 0 0 0 0 rgba(108,92,231,0); } }
 .auth-form--register { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .auth-form__wide { min-width: 0; grid-column: 1 / -1; }
 .field { display: grid; gap: 8px; }
@@ -577,6 +588,43 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .two-factor-recovery p { margin: 0 auto; max-width: 520px; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .two-factor-recovery__codes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 5px 0; }
 .two-factor-recovery__codes code { border: 1px solid var(--line); border-radius: 10px; padding: 10px; color: var(--ink); background: #f8f9fb; font-weight: 850; letter-spacing: .03em; }
+.two-factor-method-modal { width: min(100%, 700px); }
+.two-factor-method-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.two-factor-method-card { position: relative; min-height: 205px; display: grid; align-content: start; justify-items: start; gap: 12px; border: 1px solid var(--line); border-radius: 16px; padding: 20px; color: var(--ink); background: var(--surface); text-align: left; cursor: pointer; transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
+.two-factor-method-card:hover { border-color: var(--brand); transform: translateY(-2px); box-shadow: var(--shadow); }
+.two-factor-method-card > span { width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; border-radius: 13px; color: var(--brand-dark); background: var(--brand-soft); }
+.two-factor-method-card strong { font-size: 16px; }
+.two-factor-method-card small { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.two-factor-method-card b { position: absolute; top: 16px; right: 16px; border-radius: 999px; padding: 5px 8px; color: var(--brand-dark); background: var(--brand-soft); font-size: 9px; text-transform: uppercase; }
+.mobile-pairing-body { display: grid; gap: 16px; padding: 0; }
+.mobile-pairing-body > .form-message { margin: 20px 24px 0; }
+.mobile-pairing-content { display: grid; gap: 18px; padding: 22px 26px 26px; }
+.mobile-pairing-hero { display: grid; grid-template-columns: 48px minmax(0,1fr) auto; align-items: center; gap: 13px; border: 1px solid rgba(108,92,231,.2); border-radius: 14px; padding: 14px; background: var(--brand-soft); }
+.mobile-pairing-hero__icon { width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; border-radius: 13px; color: var(--brand); background: var(--surface); }
+.mobile-pairing-hero h3, .mobile-pairing-result h3, .mobile-pairing-verification h3 { margin: 0; color: var(--ink); font-size: 17px; }
+.mobile-pairing-hero p, .mobile-pairing-result p, .mobile-pairing-verification p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.mobile-pairing-countdown { border-radius: 10px; padding: 9px 11px; color: var(--brand-dark); background: var(--surface); font-size: 15px; font-variant-numeric: tabular-nums; }
+.mobile-pairing-grid { display: grid; grid-template-columns: minmax(220px,300px) minmax(0,1fr); gap: 18px; align-items: start; }
+.mobile-pairing-qr { min-height: 260px; color: var(--muted); font-size: 11px; }
+.mobile-pairing-instructions { display: grid; gap: 14px; }
+.mobile-pairing-instructions ol { margin: 0; padding-left: 20px; color: var(--ink); font-size: 12px; line-height: 1.65; }
+.mobile-pairing-instructions li + li { margin-top: 7px; }
+.mobile-pairing-manual { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 13px; background: var(--surface-soft); }
+.mobile-pairing-manual > span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.mobile-pairing-manual code { color: var(--ink); font-size: 18px; font-weight: 850; letter-spacing: .08em; }
+.mobile-pairing-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+.mobile-pairing-result, .mobile-pairing-verification { display: grid; justify-items: center; gap: 13px; padding: 30px 26px; text-align: center; }
+.mobile-pairing-verification .field { width: min(100%, 380px); text-align: left; }
+.mobile-pairing-verification .mobile-pairing-actions { justify-content: center; }
+.mobile-pairing-result--success { min-height: 300px; align-content: center; }
+.mobile-devices-card { display: grid; gap: 13px; border: 1px solid #cdeade; border-radius: 14px; padding: 14px; background: #f6fcfa; }
+.mobile-devices-card > header { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: center; gap: 13px; }
+.mobile-devices-card strong { display: block; color: var(--ink); font-size: 13px; }
+.mobile-devices-card small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.mobile-device-list { display: grid; gap: 8px; margin-left: 57px; }
+.mobile-device-list__item { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; padding: 9px 10px; background: var(--surface); }
+.mobile-device-list__item--revoked { opacity: .65; }
+.mobile-device-list__status { color: var(--muted); font-size: 10px; font-weight: 800; }
 .passkey-card { display: grid; gap: 13px; border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--surface); }
 .passkey-card--enabled { border-color: #cdeade; background: #f6fcfa; }
 .passkey-card > header { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: center; gap: 13px; }
@@ -2271,14 +2319,21 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 :root[data-theme="brand"] .user-access-manager-permission strong { color: var(--brand); }
 :root[data-theme="brand"] .two-factor-card,
 :root[data-theme="brand"] .passkey-card,
+:root[data-theme="brand"] .mobile-devices-card,
+:root[data-theme="brand"] .mobile-device-list__item,
+:root[data-theme="brand"] .two-factor-method-card,
 :root[data-theme="brand"] .passkey-list__item,
 :root[data-theme="brand"] .two-factor-qr,
 :root[data-theme="brand"] .two-factor-manual-key,
+:root[data-theme="brand"] .mobile-pairing-manual,
 :root[data-theme="brand"] .two-factor-recovery__codes code { border-color: var(--line); background: var(--surface); }
 :root[data-theme="brand"] .two-factor-card--enabled,
+:root[data-theme="brand"] .mobile-devices-card,
 :root[data-theme="brand"] .passkey-card--enabled,
 :root[data-theme="brand"] .two-factor-badge--enabled { border-color: rgba(72,210,154,.34); background: rgba(72,210,154,.10); }
 :root[data-theme="brand"] .two-factor-card__icon,
+:root[data-theme="brand"] .mobile-pairing-hero__icon,
+:root[data-theme="brand"] .two-factor-method-card > span,
 :root[data-theme="brand"] .passkey-list__device,
 :root[data-theme="brand"] .two-factor-recovery__icon { color: #66e0a8; background: rgba(72,210,154,.13); }
 :root[data-theme="brand"] .two-factor-badge { border-color: var(--line); color: #c5c5bf; background: #22221f; }
@@ -3646,6 +3701,9 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .login-verification__divider { min-height: 22px; }
   .login-verification__divider::before { width: auto; height: 1px; inset: 50% 0 auto; }
   .login-verification__divider span { padding: 4px 9px; }
+  .mobile-login-alternatives { grid-template-columns: 1fr; }
+  .mobile-login-approval { grid-template-columns: auto minmax(0,1fr); }
+  .mobile-login-approval__pulse { display: none; }
   .auth-form__wide, .profile-fields__wide { grid-column: 1; }
   .password-field__label { align-items: flex-start; flex-direction: column; gap: 6px; }
   .profile-section { padding: 19px; }
@@ -3653,6 +3711,9 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .profile-section > header .button { width: 100%; }
   .two-factor-card { grid-template-columns: 42px minmax(0,1fr); }
   .two-factor-card > .button { grid-column: 1 / -1; width: 100%; }
+  .mobile-devices-card > header { grid-template-columns: 42px minmax(0,1fr); }
+  .mobile-devices-card > header > .button { grid-column: 1 / -1; width: 100%; }
+  .mobile-device-list { margin-left: 0; }
   .passkey-card > header { grid-template-columns: 42px minmax(0,1fr); }
   .passkey-card > header > .button { grid-column: 1 / -1; width: 100%; }
   .passkey-list, .passkey-card__notice { margin-left: 0; }
@@ -3664,8 +3725,14 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .two-factor-setup,
   .two-factor-recovery { padding: 20px 19px; }
   .two-factor-setup__grid,
+  .two-factor-method-grid,
+  .mobile-pairing-grid,
   .two-factor-confirm-form,
   .two-factor-recovery__codes { grid-template-columns: 1fr; }
+  .mobile-pairing-content { padding: 20px 19px; }
+  .mobile-pairing-hero { grid-template-columns: 44px minmax(0,1fr); }
+  .mobile-pairing-countdown { grid-column: 1 / -1; text-align: center; }
+  .mobile-pairing-actions .button { width: 100%; }
   .two-factor-confirm-form .button { width: 100%; }
   .hero-card { grid-template-columns: 1fr; padding: 24px; }
   .hero-card .button { width: 100%; }

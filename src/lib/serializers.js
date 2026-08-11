@@ -23,6 +23,7 @@ export function serializeUser(row) {
     status: row.status,
     canManageToolAccess: row.can_manage_tool_access === true,
     twoFactorEnabled: row.two_factor_enabled === true,
+    twoFactorMethod: row.two_factor_method || null,
     twoFactorConfirmedAt: row.two_factor_confirmed_at || null,
     isPrimaryAdmin,
     approvedAt: row.approved_at,

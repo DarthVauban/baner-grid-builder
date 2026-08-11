@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { env } from '../../config/env.js';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { revokeAllMobileAccessInTransaction } from '../mobile/mobile-access.service.js';
 
 const issuer = 'MT Panel';
 const setupExpiresMs = 15 * 60 * 1000;
@@ -131,6 +132,26 @@ function randomRecoveryCode() {
   return `${value.slice(0, 4)}-${value.slice(4)}`;
 }
 
+export function encryptTwoFactorSecret(secret) {
+  return encryptSecret(secret);
+}
+
+export function decryptTwoFactorSecret(ciphertext, iv, tag) {
+  return decryptSecret(ciphertext, iv, tag);
+}
+
+export function generateTwoFactorSecret() {
+  return generateBase32Secret();
+}
+
+export function generateTwoFactorRecoveryCodes(count = 10) {
+  return Array.from({ length: count }, randomRecoveryCode);
+}
+
+export function hashTwoFactorRecoveryCode(code) {
+  return hashRecoveryCode(code);
+}
+
 function buildOtpAuthUrl(user, secret) {
   const accountName = user.email || user.name || user.id;
   const label = `${issuer}:${accountName}`;
@@ -158,7 +179,7 @@ export function isPrimaryAdmin(user) {
 
 export async function getTwoFactorStatus(userId) {
   const userResult = await query(
-    `SELECT two_factor_enabled, two_factor_confirmed_at
+    `SELECT two_factor_enabled, two_factor_method, two_factor_confirmed_at
      FROM users
      WHERE id = $1`,
     [userId]
@@ -175,6 +196,7 @@ export async function getTwoFactorStatus(userId) {
 
   return {
     enabled: user.two_factor_enabled === true,
+    method: user.two_factor_method || null,
     confirmedAt: user.two_factor_confirmed_at || null,
     recoveryCodesRemaining: recoveryResult.rows[0]?.count || 0
   };
@@ -264,13 +286,14 @@ export async function confirmTwoFactorSetup(userId, code) {
            two_factor_pending_secret_tag = NULL,
            two_factor_pending_created_at = NULL,
            two_factor_enabled = TRUE,
+           two_factor_method = 'totp',
            two_factor_confirmed_at = NOW(),
            two_factor_last_used_step = NULL,
            updated_at = NOW()
        WHERE id = $4
        RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
                  role, status, can_manage_tool_access, two_factor_enabled,
-                 two_factor_confirmed_at, approved_at, created_at, updated_at`,
+                 two_factor_method, two_factor_confirmed_at, approved_at, created_at, updated_at`,
       [activeSecret.ciphertext, activeSecret.iv, activeSecret.tag, userId]
     );
 
@@ -284,8 +307,8 @@ export async function confirmTwoFactorSetup(userId, code) {
   }
 }
 
-export async function verifyUserTwoFactor(userId, code) {
-  const userResult = await query(
+export async function verifyUserTwoFactor(userId, code, db = { query }) {
+  const userResult = await db.query(
     `SELECT id, two_factor_enabled, two_factor_secret_ciphertext, two_factor_secret_iv,
             two_factor_secret_tag, two_factor_last_used_step
      FROM users
@@ -300,7 +323,7 @@ export async function verifyUserTwoFactor(userId, code) {
   const secret = decryptSecret(user.two_factor_secret_ciphertext, user.two_factor_secret_iv, user.two_factor_secret_tag);
   const matchingStep = findTotpStep(secret, code, user.two_factor_last_used_step);
   if (matchingStep !== null) {
-    const updated = await query(
+    const updated = await db.query(
       `UPDATE users
        SET two_factor_last_used_step = $1, updated_at = NOW()
        WHERE id = $2
@@ -312,7 +335,7 @@ export async function verifyUserTwoFactor(userId, code) {
 
   const recoveryCode = normalizeRecoveryCode(code);
   if (recoveryCode.length >= 8) {
-    const recoveryResult = await query(
+    const recoveryResult = await db.query(
       `UPDATE user_two_factor_recovery_codes
        SET used_at = NOW()
        WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
@@ -325,31 +348,47 @@ export async function verifyUserTwoFactor(userId, code) {
   throw new AppError(401, 'INVALID_TWO_FACTOR_CODE', 'Код 2FA вказано неправильно або вже використано.');
 }
 
-export async function disableTwoFactor(userId, code) {
-  await verifyUserTwoFactor(userId, code);
+export async function disableTwoFactor(userId, code, dbPool = pool) {
+  const client = await dbPool.connect();
+  try {
+    await client.query('BEGIN');
+    const locked = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    if (!locked.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
+    await verifyUserTwoFactor(userId, code, client);
 
-  const result = await query(
-    `UPDATE users
-     SET two_factor_secret_ciphertext = NULL,
-         two_factor_secret_iv = NULL,
-         two_factor_secret_tag = NULL,
-         two_factor_pending_secret_ciphertext = NULL,
-         two_factor_pending_secret_iv = NULL,
-         two_factor_pending_secret_tag = NULL,
-         two_factor_pending_created_at = NULL,
-         two_factor_enabled = FALSE,
-         two_factor_confirmed_at = NULL,
-         two_factor_last_used_step = NULL,
-         updated_at = NOW()
-     WHERE id = $1
-     RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
-               role, status, can_manage_tool_access, two_factor_enabled,
-               two_factor_confirmed_at, approved_at, created_at, updated_at`,
-    [userId]
-  );
-  await query('DELETE FROM user_two_factor_recovery_codes WHERE user_id = $1', [userId]);
-  await query('DELETE FROM user_passkeys WHERE user_id = $1', [userId]);
-  await query('DELETE FROM user_passkey_challenges WHERE user_id = $1', [userId]);
-
-  return result.rows[0];
+    const result = await client.query(
+      `UPDATE users
+       SET two_factor_secret_ciphertext = NULL,
+           two_factor_secret_iv = NULL,
+           two_factor_secret_tag = NULL,
+           two_factor_pending_secret_ciphertext = NULL,
+           two_factor_pending_secret_iv = NULL,
+           two_factor_pending_secret_tag = NULL,
+           two_factor_pending_created_at = NULL,
+           two_factor_enabled = FALSE,
+           two_factor_method = NULL,
+           two_factor_confirmed_at = NULL,
+           two_factor_last_used_step = NULL,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
+                 role, status, can_manage_tool_access, two_factor_enabled,
+                 two_factor_method, two_factor_confirmed_at, approved_at, created_at, updated_at`,
+      [userId]
+    );
+    await client.query('DELETE FROM user_two_factor_recovery_codes WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM user_passkeys WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM user_passkey_challenges WHERE user_id = $1', [userId]);
+    await revokeAllMobileAccessInTransaction(client, userId, {
+      reason: 'two_factor_disabled',
+      revokedBy: userId
+    });
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }

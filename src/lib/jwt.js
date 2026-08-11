@@ -13,11 +13,16 @@ export function verifyAccessToken(token) {
   return jwt.verify(token, env.JWT_SECRET, { issuer: 'mt-banner-builder' });
 }
 
-export function createTwoFactorLoginToken(user) {
+export function createTwoFactorLoginToken(user, { mobileLoginRequestId = null, jwtId } = {}) {
   return jwt.sign(
-    { sub: user.id, purpose: 'login_2fa' },
+    { sub: user.id, purpose: 'login_2fa', mobileLoginRequestId },
     env.JWT_SECRET,
-    { expiresIn: '5m', issuer: 'mt-banner-builder', audience: 'mt-login-2fa' }
+    {
+      expiresIn: mobileLoginRequestId ? '6m' : '5m',
+      issuer: 'mt-banner-builder',
+      audience: 'mt-login-2fa',
+      ...(jwtId ? { jwtid: jwtId } : {})
+    }
   );
 }
 

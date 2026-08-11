@@ -28,6 +28,7 @@ import tradeInRoutes, { publicTradeInRoutes } from './modules/trade-in/trade-in.
 import storeMapRoutes, { publicStoreMapRoutes } from './modules/store-map/store-map.routes.js';
 import mediaRoutes from './modules/media/media.routes.js';
 import facebookPublicationRoutes from './modules/facebook-publications/facebook-publication.routes.js';
+import mobileRoutes from './modules/mobile/mobile.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -182,6 +183,7 @@ app.use('/api/catalog', catalogRoutes);
 app.use('/api/trade-in', tradeInRoutes);
 app.use('/api/store-map', storeMapRoutes);
 app.use('/api/facebook-publications', facebookPublicationRoutes);
+app.use('/api/mobile', mobileRoutes);
 app.use('/api/storefront', publicEmbedCors, storefrontRoutes);
 app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
 app.use('/api/public/trade-in', publicEmbedCors, publicTradeInRoutes);

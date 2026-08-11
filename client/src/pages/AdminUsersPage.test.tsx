@@ -16,6 +16,7 @@ const pendingUser: User = {
   role: 'content_manager',
   status: 'pending',
   twoFactorEnabled: false,
+  twoFactorMethod: null,
   twoFactorConfirmedAt: null,
   isPrimaryAdmin: false,
   approvedAt: null,

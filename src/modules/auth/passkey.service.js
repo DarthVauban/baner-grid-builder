@@ -9,6 +9,7 @@ import { env } from '../../config/env.js';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { verifyUserTwoFactor } from './two-factor.service.js';
+import { completeMobileLoginWithPasskey } from '../mobile/mobile-login.service.js';
 
 const rpName = 'MT Panel';
 const challengeTtlMs = 5 * 60 * 1000;
@@ -64,22 +65,23 @@ async function pruneChallenges() {
   );
 }
 
-async function createChallenge(userId, purpose, challenge, context) {
+async function createChallenge(userId, purpose, challenge, context, mobileLoginRequestId = null) {
   await pruneChallenges();
   const id = randomUUID();
   const expiresAt = new Date(Date.now() + challengeTtlMs);
   await query(
     `INSERT INTO user_passkey_challenges
-       (id, user_id, purpose, challenge, expected_origin, rp_id, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [id, userId, purpose, challenge, context.origin, context.rpID, expiresAt]
+       (id, user_id, purpose, challenge, expected_origin, rp_id, expires_at, mobile_login_request_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, userId, purpose, challenge, context.origin, context.rpID, expiresAt, mobileLoginRequestId]
   );
   return { id, expiresAt: expiresAt.toISOString() };
 }
 
 async function loadChallenge(id, purpose, userId = null) {
   const result = await query(
-    `SELECT id, user_id, challenge, expected_origin, rp_id, expires_at, used_at
+    `SELECT id, user_id, challenge, expected_origin, rp_id, expires_at, used_at,
+            mobile_login_request_id
      FROM user_passkey_challenges
      WHERE id = $1 AND purpose = $2 AND ($3::UUID IS NULL OR user_id = $3)`,
     [id, purpose, userId]
@@ -212,7 +214,7 @@ export async function removeUserPasskey(userId, passkeyId, code) {
   if (!result.rowCount) throw new AppError(404, 'PASSKEY_NOT_FOUND', 'Passkey не знайдено.');
 }
 
-export async function startPasskeyLogin(user, req) {
+export async function startPasskeyLogin(user, req, mobileLoginRequestId = null) {
   const context = webAuthnContext(req);
   const passkeys = await userPasskeyRows(user.id);
   if (!passkeys.length) throw new AppError(404, 'PASSKEY_NOT_CONFIGURED', 'Для цього облікового запису Passkey ще не підключено.');
@@ -227,7 +229,13 @@ export async function startPasskeyLogin(user, req) {
     userVerification: 'required'
   });
   options.hints = ['hybrid'];
-  const challenge = await createChallenge(user.id, 'login', options.challenge, context);
+  const challenge = await createChallenge(
+    user.id,
+    'login',
+    options.challenge,
+    context,
+    mobileLoginRequestId
+  );
   return { challengeId: challenge.id, expiresAt: challenge.expiresAt, options };
 }
 
@@ -284,6 +292,11 @@ export async function finishPasskeyLogin(challengeId, response) {
        SET counter = $1, last_used_at = NOW()
        WHERE id = $2`,
       [verification.authenticationInfo.newCounter, credential.passkey_id]
+    );
+    await completeMobileLoginWithPasskey(
+      client,
+      challenge.user_id,
+      challenge.mobile_login_request_id
     );
     await client.query('COMMIT');
   } catch (error) {

@@ -16,6 +16,7 @@ export interface User {
   status: UserStatus;
   canManageToolAccess?: boolean;
   twoFactorEnabled: boolean;
+  twoFactorMethod: 'totp' | 'mt_workspace' | null;
   twoFactorConfirmedAt: string | null;
   isPrimaryAdmin: boolean;
   approvedAt: string | null;
@@ -30,10 +31,17 @@ export interface LoginInput {
 
 export interface TwoFactorLoginChallenge {
   twoFactorRequired: true;
+  twoFactorMethod: 'totp' | 'mt_workspace';
   passkeyAvailable: boolean;
   challengeToken: string;
   expiresAt: string;
   email: string;
+  mobileApproval?: {
+    requestId: string;
+    status: MobileLoginRequestStatus;
+    pollingIntervalMs: number;
+    activeDeviceCount: number;
+  };
 }
 
 export type LoginResponse = User | TwoFactorLoginChallenge;
@@ -41,6 +49,20 @@ export type LoginResponse = User | TwoFactorLoginChallenge;
 export interface TwoFactorLoginVerifyInput {
   challengeToken: string;
   code: string;
+}
+
+export type MobileLoginRequestStatus = 'pending' | 'approved' | 'denied' | 'expired';
+
+export interface MobileLoginStatusInput {
+  challengeToken: string;
+  requestId: string;
+}
+
+export interface MobileLoginStatus {
+  requestId: string;
+  status: MobileLoginRequestStatus;
+  expiresAt: string;
+  user: User | null;
 }
 
 export type PasskeyAuthenticationResponse = Awaited<ReturnType<typeof startAuthentication>>;
@@ -105,8 +127,10 @@ export interface PasswordChangeInput {
 
 export interface TwoFactorStatus {
   enabled: boolean;
+  method: 'totp' | 'mt_workspace' | null;
   confirmedAt: string | null;
   recoveryCodesRemaining: number;
+  activeMobileDeviceCount: number;
 }
 
 export interface TwoFactorSetup {
@@ -121,6 +145,33 @@ export interface TwoFactorSetup {
 export interface TwoFactorConfirmResult {
   user: User;
   recoveryCodes: string[];
+}
+
+export type MobilePairingStatus = 'pending' | 'claimed' | 'expired' | 'cancelled';
+
+export interface MobileDevice {
+  id: string;
+  name: string;
+  platform: 'android' | 'ios';
+  pairedAt: string;
+  lastSeenAt: string | null;
+  pushConfigured: boolean;
+  revokedAt: string | null;
+}
+
+export interface MobilePairing {
+  id: string;
+  status: MobilePairingStatus;
+  purpose?: 'enable_2fa' | 'add_device';
+  qrPayload?: string;
+  manualCode?: string;
+  expiresAt: string;
+  device?: MobileDevice | null;
+  recoveryCodes?: string[];
+}
+
+export interface MobileDeviceFeed {
+  items: MobileDevice[];
 }
 
 export type SavedDataResource = 'banner_grids' | 'saved_banners' | 'product_tables';

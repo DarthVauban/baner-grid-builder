@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { query } from '../../db/pool.js';
+import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { serializeUser } from '../../lib/serializers.js';
@@ -21,6 +21,18 @@ import {
   startPasskeyRegistration
 } from '../auth/passkey.service.js';
 import { parseAvatarDataUrl } from './avatar.service.js';
+import {
+  countActiveMobileDevices,
+  listMobileDevices,
+  revokeMobileDeviceWithTwoFactor
+} from '../mobile/mobile-device.service.js';
+import {
+  acknowledgeMobilePairing,
+  cancelMobilePairing,
+  createMobilePairing,
+  getMobilePairing
+} from '../mobile/mobile-pairing.service.js';
+import { revokeAllMobileAccessInTransaction } from '../mobile/mobile-access.service.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -50,6 +62,18 @@ const passwordSchema = z.object({
 const twoFactorCodeSchema = z.object({
   code: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.')
 });
+const mobilePairingSchema = z.object({
+  purpose: z.enum(['enable_2fa', 'add_device']),
+  code: z.string().trim().min(6).max(20).nullable().optional().default(null)
+}).superRefine((input, context) => {
+  if (input.purpose === 'add_device' && !input.code) {
+    context.addIssue({
+      code: 'custom',
+      path: ['code'],
+      message: 'Підтвердьте додавання пристрою кодом 2FA.'
+    });
+  }
+});
 const passkeyOptionsSchema = z.object({
   code: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.'),
   name: z.string().trim().min(2, 'Вкажіть назву Passkey.').max(120)
@@ -68,7 +92,7 @@ const passkeyVerifySchema = z.object({
 });
 
 const userSelect = `id, name, first_name, last_name, email, department, position, avatar_mime,
-  role, status, can_manage_tool_access, two_factor_enabled, two_factor_confirmed_at,
+  role, status, can_manage_tool_access, two_factor_enabled, two_factor_method, two_factor_confirmed_at,
   approved_at, created_at, updated_at`;
 
 router.get('/tool-access', asyncHandler(async (req, res) => {
@@ -80,7 +104,11 @@ router.get('/tool-catalog', asyncHandler(async (req, res) => {
 }));
 
 router.get('/profile/2fa', asyncHandler(async (req, res) => {
-  res.json({ data: await getTwoFactorStatus(req.user.id) });
+  const [status, activeMobileDeviceCount] = await Promise.all([
+    getTwoFactorStatus(req.user.id),
+    countActiveMobileDevices(req.user.id)
+  ]);
+  res.json({ data: { ...status, activeMobileDeviceCount } });
 }));
 
 router.post('/profile/2fa/setup', asyncHandler(async (req, res) => {
@@ -102,6 +130,43 @@ router.post('/profile/2fa/disable', asyncHandler(async (req, res) => {
   const input = parseInput(twoFactorCodeSchema, req.body);
   const user = await disableTwoFactor(req.user.id, input.code);
   res.json({ data: serializeUser(user) });
+}));
+
+router.post('/profile/mobile-pairings', asyncHandler(async (req, res) => {
+  const input = parseInput(mobilePairingSchema, req.body);
+  const pairing = await createMobilePairing(req.user.id, {
+    purpose: input.purpose,
+    code: input.code || ''
+  });
+  res.status(201).json({ data: pairing });
+}));
+
+router.get('/profile/mobile-pairings/:pairingId', asyncHandler(async (req, res) => {
+  const pairingId = parseInput(idSchema, req.params.pairingId);
+  res.json({ data: await getMobilePairing(req.user.id, pairingId) });
+}));
+
+router.post('/profile/mobile-pairings/:pairingId/acknowledge', asyncHandler(async (req, res) => {
+  const pairingId = parseInput(idSchema, req.params.pairingId);
+  await acknowledgeMobilePairing(req.user.id, pairingId);
+  res.status(204).end();
+}));
+
+router.delete('/profile/mobile-pairings/:pairingId', asyncHandler(async (req, res) => {
+  const pairingId = parseInput(idSchema, req.params.pairingId);
+  await cancelMobilePairing(req.user.id, pairingId);
+  res.status(204).end();
+}));
+
+router.get('/profile/mobile-devices', asyncHandler(async (req, res) => {
+  res.json({ data: { items: await listMobileDevices(req.user.id) } });
+}));
+
+router.delete('/profile/mobile-devices/:deviceId', asyncHandler(async (req, res) => {
+  const deviceId = parseInput(idSchema, req.params.deviceId);
+  const input = parseInput(twoFactorCodeSchema, req.body);
+  await revokeMobileDeviceWithTwoFactor(req.user.id, deviceId, input.code);
+  res.status(204).end();
 }));
 
 router.get('/profile/passkeys', asyncHandler(async (req, res) => {
@@ -138,12 +203,37 @@ router.get('/:id/avatar', asyncHandler(async (req, res) => {
 
 router.put('/profile/password', asyncHandler(async (req, res) => {
   const input = parseInput(passwordSchema, req.body);
-  const passwordResult = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
-  const matches = await bcrypt.compare(input.currentPassword, passwordResult.rows[0]?.password_hash || '');
-  if (!matches) throw new AppError(422, 'INVALID_CURRENT_PASSWORD', 'Поточний пароль вказано неправильно.');
-  const passwordHash = await bcrypt.hash(input.newPassword, 12);
-  await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [passwordHash, req.user.id]);
-  res.status(204).end();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const passwordResult = await client.query(
+      'SELECT password_hash FROM users WHERE id = $1 FOR UPDATE',
+      [req.user.id]
+    );
+    const matches = await bcrypt.compare(
+      input.currentPassword,
+      passwordResult.rows[0]?.password_hash || ''
+    );
+    if (!matches) {
+      throw new AppError(422, 'INVALID_CURRENT_PASSWORD', 'Поточний пароль вказано неправильно.');
+    }
+    const passwordHash = await bcrypt.hash(input.newPassword, 12);
+    await client.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [passwordHash, req.user.id]
+    );
+    await revokeAllMobileAccessInTransaction(client, req.user.id, {
+      reason: 'password_changed',
+      revokedBy: req.user.id
+    });
+    await client.query('COMMIT');
+    res.status(204).end();
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }));
 
 router.put('/profile', asyncHandler(async (req, res) => {
