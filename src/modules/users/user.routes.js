@@ -12,7 +12,8 @@ import {
   confirmTwoFactorSetup,
   disableTwoFactor,
   getTwoFactorStatus,
-  startTwoFactorSetup
+  startTwoFactorSetup,
+  verifyUserTwoFactor
 } from '../auth/two-factor.service.js';
 import {
   finishPasskeyRegistration,
@@ -21,6 +22,17 @@ import {
   startPasskeyRegistration
 } from '../auth/passkey.service.js';
 import { parseAvatarDataUrl } from './avatar.service.js';
+import {
+  countActiveMobileDevices,
+  listMobileDevices,
+  revokeMobileDevice
+} from '../mobile/mobile-device.service.js';
+import {
+  acknowledgeMobilePairing,
+  cancelMobilePairing,
+  createMobilePairing,
+  getMobilePairing
+} from '../mobile/mobile-pairing.service.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -50,6 +62,18 @@ const passwordSchema = z.object({
 const twoFactorCodeSchema = z.object({
   code: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.')
 });
+const mobilePairingSchema = z.object({
+  purpose: z.enum(['enable_2fa', 'add_device']),
+  code: z.string().trim().min(6).max(20).nullable().optional().default(null)
+}).superRefine((input, context) => {
+  if (input.purpose === 'add_device' && !input.code) {
+    context.addIssue({
+      code: 'custom',
+      path: ['code'],
+      message: 'Підтвердьте додавання пристрою кодом 2FA.'
+    });
+  }
+});
 const passkeyOptionsSchema = z.object({
   code: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.'),
   name: z.string().trim().min(2, 'Вкажіть назву Passkey.').max(120)
@@ -68,7 +92,7 @@ const passkeyVerifySchema = z.object({
 });
 
 const userSelect = `id, name, first_name, last_name, email, department, position, avatar_mime,
-  role, status, can_manage_tool_access, two_factor_enabled, two_factor_confirmed_at,
+  role, status, can_manage_tool_access, two_factor_enabled, two_factor_method, two_factor_confirmed_at,
   approved_at, created_at, updated_at`;
 
 router.get('/tool-access', asyncHandler(async (req, res) => {
@@ -80,7 +104,11 @@ router.get('/tool-catalog', asyncHandler(async (req, res) => {
 }));
 
 router.get('/profile/2fa', asyncHandler(async (req, res) => {
-  res.json({ data: await getTwoFactorStatus(req.user.id) });
+  const [status, activeMobileDeviceCount] = await Promise.all([
+    getTwoFactorStatus(req.user.id),
+    countActiveMobileDevices(req.user.id)
+  ]);
+  res.json({ data: { ...status, activeMobileDeviceCount } });
 }));
 
 router.post('/profile/2fa/setup', asyncHandler(async (req, res) => {
@@ -102,6 +130,44 @@ router.post('/profile/2fa/disable', asyncHandler(async (req, res) => {
   const input = parseInput(twoFactorCodeSchema, req.body);
   const user = await disableTwoFactor(req.user.id, input.code);
   res.json({ data: serializeUser(user) });
+}));
+
+router.post('/profile/mobile-pairings', asyncHandler(async (req, res) => {
+  const input = parseInput(mobilePairingSchema, req.body);
+  const pairing = await createMobilePairing(req.user.id, {
+    purpose: input.purpose,
+    code: input.code || ''
+  });
+  res.status(201).json({ data: pairing });
+}));
+
+router.get('/profile/mobile-pairings/:pairingId', asyncHandler(async (req, res) => {
+  const pairingId = parseInput(idSchema, req.params.pairingId);
+  res.json({ data: await getMobilePairing(req.user.id, pairingId) });
+}));
+
+router.post('/profile/mobile-pairings/:pairingId/acknowledge', asyncHandler(async (req, res) => {
+  const pairingId = parseInput(idSchema, req.params.pairingId);
+  await acknowledgeMobilePairing(req.user.id, pairingId);
+  res.status(204).end();
+}));
+
+router.delete('/profile/mobile-pairings/:pairingId', asyncHandler(async (req, res) => {
+  const pairingId = parseInput(idSchema, req.params.pairingId);
+  await cancelMobilePairing(req.user.id, pairingId);
+  res.status(204).end();
+}));
+
+router.get('/profile/mobile-devices', asyncHandler(async (req, res) => {
+  res.json({ data: { items: await listMobileDevices(req.user.id) } });
+}));
+
+router.delete('/profile/mobile-devices/:deviceId', asyncHandler(async (req, res) => {
+  const deviceId = parseInput(idSchema, req.params.deviceId);
+  const input = parseInput(twoFactorCodeSchema, req.body);
+  await verifyUserTwoFactor(req.user.id, input.code);
+  await revokeMobileDevice(req.user.id, deviceId, { reason: 'web_profile' });
+  res.status(204).end();
 }));
 
 router.get('/profile/passkeys', asyncHandler(async (req, res) => {
