@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { getUserToolAccess } from '../access/access.service.js';
+import { workflowSummarySettings } from './workflow-summary.js';
 
 export const applicationStatuses = ['new', 'in_progress', 'rejected', 'closed'];
 export const applicationStatusLabels = {
@@ -286,7 +287,7 @@ export function appendApplicationVisibility(where, params, viewer, alias = 'app'
   where.push(`(${alias}.assigned_to IS NULL OR ${alias}.assigned_to = $${params.length})`);
 }
 
-export function mapApplicationValues(values) {
+export function mapApplicationValues(values, summaryOverrides = null) {
   const system = {};
   const additional = [];
   for (const value of values) {
@@ -297,7 +298,9 @@ export function mapApplicationValues(values) {
       label: value.field_label_snapshot,
       type: value.field_type_snapshot,
       systemFieldType: value.system_field_type || null,
-      showInSummary: value.show_in_summary_snapshot === true,
+      showInSummary: summaryOverrides?.has(value.field_key_snapshot)
+        ? summaryOverrides.get(value.field_key_snapshot)
+        : value.show_in_summary_snapshot === true,
       value: value.value,
       optionLabel: value.option_label_snapshot,
       sortOrder: value.sort_order,
@@ -323,8 +326,8 @@ export function mapApplicationValues(values) {
   };
 }
 
-export function serializeApplication(row, values = [], product = null, history = [], comments = []) {
-  const mapped = mapApplicationValues(values);
+export function serializeApplication(row, values = [], product = null, history = [], comments = [], summaryOverrides = null) {
+  const mapped = mapApplicationValues(values, summaryOverrides);
   return {
     id: row.id,
     number: row.application_number,
@@ -391,10 +394,13 @@ export function serializeApplication(row, values = [], product = null, history =
 export async function loadApplicationView(applicationId, viewer, db = pool) {
   if (!await canAccessApplications(viewer, db)) return null;
   const result = await db.query(
-    `SELECT applications.*, changer.name AS last_changed_by_name, assignee.name AS assigned_to_name
+    `SELECT applications.*, changer.name AS last_changed_by_name, assignee.name AS assigned_to_name,
+            current_form.form_type AS current_form_type,
+            current_form.workflow_definition AS current_workflow_definition
      FROM applications
      LEFT JOIN users AS changer ON changer.id = applications.last_changed_by
      LEFT JOIN users AS assignee ON assignee.id = applications.assigned_to
+     LEFT JOIN application_forms AS current_form ON current_form.id = applications.form_id
      WHERE applications.id = $1`,
     [applicationId]
   );
@@ -427,7 +433,18 @@ export async function loadApplicationView(applicationId, viewer, db = pool) {
       [applicationId]
     )
   ]);
-  return serializeApplication(application, values.rows, product.rows[0] || null, history.rows, comments.rows);
+  const summaryOverrides = application.current_form_type === 'workflow'
+    ? new Map(workflowSummarySettings(application.current_workflow_definition)
+      .map((field) => [field.key, field.showInSummary]))
+    : null;
+  return serializeApplication(
+    application,
+    values.rows,
+    product.rows[0] || null,
+    history.rows,
+    comments.rows,
+    summaryOverrides
+  );
 }
 
 export async function loadApplicationChatPreview(reference, viewer, db = pool) {

@@ -18,6 +18,7 @@ import {
   serializeButtonConfig,
   serializeForm
 } from './application.service.js';
+import { workflowSummarySettings } from './workflow-summary.js';
 
 const router = Router();
 router.use(requireAuth, requireToolAccess('form_builder'));
@@ -144,7 +145,11 @@ async function replaceEditableFields(db, formId, fields = []) {
     }
   }
 
-  for (const field of summarySettings) {
+  await syncApplicationSummarySettings(db, formId, summarySettings);
+}
+
+async function syncApplicationSummarySettings(db, formId, fields = []) {
+  for (const field of fields) {
     await db.query(
       `UPDATE application_values
        SET show_in_summary_snapshot = $3
@@ -399,7 +404,11 @@ router.put('/:id', asyncHandler(async (req, res) => {
       ]
     );
     if (!existing.rows[0]) throw new AppError(404, 'FORM_NOT_FOUND', 'Форму не знайдено.');
-    if (formType === 'simple' && input.fields) await replaceEditableFields(client, id, input.fields);
+    if (formType === 'simple' && input.fields) {
+      await replaceEditableFields(client, id, input.fields);
+    } else if (formType === 'workflow') {
+      await syncApplicationSummarySettings(client, id, workflowSummarySettings(workflow));
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});

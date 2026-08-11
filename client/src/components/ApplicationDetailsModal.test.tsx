@@ -147,6 +147,10 @@ describe('ApplicationDetailsModal answer placement', () => {
     expect(within(tables[0]).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['Відповідь', 'Питання']);
     expect(within(tables[0]).getAllByRole('cell')[0]).toHaveTextContent('Ноутбук');
     expect(within(tables[0]).getByRole('rowheader')).toHaveTextContent('Категорія');
+    const primaryGrid = container.querySelector('.task-details-grid');
+    expect(primaryGrid).not.toBeNull();
+    expect(within(primaryGrid as HTMLElement).getByText('Категорія')).toBeInTheDocument();
+    expect(within(primaryGrid as HTMLElement).queryByText('Є зарядка?')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /Додаткові відповіді/ })).not.toBeInTheDocument();
   });
 

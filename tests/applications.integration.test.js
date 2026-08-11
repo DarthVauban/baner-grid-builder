@@ -590,4 +590,40 @@ test('form builder and applications list have separate access and process public
     tradeInApplication.body.data.values.some((item) => item.key === 'memory' && item.stepTitle === 'Розкажіть про пристрій'),
     true
   );
+
+  const linkedWorkflowForm = await admin
+    .get(`/api/forms/${tradeInSettings.body.data.draftConfig.formReference.formId}`)
+    .expect(200);
+  const workflowWithoutMemorySummary = structuredClone(linkedWorkflowForm.body.data.workflow);
+  const memoryField = workflowWithoutMemorySummary.graph.nodes
+    .flatMap((node) => node.fields || [])
+    .find((field) => field.key === 'memory');
+  assert.ok(memoryField);
+  memoryField.showInSummary = false;
+  await admin.put(`/api/forms/${linkedWorkflowForm.body.data.id}`).send({
+    ...linkedWorkflowForm.body.data,
+    workflow: workflowWithoutMemorySummary
+  }).expect(200);
+
+  const tradeInApplicationAfterSummaryUpdate = await manager
+    .get(`/api/applications/${tradeInSubmission.body.data.id}`)
+    .expect(200);
+  const savedMemoryAnswer = tradeInApplicationAfterSummaryUpdate.body.data.values
+    .find((item) => item.key === 'memory');
+  assert.equal(savedMemoryAnswer.showInSummary, false);
+  assert.equal(savedMemoryAnswer.stepTitle, 'Розкажіть про пристрій');
+
+  await pool.query(
+    `UPDATE application_values
+     SET show_in_summary_snapshot = TRUE
+     WHERE application_id = $1 AND field_key_snapshot = 'memory'`,
+    [tradeInSubmission.body.data.id]
+  );
+  const tradeInApplicationWithStaleSnapshot = await manager
+    .get(`/api/applications/${tradeInSubmission.body.data.id}`)
+    .expect(200);
+  assert.equal(
+    tradeInApplicationWithStaleSnapshot.body.data.values.find((item) => item.key === 'memory').showInSummary,
+    false
+  );
 });
