@@ -83,3 +83,21 @@ test('normalizes Trade-in configuration and evaluates conditional scenarios', ()
   assert.equal(matchesTradeInCondition({ fieldKey: 'category', operator: 'one_of', value: 'smartphone,apple' }, { category: 'apple' }), true);
   assert.equal(matchesTradeInCondition({ fieldKey: 'category', operator: 'equals', value: 'laptop' }, { category: 'apple' }), false);
 });
+
+test('upgrades the legacy Trade-in palette to Mobile Trend brand colors', () => {
+  const config = normalizeTradeInConfig({
+    ...defaultTradeInConfig,
+    theme: {
+      ...defaultTradeInConfig.theme,
+      textColor: '#172033',
+      primaryColor: '#6d5dfc',
+      primaryTextColor: '#ffffff',
+      successColor: '#0f8a5f'
+    }
+  });
+
+  assert.equal(config.theme.textColor, '#000000');
+  assert.equal(config.theme.primaryColor, '#ffe101');
+  assert.equal(config.theme.primaryTextColor, '#000000');
+  assert.equal(config.theme.successColor, '#000000');
+});

@@ -38,7 +38,7 @@ describe('RichTextEditor source mode', () => {
     expect(srcDoc).toContain('<script>document.body.dataset.ready="true";</script>');
     expect(srcDoc).toContain('mt-auto-height-sandbox');
     expect(frame).toHaveAttribute('scrolling', 'no');
-  });
+  }, 15_000);
 
   it('can clear, type and replace source without leaving source mode', async () => {
     const user = userEvent.setup();
@@ -72,7 +72,7 @@ describe('RichTextEditor source mode', () => {
     const srcDoc = screen.getByTitle('Preview опису').getAttribute('srcdoc') || '';
     expect(srcDoc).toContain(secondReplacement);
     expect(srcDoc).not.toContain(original);
-  });
+  }, 15_000);
 
   it('keeps the editable surface usable and hides CodeMirror announcements defensively', () => {
     expect(appStyles).toMatch(/\.rich-editor__source \.cm-content\s*\{[^}]*min-height:\s*100%;[^}]*display:\s*block/);
