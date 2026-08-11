@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { query } from '../../db/pool.js';
+import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { serializeUser } from '../../lib/serializers.js';
@@ -12,8 +12,7 @@ import {
   confirmTwoFactorSetup,
   disableTwoFactor,
   getTwoFactorStatus,
-  startTwoFactorSetup,
-  verifyUserTwoFactor
+  startTwoFactorSetup
 } from '../auth/two-factor.service.js';
 import {
   finishPasskeyRegistration,
@@ -25,7 +24,7 @@ import { parseAvatarDataUrl } from './avatar.service.js';
 import {
   countActiveMobileDevices,
   listMobileDevices,
-  revokeMobileDevice
+  revokeMobileDeviceWithTwoFactor
 } from '../mobile/mobile-device.service.js';
 import {
   acknowledgeMobilePairing,
@@ -33,6 +32,7 @@ import {
   createMobilePairing,
   getMobilePairing
 } from '../mobile/mobile-pairing.service.js';
+import { revokeAllMobileAccessInTransaction } from '../mobile/mobile-access.service.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -165,8 +165,7 @@ router.get('/profile/mobile-devices', asyncHandler(async (req, res) => {
 router.delete('/profile/mobile-devices/:deviceId', asyncHandler(async (req, res) => {
   const deviceId = parseInput(idSchema, req.params.deviceId);
   const input = parseInput(twoFactorCodeSchema, req.body);
-  await verifyUserTwoFactor(req.user.id, input.code);
-  await revokeMobileDevice(req.user.id, deviceId, { reason: 'web_profile' });
+  await revokeMobileDeviceWithTwoFactor(req.user.id, deviceId, input.code);
   res.status(204).end();
 }));
 
@@ -204,12 +203,37 @@ router.get('/:id/avatar', asyncHandler(async (req, res) => {
 
 router.put('/profile/password', asyncHandler(async (req, res) => {
   const input = parseInput(passwordSchema, req.body);
-  const passwordResult = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
-  const matches = await bcrypt.compare(input.currentPassword, passwordResult.rows[0]?.password_hash || '');
-  if (!matches) throw new AppError(422, 'INVALID_CURRENT_PASSWORD', 'Поточний пароль вказано неправильно.');
-  const passwordHash = await bcrypt.hash(input.newPassword, 12);
-  await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [passwordHash, req.user.id]);
-  res.status(204).end();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const passwordResult = await client.query(
+      'SELECT password_hash FROM users WHERE id = $1 FOR UPDATE',
+      [req.user.id]
+    );
+    const matches = await bcrypt.compare(
+      input.currentPassword,
+      passwordResult.rows[0]?.password_hash || ''
+    );
+    if (!matches) {
+      throw new AppError(422, 'INVALID_CURRENT_PASSWORD', 'Поточний пароль вказано неправильно.');
+    }
+    const passwordHash = await bcrypt.hash(input.newPassword, 12);
+    await client.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [passwordHash, req.user.id]
+    );
+    await revokeAllMobileAccessInTransaction(client, req.user.id, {
+      reason: 'password_changed',
+      revokedBy: req.user.id
+    });
+    await client.query('COMMIT');
+    res.status(204).end();
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }));
 
 router.put('/profile', asyncHandler(async (req, res) => {

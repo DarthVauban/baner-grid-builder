@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { env } from '../../config/env.js';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { revokeAllMobileAccessInTransaction } from '../mobile/mobile-access.service.js';
 
 const issuer = 'MT Panel';
 const setupExpiresMs = 15 * 60 * 1000;
@@ -347,32 +348,47 @@ export async function verifyUserTwoFactor(userId, code, db = { query }) {
   throw new AppError(401, 'INVALID_TWO_FACTOR_CODE', 'Код 2FA вказано неправильно або вже використано.');
 }
 
-export async function disableTwoFactor(userId, code) {
-  await verifyUserTwoFactor(userId, code);
+export async function disableTwoFactor(userId, code, dbPool = pool) {
+  const client = await dbPool.connect();
+  try {
+    await client.query('BEGIN');
+    const locked = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    if (!locked.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
+    await verifyUserTwoFactor(userId, code, client);
 
-  const result = await query(
-    `UPDATE users
-     SET two_factor_secret_ciphertext = NULL,
-         two_factor_secret_iv = NULL,
-         two_factor_secret_tag = NULL,
-         two_factor_pending_secret_ciphertext = NULL,
-         two_factor_pending_secret_iv = NULL,
-         two_factor_pending_secret_tag = NULL,
-         two_factor_pending_created_at = NULL,
-         two_factor_enabled = FALSE,
-         two_factor_method = NULL,
-         two_factor_confirmed_at = NULL,
-         two_factor_last_used_step = NULL,
-         updated_at = NOW()
-     WHERE id = $1
-     RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
-               role, status, can_manage_tool_access, two_factor_enabled,
-               two_factor_method, two_factor_confirmed_at, approved_at, created_at, updated_at`,
-    [userId]
-  );
-  await query('DELETE FROM user_two_factor_recovery_codes WHERE user_id = $1', [userId]);
-  await query('DELETE FROM user_passkeys WHERE user_id = $1', [userId]);
-  await query('DELETE FROM user_passkey_challenges WHERE user_id = $1', [userId]);
-
-  return result.rows[0];
+    const result = await client.query(
+      `UPDATE users
+       SET two_factor_secret_ciphertext = NULL,
+           two_factor_secret_iv = NULL,
+           two_factor_secret_tag = NULL,
+           two_factor_pending_secret_ciphertext = NULL,
+           two_factor_pending_secret_iv = NULL,
+           two_factor_pending_secret_tag = NULL,
+           two_factor_pending_created_at = NULL,
+           two_factor_enabled = FALSE,
+           two_factor_method = NULL,
+           two_factor_confirmed_at = NULL,
+           two_factor_last_used_step = NULL,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, name, first_name, last_name, email, department, position, avatar_mime,
+                 role, status, can_manage_tool_access, two_factor_enabled,
+                 two_factor_method, two_factor_confirmed_at, approved_at, created_at, updated_at`,
+      [userId]
+    );
+    await client.query('DELETE FROM user_two_factor_recovery_codes WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM user_passkeys WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM user_passkey_challenges WHERE user_id = $1', [userId]);
+    await revokeAllMobileAccessInTransaction(client, userId, {
+      reason: 'two_factor_disabled',
+      revokedBy: userId
+    });
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }

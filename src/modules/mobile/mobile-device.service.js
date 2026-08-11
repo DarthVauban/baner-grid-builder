@@ -1,11 +1,16 @@
 import { pool } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { verifyUserTwoFactor } from '../auth/two-factor.service.js';
 import {
   createDeviceCredential,
   encryptMobileValue,
   hashDeviceAccessToken,
   hashFcmToken
 } from './mobile-crypto.js';
+import {
+  closePendingMobileLoginRequests,
+  revokeMobileDeviceInTransaction
+} from './mobile-access.service.js';
 import { recordMobileSecurityEvent } from './mobile-security.service.js';
 
 export function serializeMobileDevice(row) {
@@ -15,7 +20,7 @@ export function serializeMobileDevice(row) {
     platform: row.platform,
     pairedAt: row.paired_at,
     lastSeenAt: row.last_seen_at || null,
-    pushConfigured: Boolean(row.fcm_token_ciphertext && row.fcm_token_hash),
+    pushConfigured: Boolean(!row.revoked_at && row.fcm_token_ciphertext && row.fcm_token_hash),
     revokedAt: row.revoked_at || null
   };
 }
@@ -124,28 +129,94 @@ export async function setMobileDevicePushToken(userId, deviceId, token, platform
   }
 }
 
+async function revokeOwnedMobileDeviceInTransaction(
+  client,
+  userId,
+  deviceId,
+  { allowLast = false, reason = 'user' } = {}
+) {
+  const deviceResult = await client.query(
+    `SELECT * FROM mobile_devices
+     WHERE id = $1 AND user_id = $2
+     FOR UPDATE`,
+    [deviceId, userId]
+  );
+  const device = deviceResult.rows[0];
+  if (!device) throw new AppError(404, 'MOBILE_DEVICE_NOT_FOUND', 'Мобільний пристрій не знайдено.');
+  if (device.revoked_at) return serializeMobileDevice(device);
+  if (!allowLast) {
+    const active = await client.query(
+      `SELECT COUNT(*)::INTEGER AS count
+       FROM mobile_devices
+       WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId]
+    );
+    if ((active.rows[0]?.count || 0) <= 1) {
+      throw new AppError(
+        409,
+        'LAST_MOBILE_DEVICE',
+        'Спочатку додайте інший пристрій або вимкніть 2FA через MT Workspace.'
+      );
+    }
+  }
+
+  const revoked = await revokeMobileDeviceInTransaction(client, device, {
+    userId,
+    reason,
+    revokedBy: userId
+  });
+  const remaining = await client.query(
+    `SELECT COUNT(*)::INTEGER AS count
+     FROM mobile_devices
+     WHERE user_id = $1 AND revoked_at IS NULL`,
+    [userId]
+  );
+  if ((remaining.rows[0]?.count || 0) === 0) {
+    await closePendingMobileLoginRequests(client, userId, 'no_active_mobile_device');
+  }
+  return serializeMobileDevice(revoked);
+}
+
 export async function revokeMobileDevice(
   userId,
   deviceId,
-  { allowLast = false, reason = 'user' } = {},
+  options = {},
   dbPool = pool
 ) {
   const client = await dbPool.connect();
   try {
     await client.query('BEGIN');
-    const deviceResult = await client.query(
-      `SELECT * FROM mobile_devices
+    const revoked = await revokeOwnedMobileDeviceInTransaction(client, userId, deviceId, options);
+    await client.query('COMMIT');
+    return revoked;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function revokeMobileDeviceWithTwoFactor(
+  userId,
+  deviceId,
+  code,
+  dbPool = pool
+) {
+  const client = await dbPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    const target = await client.query(
+      `SELECT id, revoked_at FROM mobile_devices
        WHERE id = $1 AND user_id = $2
        FOR UPDATE`,
       [deviceId, userId]
     );
-    const device = deviceResult.rows[0];
-    if (!device) throw new AppError(404, 'MOBILE_DEVICE_NOT_FOUND', 'Мобільний пристрій не знайдено.');
-    if (device.revoked_at) {
-      await client.query('COMMIT');
-      return serializeMobileDevice(device);
+    if (!target.rows[0]) {
+      throw new AppError(404, 'MOBILE_DEVICE_NOT_FOUND', 'Мобільний пристрій не знайдено.');
     }
-    if (!allowLast) {
+    if (!target.rows[0].revoked_at) {
       const active = await client.query(
         `SELECT COUNT(*)::INTEGER AS count
          FROM mobile_devices
@@ -160,24 +231,12 @@ export async function revokeMobileDevice(
         );
       }
     }
-
-    const revoked = await client.query(
-      `UPDATE mobile_devices
-       SET revoked_at = NOW(), revocation_reason = $1,
-           fcm_token_ciphertext = NULL, fcm_token_iv = NULL,
-           fcm_token_tag = NULL, fcm_token_hash = NULL
-       WHERE id = $2
-       RETURNING *`,
-      [reason, deviceId]
-    );
-    await recordMobileSecurityEvent(client, {
-      userId,
-      deviceId,
-      eventType: 'device_revoked',
-      metadata: { reason }
+    await verifyUserTwoFactor(userId, code, client);
+    const revoked = await revokeOwnedMobileDeviceInTransaction(client, userId, deviceId, {
+      reason: 'web_profile'
     });
     await client.query('COMMIT');
-    return serializeMobileDevice(revoked.rows[0]);
+    return revoked;
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;

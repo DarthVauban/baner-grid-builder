@@ -14,6 +14,7 @@ import {
   toolIds
 } from '../access/access.service.js';
 import { isPrimaryAdmin } from '../auth/two-factor.service.js';
+import { revokeAllMobileAccessInTransaction } from '../mobile/mobile-access.service.js';
 import {
   getAdminIntegrations,
   saveMailtrapIntegration,
@@ -526,18 +527,35 @@ router.patch('/users/:id/status', adminOnly, asyncHandler(async (req, res) => {
     throw new AppError(400, 'SELF_STATUS_CHANGE', 'Не можна заблокувати власний обліковий запис.');
   }
 
-  const result = await query(
-    `UPDATE users
-     SET status = $1::VARCHAR,
-         approved_at = CASE WHEN $1::VARCHAR = 'approved' THEN NOW() ELSE NULL END,
-         approved_by = CASE WHEN $1::VARCHAR = 'approved' THEN $2::UUID ELSE NULL END,
-         updated_at = NOW()
-     WHERE id = $3::UUID
-     RETURNING ${userSelect}`,
-    [status, req.user.id, id]
-  );
-  if (!result.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
-  res.json({ data: serializeUser(result.rows[0]) });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const target = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [id]);
+    if (!target.rows[0]) throw new AppError(404, 'USER_NOT_FOUND', 'Користувача не знайдено.');
+    const result = await client.query(
+      `UPDATE users
+       SET status = $1::VARCHAR,
+           approved_at = CASE WHEN $1::VARCHAR = 'approved' THEN NOW() ELSE NULL END,
+           approved_by = CASE WHEN $1::VARCHAR = 'approved' THEN $2::UUID ELSE NULL END,
+           updated_at = NOW()
+       WHERE id = $3::UUID
+       RETURNING ${userSelect}`,
+      [status, req.user.id, id]
+    );
+    if (status !== 'approved') {
+      await revokeAllMobileAccessInTransaction(client, id, {
+        reason: status === 'rejected' ? 'user_rejected' : 'user_deactivated',
+        revokedBy: req.user.id
+      });
+    }
+    await client.query('COMMIT');
+    res.json({ data: serializeUser(result.rows[0]) });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }));
 
 router.delete('/users/:id', adminOnly, asyncHandler(async (req, res) => {
@@ -567,6 +585,11 @@ router.delete('/users/:id', adminOnly, asyncHandler(async (req, res) => {
       }
     }
 
+    await revokeAllMobileAccessInTransaction(client, id, {
+      reason: 'user_deleted',
+      revokedBy: req.user.id,
+      queuePush: false
+    });
     await client.query('DELETE FROM chat_messages WHERE sender_id = $1', [id]);
     await client.query('DELETE FROM blog_publications WHERE creator_id = $1', [id]);
     await client.query('DELETE FROM users WHERE id = $1', [id]);

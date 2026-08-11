@@ -144,7 +144,7 @@ async function finishOutboxRow(dbPool, row, outcome, now) {
     await dbPool.query(
       `UPDATE mobile_push_outbox
        SET status = 'retry', available_at = $1, last_error = $2
-       WHERE id = $3`,
+       WHERE id = $3 AND status = 'processing'`,
       [new Date(now.getTime() + delayMs), outcome.errorCode, row.id]
     );
     return;
@@ -152,13 +152,13 @@ async function finishOutboxRow(dbPool, row, outcome, now) {
   await dbPool.query(
     `UPDATE mobile_push_outbox
      SET status = $1, processed_at = $2, last_error = $3
-     WHERE id = $4`,
+     WHERE id = $4 AND status = 'processing'`,
     [outcome.status, now, outcome.errorCode || null, row.id]
   );
 }
 
 async function deliverOutboxRow(row, messaging, now, dbPool) {
-  if (row.device_revoked_at) {
+  if (row.device_revoked_at && row.kind !== 'device_revoked') {
     await finishOutboxRow(dbPool, row, { status: 'failed', errorCode: 'DEVICE_REVOKED' }, now);
     return 'failed';
   }
@@ -188,7 +188,10 @@ async function deliverOutboxRow(row, messaging, now, dbPool) {
 
   try {
     await messaging.send(buildFirebaseMessage(row, token, now));
-    await finishOutboxRow(dbPool, row, { status: 'delivered' }, now);
+    await finishOutboxRow(dbPool, row, {
+      status: 'delivered',
+      clearToken: row.kind === 'device_revoked'
+    }, now);
     return 'delivered';
   } catch (error) {
     const errorCode = safeErrorCode(error);
@@ -204,7 +207,11 @@ async function deliverOutboxRow(row, messaging, now, dbPool) {
       await finishOutboxRow(dbPool, row, { status: 'retry', errorCode }, now);
       return 'retry';
     }
-    await finishOutboxRow(dbPool, row, { status: 'failed', errorCode }, now);
+    await finishOutboxRow(dbPool, row, {
+      status: 'failed',
+      errorCode,
+      clearToken: row.kind === 'device_revoked'
+    }, now);
     return 'failed';
   }
 }
