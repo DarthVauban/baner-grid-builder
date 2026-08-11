@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19.0"
   },
   "scripts": {
     "start": "node src/server.js",
@@ -80,7 +80,7 @@
     "eslint": "^10.8.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.9.0",
-    "jsdom": "^30.0.1",
+    "jsdom": "^29.1.1",
     "pg-mem": "^3.0.14",
     "supertest": "^7.2.2",
     "typescript": "^6.0.3",
