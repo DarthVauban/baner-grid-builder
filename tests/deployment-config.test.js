@@ -4,10 +4,13 @@ import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
 const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+const tradeInTlsWorkflow = readFileSync(new URL('../.github/workflows/configure-trade-in-tls.yml', import.meta.url), 'utf8');
 const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
 const nginx = readFileSync(new URL('../nginx/nginx.conf', import.meta.url), 'utf8');
+const tradeInNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-host.conf', import.meta.url), 'utf8');
+const tradeInBootstrapNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-bootstrap.conf', import.meta.url), 'utf8');
 
 test('deployment publishes and pulls the same immutable full-SHA image', () => {
   assert.match(workflow, /type=sha,prefix=sha-,format=long/);
@@ -115,6 +118,33 @@ test('reverse proxy accepts Telegram backup restore archives', () => {
   assert.match(nginx, /client_max_body_size\s+55m/);
   assert.match(nginx, /location \/api\/admin\/backups\/\s*\{[\s\S]*client_body_timeout\s+900s/);
   assert.match(nginx, /location \/api\/admin\/backups\/\s*\{[\s\S]*proxy_read_timeout\s+900s/);
+});
+
+test('standalone Trade-in domain has an ACME bootstrap and isolated HTTPS proxy', () => {
+  assert.match(tradeInBootstrapNginx, /server_name\s+tradein\.mobiletrend\.com\.ua/);
+  assert.match(tradeInBootstrapNginx, /location \^~ \/\.well-known\/acme-challenge\//);
+  assert.doesNotMatch(tradeInBootstrapNginx, /listen\s+443/);
+
+  assert.match(tradeInNginx, /return 301 https:\/\/tradein\.mobiletrend\.com\.ua\$request_uri/);
+  assert.match(tradeInNginx, /ssl_certificate \/etc\/letsencrypt\/live\/tradein\.mobiletrend\.com\.ua\/fullchain\.pem/);
+  assert.match(tradeInNginx, /ssl_certificate_key \/etc\/letsencrypt\/live\/tradein\.mobiletrend\.com\.ua\/privkey\.pem/);
+  assert.match(tradeInNginx, /location ~ \^\/\(\?:\$\|trade-in\$\|api\/public\/trade-in\/\|web-assets\/\|favicon\\\.ico\$\)/);
+  assert.match(tradeInNginx, /proxy_pass http:\/\/127\.0\.0\.1:3100/);
+  assert.match(tradeInNginx, /proxy_set_header X-Forwarded-Host \$host/);
+  assert.match(tradeInNginx, /location \/\s*\{\s*return 404;/);
+});
+
+test('Trade-in TLS workflow is guarded, validates DNS, and verifies renewal', () => {
+  assert.match(tradeInTlsWorkflow, /workflow_dispatch:/);
+  assert.match(tradeInTlsWorkflow, /inputs\.confirmation == 'CONFIGURE-TRADEIN-TLS'/);
+  assert.match(tradeInTlsWorkflow, /environment: production/);
+  assert.match(tradeInTlsWorkflow, /EXPECTED_IP='45\.88\.191\.194'/);
+  assert.match(tradeInTlsWorkflow, /key: \$\{\{ secrets\.SSH_PRIVATE_KEY \}\}/);
+  assert.match(tradeInTlsWorkflow, /certbot" certonly|CERTBOT_BIN" certonly/);
+  assert.match(tradeInTlsWorkflow, /--webroot-path "\$ACME_ROOT"/);
+  assert.match(tradeInTlsWorkflow, /run_root "\$NGINX_BIN" -t/);
+  assert.match(tradeInTlsWorkflow, /--dry-run/);
+  assert.match(tradeInTlsWorkflow, /ROLLBACK_REQUIRED='true'/);
 });
 
 test('first persistent-storage deployment migrates media from the legacy container', () => {
