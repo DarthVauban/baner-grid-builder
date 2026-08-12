@@ -153,11 +153,22 @@ const publicEmbedCors = cors({
 app.use(express.json({ limit: '25mb' }));
 app.use(cookieParser());
 
-const authLimiter = rateLimit({
+const rateLimitedAuthPaths = new Set([
+  '/api/auth/register',
+  '/api/auth/register/verify',
+  '/api/auth/login',
+  '/api/auth/login/2fa',
+  '/api/auth/login/passkey/options',
+  '/api/auth/login/passkey/verify'
+]);
+
+const authAttemptLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 60,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.method !== 'POST'
+    || !rateLimitedAuthPaths.has(String(req.originalUrl || '').split('?')[0]),
   message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Забагато спроб. Повторіть пізніше.' } }
 });
 
@@ -165,7 +176,7 @@ app.get('/api/health', asyncHandler(async (req, res) => {
   await query('SELECT 1');
   res.json({ data: { status: 'ok', buildSha: env.APP_BUILD_SHA } });
 }));
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', authAttemptLimiter, authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/grids', gridRoutes);
 app.use('/api/banners', bannerRoutes);
