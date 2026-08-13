@@ -58,6 +58,7 @@ import type {
   IntegrationSettings,
   HoroshopIntegration,
   HoroshopIntegrationInput,
+  HoroshopIntegrationSettingsInput,
   MailtrapIntegration,
   MailtrapIntegrationInput,
   TelegramIntegration,
@@ -828,6 +829,10 @@ export const api = {
     connectHoroshopIntegration: (input: HoroshopIntegrationInput) => request<HoroshopIntegration>(
       '/api/admin/integrations/horoshop/connect',
       { method: 'POST', body: jsonBody(input), timeoutMs: 45_000 }
+    ),
+    updateHoroshopIntegrationSettings: (input: HoroshopIntegrationSettingsInput) => request<HoroshopIntegration>(
+      '/api/admin/integrations/horoshop/settings',
+      { method: 'PATCH', body: jsonBody(input) }
     ),
     syncHoroshopCatalog: () => request<{ started: boolean; integration: HoroshopIntegration }>(
       '/api/admin/integrations/horoshop/sync',

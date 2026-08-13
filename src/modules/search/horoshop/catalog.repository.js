@@ -1,5 +1,17 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { pool as defaultPool } from '../../../db/pool.js';
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+  }
+  return value;
+}
+
+function syncSignature(value) {
+  return createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
+}
 
 function mapConnection(row) {
   if (!row) return null;
@@ -339,6 +351,19 @@ export class HoroshopCatalogRepository {
     }
   }
 
+  async updatePollingInterval(connection, pollingIntervalMinutes) {
+    const result = await this.pool.query(`
+      UPDATE search_horoshop_connections
+      SET polling_interval_minutes = $3,
+          updated_at = CASE WHEN polling_interval_minutes <> $3 THEN NOW() ELSE updated_at END
+      WHERE id = $1 AND generation = $2 AND status NOT IN ('disconnecting', 'purge_failed')
+      RETURNING id, generation, store_domain, encrypted_credentials, polling_interval_minutes,
+                status, last_sync_at, last_error
+    `, [connection.id, connection.generation, pollingIntervalMinutes]);
+    if (result.rowCount !== 1) throw new Error('Horoshop connection generation is no longer active');
+    return mapConnection(result.rows[0]);
+  }
+
   async beginSync(connection, mode) {
     const client = await this.pool.connect();
     const runId = randomUUID();
@@ -383,27 +408,49 @@ export class HoroshopCatalogRepository {
     try {
       await client.query('BEGIN');
       await this.assertWritableConnection(client, connection);
+      const externalIds = [...new Set(categories.map((category) => category.externalId))];
+      const placeholders = externalIds.map((_, index) => `$${index + 2}`).join(', ');
+      const existingResult = await client.query(`
+        SELECT id, external_id, sync_signature, active
+        FROM search_horoshop_categories
+        WHERE connection_id = $1 AND external_id IN (${placeholders})
+      `, [connection.id, ...externalIds]);
+      const existingByExternalId = new Map(existingResult.rows.map((row) => [row.external_id, row]));
+
       for (const category of categories) {
+        const signature = syncSignature(category);
+        const existing = existingByExternalId.get(category.externalId);
+        if (!existing) {
+          const id = randomUUID();
+          await client.query(`
+            INSERT INTO search_horoshop_categories (
+              id, connection_id, generation, external_id, parent_external_id, titles,
+              image_url, canonical_url, source_data, sync_signature, active, last_seen_sync_id
+            ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb, $10, TRUE, $11)
+          `, [
+            id, connection.id, connection.generation, category.externalId,
+            category.parentExternalId, JSON.stringify(category.titles), category.imageUrl,
+            category.canonicalUrl, JSON.stringify(category.source), signature, runId
+          ]);
+          existingByExternalId.set(category.externalId, {
+            id, external_id: category.externalId, sync_signature: signature, active: true
+          });
+          continue;
+        }
+        if (existing.active && existing.sync_signature === signature) continue;
         await client.query(`
-          INSERT INTO search_horoshop_categories (
-            id, connection_id, generation, external_id, parent_external_id, titles,
-            image_url, canonical_url, source_data, active, last_seen_sync_id
-          ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb, TRUE, $10)
-          ON CONFLICT (connection_id, external_id) DO UPDATE SET
-            generation = EXCLUDED.generation,
-            parent_external_id = EXCLUDED.parent_external_id,
-            titles = EXCLUDED.titles,
-            image_url = EXCLUDED.image_url,
-            canonical_url = EXCLUDED.canonical_url,
-            source_data = EXCLUDED.source_data,
-            active = TRUE,
-            last_seen_sync_id = EXCLUDED.last_seen_sync_id,
-            updated_at = NOW()
+          UPDATE search_horoshop_categories
+          SET generation = $3, parent_external_id = $4, titles = $5::jsonb,
+              image_url = $6, canonical_url = $7, source_data = $8::jsonb,
+              sync_signature = $9, active = TRUE, last_seen_sync_id = $10, updated_at = NOW()
+          WHERE id = $1 AND connection_id = $2
         `, [
-          randomUUID(), connection.id, connection.generation, category.externalId,
-          category.parentExternalId, JSON.stringify(category.titles), category.imageUrl,
-          category.canonicalUrl, JSON.stringify(category.source), runId
+          existing.id, connection.id, connection.generation, category.parentExternalId,
+          JSON.stringify(category.titles), category.imageUrl, category.canonicalUrl,
+          JSON.stringify(category.source), signature, runId
         ]);
+        existing.sync_signature = signature;
+        existing.active = true;
       }
       await client.query('COMMIT');
     } catch (error) {
@@ -420,83 +467,124 @@ export class HoroshopCatalogRepository {
     try {
       await client.query('BEGIN');
       await this.assertWritableConnection(client, connection);
+      const productExternalIds = [...new Set(products.map((product) => product.externalId))];
+      const productPlaceholders = productExternalIds.map((_, index) => `$${index + 2}`).join(', ');
+      const existingProductsResult = await client.query(`
+        SELECT id, external_id, sync_signature, active
+        FROM search_horoshop_products
+        WHERE connection_id = $1 AND external_id IN (${productPlaceholders})
+      `, [connection.id, ...productExternalIds]);
+      const existingProducts = new Map(existingProductsResult.rows.map((row) => [row.external_id, row]));
+      const modificationExternalIds = [...new Set(products.flatMap((product) => (
+        product.modifications.map((modification) => modification.externalId)
+      )))];
+      let existingModifications = new Map();
+      if (modificationExternalIds.length > 0) {
+        const modificationPlaceholders = modificationExternalIds.map((_, index) => `$${index + 2}`).join(', ');
+        const existingModificationsResult = await client.query(`
+          SELECT id, product_id, external_id, sync_signature, active
+          FROM search_horoshop_modifications
+          WHERE connection_id = $1 AND external_id IN (${modificationPlaceholders})
+        `, [connection.id, ...modificationExternalIds]);
+        existingModifications = new Map(existingModificationsResult.rows.map((row) => [row.external_id, row]));
+      }
+
       for (const product of products) {
-        const productResult = await client.query(`
-          INSERT INTO search_horoshop_products (
-            id, connection_id, generation, external_id, parent_external_id, sku, titles,
-            descriptions, brand, category_external_id, price, old_price, currency, availability,
-            visible, primary_image_url, canonical_url, popularity, characteristics, source_data,
-            active, last_seen_sync_id
-          ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14,
-            $15, $16, $17, $18, $19::jsonb, $20::jsonb, TRUE, $21
-          )
-          ON CONFLICT (connection_id, external_id) DO UPDATE SET
-            generation = EXCLUDED.generation,
-            parent_external_id = EXCLUDED.parent_external_id,
-            sku = EXCLUDED.sku,
-            titles = EXCLUDED.titles,
-            descriptions = EXCLUDED.descriptions,
-            brand = EXCLUDED.brand,
-            category_external_id = EXCLUDED.category_external_id,
-            price = EXCLUDED.price,
-            old_price = EXCLUDED.old_price,
-            currency = EXCLUDED.currency,
-            availability = EXCLUDED.availability,
-            visible = EXCLUDED.visible,
-            primary_image_url = EXCLUDED.primary_image_url,
-            canonical_url = EXCLUDED.canonical_url,
-            popularity = EXCLUDED.popularity,
-            characteristics = EXCLUDED.characteristics,
-            source_data = EXCLUDED.source_data,
-            active = TRUE,
-            last_seen_sync_id = EXCLUDED.last_seen_sync_id,
-            updated_at = NOW()
-          RETURNING id
-        `, [
-          randomUUID(), connection.id, connection.generation, product.externalId,
-          product.parentExternalId, product.sku, JSON.stringify(product.titles),
-          JSON.stringify(product.descriptions), product.brand, product.categoryExternalId,
-          product.price, product.oldPrice, product.currency, product.availability, product.visible,
-          product.primaryImageUrl, product.canonicalUrl, product.popularity,
-          JSON.stringify(product.characteristics), JSON.stringify(product.source), runId
-        ]);
-        const productId = productResult.rows[0].id;
-        for (const modification of product.modifications) {
+        const signature = syncSignature({ ...product, modifications: undefined });
+        let existingProduct = existingProducts.get(product.externalId);
+        let productId = existingProduct?.id;
+        if (!existingProduct) {
+          productId = randomUUID();
           await client.query(`
-            INSERT INTO search_horoshop_modifications (
-              id, connection_id, product_id, generation, external_id, sku, titles, price,
-              old_price, currency, availability, visible, image_url, page_url, attributes,
-              source_data, active, last_seen_sync_id
+            INSERT INTO search_horoshop_products (
+              id, connection_id, generation, external_id, parent_external_id, sku, titles,
+              descriptions, brand, category_external_id, price, old_price, currency, availability,
+              visible, primary_image_url, canonical_url, popularity, characteristics, source_data,
+              sync_signature, active, last_seen_sync_id
             ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14,
-              $15::jsonb, $16::jsonb, TRUE, $17
+              $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14,
+              $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, TRUE, $22
             )
-            ON CONFLICT (connection_id, external_id) DO UPDATE SET
-              product_id = EXCLUDED.product_id,
-              generation = EXCLUDED.generation,
-              sku = EXCLUDED.sku,
-              titles = EXCLUDED.titles,
-              price = EXCLUDED.price,
-              old_price = EXCLUDED.old_price,
-              currency = EXCLUDED.currency,
-              availability = EXCLUDED.availability,
-              visible = EXCLUDED.visible,
-              image_url = EXCLUDED.image_url,
-              page_url = EXCLUDED.page_url,
-              attributes = EXCLUDED.attributes,
-              source_data = EXCLUDED.source_data,
-              active = TRUE,
-              last_seen_sync_id = EXCLUDED.last_seen_sync_id,
-              updated_at = NOW()
           `, [
-            randomUUID(), connection.id, productId, connection.generation,
-            modification.externalId, modification.sku, JSON.stringify(modification.titles),
-            modification.price, modification.oldPrice, modification.currency,
-            modification.availability, modification.visible, modification.imageUrl,
-            modification.pageUrl, JSON.stringify(modification.attributes),
-            JSON.stringify(modification.source), runId
+            productId, connection.id, connection.generation, product.externalId,
+            product.parentExternalId, product.sku, JSON.stringify(product.titles),
+            JSON.stringify(product.descriptions), product.brand, product.categoryExternalId,
+            product.price, product.oldPrice, product.currency, product.availability, product.visible,
+            product.primaryImageUrl, product.canonicalUrl, product.popularity,
+            JSON.stringify(product.characteristics), JSON.stringify(product.source), signature, runId
           ]);
+          existingProduct = { id: productId, external_id: product.externalId, sync_signature: signature, active: true };
+          existingProducts.set(product.externalId, existingProduct);
+        } else if (!existingProduct.active || existingProduct.sync_signature !== signature) {
+          await client.query(`
+            UPDATE search_horoshop_products
+            SET generation = $3, parent_external_id = $4, sku = $5, titles = $6::jsonb,
+                descriptions = $7::jsonb, brand = $8, category_external_id = $9, price = $10,
+                old_price = $11, currency = $12, availability = $13, visible = $14,
+                primary_image_url = $15, canonical_url = $16, popularity = $17,
+                characteristics = $18::jsonb, source_data = $19::jsonb, sync_signature = $20,
+                active = TRUE, last_seen_sync_id = $21, updated_at = NOW()
+            WHERE id = $1 AND connection_id = $2
+          `, [
+            existingProduct.id, connection.id, connection.generation, product.parentExternalId,
+            product.sku, JSON.stringify(product.titles), JSON.stringify(product.descriptions),
+            product.brand, product.categoryExternalId, product.price, product.oldPrice,
+            product.currency, product.availability, product.visible, product.primaryImageUrl,
+            product.canonicalUrl, product.popularity, JSON.stringify(product.characteristics),
+            JSON.stringify(product.source), signature, runId
+          ]);
+          existingProduct.sync_signature = signature;
+          existingProduct.active = true;
+        }
+        for (const modification of product.modifications) {
+          const modificationSignature = syncSignature({ productExternalId: product.externalId, ...modification });
+          const existingModification = existingModifications.get(modification.externalId);
+          if (!existingModification) {
+            const id = randomUUID();
+            await client.query(`
+              INSERT INTO search_horoshop_modifications (
+                id, connection_id, product_id, generation, external_id, sku, titles, price,
+                old_price, currency, availability, visible, image_url, page_url, attributes,
+                source_data, sync_signature, active, last_seen_sync_id
+              ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14,
+                $15::jsonb, $16::jsonb, $17, TRUE, $18
+              )
+            `, [
+              id, connection.id, productId, connection.generation,
+              modification.externalId, modification.sku, JSON.stringify(modification.titles),
+              modification.price, modification.oldPrice, modification.currency,
+              modification.availability, modification.visible, modification.imageUrl,
+              modification.pageUrl, JSON.stringify(modification.attributes),
+              JSON.stringify(modification.source), modificationSignature, runId
+            ]);
+            existingModifications.set(modification.externalId, {
+              id, product_id: productId, external_id: modification.externalId,
+              sync_signature: modificationSignature, active: true
+            });
+            continue;
+          }
+          if (existingModification.active && existingModification.product_id === productId
+            && existingModification.sync_signature === modificationSignature) continue;
+          await client.query(`
+            UPDATE search_horoshop_modifications
+            SET product_id = $3, generation = $4, sku = $5, titles = $6::jsonb,
+                price = $7, old_price = $8, currency = $9, availability = $10,
+                visible = $11, image_url = $12, page_url = $13, attributes = $14::jsonb,
+                source_data = $15::jsonb, sync_signature = $16, active = TRUE,
+                last_seen_sync_id = $17, updated_at = NOW()
+            WHERE id = $1 AND connection_id = $2
+          `, [
+            existingModification.id, connection.id, productId, connection.generation,
+            modification.sku, JSON.stringify(modification.titles), modification.price,
+            modification.oldPrice, modification.currency, modification.availability,
+            modification.visible, modification.imageUrl, modification.pageUrl,
+            JSON.stringify(modification.attributes), JSON.stringify(modification.source),
+            modificationSignature, runId
+          ]);
+          existingModification.product_id = productId;
+          existingModification.sync_signature = modificationSignature;
+          existingModification.active = true;
         }
       }
       await client.query('COMMIT');
@@ -517,7 +605,7 @@ export class HoroshopCatalogRepository {
     `, [runId, counts.categories, counts.products, counts.modifications, counts.pages]);
   }
 
-  async completeSync(connection, runId, counts) {
+  async completeSync(connection, runId, counts, seenExternalIds) {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -525,18 +613,21 @@ export class HoroshopCatalogRepository {
       await client.query(`
         UPDATE search_horoshop_categories
         SET active = FALSE, updated_at = NOW()
-        WHERE connection_id = $1 AND generation = $2 AND last_seen_sync_id <> $3 AND active
-      `, [connection.id, connection.generation, runId]);
+        WHERE connection_id = $1 AND generation = $2 AND active
+          AND NOT (external_id = ANY($3::text[]))
+      `, [connection.id, connection.generation, seenExternalIds.categories]);
       await client.query(`
         UPDATE search_horoshop_products
         SET active = FALSE, updated_at = NOW()
-        WHERE connection_id = $1 AND generation = $2 AND last_seen_sync_id <> $3 AND active
-      `, [connection.id, connection.generation, runId]);
+        WHERE connection_id = $1 AND generation = $2 AND active
+          AND NOT (external_id = ANY($3::text[]))
+      `, [connection.id, connection.generation, seenExternalIds.products]);
       await client.query(`
         UPDATE search_horoshop_modifications
         SET active = FALSE, updated_at = NOW()
-        WHERE connection_id = $1 AND generation = $2 AND last_seen_sync_id <> $3 AND active
-      `, [connection.id, connection.generation, runId]);
+        WHERE connection_id = $1 AND generation = $2 AND active
+          AND NOT (external_id = ANY($3::text[]))
+      `, [connection.id, connection.generation, seenExternalIds.modifications]);
       await client.query(`
         UPDATE search_horoshop_sync_runs
         SET status = 'succeeded', categories_received = $2, products_received = $3,

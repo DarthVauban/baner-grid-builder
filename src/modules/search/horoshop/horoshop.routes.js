@@ -22,6 +22,9 @@ const connectSchema = z.object({
 const disconnectSchema = z.object({
   confirmDomain: z.string().trim().min(4).max(253)
 });
+const settingsSchema = z.object({
+  pollingIntervalMinutes: z.number().int().min(1).max(1440)
+});
 
 router.get('/', asyncHandler(async (req, res) => {
   res.json({ data: await horoshopCatalogService.status() });
@@ -37,6 +40,12 @@ router.post('/connect', asyncHandler(async (req, res) => {
 router.post('/sync', asyncHandler(async (req, res) => {
   const started = await horoshopCatalogService.startSync('manual', req.user.id);
   res.status(202).json({ data: { started, integration: await horoshopCatalogService.status() } });
+}));
+
+router.patch('/settings', asyncHandler(async (req, res) => {
+  const input = parseInput(settingsSchema, req.body);
+  await horoshopCatalogService.updateSettings(input);
+  res.json({ data: await horoshopCatalogService.status() });
 }));
 
 router.delete('/', asyncHandler(async (req, res) => {

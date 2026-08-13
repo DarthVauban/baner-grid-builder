@@ -75,6 +75,10 @@ export interface HoroshopIntegrationInput {
   pollingIntervalMinutes: number;
 }
 
+export interface HoroshopIntegrationSettingsInput {
+  pollingIntervalMinutes: number;
+}
+
 export type BackupScheduleType = 'daily' | 'weekly';
 export type BackupRunTrigger = 'manual' | 'scheduled' | 'restore';
 export type BackupRunStatus = 'success' | 'failed';

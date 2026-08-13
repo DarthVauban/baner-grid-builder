@@ -996,6 +996,10 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .horoshop-integration-summary strong { overflow: hidden; color: #344056; font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .horoshop-integration-summary span { overflow: hidden; color: #7e899b; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .horoshop-integration-summary__domain strong { font-size: 13px; }
+.horoshop-sync-settings { display: grid; grid-template-columns: minmax(220px,1fr) auto; align-items: end; gap: 12px; border: 1px solid #e7eaf0; border-radius: 12px; padding: 12px; background: #fafbfc; }
+.horoshop-sync-settings .field { gap: 5px; }
+.horoshop-sync-settings .field input { height: 40px; border-radius: 10px; font-size: 11px; }
+.horoshop-sync-settings .button { min-height: 40px; }
 .horoshop-integration-actions { display: flex; justify-content: flex-end; }
 .horoshop-disconnect { display: grid; grid-template-columns: minmax(0,1fr) minmax(220px,.8fr); align-items: end; gap: 12px; border: 1px solid #f0d1d7; border-radius: 13px; padding: 14px; background: #fff9fa; }
 .horoshop-disconnect > div { align-self: center; }
@@ -2413,6 +2417,7 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 :root[data-theme="brand"] .integration-note { color: #c4bfea; border-color: #46415f; background: #211f2b; }
 :root[data-theme="brand"] .horoshop-integration-summary > div { border-color: var(--line); background: var(--surface-soft); }
 :root[data-theme="brand"] .horoshop-integration-summary strong { color: var(--ink); }
+:root[data-theme="brand"] .horoshop-sync-settings { border-color: var(--line); background: var(--surface-soft); }
 :root[data-theme="brand"] .horoshop-integration-summary small,
 :root[data-theme="brand"] .horoshop-integration-summary span { color: #999992; }
 :root[data-theme="brand"] .horoshop-disconnect { border-color: #63313a; background: #29191c; }
@@ -4031,6 +4036,8 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .integration-modal__footer small { width: 100%; margin-right: 0; }
   .horoshop-integration-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .horoshop-integration-summary__domain { grid-column: 1 / -1; }
+  .horoshop-sync-settings { grid-template-columns: 1fr; }
+  .horoshop-sync-settings .button { width: 100%; justify-content: center; }
   .horoshop-disconnect { grid-template-columns: 1fr; }
   .horoshop-disconnect .button { grid-column: 1; }
   .backup-restore__actions { grid-template-columns: 1fr; }

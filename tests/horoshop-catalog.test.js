@@ -148,6 +148,42 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   assert.deepEqual(status.counts, { categories: 1, products: 2, modifications: 3 });
   assert.equal(status.latestRun.pagesReceived, 2);
 
+  const staleTimestamp = new Date('2001-01-01T00:00:00.000Z');
+  await query('UPDATE search_horoshop_categories SET updated_at = $1', [staleTimestamp]);
+  await query('UPDATE search_horoshop_products SET updated_at = $1', [staleTimestamp]);
+  await query('UPDATE search_horoshop_modifications SET updated_at = $1', [staleTimestamp]);
+  const beforeUnchangedSync = await query(`
+    SELECT external_id, last_seen_sync_id, sync_signature
+    FROM search_horoshop_products
+    ORDER BY external_id
+  `);
+  assert.ok(beforeUnchangedSync.rows.every((row) => /^[a-f0-9]{64}$/u.test(row.sync_signature)));
+
+  await service.updateSettings({ pollingIntervalMinutes: 45 }, null);
+  status = await service.status();
+  assert.equal(status.pollingIntervalMinutes, 45);
+  assert.equal(await service.startSync('scheduled'), true);
+  await service.waitForIdle();
+  const unchangedRows = await query(`
+    SELECT external_id, last_seen_sync_id, updated_at
+    FROM search_horoshop_products
+    ORDER BY external_id
+  `);
+  assert.deepEqual(
+    unchangedRows.rows.map((row) => ({ externalId: row.external_id, lastSeenSyncId: row.last_seen_sync_id })),
+    beforeUnchangedSync.rows.map((row) => ({ externalId: row.external_id, lastSeenSyncId: row.last_seen_sync_id }))
+  );
+  assert.ok(unchangedRows.rows.every((row) => row.updated_at.toISOString() === staleTimestamp.toISOString()));
+  const unchangedCategoryAndModificationRows = await query(`
+    SELECT
+      (SELECT COUNT(*) FROM search_horoshop_categories WHERE updated_at = $1) AS categories,
+      (SELECT COUNT(*) FROM search_horoshop_modifications WHERE updated_at = $1) AS modifications
+  `, [staleTimestamp]);
+  assert.deepEqual({
+    categories: Number(unchangedCategoryAndModificationRows.rows[0].categories),
+    modifications: Number(unchangedCategoryAndModificationRows.rows[0].modifications)
+  }, { categories: 1, modifications: 3 });
+
   catalogs.set('first.example.com', [[{
     id: 'p-1', article: 'FIRST-1', title: { ua: 'Перший оновлений' }, parent_id: 'cat-1',
     modifications: [{ article: 'FIRST-1-BLACK', price: '95', quantity: 1 }]
@@ -161,6 +197,17 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   `);
   assert.equal(Number(activeAfterReconcile.rows[0].products), 1);
   assert.equal(Number(activeAfterReconcile.rows[0].modifications), 1);
+  const changedRows = await query(`
+    SELECT external_id, active, updated_at
+    FROM search_horoshop_products
+    ORDER BY external_id
+  `);
+  assert.ok(changedRows.rows.every((row) => row.updated_at.toISOString() !== staleTimestamp.toISOString()));
+  assert.deepEqual(changedRows.rows.map((row) => [row.external_id, row.active]), [
+    ['p-1', true], ['p-2', false]
+  ]);
+  const unchangedCategory = await query('SELECT updated_at FROM search_horoshop_categories');
+  assert.equal(unchangedCategory.rows[0].updated_at.toISOString(), staleTimestamp.toISOString());
 
   const deleted = await service.disconnect('first.example.com', null);
   assert.deepEqual(deleted, { categories: 1, products: 2, modifications: 3 });

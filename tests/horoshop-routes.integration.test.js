@@ -90,6 +90,17 @@ test('Horoshop catalog route returns product cards with nested modification tree
     JSON.stringify({ uk: 'Xiaomi Redmi Buds 6 Active Pink' })
   ]);
 
+  await admin
+    .patch('/api/admin/integrations/horoshop/settings')
+    .send({ pollingIntervalMinutes: 0 })
+    .expect(422);
+  const updatedSettings = await admin
+    .patch('/api/admin/integrations/horoshop/settings')
+    .send({ pollingIntervalMinutes: 45 })
+    .expect(200);
+  assert.equal(updatedSettings.body.data.pollingIntervalMinutes, 45);
+  assert.equal(JSON.stringify(updatedSettings.body).includes('encryptedCredentials'), false);
+
   const response = await admin.get('/api/search/horoshop/catalog?page=1&pageSize=10').expect(200);
   assert.match(response.headers['cache-control'], /no-store/u);
   assert.equal(response.body.data.integration.storeDomain, 'test-shop.example');
