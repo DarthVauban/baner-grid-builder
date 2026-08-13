@@ -69,7 +69,7 @@ function firebaseError(code) {
 
 test('push worker delivers a safe workspace notification payload', async () => {
   const token = 'raw-fcm-success-token-that-must-not-be-logged';
-  await createPushDevice('success', token);
+  const deviceId = await createPushDevice('success', token);
   const notificationId = await createNotification(pool, {
     userId,
     type: 'application_created',
@@ -85,7 +85,13 @@ test('push worker delivers a safe workspace notification payload', async () => {
   assert.deepEqual(summary, { claimed: 1, delivered: 1, retried: 0, failed: 0 });
   assert.deepEqual(sent, [{
     token,
-    data: { kind: 'workspace_notification', notificationId },
+    data: {
+      kind: 'workspace_notification',
+      notificationId,
+      deploymentId: 'mt-workspace-test',
+      environment: 'test',
+      targetDeviceId: deviceId
+    },
     notification: { title: 'Нова заявка', body: 'Надійшла нова заявка.' },
     android: { ttl: 86_400_000 }
   }]);
@@ -179,7 +185,13 @@ test('login request push contains only request id and respects challenge TTL', a
 
   assert.deepEqual(sent, [{
     token,
-    data: { kind: 'login_request', requestId: loginRequest.rows[0].id },
+    data: {
+      kind: 'login_request',
+      requestId: loginRequest.rows[0].id,
+      deploymentId: 'mt-workspace-test',
+      environment: 'test',
+      targetDeviceId: deviceId
+    },
     notification: {
       title: 'Новий запит на вхід',
       body: 'Відкрийте MT Workspace, щоб підтвердити або відхилити вхід.'

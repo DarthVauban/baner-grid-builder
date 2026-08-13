@@ -86,6 +86,33 @@ export async function closePendingMobileLoginRequests(db, userId, reason) {
   return denied.rowCount;
 }
 
+export async function closeApprovedQrLoginChallenges(db, {
+  userId = null,
+  deviceId = null,
+  reason
+}) {
+  if (!userId && !deviceId) return 0;
+  const cancelled = await db.query(
+    `UPDATE mobile_qr_login_challenges
+     SET status = 'cancelled', cancelled_at = NOW(), denial_reason = $1
+     WHERE status = 'approved'
+       AND ($2::UUID IS NULL OR user_id = $2)
+       AND ($3::UUID IS NULL OR approved_device_id = $3)
+     RETURNING id, user_id, approved_device_id`,
+    [reason, userId, deviceId]
+  );
+  for (const challenge of cancelled.rows) {
+    await recordMobileSecurityEvent(db, {
+      userId: challenge.user_id,
+      deviceId: challenge.approved_device_id,
+      qrLoginChallengeId: challenge.id,
+      eventType: 'qr_login_cancelled',
+      metadata: { reason }
+    });
+  }
+  return cancelled.rowCount;
+}
+
 async function cancelPendingMobilePairings(db, userId, reason) {
   const cancelled = await db.query(
     `UPDATE mobile_pairings
@@ -125,6 +152,7 @@ export async function revokeAllMobileAccessInTransaction(db, userId, {
       queuePush
     });
   }
+  const qrLoginChallengesCancelled = await closeApprovedQrLoginChallenges(db, { userId, reason });
   const pairingsCancelled = await cancelPendingMobilePairings(db, userId, reason);
   const loginRequestsDenied = await closePendingMobileLoginRequests(db, userId, reason);
   await recordMobileSecurityEvent(db, {
@@ -136,12 +164,14 @@ export async function revokeAllMobileAccessInTransaction(db, userId, {
       targetUserId: userId,
       devicesRevoked: devices.rowCount,
       pairingsCancelled,
-      loginRequestsDenied
+      loginRequestsDenied,
+      qrLoginChallengesCancelled
     }
   });
   return {
     devicesRevoked: devices.rowCount,
     pairingsCancelled,
-    loginRequestsDenied
+    loginRequestsDenied,
+    qrLoginChallengesCancelled
   };
 }

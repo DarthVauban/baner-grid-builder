@@ -1,4 +1,5 @@
 import { pool } from '../../db/pool.js';
+import { env } from '../../config/env.js';
 import { AppError } from '../../lib/app-error.js';
 import {
   decryptTwoFactorSecret,
@@ -13,11 +14,14 @@ import {
   encryptMobileValue,
   generateManualPairingCode,
   generateOpaqueMobileToken,
+  hashInstallationId,
   hashPairingManualCode,
   hashPairingQrToken
 } from './mobile-crypto.js';
+import { normalizeDeviceAuthKey } from './mobile-auth-key.service.js';
 import { newMobileDeviceCredential, serializeMobileDevice } from './mobile-device.service.js';
 import { recordMobileSecurityEvent } from './mobile-security.service.js';
+import { mobilePairingQrPayload, mobileWorkspaceMetadata } from './mobile-workspace-config.js';
 
 export const mobilePairingTtlMs = 10 * 60 * 1000;
 
@@ -29,8 +33,10 @@ function extractPairingToken(value) {
   try {
     const url = new URL(candidate);
     const isAppLink = url.protocol === 'mtworkspace:' && url.hostname === 'pair';
-    const isWebLink = url.protocol === 'https:'
-      && url.hostname === 'mt-panel.sbs'
+    const trustedOrigin = new URL(env.mobilePublicOrigin);
+    const isWebLink = url.protocol === trustedOrigin.protocol
+      && url.hostname === trustedOrigin.hostname
+      && url.port === trustedOrigin.port
       && url.pathname === '/mobile/pair';
     return isAppLink || isWebLink ? String(url.searchParams.get('token') || '').trim() : '';
   } catch (_error) {
@@ -73,7 +79,10 @@ export function serializeMobilePairing(row, { includeRecoveryCodes = false } = {
       last_seen_at: row.device_last_seen_at,
       revoked_at: row.device_revoked_at,
       fcm_token_ciphertext: row.device_fcm_token_ciphertext,
-      fcm_token_hash: row.device_fcm_token_hash
+      fcm_token_hash: row.device_fcm_token_hash,
+      auth_key_id: row.device_auth_key_id,
+      auth_public_key: row.device_auth_public_key,
+      auth_key_registered_at: row.device_auth_key_registered_at
     }) : null
   };
   if (includeRecoveryCodes && row.recovery_codes_ciphertext) {
@@ -92,7 +101,10 @@ async function loadPairingForUser(db, userId, pairingId) {
             devices.paired_at AS device_paired_at, devices.last_seen_at AS device_last_seen_at,
             devices.revoked_at AS device_revoked_at,
             devices.fcm_token_ciphertext AS device_fcm_token_ciphertext,
-            devices.fcm_token_hash AS device_fcm_token_hash
+            devices.fcm_token_hash AS device_fcm_token_hash,
+            devices.auth_key_id AS device_auth_key_id,
+            devices.auth_public_key AS device_auth_public_key,
+            devices.auth_key_registered_at AS device_auth_key_registered_at
      FROM mobile_pairings AS pairings
      LEFT JOIN mobile_devices AS devices ON devices.id = pairings.claimed_device_id
      WHERE pairings.id = $1 AND pairings.user_id = $2`,
@@ -208,9 +220,10 @@ export async function createMobilePairing(userId, { purpose, code = '' }, dbPool
     return {
       id: inserted.rows[0].id,
       status: 'pending',
-      qrPayload: `mtworkspace://pair?token=${qrToken}`,
+      qrPayload: mobilePairingQrPayload(qrToken),
       manualCode,
-      expiresAt: expiresAt.toISOString()
+      expiresAt: expiresAt.toISOString(),
+      workspace: mobileWorkspaceMetadata()
     };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -272,9 +285,17 @@ export async function loadPairingByClaimToken(pairingToken, db = pool) {
   return result.rows[0] || null;
 }
 
-export async function claimMobilePairing({ pairingToken, platform, deviceName }, dbPool = pool) {
+export async function claimMobilePairing({
+  pairingToken,
+  platform,
+  deviceName,
+  installationId = null,
+  authKey = null
+}, dbPool = pool) {
   const token = extractPairingToken(pairingToken);
   if (!token) throw new AppError(404, 'PAIRING_NOT_FOUND', 'Код підключення не знайдено.');
+  const normalizedAuthKey = authKey ? normalizeDeviceAuthKey(authKey) : null;
+  const installationIdHash = installationId ? hashInstallationId(installationId) : null;
 
   const client = await dbPool.connect();
   let committed = false;
@@ -334,10 +355,25 @@ export async function claimMobilePairing({ pairingToken, platform, deviceName },
     const secret = decryptPairingSecret(pairing);
     const credential = newMobileDeviceCredential();
     const deviceResult = await client.query(
-      `INSERT INTO mobile_devices (user_id, name, platform, access_token_hash)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO mobile_devices (
+         user_id, name, platform, access_token_hash, installation_id_hash,
+         auth_key_id, auth_public_key, auth_key_algorithm, auth_key_version,
+         auth_key_registered_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8, $9,
+         CASE WHEN $6::VARCHAR IS NULL THEN NULL ELSE NOW() END)
        RETURNING *`,
-      [pairing.user_id, deviceName, platform, credential.accessTokenHash]
+      [
+        pairing.user_id,
+        deviceName,
+        platform,
+        credential.accessTokenHash,
+        installationIdHash,
+        normalizedAuthKey?.keyId || null,
+        normalizedAuthKey ? JSON.stringify(normalizedAuthKey.publicKeyJwk) : null,
+        normalizedAuthKey?.algorithm || null,
+        normalizedAuthKey?.version || null
+      ]
     );
     const device = deviceResult.rows[0];
 
@@ -386,8 +422,27 @@ export async function claimMobilePairing({ pairingToken, platform, deviceName },
       deviceId: device.id,
       pairingId: pairing.id,
       eventType: 'pairing_claimed',
-      metadata: { purpose: pairing.purpose, platform }
+      metadata: {
+        purpose: pairing.purpose,
+        platform,
+        installationIdProvided: Boolean(installationId),
+        authKeyRegistered: Boolean(normalizedAuthKey)
+      }
     });
+    if (normalizedAuthKey) {
+      await recordMobileSecurityEvent(client, {
+        userId: pairing.user_id,
+        deviceId: device.id,
+        pairingId: pairing.id,
+        eventType: 'mobile_auth_key_registered',
+        metadata: {
+          algorithm: normalizedAuthKey.algorithm,
+          version: normalizedAuthKey.version,
+          keyId: normalizedAuthKey.keyId,
+          source: 'pairing'
+        }
+      });
+    }
     await client.query('COMMIT');
     committed = true;
 
@@ -399,7 +454,8 @@ export async function claimMobilePairing({ pairingToken, platform, deviceName },
       deviceName: device.name,
       accessToken: credential.accessToken,
       totpSecret: secret,
-      pairedAt: device.paired_at
+      pairedAt: device.paired_at,
+      workspace: mobileWorkspaceMetadata()
     };
   } catch (error) {
     if (!committed) await client.query('ROLLBACK').catch(() => {});

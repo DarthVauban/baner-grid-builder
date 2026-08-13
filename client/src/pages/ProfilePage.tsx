@@ -190,6 +190,10 @@ function formatPairingCountdown(seconds: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+function mobileEnvironmentLabel(environment?: string) {
+  return environment === 'production' ? 'Production' : 'DEV';
+}
+
 export function MobilePairingModal({ purpose, onClose, onConnected }: {
   purpose: 'enable_2fa' | 'add_device';
   onClose: () => void;
@@ -367,6 +371,12 @@ export function MobilePairingModal({ purpose, onClose, onConnected }: {
       : <div className="mobile-pairing-result"><span className="mobile-pairing-hero__icon"><Icon name="qrCode" size={25} /></span><h3>Створіть код підключення</h3><p>Код діє 10 хвилин і може бути використаний лише один раз.</p><button className="button button--primary" type="button" onClick={() => void createPairing()}>Створити код</button></div>)}
 
     {pairing?.status === 'pending' && <div className="mobile-pairing-content">
+      {pairing.workspace && <div className="mobile-pairing-environment">
+        <span className={`environment-badge environment-badge--${pairing.workspace.environment}`}>
+          <span aria-hidden="true" /> {mobileEnvironmentLabel(pairing.workspace.environment)}
+        </span>
+        <small>{pairing.workspace.displayName} · {pairing.workspace.webOrigin}</small>
+      </div>}
       <div className="mobile-pairing-hero">
         <span className="mobile-pairing-hero__icon"><Icon name="phone" size={25} /></span>
         <div><h3>Відскануйте код у застосунку</h3><p>Відкрийте MT Workspace → «Підключити профіль» і відскануйте QR-код.</p></div>
@@ -377,6 +387,7 @@ export function MobilePairingModal({ purpose, onClose, onConnected }: {
           {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR-код для MT Workspace" /> : <span>Створюємо QR…</span>}
         </div>
         <div className="mobile-pairing-instructions">
+          <p className="mobile-pairing-account-note">Новий акаунт буде додано до MT Workspace; уже підключені в застосунку акаунти не видаляються.</p>
           <ol><li>Встановіть або відкрийте застосунок MT Workspace.</li><li>Виберіть підключення профілю.</li><li>Відскануйте QR або введіть ручний код.</li></ol>
           <div className="mobile-pairing-manual"><span>Ручний код</span><code>{pairing.manualCode}</code><button className="button button--secondary button--small" type="button" onClick={() => void copyManualCode()}><Icon name="copy" size={15} /> Копіювати</button></div>
         </div>
@@ -733,13 +744,13 @@ export function ProfilePage() {
         {twoFactorStatus?.method === 'mt_workspace' && <article className="mobile-devices-card">
           <header>
             <span className="two-factor-card__icon"><Icon name="phone" size={22} /></span>
-            <span><strong>Пристрої MT Workspace</strong><small>Активних пристроїв: {twoFactorStatus.activeMobileDeviceCount}.</small></span>
+            <span><strong>Пристрої MT Workspace</strong><small>Активних пристроїв: {twoFactorStatus.activeMobileDeviceCount}. Нові акаунти додаються без видалення вже підключених.</small></span>
             <button className="button button--primary button--small" type="button" onClick={() => setAddMobileDeviceOpen(true)}><Icon name="add" size={16} /> Додати пристрій</button>
           </header>
           <div className="mobile-device-list">
             {mobileDevices.map((device) => <div className={`mobile-device-list__item${device.revokedAt ? ' mobile-device-list__item--revoked' : ''}`} key={device.id}>
               <span className="passkey-list__device"><Icon name="phone" size={18} /></span>
-              <span><strong>{device.name}</strong><small>{device.platform === 'ios' ? 'iOS' : 'Android'} · додано {new Date(device.pairedAt).toLocaleDateString('uk-UA')}{device.pushConfigured ? ' · push активний' : ''}</small></span>
+              <span className="mobile-device-list__copy"><strong>{device.name}</strong><small>{device.platform === 'ios' ? 'iOS' : 'Android'} · додано {new Date(device.pairedAt).toLocaleDateString('uk-UA')}{device.pushConfigured ? ' · push активний' : ''}</small><em className={device.qrLoginSupported ? 'mobile-device-list__capability mobile-device-list__capability--ready' : 'mobile-device-list__capability'}>{device.qrLoginSupported ? 'QR-вхід підтримується' : 'Потрібне оновлення застосунку'}</em></span>
               {device.revokedAt
                 ? <span className="mobile-device-list__status">Відкликано</span>
                 : <button className="icon-button icon-button--danger" type="button" onClick={() => setMobileDeviceToRevoke(device)} aria-label={`Відкликати пристрій ${device.name}`}><Icon name="delete" size={18} /></button>}

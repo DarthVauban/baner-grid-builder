@@ -43,10 +43,14 @@ test('mobile pairing and device APIs preserve the fixed app contract', async () 
     'id',
     'manualCode',
     'qrPayload',
-    'status'
+    'status',
+    'workspace'
   ]);
   assert.equal(pairing.body.data.status, 'pending');
-  assert.match(pairing.body.data.qrPayload, /^mtworkspace:\/\/pair\?token=/);
+  assert.match(pairing.body.data.qrPayload, /^mtworkspace:\/\/pair\?v=2&/);
+  const pairingQr = new URL(pairing.body.data.qrPayload);
+  assert.equal(pairingQr.searchParams.get('deploymentId'), 'mt-workspace-test');
+  assert.equal(pairingQr.searchParams.get('issuer'), 'http://localhost:3000');
 
   const firstClaim = await request(app)
     .post('/api/mobile/pairings/claim')
@@ -64,7 +68,8 @@ test('mobile pairing and device APIs preserve the fixed app contract', async () 
     'pairedAt',
     'totpSecret',
     'userId',
-    'userName'
+    'userName',
+    'workspace'
   ]);
   assert.equal(firstClaim.body.data.userId, userId);
   assert.equal(firstClaim.body.data.email, process.env.ADMIN_EMAIL);

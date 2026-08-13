@@ -5,6 +5,10 @@ import type {
   MobileLoginStatusInput,
   MobileDeviceFeed,
   MobilePairing,
+  QrLoginChallenge,
+  QrLoginConfig,
+  QrLoginConsumeResult,
+  QrLoginStatus,
   PermissionRole,
   PasswordChangeInput,
   RegisterInput,
@@ -197,6 +201,22 @@ export const api = {
   },
   auth: {
     me: () => request<User>('/api/auth/me'),
+    qrLoginConfig: () => request<QrLoginConfig>('/api/auth/login/qr/config'),
+    createQrLogin: (returnPath = '/') => request<QrLoginChallenge>('/api/auth/login/qr', {
+      method: 'POST', body: jsonBody({ returnPath })
+    }),
+    qrLoginStatus: (challengeId: string, browserToken: string) => request<QrLoginStatus>(
+      '/api/auth/login/qr/status',
+      { method: 'POST', body: jsonBody({ challengeId, browserToken }) }
+    ),
+    consumeQrLogin: (challengeId: string, browserToken: string) => request<QrLoginConsumeResult>(
+      '/api/auth/login/qr/consume',
+      { method: 'POST', body: jsonBody({ challengeId, browserToken }) }
+    ),
+    cancelQrLogin: (challengeId: string, browserToken: string) => request<void>(
+      '/api/auth/login/qr/cancel',
+      { method: 'POST', body: jsonBody({ challengeId, browserToken }) }
+    ),
     login: (input: LoginInput) => request<LoginResponse>('/api/auth/login', {
       method: 'POST',
       body: jsonBody(input)

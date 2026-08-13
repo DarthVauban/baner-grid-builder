@@ -57,6 +57,9 @@ before(async () => {
   await pool.query(
     await readFile(new URL('../src/migrations/049_mobile_workspace.sql', import.meta.url), 'utf8')
   );
+  await pool.query(
+    await readFile(new URL('../src/migrations/055_mobile_multi_account_qr_login.sql', import.meta.url), 'utf8')
+  );
 });
 
 after(async () => {
@@ -71,7 +74,8 @@ test('mobile migration backfills 2FA method and creates infrastructure tables', 
     'mobile_pairings',
     'mobile_login_requests',
     'mobile_push_outbox',
-    'mobile_security_events'
+    'mobile_security_events',
+    'mobile_qr_login_challenges'
   ];
   for (const table of mobileTables) {
     const result = await pool.query(`SELECT COUNT(*)::int AS count FROM ${table}`);

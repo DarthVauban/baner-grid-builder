@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AuthLayout } from '../components/AuthLayout';
 import { PasswordField } from '../components/PasswordField';
-import type { TwoFactorLoginChallenge } from '../types/user';
+import type { QrLoginConfig, TwoFactorLoginChallenge } from '../types/user';
 import { api } from '../lib/api';
 import { Icon } from '../components/Icon';
+import { QrLoginPanel } from '../components/QrLoginPanel';
 
 interface LocationState {
   from?: string;
@@ -29,6 +30,31 @@ export function LoginPage() {
   const [manualFallback, setManualFallback] = useState(false);
   const [mobileStatus, setMobileStatus] = useState<'pending' | 'denied' | 'expired'>('pending');
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [qrConfig, setQrConfig] = useState<QrLoginConfig | null | undefined>(undefined);
+  const [loginMethod, setLoginMethod] = useState<'qr' | 'password'>('qr');
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve()
+      .then(() => api.auth.qrLoginConfig())
+      .then((config) => {
+        if (!active) return;
+        setQrConfig(config);
+        setLoginMethod(config.enabled ? 'qr' : 'password');
+      })
+      .catch(() => {
+        if (!active) return;
+        setQrConfig(null);
+        setLoginMethod('password');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleQrAuthenticated = useCallback((returnPath: string) => {
+    navigate(returnPath || state.from || '/', { replace: true });
+  }, [navigate, state.from]);
 
   const mobileApproval = challenge?.twoFactorMethod === 'mt_workspace'
     ? challenge.mobileApproval
@@ -247,12 +273,57 @@ export function LoginPage() {
     );
   }
 
+  const qrEnabled = Boolean(qrConfig?.enabled);
+
   return (
-    <AuthLayout title="Увійти до простору" description="Використовуйте свій корпоративний обліковий запис.">
+    <AuthLayout
+      title={loginMethod === 'qr' && qrEnabled ? 'Увійдіть через MT Workspace' : 'Увійти до простору'}
+      description={loginMethod === 'qr' && qrEnabled
+        ? 'Відскануйте одноразовий QR-код у мобільному застосунку.'
+        : 'Використовуйте свій корпоративний обліковий запис.'}
+      wide={loginMethod === 'qr' && qrEnabled}
+    >
       {state.notice && <div className="form-message form-message--success" role="status">{state.notice}</div>}
       {error && <div className="form-message form-message--error" role="alert">{error}</div>}
 
-      <form className="auth-form" onSubmit={handleSubmit}>
+      {qrEnabled && <div className="login-method-tabs" role="tablist" aria-label="Спосіб входу">
+        <button
+          className={loginMethod === 'qr' ? 'login-method-tabs__tab login-method-tabs__tab--active' : 'login-method-tabs__tab'}
+          type="button"
+          role="tab"
+          aria-selected={loginMethod === 'qr'}
+          aria-controls="qr-login-panel"
+          onClick={() => setLoginMethod('qr')}
+        >
+          <Icon name="qrCode" size={17} /> QR-код
+        </button>
+        <button
+          className={loginMethod === 'password' ? 'login-method-tabs__tab login-method-tabs__tab--active' : 'login-method-tabs__tab'}
+          type="button"
+          role="tab"
+          aria-selected={loginMethod === 'password'}
+          aria-controls="password-login-panel"
+          onClick={() => setLoginMethod('password')}
+        >
+          <Icon name="password" size={17} /> Логін і пароль
+        </button>
+      </div>}
+
+      {qrConfig === undefined && <div className="qr-login qr-login__loading" role="status">
+        <span className="qr-login__skeleton qr-login__skeleton--code" />
+        <span className="sr-only">Перевіряємо доступні способи входу…</span>
+      </div>}
+
+      {qrConfig && qrEnabled && loginMethod === 'qr' && <div id="qr-login-panel" role="tabpanel">
+        <QrLoginPanel
+          config={qrConfig}
+          returnPath={state.from || '/'}
+          onAuthenticated={handleQrAuthenticated}
+          onPasswordRequested={() => setLoginMethod('password')}
+        />
+      </div>}
+
+      {qrConfig !== undefined && (!qrEnabled || loginMethod === 'password') && <form id="password-login-panel" role={qrEnabled ? 'tabpanel' : undefined} className="auth-form" onSubmit={handleSubmit}>
         <label className="field">
           <span>Email</span>
           <input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@company.com" required autoFocus />
@@ -261,9 +332,9 @@ export function LoginPage() {
         <button className="button button--primary button--wide" type="submit" disabled={pending}>
           {pending ? 'Входимо…' : 'Увійти'}
         </button>
-      </form>
+      </form>}
 
-      <p className="auth-card__switch">Ще немає облікового запису? <Link to="/register">Зареєструватися</Link></p>
+      {qrConfig !== undefined && <p className="auth-card__switch">Ще немає облікового запису? <Link to="/register">Зареєструватися</Link></p>}
     </AuthLayout>
   );
 }

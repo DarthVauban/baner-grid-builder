@@ -4,6 +4,7 @@ import { env } from '../../config/env.js';
 import { pool } from '../../db/pool.js';
 import { getMaintenanceReason } from '../backups/maintenance.service.js';
 import { decryptMobileValue } from './mobile-crypto.js';
+import { recordMobileSecurityEvent } from './mobile-security.service.js';
 
 const firebaseAppName = 'mt-mobile-push';
 const processingLeaseMs = 5 * 60 * 1000;
@@ -67,7 +68,9 @@ async function claimOutboxRows({ dbPool, now, batchSize, lockRows }) {
     const result = await client.query(
       `SELECT outbox.*,
               devices.revoked_at AS device_revoked_at,
+              devices.user_id AS device_user_id,
               devices.fcm_token_ciphertext, devices.fcm_token_iv, devices.fcm_token_tag,
+              devices.fcm_token_hash,
               notifications.title AS notification_title,
               notifications.message AS notification_message,
               login_requests.status AS login_request_status,
@@ -100,13 +103,18 @@ async function claimOutboxRows({ dbPool, now, batchSize, lockRows }) {
 }
 
 function pushData(row) {
+  const routing = {
+    deploymentId: env.mobileDeploymentId,
+    environment: env.mobileEnvironment,
+    targetDeviceId: String(row.device_id)
+  };
   if (row.kind === 'login_request') {
-    return { kind: 'login_request', requestId: String(row.login_request_id) };
+    return { kind: 'login_request', requestId: String(row.login_request_id), ...routing };
   }
   if (row.kind === 'workspace_notification') {
-    return { kind: 'workspace_notification', notificationId: String(row.notification_id) };
+    return { kind: 'workspace_notification', notificationId: String(row.notification_id), ...routing };
   }
-  return { kind: 'device_revoked', deviceId: String(row.device_id) };
+  return { kind: 'device_revoked', deviceId: String(row.device_id), ...routing };
 }
 
 function buildFirebaseMessage(row, token, now) {
@@ -131,13 +139,24 @@ function buildFirebaseMessage(row, token, now) {
 
 async function finishOutboxRow(dbPool, row, outcome, now) {
   if (outcome.clearToken) {
-    await dbPool.query(
+    const invalidated = await dbPool.query(
       `UPDATE mobile_devices
        SET fcm_token_ciphertext = NULL, fcm_token_iv = NULL,
            fcm_token_tag = NULL, fcm_token_hash = NULL
-       WHERE id = $1`,
-      [row.device_id]
+       WHERE ${outcome.clearToken === 'matching_hash' ? 'fcm_token_hash = $1' : 'id = $1'}
+       RETURNING id, user_id`,
+      [outcome.clearToken === 'matching_hash' ? row.fcm_token_hash : row.device_id]
     );
+    if (outcome.clearToken === 'matching_hash') {
+      for (const device of invalidated.rows) {
+        await recordMobileSecurityEvent(dbPool, {
+          userId: device.user_id,
+          deviceId: device.id,
+          eventType: 'fcm_token_invalidated',
+          metadata: { reason: outcome.errorCode || 'invalid_registration_token' }
+        });
+      }
+    }
   }
   if (outcome.status === 'retry') {
     const delayMs = Math.min(6 * 60 * 60 * 1000, 30_000 * (2 ** Math.max(0, row.attempts - 1)));
@@ -190,7 +209,7 @@ async function deliverOutboxRow(row, messaging, now, dbPool) {
     await messaging.send(buildFirebaseMessage(row, token, now));
     await finishOutboxRow(dbPool, row, {
       status: 'delivered',
-      clearToken: row.kind === 'device_revoked'
+      clearToken: row.kind === 'device_revoked' ? 'device' : null
     }, now);
     return 'delivered';
   } catch (error) {
@@ -199,7 +218,7 @@ async function deliverOutboxRow(row, messaging, now, dbPool) {
       await finishOutboxRow(dbPool, row, {
         status: 'failed',
         errorCode,
-        clearToken: true
+        clearToken: 'matching_hash'
       }, now);
       return 'failed';
     }
@@ -210,7 +229,7 @@ async function deliverOutboxRow(row, messaging, now, dbPool) {
     await finishOutboxRow(dbPool, row, {
       status: 'failed',
       errorCode,
-      clearToken: row.kind === 'device_revoked'
+      clearToken: row.kind === 'device_revoked' ? 'device' : null
     }, now);
     return 'failed';
   }

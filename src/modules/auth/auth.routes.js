@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { env } from '../../config/env.js';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
@@ -12,6 +11,8 @@ import { requireAuth } from '../../middleware/auth.js';
 import { requestRegistrationVerification, verifyRegistrationCode } from './registration-verification.service.js';
 import { verifyUserTwoFactor } from './two-factor.service.js';
 import { countUserPasskeys, finishPasskeyLogin, startPasskeyLogin } from './passkey.service.js';
+import qrLoginRoutes from './qr-login.routes.js';
+import { clearSessionCookie, setSessionCookie } from './session-cookie.js';
 import {
   cancelMobileLoginRequest,
   completeMobileLoginWithFallback,
@@ -77,15 +78,7 @@ const passkeyVerifySchema = z.object({
   response: credentialResponseSchema
 });
 
-function setSessionCookie(res, token) {
-  res.cookie(env.COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: env.cookieSecure,
-    sameSite: 'lax',
-    maxAge: 12 * 60 * 60 * 1000,
-    path: '/'
-  });
-}
+router.use('/login/qr', qrLoginRoutes);
 
 router.post('/register', asyncHandler(async (req, res) => {
   const input = parseInput(registerSchema, req.body);
@@ -259,12 +252,7 @@ router.post('/login/mobile/cancel', asyncHandler(async (req, res) => {
 }));
 
 router.post('/logout', (req, res) => {
-  res.clearCookie(env.COOKIE_NAME, {
-    httpOnly: true,
-    secure: env.cookieSecure,
-    sameSite: 'lax',
-    path: '/'
-  });
+  clearSessionCookie(res);
   res.status(204).end();
 });
 

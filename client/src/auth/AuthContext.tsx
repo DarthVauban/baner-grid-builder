@@ -12,6 +12,7 @@ import type {
   RegistrationVerifyInput,
   TwoFactorLoginChallenge,
   TwoFactorLoginVerifyInput,
+  QrLoginConsumeResult,
   PasskeyAuthenticationResponse,
   User
 } from '../types/user';
@@ -25,6 +26,7 @@ interface AuthContextValue {
   verifyLoginTwoFactor: (input: TwoFactorLoginVerifyInput) => Promise<void>;
   verifyMobileLogin: (input: MobileLoginStatusInput) => Promise<MobileLoginStatus>;
   verifyLoginPasskey: (challengeId: string, response: PasskeyAuthenticationResponse) => Promise<void>;
+  completeQrLogin: (challengeId: string, browserToken: string) => Promise<QrLoginConsumeResult>;
   register: (input: RegisterInput) => Promise<RegistrationStart>;
   verifyRegistration: (input: RegistrationVerifyInput) => Promise<User>;
   updateProfile: (input: ProfileInput) => Promise<User>;
@@ -108,6 +110,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setStatus('authenticated');
   }, []);
 
+  const completeQrLogin = useCallback(async (challengeId: string, browserToken: string) => {
+    const result = await api.auth.consumeQrLogin(challengeId, browserToken);
+    setUser(result.user);
+    setStatus('authenticated');
+    return result;
+  }, []);
+
   const register = useCallback((input: RegisterInput) => api.auth.register(input), []);
 
   const verifyRegistration = useCallback(async (input: RegistrationVerifyInput) => {
@@ -155,6 +164,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     verifyLoginTwoFactor,
     verifyMobileLogin,
     verifyLoginPasskey,
+    completeQrLogin,
     register,
     verifyRegistration,
     updateProfile,
@@ -167,6 +177,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     verifyLoginTwoFactor,
     verifyMobileLogin,
     verifyLoginPasskey,
+    completeQrLogin,
     register,
     verifyRegistration,
     updateProfile,

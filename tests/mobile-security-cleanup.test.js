@@ -183,7 +183,13 @@ test('password change atomically invalidates mobile access and pending state', a
     messaging: { send: async (message) => { sent.push(message); return 'message-id'; } }
   });
   assert.deepEqual(result, { claimed: 1, delivered: 1, retried: 0, failed: 0 });
-  assert.deepEqual(sent[0].data, { kind: 'device_revoked', deviceId: state.deviceId });
+  assert.deepEqual(sent[0].data, {
+    kind: 'device_revoked',
+    deviceId: state.deviceId,
+    deploymentId: 'mt-workspace-test',
+    environment: 'test',
+    targetDeviceId: state.deviceId
+  });
   assert.equal(sent[0].token, state.fcmToken);
   const device = await query('SELECT fcm_token_ciphertext FROM mobile_devices WHERE id = $1', [state.deviceId]);
   assert.equal(device.rows[0].fcm_token_ciphertext, null);

@@ -5,9 +5,11 @@ import {
   createDeviceCredential,
   encryptMobileValue,
   hashDeviceAccessToken,
-  hashFcmToken
+  hashFcmToken,
+  hashInstallationId
 } from './mobile-crypto.js';
 import {
+  closeApprovedQrLoginChallenges,
   closePendingMobileLoginRequests,
   revokeMobileDeviceInTransaction
 } from './mobile-access.service.js';
@@ -21,6 +23,8 @@ export function serializeMobileDevice(row) {
     pairedAt: row.paired_at,
     lastSeenAt: row.last_seen_at || null,
     pushConfigured: Boolean(!row.revoked_at && row.fcm_token_ciphertext && row.fcm_token_hash),
+    qrLoginSupported: Boolean(!row.revoked_at && row.auth_key_id && row.auth_public_key),
+    authKeyRegisteredAt: row.auth_key_registered_at || null,
     revokedAt: row.revoked_at || null
   };
 }
@@ -81,7 +85,14 @@ export async function touchMobileDeviceLastSeen(deviceId, db = pool) {
   );
 }
 
-export async function setMobileDevicePushToken(userId, deviceId, token, platform, dbPool = pool) {
+export async function setMobileDevicePushToken(
+  userId,
+  deviceId,
+  token,
+  platform,
+  installationId = null,
+  dbPool = pool
+) {
   const client = await dbPool.connect();
   try {
     await client.query('BEGIN');
@@ -100,25 +111,20 @@ export async function setMobileDevicePushToken(userId, deviceId, token, platform
 
     const tokenHash = hashFcmToken(token);
     const encrypted = encryptMobileValue(token, 'fcm-token');
-    await client.query(
-      `UPDATE mobile_devices
-       SET fcm_token_ciphertext = NULL, fcm_token_iv = NULL,
-           fcm_token_tag = NULL, fcm_token_hash = NULL
-       WHERE fcm_token_hash = $1 AND id <> $2`,
-      [tokenHash, deviceId]
-    );
+    const installationIdHash = installationId ? hashInstallationId(installationId) : null;
     await client.query(
       `UPDATE mobile_devices
        SET fcm_token_ciphertext = $1, fcm_token_iv = $2,
-           fcm_token_tag = $3, fcm_token_hash = $4
-       WHERE id = $5`,
-      [encrypted.ciphertext, encrypted.iv, encrypted.tag, tokenHash, deviceId]
+           fcm_token_tag = $3, fcm_token_hash = $4,
+           installation_id_hash = COALESCE($5, installation_id_hash)
+       WHERE id = $6`,
+      [encrypted.ciphertext, encrypted.iv, encrypted.tag, tokenHash, installationIdHash, deviceId]
     );
     await recordMobileSecurityEvent(client, {
       userId,
       deviceId,
-      eventType: 'push_token_registered',
-      metadata: { platform }
+      eventType: 'fcm_token_linked',
+      metadata: { platform, installationIdProvided: Boolean(installationId) }
     });
     await client.query('COMMIT');
   } catch (error) {
@@ -165,6 +171,7 @@ async function revokeOwnedMobileDeviceInTransaction(
     reason,
     revokedBy: userId
   });
+  await closeApprovedQrLoginChallenges(client, { deviceId, reason });
   const remaining = await client.query(
     `SELECT COUNT(*)::INTEGER AS count
      FROM mobile_devices

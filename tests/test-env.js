@@ -1,3 +1,11 @@
 process.env.NODE_ENV ??= 'test';
 process.env.DATABASE_URL ??= 'postgresql://test:test@127.0.0.1:5432/test';
 process.env.JWT_SECRET ??= 'test-only-jwt-secret-at-least-32-characters';
+process.env.MOBILE_DEPLOYMENT_ID ??= 'mt-workspace-test';
+process.env.MOBILE_ENVIRONMENT ??= 'test';
+process.env.MOBILE_DEPLOYMENT_NAME ??= 'MT Workspace Test';
+process.env.MOBILE_PUBLIC_ORIGIN ??= 'http://localhost:3000';
+process.env.MOBILE_API_BASE_URL ??= 'http://localhost:3000/api';
+process.env.MOBILE_QR_LOGIN_ENABLED ??= 'true';
+process.env.MOBILE_MULTI_ACCOUNT_PAIRING_ENABLED ??= 'true';
+process.env.MOBILE_QR_LOGIN_TTL_SECONDS ??= '120';

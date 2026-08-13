@@ -149,6 +149,16 @@ export interface TwoFactorConfirmResult {
 
 export type MobilePairingStatus = 'pending' | 'claimed' | 'expired' | 'cancelled';
 
+export type MobileEnvironment = 'production' | 'development' | 'test';
+
+export interface MobileWorkspaceMetadata {
+  deploymentId: string;
+  environment: MobileEnvironment;
+  displayName: string;
+  webOrigin: string;
+  apiBaseUrl?: string;
+}
+
 export interface MobileDevice {
   id: string;
   name: string;
@@ -156,6 +166,8 @@ export interface MobileDevice {
   pairedAt: string;
   lastSeenAt: string | null;
   pushConfigured: boolean;
+  qrLoginSupported: boolean;
+  authKeyRegisteredAt: string | null;
   revokedAt: string | null;
 }
 
@@ -168,6 +180,36 @@ export interface MobilePairing {
   expiresAt: string;
   device?: MobileDevice | null;
   recoveryCodes?: string[];
+  workspace?: MobileWorkspaceMetadata;
+}
+
+export interface QrLoginConfig {
+  enabled: boolean;
+  multiAccountPairingEnabled: boolean;
+  ttlSeconds: number;
+  pollAfterMs: number;
+  deployment: MobileWorkspaceMetadata;
+}
+
+export interface QrLoginChallenge {
+  challengeId: string;
+  browserToken: string;
+  qrPayload: string;
+  expiresAt: string;
+  pollAfterMs: number;
+  deployment: MobileWorkspaceMetadata;
+}
+
+export type QrLoginStatusValue = 'pending' | 'scanned' | 'approved' | 'denied' | 'expired' | 'cancelled' | 'consumed';
+
+export interface QrLoginStatus {
+  status: QrLoginStatusValue;
+  expiresAt: string;
+}
+
+export interface QrLoginConsumeResult {
+  user: User;
+  returnPath: string;
 }
 
 export interface MobileDeviceFeed {

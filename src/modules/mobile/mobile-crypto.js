@@ -47,6 +47,22 @@ export function hashFcmToken(value) {
   return hmac('fcm-token', String(value || '').trim());
 }
 
+export function hashInstallationId(value) {
+  return hmac('installation-id', String(value || '').trim().toLowerCase());
+}
+
+export function hashQrScanToken(value) {
+  return hmac('qr-login-scan', String(value || '').trim());
+}
+
+export function hashQrBrowserToken(value) {
+  return hmac('qr-login-browser', String(value || '').trim());
+}
+
+export function hashQrApprovalNonce(value) {
+  return hmac('qr-login-approval', String(value || '').trim());
+}
+
 export function hashLoginChallengeId(value) {
   return hmac('login-challenge', String(value || '').trim());
 }
