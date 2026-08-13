@@ -26,6 +26,14 @@ export interface HoroshopAccessoryCategory {
 
 export type HoroshopAccessoryTarget = HoroshopAccessoryProduct | HoroshopAccessoryCategory;
 
+export interface HoroshopAccessoryScores {
+  compatibility: number | null;
+  utility: number | null;
+  availability: number | null;
+  popularity: number | null;
+  total: number | null;
+}
+
 export interface HoroshopAccessoryLink {
   id: string;
   key: string;
@@ -33,6 +41,7 @@ export interface HoroshopAccessoryLink {
   selected: boolean;
   published: boolean;
   position: number;
+  scores: HoroshopAccessoryScores;
   reason: string | null;
   target: HoroshopAccessoryTarget;
 }
@@ -113,7 +122,17 @@ export interface HoroshopCodexReviewProposal {
   catalogRevision: string;
   products: Array<{
     productId: string;
-    recommendations: Array<{ productId: string; reason: string }>;
+    recommendations: Array<{
+      productId: string;
+      reason: string;
+      scores: {
+        compatibility: number;
+        utility: number;
+        availability: number;
+        popularity: number;
+        total: number;
+      };
+    }>;
   }>;
 }
 

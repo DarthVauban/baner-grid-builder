@@ -90,6 +90,16 @@ function fullReview(overrides = new Map()) {
   };
 }
 
+function recommendation(productId, reason, scores = {
+  compatibility: .95,
+  utility: .9,
+  availability: 1,
+  popularity: .8,
+  total: .92
+}) {
+  return { productId, reason, scores };
+}
+
 test('Codex export contains specifications and modification trees but no credentials or raw source data', async () => {
   const service = new HoroshopAccessoryService({ repository: new HoroshopAccessoryRepository(pool) });
   const catalog = await service.reviewCatalog();
@@ -125,7 +135,7 @@ test('Codex review must cover the current connection and every active product', 
     (error) => error.code === 'HOROSHOP_CODEX_REVIEW_INCOMPLETE'
   );
   await assert.rejects(
-    service.importReview(fullReview(new Map([[ids.phone, [{ productId: ids.phone, reason: 'Той самий товар не може бути аксесуаром.' }]]])), null),
+    service.importReview(fullReview(new Map([[ids.phone, [recommendation(ids.phone, 'Той самий товар не може бути аксесуаром.')]]])), null),
     (error) => error.code === 'HOROSHOP_CODEX_REVIEW_ACCESSORY_INVALID'
   );
 });
@@ -152,8 +162,10 @@ test('Codex proposals become reviewable drafts and publication remains an explic
   const result = await service.importReview(fullReview(new Map([[
     ids.phone,
     [
-      { productId: ids.case, reason: 'Точний чохол для цієї моделі захищає смартфон від пошкоджень.' },
-      { productId: ids.charger, reason: 'USB-C зарядний пристрій корисний для щоденного заряджання смартфона.' }
+      recommendation(ids.case, 'Точний чохол для цієї моделі захищає смартфон від пошкоджень.'),
+      recommendation(ids.charger, 'USB-C зарядний пристрій корисний для щоденного заряджання смартфона.', {
+        compatibility: .88, utility: .86, availability: 1, popularity: .75, total: .87
+      })
     ]
   ]])), null);
   assert.deepEqual(result, {
@@ -169,7 +181,9 @@ test('Codex proposals become reviewable drafts and publication remains an explic
   assert.equal(detail.draft.suggestions.length, 1);
   assert.equal(detail.draft.suggestions[0].source, 'codex');
   assert.equal(detail.draft.suggestions[0].target.id, ids.charger);
-  assert.equal(Object.hasOwn(detail.draft.suggestions[0], 'scores'), false);
+  assert.deepEqual(detail.draft.suggestions[0].scores, {
+    compatibility: .88, utility: .86, availability: 1, popularity: .75, total: .87
+  });
 
   detail = await service.saveDraft(ids.phone, [
     { type: 'product', id: ids.case },

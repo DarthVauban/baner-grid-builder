@@ -13,6 +13,10 @@ function jsonObject(value) {
   }
 }
 
+function score(value) {
+  return value === null || value === undefined ? null : Number(value);
+}
+
 function mapProduct(row) {
   return {
     id: row.id,
@@ -170,6 +174,8 @@ export class HoroshopAccessoryRepository {
                CASE WHEN link.codex_proposed = TRUE THEN 'codex' ELSE link.source END AS source,
                link.selected,
                link.published, link.position, link.reason,
+               link.compatibility_score, link.utility_score, link.availability_score,
+               link.popularity_score, link.total_score,
                product.id AS accessory_product_id, product.sku AS accessory_sku,
                product.titles AS accessory_titles, product.brand AS accessory_brand,
                product.price AS accessory_price, product.currency AS accessory_currency,
@@ -246,6 +252,13 @@ export class HoroshopAccessoryRepository {
       selected: row.selected,
       published: row.published,
       position: Number(row.position || 0),
+      scores: {
+        compatibility: score(row.compatibility_score),
+        utility: score(row.utility_score),
+        availability: score(row.availability_score),
+        popularity: score(row.popularity_score),
+        total: score(row.total_score)
+      },
       reason: row.reason,
       target
     };
@@ -529,13 +542,18 @@ export class HoroshopAccessoryRepository {
           const inserted = await client.query(`
             INSERT INTO search_horoshop_accessory_links (
               id, set_id, target_key, target_type, accessory_product_id,
-              source, codex_proposed, selected, position, reason
-            ) VALUES ($1, $2, $3, 'product', $4, 'manual', TRUE, FALSE, $5, $6)
+              source, codex_proposed, selected, position, reason,
+              compatibility_score, utility_score, availability_score,
+              popularity_score, total_score
+            ) VALUES ($1, $2, $3, 'product', $4, 'manual', TRUE, FALSE, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (set_id, target_key) DO NOTHING
             RETURNING id
           `, [
             randomUUID(), item.setId, `product:${recommendation.productId}`,
-            recommendation.productId, position, recommendation.reason
+            recommendation.productId, position, recommendation.reason,
+            recommendation.scores.compatibility, recommendation.scores.utility,
+            recommendation.scores.availability, recommendation.scores.popularity,
+            recommendation.scores.total
           ]);
           savedRecommendations += inserted.rowCount;
         }

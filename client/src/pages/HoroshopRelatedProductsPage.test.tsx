@@ -72,6 +72,7 @@ const accessoryDetail: HoroshopAccessoryDetail = {
     isDirty: false, selected: [], suggestions: [{
       id: 'suggestion-1', key: 'product:case-1', source: 'codex', selected: false,
       published: false, position: 101,
+      scores: { compatibility: 0.93, utility: 0.88, availability: 1, popularity: 0.72, total: 0.9 },
       reason: 'Модель явно збігається; аксесуар є в наявності.',
       target: {
         type: 'product', id: 'case-1', sku: 'CASE-BUDS-6',
@@ -140,7 +141,8 @@ describe('HoroshopRelatedProductsPage', () => {
 
     expect(await screen.findByText('Чохол для Redmi Buds 6 Active')).toBeInTheDocument();
     expect(screen.getByText('Модель явно збігається; аксесуар є в наявності.')).toBeInTheDocument();
-    expect(screen.queryByText('Сумісність')).not.toBeInTheDocument();
+    expect(screen.getByText('Сумісність')).toBeInTheDocument();
+    expect(screen.getByText('Оцінка Codex')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Передати в Хорошоп' })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Додати' }));

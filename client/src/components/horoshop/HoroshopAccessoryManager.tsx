@@ -67,11 +67,23 @@ function TargetSummary({ target }: { target: HoroshopAccessoryTarget }) {
   );
 }
 
+function Score({ label, value }: { label: string; value: number | null }) {
+  const percent = Math.round((value || 0) * 100);
+  return <span title={`${label}: ${percent}%`}><small>{label}</small><b>{percent}%</b><i><i style={{ width: `${percent}%` }} /></i></span>;
+}
+
 function SuggestionCard({ link, onAdd }: { link: HoroshopAccessoryLink; onAdd: () => void }) {
   return (
     <article className="horoshop-accessory-suggestion">
       <header><TargetSummary target={link.target} /><button type="button" onClick={onAdd}><Icon name="add" size={17} /> Додати</button></header>
       <p>{link.reason || 'Codex запропонував товар після рев’ю специфікацій каталогу.'}</p>
+      <div className="horoshop-accessory-scores">
+        <Score label="Сумісність" value={link.scores.compatibility} />
+        <Score label="Корисність" value={link.scores.utility} />
+        <Score label="Наявність" value={link.scores.availability} />
+        <Score label="Популярність" value={link.scores.popularity} />
+      </div>
+      <footer><span>Оцінка Codex</span><strong>{Math.round((link.scores.total || 0) * 100)}%</strong></footer>
     </article>
   );
 }
@@ -316,7 +328,7 @@ export function HoroshopAccessoryManager() {
             </section>
 
             <section className="horoshop-accessory-section">
-              <header><span><h3>Пропозиції Codex</h3><p>Сформовані під час змістовного рев’ю назв, категорій, характеристик і модифікацій товарів.</p></span><b>{availableSuggestions.length} кандидатів</b></header>
+              <header><span><h3>Пропозиції Codex</h3><p>Оцінки виставлені Codex під час змістовного рев’ю, а не розраховані алгоритмом.</p></span><b>{availableSuggestions.length} кандидатів</b></header>
               <div className="horoshop-accessory-suggestions">
                 {availableSuggestions.map((item) => <SuggestionCard link={item} key={item.key} onAdd={() => addTarget(item.target)} />)}
                 {availableSuggestions.length === 0 && <div className="horoshop-accessory-list-empty"><strong>Немає пропозицій Codex</strong><span>Товар міг бути свідомо залишений без супутніх товарів або ще не входив до рев’ю.</span></div>}

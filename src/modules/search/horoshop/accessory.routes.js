@@ -21,6 +21,7 @@ const draftSchema = z.object({
     z.object({ type: z.literal('category'), id: z.string().uuid() })
   ])).max(32)
 });
+const codexScoreSchema = z.number().min(0).max(1);
 const codexReviewSchema = z.object({
   format: z.literal(HOROSHOP_CODEX_REVIEW_FORMAT),
   connectionGeneration: z.string().uuid(),
@@ -29,7 +30,14 @@ const codexReviewSchema = z.object({
     productId: z.string().uuid(),
     recommendations: z.array(z.object({
       productId: z.string().uuid(),
-      reason: z.string().trim().min(10).max(700)
+      reason: z.string().trim().min(10).max(700),
+      scores: z.object({
+        compatibility: codexScoreSchema,
+        utility: codexScoreSchema,
+        availability: codexScoreSchema,
+        popularity: codexScoreSchema,
+        total: codexScoreSchema
+      })
     })).max(16)
   })).max(10_000)
 });
