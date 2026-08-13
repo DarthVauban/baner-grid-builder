@@ -13,6 +13,7 @@ import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded';
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded';
+import DownloadRounded from '@mui/icons-material/DownloadRounded';
 import DynamicFormRounded from '@mui/icons-material/DynamicFormRounded';
 import DashboardCustomizeRounded from '@mui/icons-material/DashboardCustomizeRounded';
 import DarkModeRounded from '@mui/icons-material/DarkModeRounded';
@@ -105,6 +106,7 @@ export type IconName =
   | 'copy'
   | 'delete'
   | 'deadline'
+  | 'download'
   | 'darkMode'
   | 'edit'
   | 'fullscreen'
@@ -193,6 +195,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   copy: ContentCopyRounded,
   delete: DeleteOutlineRounded,
   deadline: FlagOutlined,
+  download: DownloadRounded,
   darkMode: DarkModeRounded,
   edit: EditRounded,
   fullscreen: FullscreenRounded,

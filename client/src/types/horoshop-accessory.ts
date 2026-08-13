@@ -26,22 +26,13 @@ export interface HoroshopAccessoryCategory {
 
 export type HoroshopAccessoryTarget = HoroshopAccessoryProduct | HoroshopAccessoryCategory;
 
-export interface HoroshopAccessoryScores {
-  compatibility: number | null;
-  utility: number | null;
-  availability: number | null;
-  popularity: number | null;
-  total: number | null;
-}
-
 export interface HoroshopAccessoryLink {
   id: string;
   key: string;
-  source: 'algorithm' | 'manual' | 'imported';
+  source: 'codex' | 'manual' | 'imported';
   selected: boolean;
   published: boolean;
   position: number;
-  scores: HoroshopAccessoryScores;
   reason: string | null;
   target: HoroshopAccessoryTarget;
 }
@@ -67,7 +58,6 @@ export interface HoroshopAccessoryDetail {
     suggestions: HoroshopAccessoryLink[];
   };
   latestPublication: HoroshopAccessoryPublication | null;
-  generatedCount?: number;
 }
 
 export interface HoroshopAccessoryCandidates {
@@ -75,12 +65,63 @@ export interface HoroshopAccessoryCandidates {
   categories: Array<Omit<HoroshopAccessoryCategory, 'type'>>;
 }
 
-export interface HoroshopAccessoryBulkResult {
-  analyzedProducts: number;
+export interface HoroshopCodexReviewModification {
+  id: string;
+  sku: string;
+  titles: HoroshopLocalizedText;
+  price: string | null;
+  oldPrice: string | null;
+  currency: string | null;
+  availability: string | null;
+  visible: boolean;
+  active: boolean;
+  attributes: Record<string, unknown>;
+}
+
+export interface HoroshopCodexReviewProduct {
+  id: string;
+  sku: string;
+  titles: HoroshopLocalizedText;
+  descriptions: HoroshopLocalizedText;
+  brand: string | null;
+  categoryExternalId: string | null;
+  categoryTitles: HoroshopLocalizedText;
+  characteristics: Record<string, unknown>;
+  popularity: string | null;
+  price: string | null;
+  oldPrice: string | null;
+  currency: string | null;
+  availability: string | null;
+  visible: boolean;
+  active: boolean;
+  canonicalUrl: string | null;
+  modifications: HoroshopCodexReviewModification[];
+}
+
+export interface HoroshopCodexReviewCatalog {
+  format: 'horoshop-codex-accessory-review/v1';
+  connectionGeneration: string;
+  catalogRevision: string;
+  storeDomain: string;
+  exportedAt: string;
+  products: HoroshopCodexReviewProduct[];
+}
+
+export interface HoroshopCodexReviewProposal {
+  format: 'horoshop-codex-accessory-review/v1';
+  connectionGeneration: string;
+  catalogRevision: string;
+  products: Array<{
+    productId: string;
+    recommendations: Array<{ productId: string; reason: string }>;
+  }>;
+}
+
+export interface HoroshopCodexReviewResult {
+  reviewedProducts: number;
   productsWithRecommendations: number;
   productsWithoutRecommendations: number;
-  recommendationsGenerated: number;
-  limit: number;
+  recommendationsSaved: number;
 }
 
 export type HoroshopAccessoryDraftItem = Pick<HoroshopAccessoryTarget, 'type' | 'id'>;

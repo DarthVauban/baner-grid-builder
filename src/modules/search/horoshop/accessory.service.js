@@ -2,8 +2,13 @@ import { AppError } from '../../../lib/app-error.js';
 import { decryptHoroshopCredentials } from './credential-cipher.js';
 import { HoroshopApiError, HoroshopClient } from './horoshop.client.js';
 import { HoroshopAccessoryRepository } from './accessory.repository.js';
-import { recommendAccessories } from './accessory-recommender.js';
+import {
+  HOROSHOP_CODEX_REVIEW_FORMAT,
+  codexReviewCatalogRevision
+} from './accessory-review.js';
 import { horoshopCatalogService } from './catalog.service.js';
+
+export { HOROSHOP_CODEX_REVIEW_FORMAT } from './accessory-review.js';
 
 function notFound() {
   return new AppError(404, 'HOROSHOP_PRODUCT_NOT_FOUND', 'Товар відсутній у поточному каталозі Хорошоп.');
@@ -27,7 +32,6 @@ export class HoroshopAccessoryService {
     this.repository = options.repository || new HoroshopAccessoryRepository();
     this.clientFactory = options.clientFactory || ((storeDomain) => new HoroshopClient(storeDomain));
     this.catalogService = options.catalogService || horoshopCatalogService;
-    this.bulkAnalysisPromise = null;
   }
 
   async detail(productId, actorUserId) {
@@ -64,59 +68,76 @@ export class HoroshopAccessoryService {
     return result;
   }
 
-  async generateRecommendations(productId, limit, actorUserId) {
-    const catalog = await this.repository.loadRecommendationCatalog(productId);
-    if (!catalog) throw notFound();
-    const recommendations = recommendAccessories(catalog.target, catalog.candidates, limit);
-    const result = await this.repository.saveRecommendations(productId, recommendations, actorUserId);
-    if (!result) throw notFound();
-    return { ...result, generatedCount: recommendations.length };
-  }
-
-  async generateAllRecommendations(limit, actorUserId) {
-    if (this.bulkAnalysisPromise) {
-      throw new AppError(409, 'HOROSHOP_ACCESSORY_ANALYSIS_RUNNING', 'Масовий аналіз каталогу вже виконується. Дочекайтеся його завершення.');
-    }
-    const operation = this.runBulkAnalysis(limit, actorUserId);
-    this.bulkAnalysisPromise = operation;
-    try {
-      return await operation;
-    } finally {
-      if (this.bulkAnalysisPromise === operation) this.bulkAnalysisPromise = null;
-    }
-  }
-
-  async runBulkAnalysis(limit, actorUserId) {
-    const catalog = await this.repository.loadAllRecommendationCatalog();
+  async reviewCatalog() {
+    const catalog = await this.repository.loadCodexReviewCatalog();
     if (!catalog) {
       throw new AppError(404, 'HOROSHOP_CATALOG_NOT_FOUND', 'Спочатку підключіть Хорошоп та імпортуйте каталог.');
     }
     if (catalog.connection.status !== 'connected') {
-      throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Масовий аналіз доступний після завершення синхронізації каталогу.');
+      throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Експорт для рев’ю доступний після завершення синхронізації каталогу.');
+    }
+    return {
+      format: HOROSHOP_CODEX_REVIEW_FORMAT,
+      connectionGeneration: catalog.connection.generation,
+      catalogRevision: codexReviewCatalogRevision(catalog.products),
+      storeDomain: catalog.connection.storeDomain,
+      exportedAt: new Date().toISOString(),
+      products: catalog.products
+    };
+  }
+
+  async importReview(document, actorUserId) {
+    const catalog = await this.repository.loadCodexReviewCatalog();
+    if (!catalog) {
+      throw new AppError(404, 'HOROSHOP_CATALOG_NOT_FOUND', 'Спочатку підключіть Хорошоп та імпортуйте каталог.');
+    }
+    if (catalog.connection.status !== 'connected') {
+      throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Імпорт рев’ю доступний після завершення синхронізації каталогу.');
+    }
+    if (catalog.connection.generation !== document.connectionGeneration) {
+      throw new AppError(409, 'HOROSHOP_CODEX_REVIEW_STALE', 'Це рев’ю створене для іншого підключення Хорошоп. Експортуйте актуальний каталог і повторіть рев’ю.');
+    }
+    if (codexReviewCatalogRevision(catalog.products) !== document.catalogRevision) {
+      throw new AppError(409, 'HOROSHOP_CODEX_REVIEW_STALE', 'Каталог змінився після експорту. Експортуйте актуальні дані й повторіть рев’ю.');
     }
 
-    const summary = {
-      analyzedProducts: catalog.products.length,
-      productsWithRecommendations: 0,
-      productsWithoutRecommendations: 0,
-      recommendationsGenerated: 0,
-      limit
-    };
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < catalog.products.length) {
-        const target = catalog.products[cursor];
-        cursor += 1;
-        const recommendations = recommendAccessories(target, catalog.products, limit);
-        const saved = await this.repository.replaceRecommendations(target.id, recommendations, actorUserId);
-        if (!saved) continue;
-        summary.recommendationsGenerated += recommendations.length;
-        if (recommendations.length > 0) summary.productsWithRecommendations += 1;
-        else summary.productsWithoutRecommendations += 1;
+    const currentProductIds = new Set(catalog.products.map((product) => product.id));
+    const reviewedProductIds = new Set();
+    for (const item of document.products) {
+      if (!currentProductIds.has(item.productId) || reviewedProductIds.has(item.productId)) {
+        throw new AppError(422, 'HOROSHOP_CODEX_REVIEW_PRODUCT_INVALID', 'Рев’ю містить відсутній або продубльований батьківський товар.');
       }
+      reviewedProductIds.add(item.productId);
+      const recommendationIds = new Set();
+      for (const recommendation of item.recommendations) {
+        if (!currentProductIds.has(recommendation.productId)
+          || recommendation.productId === item.productId
+          || recommendationIds.has(recommendation.productId)) {
+          throw new AppError(422, 'HOROSHOP_CODEX_REVIEW_ACCESSORY_INVALID', 'Рев’ю містить відсутній, продубльований або тотожний батьківському товар-аксесуар.');
+        }
+        recommendationIds.add(recommendation.productId);
+      }
+    }
+    if (reviewedProductIds.size !== currentProductIds.size) {
+      throw new AppError(422, 'HOROSHOP_CODEX_REVIEW_INCOMPLETE', 'Рев’ю повинно містити кожен активний товар каталогу, навіть якщо для нього немає рекомендацій.');
+    }
+
+    const saved = await this.repository.saveCodexReview(
+      document.connectionGeneration,
+      document.catalogRevision,
+      document.products,
+      actorUserId
+    );
+    if (!saved) {
+      throw new AppError(409, 'HOROSHOP_CODEX_REVIEW_STALE', 'Підключення або каталог змінилися під час імпорту. Експортуйте каталог повторно.');
+    }
+    const productsWithRecommendations = document.products.filter((item) => item.recommendations.length > 0).length;
+    return {
+      reviewedProducts: document.products.length,
+      productsWithRecommendations,
+      productsWithoutRecommendations: document.products.length - productsWithRecommendations,
+      recommendationsSaved: document.products.reduce((total, item) => total + item.recommendations.length, 0)
     };
-    await Promise.all(Array.from({ length: Math.min(4, Math.max(1, catalog.products.length)) }, worker));
-    return summary;
   }
 
   async publish(productId, actorUserId) {

@@ -70,9 +70,8 @@ const accessoryDetail: HoroshopAccessoryDetail = {
   draft: {
     catalogStateKnown: true, initializedAt: '2026-08-13T09:00:00.000Z', publishedAt: null,
     isDirty: false, selected: [], suggestions: [{
-      id: 'suggestion-1', key: 'product:case-1', source: 'algorithm', selected: false,
+      id: 'suggestion-1', key: 'product:case-1', source: 'codex', selected: false,
       published: false, position: 101,
-      scores: { compatibility: 0.93, utility: 0.88, availability: 1, popularity: 0.72, total: 0.9 },
       reason: 'Модель явно збігається; аксесуар є в наявності.',
       target: {
         type: 'product', id: 'case-1', sku: 'CASE-BUDS-6',
@@ -140,7 +139,8 @@ describe('HoroshopRelatedProductsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Керування аксесуарами' }));
 
     expect(await screen.findByText('Чохол для Redmi Buds 6 Active')).toBeInTheDocument();
-    expect(screen.getByText('Сумісність')).toBeInTheDocument();
+    expect(screen.getByText('Модель явно збігається; аксесуар є в наявності.')).toBeInTheDocument();
+    expect(screen.queryByText('Сумісність')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Передати в Хорошоп' })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Додати' }));
@@ -154,23 +154,32 @@ describe('HoroshopRelatedProductsPage', () => {
     await waitFor(() => expect(publish).toHaveBeenCalledWith('product-1'));
   });
 
-  it('runs a catalog-wide analysis without publishing and shows the summary', async () => {
+  it('imports a Codex review without publishing and shows the summary', async () => {
     vi.spyOn(api.horoshopCatalog, 'list').mockResolvedValue(feed);
     vi.spyOn(api.horoshopAccessories, 'detail').mockResolvedValue(accessoryDetail);
-    const recommendAll = vi.spyOn(api.horoshopAccessories, 'recommendAll').mockResolvedValue({
-      analyzedProducts: 1586,
+    const importReview = vi.spyOn(api.horoshopAccessories, 'importReview').mockResolvedValue({
+      reviewedProducts: 1586,
       productsWithRecommendations: 940,
       productsWithoutRecommendations: 646,
-      recommendationsGenerated: 4210,
-      limit: 12
+      recommendationsSaved: 4210
     });
     const publish = vi.spyOn(api.horoshopAccessories, 'publish');
+    const reviewDocument = {
+      format: 'horoshop-codex-accessory-review/v1' as const,
+      connectionGeneration: '5fd15cbb-8ef3-457f-83be-e8e1f1688d39',
+      catalogRevision: '0'.repeat(64),
+      products: [{ productId: 'product-1', recommendations: [] }]
+    };
+    const file = new File([JSON.stringify(reviewDocument)], 'codex-review.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', { value: () => Promise.resolve(JSON.stringify(reviewDocument)) });
 
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Керування аксесуарами' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Проаналізувати всі товари' }));
+    fireEvent.change(await screen.findByLabelText('Імпортувати пропозиції Codex'), {
+      target: { files: [file] }
+    });
 
-    await waitFor(() => expect(recommendAll).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(importReview).toHaveBeenCalledWith(reviewDocument));
     expect(await screen.findByText('4210')).toBeInTheDocument();
     expect(screen.getByText('646')).toBeInTheDocument();
     expect(publish).not.toHaveBeenCalled();

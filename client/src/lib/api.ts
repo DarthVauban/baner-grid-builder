@@ -114,10 +114,12 @@ import type {
 import type { SystemMetrics } from '../types/system';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
-  HoroshopAccessoryBulkResult,
   HoroshopAccessoryCandidates,
   HoroshopAccessoryDetail,
-  HoroshopAccessoryDraftItem
+  HoroshopAccessoryDraftItem,
+  HoroshopCodexReviewCatalog,
+  HoroshopCodexReviewProposal,
+  HoroshopCodexReviewResult
 } from '../types/horoshop-accessory';
 import type {
   PublicTradeInSettings,
@@ -180,9 +182,13 @@ export const api = {
     )
   },
   horoshopAccessories: {
-    recommendAll: (limit = 12) => request<HoroshopAccessoryBulkResult>(
-      '/api/search/horoshop/accessories/recommendations/bulk',
-      { method: 'POST', body: jsonBody({ limit }), timeoutMs: 300_000 }
+    reviewCatalog: (signal?: AbortSignal) => request<HoroshopCodexReviewCatalog>(
+      '/api/search/horoshop/accessories/review/catalog',
+      { signal, timeoutMs: 45_000 }
+    ),
+    importReview: (document: HoroshopCodexReviewProposal) => request<HoroshopCodexReviewResult>(
+      '/api/search/horoshop/accessories/review/proposals',
+      { method: 'POST', body: jsonBody(document), timeoutMs: 300_000 }
     ),
     detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}`,
@@ -195,10 +201,6 @@ export const api = {
     saveDraft: (productId: string, items: HoroshopAccessoryDraftItem[]) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/draft`,
       { method: 'PUT', body: jsonBody({ items }) }
-    ),
-    recommend: (productId: string, limit = 12) => request<HoroshopAccessoryDetail>(
-      `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/recommendations`,
-      { method: 'POST', body: jsonBody({ limit }) }
     ),
     publish: (productId: string) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/publish`,

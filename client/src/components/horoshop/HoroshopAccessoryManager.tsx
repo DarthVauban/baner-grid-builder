@@ -4,12 +4,13 @@ import { Icon } from '../../components/Icon';
 import { api } from '../../lib/api';
 import type { HoroshopCatalogProduct, HoroshopLocalizedText } from '../../types/horoshop-catalog';
 import type {
-  HoroshopAccessoryBulkResult,
   HoroshopAccessoryCategory,
   HoroshopAccessoryDetail,
   HoroshopAccessoryLink,
   HoroshopAccessoryProduct,
-  HoroshopAccessoryTarget
+  HoroshopAccessoryTarget,
+  HoroshopCodexReviewProposal,
+  HoroshopCodexReviewResult
 } from '../../types/horoshop-accessory';
 
 function titleFor(titles: HoroshopLocalizedText, fallback: string) {
@@ -66,23 +67,11 @@ function TargetSummary({ target }: { target: HoroshopAccessoryTarget }) {
   );
 }
 
-function Score({ label, value }: { label: string; value: number | null }) {
-  const percent = Math.round((value || 0) * 100);
-  return <span title={`${label}: ${percent}%`}><small>{label}</small><b>{percent}%</b><i><i style={{ width: `${percent}%` }} /></i></span>;
-}
-
 function SuggestionCard({ link, onAdd }: { link: HoroshopAccessoryLink; onAdd: () => void }) {
   return (
     <article className="horoshop-accessory-suggestion">
       <header><TargetSummary target={link.target} /><button type="button" onClick={onAdd}><Icon name="add" size={17} /> Додати</button></header>
-      <p>{link.reason || 'Алгоритм визначив товар як корисний супутній.'}</p>
-      <div className="horoshop-accessory-scores">
-        <Score label="Сумісність" value={link.scores.compatibility} />
-        <Score label="Корисність" value={link.scores.utility} />
-        <Score label="Наявність" value={link.scores.availability} />
-        <Score label="Популярність" value={link.scores.popularity} />
-      </div>
-      <footer><span>Загальна оцінка</span><strong>{Math.round((link.scores.total || 0) * 100)}%</strong></footer>
+      <p>{link.reason || 'Codex запропонував товар після рев’ю специфікацій каталогу.'}</p>
     </article>
   );
 }
@@ -103,7 +92,8 @@ export function HoroshopAccessoryManager() {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [bulkResult, setBulkResult] = useState<HoroshopAccessoryBulkResult | null>(null);
+  const [reviewResult, setReviewResult] = useState<HoroshopCodexReviewResult | null>(null);
+  const [reviewFileError, setReviewFileError] = useState<string | null>(null);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => setTargetSearch(targetSearchInput.trim()), 250);
@@ -149,17 +139,26 @@ export function HoroshopAccessoryManager() {
     queryFn: ({ signal }) => api.horoshopAccessories.candidates(selectedProductId!, candidateSearch, signal),
     enabled: Boolean(selectedProductId && candidateSearch.length >= 2)
   });
-  const recommend = useMutation({
-    mutationFn: (productId: string) => api.horoshopAccessories.recommend(productId),
-    onSuccess: (value, productId) => {
-      if (!installDetail(productId, value)) return;
-      setFeedback(`Алгоритм підготував ${value.generatedCount || 0} пропозицій.`);
+  const exportReview = useMutation({
+    mutationFn: () => api.horoshopAccessories.reviewCatalog(),
+    onSuccess: (value) => {
+      const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `horoshop-codex-review-${value.storeDomain}-${value.connectionGeneration}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setReviewFileError(null);
+      setFeedback(`Каталог для Codex завантажено: ${value.products.length} товарів зі специфікаціями та модифікаціями.`);
     }
   });
-  const recommendAll = useMutation({
-    mutationFn: () => api.horoshopAccessories.recommendAll(),
+  const importReview = useMutation({
+    mutationFn: (document: HoroshopCodexReviewProposal) => api.horoshopAccessories.importReview(document),
     onSuccess: (value) => {
-      setBulkResult(value);
+      setReviewResult(value);
+      setReviewFileError(null);
+      setFeedback('Пропозиції Codex імпортовано як чернетки. У Хорошоп нічого не передано.');
       if (!localDirty && selectedProductId) {
         void queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-detail', selectedProductId] });
       }
@@ -185,7 +184,18 @@ export function HoroshopAccessoryManager() {
   const availableSuggestions = (detail.data?.draft.suggestions || []).filter((item) => !selectedKeys.has(item.key));
   const productCount = draftTargets.filter((item) => item.type === 'product').length;
   const categoryCount = draftTargets.length - productCount;
-  const busy = recommendAll.isPending || recommend.isPending || saveDraft.isPending || publish.isPending;
+  const busy = exportReview.isPending || importReview.isPending || saveDraft.isPending || publish.isPending;
+
+  const readReviewFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const document = JSON.parse(await file.text()) as HoroshopCodexReviewProposal;
+      setReviewFileError(null);
+      importReview.mutate(document);
+    } catch {
+      setReviewFileError('Не вдалося прочитати JSON-файл із пропозиціями Codex.');
+    }
+  };
 
   const addTarget = (target: HoroshopAccessoryTarget) => {
     if (selectedKeys.has(targetKey(target))) return;
@@ -219,17 +229,34 @@ export function HoroshopAccessoryManager() {
       <section className="horoshop-accessory-bulk">
         <div>
           <span className="horoshop-accessory-bulk-icon"><Icon name="productSelection" size={23} /></span>
-          <span><h2>Масовий аналіз каталогу</h2><p>Підбере лише достатньо сумісні й корисні товари. Якщо надійної рекомендації немає, список залишиться порожнім. У Хорошоп нічого не передається.</p></span>
+          <span><h2>Рев’ю каталогу через Codex</h2><p>Завантажте актуальний каталог, передайте файл у чат Codex і попросіть логічно підібрати супутні товари. Застосунок не використовує жодного вбудованого алгоритму.</p></span>
         </div>
-        <button className="button button--primary" type="button" disabled={busy || localDirty} onClick={() => recommendAll.mutate()}><Icon name="refresh" size={18} />{recommendAll.isPending ? 'Аналізуємо весь каталог…' : 'Проаналізувати всі товари'}</button>
-        {localDirty && <small>Спочатку збережіть поточну чернетку, щоб масовий аналіз не перервав її редагування.</small>}
-        {recommendAll.isError && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{recommendAll.error.message}</div>}
-        {bulkResult && (
+        <div className="horoshop-accessory-bulk-actions">
+          <button className="button button--primary" type="button" disabled={busy} onClick={() => exportReview.mutate()}><Icon name="download" size={18} />{exportReview.isPending ? 'Готуємо каталог…' : 'Завантажити каталог для Codex'}</button>
+          <label className="button button--secondary" aria-disabled={busy || localDirty}>
+            <Icon name="upload" size={18} />{importReview.isPending ? 'Імпортуємо…' : 'Імпортувати пропозиції Codex'}
+            <input
+              hidden
+              type="file"
+              accept="application/json,.json"
+              aria-label="Імпортувати пропозиції Codex"
+              disabled={busy || localDirty}
+              onChange={(event) => {
+                void readReviewFile(event.target.files?.[0]);
+                event.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+        <small>Codex може також отримати каталог і записати рев’ю напряму через API цього інструмента. Усі пропозиції спочатку потрапляють у чернетку.</small>
+        {localDirty && <small>Збережіть поточну чернетку перед імпортом нового рев’ю.</small>}
+        {(exportReview.isError || importReview.isError || reviewFileError) && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{reviewFileError || exportReview.error?.message || importReview.error?.message}</div>}
+        {reviewResult && (
           <div className="horoshop-accessory-bulk-result">
-            <span><small>Проаналізовано</small><strong>{bulkResult.analyzedProducts}</strong></span>
-            <span><small>З рекомендаціями</small><strong>{bulkResult.productsWithRecommendations}</strong></span>
-            <span><small>Без рекомендацій</small><strong>{bulkResult.productsWithoutRecommendations}</strong></span>
-            <span><small>Усього пропозицій</small><strong>{bulkResult.recommendationsGenerated}</strong></span>
+            <span><small>Переглянуто</small><strong>{reviewResult.reviewedProducts}</strong></span>
+            <span><small>З пропозиціями</small><strong>{reviewResult.productsWithRecommendations}</strong></span>
+            <span><small>Без пропозицій</small><strong>{reviewResult.productsWithoutRecommendations}</strong></span>
+            <span><small>Пропозицій у рев’ю</small><strong>{reviewResult.recommendationsSaved}</strong></span>
           </div>
         )}
       </section>
@@ -258,13 +285,12 @@ export function HoroshopAccessoryManager() {
           <>
             <header className="horoshop-accessory-heading">
               <div><span className="eyebrow">Аксесуари для</span><h2>{titleFor(detail.data.product.titles, detail.data.product.sku)}</h2><p><code>{detail.data.product.sku}</code> · {detail.data.product.brand || 'без бренду'}</p></div>
-              <button className="button button--secondary" type="button" disabled={busy} onClick={() => recommend.mutate(selectedProductId!)}><Icon name="refresh" size={18} />{recommend.isPending ? 'Аналізуємо…' : 'Підібрати автоматично'}</button>
             </header>
 
             {!detail.data.draft.catalogStateKnown && (
               <div className="horoshop-accessory-warning"><Icon name="alarm" size={19} /><span><strong>Поточний список аксесуарів не повернувся з експорту.</strong>Публікація замінить весь список у картці цим проєктом.</span></div>
             )}
-            {mutationError(recommend, saveDraft, publish) && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{mutationError(recommend, saveDraft, publish)}</div>}
+            {mutationError(saveDraft, publish) && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{mutationError(saveDraft, publish)}</div>}
             {feedback && <div className="horoshop-accessory-message"><Icon name="check" size={18} />{feedback}</div>}
 
             <section className="horoshop-accessory-section">
@@ -290,15 +316,15 @@ export function HoroshopAccessoryManager() {
             </section>
 
             <section className="horoshop-accessory-section">
-              <header><span><h3>Рекомендації алгоритму</h3><p>Сумісність 45% · Корисність 25% · Наявність 20% · Популярність 10%</p></span><b>{availableSuggestions.length} кандидатів</b></header>
+              <header><span><h3>Пропозиції Codex</h3><p>Сформовані під час змістовного рев’ю назв, категорій, характеристик і модифікацій товарів.</p></span><b>{availableSuggestions.length} кандидатів</b></header>
               <div className="horoshop-accessory-suggestions">
                 {availableSuggestions.map((item) => <SuggestionCard link={item} key={item.key} onAdd={() => addTarget(item.target)} />)}
-                {availableSuggestions.length === 0 && <div className="horoshop-accessory-list-empty"><strong>Ще немає пропозицій</strong><span>Натисніть «Підібрати автоматично», щоб проаналізувати весь каталог.</span></div>}
+                {availableSuggestions.length === 0 && <div className="horoshop-accessory-list-empty"><strong>Немає пропозицій Codex</strong><span>Товар міг бути свідомо залишений без супутніх товарів або ще не входив до рев’ю.</span></div>}
               </div>
             </section>
 
             <section className="horoshop-accessory-publish">
-              <div><span className="horoshop-accessory-publish-icon"><Icon name="send" size={23} /></span><span><h3>Передати в Хорошоп</h3><p>Буде оновлено поле «Аксесуари» батьківської картки. Модифікації враховані алгоритмом, але не публікуються окремо.</p></span></div>
+              <div><span className="horoshop-accessory-publish-icon"><Icon name="send" size={23} /></span><span><h3>Передати в Хорошоп</h3><p>Буде оновлено поле «Аксесуари» батьківської картки. Модифікації доступні Codex під час рев’ю, але не публікуються окремо.</p></span></div>
               {detail.data.latestPublication && <p className={`horoshop-accessory-publication is-${detail.data.latestPublication.status}`}><strong>{detail.data.latestPublication.status === 'succeeded' ? 'Остання публікація успішна' : detail.data.latestPublication.status === 'failed' ? 'Остання публікація невдала' : 'Публікація виконується'}</strong><span>{new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(detail.data.latestPublication.startedAt))}</span></p>}
               <label className="horoshop-accessory-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span><strong>Я розумію, що цей список перезапише поточні аксесуари товару в Хорошоп.</strong><small>Публікується лише остання збережена чернетка.</small></span></label>
               <button className="button button--primary" type="button" disabled={!confirmed || localDirty || busy} onClick={() => publish.mutate(selectedProductId!)}><Icon name="send" size={18} />{publish.isPending ? 'Передаємо…' : 'Передати в Хорошоп'}</button>

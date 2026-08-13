@@ -4727,6 +4727,9 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .horoshop-accessory-bulk p { max-width: 760px; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
 .horoshop-accessory-bulk > small { grid-column: 1 / -1; color: #8a6720; font-size: 9px; }
 .horoshop-accessory-bulk > .horoshop-accessory-message { grid-column: 1 / -1; }
+.horoshop-accessory-bulk-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.horoshop-accessory-bulk-actions .button { white-space: nowrap; }
+.horoshop-accessory-bulk-actions [aria-disabled="true"] { opacity: .55; pointer-events: none; }
 .horoshop-accessory-bulk-result { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; border-top: 1px solid #dfe5f4; padding-top: 12px; }
 .horoshop-accessory-bulk-result > span { display: grid; gap: 3px; border-radius: 10px; padding: 9px 11px; background: rgba(255,255,255,.7); }
 .horoshop-accessory-bulk-result small { color: var(--muted); font-size: 8px; }
@@ -4806,14 +4809,6 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .horoshop-accessory-suggestion > header { min-width: 0; display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: center; gap: 9px; }
 .horoshop-accessory-suggestion header button { min-height: 29px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #cbd6ef; border-radius: 8px; padding: 0 8px; color: #3e5b9c; background: #f4f7ff; font-size: 9px; font-weight: 800; }
 .horoshop-accessory-suggestion > p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
-.horoshop-accessory-scores { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px 9px; }
-.horoshop-accessory-scores > span { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px; color: var(--muted); }
-.horoshop-accessory-scores small { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.horoshop-accessory-scores b { color: #57647a; font-size: 8px; }
-.horoshop-accessory-scores > span > i { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 999px; background: #e8ebf1; }
-.horoshop-accessory-scores > span > i > i { display: block; height: 100%; border-radius: inherit; background: #6d82c0; }
-.horoshop-accessory-suggestion > footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; color: var(--muted); font-size: 9px; }
-.horoshop-accessory-suggestion > footer strong { color: #3658b6; font-size: 13px; }
 .horoshop-accessory-publish { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 13px 18px; align-items: center; border: 1px solid #cbd6ef; border-radius: 15px; padding: 16px; background: #f7f9ff; }
 .horoshop-accessory-publish > div:first-child { display: flex; gap: 12px; }
 .horoshop-accessory-publish-icon { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 12px; color: #3658b6; background: #e6edff; }
@@ -4854,7 +4849,8 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 820px) {
   .horoshop-accessory-manager { grid-template-columns: 1fr; }
   .horoshop-accessory-bulk { grid-template-columns: 1fr; }
-  .horoshop-accessory-bulk > .button { width: 100%; }
+  .horoshop-accessory-bulk-actions { justify-content: stretch; flex-wrap: wrap; }
+  .horoshop-accessory-bulk-actions .button { flex: 1 1 240px; }
   .horoshop-accessory-targets { position: static; }
   .horoshop-accessory-target-list { max-height: 280px; }
   .horoshop-accessory-publish { grid-template-columns: 1fr; }
@@ -4872,7 +4868,6 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .horoshop-accessory-heading { align-items: stretch; flex-direction: column; }
   .horoshop-accessory-heading .button { width: 100%; }
   .horoshop-accessory-section > header { align-items: flex-start; flex-direction: column; }
-  .horoshop-accessory-scores { grid-template-columns: 1fr; }
   .horoshop-accessory-suggestion > header { grid-template-columns: 40px minmax(0,1fr); }
   .horoshop-accessory-suggestion header button { grid-column: 1 / -1; justify-content: center; }
   .horoshop-accessory-section > footer .button,

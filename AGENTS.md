@@ -40,3 +40,13 @@
 - Pin infrastructure versions. Review upstream release notes, plugin compatibility, licenses, and security notices before upgrading.
 - Do not expose OpenSearch or Redis publicly. Local development ports must bind to loopback only.
 - Do not put Horoshop credentials, OpenSearch credentials, or encryption keys in source files, fixtures, logs, or browser-delivered configuration.
+
+## Horoshop accessory review with Codex
+
+- The application must not contain or execute an accessory recommendation algorithm. Accessory proposals are an admin-time Codex review workflow, not a runtime search dependency.
+- When the user explicitly asks Codex to review the current Horoshop catalog, obtain `GET /api/search/horoshop/accessories/review/catalog` through the authenticated in-app browser. If that session is unavailable, use the JSON exported from the **Супутні товари Хорошоп** tool.
+- Review products semantically from their titles, descriptions, categories, characteristics, price, availability, popularity, and modification tree. Do not fill recommendations merely to avoid an empty result.
+- Return a `horoshop-codex-accessory-review/v1` proposal document with the unchanged `connectionGeneration` and `catalogRevision`. Include every active parent product exactly once, including `{ "recommendations": [] }` when nothing is sufficiently compatible and useful.
+- Each recommendation must reference another active parent product ID and include a concise, product-specific reason. Keep at most 16 recommendations per product and prioritize compatibility, usefulness, availability, and commercial relevance through judgment rather than fixed weights or scoring code.
+- Submit the completed document to `POST /api/search/horoshop/accessories/review/proposals`. A stale-catalog response requires a fresh export and review of affected data.
+- Importing Codex proposals creates reviewable local suggestions only. Never publish them to Horoshop unless the user separately and explicitly asks to publish a reviewed draft.

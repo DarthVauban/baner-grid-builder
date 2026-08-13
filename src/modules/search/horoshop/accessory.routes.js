@@ -4,7 +4,10 @@ import { asyncHandler } from '../../../lib/async-handler.js';
 import { parseInput } from '../../../lib/validation.js';
 import { requireAuth } from '../../../middleware/auth.js';
 import { requireToolAccess } from '../../access/access.service.js';
-import { horoshopAccessoryService } from './accessory.service.js';
+import {
+  HOROSHOP_CODEX_REVIEW_FORMAT,
+  horoshopAccessoryService
+} from './accessory.service.js';
 
 const router = Router();
 const productParamsSchema = z.object({ productId: z.string().uuid() });
@@ -18,8 +21,17 @@ const draftSchema = z.object({
     z.object({ type: z.literal('category'), id: z.string().uuid() })
   ])).max(32)
 });
-const recommendationSchema = z.object({
-  limit: z.number().int().min(4).max(16).optional().default(12)
+const codexReviewSchema = z.object({
+  format: z.literal(HOROSHOP_CODEX_REVIEW_FORMAT),
+  connectionGeneration: z.string().uuid(),
+  catalogRevision: z.string().regex(/^[a-f0-9]{64}$/u),
+  products: z.array(z.object({
+    productId: z.string().uuid(),
+    recommendations: z.array(z.object({
+      productId: z.string().uuid(),
+      reason: z.string().trim().min(10).max(700)
+    })).max(16)
+  })).max(10_000)
 });
 const publicationSchema = z.object({ confirmOverwrite: z.literal(true) });
 
@@ -29,9 +41,13 @@ router.use((req, res, next) => {
   next();
 });
 
-router.post('/recommendations/bulk', asyncHandler(async (req, res) => {
-  const { limit } = parseInput(recommendationSchema, req.body || {});
-  res.json({ data: await horoshopAccessoryService.generateAllRecommendations(limit, req.user.id) });
+router.get('/review/catalog', asyncHandler(async (_req, res) => {
+  res.json({ data: await horoshopAccessoryService.reviewCatalog() });
+}));
+
+router.post('/review/proposals', asyncHandler(async (req, res) => {
+  const document = parseInput(codexReviewSchema, req.body);
+  res.json({ data: await horoshopAccessoryService.importReview(document, req.user.id) });
 }));
 
 router.get('/products/:productId', asyncHandler(async (req, res) => {
@@ -49,12 +65,6 @@ router.put('/products/:productId/draft', asyncHandler(async (req, res) => {
   const { productId } = parseInput(productParamsSchema, req.params);
   const { items } = parseInput(draftSchema, req.body);
   res.json({ data: await horoshopAccessoryService.saveDraft(productId, items, req.user.id) });
-}));
-
-router.post('/products/:productId/recommendations', asyncHandler(async (req, res) => {
-  const { productId } = parseInput(productParamsSchema, req.params);
-  const { limit } = parseInput(recommendationSchema, req.body || {});
-  res.json({ data: await horoshopAccessoryService.generateRecommendations(productId, limit, req.user.id) });
 }));
 
 router.post('/products/:productId/publish', asyncHandler(async (req, res) => {

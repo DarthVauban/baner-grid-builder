@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool as defaultPool } from '../../../db/pool.js';
-import { ACCESSORY_RECOMMENDER_VERSION } from './accessory-recommender.js';
+import { codexReviewCatalogRevision } from './accessory-review.js';
 
 function jsonObject(value) {
   if (!value) return {};
@@ -11,10 +11,6 @@ function jsonObject(value) {
   } catch {
     return {};
   }
-}
-
-function score(value) {
-  return value === null || value === undefined ? null : Number(value);
 }
 
 function mapProduct(row) {
@@ -170,9 +166,10 @@ export class HoroshopAccessoryRepository {
     if (!state?.set) return null;
     const [linksResult, publicationResult] = await Promise.all([
       this.pool.query(`
-        SELECT link.id, link.target_key, link.target_type, link.source, link.selected,
-               link.published, link.position, link.compatibility_score, link.utility_score,
-               link.availability_score, link.popularity_score, link.total_score, link.reason,
+        SELECT link.id, link.target_key, link.target_type,
+               CASE WHEN link.codex_proposed = TRUE THEN 'codex' ELSE link.source END AS source,
+               link.selected,
+               link.published, link.position, link.reason,
                product.id AS accessory_product_id, product.sku AS accessory_sku,
                product.titles AS accessory_titles, product.brand AS accessory_brand,
                product.price AS accessory_price, product.currency AS accessory_currency,
@@ -183,12 +180,9 @@ export class HoroshopAccessoryRepository {
         FROM search_horoshop_accessory_links AS link
         LEFT JOIN search_horoshop_products AS product ON product.id = link.accessory_product_id
         LEFT JOIN search_horoshop_categories AS category ON category.id = link.accessory_category_id
-        WHERE link.set_id = $1 AND (
-          link.source <> 'algorithm' OR link.selected = TRUE OR link.published = TRUE
-          OR link.algorithm_version = $2
-        )
-        ORDER BY link.selected DESC, link.position, link.total_score DESC NULLS LAST, link.created_at
-      `, [state.set.id, ACCESSORY_RECOMMENDER_VERSION]),
+        WHERE link.set_id = $1
+        ORDER BY link.selected DESC, link.position, link.created_at
+      `, [state.set.id]),
       this.pool.query(`
         SELECT id, status, product_accessory_count, category_accessory_count,
                error_message, started_at, completed_at
@@ -220,7 +214,7 @@ export class HoroshopAccessoryRepository {
         publishedAt: state.set.published_at,
         isDirty: links.some((item) => item.selected !== item.published),
         selected: links.filter((item) => item.selected),
-        suggestions: links.filter((item) => !item.selected && item.source === 'algorithm')
+        suggestions: links.filter((item) => !item.selected && item.source === 'codex')
       },
       latestPublication: this.mapPublication(publicationResult.rows[0])
     };
@@ -252,13 +246,6 @@ export class HoroshopAccessoryRepository {
       selected: row.selected,
       published: row.published,
       position: Number(row.position || 0),
-      scores: {
-        compatibility: score(row.compatibility_score),
-        utility: score(row.utility_score),
-        availability: score(row.availability_score),
-        popularity: score(row.popularity_score),
-        total: score(row.total_score)
-      },
       reason: row.reason,
       target
     };
@@ -385,7 +372,8 @@ export class HoroshopAccessoryRepository {
       }
       await client.query(`
         DELETE FROM search_horoshop_accessory_links
-        WHERE set_id = $1 AND selected = FALSE AND published = FALSE AND source = 'manual'
+        WHERE set_id = $1 AND selected = FALSE AND published = FALSE
+          AND source = 'manual' AND codex_proposed = FALSE
       `, [state.set.id]);
       await client.query(`
         UPDATE search_horoshop_accessory_sets
@@ -402,20 +390,9 @@ export class HoroshopAccessoryRepository {
     return this.getDetail(productId, actorUserId);
   }
 
-  async loadRecommendationCatalog(productId) {
-    const catalog = await this.loadAllRecommendationCatalog();
-    if (!catalog) return null;
-    const target = catalog.products.find((product) => product.id === productId);
-    if (!target) return null;
-    return {
-      target,
-      candidates: catalog.products.filter((product) => product.id !== productId)
-    };
-  }
-
-  async loadAllRecommendationCatalog() {
+  async loadCodexReviewCatalog() {
     const connectionResult = await this.pool.query(`
-      SELECT id, generation, status
+      SELECT id, generation, status, store_domain
       FROM search_horoshop_connections
       WHERE singleton = TRUE
       LIMIT 1
@@ -425,8 +402,9 @@ export class HoroshopAccessoryRepository {
     const [productsResult, modificationsResult] = await Promise.all([
       this.pool.query(`
         SELECT product.id, product.sku, product.titles, product.brand, product.category_external_id,
+               product.descriptions, product.price, product.old_price, product.currency,
                product.characteristics, product.popularity, product.visible, product.active,
-               product.availability, category.titles AS category_titles
+               product.availability, product.canonical_url, category.titles AS category_titles
         FROM search_horoshop_products AS product
         LEFT JOIN search_horoshop_categories AS category
           ON category.connection_id = product.connection_id
@@ -434,89 +412,142 @@ export class HoroshopAccessoryRepository {
         WHERE product.connection_id = $1 AND product.active = TRUE
       `, [connection.id]),
       this.pool.query(`
-        SELECT product_id, availability
+        SELECT id, product_id, sku, titles, price, old_price, currency, availability,
+               visible, active, attributes
         FROM search_horoshop_modifications
         WHERE connection_id = $1 AND active = TRUE
       `, [connection.id])
     ]);
-    const availabilityByProduct = new Map();
+    const modificationsByProduct = new Map();
     for (const row of modificationsResult.rows) {
-      const values = availabilityByProduct.get(row.product_id) || [];
-      if (row.availability) values.push(row.availability);
-      availabilityByProduct.set(row.product_id, values);
+      const values = modificationsByProduct.get(row.product_id) || [];
+      values.push({
+        id: row.id,
+        sku: row.sku,
+        titles: jsonObject(row.titles),
+        price: row.price,
+        oldPrice: row.old_price,
+        currency: row.currency,
+        availability: row.availability,
+        visible: row.visible,
+        active: row.active,
+        attributes: jsonObject(row.attributes)
+      });
+      modificationsByProduct.set(row.product_id, values);
     }
+    for (const values of modificationsByProduct.values()) {
+      values.sort((left, right) => left.id.localeCompare(right.id));
+    }
+    const products = productsResult.rows.map((row) => ({
+      id: row.id,
+      sku: row.sku,
+      titles: jsonObject(row.titles),
+      descriptions: jsonObject(row.descriptions),
+      brand: row.brand,
+      categoryExternalId: row.category_external_id,
+      categoryTitles: jsonObject(row.category_titles),
+      characteristics: jsonObject(row.characteristics),
+      popularity: row.popularity,
+      price: row.price,
+      oldPrice: row.old_price,
+      currency: row.currency,
+      availability: row.availability,
+      visible: row.visible,
+      active: row.active,
+      canonicalUrl: row.canonical_url,
+      modifications: modificationsByProduct.get(row.id) || []
+    })).sort((left, right) => left.id.localeCompare(right.id));
     return {
       connection: {
         id: connection.id,
         generation: connection.generation,
-        status: connection.status
+        status: connection.status,
+        storeDomain: connection.store_domain
       },
-      products: productsResult.rows.map((row) => ({
-        id: row.id,
-        sku: row.sku,
-        titles: jsonObject(row.titles),
-        brand: row.brand,
-        categoryTitles: jsonObject(row.category_titles),
-        characteristics: jsonObject(row.characteristics),
-        popularity: row.popularity,
-        visible: row.visible,
-        active: row.active,
-        availabilities: availabilityByProduct.get(row.id) || (row.availability ? [row.availability] : [])
-      }))
+      products
     };
   }
 
-  async replaceRecommendations(productId, recommendations, actorUserId) {
-    const state = await this.ensureSet(productId, actorUserId);
-    if (!state?.set) return null;
+  async saveCodexReview(connectionGeneration, catalogRevision, products, actorUserId) {
+    const catalog = await this.loadCodexReviewCatalog();
+    if (!catalog || catalog.connection.generation !== connectionGeneration
+      || catalog.connection.status !== 'connected'
+      || codexReviewCatalogRevision(catalog.products) !== catalogRevision) {
+      return null;
+    }
+
+    const setsResult = await this.pool.query(`
+      SELECT id, product_id
+      FROM search_horoshop_accessory_sets
+      WHERE connection_id = $1
+    `, [catalog.connection.id]);
+    const setByProduct = new Map(setsResult.rows.map((row) => [row.product_id, row.id]));
+    for (const item of products) {
+      if (item.recommendations.length === 0 || setByProduct.has(item.productId)) continue;
+      const state = await this.ensureSet(item.productId, actorUserId);
+      if (!state?.set || state.context.connection.generation !== connectionGeneration) return null;
+      setByProduct.set(item.productId, state.set.id);
+    }
+
+    const reviewedSets = products
+      .map((item) => ({ ...item, setId: setByProduct.get(item.productId) }))
+      .filter((item) => item.setId);
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(`
-        DELETE FROM search_horoshop_accessory_links
-        WHERE set_id = $1 AND source = 'algorithm' AND selected = FALSE AND published = FALSE
-      `, [state.set.id]);
-      let position = 100;
-      for (const item of recommendations) {
-        position += 1;
+      const currentConnection = await client.query(`
+        SELECT id
+        FROM search_horoshop_connections
+        WHERE singleton = TRUE AND id = $1 AND generation = $2 AND status = 'connected'
+        LIMIT 1
+      `, [catalog.connection.id, connectionGeneration]);
+      if (currentConnection.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      if (reviewedSets.length > 0) {
+        const placeholders = reviewedSets.map((_, index) => `$${index + 1}`).join(', ');
+        const setIds = reviewedSets.map((item) => item.setId);
         await client.query(`
-          INSERT INTO search_horoshop_accessory_links (
-            id, set_id, target_key, target_type, accessory_product_id, source,
-            selected, position, compatibility_score, utility_score, availability_score,
-            popularity_score, total_score, reason, algorithm_version
-          ) VALUES ($1, $2, $3, 'product', $4, 'algorithm', FALSE, $5, $6, $7, $8, $9, $10, $11, $12)
-          ON CONFLICT (set_id, target_key) DO UPDATE SET
-            compatibility_score = EXCLUDED.compatibility_score,
-            utility_score = EXCLUDED.utility_score,
-            availability_score = EXCLUDED.availability_score,
-            popularity_score = EXCLUDED.popularity_score,
-            total_score = EXCLUDED.total_score,
-            reason = EXCLUDED.reason,
-            algorithm_version = CASE
-              WHEN search_horoshop_accessory_links.source = 'algorithm' THEN EXCLUDED.algorithm_version
-              ELSE search_horoshop_accessory_links.algorithm_version
-            END,
-            updated_at = NOW()
-        `, [
-          randomUUID(), state.set.id, `product:${item.productId}`, item.productId, position,
-          item.compatibilityScore, item.utilityScore, item.availabilityScore,
-          item.popularityScore, item.totalScore, item.reason, ACCESSORY_RECOMMENDER_VERSION
-        ]);
+          DELETE FROM search_horoshop_accessory_links
+          WHERE set_id IN (${placeholders}) AND codex_proposed = TRUE
+            AND selected = FALSE AND published = FALSE
+        `, setIds);
+        await client.query(`
+          UPDATE search_horoshop_accessory_sets
+          SET updated_by = $${setIds.length + 1}, updated_at = NOW()
+          WHERE id IN (${placeholders})
+        `, [...setIds, actorUserId || null]);
+      }
+
+      let savedRecommendations = 0;
+      for (const item of reviewedSets) {
+        let position = 100;
+        for (const recommendation of item.recommendations) {
+          position += 1;
+          const inserted = await client.query(`
+            INSERT INTO search_horoshop_accessory_links (
+              id, set_id, target_key, target_type, accessory_product_id,
+              source, codex_proposed, selected, position, reason
+            ) VALUES ($1, $2, $3, 'product', $4, 'manual', TRUE, FALSE, $5, $6)
+            ON CONFLICT (set_id, target_key) DO NOTHING
+            RETURNING id
+          `, [
+            randomUUID(), item.setId, `product:${recommendation.productId}`,
+            recommendation.productId, position, recommendation.reason
+          ]);
+          savedRecommendations += inserted.rowCount;
+        }
       }
       await client.query('COMMIT');
+      return { savedRecommendations };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
-    return state;
-  }
-
-  async saveRecommendations(productId, recommendations, actorUserId) {
-    const state = await this.replaceRecommendations(productId, recommendations, actorUserId);
-    if (!state) return null;
-    return this.getDetail(productId, actorUserId);
   }
 
   async publicationPayload(productId, actorUserId) {
