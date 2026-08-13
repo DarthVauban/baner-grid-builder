@@ -53,6 +53,14 @@ export class HoroshopCatalogService {
     return this.repository.getStatus();
   }
 
+  async catalog(input) {
+    const [integration, catalog] = await Promise.all([
+      this.status(),
+      this.repository.listCatalog(input)
+    ]);
+    return { integration, ...catalog };
+  }
+
   async connect(input, actorUserId) {
     let client;
     try {

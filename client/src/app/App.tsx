@@ -93,6 +93,9 @@ const MediaLibraryPage = lazy(() => import('../pages/MediaLibraryPage').then((mo
 const FacebookPublicationsPage = lazy(() => import('../pages/FacebookPublicationsPage').then((module) => ({
   default: module.FacebookPublicationsPage
 })));
+const HoroshopRelatedProductsPage = lazy(() => import('../pages/HoroshopRelatedProductsPage').then((module) => ({
+  default: module.HoroshopRelatedProductsPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -208,6 +211,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="facebook_group_publications" />}>
             <Route path="tools/facebook-publications" element={<Suspense fallback={<LoadingScreen />}><FacebookPublicationsPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="horoshop_related_products" />}>
+            <Route path="tools/horoshop-related-products" element={<Suspense fallback={<LoadingScreen />}><HoroshopRelatedProductsPage /></Suspense>} />
           </Route>
           <Route element={<AccessManagementRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

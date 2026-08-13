@@ -31,6 +31,59 @@ function mapRun(row) {
   };
 }
 
+function jsonObject(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function mapCatalogModification(row) {
+  return {
+    id: row.id,
+    externalId: row.external_id,
+    sku: row.sku,
+    titles: jsonObject(row.titles),
+    price: row.price,
+    oldPrice: row.old_price,
+    currency: row.currency,
+    availability: row.availability,
+    visible: row.visible,
+    active: row.active,
+    imageUrl: row.image_url,
+    pageUrl: row.page_url,
+    attributes: jsonObject(row.attributes),
+    updatedAt: row.updated_at
+  };
+}
+
+function mapCatalogProduct(row, modifications) {
+  return {
+    id: row.id,
+    externalId: row.external_id,
+    parentExternalId: row.parent_external_id,
+    sku: row.sku,
+    titles: jsonObject(row.titles),
+    brand: row.brand,
+    categoryExternalId: row.category_external_id,
+    price: row.price,
+    oldPrice: row.old_price,
+    currency: row.currency,
+    availability: row.availability,
+    visible: row.visible,
+    active: row.active,
+    primaryImageUrl: row.primary_image_url,
+    canonicalUrl: row.canonical_url,
+    popularity: row.popularity,
+    updatedAt: row.updated_at,
+    modifications
+  };
+}
+
 export class HoroshopCatalogRepository {
   constructor(databasePool = defaultPool) {
     this.pool = databasePool;
@@ -91,6 +144,168 @@ export class HoroshopCatalogRepository {
         modifications: Number(counts.modifications || 0)
       },
       latestRun: mapRun(runResult.rows[0])
+    };
+  }
+
+  async listCatalog(input = {}) {
+    const connection = await this.getConnection();
+    const page = Math.max(1, Number(input.page) || 1);
+    const pageSize = Math.max(10, Math.min(Number(input.pageSize) || 25, 100));
+    if (!connection) {
+      return {
+        items: [], categories: [], availabilityOptions: [], total: 0,
+        page, pageSize, pageCount: 0
+      };
+    }
+
+    const state = ['all', 'inactive'].includes(input.state) ? input.state : 'active';
+    const visibility = ['visible', 'hidden'].includes(input.visibility) ? input.visibility : 'all';
+    const search = String(input.search || '').trim().slice(0, 160);
+    const category = String(input.category || '').trim().slice(0, 255);
+    const availability = String(input.availability || '').trim().slice(0, 200);
+    const values = [connection.id];
+    const clauses = ['product.connection_id = $1'];
+    const addValue = (value) => {
+      values.push(value);
+      return `$${values.length}`;
+    };
+
+    if (state !== 'all') clauses.push(`product.active = ${state === 'active' ? 'TRUE' : 'FALSE'}`);
+    if (category) clauses.push(`product.category_external_id = ${addValue(category)}`);
+    if (visibility === 'visible') clauses.push('product.visible = TRUE');
+    if (visibility === 'hidden') {
+      clauses.push(`(
+        product.visible = FALSE OR product.id IN (
+          SELECT hidden_modification.product_id
+          FROM search_horoshop_modifications AS hidden_modification
+          WHERE hidden_modification.connection_id = $1
+            AND hidden_modification.active = TRUE
+            AND hidden_modification.visible = FALSE
+        )
+      )`);
+    }
+    if (search) {
+      const parameter = addValue(`%${search.toLocaleLowerCase('uk-UA')}%`);
+      clauses.push(`(
+        LOWER(COALESCE(product.sku, '')) LIKE ${parameter}
+        OR LOWER(COALESCE(product.brand, '')) LIKE ${parameter}
+        OR LOWER(CAST(product.titles AS TEXT)) LIKE ${parameter}
+        OR product.id IN (
+          SELECT matched_modification.product_id
+          FROM search_horoshop_modifications AS matched_modification
+          WHERE matched_modification.connection_id = $1
+            AND (
+              LOWER(COALESCE(matched_modification.sku, '')) LIKE ${parameter}
+              OR LOWER(CAST(matched_modification.titles AS TEXT)) LIKE ${parameter}
+            )
+        )
+      )`);
+    }
+    if (availability) {
+      const parameter = addValue(availability.toLocaleLowerCase('uk-UA'));
+      clauses.push(`(
+        LOWER(COALESCE(product.availability, '')) = ${parameter}
+        OR product.id IN (
+          SELECT availability_modification.product_id
+          FROM search_horoshop_modifications AS availability_modification
+          WHERE availability_modification.connection_id = $1
+            AND availability_modification.active = TRUE
+            AND LOWER(COALESCE(availability_modification.availability, '')) = ${parameter}
+        )
+      )`);
+    }
+
+    const where = clauses.join('\n AND ');
+    const limitParameter = `$${values.length + 1}`;
+    const offsetParameter = `$${values.length + 2}`;
+    const pageValues = [...values, pageSize, (page - 1) * pageSize];
+    const [productsResult, countResult, categoriesResult, categoryCountsResult, productAvailabilityResult, modificationAvailabilityResult] = await Promise.all([
+      this.pool.query(`
+        SELECT id, external_id, parent_external_id, sku, titles, brand, category_external_id,
+               price, old_price, currency, availability, visible, active, primary_image_url,
+               canonical_url, popularity, updated_at
+        FROM search_horoshop_products AS product
+        WHERE ${where}
+        ORDER BY product.updated_at DESC, product.id
+        LIMIT ${limitParameter} OFFSET ${offsetParameter}
+      `, pageValues),
+      this.pool.query(`
+        SELECT COUNT(*) AS total
+        FROM search_horoshop_products AS product
+        WHERE ${where}
+      `, values),
+      this.pool.query(`
+        SELECT external_id, parent_external_id, titles
+        FROM search_horoshop_categories
+        WHERE connection_id = $1 AND active = TRUE
+        ORDER BY titles::text, external_id
+      `, [connection.id]),
+      this.pool.query(`
+        SELECT category_external_id, COUNT(*) AS total
+        FROM search_horoshop_products
+        WHERE connection_id = $1 AND active = TRUE
+        GROUP BY category_external_id
+      `, [connection.id]),
+      this.pool.query(`
+        SELECT DISTINCT availability
+        FROM search_horoshop_products
+        WHERE connection_id = $1 AND active = TRUE AND availability IS NOT NULL AND availability <> ''
+      `, [connection.id]),
+      this.pool.query(`
+        SELECT DISTINCT availability
+        FROM search_horoshop_modifications
+        WHERE connection_id = $1 AND active = TRUE AND availability IS NOT NULL AND availability <> ''
+      `, [connection.id])
+    ]);
+
+    const productIds = productsResult.rows.map((row) => row.id);
+    let modificationRows = [];
+    if (productIds.length > 0) {
+      const modificationState = state === 'active'
+        ? 'AND active = TRUE'
+        : state === 'inactive' ? 'AND active = FALSE' : '';
+      const placeholders = productIds.map((_, index) => `$${index + 2}`).join(', ');
+      const modificationsResult = await this.pool.query(`
+        SELECT id, product_id, external_id, sku, titles, price, old_price, currency,
+               availability, visible, active, image_url, page_url, attributes, updated_at
+        FROM search_horoshop_modifications
+        WHERE connection_id = $1 AND product_id IN (${placeholders}) ${modificationState}
+        ORDER BY updated_at DESC, id
+      `, [connection.id, ...productIds]);
+      modificationRows = modificationsResult.rows;
+    }
+
+    const modificationsByProduct = new Map();
+    for (const row of modificationRows) {
+      const items = modificationsByProduct.get(row.product_id) || [];
+      items.push(mapCatalogModification(row));
+      modificationsByProduct.set(row.product_id, items);
+    }
+    const categoryCounts = new Map(categoryCountsResult.rows.map((row) => [
+      row.category_external_id, Number(row.total || 0)
+    ]));
+    const availabilityOptions = [...new Set([
+      ...productAvailabilityResult.rows.map((row) => String(row.availability || '').trim()),
+      ...modificationAvailabilityResult.rows.map((row) => String(row.availability || '').trim())
+    ].filter(Boolean))].sort((left, right) => left.localeCompare(right, 'uk-UA'));
+    const total = Number(countResult.rows[0]?.total || 0);
+
+    return {
+      items: productsResult.rows.map((row) => mapCatalogProduct(
+        row,
+        modificationsByProduct.get(row.id) || []
+      )),
+      categories: categoriesResult.rows.map((row) => ({
+        externalId: row.external_id,
+        parentExternalId: row.parent_external_id,
+        titles: jsonObject(row.titles),
+        productCount: categoryCounts.get(row.external_id) || 0
+      })),
+      availabilityOptions,
+      total,
+      page,
+      pageSize,
+      pageCount: total > 0 ? Math.ceil(total / pageSize) : 0
     };
   }
 

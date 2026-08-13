@@ -107,6 +107,7 @@ import type {
   CatalogSummary
 } from '../types/catalog';
 import type { SystemMetrics } from '../types/system';
+import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
   PublicTradeInSettings,
   TradeInAnswers,
@@ -149,6 +150,24 @@ import {
 export { ApiError } from './api-client';
 
 export const api = {
+  horoshopCatalog: {
+    list: (params: HoroshopCatalogParams = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
+      `/api/search/horoshop/catalog${queryString({
+        search: params.search,
+        category: params.category,
+        availability: params.availability,
+        visibility: params.visibility,
+        state: params.state,
+        page: params.page,
+        pageSize: params.pageSize
+      })}`,
+      { signal }
+    ),
+    sync: () => request<{ started: boolean; integration: HoroshopIntegration }>(
+      '/api/search/horoshop/sync',
+      { method: 'POST' }
+    )
+  },
   auth: {
     me: () => request<User>('/api/auth/me'),
     login: (input: LoginInput) => request<LoginResponse>('/api/auth/login', {

@@ -72,6 +72,13 @@ export const tools: ToolDefinition[] = [
     showInTools: true
   },
   {
+    id: 'horoshop_related_products',
+    name: 'Супутні товари Хорошоп',
+    description: 'Імпортований каталог Хорошоп, дерево модифікацій і підготовка супутніх товарів.',
+    path: '/tools/horoshop-related-products',
+    icon: 'storefront'
+  },
+  {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',

@@ -1,5 +1,6 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -47,4 +48,70 @@ test('Horoshop integration state is admin-only, non-cacheable and never contains
   assert.equal(JSON.stringify(response.body).includes('password'), false);
   assert.equal(JSON.stringify(response.body).includes('token'), false);
   assert.equal(JSON.stringify(response.body).includes('encryptedCredentials'), false);
+});
+
+test('Horoshop catalog route returns product cards with nested modification trees', async () => {
+  await request(app).get('/api/search/horoshop/catalog').expect(401);
+  const connectionId = randomUUID();
+  const generation = randomUUID();
+  const syncId = randomUUID();
+  const productId = randomUUID();
+  await pool.query(`
+    INSERT INTO search_horoshop_connections (
+      id, generation, store_domain, encrypted_credentials, status, last_sync_at
+    ) VALUES ($1, $2, 'test-shop.example', 'ciphertext', 'connected', NOW())
+  `, [connectionId, generation]);
+  await pool.query(`
+    INSERT INTO search_horoshop_categories (
+      id, connection_id, generation, external_id, titles, active, last_seen_sync_id
+    ) VALUES ($1, $2, $3, 'earphones', $4::jsonb, TRUE, $5)
+  `, [randomUUID(), connectionId, generation, JSON.stringify({ uk: 'Навушники' }), syncId]);
+  await pool.query(`
+    INSERT INTO search_horoshop_products (
+      id, connection_id, generation, external_id, sku, titles, brand,
+      category_external_id, price, currency, availability, visible,
+      primary_image_url, canonical_url, active, last_seen_sync_id
+    ) VALUES (
+      $1, $2, $3, 'redmi-buds-6', '34208', $4::jsonb, 'Xiaomi',
+      'earphones', '1099', 'UAH', 'В наявності', TRUE,
+      'https://cdn.example/black.jpg', 'https://test-shop.example/redmi-buds-6', TRUE, $5
+    )
+  `, [productId, connectionId, generation, JSON.stringify({ uk: 'Xiaomi Redmi Buds 6 Active' }), syncId]);
+  await pool.query(`
+    INSERT INTO search_horoshop_modifications (
+      id, connection_id, product_id, generation, external_id, sku, titles,
+      price, currency, availability, visible, image_url, active, last_seen_sync_id
+    ) VALUES
+      ($1, $2, $3, $4, 'redmi-buds-6:black', '34208-B', $5::jsonb, '1299', 'UAH', 'В наявності', TRUE, 'https://cdn.example/black.jpg', TRUE, $7),
+      ($6, $2, $3, $4, 'redmi-buds-6:pink', '34209-P', $8::jsonb, '1099', 'UAH', 'Немає в наявності', FALSE, 'https://cdn.example/pink.jpg', TRUE, $7)
+  `, [
+    randomUUID(), connectionId, productId, generation,
+    JSON.stringify({ uk: 'Xiaomi Redmi Buds 6 Active Black' }), randomUUID(), syncId,
+    JSON.stringify({ uk: 'Xiaomi Redmi Buds 6 Active Pink' })
+  ]);
+
+  const response = await admin.get('/api/search/horoshop/catalog?page=1&pageSize=10').expect(200);
+  assert.match(response.headers['cache-control'], /no-store/u);
+  assert.equal(response.body.data.integration.storeDomain, 'test-shop.example');
+  assert.equal(response.body.data.total, 1);
+  assert.equal(response.body.data.items[0].modifications.length, 2);
+  assert.equal(
+    response.body.data.items[0].modifications.find((item) => item.sku === '34209-P')?.titles.uk,
+    'Xiaomi Redmi Buds 6 Active Pink'
+  );
+  assert.deepEqual(response.body.data.availabilityOptions, ['В наявності', 'Немає в наявності']);
+  assert.equal(response.body.data.categories[0].productCount, 1);
+  assert.equal(JSON.stringify(response.body).includes('sourceData'), false);
+  assert.equal(JSON.stringify(response.body).includes('ciphertext'), false);
+
+  const matchedByModification = await admin
+    .get('/api/search/horoshop/catalog?search=34209-P&pageSize=10')
+    .expect(200);
+  assert.equal(matchedByModification.body.data.total, 1);
+  assert.equal(matchedByModification.body.data.items[0].sku, '34208');
+
+  const hidden = await admin
+    .get('/api/search/horoshop/catalog?visibility=hidden&pageSize=10')
+    .expect(200);
+  assert.equal(hidden.body.data.total, 1);
 });

@@ -61,4 +61,22 @@ describe('ToolsPage catalog', () => {
     const tile = await screen.findByRole('link', { name: /Публікації у міські Facebook-групи/ });
     expect(tile).toHaveAttribute('href', '/tools/facebook-publications');
   });
+
+  it('shows the Horoshop related-products catalog as a separate tool tile', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
+      tools: [{
+        toolId: 'horoshop_related_products',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    });
+
+    renderPage();
+
+    const tile = await screen.findByRole('link', { name: /Супутні товари Хорошоп/ });
+    expect(tile).toHaveAttribute('href', '/tools/horoshop-related-products');
+  });
 });
