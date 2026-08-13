@@ -27,9 +27,45 @@ the planned intelligent-search administration UI.
 - Read the currently assigned accessory sections and individual accessory products when the
   Horoshop API exposes these relationships.
 
-The exact Horoshop authentication, pagination, locales, product/modification schema, relationship
-schema, rate limits, and supported write operations must be verified against the real account with
-non-destructive API calls before implementation.
+The live authentication response and token lifetime, pagination, locales, product/modification
+schema, relationship export, rate limits, and effective role permissions must be verified against
+the real account with non-destructive API calls before implementation.
+
+## Integration administration and authentication
+
+Horoshop must be shown as a separate integration card on the existing MT Workspace administration
+page for integrations. It is not configured with a user-supplied API key.
+
+The connection form must contain:
+
+- Horoshop store domain/base URL;
+- dedicated Horoshop administrator login;
+- dedicated Horoshop administrator password;
+- connection status, last successful check, and a concise error/status message;
+- an explicit `Перевірити підключення` action before enabling synchronization or write-back.
+
+According to the current official Horoshop API documentation, API credentials are created in the
+store administration panel under `Налаштування → Адміни`. The backend authenticates against the
+store's `/api/` gateway using that login and password. The `auth` function returns an authorization
+token, and subsequent API functions receive that token. This generated token is not a permanent API
+key that an administrator copies into MT Workspace.
+
+The official Horoshop Base integration guide instructs users to create a separate administrator
+with the `Owner` role and use that administrator's login and password. The first implementation
+should recommend a dedicated `Owner` integration account because it is the documented compatible
+configuration. A less privileged role may be supported only after a live capability check proves
+that it can read the complete catalog and update product accessories through `catalog/import`.
+
+The saved password must be encrypted at rest, accepted only over HTTPS, excluded from logs and
+audit payloads, and never returned to the browser after saving. Reopening the integration form must
+show only that a password is configured and provide a separate replacement flow. Authorization
+tokens are server-side transient credentials: they must not be persisted in plaintext, returned to
+the client, placed in Codex prompts, or written to proposal/export files. Authentication should be
+renewed when a token expires or Horoshop returns an authorization failure.
+
+The connection check should authenticate and perform safe read-only probes against the catalog and
+category endpoints. It must report authentication and insufficient-permission failures separately.
+Write access must not be tested by silently mutating a real product.
 
 ## Confirmed Horoshop relationship model
 
@@ -41,6 +77,17 @@ The Horoshop product administration card contains an `Аксесуари` subsec
 
 The MT Workspace tool must represent these as distinct relationship types rather than flattening
 both operations into an unstructured list.
+
+The official `catalog/import` contract confirms the same two representations in
+`products[i].accessories`: an individual accessory can be supplied by product article, while an
+accessory section can be supplied by its path or stable page ID. Horoshop documents this field as a
+full replacement of the product's existing accessories, not an append operation.
+
+Therefore every publish operation must read or use a freshly synchronized current relationship
+set, merge preserved manual relationships with the validated proposal according to the selected
+operation policy, and send the complete intended accessory array. Publication must fail on a stale
+snapshot or unverifiable current state rather than risk deleting relationships created directly in
+Horoshop.
 
 ## Confirmed tool workflow
 
@@ -187,6 +234,8 @@ merchandising rule.
   PostgreSQL, and audit conventions without coupling to the local smartphone catalog.
 - Horoshop credentials remain server-side, encrypted at rest, absent from logs, and are never
   returned to the browser after saving.
+- Horoshop authentication tokens are acquired and refreshed only by the backend and are never
+  browser-delivered configuration.
 - Write-back must be retry-safe and must not silently report success when Horoshop rejects or only
   partially applies an operation.
 
