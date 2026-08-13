@@ -4,6 +4,7 @@ import { Icon } from '../../components/Icon';
 import { api } from '../../lib/api';
 import type { HoroshopCatalogProduct, HoroshopLocalizedText } from '../../types/horoshop-catalog';
 import type {
+  HoroshopAccessoryBulkResult,
   HoroshopAccessoryCategory,
   HoroshopAccessoryDetail,
   HoroshopAccessoryLink,
@@ -102,6 +103,7 @@ export function HoroshopAccessoryManager() {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [bulkResult, setBulkResult] = useState<HoroshopAccessoryBulkResult | null>(null);
 
   useEffect(() => {
     const timeout = globalThis.setTimeout(() => setTargetSearch(targetSearchInput.trim()), 250);
@@ -154,6 +156,15 @@ export function HoroshopAccessoryManager() {
       setFeedback(`Алгоритм підготував ${value.generatedCount || 0} пропозицій.`);
     }
   });
+  const recommendAll = useMutation({
+    mutationFn: () => api.horoshopAccessories.recommendAll(),
+    onSuccess: (value) => {
+      setBulkResult(value);
+      if (!localDirty && selectedProductId) {
+        void queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-detail', selectedProductId] });
+      }
+    }
+  });
   const saveDraft = useMutation({
     mutationFn: ({ productId, targets }: { productId: string; targets: HoroshopAccessoryTarget[] }) => api.horoshopAccessories.saveDraft(productId, targets.map(({ type, id }) => ({ type, id }))),
     onSuccess: (value, { productId }) => {
@@ -174,7 +185,7 @@ export function HoroshopAccessoryManager() {
   const availableSuggestions = (detail.data?.draft.suggestions || []).filter((item) => !selectedKeys.has(item.key));
   const productCount = draftTargets.filter((item) => item.type === 'product').length;
   const categoryCount = draftTargets.length - productCount;
-  const busy = recommend.isPending || saveDraft.isPending || publish.isPending;
+  const busy = recommendAll.isPending || recommend.isPending || saveDraft.isPending || publish.isPending;
 
   const addTarget = (target: HoroshopAccessoryTarget) => {
     if (selectedKeys.has(targetKey(target))) return;
@@ -205,6 +216,24 @@ export function HoroshopAccessoryManager() {
 
   return (
     <section className="horoshop-accessory-manager">
+      <section className="horoshop-accessory-bulk">
+        <div>
+          <span className="horoshop-accessory-bulk-icon"><Icon name="productSelection" size={23} /></span>
+          <span><h2>Масовий аналіз каталогу</h2><p>Підбере лише достатньо сумісні й корисні товари. Якщо надійної рекомендації немає, список залишиться порожнім. У Хорошоп нічого не передається.</p></span>
+        </div>
+        <button className="button button--primary" type="button" disabled={busy || localDirty} onClick={() => recommendAll.mutate()}><Icon name="refresh" size={18} />{recommendAll.isPending ? 'Аналізуємо весь каталог…' : 'Проаналізувати всі товари'}</button>
+        {localDirty && <small>Спочатку збережіть поточну чернетку, щоб масовий аналіз не перервав її редагування.</small>}
+        {recommendAll.isError && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{recommendAll.error.message}</div>}
+        {bulkResult && (
+          <div className="horoshop-accessory-bulk-result">
+            <span><small>Проаналізовано</small><strong>{bulkResult.analyzedProducts}</strong></span>
+            <span><small>З рекомендаціями</small><strong>{bulkResult.productsWithRecommendations}</strong></span>
+            <span><small>Без рекомендацій</small><strong>{bulkResult.productsWithoutRecommendations}</strong></span>
+            <span><small>Усього пропозицій</small><strong>{bulkResult.recommendationsGenerated}</strong></span>
+          </div>
+        )}
+      </section>
+
       <aside className="horoshop-accessory-targets">
         <header><span><strong>Товар для налаштування</strong><small>Оберіть батьківську картку</small></span><b>{targets.data?.total || 0}</b></header>
         <label className="horoshop-accessory-search"><Icon name="search" size={18} /><input aria-label="Пошук товару для налаштування" value={targetSearchInput} onChange={(event) => setTargetSearchInput(event.target.value)} placeholder="Назва або артикул" /></label>

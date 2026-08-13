@@ -75,4 +75,12 @@ export interface HoroshopAccessoryCandidates {
   categories: Array<Omit<HoroshopAccessoryCategory, 'type'>>;
 }
 
+export interface HoroshopAccessoryBulkResult {
+  analyzedProducts: number;
+  productsWithRecommendations: number;
+  productsWithoutRecommendations: number;
+  recommendationsGenerated: number;
+  limit: number;
+}
+
 export type HoroshopAccessoryDraftItem = Pick<HoroshopAccessoryTarget, 'type' | 'id'>;

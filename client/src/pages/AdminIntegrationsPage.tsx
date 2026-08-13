@@ -37,6 +37,7 @@ export function AdminIntegrationsPage() {
   const saveMailtrap = useMutation({ mutationFn: api.admin.saveMailtrapIntegration });
   const saveTelegram = useMutation({ mutationFn: api.admin.saveTelegramIntegration });
   const connectHoroshop = useMutation({ mutationFn: api.admin.connectHoroshopIntegration });
+  const updateHoroshopSettings = useMutation({ mutationFn: api.admin.updateHoroshopIntegrationSettings });
   const syncHoroshop = useMutation({ mutationFn: api.admin.syncHoroshopCatalog });
   const disconnectHoroshop = useMutation({ mutationFn: api.admin.disconnectHoroshopIntegration });
   const mailtrap = integrations.data?.mailtrap;
@@ -91,6 +92,7 @@ export function AdminIntegrationsPage() {
 
   function closeModal() {
     if (saveMailtrap.isPending || saveTelegram.isPending || connectHoroshop.isPending
+      || updateHoroshopSettings.isPending
       || syncHoroshop.isPending || disconnectHoroshop.isPending) return;
     setActiveIntegration(null);
   }
@@ -147,9 +149,21 @@ export function AdminIntegrationsPage() {
     try {
       const result = await syncHoroshop.mutateAsync();
       await queryClient.invalidateQueries({ queryKey: ['admin-horoshop-integration'] });
-      showToast(result.started ? 'Повну синхронізацію каталогу запущено.' : 'Синхронізація вже виконується.');
+      showToast(result.started ? 'Звірку каталогу запущено.' : 'Синхронізація вже виконується.');
     } catch (caught) {
       setHoroshopError(caught instanceof Error ? caught.message : 'Не вдалося запустити синхронізацію.');
+    }
+  }
+
+  async function submitHoroshopSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setHoroshopError('');
+    try {
+      await updateHoroshopSettings.mutateAsync({ pollingIntervalMinutes });
+      await queryClient.invalidateQueries({ queryKey: ['admin-horoshop-integration'] });
+      showToast(`Автоматичну звірку каталогу налаштовано кожні ${pollingIntervalMinutes} хв.`);
+    } catch (caught) {
+      setHoroshopError(caught instanceof Error ? caught.message : 'Не вдалося зберегти інтервал синхронізації.');
     }
   }
 
@@ -398,9 +412,19 @@ export function AdminIntegrationsPage() {
             </section>
             <div className="integration-note">
               {horoshop.status === 'syncing'
-                ? `Імпорт триває: ${horoshop.latestRun?.productsReceived || 0} товарів, ${horoshop.latestRun?.modificationsReceived || 0} модифікацій, ${horoshop.latestRun?.pagesReceived || 0} пакетів.`
+                ? `Звірка триває: ${horoshop.latestRun?.productsReceived || 0} товарів, ${horoshop.latestRun?.modificationsReceived || 0} модифікацій, ${horoshop.latestRun?.pagesReceived || 0} пакетів.`
                 : `Остання успішна синхронізація: ${formatDate(horoshop.lastSyncAt)}.`}
             </div>
+            <form className="horoshop-sync-settings" onSubmit={submitHoroshopSettings}>
+              <label className="field">
+                <span>Інтервал автоматичної звірки, хв</span>
+                <input type="number" min={1} max={1440} value={pollingIntervalMinutes} onChange={(event) => setPollingIntervalMinutes(Number(event.target.value))} required />
+                <small className="integration-field-hint">Незмінні товари під час звірки не перезаписуються.</small>
+              </label>
+              <button className="button button--primary" type="submit" disabled={!Number.isInteger(pollingIntervalMinutes) || pollingIntervalMinutes < 1 || pollingIntervalMinutes > 1440 || pollingIntervalMinutes === horoshop.pollingIntervalMinutes || updateHoroshopSettings.isPending}>
+                <Icon name="save" size={17} />{updateHoroshopSettings.isPending ? 'Зберігаємо...' : 'Зберегти інтервал'}
+              </button>
+            </form>
             <div className="horoshop-integration-actions">
               <button className="button button--secondary" type="button" onClick={() => void runHoroshopSync()} disabled={horoshop.status === 'syncing' || horoshop.status === 'disconnecting' || horoshop.status === 'purge_failed' || syncHoroshop.isPending}>
                 <Icon name="refresh" size={17} />{syncHoroshop.isPending ? 'Запускаємо...' : horoshop.status === 'syncing' ? 'Синхронізація триває' : 'Синхронізувати зараз'}

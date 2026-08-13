@@ -62,6 +62,7 @@ import type {
   IntegrationSettings,
   HoroshopIntegration,
   HoroshopIntegrationInput,
+  HoroshopIntegrationSettingsInput,
   MailtrapIntegration,
   MailtrapIntegrationInput,
   TelegramIntegration,
@@ -113,6 +114,7 @@ import type {
 import type { SystemMetrics } from '../types/system';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
+  HoroshopAccessoryBulkResult,
   HoroshopAccessoryCandidates,
   HoroshopAccessoryDetail,
   HoroshopAccessoryDraftItem
@@ -178,6 +180,10 @@ export const api = {
     )
   },
   horoshopAccessories: {
+    recommendAll: (limit = 12) => request<HoroshopAccessoryBulkResult>(
+      '/api/search/horoshop/accessories/recommendations/bulk',
+      { method: 'POST', body: jsonBody({ limit }), timeoutMs: 300_000 }
+    ),
     detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}`,
       { signal }
@@ -848,6 +854,10 @@ export const api = {
     connectHoroshopIntegration: (input: HoroshopIntegrationInput) => request<HoroshopIntegration>(
       '/api/admin/integrations/horoshop/connect',
       { method: 'POST', body: jsonBody(input), timeoutMs: 45_000 }
+    ),
+    updateHoroshopIntegrationSettings: (input: HoroshopIntegrationSettingsInput) => request<HoroshopIntegration>(
+      '/api/admin/integrations/horoshop/settings',
+      { method: 'PATCH', body: jsonBody(input) }
     ),
     syncHoroshopCatalog: () => request<{ started: boolean; integration: HoroshopIntegration }>(
       '/api/admin/integrations/horoshop/sync',

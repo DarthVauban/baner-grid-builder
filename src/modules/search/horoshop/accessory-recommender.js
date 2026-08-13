@@ -43,8 +43,7 @@ const utilityWeights = {
   tv: { soundbar: 1, remote: .88, stand: .82, cable: .78, headphones: .55, cleaning: .45 },
   camera: { memory_card: 1, bag: .94, battery: .9, tripod: .84, strap: .72, cleaning: .7, cable: .5 },
   console: { gamepad: 1, headphones: .9, charger: .78, cable: .72, stand: .62 },
-  power_station: { cable: .82, charger: .62, bag: .55 },
-  generic: { case: .48, charger: .46, cable: .45, cleaning: .42, stand: .4, bag: .38 }
+  power_station: { cable: .82, charger: .62, bag: .55 }
 };
 
 const kindLabels = {
@@ -82,6 +81,27 @@ function signatureTokens(text) {
   return new Set(text.split(/\s+/u).filter((token) => (
     token.length >= 4 || /\d/u.test(token)
   ) && !genericWords.has(token)));
+}
+
+const modelQualifiers = new Set(['pro', 'max', 'plus', 'ultra', 'mini', 'air', 'se', 'fe']);
+
+function modelMarkers(text) {
+  return new Set(text.split(/\s+/u).filter((token) => {
+    if (/^\d+(?:gb|tb|mb|w|kw|mah|wh|hz|khz|mhz|ghz|mm|cm|inch)$/u.test(token)) return false;
+    return /^\d{1,4}$/u.test(token) || (/\d/u.test(token) && /\p{L}/u.test(token));
+  }));
+}
+
+function qualifiers(text) {
+  return new Set(text.split(/\s+/u).filter((token) => modelQualifiers.has(token)));
+}
+
+function dimensions(text) {
+  return new Set(text.split(/\s+/u).filter((token) => /^\d+(?:mm|cm|inch)$/u.test(token)));
+}
+
+function equalSets(left, right) {
+  return left.size === right.size && [...left].every((value) => right.has(value));
 }
 
 function overlapScore(targetTokens, candidateTokens) {
@@ -134,16 +154,41 @@ function rounded(value) {
   return Math.round(Math.max(0, Math.min(1, value)) * 10_000) / 10_000;
 }
 
+function diversified(items, limit) {
+  const counts = new Map();
+  const selected = [];
+  for (const item of items) {
+    const cap = ['case', 'protector', 'strap'].includes(item.accessoryKind) ? 3 : 2;
+    const count = counts.get(item.accessoryKind) || 0;
+    if (count >= cap) continue;
+    counts.set(item.accessoryKind, count + 1);
+    const result = { ...item };
+    delete result.accessoryKind;
+    selected.push(result);
+    if (selected.length >= limit) break;
+  }
+  return selected;
+}
+
 export function recommendAccessories(target, candidates, limit = 12) {
+  const targetTitleText = normalizedText(target.titles);
   const targetText = normalizedText([
     target.titles, target.brand, target.categoryTitles, target.characteristics
   ]);
-  const targetKind = classify(targetText, productRules) || 'generic';
-  const targetTokens = signatureTokens(normalizedText([target.titles, target.characteristics]));
+  const targetKind = classify(targetText, productRules);
+  if (!targetKind) return [];
+  const targetAccessoryKind = classify(targetTitleText, accessoryRules);
+  if (targetAccessoryKind && !['headphones', 'power_station'].includes(targetKind)) return [];
+  const targetModelText = normalizedText([target.titles, target.characteristics]);
+  const targetTokens = signatureTokens(targetModelText);
+  const targetModelMarkers = modelMarkers(targetModelText);
+  const targetQualifiers = qualifiers(targetModelText);
+  const targetDimensions = dimensions(targetModelText);
   const targetConnectors = connectors(targetText);
   const maxPopularity = Math.max(1, ...candidates.map((candidate) => numericPopularity(candidate.popularity)));
 
-  return candidates.map((candidate) => {
+  const scored = candidates.map((candidate) => {
+    if (candidate.id === target.id) return null;
     const candidateTitleText = normalizedText(candidate.titles);
     const candidateText = normalizedText([
       candidate.titles, candidate.brand, candidate.categoryTitles, candidate.characteristics
@@ -156,17 +201,33 @@ export function recommendAccessories(target, candidates, limit = 12) {
     if (!accessoryKind || utility <= 0) return null;
 
     const modelOverlap = overlapScore(targetTokens, signatureTokens(candidateText));
+    const candidateModelMarkers = modelMarkers(candidateText);
+    const candidateQualifiers = qualifiers(candidateText);
+    const candidateDimensions = dimensions(candidateText);
     const sameBrand = Boolean(target.brand && candidate.brand
       && normalizedText(target.brand) === normalizedText(candidate.brand));
-    const connectorMatch = setOverlap(targetConnectors, connectors(candidateText));
+    const candidateConnectors = connectors(candidateText);
+    const connectorMatch = setOverlap(targetConnectors, candidateConnectors);
     const modelSpecific = ['case', 'protector', 'strap', 'battery'].includes(accessoryKind);
-    if (modelSpecific && modelOverlap < .25) return null;
+    if (modelSpecific) {
+      if (targetModelMarkers.size > 0 && candidateModelMarkers.size > 0
+        && !setOverlap(targetModelMarkers, candidateModelMarkers)) return null;
+      if (!equalSets(targetQualifiers, candidateQualifiers)) return null;
+      if (targetDimensions.size > 0 && candidateDimensions.size > 0
+        && !setOverlap(targetDimensions, candidateDimensions)) return null;
+      if (modelOverlap < .25) return null;
+    }
+
+    const connectorDependent = ['charger', 'cable', 'hub'].includes(accessoryKind);
+    if (connectorDependent && targetConnectors.size > 0 && candidateConnectors.size > 0 && !connectorMatch) {
+      return null;
+    }
 
     let compatibility = modelSpecific ? .35 + modelOverlap * .55 : .68;
     if (sameBrand) compatibility += .1;
     if (connectorMatch) compatibility += .18;
-    if (['charger', 'cable', 'hub'].includes(accessoryKind) && targetConnectors.size > 0 && !connectorMatch) {
-      compatibility -= .28;
+    if (connectorDependent && targetConnectors.size > 0 && !connectorMatch) {
+      compatibility -= .1;
     }
     compatibility = rounded(compatibility);
     const available = availabilityScore(candidate.availabilities || []);
@@ -175,7 +236,7 @@ export function recommendAccessories(target, candidates, limit = 12) {
       ? Math.log1p(numericPopularity(candidate.popularity)) / Math.log1p(maxPopularity)
       : .35;
     const total = rounded(compatibility * .45 + utility * .25 + available * .2 + popularity * .1);
-    if (total < .5) return null;
+    if (total < .58) return null;
 
     const compatibilityReason = modelOverlap >= .5
       ? 'модель явно збігається'
@@ -187,9 +248,10 @@ export function recommendAccessories(target, candidates, limit = 12) {
       availabilityScore: rounded(available),
       popularityScore: rounded(popularity),
       totalScore: total,
+      accessoryKind,
       reason: `${kindLabels[accessoryKind]}: ${compatibilityReason}; товар доступний для продажу.`
     };
   }).filter(Boolean)
-    .sort((left, right) => right.totalScore - left.totalScore || left.productId.localeCompare(right.productId))
-    .slice(0, Math.max(1, Math.min(limit, 16)));
+    .sort((left, right) => right.totalScore - left.totalScore || left.productId.localeCompare(right.productId));
+  return diversified(scored, Math.max(1, Math.min(limit, 16)));
 }

@@ -126,4 +126,46 @@ describe('AdminIntegrationsPage', () => {
     });
     expect(screen.getByText('Магазин Хорошоп підключено. Повний імпорт каталогу запущено.')).toBeInTheDocument();
   });
+
+  it('updates the automatic Horoshop reconciliation interval without reconnecting the store', async () => {
+    vi.spyOn(api.admin, 'integrations').mockResolvedValue({
+      mailtrap: {
+        configured: false, token: '', senderEmail: '', senderName: '', domain: '', updatedAt: null
+      },
+      telegram: {
+        configured: false, token: '', chatId: '', botUsername: '', botName: '', updatedAt: null
+      }
+    });
+    vi.spyOn(api.admin, 'horoshopIntegration').mockResolvedValue({
+      configured: true,
+      status: 'connected',
+      storeDomain: 'test-shop.example.com',
+      pollingIntervalMinutes: 15,
+      lastSyncAt: '2030-01-01T10:00:00.000Z',
+      lastError: null,
+      counts: { categories: 4, products: 120, modifications: 260 },
+      latestRun: null
+    });
+    const updateSettings = vi.spyOn(api.admin, 'updateHoroshopIntegrationSettings').mockResolvedValue({
+      configured: true,
+      status: 'connected',
+      storeDomain: 'test-shop.example.com',
+      pollingIntervalMinutes: 60,
+      lastSyncAt: '2030-01-01T10:00:00.000Z',
+      lastError: null,
+      counts: { categories: 4, products: 120, modifications: 260 },
+      latestRun: null
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Відкрити налаштування Хорошоп. Підключено' }));
+    const intervalInput = screen.getByRole('spinbutton', { name: /Інтервал автоматичної звірки/u });
+    await user.clear(intervalInput);
+    await user.type(intervalInput, '60');
+    await user.click(screen.getByRole('button', { name: 'Зберегти інтервал' }));
+
+    expect(updateSettings.mock.calls[0]?.[0]).toEqual({ pollingIntervalMinutes: 60 });
+    expect(screen.getByText('Автоматичну звірку каталогу налаштовано кожні 60 хв.')).toBeInTheDocument();
+  });
 });

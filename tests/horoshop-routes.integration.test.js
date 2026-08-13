@@ -90,6 +90,17 @@ test('Horoshop catalog route returns product cards with nested modification tree
     JSON.stringify({ uk: 'Xiaomi Redmi Buds 6 Active Pink' })
   ]);
 
+  await admin
+    .patch('/api/admin/integrations/horoshop/settings')
+    .send({ pollingIntervalMinutes: 0 })
+    .expect(422);
+  const updatedSettings = await admin
+    .patch('/api/admin/integrations/horoshop/settings')
+    .send({ pollingIntervalMinutes: 45 })
+    .expect(200);
+  assert.equal(updatedSettings.body.data.pollingIntervalMinutes, 45);
+  assert.equal(JSON.stringify(updatedSettings.body).includes('encryptedCredentials'), false);
+
   const response = await admin.get('/api/search/horoshop/catalog?page=1&pageSize=10').expect(200);
   assert.match(response.headers['cache-control'], /no-store/u);
   assert.equal(response.body.data.integration.storeDomain, 'test-shop.example');
@@ -124,6 +135,19 @@ test('Horoshop catalog route returns product cards with nested modification tree
   assert.equal(accessoryDetail.body.data.draft.catalogStateKnown, false);
   assert.equal(JSON.stringify(accessoryDetail.body).includes('sourceData'), false);
   assert.equal(JSON.stringify(accessoryDetail.body).includes('ciphertext'), false);
+
+  await request(app).post('/api/search/horoshop/accessories/recommendations/bulk').send({ limit: 12 }).expect(401);
+  const bulkAnalysis = await admin
+    .post('/api/search/horoshop/accessories/recommendations/bulk')
+    .send({ limit: 12 })
+    .expect(200);
+  assert.deepEqual(bulkAnalysis.body.data, {
+    analyzedProducts: 1,
+    productsWithRecommendations: 0,
+    productsWithoutRecommendations: 1,
+    recommendationsGenerated: 0,
+    limit: 12
+  });
 
   await admin
     .post(`/api/search/horoshop/accessories/products/${productId}/publish`)

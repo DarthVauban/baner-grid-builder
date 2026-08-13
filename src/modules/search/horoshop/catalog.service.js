@@ -98,6 +98,15 @@ export class HoroshopCatalogService {
     return connection;
   }
 
+  async updateSettings(input) {
+    const connection = await this.repository.getConnection();
+    if (!connection) throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Спочатку підключіть магазин Хорошоп.');
+    if (['disconnecting', 'purge_failed'].includes(connection.status)) {
+      throw new AppError(409, 'HOROSHOP_CONNECTION_BLOCKED', 'Підключення недоступне до завершення очищення локальних даних.');
+    }
+    return this.repository.updatePollingInterval(connection, input.pollingIntervalMinutes);
+  }
+
   async startSync(mode = 'manual', actorUserId = null) {
     if (this.activeSync || this.syncStarting || this.activeExternalWrite || this.externalWriteStarting) return false;
     this.syncStarting = true;
@@ -248,7 +257,11 @@ export class HoroshopCatalogService {
         modifications: modificationIds.size,
         pages
       };
-      await this.repository.completeSync(connection, runId, counts);
+      await this.repository.completeSync(connection, runId, counts, {
+        categories: categories.map((category) => category.externalId),
+        products: [...productIds],
+        modifications: [...modificationIds]
+      });
       await this.repository.recordAudit({
         connectionId: connection.id,
         actorUserId,
