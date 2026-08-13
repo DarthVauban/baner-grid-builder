@@ -38,12 +38,23 @@ describe('AdminIntegrationsPage', () => {
         updatedAt: '2030-01-01T10:00:00.000Z'
       }
     });
+    vi.spyOn(api.admin, 'horoshopIntegration').mockResolvedValue({
+      configured: false,
+      status: 'disconnected',
+      storeDomain: '',
+      pollingIntervalMinutes: null,
+      lastSyncAt: null,
+      lastError: null,
+      counts: { categories: 0, products: 0, modifications: 0 },
+      latestRun: null
+    });
 
     const user = userEvent.setup();
     renderPage();
 
     const telegramTile = await screen.findByRole('button', { name: 'Відкрити налаштування Telegram. Підключено' });
     expect(screen.getByRole('button', { name: 'Відкрити налаштування Mailtrap. Підключено' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Відкрити налаштування Хорошоп. Не налаштовано' })).toBeInTheDocument();
     expect(appStyles).toMatch(/\.integration-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,minmax\(0,1fr\)\)/);
     expect(appStyles).toMatch(/\.integration-modal__form\s*\{[^}]*align-items:\s*start/);
 
@@ -66,5 +77,53 @@ describe('AdminIntegrationsPage', () => {
     expect(mailtrapToken).toHaveValue('••••••••••••');
     expect(mailtrapToken).toHaveAttribute('type', 'text');
     expect(mailtrapToken).toHaveAttribute('readonly');
+  });
+
+  it('connects Хорошоп without exposing saved credentials in the integration state', async () => {
+    vi.spyOn(api.admin, 'integrations').mockResolvedValue({
+      mailtrap: {
+        configured: false, token: '', senderEmail: '', senderName: '', domain: '', updatedAt: null
+      },
+      telegram: {
+        configured: false, token: '', chatId: '', botUsername: '', botName: '', updatedAt: null
+      }
+    });
+    vi.spyOn(api.admin, 'horoshopIntegration').mockResolvedValue({
+      configured: false,
+      status: 'disconnected',
+      storeDomain: '',
+      pollingIntervalMinutes: null,
+      lastSyncAt: null,
+      lastError: null,
+      counts: { categories: 0, products: 0, modifications: 0 },
+      latestRun: null
+    });
+    const connect = vi.spyOn(api.admin, 'connectHoroshopIntegration').mockResolvedValue({
+      configured: true,
+      status: 'syncing',
+      storeDomain: 'test-shop.example.com',
+      pollingIntervalMinutes: 15,
+      lastSyncAt: null,
+      lastError: null,
+      counts: { categories: 0, products: 0, modifications: 0 },
+      latestRun: null
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Відкрити налаштування Хорошоп. Не налаштовано' }));
+    expect(screen.getByRole('dialog', { name: 'Хорошоп' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Домен магазину/), 'test-shop.example.com');
+    await user.type(screen.getByLabelText('Логін адміністратора'), 'catalog-owner');
+    await user.type(screen.getByLabelText('Пароль адміністратора'), 'secret-password');
+    await user.click(screen.getByRole('button', { name: 'Підключити й імпортувати' }));
+
+    expect(connect.mock.calls[0]?.[0]).toEqual({
+      storeDomain: 'test-shop.example.com',
+      login: 'catalog-owner',
+      password: 'secret-password',
+      pollingIntervalMinutes: 15
+    });
+    expect(screen.getByText('Магазин Хорошоп підключено. Повний імпорт каталогу запущено.')).toBeInTheDocument();
   });
 });

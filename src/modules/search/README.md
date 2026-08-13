@@ -3,9 +3,10 @@
 This directory owns the external Horoshop search service. It intentionally does not reuse the
 `used_smartphone_*` catalog as its source of truth.
 
-Planned internal areas:
+Internal areas:
 
-- `connectors/horoshop` — authenticated catalog import and reconciliation;
+- `horoshop` — authenticated catalog import, normalization, reconciliation, connection lifecycle,
+  and complete local purge before a different store can be connected;
 - `catalog` — normalized external products, categories, variants, and sync state;
 - `indexing` — OpenSearch mappings, aliases, bulk indexing, and zero-downtime rebuilds;
 - `linguistics` — normalization, protected terms, scoped synonyms, morphology overrides, and rulesets;

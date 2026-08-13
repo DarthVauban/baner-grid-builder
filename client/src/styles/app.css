@@ -958,7 +958,9 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .integration-tile strong { font-size: 16px; letter-spacing: -.015em; }
 .integration-tile__icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; color: var(--brand); background: var(--brand-soft); }
 .integration-tile__icon--telegram { color: #168bd2; background: #e8f6ff; }
+.integration-tile__icon--horoshop { color: #e94928; background: #fff0ec; }
 .integration-modal { width: min(100%,720px); }
+.integration-modal--horoshop { width: min(100%,820px); }
 .integration-modal__header { align-items: center; }
 .integration-modal__title,
 .integration-modal__header-actions { display: flex; align-items: center; gap: 11px; }
@@ -984,6 +986,25 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .integration-form--compact .field select { height: 40px; border-radius: 10px; font-size: 11px; }
 .integration-field-hint { color: #8791a2; font-size: 9px; line-height: 1.4; }
 .integration-form__wide { grid-column: 1 / -1; }
+.integration-note { border: 1px solid #dedaff; border-radius: 11px; padding: 11px 13px; color: #665ca9; background: #f8f7ff; font-size: 10px; line-height: 1.55; }
+.integration-card__icon--horoshop { color: #e94928; background: #fff0ec; }
+.horoshop-integration-content { display: grid; }
+.horoshop-integration-content > .form-message { width: 100%; }
+.horoshop-integration-summary { display: grid; grid-template-columns: minmax(0,1.8fr) repeat(3,minmax(90px,.7fr)); gap: 9px; }
+.horoshop-integration-summary > div { min-width: 0; display: grid; align-content: center; gap: 3px; border: 1px solid #e7eaf0; border-radius: 12px; padding: 12px; background: #fafbfc; }
+.horoshop-integration-summary small { color: #8993a4; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.horoshop-integration-summary strong { overflow: hidden; color: #344056; font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-integration-summary span { overflow: hidden; color: #7e899b; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-integration-summary__domain strong { font-size: 13px; }
+.horoshop-integration-actions { display: flex; justify-content: flex-end; }
+.horoshop-disconnect { display: grid; grid-template-columns: minmax(0,1fr) minmax(220px,.8fr); align-items: end; gap: 12px; border: 1px solid #f0d1d7; border-radius: 13px; padding: 14px; background: #fff9fa; }
+.horoshop-disconnect > div { align-self: center; }
+.horoshop-disconnect strong { color: #8d3042; font-size: 11px; }
+.horoshop-disconnect p { margin: 4px 0 0; color: #9b6670; font-size: 9px; line-height: 1.5; }
+.horoshop-disconnect .field { gap: 5px; }
+.horoshop-disconnect .field > span { font-size: 9px; }
+.horoshop-disconnect .field input { height: 38px; border-radius: 10px; font-size: 10px; }
+.horoshop-disconnect .button { grid-column: 2; width: 100%; justify-content: center; }
 .integration-card__footer { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .integration-card__footer small { overflow-wrap: anywhere; color: #8791a2; font-size: 9px; }
 .button--compact { min-height: 34px; padding: 7px 12px; font-size: 10px; }
@@ -2386,7 +2407,17 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 :root[data-theme="brand"] .integration-tile { color: var(--ink); border-color: var(--line); background: var(--surface); box-shadow: none; }
 :root[data-theme="brand"] .integration-tile:hover { border-color: rgba(255,225,1,.38); box-shadow: 0 12px 28px rgba(0,0,0,.22); }
 :root[data-theme="brand"] .integration-tile__icon--telegram { color: #68bde8; background: rgba(53,166,226,.14); }
+:root[data-theme="brand"] .integration-tile__icon--horoshop,
+:root[data-theme="brand"] .integration-card__icon--horoshop { color: #ff795d; background: rgba(233,73,40,.14); }
 :root[data-theme="brand"] .integration-modal__footer small { color: #999992; }
+:root[data-theme="brand"] .integration-note { color: #c4bfea; border-color: #46415f; background: #211f2b; }
+:root[data-theme="brand"] .horoshop-integration-summary > div { border-color: var(--line); background: var(--surface-soft); }
+:root[data-theme="brand"] .horoshop-integration-summary strong { color: var(--ink); }
+:root[data-theme="brand"] .horoshop-integration-summary small,
+:root[data-theme="brand"] .horoshop-integration-summary span { color: #999992; }
+:root[data-theme="brand"] .horoshop-disconnect { border-color: #63313a; background: #29191c; }
+:root[data-theme="brand"] .horoshop-disconnect strong { color: #ff8294; }
+:root[data-theme="brand"] .horoshop-disconnect p { color: #c38490; }
 :root[data-theme="brand"] .integration-card__header p,
 :root[data-theme="brand"] .integration-card__footer small,
 :root[data-theme="brand"] .backup-toggle small,
@@ -3998,6 +4029,10 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .integration-modal__header { align-items: flex-start; }
   .integration-modal__header-actions { align-items: flex-end; flex-direction: column-reverse; }
   .integration-modal__footer small { width: 100%; margin-right: 0; }
+  .horoshop-integration-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .horoshop-integration-summary__domain { grid-column: 1 / -1; }
+  .horoshop-disconnect { grid-template-columns: 1fr; }
+  .horoshop-disconnect .button { grid-column: 1; }
   .backup-restore__actions { grid-template-columns: 1fr; }
   .admin-filters { grid-template-columns: 1fr; }
   .admin-filters__search { grid-column: 1; }

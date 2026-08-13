@@ -8,6 +8,7 @@ import { startPublicationWorker } from './modules/publications/publication.worke
 import { startBackupWorker } from './modules/backups/backup.worker.js';
 import { startPhotoParserWorker } from './modules/catalog/photo-parser.worker.js';
 import { startMobilePushWorker } from './modules/mobile/mobile-push.worker.js';
+import { startHoroshopCatalogWorker } from './modules/search/horoshop/catalog.worker.js';
 
 await runMigrations();
 await ensureBootstrapAdmin();
@@ -20,6 +21,7 @@ const stopPublicationWorker = env.NODE_ENV === 'test' ? () => {} : startPublicat
 const stopBackupWorker = env.NODE_ENV === 'test' ? () => {} : startBackupWorker();
 const stopPhotoParserWorker = env.NODE_ENV === 'test' ? async () => {} : startPhotoParserWorker();
 const stopMobilePushWorker = env.NODE_ENV === 'test' ? async () => {} : startMobilePushWorker();
+const stopHoroshopCatalogWorker = env.NODE_ENV === 'test' ? () => {} : startHoroshopCatalogWorker();
 
 async function shutdown(signal) {
   console.log(`${signal} received. Shutting down...`);
@@ -28,6 +30,7 @@ async function shutdown(signal) {
   stopBackupWorker();
   await stopPhotoParserWorker();
   await stopMobilePushWorker();
+  stopHoroshopCatalogWorker();
   server.close(async () => {
     await pool.end();
     process.exit(0);

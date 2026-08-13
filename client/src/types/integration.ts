@@ -32,6 +32,49 @@ export interface TelegramIntegrationInput {
   token: string;
 }
 
+export type HoroshopConnectionStatus =
+  | 'disconnected'
+  | 'connected'
+  | 'syncing'
+  | 'error'
+  | 'disconnecting'
+  | 'purge_failed';
+
+export interface HoroshopSyncRun {
+  id: string;
+  mode: 'full' | 'manual' | 'scheduled';
+  status: 'running' | 'succeeded' | 'failed';
+  categoriesReceived: number;
+  productsReceived: number;
+  modificationsReceived: number;
+  pagesReceived: number;
+  errorMessage: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface HoroshopIntegration {
+  configured: boolean;
+  status: HoroshopConnectionStatus;
+  storeDomain: string;
+  pollingIntervalMinutes: number | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  counts: {
+    categories: number;
+    products: number;
+    modifications: number;
+  };
+  latestRun: HoroshopSyncRun | null;
+}
+
+export interface HoroshopIntegrationInput {
+  storeDomain: string;
+  login: string;
+  password: string;
+  pollingIntervalMinutes: number;
+}
+
 export type BackupScheduleType = 'daily' | 'weekly';
 export type BackupRunTrigger = 'manual' | 'scheduled' | 'restore';
 export type BackupRunStatus = 'success' | 'failed';

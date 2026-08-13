@@ -56,6 +56,8 @@ import type {
   BackupRun,
   BackupSettings,
   IntegrationSettings,
+  HoroshopIntegration,
+  HoroshopIntegrationInput,
   MailtrapIntegration,
   MailtrapIntegrationInput,
   TelegramIntegration,
@@ -776,6 +778,21 @@ export const api = {
       '/api/admin/integrations/telegram',
       { method: 'PUT', body: jsonBody(input), timeoutMs: 45_000 }
     ),
+    horoshopIntegration: () => request<HoroshopIntegration>('/api/admin/integrations/horoshop'),
+    connectHoroshopIntegration: (input: HoroshopIntegrationInput) => request<HoroshopIntegration>(
+      '/api/admin/integrations/horoshop/connect',
+      { method: 'POST', body: jsonBody(input), timeoutMs: 45_000 }
+    ),
+    syncHoroshopCatalog: () => request<{ started: boolean; integration: HoroshopIntegration }>(
+      '/api/admin/integrations/horoshop/sync',
+      { method: 'POST' }
+    ),
+    disconnectHoroshopIntegration: (confirmDomain: string) => request<{
+      deleted: { categories: number; products: number; modifications: number };
+      integration: HoroshopIntegration;
+    }>('/api/admin/integrations/horoshop', {
+      method: 'DELETE', body: jsonBody({ confirmDomain }), timeoutMs: 60_000
+    }),
     backups: () => request<BackupAdminState>('/api/admin/backups'),
     systemMetrics: () => request<SystemMetrics>('/api/admin/system/metrics'),
     saveBackupSettings: (input: Pick<BackupSettings, 'automaticEnabled' | 'scheduleType' | 'scheduleTime' | 'scheduleWeekday' | 'timezone'>) =>
