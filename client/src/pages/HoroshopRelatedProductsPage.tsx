@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { HoroshopAccessoryManager } from '../components/horoshop/HoroshopAccessoryManager';
 import { api } from '../lib/api';
 import type {
   HoroshopCatalogModification,
@@ -177,6 +178,7 @@ function ProductTreeNode({ product, expanded, onToggle }: {
 
 export function HoroshopRelatedProductsPage() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'catalog' | 'accessories'>('catalog');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
@@ -231,8 +233,8 @@ export function HoroshopRelatedProductsPage() {
       <header className="page-heading page-heading--row horoshop-catalog-heading">
         <div>
           <p className="eyebrow">Супутні товари Хорошоп</p>
-          <h1>Каталог товарів</h1>
-          <p>Перевіряйте імпортовані товари та їхні модифікації перед формуванням рекомендацій.</p>
+          <h1>Супутні товари</h1>
+          <p>Перевіряйте імпортований каталог, підбирайте аксесуари та керуйте їх публікацією в Хорошоп.</p>
         </div>
         <div className="page-heading__actions">
           <Link className="button button--secondary" to="/admin/integrations"><Icon name="integrations" size={18} /> Інтеграція</Link>
@@ -241,6 +243,11 @@ export function HoroshopRelatedProductsPage() {
           </button>
         </div>
       </header>
+
+      <nav className="horoshop-tool-tabs" aria-label="Розділи інструменту">
+        <button type="button" className={activeTab === 'catalog' ? 'is-active' : ''} aria-current={activeTab === 'catalog' ? 'page' : undefined} onClick={() => setActiveTab('catalog')}><Icon name="catalog" size={18} />Імпортований каталог</button>
+        <button type="button" className={activeTab === 'accessories' ? 'is-active' : ''} aria-current={activeTab === 'accessories' ? 'page' : undefined} onClick={() => setActiveTab('accessories')}><Icon name="link" size={18} />Керування аксесуарами</button>
+      </nav>
 
       {catalog.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо каталог Хорошоп…</p></div>}
       {catalog.isError && <div className="task-list-state task-list-state--error"><h2>Не вдалося завантажити каталог</h2><p>{catalog.error instanceof Error ? catalog.error.message : 'Повторіть спробу.'}</p><button className="button button--secondary task-list-state__action" type="button" onClick={() => void catalog.refetch()}>Спробувати ще</button></div>}
@@ -266,7 +273,7 @@ export function HoroshopRelatedProductsPage() {
           {integration.lastError && <div className="horoshop-catalog-alert"><Icon name="alarm" size={19} /><span><strong>Остання синхронізація завершилась з помилкою.</strong>{integration.lastError}</span></div>}
           {syncCatalog.isError && <div className="horoshop-catalog-alert"><Icon name="alarm" size={19} /><span>{syncCatalog.error instanceof Error ? syncCatalog.error.message : 'Не вдалося запустити синхронізацію.'}</span></div>}
 
-          <section className="horoshop-catalog-panel">
+          {activeTab === 'catalog' ? <section className="horoshop-catalog-panel">
             <div className="horoshop-catalog-toolbar">
               <label className="horoshop-search-field"><Icon name="search" size={19} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Назва, артикул або бренд" aria-label="Пошук товарів" /></label>
               <label><span>Розділ</span><select value={category} onChange={(event) => setFilter(setCategory, event.target.value)}><option value="">Усі розділи</option>{data.categories.map((item) => <option value={item.externalId} key={item.externalId}>{titleFor(item.titles, item.externalId)} ({item.productCount})</option>)}</select></label>
@@ -285,7 +292,7 @@ export function HoroshopRelatedProductsPage() {
               <span>Показано {start}–{end} із {data.total.toLocaleString('uk-UA')} карток</span>
               <div><button type="button" disabled={data.page <= 1 || catalog.isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}><Icon name="chevronLeft" size={18} /> Назад</button><span>{data.page} / {Math.max(data.pageCount, 1)}</span><button type="button" disabled={data.page >= data.pageCount || catalog.isFetching} onClick={() => setPage((current) => current + 1)}>Далі <Icon name="chevronRight" size={18} /></button></div>
             </footer>
-          </section>
+          </section> : <HoroshopAccessoryManager />}
         </>
       )}
     </div>

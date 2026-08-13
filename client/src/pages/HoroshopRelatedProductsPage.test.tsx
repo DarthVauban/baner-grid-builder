@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../lib/api';
 import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
+import type { HoroshopAccessoryDetail } from '../types/horoshop-accessory';
 import { HoroshopRelatedProductsPage } from './HoroshopRelatedProductsPage';
 
 const feed: HoroshopCatalogFeed = {
@@ -59,6 +60,30 @@ const feed: HoroshopCatalogFeed = {
   pageCount: 1
 };
 
+const accessoryDetail: HoroshopAccessoryDetail = {
+  product: {
+    id: 'product-1', sku: '34208', titles: { uk: 'Xiaomi Redmi Buds 6 Active' },
+    brand: 'Xiaomi', categoryExternalId: 'earphones', price: '1099', currency: 'UAH',
+    availability: 'В наявності', visible: true, active: true,
+    primaryImageUrl: 'https://cdn.example/black.jpg', canonicalUrl: null
+  },
+  draft: {
+    catalogStateKnown: true, initializedAt: '2026-08-13T09:00:00.000Z', publishedAt: null,
+    isDirty: false, selected: [], suggestions: [{
+      id: 'suggestion-1', key: 'product:case-1', source: 'algorithm', selected: false,
+      published: false, position: 101,
+      scores: { compatibility: 0.93, utility: 0.88, availability: 1, popularity: 0.72, total: 0.9 },
+      reason: 'Модель явно збігається; аксесуар є в наявності.',
+      target: {
+        type: 'product', id: 'case-1', sku: 'CASE-BUDS-6',
+        titles: { uk: 'Чохол для Redmi Buds 6 Active' }, brand: 'Example', price: '399',
+        currency: 'UAH', availability: 'В наявності', visible: true, active: true, imageUrl: null
+      }
+    }]
+  },
+  latestPublication: null
+};
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -86,5 +111,46 @@ describe('HoroshopRelatedProductsPage', () => {
     expect(screen.getByText('34209-P')).toBeInTheDocument();
     expect(view.container.querySelector('.horoshop-tree-branches[role="group"]')).toBeInTheDocument();
     expect(view.container.querySelectorAll('.horoshop-product-row--modification')).toHaveLength(2);
+  });
+
+  it('supports a reviewed draft and requires overwrite confirmation before publishing', async () => {
+    vi.spyOn(api.horoshopCatalog, 'list').mockResolvedValue(feed);
+    vi.spyOn(api.horoshopAccessories, 'detail').mockResolvedValue(accessoryDetail);
+    const savedDetail: HoroshopAccessoryDetail = {
+      ...accessoryDetail,
+      draft: {
+        ...accessoryDetail.draft,
+        isDirty: true,
+        selected: [{ ...accessoryDetail.draft.suggestions[0], selected: true }],
+        suggestions: []
+      }
+    };
+    const save = vi.spyOn(api.horoshopAccessories, 'saveDraft').mockResolvedValue(savedDetail);
+    const publish = vi.spyOn(api.horoshopAccessories, 'publish').mockResolvedValue({
+      ...savedDetail,
+      draft: { ...savedDetail.draft, isDirty: false },
+      latestPublication: {
+        id: 'publication-1', status: 'succeeded', productAccessoryCount: 1,
+        categoryAccessoryCount: 0, errorMessage: null,
+        startedAt: '2026-08-13T10:00:00.000Z', completedAt: '2026-08-13T10:00:01.000Z'
+      }
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Керування аксесуарами' }));
+
+    expect(await screen.findByText('Чохол для Redmi Buds 6 Active')).toBeInTheDocument();
+    expect(screen.getByText('Сумісність')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Передати в Хорошоп' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Додати' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти чернетку' }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith('product-1', [{ type: 'product', id: 'case-1' }]));
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    const publishButton = screen.getByRole('button', { name: 'Передати в Хорошоп' });
+    expect(publishButton).toBeEnabled();
+    fireEvent.click(publishButton);
+    await waitFor(() => expect(publish).toHaveBeenCalledWith('product-1'));
   });
 });

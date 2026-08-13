@@ -40,7 +40,8 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
   const responses = [
     { status: 'OK', response: { token: 'session-token' } },
     { status: 'OK', response: { pages: [{ id: 10 }] } },
-    { status: 'OK', response: { products: [{ id: 1 }], total: 2 } }
+    { status: 'OK', response: { products: [{ id: 1 }], total: 2 } },
+    { status: 'OK', response: { imported: 1 } }
   ];
   const client = new HoroshopClient('shop.example.com', {
     fetchImplementation: async (url, init) => {
@@ -61,10 +62,16 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
     products: [{ id: 1 }],
     nextOffset: 1
   });
+  assert.deepEqual(await client.importCatalog(token, [{ article: 'PHONE-1', accessories: ['CASE-1'] }]), {
+    imported: 1
+  });
   assert.deepEqual(calls.map((call) => new URL(call.url).pathname), [
-    '/api/auth/', '/api/pages/export/', '/api/catalog/export/'
+    '/api/auth/', '/api/pages/export/', '/api/catalog/export/', '/api/catalog/import/'
   ]);
   assert.deepEqual(calls[2].body, { token: 'session-token', offset: 0, limit: 1 });
+  assert.deepEqual(calls[3].body, {
+    token: 'session-token', products: [{ article: 'PHONE-1', accessories: ['CASE-1'] }]
+  });
 });
 
 test('normalizer keeps product modifications, stock, URLs and raw source data', () => {

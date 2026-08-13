@@ -4659,3 +4659,152 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .horoshop-catalog-toolbar { grid-template-columns: 1fr; }
   .horoshop-search-field { grid-column: auto; }
 }
+
+/* Horoshop accessory management */
+.horoshop-tool-tabs { width: fit-content; display: flex; gap: 4px; margin: -8px 0 20px; border: 1px solid var(--line); border-radius: 13px; padding: 4px; background: var(--surface); box-shadow: 0 6px 18px rgba(22,30,50,.035); }
+.horoshop-tool-tabs button { min-height: 40px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 9px; padding: 0 15px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 800; }
+.horoshop-tool-tabs button:hover { color: var(--ink); background: var(--surface-soft); }
+.horoshop-tool-tabs button.is-active { color: var(--brand-dark); background: var(--brand-soft); box-shadow: inset 0 0 0 1px rgba(83,105,174,.1); }
+.horoshop-accessory-manager { min-width: 0; display: grid; grid-template-columns: minmax(250px,320px) minmax(0,1fr); gap: 16px; align-items: start; }
+.horoshop-accessory-targets,
+.horoshop-accessory-workspace { min-width: 0; border: 1px solid var(--line); border-radius: 19px; background: var(--surface); box-shadow: var(--shadow); }
+.horoshop-accessory-targets { position: sticky; top: 78px; overflow: hidden; }
+.horoshop-accessory-targets > header { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); padding: 16px; }
+.horoshop-accessory-targets > header > span { display: grid; gap: 4px; }
+.horoshop-accessory-targets > header strong { color: var(--ink); font-size: 12px; }
+.horoshop-accessory-targets > header small { color: var(--muted); font-size: 9px; }
+.horoshop-accessory-targets > header b,
+.horoshop-accessory-section > header > b { height: fit-content; border-radius: 999px; padding: 5px 8px; color: #4c608e; background: #eef3ff; font-size: 9px; white-space: nowrap; }
+.horoshop-accessory-search { height: 42px; display: flex; align-items: center; gap: 8px; margin: 12px; border: 1px solid #dce1e9; border-radius: 11px; padding: 0 11px; color: #8993a4; }
+.horoshop-accessory-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 4px var(--brand-soft); }
+.horoshop-accessory-search input { min-width: 0; width: 100%; height: 100%; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 11px; }
+.horoshop-accessory-target-list { max-height: min(680px,calc(100vh - 290px)); min-height: 180px; overflow-y: auto; border-top: 1px solid var(--line); padding: 7px; }
+.horoshop-accessory-target-list > button { width: 100%; display: grid; grid-template-columns: 40px minmax(0,1fr) 18px; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 12px; padding: 9px; color: var(--ink); text-align: left; background: transparent; }
+.horoshop-accessory-target-list > button:hover { background: var(--surface-soft); }
+.horoshop-accessory-target-list > button.is-active { border-color: #cfd9f2; color: #304e94; background: #f3f7ff; }
+.horoshop-accessory-target-list > button > span:nth-child(2),
+.horoshop-accessory-selected-list article > span:nth-child(2),
+.horoshop-accessory-search-results button > span:nth-child(2),
+.horoshop-accessory-suggestion header > span:nth-child(2) { min-width: 0; display: grid; gap: 4px; }
+.horoshop-accessory-target-list strong,
+.horoshop-accessory-selected-list strong,
+.horoshop-accessory-search-results strong,
+.horoshop-accessory-suggestion header strong { overflow: hidden; color: inherit; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-accessory-target-list small,
+.horoshop-accessory-selected-list small,
+.horoshop-accessory-search-results small,
+.horoshop-accessory-suggestion header small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-accessory-target-list > p,
+.horoshop-accessory-search-results > p { margin: 0; padding: 24px 12px; color: var(--muted); font-size: 10px; text-align: center; }
+.horoshop-accessory-thumb { position: relative; width: 40px; height: 40px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; color: #738095; background: linear-gradient(135deg,#edf0f6,#fafbfc); font-size: 9px; font-weight: 850; }
+.horoshop-accessory-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.horoshop-accessory-workspace { display: grid; gap: 14px; padding: 18px; }
+.horoshop-accessory-empty { min-height: 330px; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); text-align: center; }
+.horoshop-accessory-empty strong { color: var(--ink); font-size: 14px; }
+.horoshop-accessory-empty span { max-width: 400px; font-size: 11px; line-height: 1.5; }
+.horoshop-accessory-empty.is-error { color: #a83249; }
+.horoshop-accessory-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); padding: 2px 2px 16px; }
+.horoshop-accessory-heading h2 { margin: 3px 0 5px; color: var(--ink); font-size: 20px; letter-spacing: -.025em; }
+.horoshop-accessory-heading p { margin: 0; color: var(--muted); font-size: 10px; }
+.horoshop-accessory-heading code { border-radius: 5px; padding: 2px 5px; background: var(--surface-soft); }
+.horoshop-accessory-warning,
+.horoshop-accessory-message { display: flex; align-items: flex-start; gap: 9px; border: 1px solid #ecdcae; border-radius: 12px; padding: 11px 13px; color: #7e6110; background: #fffaf0; font-size: 10px; line-height: 1.5; }
+.horoshop-accessory-warning > span { display: grid; gap: 2px; }
+.horoshop-accessory-message { align-items: center; border-color: #bfe7d5; color: #237052; background: #f2fcf7; }
+.horoshop-accessory-message.is-error { border-color: #f0cfd6; color: #a83249; background: #fffafb; }
+.horoshop-accessory-section { display: grid; gap: 13px; border: 1px solid var(--line); border-radius: 15px; padding: 15px; background: var(--surface-soft); }
+.horoshop-accessory-section > header { display: flex; justify-content: space-between; gap: 12px; }
+.horoshop-accessory-section h3,
+.horoshop-accessory-publish h3 { margin: 0 0 4px; color: var(--ink); font-size: 14px; }
+.horoshop-accessory-section header p,
+.horoshop-accessory-publish p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.horoshop-accessory-selected-list { display: grid; gap: 7px; }
+.horoshop-accessory-selected-list article,
+.horoshop-accessory-search-results button { min-width: 0; display: grid; grid-template-columns: 40px minmax(0,1fr) 30px; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; padding: 8px 10px; color: var(--ink); background: var(--surface); }
+.horoshop-accessory-selected-list article > button { width: 29px; height: 29px; display: grid; place-items: center; border: 0; border-radius: 8px; color: #9a5563; background: transparent; }
+.horoshop-accessory-selected-list article > button:hover { color: #b22240; background: #fff0f3; }
+.horoshop-accessory-folder { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: #735eb2; background: #f0ecff; }
+.horoshop-accessory-list-empty { min-height: 90px; display: grid; place-content: center; gap: 5px; border: 1px dashed #d8dde7; border-radius: 11px; color: var(--muted); text-align: center; }
+.horoshop-accessory-list-empty strong { color: #4c586d; font-size: 11px; }
+.horoshop-accessory-list-empty span { font-size: 9px; }
+.horoshop-accessory-manual-search { position: relative; }
+.horoshop-accessory-manual-search > label { height: 42px; display: flex; align-items: center; gap: 9px; border: 1px solid #dce1e9; border-radius: 11px; padding: 0 12px; color: #8993a4; background: var(--surface); }
+.horoshop-accessory-manual-search > label:focus-within { border-color: var(--brand); box-shadow: 0 0 0 4px var(--brand-soft); }
+.horoshop-accessory-manual-search input { min-width: 0; width: 100%; height: 100%; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 11px; }
+.horoshop-accessory-search-results { position: absolute; z-index: 15; top: calc(100% + 5px); right: 0; left: 0; max-height: 320px; display: grid; gap: 5px; overflow-y: auto; border: 1px solid var(--line); border-radius: 13px; padding: 7px; background: var(--surface); box-shadow: 0 18px 44px rgba(19,29,52,.16); }
+.horoshop-accessory-search-results button { width: 100%; cursor: pointer; text-align: left; }
+.horoshop-accessory-search-results button:hover { border-color: #cbd6ef; background: #f6f8fe; }
+.horoshop-accessory-section > footer { display: flex; justify-content: flex-end; }
+.horoshop-accessory-suggestions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.horoshop-accessory-suggestions > .horoshop-accessory-list-empty { grid-column: 1 / -1; }
+.horoshop-accessory-suggestion { min-width: 0; display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 13px; padding: 12px; background: var(--surface); }
+.horoshop-accessory-suggestion > header { min-width: 0; display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: center; gap: 9px; }
+.horoshop-accessory-suggestion header button { min-height: 29px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #cbd6ef; border-radius: 8px; padding: 0 8px; color: #3e5b9c; background: #f4f7ff; font-size: 9px; font-weight: 800; }
+.horoshop-accessory-suggestion > p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.horoshop-accessory-scores { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px 9px; }
+.horoshop-accessory-scores > span { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px; color: var(--muted); }
+.horoshop-accessory-scores small { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-accessory-scores b { color: #57647a; font-size: 8px; }
+.horoshop-accessory-scores > span > i { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 999px; background: #e8ebf1; }
+.horoshop-accessory-scores > span > i > i { display: block; height: 100%; border-radius: inherit; background: #6d82c0; }
+.horoshop-accessory-suggestion > footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; color: var(--muted); font-size: 9px; }
+.horoshop-accessory-suggestion > footer strong { color: #3658b6; font-size: 13px; }
+.horoshop-accessory-publish { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 13px 18px; align-items: center; border: 1px solid #cbd6ef; border-radius: 15px; padding: 16px; background: #f7f9ff; }
+.horoshop-accessory-publish > div:first-child { display: flex; gap: 12px; }
+.horoshop-accessory-publish-icon { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 12px; color: #3658b6; background: #e6edff; }
+.horoshop-accessory-publication { justify-self: end; display: grid; gap: 3px; text-align: right; }
+.horoshop-accessory-publication strong { color: #3b7350; font-size: 9px; }
+.horoshop-accessory-publication.is-failed strong { color: #a83249; }
+.horoshop-accessory-confirm { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 10px; border-top: 1px solid #dfe5f4; padding-top: 13px; color: var(--ink); cursor: pointer; }
+.horoshop-accessory-confirm input { width: 17px; height: 17px; flex: 0 0 auto; margin: 1px 0 0; accent-color: var(--brand); }
+.horoshop-accessory-confirm > span { display: grid; gap: 3px; }
+.horoshop-accessory-confirm strong { font-size: 10px; line-height: 1.45; }
+.horoshop-accessory-confirm small,
+.horoshop-accessory-publish-hint { color: var(--muted); font-size: 8px; }
+.horoshop-accessory-publish > .button { grid-column: 2; grid-row: 3 / 5; }
+.horoshop-accessory-publish-hint { grid-column: 1; }
+
+:root[data-theme="brand"] .horoshop-accessory-target-list > button.is-active,
+:root[data-theme="brand"] .horoshop-accessory-publish,
+:root[data-theme="brand"] .horoshop-accessory-warning,
+:root[data-theme="brand"] .horoshop-accessory-message,
+:root[data-theme="brand"] .horoshop-accessory-section { color: var(--ink); border-color: var(--line); background: var(--surface-soft); }
+:root[data-theme="brand"] .horoshop-accessory-targets > header b,
+:root[data-theme="brand"] .horoshop-accessory-section > header > b,
+:root[data-theme="brand"] .horoshop-tool-tabs button.is-active { color: var(--brand); background: #292925; }
+:root[data-theme="brand"] .horoshop-accessory-thumb,
+:root[data-theme="brand"] .horoshop-accessory-folder { border-color: var(--line); color: #ded568; background: #292925; }
+:root[data-theme="brand"] .horoshop-accessory-selected-list article,
+:root[data-theme="brand"] .horoshop-accessory-search-results,
+:root[data-theme="brand"] .horoshop-accessory-search-results button,
+:root[data-theme="brand"] .horoshop-accessory-suggestion,
+:root[data-theme="brand"] .horoshop-accessory-manual-search > label { border-color: var(--line); background: var(--surface); }
+
+@media (max-width: 1450px) {
+  .horoshop-accessory-manager { grid-template-columns: 260px minmax(0,1fr); }
+  .horoshop-accessory-suggestions { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 820px) {
+  .horoshop-accessory-manager { grid-template-columns: 1fr; }
+  .horoshop-accessory-targets { position: static; }
+  .horoshop-accessory-target-list { max-height: 280px; }
+  .horoshop-accessory-publish { grid-template-columns: 1fr; }
+  .horoshop-accessory-publication { justify-self: start; text-align: left; }
+  .horoshop-accessory-publish > .button,
+  .horoshop-accessory-publish-hint { grid-column: 1; grid-row: auto; }
+}
+
+@media (max-width: 560px) {
+  .horoshop-tool-tabs { width: 100%; display: grid; }
+  .horoshop-tool-tabs button { justify-content: center; }
+  .horoshop-accessory-workspace { padding: 12px; }
+  .horoshop-accessory-heading { align-items: stretch; flex-direction: column; }
+  .horoshop-accessory-heading .button { width: 100%; }
+  .horoshop-accessory-section > header { align-items: flex-start; flex-direction: column; }
+  .horoshop-accessory-scores { grid-template-columns: 1fr; }
+  .horoshop-accessory-suggestion > header { grid-template-columns: 40px minmax(0,1fr); }
+  .horoshop-accessory-suggestion header button { grid-column: 1 / -1; justify-content: center; }
+  .horoshop-accessory-section > footer .button,
+  .horoshop-accessory-publish > .button { width: 100%; }
+}

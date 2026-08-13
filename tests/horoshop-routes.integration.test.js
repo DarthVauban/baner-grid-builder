@@ -114,4 +114,19 @@ test('Horoshop catalog route returns product cards with nested modification tree
     .get('/api/search/horoshop/catalog?visibility=hidden&pageSize=10')
     .expect(200);
   assert.equal(hidden.body.data.total, 1);
+
+  await request(app).get(`/api/search/horoshop/accessories/products/${productId}`).expect(401);
+  const accessoryDetail = await admin
+    .get(`/api/search/horoshop/accessories/products/${productId}`)
+    .expect(200);
+  assert.match(accessoryDetail.headers['cache-control'], /no-store/u);
+  assert.equal(accessoryDetail.body.data.product.id, productId);
+  assert.equal(accessoryDetail.body.data.draft.catalogStateKnown, false);
+  assert.equal(JSON.stringify(accessoryDetail.body).includes('sourceData'), false);
+  assert.equal(JSON.stringify(accessoryDetail.body).includes('ciphertext'), false);
+
+  await admin
+    .post(`/api/search/horoshop/accessories/products/${productId}/publish`)
+    .send({})
+    .expect(422);
 });

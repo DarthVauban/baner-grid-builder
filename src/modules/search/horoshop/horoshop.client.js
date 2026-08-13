@@ -220,6 +220,10 @@ export class HoroshopClient {
     return { products, nextOffset };
   }
 
+  async importCatalog(token, products) {
+    return this.post('catalog/import', { token, products });
+  }
+
   async post(functionName, body) {
     const endpoint = new URL(`/api/${functionName}/`, this.baseUrl);
     let lastError;

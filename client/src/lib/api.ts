@@ -109,6 +109,11 @@ import type {
 import type { SystemMetrics } from '../types/system';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
+  HoroshopAccessoryCandidates,
+  HoroshopAccessoryDetail,
+  HoroshopAccessoryDraftItem
+} from '../types/horoshop-accessory';
+import type {
   PublicTradeInSettings,
   TradeInAnswers,
   TradeInConfig,
@@ -166,6 +171,28 @@ export const api = {
     sync: () => request<{ started: boolean; integration: HoroshopIntegration }>(
       '/api/search/horoshop/sync',
       { method: 'POST' }
+    )
+  },
+  horoshopAccessories: {
+    detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
+      `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}`,
+      { signal }
+    ),
+    candidates: (productId: string, search: string, signal?: AbortSignal) => request<HoroshopAccessoryCandidates>(
+      `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/candidates${queryString({ search })}`,
+      { signal }
+    ),
+    saveDraft: (productId: string, items: HoroshopAccessoryDraftItem[]) => request<HoroshopAccessoryDetail>(
+      `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/draft`,
+      { method: 'PUT', body: jsonBody({ items }) }
+    ),
+    recommend: (productId: string, limit = 12) => request<HoroshopAccessoryDetail>(
+      `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/recommendations`,
+      { method: 'POST', body: jsonBody({ limit }) }
+    ),
+    publish: (productId: string) => request<HoroshopAccessoryDetail>(
+      `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/publish`,
+      { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 45_000 }
     )
   },
   auth: {

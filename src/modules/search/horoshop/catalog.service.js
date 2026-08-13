@@ -47,6 +47,8 @@ export class HoroshopCatalogService {
     this.activeSync = null;
     this.activeAbortController = null;
     this.syncStarting = false;
+    this.activeExternalWrite = null;
+    this.externalWriteStarting = false;
   }
 
   async status() {
@@ -97,7 +99,7 @@ export class HoroshopCatalogService {
   }
 
   async startSync(mode = 'manual', actorUserId = null) {
-    if (this.activeSync || this.syncStarting) return false;
+    if (this.activeSync || this.syncStarting || this.activeExternalWrite || this.externalWriteStarting) return false;
     this.syncStarting = true;
     try {
       const connection = await this.repository.getConnection();
@@ -132,8 +134,25 @@ export class HoroshopCatalogService {
   }
 
   async waitForIdle() {
-    if (!this.activeSync) return;
-    await this.activeSync;
+    await Promise.all([
+      this.activeSync?.catch(() => {}),
+      this.activeExternalWrite?.catch(() => {})
+    ]);
+  }
+
+  async runExclusiveExternalWrite(operation) {
+    if (this.activeSync || this.syncStarting || this.activeExternalWrite || this.externalWriteStarting) {
+      throw new AppError(409, 'HOROSHOP_CATALOG_BUSY', 'Дочекайтеся завершення поточної операції з каталогом Хорошоп.');
+    }
+    this.externalWriteStarting = true;
+    try {
+      const tracked = Promise.resolve().then(operation);
+      this.activeExternalWrite = tracked;
+      return await tracked;
+    } finally {
+      this.activeExternalWrite = null;
+      this.externalWriteStarting = false;
+    }
   }
 
   async disconnect(confirmDomain, actorUserId) {
@@ -146,6 +165,7 @@ export class HoroshopCatalogService {
     await this.repository.markDisconnecting(connection);
     this.activeAbortController?.abort();
     if (this.activeSync) await this.activeSync.catch(() => {});
+    if (this.activeExternalWrite) await this.activeExternalWrite.catch(() => {});
     try {
       return await this.repository.purgeConnection(connection, {
         actorUserId,
