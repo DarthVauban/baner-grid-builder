@@ -69,7 +69,8 @@ The primary desired workflow is conversational and project-scoped:
 2. In this or another Codex task opened for the project, the user sends a short instruction or
    attaches a campaign/merchandising brief in a supported file format.
 3. Codex analyzes the current catalog snapshot and selects the strongest accessories for every
-   product in the requested scope, with the business objective of increasing additional sales.
+   product in the requested scope by optimizing compatibility, customer usefulness, current
+   availability, and catalog popularity.
 4. Codex writes a structured, versioned proposal batch that can be validated, audited, retried, and
    reproduced independently of the chat history.
 5. Deterministic validation rejects invalid product IDs, incompatible or unavailable candidates,
@@ -130,8 +131,9 @@ Each proposal batch must include at least:
 
 ## Recommendation strategy
 
-The target is not merely semantic similarity. The system should optimize expected incremental
-commercial value while maintaining real product compatibility and customer usefulness.
+The first version has four optimization signals: compatibility, customer usefulness, current
+availability, and catalog popularity. It does not require order baskets, margin, attach-rate,
+conversion, or return data.
 
 A hybrid approach is required:
 
@@ -140,17 +142,25 @@ A hybrid approach is required:
    and explicitly configured merchandising rules.
 2. Codex evaluates the narrowed candidates, resolves ambiguous catalog language, compares product
    use cases, ranks the best accessories, and records an explanation and confidence.
-3. A deterministic business scorer incorporates available commercial signals such as stock,
-   accessory margin, popularity, historical attach rate, conversion, return rate, and product price
-   ratio.
+3. A deterministic scorer combines compatibility, usefulness, availability, and popularity using
+   explicit, versioned weights.
 4. Final validators enforce compatibility, relationship limits, freshness, coverage, manual locks,
    and write-back safety before any Horoshop mutation.
 
-Actual maximization of additional sales requires behavioral or order-level evidence. If Horoshop
-does not expose margin, order baskets, attach rate, conversions, returns, or inventory depth, the
-first version can optimize only a documented proxy based on compatibility, relevance,
-availability, popularity, and price. The UI and proposal output must not present that proxy as a
-proven revenue optimum.
+The default priority is:
+
+1. **Compatibility is mandatory.** An accessory that cannot be confirmed as compatible is excluded
+   or held for manual review and cannot be auto-published.
+2. **Usefulness drives ranking.** Accessories should solve a realistic adjacent customer need for
+   the target product rather than merely share keywords or a category.
+3. **Availability gates publication.** Out-of-stock or inactive products are not auto-published.
+   Incoming products may be considered only under an explicit store policy.
+4. **Popularity breaks ties and boosts proven catalog choices.** Popularity must never override
+   incompatibility or low usefulness.
+
+This score is a merchandising proxy intended to support additional sales, not a claim of measured
+revenue maximization. Commercial analytics may be added later without being a dependency of the
+first version.
 
 Existing manually curated relationships should be preserved by default. Replacing or removing
 them requires an explicit operation policy in the user's request or a separately approved
@@ -187,10 +197,8 @@ owning or duplicating the external catalog independently.
 
 ## Open questions for the next requirements iteration
 
-- What exact commercial signals can the Horoshop API provide: order baskets, product views,
-  conversions, current/forecast stock, margin, returns, and existing attach rates?
-- What is the default optimization metric: accessory revenue, gross profit, attach rate, average
-  order value, or a weighted combination?
+- Which Horoshop fields should define popularity when more than one signal is available?
+- How should products marked as incoming or temporarily unavailable affect recommendations?
 - What default maximum number of individual accessories and accessory sections is allowed per
   product?
 - Should the default Codex command analyze the entire active catalog or require an explicit scope?
