@@ -1,7 +1,8 @@
 # Horoshop related products tool — working requirements
 
-Status: draft. Initial requirements recorded on 2026-08-13. This document is intentionally
-incomplete and will be extended as the product workflow is clarified.
+Status: draft. Initial requirements recorded on 2026-08-13 and extended with the Codex-driven
+catalog workflow on the same date. This document is intentionally incomplete and will be extended
+as the product workflow is clarified.
 
 ## Objective
 
@@ -55,17 +56,117 @@ both operations into an unstructured list.
 7. Record an audit entry containing the actor, target product/modification, relationship type,
    previous state, requested state, Horoshop response status, and timestamp.
 
-Recommendations are proposals, not automatic publications. The initial version must not change
-Horoshop relationships without an explicit user action.
+Recommendations are created as a durable proposal batch before publication. A user's Codex request
+may explicitly authorize analysis and publication together; in that mode, validated proposals are
+sent to Horoshop in the same Codex task without requiring approval of every product individually.
+A request that asks only for analysis, preview, or a draft must never write to Horoshop.
+
+## Codex-driven catalog workflow
+
+The primary desired workflow is conversational and project-scoped:
+
+1. The Horoshop catalog and its modifications have already been synchronized into PostgreSQL.
+2. In this or another Codex task opened for the project, the user sends a short instruction or
+   attaches a campaign/merchandising brief in a supported file format.
+3. Codex analyzes the current catalog snapshot and selects the strongest accessories for every
+   product in the requested scope, with the business objective of increasing additional sales.
+4. Codex writes a structured, versioned proposal batch that can be validated, audited, retried, and
+   reproduced independently of the chat history.
+5. Deterministic validation rejects invalid product IDs, incompatible or unavailable candidates,
+   duplicates, excessive relationship counts, stale catalog versions, and forbidden replacements.
+6. If the initiating request explicitly authorizes publication, Codex invokes the controlled
+   write-back command and the application pushes the validated batch to Horoshop immediately.
+7. The application reads the resulting relationship state back from Horoshop and reports complete,
+   partial, skipped, and failed operations to Codex and the admin UI.
+
+`Immediately` means within the same explicitly authorized Codex task after validation. It does not
+mean that background application code may call Codex or publish new AI decisions without a user
+request.
+
+### Cross-task repeatability
+
+The workflow must not depend on one chat remembering another chat. It should be packaged as a
+repository-local Codex skill plus a narrow project CLI (or an equivalent project tool) so that any
+Codex task opened against the repository can follow the same rules and operate on stable data
+contracts.
+
+The Codex-facing command surface should separate read and write capabilities. A preliminary shape
+is:
+
+```text
+horoshop-accessories status
+horoshop-accessories catalog snapshot --output <file>
+horoshop-accessories catalog product <external-id>
+horoshop-accessories candidates generate --scope <scope> --output <file>
+horoshop-accessories proposals validate <file>
+horoshop-accessories proposals publish <file> --expected-snapshot <version>
+horoshop-accessories runs show <run-id>
+horoshop-accessories runs rollback <run-id>
+```
+
+The final invocation names and input format remain open. Secrets must be resolved server-side or
+from protected local configuration and must never be placed in the chat, prompt, proposal file, or
+command output.
+
+### Large-catalog analysis
+
+Codex must not receive one uncontrolled dump of the full production catalog in its context. The
+tool should expose compact snapshots, candidate subsets, exact reads by stable ID, and file-backed
+batch outputs. Analysis may be processed in deterministic chunks, but a final global validation
+must check coverage and cross-product consistency before publication.
+
+Each proposal batch must include at least:
+
+- stable batch ID and schema version;
+- tenant/store ID and immutable catalog snapshot/version;
+- initiating actor and source Codex task/run when available;
+- the user's objective and supplied brief reference;
+- target parent product or modification ID;
+- relationship type: accessory section or individual accessory product;
+- selected category/product IDs and ranking order;
+- score, confidence, reason, evidence fields used, and any warnings;
+- existing relationship state and intended operation (`ADD`, `KEEP`, `REPLACE`, or `REMOVE`);
+- validation state, publish state, Horoshop response, and rollback information.
+
+## Recommendation strategy
+
+The target is not merely semantic similarity. The system should optimize expected incremental
+commercial value while maintaining real product compatibility and customer usefulness.
+
+A hybrid approach is required:
+
+1. Deterministic candidate generation and hard exclusions use category, characteristics,
+   compatibility, brand/model, availability, modification data, price boundaries, existing links,
+   and explicitly configured merchandising rules.
+2. Codex evaluates the narrowed candidates, resolves ambiguous catalog language, compares product
+   use cases, ranks the best accessories, and records an explanation and confidence.
+3. A deterministic business scorer incorporates available commercial signals such as stock,
+   accessory margin, popularity, historical attach rate, conversion, return rate, and product price
+   ratio.
+4. Final validators enforce compatibility, relationship limits, freshness, coverage, manual locks,
+   and write-back safety before any Horoshop mutation.
+
+Actual maximization of additional sales requires behavioral or order-level evidence. If Horoshop
+does not expose margin, order baskets, attach rate, conversions, returns, or inventory depth, the
+first version can optimize only a documented proxy based on compatibility, relevance,
+availability, popularity, and price. The UI and proposal output must not present that proxy as a
+proven revenue optimum.
+
+Existing manually curated relationships should be preserved by default. Replacing or removing
+them requires an explicit operation policy in the user's request or a separately approved
+merchandising rule.
 
 ## Recommendation requirements captured so far
 
 - The algorithm must operate on the external Horoshop catalog, including modifications.
 - It must be able to recommend either a whole accessory section or particular products.
-- Recommendations must be reviewable before write-back.
+- Recommendations must always be inspectable, even when an explicitly authorized task publishes
+  them automatically after validation.
 - Existing assignments must be detected so the tool does not create duplicate work.
-- The recommendation criteria and precedence rules will be defined in the next requirements
-  iteration.
+- The same repeatable workflow must work from this Codex task or another task opened against the
+  repository.
+- Codex is an offline, user-invoked decision stage and is not part of the production application's
+  runtime request path.
 
 ## Architecture constraints
 
@@ -86,10 +187,17 @@ owning or duplicating the external catalog independently.
 
 ## Open questions for the next requirements iteration
 
-- How should the recommendation algorithm determine compatibility and relevance?
-- Are recommendations managed one product at a time, in bulk, or both?
+- What exact commercial signals can the Horoshop API provide: order baskets, product views,
+  conversions, current/forecast stock, margin, returns, and existing attach rates?
+- What is the default optimization metric: accessory revenue, gross profit, attach rate, average
+  order value, or a weighted combination?
+- What default maximum number of individual accessories and accessory sections is allowed per
+  product?
+- Should the default Codex command analyze the entire active catalog or require an explicit scope?
 - Should users be able to remove and replace existing Horoshop relationships as well as add them?
 - Are accessory relationships assigned to a parent product, an individual modification, or both?
-- What approval roles and safeguards are required before write-back?
+- Which file formats should be accepted for a merchandising brief, and is a file optional when a
+  natural-language request contains all constraints?
+- What project roles may issue a Codex request that includes immediate publication?
 - How should conflicting existing sections and individually assigned products be handled?
 - Does the real Horoshop API expose both relationship assignment modes for reading and writing?
