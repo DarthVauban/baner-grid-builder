@@ -145,18 +145,19 @@ test('dropped images show progress, become compact WebP cards and can be inserte
   await expect.poll(() => heroCard.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(unselectedVisual.background);
   const selectedVisual = await heroCard.evaluate((element) => {
     const checkbox = element.querySelector('.media-asset-card__select span');
-    const checkboxIcon = element.querySelector('.media-asset-card__select .icon');
     return {
       border: getComputedStyle(element).borderColor,
       background: getComputedStyle(element).backgroundColor,
-      checkboxBackground: checkbox ? getComputedStyle(checkbox).backgroundColor : '',
-      checkboxIconOpacity: checkboxIcon ? getComputedStyle(checkboxIcon).opacity : ''
+      checkboxBackground: checkbox ? getComputedStyle(checkbox).backgroundColor : ''
     };
   });
   expect(selectedVisual.border).not.toBe(unselectedVisual.border);
   expect(selectedVisual.background).not.toBe(unselectedVisual.background);
   expect(selectedVisual.checkboxBackground).not.toBe(unselectedVisual.checkboxBackground);
-  expect(selectedVisual.checkboxIconOpacity).toBe('1');
+  await expect.poll(() => heroCard.evaluate((element) => {
+    const checkboxIcon = element.querySelector('.media-asset-card__select .icon');
+    return checkboxIcon ? getComputedStyle(checkboxIcon).opacity : '';
+  })).toBe('1');
   const selectionToolbar = page.getByRole('toolbar', { name: 'Дії з вибраними файлами' });
   await expect(selectionToolbar).toContainText('Вибрано: 1');
   await selectionToolbar.getByRole('button', { name: 'Виділити усі' }).click();
