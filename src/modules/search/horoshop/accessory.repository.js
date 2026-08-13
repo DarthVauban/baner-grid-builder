@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool as defaultPool } from '../../../db/pool.js';
+import { ACCESSORY_RECOMMENDER_VERSION } from './accessory-recommender.js';
 
 function jsonObject(value) {
   if (!value) return {};
@@ -182,9 +183,12 @@ export class HoroshopAccessoryRepository {
         FROM search_horoshop_accessory_links AS link
         LEFT JOIN search_horoshop_products AS product ON product.id = link.accessory_product_id
         LEFT JOIN search_horoshop_categories AS category ON category.id = link.accessory_category_id
-        WHERE link.set_id = $1
+        WHERE link.set_id = $1 AND (
+          link.source <> 'algorithm' OR link.selected = TRUE OR link.published = TRUE
+          OR link.algorithm_version = $2
+        )
         ORDER BY link.selected DESC, link.position, link.total_score DESC NULLS LAST, link.created_at
-      `, [state.set.id]),
+      `, [state.set.id, ACCESSORY_RECOMMENDER_VERSION]),
       this.pool.query(`
         SELECT id, status, product_accessory_count, category_accessory_count,
                error_message, started_at, completed_at
@@ -479,8 +483,8 @@ export class HoroshopAccessoryRepository {
           INSERT INTO search_horoshop_accessory_links (
             id, set_id, target_key, target_type, accessory_product_id, source,
             selected, position, compatibility_score, utility_score, availability_score,
-            popularity_score, total_score, reason
-          ) VALUES ($1, $2, $3, 'product', $4, 'algorithm', FALSE, $5, $6, $7, $8, $9, $10, $11)
+            popularity_score, total_score, reason, algorithm_version
+          ) VALUES ($1, $2, $3, 'product', $4, 'algorithm', FALSE, $5, $6, $7, $8, $9, $10, $11, $12)
           ON CONFLICT (set_id, target_key) DO UPDATE SET
             compatibility_score = EXCLUDED.compatibility_score,
             utility_score = EXCLUDED.utility_score,
@@ -488,11 +492,15 @@ export class HoroshopAccessoryRepository {
             popularity_score = EXCLUDED.popularity_score,
             total_score = EXCLUDED.total_score,
             reason = EXCLUDED.reason,
+            algorithm_version = CASE
+              WHEN search_horoshop_accessory_links.source = 'algorithm' THEN EXCLUDED.algorithm_version
+              ELSE search_horoshop_accessory_links.algorithm_version
+            END,
             updated_at = NOW()
         `, [
           randomUUID(), state.set.id, `product:${item.productId}`, item.productId, position,
           item.compatibilityScore, item.utilityScore, item.availabilityScore,
-          item.popularityScore, item.totalScore, item.reason
+          item.popularityScore, item.totalScore, item.reason, ACCESSORY_RECOMMENDER_VERSION
         ]);
       }
       await client.query('COMMIT');

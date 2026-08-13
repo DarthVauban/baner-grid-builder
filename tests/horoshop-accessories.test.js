@@ -21,6 +21,20 @@ const ids = {
   unrelated: randomUUID(), battery: randomUUID()
 };
 
+function availableCandidate(title, categoryTitles, options = {}) {
+  return {
+    id: options.id || randomUUID(),
+    titles: { uk: title },
+    brand: options.brand || 'Example',
+    categoryTitles: { uk: categoryTitles },
+    characteristics: options.characteristics || {},
+    popularity: options.popularity || '80',
+    availabilities: ['В наявності'],
+    visible: true,
+    active: true
+  };
+}
+
 before(async () => {
   await runMigrations();
   await pool.query(`
@@ -101,6 +115,206 @@ test('recommendation scoring deliberately leaves unsupported products without su
   assert.deepEqual(recommendations, []);
 });
 
+test('a joystick is not misclassified by headphone and USB-C characteristics', () => {
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Джойстик Sony DualSense Wireless Controller White' }, brand: 'Sony',
+    categoryTitles: { uk: 'Геймпади та джойстики' },
+    characteristics: { connection: 'Bluetooth, USB-C', audio: 'Розʼєм для навушників 3.5 мм' }
+  }, [{
+    id: randomUUID(), titles: { uk: 'АЗП Joyroom JR-CCN04 60W PD/QC3.0 Type-C/USB Black' }, brand: 'Joyroom',
+    categoryTitles: { uk: 'Автомобільні зарядні пристрої' }, characteristics: { connector: 'USB-C' },
+    popularity: '90', availabilities: ['В наявності'], visible: true, active: true
+  }, {
+    id: randomUUID(), titles: { uk: 'Power Bank Proove Hoodman Magnetic 20W 10000mAh MagSafe Gray' }, brand: 'Proove',
+    categoryTitles: { uk: 'Павербанки' }, characteristics: { connector: 'USB-C' },
+    popularity: '89', availabilities: ['В наявності'], visible: true, active: true
+  }, {
+    id: randomUUID(), titles: { uk: 'Колонка Bluetooth Hoco HC10 Sonar Black' }, brand: 'Hoco',
+    categoryTitles: { uk: 'Портативна акустика' }, characteristics: { charging: 'USB Type-C' },
+    popularity: '88', availabilities: ['В наявності'], visible: true, active: true
+  }, {
+    id: randomUUID(), titles: { uk: 'Чохол Apple AirPods 3 Slim Black' }, brand: 'Apple',
+    categoryTitles: { uk: 'Чохли для навушників' }, characteristics: {},
+    popularity: '87', availabilities: ['В наявності'], visible: true, active: true
+  }], 12);
+
+  assert.deepEqual(recommendations, []);
+});
+
+test('a laptop never receives a cigarette-lighter charger without explicit laptop compatibility', () => {
+  const carChargerId = randomUUID();
+  const laptopChargerId = randomUUID();
+  const laptopBagId = randomUUID();
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Ноутбук Apple MacBook Air 13 M2' }, brand: 'Apple',
+    categoryTitles: { uk: 'Ноутбуки' }, characteristics: { connector: 'USB-C' }
+  }, [{
+    id: carChargerId, titles: { uk: 'АЗП Joyroom JR-CCN04 60W PD/QC3.0 Type-C/USB Black' }, brand: 'Joyroom',
+    categoryTitles: { uk: 'Автомобільні зарядні пристрої' }, characteristics: { connector: 'USB-C' },
+    popularity: '95', availabilities: ['В наявності'], visible: true, active: true
+  }, {
+    id: laptopChargerId, titles: { uk: 'МЗП USB-C PD 65W для ноутбука' }, brand: 'Example',
+    categoryTitles: { uk: 'Мережеві зарядні пристрої для ноутбуків' }, characteristics: { connector: 'USB-C' },
+    popularity: '85', availabilities: ['В наявності'], visible: true, active: true
+  }, {
+    id: laptopBagId, titles: { uk: 'Сумка для ноутбука 13 дюймів Black' }, brand: 'Example',
+    categoryTitles: { uk: 'Сумки для ноутбуків' }, characteristics: {},
+    popularity: '80', availabilities: ['В наявності'], visible: true, active: true
+  }], 12);
+
+  assert.equal(recommendations.some((item) => item.productId === carChargerId), false);
+  assert.equal(recommendations.some((item) => item.productId === laptopChargerId), true);
+  assert.equal(recommendations.some((item) => item.productId === laptopBagId), true);
+});
+
+test('a MagSafe power bank is scored as a power bank rather than a charger', () => {
+  const powerBankId = randomUUID();
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Смартфон Apple iPhone 15 Pro' }, brand: 'Apple',
+    categoryTitles: { uk: 'Смартфони' }, characteristics: { connector: 'USB-C, MagSafe' }
+  }, [{
+    id: powerBankId, titles: { uk: 'Power Bank Proove Hoodman Magnetic 20W 10000mAh MagSafe Gray' }, brand: 'Proove',
+    categoryTitles: { uk: 'Павербанки' }, characteristics: { connector: 'USB-C, MagSafe' },
+    popularity: '90', availabilities: ['В наявності'], visible: true, active: true
+  }], 12);
+
+  assert.equal(recommendations[0]?.productId, powerBankId);
+  assert.equal(recommendations[0]?.utilityScore, .78);
+  assert.match(recommendations[0]?.reason || '', /автономне живлення/u);
+});
+
+test('accessory products are not treated as parent devices through a model name in their title', () => {
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Чохол Apple AirPods 3 Slim Black' }, brand: 'Apple',
+    categoryTitles: { uk: 'Чохли для навушників' }, characteristics: {}
+  }, [availableCandidate('Чохол Apple AirPods 3 Silicone Blue', 'Чохли для навушників')], 12);
+
+  assert.deepEqual(recommendations, []);
+
+  const categoryOnlyAccessory = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Joyroom JR-CCN04 60W Black' }, brand: 'Joyroom',
+    categoryTitles: { uk: 'Автомобільні зарядні пристрої для смартфонів' }, characteristics: { connector: 'USB-C' }
+  }, [availableCandidate('Кабель USB-C to USB-C', 'Кабелі для смартфонів')], 12);
+  assert.deepEqual(categoryOnlyAccessory, []);
+});
+
+test('a charging station and a USB-C flash drive cannot masquerade as phone charging accessories', () => {
+  const cableId = randomUUID();
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Смартфон Samsung Galaxy S24' }, brand: 'Samsung',
+    categoryTitles: { uk: 'Смартфони' }, characteristics: { connector: 'USB-C' }
+  }, [
+    availableCandidate('Зарядна станція EcoFlow DELTA 2', 'Зарядні станції', {
+      characteristics: { connector: 'USB-C' }
+    }),
+    availableCandidate('Флеш-накопичувач USB Type-C 128GB', 'USB флеш-накопичувачі', {
+      characteristics: { connector: 'USB-C' }
+    }),
+    availableCandidate('Кабель USB-C to USB-C 1 м', 'Кабелі для смартфонів', {
+      id: cableId, characteristics: { connector: 'USB-C' }
+    })
+  ], 12);
+
+  assert.deepEqual(recommendations.map((item) => item.productId), [cableId]);
+});
+
+test('one shared model number is not enough for a model-specific case', () => {
+  const nokiaCaseId = randomUUID();
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Смартфон Nokia 3' }, brand: 'Nokia',
+    categoryTitles: { uk: 'Смартфони' }, characteristics: {}
+  }, [
+    availableCandidate('Чохол Apple AirPods 3 Slim Black', 'Чохли для навушників'),
+    availableCandidate('Чохол для Nokia 3 Silicone Black', 'Чохли для смартфонів', { id: nokiaCaseId })
+  ], 12);
+
+  assert.deepEqual(recommendations.map((item) => item.productId), [nokiaCaseId]);
+});
+
+test('console recommendations respect the exact gaming platform', () => {
+  const dualSenseId = randomUUID();
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Ігрова консоль Sony PlayStation 5 Slim' }, brand: 'Sony',
+    categoryTitles: { uk: 'Ігрові консолі' }, characteristics: { connector: 'HDMI, USB-C' }
+  }, [
+    availableCandidate('Геймпад Sony DualSense Wireless White', 'Геймпади PlayStation 5', {
+      id: dualSenseId, brand: 'Sony'
+    }),
+    availableCandidate('Xbox Wireless Controller Black', 'Геймпади Xbox', { brand: 'Microsoft' }),
+    availableCandidate('RGB LED Controller 24-key', 'Контролери освітлення')
+  ], 12);
+
+  assert.deepEqual(recommendations.map((item) => item.productId), [dualSenseId]);
+});
+
+test('stylus recommendations respect the device ecosystem', () => {
+  const sPenId = randomUUID();
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Планшет Samsung Galaxy Tab S9' }, brand: 'Samsung',
+    categoryTitles: { uk: 'Планшети' }, characteristics: {}
+  }, [
+    availableCandidate('Apple Pencil 2', 'Стилуси для планшетів', { brand: 'Apple' }),
+    availableCandidate('Стилус Samsung S Pen для Galaxy Tab S9', 'Стилуси для планшетів Samsung', {
+      id: sPenId, brand: 'Samsung'
+    })
+  ], 12);
+
+  assert.deepEqual(recommendations.map((item) => item.productId), [sPenId]);
+});
+
+test('smartwatch straps respect the case size even when the model family matches', () => {
+  const matchingStrapId = randomUUID();
+  const recommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Смарт-годинник Apple Watch Series 9 45 мм' }, brand: 'Apple',
+    categoryTitles: { uk: 'Смарт-годинники' }, characteristics: {}
+  }, [
+    availableCandidate('Ремінець для Apple Watch 41 мм', 'Ремінці для Apple Watch', { brand: 'Apple' }),
+    availableCandidate('Ремінець для Apple Watch 45 мм', 'Ремінці для Apple Watch', {
+      id: matchingStrapId, brand: 'Apple'
+    })
+  ], 12);
+
+  assert.deepEqual(recommendations.map((item) => item.productId), [matchingStrapId]);
+});
+
+test('TV remotes, laptop stands and camera bags stay inside their intended device domain', () => {
+  const tvRemoteId = randomUUID();
+  const laptopStandId = randomUUID();
+  const cameraBagId = randomUUID();
+
+  const tvRecommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Телевізор Samsung UE55DU7100' }, brand: 'Samsung',
+    categoryTitles: { uk: 'Телевізори' }, characteristics: {}
+  }, [
+    availableCandidate('Універсальний пульт для кондиціонера KT-9018E', 'Пульти для кондиціонерів'),
+    availableCandidate('Універсальний пульт для телевізора Samsung', 'Пульти для телевізорів', {
+      id: tvRemoteId
+    })
+  ], 12);
+  const laptopRecommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Ноутбук Apple MacBook Air 13 M2' }, brand: 'Apple',
+    categoryTitles: { uk: 'Ноутбуки' }, characteristics: {}
+  }, [
+    availableCandidate('Підставка для смартфона Hoco PH52', 'Підставки для смартфонів'),
+    availableCandidate('Підставка для ноутбука Proove Metal Stand', 'Підставки для ноутбуків', {
+      id: laptopStandId
+    })
+  ], 12);
+  const cameraRecommendations = recommendAccessories({
+    id: randomUUID(), titles: { uk: 'Фотоапарат Canon EOS R6' }, brand: 'Canon',
+    categoryTitles: { uk: 'Фотоапарати' }, characteristics: {}
+  }, [
+    availableCandidate('Рюкзак для ноутбука 15.6 Black', 'Рюкзаки для ноутбуків'),
+    availableCandidate('Сумка для фотоапарата Canon EOS R6', 'Сумки для фотоапаратів', {
+      id: cameraBagId
+    })
+  ], 12);
+
+  assert.deepEqual(tvRecommendations.map((item) => item.productId), [tvRemoteId]);
+  assert.deepEqual(laptopRecommendations.map((item) => item.productId), [laptopStandId]);
+  assert.deepEqual(cameraRecommendations.map((item) => item.productId), [cameraBagId]);
+});
+
 test('accessory workflow hydrates current links, saves a draft and publishes an overwrite payload', async () => {
   const imports = [];
   const repository = new HoroshopAccessoryRepository(pool);
@@ -131,6 +345,16 @@ test('accessory workflow hydrates current links, saves a draft and publishes an 
   const generated = await service.generateRecommendations(ids.phone, 12, null);
   assert.ok(generated.generatedCount >= 2);
   assert.ok(generated.draft.suggestions.some((item) => item.target.id === ids.charger));
+
+  await pool.query(`
+    UPDATE search_horoshop_accessory_links
+    SET algorithm_version = 1
+    WHERE source = 'algorithm' AND selected = FALSE AND published = FALSE
+  `);
+  const staleDetail = await service.detail(ids.phone, null);
+  assert.equal(staleDetail.draft.suggestions.some((item) => item.target.id === ids.charger), false);
+  const regenerated = await service.generateRecommendations(ids.phone, 12, null);
+  assert.ok(regenerated.draft.suggestions.some((item) => item.target.id === ids.charger));
 
   const bulk = await service.generateAllRecommendations(12, null);
   assert.equal(bulk.analyzedProducts, 6);
