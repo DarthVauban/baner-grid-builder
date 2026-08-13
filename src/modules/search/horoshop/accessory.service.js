@@ -27,6 +27,7 @@ export class HoroshopAccessoryService {
     this.repository = options.repository || new HoroshopAccessoryRepository();
     this.clientFactory = options.clientFactory || ((storeDomain) => new HoroshopClient(storeDomain));
     this.catalogService = options.catalogService || horoshopCatalogService;
+    this.bulkAnalysisPromise = null;
   }
 
   async detail(productId, actorUserId) {
@@ -70,6 +71,52 @@ export class HoroshopAccessoryService {
     const result = await this.repository.saveRecommendations(productId, recommendations, actorUserId);
     if (!result) throw notFound();
     return { ...result, generatedCount: recommendations.length };
+  }
+
+  async generateAllRecommendations(limit, actorUserId) {
+    if (this.bulkAnalysisPromise) {
+      throw new AppError(409, 'HOROSHOP_ACCESSORY_ANALYSIS_RUNNING', 'Масовий аналіз каталогу вже виконується. Дочекайтеся його завершення.');
+    }
+    const operation = this.runBulkAnalysis(limit, actorUserId);
+    this.bulkAnalysisPromise = operation;
+    try {
+      return await operation;
+    } finally {
+      if (this.bulkAnalysisPromise === operation) this.bulkAnalysisPromise = null;
+    }
+  }
+
+  async runBulkAnalysis(limit, actorUserId) {
+    const catalog = await this.repository.loadAllRecommendationCatalog();
+    if (!catalog) {
+      throw new AppError(404, 'HOROSHOP_CATALOG_NOT_FOUND', 'Спочатку підключіть Хорошоп та імпортуйте каталог.');
+    }
+    if (catalog.connection.status !== 'connected') {
+      throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Масовий аналіз доступний після завершення синхронізації каталогу.');
+    }
+
+    const summary = {
+      analyzedProducts: catalog.products.length,
+      productsWithRecommendations: 0,
+      productsWithoutRecommendations: 0,
+      recommendationsGenerated: 0,
+      limit
+    };
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < catalog.products.length) {
+        const target = catalog.products[cursor];
+        cursor += 1;
+        const recommendations = recommendAccessories(target, catalog.products, limit);
+        const saved = await this.repository.replaceRecommendations(target.id, recommendations, actorUserId);
+        if (!saved) continue;
+        summary.recommendationsGenerated += recommendations.length;
+        if (recommendations.length > 0) summary.productsWithRecommendations += 1;
+        else summary.productsWithoutRecommendations += 1;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, Math.max(1, catalog.products.length)) }, worker));
+    return summary;
   }
 
   async publish(productId, actorUserId) {

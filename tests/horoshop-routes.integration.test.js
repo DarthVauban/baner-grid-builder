@@ -136,6 +136,19 @@ test('Horoshop catalog route returns product cards with nested modification tree
   assert.equal(JSON.stringify(accessoryDetail.body).includes('sourceData'), false);
   assert.equal(JSON.stringify(accessoryDetail.body).includes('ciphertext'), false);
 
+  await request(app).post('/api/search/horoshop/accessories/recommendations/bulk').send({ limit: 12 }).expect(401);
+  const bulkAnalysis = await admin
+    .post('/api/search/horoshop/accessories/recommendations/bulk')
+    .send({ limit: 12 })
+    .expect(200);
+  assert.deepEqual(bulkAnalysis.body.data, {
+    analyzedProducts: 1,
+    productsWithRecommendations: 0,
+    productsWithoutRecommendations: 1,
+    recommendationsGenerated: 0,
+    limit: 12
+  });
+
   await admin
     .post(`/api/search/horoshop/accessories/products/${productId}/publish`)
     .send({})

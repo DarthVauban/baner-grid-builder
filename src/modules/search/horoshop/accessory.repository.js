@@ -399,8 +399,25 @@ export class HoroshopAccessoryRepository {
   }
 
   async loadRecommendationCatalog(productId) {
-    const context = await this.getContext(productId);
-    if (!context) return null;
+    const catalog = await this.loadAllRecommendationCatalog();
+    if (!catalog) return null;
+    const target = catalog.products.find((product) => product.id === productId);
+    if (!target) return null;
+    return {
+      target,
+      candidates: catalog.products.filter((product) => product.id !== productId)
+    };
+  }
+
+  async loadAllRecommendationCatalog() {
+    const connectionResult = await this.pool.query(`
+      SELECT id, generation, status
+      FROM search_horoshop_connections
+      WHERE singleton = TRUE
+      LIMIT 1
+    `);
+    const connection = connectionResult.rows[0];
+    if (!connection) return null;
     const [productsResult, modificationsResult] = await Promise.all([
       this.pool.query(`
         SELECT product.id, product.sku, product.titles, product.brand, product.category_external_id,
@@ -410,13 +427,13 @@ export class HoroshopAccessoryRepository {
         LEFT JOIN search_horoshop_categories AS category
           ON category.connection_id = product.connection_id
           AND category.external_id = product.category_external_id
-        WHERE product.connection_id = $1 AND product.id <> $2 AND product.active = TRUE
-      `, [context.connection.id, productId]),
+        WHERE product.connection_id = $1 AND product.active = TRUE
+      `, [connection.id]),
       this.pool.query(`
         SELECT product_id, availability
         FROM search_horoshop_modifications
         WHERE connection_id = $1 AND active = TRUE
-      `, [context.connection.id])
+      `, [connection.id])
     ]);
     const availabilityByProduct = new Map();
     for (const row of modificationsResult.rows) {
@@ -425,8 +442,12 @@ export class HoroshopAccessoryRepository {
       availabilityByProduct.set(row.product_id, values);
     }
     return {
-      target: context.product,
-      candidates: productsResult.rows.map((row) => ({
+      connection: {
+        id: connection.id,
+        generation: connection.generation,
+        status: connection.status
+      },
+      products: productsResult.rows.map((row) => ({
         id: row.id,
         sku: row.sku,
         titles: jsonObject(row.titles),
@@ -441,7 +462,7 @@ export class HoroshopAccessoryRepository {
     };
   }
 
-  async saveRecommendations(productId, recommendations, actorUserId) {
+  async replaceRecommendations(productId, recommendations, actorUserId) {
     const state = await this.ensureSet(productId, actorUserId);
     if (!state?.set) return null;
     const client = await this.pool.connect();
@@ -481,6 +502,12 @@ export class HoroshopAccessoryRepository {
     } finally {
       client.release();
     }
+    return state;
+  }
+
+  async saveRecommendations(productId, recommendations, actorUserId) {
+    const state = await this.replaceRecommendations(productId, recommendations, actorUserId);
+    if (!state) return null;
     return this.getDetail(productId, actorUserId);
   }
 

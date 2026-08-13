@@ -17,7 +17,8 @@ const { recommendAccessories } = await import('../src/modules/search/horoshop/ac
 const ids = {
   connection: randomUUID(), generation: randomUUID(), sync: randomUUID(),
   phoneCategory: randomUUID(), accessoryCategory: randomUUID(),
-  phone: randomUUID(), case: randomUUID(), charger: randomUUID(), unrelated: randomUUID()
+  phone: randomUUID(), case: randomUUID(), wrongCase: randomUUID(), charger: randomUUID(),
+  unrelated: randomUUID(), battery: randomUUID()
 };
 
 before(async () => {
@@ -40,8 +41,10 @@ before(async () => {
   const products = [
     [ids.phone, 'IPHONE-15', { uk: 'Смартфон Apple iPhone 15 Pro' }, 'Apple', 'phones', 'USB-C', 100, { accessories: ['CASE-15'] }],
     [ids.case, 'CASE-15', { uk: 'Чохол Apple iPhone 15 Pro Case' }, 'Apple', 'accessories', '', 95, {}],
+    [ids.wrongCase, 'CASE-14', { uk: 'Чохол Apple iPhone 14 Pro Case' }, 'Apple', 'accessories', '', 96, {}],
     [ids.charger, 'CHARGER-30', { uk: 'Зарядний пристрій USB-C 30W' }, 'Example', 'accessories', 'USB-C', 88, {}],
-    [ids.unrelated, 'PHONE-OTHER', { uk: 'Смартфон Samsung Galaxy S24' }, 'Samsung', 'phones', 'USB-C', 99, {}]
+    [ids.unrelated, 'PHONE-OTHER', { uk: 'Смартфон Samsung Galaxy S24' }, 'Samsung', 'phones', 'USB-C', 99, {}],
+    [ids.battery, 'BATTERY-AA', { uk: 'Батарейки Duracell AA 4 шт' }, 'Duracell', 'accessories', '', 91, {}]
   ];
   for (const [id, sku, titles, brand, category, connector, popularity, source] of products) {
     await pool.query(`
@@ -69,6 +72,10 @@ test('recommendation scoring prioritizes compatible, useful and available access
     categoryTitles: { uk: 'Аксесуари' }, characteristics: {}, popularity: '95',
     availabilities: ['В наявності'], visible: true, active: true
   }, {
+    id: ids.wrongCase, titles: { uk: 'Чохол Apple iPhone 14 Pro Case' }, brand: 'Apple',
+    categoryTitles: { uk: 'Аксесуари' }, characteristics: {}, popularity: '96',
+    availabilities: ['В наявності'], visible: true, active: true
+  }, {
     id: ids.unrelated, titles: { uk: 'Смартфон Samsung Galaxy S24' }, brand: 'Samsung',
     categoryTitles: { uk: 'Смартфони' }, characteristics: { connector: 'USB-C' }, popularity: '99',
     availabilities: ['В наявності'], visible: true, active: true
@@ -76,8 +83,22 @@ test('recommendation scoring prioritizes compatible, useful and available access
 
   assert.equal(recommendations.length, 1);
   assert.equal(recommendations[0].productId, ids.case);
+  assert.equal(recommendations.some((item) => item.productId === ids.wrongCase), false);
   assert.ok(recommendations[0].compatibilityScore > 0.8);
   assert.match(recommendations[0].reason, /модель явно збігається/u);
+});
+
+test('recommendation scoring deliberately leaves unsupported products without suggestions', () => {
+  const recommendations = recommendAccessories({
+    id: ids.battery, titles: { uk: 'Батарейки Duracell AA 4 шт' }, brand: 'Duracell',
+    categoryTitles: { uk: 'Аксесуари' }, characteristics: {}
+  }, [{
+    id: ids.charger, titles: { uk: 'Зарядний пристрій USB-C 30W' }, brand: 'Example',
+    categoryTitles: { uk: 'Аксесуари' }, characteristics: { connector: 'USB-C' }, popularity: '88',
+    availabilities: ['В наявності'], visible: true, active: true
+  }], 12);
+
+  assert.deepEqual(recommendations, []);
 });
 
 test('accessory workflow hydrates current links, saves a draft and publishes an overwrite payload', async () => {
@@ -110,6 +131,12 @@ test('accessory workflow hydrates current links, saves a draft and publishes an 
   const generated = await service.generateRecommendations(ids.phone, 12, null);
   assert.ok(generated.generatedCount >= 2);
   assert.ok(generated.draft.suggestions.some((item) => item.target.id === ids.charger));
+
+  const bulk = await service.generateAllRecommendations(12, null);
+  assert.equal(bulk.analyzedProducts, 6);
+  assert.equal(bulk.productsWithRecommendations + bulk.productsWithoutRecommendations, 6);
+  assert.ok(bulk.productsWithoutRecommendations >= 4);
+  assert.ok(bulk.recommendationsGenerated >= 3);
 
   detail = await service.saveDraft(ids.phone, [
     { type: 'product', id: ids.case },

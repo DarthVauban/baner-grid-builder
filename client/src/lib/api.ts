@@ -110,6 +110,7 @@ import type {
 import type { SystemMetrics } from '../types/system';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
+  HoroshopAccessoryBulkResult,
   HoroshopAccessoryCandidates,
   HoroshopAccessoryDetail,
   HoroshopAccessoryDraftItem
@@ -175,6 +176,10 @@ export const api = {
     )
   },
   horoshopAccessories: {
+    recommendAll: (limit = 12) => request<HoroshopAccessoryBulkResult>(
+      '/api/search/horoshop/accessories/recommendations/bulk',
+      { method: 'POST', body: jsonBody({ limit }), timeoutMs: 300_000 }
+    ),
     detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}`,
       { signal }

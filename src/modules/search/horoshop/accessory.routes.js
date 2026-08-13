@@ -29,6 +29,11 @@ router.use((req, res, next) => {
   next();
 });
 
+router.post('/recommendations/bulk', asyncHandler(async (req, res) => {
+  const { limit } = parseInput(recommendationSchema, req.body || {});
+  res.json({ data: await horoshopAccessoryService.generateAllRecommendations(limit, req.user.id) });
+}));
+
 router.get('/products/:productId', asyncHandler(async (req, res) => {
   const { productId } = parseInput(productParamsSchema, req.params);
   res.json({ data: await horoshopAccessoryService.detail(productId, req.user.id) });

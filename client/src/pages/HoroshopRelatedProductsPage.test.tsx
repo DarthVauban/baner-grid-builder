@@ -153,4 +153,26 @@ describe('HoroshopRelatedProductsPage', () => {
     fireEvent.click(publishButton);
     await waitFor(() => expect(publish).toHaveBeenCalledWith('product-1'));
   });
+
+  it('runs a catalog-wide analysis without publishing and shows the summary', async () => {
+    vi.spyOn(api.horoshopCatalog, 'list').mockResolvedValue(feed);
+    vi.spyOn(api.horoshopAccessories, 'detail').mockResolvedValue(accessoryDetail);
+    const recommendAll = vi.spyOn(api.horoshopAccessories, 'recommendAll').mockResolvedValue({
+      analyzedProducts: 1586,
+      productsWithRecommendations: 940,
+      productsWithoutRecommendations: 646,
+      recommendationsGenerated: 4210,
+      limit: 12
+    });
+    const publish = vi.spyOn(api.horoshopAccessories, 'publish');
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Керування аксесуарами' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Проаналізувати всі товари' }));
+
+    await waitFor(() => expect(recommendAll).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('4210')).toBeInTheDocument();
+    expect(screen.getByText('646')).toBeInTheDocument();
+    expect(publish).not.toHaveBeenCalled();
+  });
 });
