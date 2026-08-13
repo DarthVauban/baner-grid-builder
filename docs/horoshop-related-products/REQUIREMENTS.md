@@ -67,6 +67,58 @@ The connection check should authenticate and perform safe read-only probes again
 category endpoints. It must report authentication and insufficient-permission failures separately.
 Write access must not be tested by silently mutating a real product.
 
+## Connection lifecycle and store isolation
+
+The initial connection may point to a test store and will later be replaced with another Horoshop
+store. Switching stores must never reuse catalog data, relationships, recommendation proposals, or
+sync state from a previous connection.
+
+Every connection receives a new immutable `connectionId` and store generation. Every synchronized
+row and runtime artifact must be scoped to that identity, including categories, products,
+modifications, availability, popularity, accessory relationships, catalog snapshots, sync runs,
+candidate sets, proposals, publication runs, pending jobs, and derived search/cache data.
+
+The store domain is immutable for an active connection. It cannot be edited in place. To use a
+different domain, an authorized user must run an explicit `Відключити й видалити локальні дані`
+operation and then create a new connection.
+
+Disconnecting an integration must:
+
+1. disable synchronization, recommendation, and publication entry points for the connection;
+2. wait for or safely cancel active workers and prevent new jobs from being claimed;
+3. delete the encrypted Horoshop login/password and any cached authorization token;
+4. delete all PostgreSQL data owned by the connection, including imported catalog data and all
+   derived relationship, snapshot, proposal, run, and job records;
+5. delete connection-owned OpenSearch indices/aliases, Redis keys, caches, and runtime proposal or
+   export artifacts when those components exist;
+6. verify that no rows or derived resources remain for the deleted `connectionId`;
+7. only after successful verification, show the integration as disconnected and allow a new store
+   to be connected.
+
+The deletion affects only MT Workspace data. It must not delete products, categories, accessories,
+or other business data from Horoshop itself.
+
+The database schema should enforce ownership with connection-level foreign keys and cascading
+deletion wherever safe. The disconnect service must still perform an explicit deletion audit and
+post-delete verification instead of relying blindly on cascades. If any purge step fails, the old
+connection remains blocked in a `purge_failed` state and a new connection cannot be activated until
+cleanup succeeds.
+
+After any disconnect, reconnecting even the same store creates a new `connectionId` and performs a
+full initial synchronization from zero. Incremental cursors, versions, snapshots, proposals, and
+publication batches from an earlier connection are invalid and cannot be resumed or applied.
+
+Changing the login or password for the same store is treated separately as credential rotation.
+It requires reauthentication and a connection check but does not purge catalog data when the
+domain and verified store identity have not changed. If store identity cannot be verified, the
+system must require the full disconnect-and-purge flow.
+
+The disconnect UI must clearly show that local imported and derived data will be permanently
+deleted and require explicit confirmation. It should report deletion counts by resource type after
+completion. A minimal workspace security audit event may retain the actor, timestamp, deleted
+connection ID, one-way domain fingerprint, and deletion counts, but must not retain product data,
+credentials, tokens, proposal contents, or Horoshop response payloads.
+
 ## Confirmed Horoshop relationship model
 
 The Horoshop product administration card contains an `Аксесуари` subsection inside the
