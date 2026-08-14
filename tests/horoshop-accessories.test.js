@@ -227,6 +227,55 @@ test('Codex proposals can be added to one draft or all drafts without publishing
   assert.equal(caseDetail.draft.selected.some((item) => item.target.id === ids.charger), true);
 });
 
+test('all dirty accessory drafts are published to Horoshop in one explicit bulk import', async () => {
+  const imports = [];
+  const service = new HoroshopAccessoryService({
+    repository: new HoroshopAccessoryRepository(pool),
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate(login, password) {
+        assert.equal(login, 'owner');
+        assert.equal(password, 'secret');
+        return 'bulk-token';
+      },
+      async importCatalog(token, products) {
+        imports.push({ token, products });
+        return { imported: products.length };
+      }
+    })
+  });
+
+  assert.deepEqual(await service.publicationSummary(), {
+    pendingProducts: 2,
+    productAccessories: 4,
+    categoryAccessories: 0
+  });
+  assert.deepEqual(await service.publishAll(null), {
+    publishedProducts: 2,
+    productAccessories: 4,
+    categoryAccessories: 0
+  });
+  assert.equal(imports.length, 1);
+  assert.equal(imports[0].token, 'bulk-token');
+  assert.deepEqual(imports[0].products.toSorted((left, right) => left.article.localeCompare(right.article)), [
+    { article: 'CASE-15', accessories: ['CHARGER-30'] },
+    { article: 'IPHONE-15', accessories: ['CASE-15', 'CHARGER-30', 'BATTERY-AA'] }
+  ]);
+  assert.equal((await service.detail(ids.phone, null)).draft.isDirty, false);
+  assert.equal((await service.detail(ids.case, null)).draft.isDirty, false);
+  assert.deepEqual(await service.publicationSummary(), {
+    pendingProducts: 0,
+    productAccessories: 0,
+    categoryAccessories: 0
+  });
+  assert.deepEqual(await service.publishAll(null), {
+    publishedProducts: 0,
+    productAccessories: 0,
+    categoryAccessories: 0
+  });
+  assert.equal(imports.length, 1);
+});
+
 test('database rejects the removed algorithm source', async () => {
   const set = await new HoroshopAccessoryRepository(pool).ensureSet(ids.battery, null);
   await assert.rejects(pool.query(`

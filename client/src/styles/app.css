@@ -4734,6 +4734,10 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .horoshop-accessory-bulk-result > span { display: grid; gap: 3px; border-radius: 10px; padding: 9px 11px; background: rgba(255,255,255,.7); }
 .horoshop-accessory-bulk-result small { color: var(--muted); font-size: 8px; }
 .horoshop-accessory-bulk-result strong { color: var(--ink); font-size: 15px; }
+.horoshop-accessory-publish--bulk { grid-column: 1 / -1; }
+.horoshop-accessory-publish--bulk > .horoshop-accessory-message,
+.horoshop-accessory-publish--bulk > .horoshop-accessory-bulk-result { grid-column: 1 / -1; }
+.horoshop-accessory-bulk-result--publication { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .horoshop-accessory-targets,
 .horoshop-accessory-workspace { min-width: 0; border: 1px solid var(--line); border-radius: 19px; background: var(--surface); box-shadow: var(--shadow); }
 .horoshop-accessory-targets { position: sticky; top: 78px; overflow: hidden; }
@@ -4879,6 +4883,7 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .horoshop-accessory-bulk-actions { grid-template-columns: minmax(0,1fr); }
   .horoshop-accessory-bulk-actions .button:last-child { grid-column: auto; }
   .horoshop-accessory-bulk-result { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .horoshop-accessory-bulk-result--publication { grid-template-columns: minmax(0,1fr); }
   .horoshop-accessory-heading { align-items: stretch; flex-direction: column; }
   .horoshop-accessory-heading .button { width: 100%; }
   .horoshop-accessory-section > header { align-items: flex-start; flex-direction: column; }

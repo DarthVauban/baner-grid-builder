@@ -62,6 +62,15 @@ router.post('/review/proposals/accept-all', asyncHandler(async (req, res) => {
   res.json({ data: await horoshopAccessoryService.acceptAllReviewProposals(req.user.id) });
 }));
 
+router.get('/publications/pending', asyncHandler(async (_req, res) => {
+  res.json({ data: await horoshopAccessoryService.publicationSummary() });
+}));
+
+router.post('/publications/publish-all', asyncHandler(async (req, res) => {
+  parseInput(publicationSchema, req.body);
+  res.json({ data: await horoshopAccessoryService.publishAll(req.user.id) });
+}));
+
 router.get('/products/:productId', asyncHandler(async (req, res) => {
   const { productId } = parseInput(productParamsSchema, req.params);
   res.json({ data: await horoshopAccessoryService.detail(productId, req.user.id) });

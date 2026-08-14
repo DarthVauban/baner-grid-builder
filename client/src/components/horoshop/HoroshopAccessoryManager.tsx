@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import type { HoroshopCatalogProduct, HoroshopLocalizedText } from '../../types/horoshop-catalog';
 import type {
   HoroshopAccessoryCategory,
+  HoroshopAccessoryBulkPublishResult,
   HoroshopAccessoryDetail,
   HoroshopAccessoryLink,
   HoroshopAccessoryProduct,
@@ -112,8 +113,10 @@ export function HoroshopAccessoryManager() {
   const [candidateInput, setCandidateInput] = useState('');
   const [candidateSearch, setCandidateSearch] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [bulkPublishConfirmed, setBulkPublishConfirmed] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [reviewResult, setReviewResult] = useState<HoroshopCodexReviewResult | null>(null);
+  const [bulkPublishResult, setBulkPublishResult] = useState<HoroshopAccessoryBulkPublishResult | null>(null);
   const [reviewFileError, setReviewFileError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -137,6 +140,11 @@ export function HoroshopAccessoryManager() {
     queryKey: ['horoshop-accessory-detail', selectedProductId],
     queryFn: ({ signal }) => api.horoshopAccessories.detail(selectedProductId!, signal),
     enabled: Boolean(selectedProductId)
+  });
+  const publicationSummary = useQuery({
+    queryKey: ['horoshop-accessory-publication-summary'],
+    queryFn: ({ signal }) => api.horoshopAccessories.publicationSummary(signal),
+    refetchInterval: 30_000
   });
 
   const installDetail = (productId: string, value: HoroshopAccessoryDetail) => {
@@ -188,7 +196,10 @@ export function HoroshopAccessoryManager() {
   const acceptAllReviewProposals = useMutation({
     mutationFn: () => api.horoshopAccessories.acceptAllReviewProposals(),
     onSuccess: async (value) => {
-      await queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-detail'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-detail'] }),
+        queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-publication-summary'] })
+      ]);
       const skipped = value.recommendationsSkipped > 0
         ? ` ${value.recommendationsSkipped} пропущено через ліміт 16 товарів у чернетці.`
         : '';
@@ -199,6 +210,7 @@ export function HoroshopAccessoryManager() {
     mutationFn: (productId: string) => api.horoshopAccessories.acceptReviewProposals(productId),
     onSuccess: (value, productId) => {
       if (value.detail) installDetail(productId, value.detail);
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-publication-summary'] });
       const skipped = value.recommendationsSkipped > 0
         ? ` ${value.recommendationsSkipped} пропущено через ліміт 16 товарів у чернетці.`
         : '';
@@ -209,7 +221,20 @@ export function HoroshopAccessoryManager() {
     mutationFn: ({ productId, targets }: { productId: string; targets: HoroshopAccessoryTarget[] }) => api.horoshopAccessories.saveDraft(productId, targets.map(({ type, id }) => ({ type, id }))),
     onSuccess: (value, { productId }) => {
       if (!installDetail(productId, value)) return;
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-publication-summary'] });
       setFeedback('Чернетку збережено. У Хорошоп ще нічого не передано.');
+    }
+  });
+  const publishAll = useMutation({
+    mutationFn: () => api.horoshopAccessories.publishAll(),
+    onSuccess: async (value) => {
+      setBulkPublishConfirmed(false);
+      setBulkPublishResult(value);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-detail'] }),
+        queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-publication-summary'] })
+      ]);
+      setFeedback(`Масову публікацію завершено: у Хорошоп передано ${value.publishedProducts} товарів, ${value.productAccessories} супутніх товарів і ${value.categoryAccessories} розділів.`);
     }
   });
   const publish = useMutation({
@@ -217,6 +242,7 @@ export function HoroshopAccessoryManager() {
     onSuccess: (value, productId) => {
       if (!installDetail(productId, value)) return;
       setConfirmed(false);
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-publication-summary'] });
       setFeedback('Список аксесуарів передано в Хорошоп.');
     }
   });
@@ -226,7 +252,7 @@ export function HoroshopAccessoryManager() {
   const productCount = draftTargets.filter((item) => item.type === 'product').length;
   const categoryCount = draftTargets.length - productCount;
   const busy = exportReview.isPending || importReview.isPending || acceptAllReviewProposals.isPending
-    || acceptCurrentReviewProposals.isPending || saveDraft.isPending || publish.isPending;
+    || acceptCurrentReviewProposals.isPending || saveDraft.isPending || publishAll.isPending || publish.isPending;
 
   const readReviewFile = async (file: File | undefined) => {
     if (!file) return;
@@ -300,6 +326,54 @@ export function HoroshopAccessoryManager() {
             <span><small>З пропозиціями</small><strong>{reviewResult.productsWithRecommendations}</strong></span>
             <span><small>Без пропозицій</small><strong>{reviewResult.productsWithoutRecommendations}</strong></span>
             <span><small>Пропозицій у рев’ю</small><strong>{reviewResult.recommendationsSaved}</strong></span>
+          </div>
+        )}
+      </section>
+
+      <section className="horoshop-accessory-publish horoshop-accessory-publish--bulk">
+        <div>
+          <span className="horoshop-accessory-publish-icon"><Icon name="send" size={23} /></span>
+          <span>
+            <h3>Масово передати застосовані рекомендації</h3>
+            <p>
+              {publicationSummary.isLoading
+                ? 'Перевіряємо збережені чернетки…'
+                : publicationSummary.data?.pendingProducts
+                  ? `Готово до публікації: ${publicationSummary.data.pendingProducts} товарів, ${publicationSummary.data.productAccessories} супутніх товарів і ${publicationSummary.data.categoryAccessories} розділів.`
+                  : 'Немає збережених чернеток із неопублікованими змінами.'}
+            </p>
+          </span>
+        </div>
+        <label className="horoshop-accessory-confirm">
+          <input
+            type="checkbox"
+            checked={bulkPublishConfirmed}
+            disabled={busy || !publicationSummary.data?.pendingProducts}
+            onChange={(event) => setBulkPublishConfirmed(event.target.checked)}
+          />
+          <span>
+            <strong>Я розумію, що масова публікація перезапише поле «Аксесуари» для всіх зазначених товарів.</strong>
+            <small>Передаються лише збережені чернетки, які відрізняються від останнього опублікованого стану.</small>
+          </span>
+        </label>
+        <button
+          className="button button--primary"
+          type="button"
+          disabled={!bulkPublishConfirmed || !publicationSummary.data?.pendingProducts || publicationSummary.isError || localDirty || busy}
+          onClick={() => publishAll.mutate()}
+        >
+          <Icon name="send" size={18} />
+          {publishAll.isPending ? 'Передаємо всі чернетки…' : 'Передати всі застосовані рекомендації в Хорошоп'}
+        </button>
+        {localDirty && <small className="horoshop-accessory-publish-hint">Спочатку збережіть зміни поточної чернетки.</small>}
+        {(publicationSummary.isError || publishAll.isError) && (
+          <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{publicationSummary.error?.message || publishAll.error?.message}</div>
+        )}
+        {bulkPublishResult && (
+          <div className="horoshop-accessory-bulk-result horoshop-accessory-bulk-result--publication">
+            <span><small>Опубліковано товарів</small><strong>{bulkPublishResult.publishedProducts}</strong></span>
+            <span><small>Супутніх товарів</small><strong>{bulkPublishResult.productAccessories}</strong></span>
+            <span><small>Розділів</small><strong>{bulkPublishResult.categoryAccessories}</strong></span>
           </div>
         )}
       </section>

@@ -182,6 +182,34 @@ test('Horoshop catalog route returns product cards with nested modification tree
 
   await admin.post('/api/search/horoshop/accessories/recommendations/bulk').send({ limit: 12 }).expect(404);
 
+  await request(app).get('/api/search/horoshop/accessories/publications/pending').expect(401);
+  const pendingPublications = await admin
+    .get('/api/search/horoshop/accessories/publications/pending')
+    .expect(200);
+  assert.deepEqual(pendingPublications.body.data, {
+    pendingProducts: 0,
+    productAccessories: 0,
+    categoryAccessories: 0
+  });
+
+  await request(app)
+    .post('/api/search/horoshop/accessories/publications/publish-all')
+    .send({ confirmOverwrite: true })
+    .expect(401);
+  await admin
+    .post('/api/search/horoshop/accessories/publications/publish-all')
+    .send({})
+    .expect(422);
+  const bulkPublication = await admin
+    .post('/api/search/horoshop/accessories/publications/publish-all')
+    .send({ confirmOverwrite: true })
+    .expect(200);
+  assert.deepEqual(bulkPublication.body.data, {
+    publishedProducts: 0,
+    productAccessories: 0,
+    categoryAccessories: 0
+  });
+
   await admin
     .post(`/api/search/horoshop/accessories/products/${productId}/publish`)
     .send({})

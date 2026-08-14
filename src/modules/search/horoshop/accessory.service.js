@@ -27,6 +27,30 @@ function publicationError(error) {
   return new AppError(502, 'HOROSHOP_ACCESSORY_PUBLISH_FAILED', 'Хорошоп не прийняв список аксесуарів. Чернетку збережено без змін.');
 }
 
+function validatePublicationPayload(payload) {
+  if (payload.products.length > 16) {
+    throw new AppError(422, 'HOROSHOP_ACCESSORY_PRODUCT_LIMIT', 'Скоротіть список до 16 конкретних товарів.');
+  }
+}
+
+function publicationItem(payload) {
+  return {
+    article: payload.context.product.sku,
+    accessories: [
+      ...payload.products.map((item) => item.sku),
+      ...payload.categories.map((item) => ({ page: { id: item.externalId } }))
+    ]
+  };
+}
+
+function publicationTotals(payloads) {
+  return {
+    products: payloads.length,
+    productAccessories: payloads.reduce((total, payload) => total + payload.products.length, 0),
+    categoryAccessories: payloads.reduce((total, payload) => total + payload.categories.length, 0)
+  };
+}
+
 export class HoroshopAccessoryService {
   constructor(options = {}) {
     this.repository = options.repository || new HoroshopAccessoryRepository();
@@ -172,6 +196,60 @@ export class HoroshopAccessoryService {
     };
   }
 
+  async publicationSummary() {
+    const publication = await this.repository.bulkPublicationPayloads();
+    if (!publication) {
+      throw new AppError(404, 'HOROSHOP_CATALOG_NOT_FOUND', 'Спочатку підключіть Хорошоп та імпортуйте каталог.');
+    }
+    if (publication.connection.status !== 'connected') {
+      throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Публікація доступна лише після завершення синхронізації каталогу.');
+    }
+    const totals = publicationTotals(publication.payloads);
+    return {
+      pendingProducts: totals.products,
+      productAccessories: totals.productAccessories,
+      categoryAccessories: totals.categoryAccessories
+    };
+  }
+
+  async publishAll(actorUserId) {
+    return this.catalogService.runExclusiveExternalWrite(async () => {
+      const publication = await this.repository.bulkPublicationPayloads();
+      if (!publication) {
+        throw new AppError(404, 'HOROSHOP_CATALOG_NOT_FOUND', 'Спочатку підключіть Хорошоп та імпортуйте каталог.');
+      }
+      if (publication.connection.status !== 'connected') {
+        throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Публікація доступна лише після завершення синхронізації каталогу.');
+      }
+      for (const payload of publication.payloads) validatePublicationPayload(payload);
+      const totals = publicationTotals(publication.payloads);
+      if (publication.payloads.length === 0) {
+        return {
+          publishedProducts: 0,
+          productAccessories: 0,
+          categoryAccessories: 0
+        };
+      }
+
+      const publications = await this.repository.startPublications(publication.payloads, actorUserId);
+      try {
+        const credentials = decryptHoroshopCredentials(publication.connection.encryptedCredentials);
+        const client = this.clientFactory(publication.connection.storeDomain);
+        const token = await client.authenticate(credentials.login, credentials.password);
+        await client.importCatalog(token, publication.payloads.map(publicationItem));
+        await this.repository.completePublications(publications, actorUserId);
+        return {
+          publishedProducts: totals.products,
+          productAccessories: totals.productAccessories,
+          categoryAccessories: totals.categoryAccessories
+        };
+      } catch (error) {
+        await this.repository.failPublications(publications.map((item) => item.id), error).catch(() => {});
+        throw publicationError(error);
+      }
+    });
+  }
+
   async publish(productId, actorUserId) {
     return this.catalogService.runExclusiveExternalWrite(async () => {
       const payload = await this.repository.publicationPayload(productId, actorUserId);
@@ -179,21 +257,13 @@ export class HoroshopAccessoryService {
       if (payload.context.connection.status !== 'connected') {
         throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Публікація доступна лише після завершення синхронізації каталогу.');
       }
-      if (payload.products.length > 16) {
-        throw new AppError(422, 'HOROSHOP_ACCESSORY_PRODUCT_LIMIT', 'Скоротіть список до 16 конкретних товарів.');
-      }
+      validatePublicationPayload(payload);
       const publicationId = await this.repository.startPublication(payload, actorUserId);
       try {
         const credentials = decryptHoroshopCredentials(payload.context.connection.encryptedCredentials);
         const client = this.clientFactory(payload.context.connection.storeDomain);
         const token = await client.authenticate(credentials.login, credentials.password);
-        await client.importCatalog(token, [{
-          article: payload.context.product.sku,
-          accessories: [
-            ...payload.products.map((item) => item.sku),
-            ...payload.categories.map((item) => ({ page: { id: item.externalId } }))
-          ]
-        }]);
+        await client.importCatalog(token, [publicationItem(payload)]);
         await this.repository.completePublication(publicationId, payload.set.id, actorUserId, [
           ...payload.products.map((item) => `product:${item.id}`),
           ...payload.categories.map((item) => `category:${item.id}`)

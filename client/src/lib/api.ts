@@ -115,6 +115,8 @@ import type { SystemMetrics } from '../types/system';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
   HoroshopAccessoryCandidates,
+  HoroshopAccessoryBulkPublishResult,
+  HoroshopAccessoryBulkPublishSummary,
   HoroshopAccessoryDetail,
   HoroshopAccessoryDraftItem,
   HoroshopCodexAcceptResult,
@@ -194,6 +196,14 @@ export const api = {
     acceptAllReviewProposals: () => request<HoroshopCodexAcceptResult>(
       '/api/search/horoshop/accessories/review/proposals/accept-all',
       { method: 'POST', timeoutMs: 300_000 }
+    ),
+    publicationSummary: (signal?: AbortSignal) => request<HoroshopAccessoryBulkPublishSummary>(
+      '/api/search/horoshop/accessories/publications/pending',
+      { signal }
+    ),
+    publishAll: () => request<HoroshopAccessoryBulkPublishResult>(
+      '/api/search/horoshop/accessories/publications/publish-all',
+      { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 300_000 }
     ),
     detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}`,

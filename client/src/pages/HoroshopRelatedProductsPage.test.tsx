@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../lib/api';
 import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
 import type { HoroshopAccessoryDetail } from '../types/horoshop-accessory';
@@ -95,6 +95,14 @@ function renderPage() {
 
 afterEach(() => vi.restoreAllMocks());
 
+beforeEach(() => {
+  vi.spyOn(api.horoshopAccessories, 'publicationSummary').mockResolvedValue({
+    pendingProducts: 0,
+    productAccessories: 0,
+    categoryAccessories: 0
+  });
+});
+
 describe('HoroshopRelatedProductsPage', () => {
   it('renders modifications as expandable child nodes in a product tree', async () => {
     vi.spyOn(api.horoshopCatalog, 'list').mockResolvedValue(feed);
@@ -149,7 +157,9 @@ describe('HoroshopRelatedProductsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти чернетку' }));
     await waitFor(() => expect(save).toHaveBeenCalledWith('product-1', [{ type: 'product', id: 'case-1' }]));
 
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /цей список перезапише поточні аксесуари товару/i
+    }));
     const publishButton = screen.getByRole('button', { name: 'Передати в Хорошоп' });
     expect(publishButton).toBeEnabled();
     fireEvent.click(publishButton);
@@ -222,6 +232,42 @@ describe('HoroshopRelatedProductsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Додати всі пропозиції для всіх товарів' }));
     await waitFor(() => expect(acceptAll).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('Оновлено чернеток: 12. Додано 34 пропозиції Codex. У Хорошоп нічого не передано.')).toBeInTheDocument();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('publishes every saved dirty draft only after explicit bulk confirmation', async () => {
+    vi.spyOn(api.horoshopCatalog, 'list').mockResolvedValue(feed);
+    vi.spyOn(api.horoshopAccessories, 'detail').mockResolvedValue(accessoryDetail);
+    vi.mocked(api.horoshopAccessories.publicationSummary).mockResolvedValue({
+      pendingProducts: 12,
+      productAccessories: 34,
+      categoryAccessories: 2
+    });
+    const publishAll = vi.spyOn(api.horoshopAccessories, 'publishAll').mockResolvedValue({
+      publishedProducts: 12,
+      productAccessories: 34,
+      categoryAccessories: 2
+    });
+    const publish = vi.spyOn(api.horoshopAccessories, 'publish');
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Керування аксесуарами' }));
+
+    expect(await screen.findByText('Готово до публікації: 12 товарів, 34 супутніх товарів і 2 розділів.')).toBeInTheDocument();
+    const publishAllButton = screen.getByRole('button', {
+      name: 'Передати всі застосовані рекомендації в Хорошоп'
+    });
+    expect(publishAllButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /масова публікація перезапише поле «Аксесуари»/i
+    }));
+    expect(publishAllButton).toBeEnabled();
+    fireEvent.click(publishAllButton);
+
+    await waitFor(() => expect(publishAll).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Масову публікацію завершено: у Хорошоп передано 12 товарів, 34 супутніх товарів і 2 розділів.')).toBeInTheDocument();
+    expect(screen.getByText('Опубліковано товарів')).toBeInTheDocument();
     expect(publish).not.toHaveBeenCalled();
   });
 });

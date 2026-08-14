@@ -150,4 +150,16 @@ export interface HoroshopCodexAcceptResult {
   detail: HoroshopAccessoryDetail | null;
 }
 
+export interface HoroshopAccessoryBulkPublishSummary {
+  pendingProducts: number;
+  productAccessories: number;
+  categoryAccessories: number;
+}
+
+export interface HoroshopAccessoryBulkPublishResult {
+  publishedProducts: number;
+  productAccessories: number;
+  categoryAccessories: number;
+}
+
 export type HoroshopAccessoryDraftItem = Pick<HoroshopAccessoryTarget, 'type' | 'id'>;

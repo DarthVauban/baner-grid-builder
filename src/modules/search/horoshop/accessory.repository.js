@@ -672,6 +672,80 @@ export class HoroshopAccessoryRepository {
     };
   }
 
+  async bulkPublicationPayloads() {
+    const connectionResult = await this.pool.query(`
+      SELECT id, generation, status, store_domain, encrypted_credentials
+      FROM search_horoshop_connections
+      WHERE singleton = TRUE
+      LIMIT 1
+    `);
+    const connectionRow = connectionResult.rows[0];
+    if (!connectionRow) return null;
+
+    const connection = {
+      id: connectionRow.id,
+      generation: connectionRow.generation,
+      status: connectionRow.status,
+      storeDomain: connectionRow.store_domain,
+      encryptedCredentials: connectionRow.encrypted_credentials
+    };
+    const setsResult = await this.pool.query(`
+      SELECT accessory_set.id AS set_id, product.id AS product_id, product.sku AS product_sku
+      FROM search_horoshop_accessory_sets AS accessory_set
+      INNER JOIN search_horoshop_products AS product
+        ON product.id = accessory_set.product_id
+      INNER JOIN (
+        SELECT DISTINCT set_id
+        FROM search_horoshop_accessory_links
+        WHERE selected <> published
+      ) AS dirty_set ON dirty_set.set_id = accessory_set.id
+      WHERE accessory_set.connection_id = $1
+        AND accessory_set.generation = $2
+        AND product.active = TRUE
+      ORDER BY accessory_set.updated_at, product.sku
+    `, [connection.id, connection.generation]);
+    if (setsResult.rows.length === 0) return { connection, payloads: [] };
+
+    const setIds = setsResult.rows.map((row) => row.set_id);
+    const placeholders = setIds.map((_, index) => `$${index + 1}`).join(', ');
+    const linksResult = await this.pool.query(`
+      SELECT link.set_id, link.target_type,
+             product.id AS product_id, product.sku,
+             category.id AS category_id, category.external_id
+      FROM search_horoshop_accessory_links AS link
+      LEFT JOIN search_horoshop_products AS product ON product.id = link.accessory_product_id
+      LEFT JOIN search_horoshop_categories AS category ON category.id = link.accessory_category_id
+      WHERE link.set_id IN (${placeholders}) AND link.selected = TRUE
+      ORDER BY link.set_id, link.position, link.created_at
+    `, setIds);
+    const linksBySet = new Map();
+    for (const row of linksResult.rows) {
+      const links = linksBySet.get(row.set_id) || [];
+      links.push(row);
+      linksBySet.set(row.set_id, links);
+    }
+
+    return {
+      connection,
+      payloads: setsResult.rows.map((row) => {
+        const links = linksBySet.get(row.set_id) || [];
+        return {
+          context: {
+            connection,
+            product: { id: row.product_id, sku: row.product_sku }
+          },
+          set: { id: row.set_id },
+          products: links
+            .filter((link) => link.target_type === 'product')
+            .map((link) => ({ id: link.product_id, sku: link.sku })),
+          categories: links
+            .filter((link) => link.target_type === 'category')
+            .map((link) => ({ id: link.category_id, externalId: link.external_id }))
+        };
+      })
+    };
+  }
+
   async startPublication(payload, actorUserId) {
     const id = randomUUID();
     await this.pool.query(`
@@ -685,6 +759,40 @@ export class HoroshopAccessoryRepository {
       payload.products.length, payload.categories.length
     ]);
     return id;
+  }
+
+  async startPublications(payloads, actorUserId) {
+    if (payloads.length === 0) return [];
+    const publications = payloads.map((payload) => ({
+      id: randomUUID(),
+      setId: payload.set.id,
+      targetKeys: [
+        ...payload.products.map((item) => `product:${item.id}`),
+        ...payload.categories.map((item) => `category:${item.id}`)
+      ]
+    }));
+    const values = [];
+    const placeholders = payloads.map((payload, index) => {
+      const offset = index * 8;
+      values.push(
+        publications[index].id,
+        payload.context.connection.id,
+        payload.context.connection.generation,
+        payload.context.product.id,
+        actorUserId || null,
+        payload.context.product.sku,
+        payload.products.length,
+        payload.categories.length
+      );
+      return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
+    }).join(', ');
+    await this.pool.query(`
+      INSERT INTO search_horoshop_accessory_publications (
+        id, connection_id, generation, product_id, actor_user_id, product_sku,
+        product_accessory_count, category_accessory_count
+      ) VALUES ${placeholders}
+    `, values);
+    return publications;
   }
 
   async completePublication(publicationId, setId, actorUserId, publishedTargetKeys) {
@@ -722,11 +830,78 @@ export class HoroshopAccessoryRepository {
     }
   }
 
+  async completePublications(publications, actorUserId) {
+    if (publications.length === 0) return;
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const publicationIds = publications.map((item) => item.id);
+      const publicationPlaceholders = publicationIds.map((_, index) => `$${index + 1}`).join(', ');
+      await client.query(`
+        UPDATE search_horoshop_accessory_publications
+        SET status = 'succeeded', completed_at = NOW()
+        WHERE id IN (${publicationPlaceholders}) AND status = 'running'
+      `, publicationIds);
+
+      const setIds = publications.map((item) => item.setId);
+      const setPlaceholders = setIds.map((_, index) => `$${index + 1}`).join(', ');
+      await client.query(`
+        UPDATE search_horoshop_accessory_links
+        SET published = FALSE, updated_at = NOW()
+        WHERE set_id IN (${setPlaceholders})
+      `, setIds);
+
+      const chunkSize = 250;
+      for (let offset = 0; offset < publications.length; offset += chunkSize) {
+        const chunk = publications.slice(offset, offset + chunkSize)
+          .filter((item) => item.targetKeys.length > 0);
+        if (chunk.length === 0) continue;
+        const values = [];
+        const targetConditions = chunk.map((item) => {
+          values.push(item.setId);
+          const setPlaceholder = `$${values.length}`;
+          const keyPlaceholders = item.targetKeys.map((targetKey) => {
+            values.push(targetKey);
+            return `$${values.length}`;
+          }).join(', ');
+          return `(set_id = ${setPlaceholder} AND target_key IN (${keyPlaceholders}))`;
+        }).join(' OR ');
+        await client.query(`
+          UPDATE search_horoshop_accessory_links
+          SET published = TRUE, updated_at = NOW()
+          WHERE ${targetConditions}
+        `, values);
+      }
+
+      await client.query(`
+        UPDATE search_horoshop_accessory_sets
+        SET published_at = NOW(), published_by = $${setIds.length + 1}, updated_at = NOW()
+        WHERE id IN (${setPlaceholders})
+      `, [...setIds, actorUserId || null]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async failPublication(publicationId, error) {
     await this.pool.query(`
       UPDATE search_horoshop_accessory_publications
       SET status = 'failed', error_message = $2, completed_at = NOW()
       WHERE id = $1 AND status = 'running'
     `, [publicationId, String(error instanceof Error ? error.message : error).slice(0, 1000)]);
+  }
+
+  async failPublications(publicationIds, error) {
+    if (publicationIds.length === 0) return;
+    const placeholders = publicationIds.map((_, index) => `$${index + 2}`).join(', ');
+    await this.pool.query(`
+      UPDATE search_horoshop_accessory_publications
+      SET status = 'failed', error_message = $1, completed_at = NOW()
+      WHERE id IN (${placeholders}) AND status = 'running'
+    `, [String(error instanceof Error ? error.message : error).slice(0, 1000), ...publicationIds]);
   }
 }
