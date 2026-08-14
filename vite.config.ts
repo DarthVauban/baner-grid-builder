@@ -13,7 +13,8 @@ export default defineConfig({
         workspace: 'client/index.html',
         storefront: 'client/storefront.html',
         tradeIn: 'client/trade-in.html',
-        storeMap: 'client/store-map.html'
+        storeMap: 'client/store-map.html',
+        supportChat: 'client/support-chat.html'
       },
       output: {
         manualChunks(id) {

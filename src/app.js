@@ -32,6 +32,8 @@ import mobileRoutes from './modules/mobile/mobile.routes.js';
 import horoshopIntegrationRoutes from './modules/search/horoshop/horoshop.routes.js';
 import horoshopCatalogRoutes from './modules/search/horoshop/catalog.routes.js';
 import horoshopAccessoryRoutes from './modules/search/horoshop/accessory.routes.js';
+import supportChatRoutes from './modules/support-chat/support-chat.routes.js';
+import publicSupportChatRoutes from './modules/support-chat/support-chat.public.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -61,6 +63,7 @@ const webIndex = path.join(webDistDir, 'index.html');
 const storefrontIndex = path.join(webDistDir, 'storefront.html');
 const tradeInIndex = path.join(webDistDir, 'trade-in.html');
 const storeMapIndex = path.join(webDistDir, 'store-map.html');
+const supportChatIndex = path.join(webDistDir, 'support-chat.html');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -142,6 +145,7 @@ if (env.APP_ORIGIN) {
     if (req.path.startsWith('/api/public/trade-in')) return next();
     if (req.path.startsWith('/api/public/store-map')) return next();
     if (req.path.startsWith('/api/public/banner-grids')) return next();
+    if (req.path.startsWith('/api/public/support-chat')) return next();
     if (req.path.startsWith('/api/storefront')) return next();
     return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
   });
@@ -149,8 +153,8 @@ if (env.APP_ORIGIN) {
 
 const publicEmbedCors = cors({
   origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
+  methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 });
 
 app.use(express.json({ limit: '25mb' }));
@@ -191,6 +195,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/publications', publicationRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/support-chat', supportChatRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/applications', applicationRoutes);
@@ -206,6 +211,7 @@ app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoute
 app.use('/api/public/trade-in', publicEmbedCors, publicTradeInRoutes);
 app.use('/api/public/store-map', publicEmbedCors, publicStoreMapRoutes);
 app.use('/api/public/banner-grids', publicEmbedCors, publicGridRoutes);
+app.use('/api/public/support-chat', publicEmbedCors, publicSupportChatRoutes);
 app.use('/api', notFoundHandler);
 
 app.use('/media/catalog', express.static(catalogMediaDir, {
@@ -317,6 +323,16 @@ app.get('/store-map/widget', (req, res) => {
   );
   res.setHeader('Cache-Control', 'no-cache');
   return sendBuiltHtml(res, storeMapIndex, 'Store map widget');
+});
+
+app.get('/support-chat/widget', (req, res) => {
+  res.removeHeader('X-Frame-Options');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors *"
+  );
+  res.setHeader('Cache-Control', 'no-cache');
+  return sendBuiltHtml(res, supportChatIndex, 'Support chat widget');
 });
 
 app.use((req, res, next) => {

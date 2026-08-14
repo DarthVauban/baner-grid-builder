@@ -12,6 +12,13 @@ export interface ToolDefinition {
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'online_support',
+    name: 'Онлайн-підтримка',
+    description: 'Діалоги з покупцями сайту, черга звернень, контакти та налаштування віджета.',
+    path: '/tools/online-support',
+    icon: 'chat'
+  },
+  {
     id: 'chat',
     name: 'Чат',
     description: 'Особисті діалоги з колегами та інтерактивні картки справ і публікацій у повідомленнях.',

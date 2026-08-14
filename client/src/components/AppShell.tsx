@@ -35,10 +35,18 @@ export function AppShell() {
   const hasCatalogAccess = toolAccess.data?.includes('used_smartphones_catalog') === true;
   const hasTradeInAccess = toolAccess.data?.includes('trade_in') === true;
   const hasStoreMapAccess = toolAccess.data?.includes('store_map') === true;
+  const hasOnlineSupportAccess = toolAccess.data?.includes('online_support') === true;
   const chatUnread = useQuery({
     queryKey: ['chat-unread-count'],
     queryFn: api.chat.unreadCount,
     enabled: hasChatAccess,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true
+  });
+  const onlineSupportUnread = useQuery({
+    queryKey: ['online-support-unread-count'],
+    queryFn: api.onlineSupport.unreadCount,
+    enabled: hasOnlineSupportAccess,
     refetchInterval: 30_000,
     refetchIntervalInBackground: true
   });
@@ -72,6 +80,28 @@ export function AppShell() {
     stream.addEventListener('chat', refresh);
     return () => { stream.removeEventListener('chat', refresh); stream.close(); sound.pause(); };
   }, [hasChatAccess, queryClient, userId]);
+
+  useEffect(() => {
+    if (!hasOnlineSupportAccess || !userId) return undefined;
+    const stream = new EventSource('/api/support-chat/stream');
+    const sound = new Audio('/sounds/chat-notification.mp3');
+    sound.preload = 'auto';
+    sound.volume = 0.55;
+    const refresh = (event: Event) => {
+      let payload: { type?: string; conversationId?: string; senderType?: string } = {};
+      try { payload = JSON.parse((event as MessageEvent).data || '{}'); } catch { /* ignore malformed event data */ }
+      void queryClient.invalidateQueries({ queryKey: ['online-support-conversations'] });
+      void queryClient.invalidateQueries({ queryKey: ['online-support-unread-count'] });
+      if (payload.conversationId) void queryClient.invalidateQueries({ queryKey: ['online-support-conversation', payload.conversationId] });
+      const isSupportPage = locationRef.current.pathname === '/tools/online-support';
+      if (payload.type === 'message' && payload.senderType === 'visitor' && !isSupportPage) {
+        sound.currentTime = 0;
+        void sound.play().catch(() => undefined);
+      }
+    };
+    stream.addEventListener('support', refresh);
+    return () => { stream.removeEventListener('support', refresh); stream.close(); sound.pause(); };
+  }, [hasOnlineSupportAccess, queryClient, userId]);
 
   useEffect(() => {
     if (!hasApplicationsAccess || !userId) return undefined;
@@ -252,6 +282,11 @@ export function AppShell() {
           {hasStoreMapAccess && <NavLink aria-label="Мапа магазинів" title="Мапа магазинів" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/store-map" onClick={closeSidebar}>
             <Icon name="location" size={18} />
             <span>Мапа магазинів</span>
+          </NavLink>}
+          {hasOnlineSupportAccess && <NavLink aria-label="Онлайн-підтримка" title="Онлайн-підтримка" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/online-support" onClick={closeSidebar}>
+            <Icon name="chat" size={18} />
+            <span>Онлайн-підтримка</span>
+            {(onlineSupportUnread.data || 0) > 0 && <span className="sidebar__count">{(onlineSupportUnread.data || 0) > 99 ? '99+' : onlineSupportUnread.data}</span>}
           </NavLink>}
         </nav>
 

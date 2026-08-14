@@ -55,6 +55,14 @@ import type { BlogPostDocument } from '../types/blog-editor';
 import type { MediaAsset, MediaAssetFeed, MediaFolder, MediaFolderFeed } from '../types/media';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 import type {
+  SupportChatSettings,
+  SupportChatSettingsInput,
+  SupportConversation,
+  SupportConversationDetail,
+  SupportConversationStatus,
+  SupportMessage
+} from '../types/support-chat';
+import type {
   BackupAdminState,
   BackupRestoreResult,
   BackupRun,
@@ -416,6 +424,29 @@ export const api = {
       method: 'PUT', body: jsonBody({ emoji })
     }),
     markRead: (conversationId: string) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST' })
+  },
+  onlineSupport: {
+    settings: () => request<SupportChatSettings>('/api/support-chat/settings'),
+    saveSettings: (input: SupportChatSettingsInput) => request<SupportChatSettings>('/api/support-chat/settings', {
+      method: 'PUT', body: jsonBody(input)
+    }),
+    unreadCount: () => request<number>('/api/support-chat/unread-count'),
+    conversations: (params: { search?: string; status?: SupportConversationStatus | '' } = {}) => request<SupportConversation[]>(
+      `/api/support-chat/conversations${queryString(params)}`
+    ),
+    conversation: (id: string) => request<SupportConversationDetail>(
+      `/api/support-chat/conversations/${encodeURIComponent(id)}`
+    ),
+    markRead: (id: string) => request<void>(`/api/support-chat/conversations/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+    claim: (id: string) => request<SupportConversation>(`/api/support-chat/conversations/${encodeURIComponent(id)}/claim`, { method: 'POST' }),
+    setStatus: (id: string, status: SupportConversationStatus) => request<SupportConversation>(
+      `/api/support-chat/conversations/${encodeURIComponent(id)}/status`,
+      { method: 'PATCH', body: jsonBody({ status }) }
+    ),
+    sendMessage: (id: string, body: string, clientMessageId: string) => request<SupportMessage>(
+      `/api/support-chat/conversations/${encodeURIComponent(id)}/messages`,
+      { method: 'POST', body: jsonBody({ body, clientMessageId }) }
+    )
   },
   users: {
     search: (search = '', excludeSelf = false) => request<UserSearchResult[]>(`/api/users/search${queryString({ search, excludeSelf: excludeSelf ? 'true' : undefined })}`),
