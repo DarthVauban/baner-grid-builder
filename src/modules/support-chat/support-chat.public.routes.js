@@ -51,10 +51,11 @@ const messageSchema = z.object({
   pageTitle: z.string().trim().max(500).optional().default('')
 });
 const contactSchema = z.object({
+  name: z.string().trim().max(160).default(''),
   email: z.union([z.string().trim().email().max(320), z.literal('')]).default(''),
   phone: z.string().trim().max(40).default('')
-}).refine((value) => value.email || value.phone, {
-  message: 'Вкажіть email або телефон.'
+}).refine((value) => value.name || value.email || value.phone, {
+  message: 'Вкажіть ім’я, email або телефон.'
 });
 
 function bearerToken(req) {
@@ -257,17 +258,17 @@ router.put('/contact', asyncHandler(async (req, res) => {
   const visitor = await loadSupportVisitorByToken(bearerToken(req));
   const updated = await query(
     `UPDATE support_chat_visitors
-     SET email = $1, phone = $2, last_seen_at = NOW()
-     WHERE id = $3
+     SET name = $1, email = $2, phone = $3, last_seen_at = NOW()
+     WHERE id = $4
      RETURNING *`,
-    [input.email || null, input.phone || null, visitor.id]
+    [input.name || null, input.email || null, input.phone || null, visitor.id]
   );
   const conversation = await query('SELECT id FROM support_chat_conversations WHERE visitor_id = $1', [visitor.id]);
   if (conversation.rows[0]) {
     await query(
       `INSERT INTO support_chat_events (conversation_id, event_type, payload)
        VALUES ($1, 'CONTACT_UPDATED', $2::JSONB)`,
-      [conversation.rows[0].id, JSON.stringify({ hasEmail: Boolean(input.email), hasPhone: Boolean(input.phone) })]
+      [conversation.rows[0].id, JSON.stringify({ hasName: Boolean(input.name), hasEmail: Boolean(input.email), hasPhone: Boolean(input.phone) })]
     );
     publishSupportChatUpdate({ type: 'contact', conversationId: conversation.rows[0].id, visitorId: visitor.id });
   }

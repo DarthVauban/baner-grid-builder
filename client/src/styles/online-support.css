@@ -4,7 +4,7 @@
 .online-support-tabs { display: inline-flex; flex: 0 0 auto; gap: 5px; border: 1px solid var(--line); border-radius: 14px; padding: 4px; background: var(--surface); }
 .online-support-tabs button { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 10px; padding: 0 14px; color: var(--muted); background: transparent; font-weight: 800; }
 .online-support-tabs button.is-active { color: var(--brand); background: var(--brand-soft); }
-.online-support-workspace { min-width: 0; height: calc(100vh - 190px); min-height: 620px; display: grid; grid-template-columns: 310px minmax(420px,1fr) 260px; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-soft); }
+.online-support-workspace { position: relative; min-width: 0; height: calc(100vh - 190px); min-height: 620px; display: grid; grid-template-columns: 310px minmax(420px,1fr) 260px; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .online-support-queue { min-width: 0; display: grid; grid-template-rows: auto auto auto minmax(0,1fr); border-right: 1px solid var(--line); background: var(--surface-soft); }
 .online-support-queue > header { display: flex; align-items: center; justify-content: space-between; padding: 18px 17px 10px; }
 .online-support-queue h2, .online-support-customer h2, .online-support-card h2 { margin: 0; font-size: 18px; }
@@ -12,7 +12,7 @@
 .online-support-search { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; align-items: center; gap: 7px; margin: 0 13px 11px; border: 1px solid var(--line); border-radius: 11px; padding: 0 10px; color: var(--muted); background: var(--surface); }
 .online-support-search input { min-width: 0; height: 40px; border: 0; outline: 0; color: var(--ink); background: transparent; }
 .online-support-search button { width: 25px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 7px; color: var(--muted); background: var(--surface-soft); }
-.online-support-filters { display: flex; gap: 6px; overflow-x: auto; padding: 0 13px 12px; scrollbar-width: none; }
+.online-support-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 13px 12px; }
 .online-support-filters button { min-height: 30px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; padding: 0 10px; color: var(--muted); background: var(--surface); font-size: 10px; font-weight: 800; }
 .online-support-filters button.is-active { border-color: var(--brand); color: var(--brand-ink); background: var(--brand); }
 .online-support-conversation-list { min-height: 0; overflow: auto; border-top: 1px solid var(--line); }
@@ -53,7 +53,17 @@
 .online-support-composer textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 .online-support-composer .button { align-self: end; min-height: 44px; }
 .online-support-customer { min-width: 0; overflow: auto; display: grid; align-content: start; gap: 16px; border-left: 1px solid var(--line); padding: 18px 16px; background: var(--surface); }
-.online-support-customer header { display: grid; gap: 3px; }
+.online-support-customer header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.online-support-customer header > div:first-child { display: grid; gap: 3px; }
+.online-support-customer-actions { display: flex; align-items: center; gap: 5px; }
+.online-support-customer-actions button { min-height: 30px; border: 1px solid var(--line); border-radius: 9px; padding: 0 8px; color: var(--muted); background: var(--surface-soft); font-size: 8px; font-weight: 900; }
+.online-support-customer-close, .online-support-customer-trigger { display: none; }
+.online-support-customer-form { display: grid; gap: 10px; }
+.online-support-customer-form label { display: grid; gap: 5px; }
+.online-support-customer-form label > span { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.online-support-customer-form input { min-width: 0; min-height: 37px; border: 1px solid var(--line); border-radius: 10px; padding: 0 9px; outline: 0; color: var(--ink); background: var(--surface-soft); font-size: 10px; }
+.online-support-customer-form input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.online-support-customer-form .button { width: 100%; justify-content: center; min-height: 38px; margin-top: 2px; font-size: 9px; }
 .online-support-customer dl { display: grid; gap: 11px; margin: 0; }
 .online-support-customer dl > div { display: grid; gap: 3px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 .online-support-customer dt, .online-support-customer section > span { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
@@ -103,6 +113,9 @@
 @media (max-width: 1450px) {
   .online-support-workspace { grid-template-columns: 290px minmax(400px,1fr); }
   .online-support-customer { display: none; }
+  .online-support-customer.is-open { position: absolute; z-index: 5; inset: 0 0 0 auto; width: min(320px,100%); display: grid; border-left: 1px solid var(--line); box-shadow: -18px 0 44px rgba(20,24,35,.18); }
+  .online-support-customer-trigger { display: inline-flex; }
+  .online-support-customer-close { display: grid; place-items: center; width: 30px; padding: 0; font-size: 17px; }
   .online-support-settings { grid-template-columns: minmax(0,1fr) 320px; }
 }
 

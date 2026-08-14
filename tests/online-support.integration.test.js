@@ -87,12 +87,13 @@ test('widget creates a persistent conversation with one automatic reply and opti
 
   await request(app).put('/api/public/support-chat/contact')
     .set(visitorAuth())
-    .send({ email: 'buyer@example.com', phone: '+380671234567' })
+    .send({ name: 'Ірина Коваль', email: 'buyer@example.com', phone: '+380671234567' })
     .expect(200);
 
   const resumed = await request(app).get('/api/public/support-chat/session')
     .set(visitorAuth())
     .expect(200);
+  assert.equal(resumed.body.data.visitor.name, 'Ірина Коваль');
   assert.equal(resumed.body.data.visitor.email, 'buyer@example.com');
   assert.equal(resumed.body.data.visitor.phone, '+380671234567');
   assert.equal(resumed.body.data.conversation.messages.length, 3);
@@ -110,6 +111,15 @@ test('operator can claim, read, reply and change support conversation status', a
   const detail = await admin.get(`/api/support-chat/conversations/${conversationId}`).expect(200);
   assert.equal(detail.body.data.messages.length, 3);
   assert.equal(detail.body.data.conversation.visitor.lastPageTitle, 'Apple iPhone 16');
+
+  const customer = await admin.patch(`/api/support-chat/conversations/${conversationId}/customer`).send({
+    name: 'Ірина Ковальчук',
+    email: 'iryna@example.com',
+    phone: '+380931112233'
+  }).expect(200);
+  assert.equal(customer.body.data.visitor.name, 'Ірина Ковальчук');
+  assert.equal(customer.body.data.visitor.email, 'iryna@example.com');
+  assert.equal(customer.body.data.visitor.phone, '+380931112233');
 
   const claimed = await admin.post(`/api/support-chat/conversations/${conversationId}/claim`).expect(200);
   assert.equal(claimed.body.data.status, 'OPEN');
@@ -129,6 +139,7 @@ test('operator can claim, read, reply and change support conversation status', a
     .set(visitorAuth())
     .expect(200);
   assert.equal(publicSession.body.data.conversation.messages.at(-1).body, 'Так, чорний iPhone 16 зараз у наявності.');
+  assert.equal(publicSession.body.data.visitor.name, 'Ірина Ковальчук');
 
   const resolved = await admin.patch(`/api/support-chat/conversations/${conversationId}/status`)
     .send({ status: 'RESOLVED' })

@@ -55,6 +55,7 @@ import type { BlogPostDocument } from '../types/blog-editor';
 import type { MediaAsset, MediaAssetFeed, MediaFolder, MediaFolderFeed } from '../types/media';
 import type { ChatConversation, ChatMessage, ChatPerson } from '../types/chat';
 import type {
+  SupportCustomerInput,
   SupportChatSettings,
   SupportChatSettingsInput,
   SupportConversation,
@@ -439,6 +440,10 @@ export const api = {
     ),
     markRead: (id: string) => request<void>(`/api/support-chat/conversations/${encodeURIComponent(id)}/read`, { method: 'POST' }),
     claim: (id: string) => request<SupportConversation>(`/api/support-chat/conversations/${encodeURIComponent(id)}/claim`, { method: 'POST' }),
+    updateCustomer: (id: string, input: SupportCustomerInput) => request<SupportConversation>(
+      `/api/support-chat/conversations/${encodeURIComponent(id)}/customer`,
+      { method: 'PATCH', body: jsonBody(input) }
+    ),
     setStatus: (id: string, status: SupportConversationStatus) => request<SupportConversation>(
       `/api/support-chat/conversations/${encodeURIComponent(id)}/status`,
       { method: 'PATCH', body: jsonBody({ status }) }

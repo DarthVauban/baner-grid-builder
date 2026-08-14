@@ -36,6 +36,7 @@ export function SupportChatWidgetApp() {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [contactOpen, setContactOpen] = useState(true);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [contactSaving, setContactSaving] = useState(false);
@@ -97,6 +98,7 @@ export function SupportChatWidgetApp() {
       tokenRef.current = next.token;
       localStorage.setItem(storageKey, next.token);
       setSession(next);
+      setName(next.visitor.name);
       setEmail(next.visitor.email);
       setPhone(next.visitor.phone);
       latestOperatorMessageRef.current = next.conversation?.messages.filter((item) => item.senderType === 'operator').at(-1)?.id || '';
@@ -165,12 +167,12 @@ export function SupportChatWidgetApp() {
 
   async function saveContact(event: FormEvent) {
     event.preventDefault();
-    if ((!email.trim() && !phone.trim()) || !tokenRef.current) return;
+    if ((!name.trim() && !email.trim() && !phone.trim()) || !tokenRef.current) return;
     setContactSaving(true);
     setError('');
     try {
       const visitor = await publicRequest<SupportVisitor>('/api/public/support-chat/contact', {
-        method: 'PUT', body: JSON.stringify({ email: email.trim(), phone: phone.trim() })
+        method: 'PUT', body: JSON.stringify({ name: name.trim(), email: email.trim(), phone: phone.trim() })
       }, tokenRef.current);
       setSession((current) => current ? { ...current, visitor } : current);
       setContactSaved(true);
@@ -214,9 +216,10 @@ export function SupportChatWidgetApp() {
         {showContactForm && <section className="support-contact-card">
           <header><div><strong>Залишити контакти</strong><p>{session?.settings.contactFormPrompt}</p></div><button type="button" onClick={() => setContactOpen((value) => !value)}>{contactOpen ? '−' : '+'}</button></header>
           {contactOpen && <form onSubmit={(event) => void saveContact(event)}>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email (необов’язково)" />
-            <input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Телефон (необов’язково)" />
-            <div><button type="button" onClick={() => setContactOpen(false)}>Не зараз</button><button type="submit" disabled={contactSaving || (!email.trim() && !phone.trim())}>{contactSaving ? 'Зберігаємо…' : 'Зберегти'}</button></div>
+            <input type="text" name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ім’я (необов’язково)" maxLength={160} />
+            <input type="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email (необов’язково)" />
+            <input type="tel" name="phone" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Телефон (необов’язково)" />
+            <div><button type="button" onClick={() => setContactOpen(false)}>Не зараз</button><button type="submit" disabled={contactSaving || (!name.trim() && !email.trim() && !phone.trim())}>{contactSaving ? 'Зберігаємо…' : 'Зберегти'}</button></div>
           </form>}
         </section>}
         {contactSaved && <p className="support-contact-saved">Контакти збережено. Дякуємо!</p>}

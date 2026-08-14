@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import type {
   SupportChatSettingsInput,
+  SupportCustomerInput,
   SupportConversation,
   SupportConversationStatus,
   SupportMessage
@@ -29,7 +30,7 @@ const statusLabels: Record<SupportConversationStatus, string> = {
 };
 
 function visitorLabel(item: SupportConversation) {
-  return item.visitor.email || item.visitor.phone || `Відвідувач ${item.visitor.id.slice(0, 6)}`;
+  return item.visitor.name || item.visitor.email || item.visitor.phone || `Відвідувач ${item.visitor.id.slice(0, 6)}`;
 }
 
 function shortDate(value: string) {
@@ -144,6 +145,9 @@ function ConversationsPanel() {
   const [status, setStatus] = useState<SupportConversationStatus | ''>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [customerDraft, setCustomerDraft] = useState<SupportCustomerInput>({ name: '', email: '', phone: '' });
   const transcriptRef = useRef<HTMLDivElement>(null);
   const conversations = useQuery({
     queryKey: ['online-support-conversations', search, status],
@@ -159,6 +163,8 @@ function ConversationsPanel() {
   const send = useMutation({ mutationFn: ({ id, body }: { id: string; body: string }) => api.onlineSupport.sendMessage(id, body, crypto.randomUUID()) });
   const claim = useMutation({ mutationFn: api.onlineSupport.claim });
   const setConversationStatus = useMutation({ mutationFn: ({ id, next }: { id: string; next: SupportConversationStatus }) => api.onlineSupport.setStatus(id, next) });
+  const updateCustomer = useMutation({ mutationFn: ({ id, input }: { id: string; input: SupportCustomerInput }) => api.onlineSupport.updateCustomer(id, input) });
+  const current = detail.data?.conversation;
 
   useEffect(() => {
     if (!conversations.data?.length) { setSelectedId(null); return; }
@@ -180,6 +186,15 @@ function ConversationsPanel() {
     });
     return () => cancelAnimationFrame(frame);
   }, [detail.data?.messages.length]);
+
+  useEffect(() => {
+    if (!current || editingCustomer) return;
+    setCustomerDraft({
+      name: current.visitor.name,
+      email: current.visitor.email,
+      phone: current.visitor.phone
+    });
+  }, [current, editingCustomer]);
 
   async function refreshCurrent() {
     await Promise.all([
@@ -214,7 +229,25 @@ function ConversationsPanel() {
     catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося змінити статус.', 'error'); }
   }
 
-  const current = detail.data?.conversation;
+  async function saveCustomer(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedId || updateCustomer.isPending) return;
+    try {
+      await updateCustomer.mutateAsync({
+        id: selectedId,
+        input: {
+          name: customerDraft.name.trim(),
+          email: customerDraft.email.trim(),
+          phone: customerDraft.phone.trim()
+        }
+      });
+      setEditingCustomer(false);
+      await refreshCurrent();
+      showToast('Інформацію про покупця оновлено.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося оновити інформацію про покупця.', 'error');
+    }
+  }
 
   return <div className="online-support-workspace">
     <aside className="online-support-queue">
@@ -232,14 +265,29 @@ function ConversationsPanel() {
       {!selectedId && <div className="online-support-empty"><span><Icon name="chat" size={30} /></span><h2>Оберіть діалог</h2><p>Нові звернення покупців з’являтимуться у черзі зліва.</p></div>}
       {selectedId && detail.isLoading && <div className="online-support-state">Завантажуємо повідомлення…</div>}
       {current && <>
-        <header className="online-support-dialog__header"><div><span className="online-support-avatar">{visitorLabel(current).slice(0, 1).toUpperCase()}</span><div><strong>{visitorLabel(current)}</strong><small>{current.visitor.lastPageTitle || 'Сторінку не визначено'}</small></div></div><div>{!current.assignedUser && <button className="button button--secondary" type="button" onClick={() => void claimCurrent()} disabled={claim.isPending}>Взяти в роботу</button>}<select value={current.status} onChange={(event) => void changeStatus(event.target.value as SupportConversationStatus)}>{statuses.filter((item) => item.value).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></div></header>
+        <header className="online-support-dialog__header"><div><span className="online-support-avatar">{visitorLabel(current).slice(0, 1).toUpperCase()}</span><div><strong>{visitorLabel(current)}</strong><small>{current.visitor.lastPageTitle || 'Сторінку не визначено'}</small></div></div><div>{!current.assignedUser && <button className="button button--secondary" type="button" onClick={() => void claimCurrent()} disabled={claim.isPending}>Взяти в роботу</button>}<button className="button button--secondary online-support-customer-trigger" type="button" onClick={() => setCustomerPanelOpen(true)}>Покупець</button><select value={current.status} onChange={(event) => void changeStatus(event.target.value as SupportConversationStatus)}>{statuses.filter((item) => item.value).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></div></header>
         <div className="online-support-transcript" ref={transcriptRef}>{detail.data?.messages.map((item) => <MessageBubble item={item} key={item.id} />)}</div>
         <form className="online-support-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Напишіть відповідь покупцю…" rows={2} maxLength={5000} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending}><Icon name="send" size={18} /> {send.isPending ? 'Надсилаємо…' : 'Надіслати'}</button></form>
       </>}
     </section>
 
-    <aside className="online-support-customer">
-      {current ? <><header><p className="eyebrow">Покупець</p><h2>Деталі звернення</h2></header><dl><div><dt>Email</dt><dd>{current.visitor.email || 'Не залишено'}</dd></div><div><dt>Телефон</dt><dd>{current.visitor.phone || 'Не залишено'}</dd></div><div><dt>Оператор</dt><dd>{current.assignedUser?.name || 'Не призначено'}</dd></div><div><dt>Створено</dt><dd>{new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(current.createdAt))}</dd></div></dl><section><span>Поточна сторінка</span><strong>{current.visitor.lastPageTitle || 'Без назви'}</strong>{current.visitor.lastPageUrl && <a href={current.visitor.lastPageUrl} target="_blank" rel="noreferrer">Відкрити сторінку <Icon name="openInNew" size={14} /></a>}</section></> : <p className="online-support-list-state">Інформація з’явиться після вибору діалогу.</p>}
+    <aside className={`online-support-customer${customerPanelOpen ? ' is-open' : ''}`}>
+      {current ? <>
+        <header><div><p className="eyebrow">Покупець</p><h2>Деталі звернення</h2></div><div className="online-support-customer-actions"><button type="button" onClick={() => setEditingCustomer((value) => !value)}>{editingCustomer ? 'Скасувати' : 'Редагувати'}</button><button className="online-support-customer-close" type="button" onClick={() => setCustomerPanelOpen(false)} aria-label="Закрити інформацію про покупця">×</button></div></header>
+        {editingCustomer ? <form className="online-support-customer-form" onSubmit={(event) => void saveCustomer(event)}>
+          <label><span>Ім’я</span><input value={customerDraft.name} onChange={(event) => setCustomerDraft({ ...customerDraft, name: event.target.value })} maxLength={160} autoComplete="off" placeholder="Не вказано" /></label>
+          <label><span>Email</span><input type="email" value={customerDraft.email} onChange={(event) => setCustomerDraft({ ...customerDraft, email: event.target.value })} maxLength={320} autoComplete="off" placeholder="Не вказано" /></label>
+          <label><span>Телефон</span><input type="tel" value={customerDraft.phone} onChange={(event) => setCustomerDraft({ ...customerDraft, phone: event.target.value })} maxLength={40} autoComplete="off" placeholder="Не вказано" /></label>
+          <button className="button button--primary" type="submit" disabled={updateCustomer.isPending}><Icon name="save" size={15} /> {updateCustomer.isPending ? 'Зберігаємо…' : 'Зберегти'}</button>
+        </form> : <dl>
+          <div><dt>Ім’я</dt><dd>{current.visitor.name || 'Не вказано'}</dd></div>
+          <div><dt>Email</dt><dd>{current.visitor.email || 'Не залишено'}</dd></div>
+          <div><dt>Телефон</dt><dd>{current.visitor.phone || 'Не залишено'}</dd></div>
+          <div><dt>Оператор</dt><dd>{current.assignedUser?.name || 'Не призначено'}</dd></div>
+          <div><dt>Створено</dt><dd>{new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(current.createdAt))}</dd></div>
+        </dl>}
+        <section><span>Поточна сторінка</span><strong>{current.visitor.lastPageTitle || 'Без назви'}</strong>{current.visitor.lastPageUrl && <a href={current.visitor.lastPageUrl} target="_blank" rel="noreferrer">Відкрити сторінку <Icon name="openInNew" size={14} /></a>}</section>
+      </> : <p className="online-support-list-state">Інформація з’явиться після вибору діалогу.</p>}
     </aside>
   </div>;
 }

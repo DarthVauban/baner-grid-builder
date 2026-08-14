@@ -27,6 +27,11 @@ const operatorMessageSchema = z.object({
   body: z.string().trim().min(1).max(5000),
   clientMessageId: z.string().uuid()
 });
+const customerSchema = z.object({
+  name: z.string().trim().max(160).default(''),
+  email: z.union([z.string().trim().email().max(320), z.literal('')]).default(''),
+  phone: z.string().trim().max(40).default('')
+});
 const settingsSchema = z.object({
   name: z.string().trim().min(1).max(160),
   enabled: z.boolean(),
@@ -43,7 +48,7 @@ const settingsSchema = z.object({
 async function loadConversationRow(id) {
   const result = await query(
     `SELECT conversation.*,
-            visitor.id AS visitor_id, visitor.email, visitor.phone,
+            visitor.id AS visitor_id, visitor.name, visitor.email, visitor.phone,
             visitor.first_page_url, visitor.last_page_url, visitor.last_page_title,
             visitor.created_at AS visitor_created_at, visitor.last_seen_at,
             assignee.name AS assigned_user_name
@@ -135,7 +140,7 @@ router.get('/conversations', asyncHandler(async (req, res) => {
   const allowedStatuses = ['NEW', 'OPEN', 'WAITING_CUSTOMER', 'RESOLVED', 'CLOSED'];
   const rows = await query(
     `SELECT conversation.*,
-            visitor.id AS visitor_id, visitor.email, visitor.phone,
+            visitor.id AS visitor_id, visitor.name, visitor.email, visitor.phone,
             visitor.first_page_url, visitor.last_page_url, visitor.last_page_title,
             visitor.created_at AS visitor_created_at, visitor.last_seen_at,
             assignee.name AS assigned_user_name
@@ -143,7 +148,8 @@ router.get('/conversations', asyncHandler(async (req, res) => {
      JOIN support_chat_visitors AS visitor ON visitor.id = conversation.visitor_id
      LEFT JOIN users AS assignee ON assignee.id = conversation.assigned_user_id
      WHERE ($1 = '' OR conversation.status = $1)
-       AND ($2 = '' OR COALESCE(visitor.email, '') ILIKE '%' || $2 || '%'
+       AND ($2 = '' OR COALESCE(visitor.name, '') ILIKE '%' || $2 || '%'
+         OR COALESCE(visitor.email, '') ILIKE '%' || $2 || '%'
          OR COALESCE(visitor.phone, '') ILIKE '%' || $2 || '%'
          OR visitor.last_page_title ILIKE '%' || $2 || '%')
      ORDER BY conversation.updated_at DESC
@@ -219,6 +225,25 @@ router.post('/conversations/:id/claim', asyncHandler(async (req, res) => {
     [id, req.user.id, JSON.stringify({ assignedUserId: req.user.id })]
   );
   publishSupportChatUpdate({ type: 'conversation', conversationId: id, visitorId: updated.rows[0].visitor_id });
+  res.json({ data: serializeSupportConversation(await loadConversationRow(id)) });
+}));
+
+router.patch('/conversations/:id/customer', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(customerSchema, req.body);
+  const conversation = await loadConversationRow(id);
+  await query(
+    `UPDATE support_chat_visitors
+     SET name = $1, email = $2, phone = $3
+     WHERE id = $4`,
+    [input.name || null, input.email || null, input.phone || null, conversation.visitor_id]
+  );
+  await query(
+    `INSERT INTO support_chat_events (conversation_id, actor_user_id, event_type, payload)
+     VALUES ($1, $2, 'CONTACT_UPDATED', $3::JSONB)`,
+    [id, req.user.id, JSON.stringify({ source: 'operator', hasName: Boolean(input.name), hasEmail: Boolean(input.email), hasPhone: Boolean(input.phone) })]
+  );
+  publishSupportChatUpdate({ type: 'contact', conversationId: id, visitorId: conversation.visitor_id });
   res.json({ data: serializeSupportConversation(await loadConversationRow(id)) });
 }));
 

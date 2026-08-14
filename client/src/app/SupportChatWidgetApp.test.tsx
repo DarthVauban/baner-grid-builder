@@ -19,7 +19,7 @@ const settings = {
 };
 
 const visitor = {
-  id: 'visitor-1', email: '', phone: '', firstPageUrl: '', lastPageUrl: '', lastPageTitle: '',
+  id: 'visitor-1', name: '', email: '', phone: '', firstPageUrl: '', lastPageUrl: '', lastPageTitle: '',
   createdAt: '2026-08-14T10:00:00.000Z', lastSeenAt: '2026-08-14T10:00:00.000Z'
 };
 
@@ -76,6 +76,7 @@ describe('SupportChatWidgetApp', () => {
 
     expect(await screen.findByText(settings.autoReplyText)).toBeInTheDocument();
     expect(screen.getByText('Залишити контакти')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ім’я (необов’язково)')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Email (необов’язково)')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Телефон (необов’язково)')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Напишіть повідомлення…')).toBeEnabled();

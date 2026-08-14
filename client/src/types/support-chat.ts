@@ -17,6 +17,7 @@ export interface SupportChatSettings {
 
 export interface SupportVisitor {
   id: string;
+  name: string;
   email: string;
   phone: string;
   firstPageUrl: string;
@@ -24,6 +25,12 @@ export interface SupportVisitor {
   lastPageTitle: string;
   createdAt: string;
   lastSeenAt: string;
+}
+
+export interface SupportCustomerInput {
+  name: string;
+  email: string;
+  phone: string;
 }
 
 export interface SupportMessage {

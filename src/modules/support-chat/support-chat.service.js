@@ -49,6 +49,7 @@ export function serializeSupportSettings(row) {
 export function serializeSupportVisitor(row) {
   return {
     id: row.visitor_id || row.id,
+    name: row.name || '',
     email: row.email || '',
     phone: row.phone || '',
     firstPageUrl: row.first_page_url || '',
