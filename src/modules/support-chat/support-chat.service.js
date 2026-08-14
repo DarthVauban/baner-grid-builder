@@ -68,6 +68,7 @@ export function serializeSupportMessage(row) {
     senderUserId: row.sender_user_id || null,
     senderName: row.sender_name || (row.sender_type === 'system' ? 'Автоматична відповідь' : ''),
     body: row.body,
+    productCards: Array.isArray(row.product_cards) ? row.product_cards : [],
     createdAt: row.created_at
   };
 }

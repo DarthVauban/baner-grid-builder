@@ -1,0 +1,18 @@
+.support-product-card { min-width: 0; display: grid; grid-template-columns: 56px minmax(0,1fr) 18px; align-items: center; gap: 10px; border: 1px solid rgba(25,29,38,.12); border-radius: 14px; padding: 9px; color: #182034; background: #fff; box-shadow: 0 7px 20px rgba(20,24,35,.08); text-decoration: none; transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease; }
+.support-product-card:hover { border-color: #7662ff; transform: translateY(-1px); box-shadow: 0 10px 25px rgba(20,24,35,.13); }
+.support-product-card__image { width: 56px; height: 56px; display: grid; place-items: center; overflow: hidden; border-radius: 11px; color: #5f50d8; background: #f1efff; }
+.support-product-card__image img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.support-product-card__image svg { width: 27px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.support-product-card__copy { min-width: 0; display: grid; gap: 4px; }
+.support-product-card__copy > small { overflow: hidden; color: #7f8797; font-size: 8px; font-weight: 850; letter-spacing: .04em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.support-product-card__copy > strong { display: -webkit-box; overflow: hidden; color: #182034; font-size: 11px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.support-product-card__copy > span { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.support-product-card__copy b { color: #182034; font-size: 10px; }
+.support-product-card__copy em { max-width: 100%; overflow: hidden; border-radius: 999px; padding: 3px 6px; color: #2d6840; background: #e4f5e9; font-size: 7px; font-style: normal; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; }
+.support-product-card__arrow { width: 16px; fill: none; stroke: #8173e7; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.support-message .support-product-card, .online-support-message .support-product-card { margin-top: 5px; }
+
+@media (max-width: 420px) {
+  .support-product-card { grid-template-columns: 48px minmax(0,1fr) 16px; gap: 8px; padding: 8px; }
+  .support-product-card__image { width: 48px; height: 48px; }
+}

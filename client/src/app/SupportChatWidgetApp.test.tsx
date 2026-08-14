@@ -23,6 +23,14 @@ const visitor = {
   createdAt: '2026-08-14T10:00:00.000Z', lastSeenAt: '2026-08-14T10:00:00.000Z'
 };
 
+const productCard = {
+  id: 'product-1', productId: 'product-1', modificationId: null,
+  title: 'Apple iPhone 16 128GB Black', sku: 'IPHONE-16', brand: 'Apple',
+  price: '35999', oldPrice: '37999', currency: 'UAH', availability: 'В наявності',
+  visible: true, active: true, imageUrl: 'https://cdn.example/iphone-16.jpg',
+  url: 'https://mobiletrend.com.ua/apple-iphone-16/', source: 'page' as const
+};
+
 const emptySession: SupportPublicSession = {
   token: 'visitor-token-with-more-than-thirty-two-characters',
   settings,
@@ -52,10 +60,10 @@ describe('SupportChatWidgetApp', () => {
         updatedAt: '2026-08-14T10:01:00.000Z',
         messages: [{
           id: 'message-1', conversationId: 'conversation-1', senderType: 'visitor', senderUserId: null,
-          senderName: '', body: 'Чи є товар у наявності?', createdAt: '2026-08-14T10:01:00.000Z'
+          senderName: '', body: 'Чи є товар у наявності?', productCards: [productCard], createdAt: '2026-08-14T10:01:00.000Z'
         }, {
           id: 'message-2', conversationId: 'conversation-1', senderType: 'system', senderUserId: null,
-          senderName: 'Автоматична відповідь', body: settings.autoReplyText, createdAt: '2026-08-14T10:01:00.000Z'
+          senderName: 'Автоматична відповідь', body: settings.autoReplyText, productCards: [], createdAt: '2026-08-14T10:01:00.000Z'
         }]
       }, 201);
       throw new Error(`Unexpected request: ${path}`);
@@ -75,6 +83,7 @@ describe('SupportChatWidgetApp', () => {
     await user.click(screen.getByRole('button', { name: 'Надіслати повідомлення' }));
 
     expect(await screen.findByText(settings.autoReplyText)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Відкрити товар Apple iPhone 16 128GB Black' })).toHaveAttribute('href', productCard.url);
     expect(screen.getByText('Залишити контакти')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ім’я (необов’язково)')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Email (необов’язково)')).toBeInTheDocument();

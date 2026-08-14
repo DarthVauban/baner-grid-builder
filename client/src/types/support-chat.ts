@@ -1,6 +1,24 @@
 export type SupportConversationStatus = 'NEW' | 'OPEN' | 'WAITING_CUSTOMER' | 'RESOLVED' | 'CLOSED';
 export type SupportMessageSender = 'visitor' | 'operator' | 'system';
 
+export interface SupportProductCard {
+  id: string;
+  productId: string;
+  modificationId: string | null;
+  title: string;
+  sku: string;
+  brand: string;
+  price: string;
+  oldPrice: string;
+  currency: string;
+  availability: string;
+  visible: boolean;
+  active: boolean;
+  imageUrl: string;
+  url: string;
+  source: 'message' | 'page';
+}
+
 export interface SupportChatSettings {
   id: string;
   publicId: string;
@@ -40,6 +58,7 @@ export interface SupportMessage {
   senderUserId: string | null;
   senderName: string;
   body: string;
+  productCards: SupportProductCard[];
   createdAt: string;
 }
 

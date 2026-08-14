@@ -7,6 +7,11 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { publishSupportChatUpdate, subscribeToSupportVisitorUpdates } from './support-chat.events.js';
 import {
+  filterRepeatedPageReferences,
+  hydrateSupportProductCards,
+  resolveSupportProductReferences
+} from './support-chat.products.js';
+import {
   createSupportSessionToken,
   hashSupportSessionToken,
   loadSupportSite,
@@ -102,10 +107,11 @@ async function loadPublicConversation(visitorId) {
      LIMIT 300`,
     [conversation.id]
   );
+  const hydratedMessages = await hydrateSupportProductCards(messages.rows);
   return {
     id: conversation.id,
     status: conversation.status,
-    messages: messages.rows.map(serializeSupportMessage),
+    messages: hydratedMessages.map(serializeSupportMessage),
     createdAt: conversation.created_at,
     updatedAt: conversation.updated_at
   };
@@ -188,6 +194,7 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
   const input = parseInput(messageSchema, req.body);
   const visitor = await loadSupportVisitorByToken(bearerToken(req));
   const pageUrl = normalizeSupportPageUrl(input.pageUrl);
+  const resolvedProductReferences = await resolveSupportProductReferences({ body: input.body, pageUrl });
   const client = await pool.connect();
   let conversationId;
   try {
@@ -210,13 +217,20 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
     );
     const conversation = conversationResult.rows[0];
     conversationId = conversation.id;
+    const previousReferences = await client.query(
+      `SELECT product_references
+       FROM support_chat_messages
+       WHERE conversation_id = $1 AND product_references <> '[]'::JSONB`,
+      [conversationId]
+    );
+    const productReferences = filterRepeatedPageReferences(resolvedProductReferences, previousReferences.rows);
     const inserted = await client.query(
       `INSERT INTO support_chat_messages (
-         conversation_id, sender_type, body, client_message_id
-       ) VALUES ($1, 'visitor', $2, $3)
+         conversation_id, sender_type, body, client_message_id, product_references
+       ) VALUES ($1, 'visitor', $2, $3, $4::JSONB)
        ON CONFLICT (conversation_id, client_message_id) DO NOTHING
        RETURNING id`,
-      [conversationId, input.body, input.clientMessageId]
+      [conversationId, input.body, input.clientMessageId, JSON.stringify(productReferences)]
     );
     if (inserted.rows[0] && !conversation.auto_reply_sent_at) {
       const claimedReply = await client.query(

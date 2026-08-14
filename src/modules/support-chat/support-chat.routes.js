@@ -7,6 +7,7 @@ import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { publishSupportChatUpdate, subscribeToSupportOperatorUpdates } from './support-chat.events.js';
+import { hydrateSupportProductCards, resolveSupportProductReferences } from './support-chat.products.js';
 import {
   loadSupportSite,
   normalizeSupportOrigin,
@@ -72,7 +73,7 @@ async function loadConversationMessages(id) {
      LIMIT 500`,
     [id]
   );
-  return result.rows.map(serializeSupportMessage);
+  return (await hydrateSupportProductCards(result.rows)).map(serializeSupportMessage);
 }
 
 router.get('/stream', (req, res) => {
@@ -274,13 +275,14 @@ router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const input = parseInput(operatorMessageSchema, req.body);
   const conversation = await loadConversationRow(id);
+  const productReferences = await resolveSupportProductReferences({ body: input.body });
   const inserted = await query(
     `INSERT INTO support_chat_messages (
-       conversation_id, sender_type, sender_user_id, body, client_message_id
-     ) VALUES ($1, 'operator', $2, $3, $4)
+       conversation_id, sender_type, sender_user_id, body, client_message_id, product_references
+     ) VALUES ($1, 'operator', $2, $3, $4, $5::JSONB)
      ON CONFLICT (conversation_id, client_message_id) DO UPDATE SET body = support_chat_messages.body
      RETURNING *`,
-    [id, req.user.id, input.body, input.clientMessageId]
+    [id, req.user.id, input.body, input.clientMessageId, JSON.stringify(productReferences)]
   );
   await query(
     `UPDATE support_chat_conversations
@@ -293,7 +295,8 @@ router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
     [req.user.id, id]
   );
   publishSupportChatUpdate({ type: 'message', conversationId: id, visitorId: conversation.visitor_id, senderType: 'operator', senderId: req.user.id });
-  res.status(201).json({ data: serializeSupportMessage({ ...inserted.rows[0], sender_name: req.user.name }) });
+  const [hydratedMessage] = await hydrateSupportProductCards([{ ...inserted.rows[0], sender_name: req.user.name }]);
+  res.status(201).json({ data: serializeSupportMessage(hydratedMessage) });
 }));
 
 export default router;

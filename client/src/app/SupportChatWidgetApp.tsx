@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import type { SupportPublicConversation, SupportPublicSession, SupportVisitor } from '../types/support-chat';
+import { SupportMessageText, SupportProductCard } from '../components/SupportProductCard';
 
 type ApiPayload<T> = { data?: T; error?: { message?: string } };
 
@@ -209,7 +210,8 @@ export function SupportChatWidgetApp() {
         </section>}
         {conversation?.messages.map((item) => <article className={`support-message support-message--${item.senderType}`} key={item.id}>
           {item.senderType !== 'visitor' && <small>{item.senderName || 'Підтримка'}</small>}
-          <p>{item.body}</p>
+          <SupportMessageText body={item.body} productCards={item.productCards} />
+          {item.productCards.map((card) => <SupportProductCard card={card} key={`${item.id}-${card.id}`} />)}
           <time>{timeLabel(item.createdAt)}</time>
         </article>)}
 

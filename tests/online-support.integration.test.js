@@ -29,6 +29,38 @@ before(async () => {
   await admin.post('/api/auth/login')
     .send({ email: 'support-admin@test.local', password: 'AdminPassword123!' })
     .expect(200);
+  const connectionId = crypto.randomUUID();
+  const generation = crypto.randomUUID();
+  const syncId = crypto.randomUUID();
+  const productId = crypto.randomUUID();
+  await pool.query(`
+    INSERT INTO search_horoshop_connections (
+      id, generation, store_domain, encrypted_credentials, status
+    ) VALUES ($1, $2, 'mobiletrend.com.ua', 'ciphertext', 'connected')
+  `, [connectionId, generation]);
+  await pool.query(`
+    INSERT INTO search_horoshop_products (
+      id, connection_id, generation, external_id, sku, titles, brand, price,
+      old_price, currency, availability, visible, primary_image_url,
+      canonical_url, active, last_seen_sync_id
+    ) VALUES (
+      $1, $2, $3, 'iphone-16', 'IPHONE-16', $4::JSONB, 'Apple', '35999',
+      '37999', 'UAH', 'В наявності', TRUE, 'https://cdn.example/iphone-16.jpg',
+      'https://mobiletrend.com.ua/apple-iphone-16/', TRUE, $5
+    )
+  `, [productId, connectionId, generation, JSON.stringify({ uk: 'Apple iPhone 16 128GB Black' }), syncId]);
+  await pool.query(`
+    INSERT INTO search_horoshop_modifications (
+      id, connection_id, product_id, generation, external_id, sku, titles,
+      price, currency, availability, visible, image_url, page_url, active, last_seen_sync_id
+    ) VALUES
+      ($1, $2, $3, $4, 'iphone-16:black', 'IPHONE-16-B', $5::JSONB, '35999', 'UAH', 'В наявності', TRUE, 'https://cdn.example/iphone-16-black.jpg', 'https://mobiletrend.com.ua/apple-iphone-16/', TRUE, $6),
+      ($7, $2, $3, $4, 'iphone-16:white', 'IPHONE-16-W', $8::JSONB, '35999', 'UAH', 'В наявності', TRUE, 'https://cdn.example/iphone-16-white.jpg', 'https://mobiletrend.com.ua/apple-iphone-16/', TRUE, $6)
+  `, [
+    crypto.randomUUID(), connectionId, productId, generation,
+    JSON.stringify({ uk: 'Apple iPhone 16 128GB Black' }), syncId,
+    crypto.randomUUID(), JSON.stringify({ uk: 'Apple iPhone 16 128GB White' })
+  ]);
 });
 
 after(async () => pool.end());
@@ -50,7 +82,7 @@ test('widget creates a persistent conversation with one automatic reply and opti
   const session = await request(app).post('/api/public/support-chat/session').send({
     siteId,
     embedOrigin: 'https://mobiletrend.com.ua',
-    pageUrl: 'https://mobiletrend.com.ua/phones/iphone-16',
+    pageUrl: 'https://mobiletrend.com.ua/apple-iphone-16/',
     pageTitle: 'Apple iPhone 16'
   }).expect(200);
   visitorToken = session.body.data.token;
@@ -63,7 +95,7 @@ test('widget creates a persistent conversation with one automatic reply and opti
     .send({
       body: 'Чи є цей смартфон у наявності?',
       clientMessageId: firstMessageId,
-      pageUrl: 'https://mobiletrend.com.ua/phones/iphone-16',
+      pageUrl: 'https://mobiletrend.com.ua/apple-iphone-16/',
       pageTitle: 'Apple iPhone 16'
     })
     .expect(201);
@@ -71,6 +103,10 @@ test('widget creates a persistent conversation with one automatic reply and opti
   assert.equal(first.body.data.messages.length, 2);
   assert.deepEqual(first.body.data.messages.map((item) => item.senderType), ['visitor', 'system']);
   assert.match(first.body.data.messages[1].body, /зачекайте/i);
+  assert.equal(first.body.data.messages[0].productCards.length, 1);
+  assert.equal(first.body.data.messages[0].productCards[0].title, 'Apple iPhone 16 128GB Black');
+  assert.equal(first.body.data.messages[0].productCards[0].modificationId, null);
+  assert.equal(first.body.data.messages[0].productCards[0].source, 'page');
 
   const duplicate = await request(app).post('/api/public/support-chat/messages')
     .set(visitorAuth())
@@ -84,6 +120,7 @@ test('widget creates a persistent conversation with one automatic reply and opti
     .expect(201);
   assert.equal(second.body.data.messages.length, 3);
   assert.equal(second.body.data.messages.filter((item) => item.senderType === 'system').length, 1);
+  assert.equal(second.body.data.messages.at(-1).productCards.length, 0);
 
   await request(app).put('/api/public/support-chat/contact')
     .set(visitorAuth())
@@ -130,15 +167,17 @@ test('operator can claim, read, reply and change support conversation status', a
   assert.equal(read.body.data, 0);
 
   const reply = await admin.post(`/api/support-chat/conversations/${conversationId}/messages`).send({
-    body: 'Так, чорний iPhone 16 зараз у наявності.',
+    body: 'Так, чорний iPhone 16 зараз у наявності: https://mobiletrend.com.ua/apple-iphone-16/',
     clientMessageId: crypto.randomUUID()
   }).expect(201);
   assert.equal(reply.body.data.senderType, 'operator');
+  assert.equal(reply.body.data.productCards.length, 1);
+  assert.equal(reply.body.data.productCards[0].source, 'message');
 
   const publicSession = await request(app).get('/api/public/support-chat/session')
     .set(visitorAuth())
     .expect(200);
-  assert.equal(publicSession.body.data.conversation.messages.at(-1).body, 'Так, чорний iPhone 16 зараз у наявності.');
+  assert.equal(publicSession.body.data.conversation.messages.at(-1).productCards[0].url, 'https://mobiletrend.com.ua/apple-iphone-16/');
   assert.equal(publicSession.body.data.visitor.name, 'Ірина Ковальчук');
 
   const resolved = await admin.patch(`/api/support-chat/conversations/${conversationId}/status`)
