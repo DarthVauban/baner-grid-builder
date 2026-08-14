@@ -26,6 +26,7 @@ button { cursor: pointer; }
 .support-welcome strong { margin-top: 5px; font-size: 18px; }
 .support-welcome p { margin: 0; color: #686861; font-size: 13px; line-height: 1.55; }
 .support-message { max-width: 82%; display: grid; gap: 3px; border-radius: 17px; padding: 10px 12px 7px; overflow-wrap: anywhere; }
+.support-message.has-product-card { width: min(94%,410px); max-width: 94%; }
 .support-message p { margin: 0; font-size: 13px; line-height: 1.48; white-space: pre-wrap; }
 .support-message small { font-size: 10px; font-weight: 800; }
 .support-message time { justify-self: end; color: inherit; opacity: .55; font-size: 9px; }

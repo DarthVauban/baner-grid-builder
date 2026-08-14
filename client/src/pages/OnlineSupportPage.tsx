@@ -133,7 +133,7 @@ function ConversationListItem({ item, active, onSelect }: { item: SupportConvers
 }
 
 function MessageBubble({ item }: { item: SupportMessage }) {
-  return <article className={`online-support-message is-${item.senderType}`}>
+  return <article className={`online-support-message is-${item.senderType}${item.productCards.length ? ' has-product-card' : ''}`}>
     {item.senderType !== 'visitor' && <small>{item.senderName || 'Автоматична відповідь'}</small>}
     <SupportMessageText body={item.body} productCards={item.productCards} />
     {item.productCards.map((card) => <SupportProductCard card={card} key={`${item.id}-${card.id}`} />)}

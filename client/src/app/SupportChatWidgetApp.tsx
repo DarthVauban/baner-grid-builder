@@ -208,7 +208,7 @@ export function SupportChatWidgetApp() {
           <strong>Чим можемо допомогти?</strong>
           <p>{session?.settings.welcomeText || 'Напишіть повідомлення — оператор відповість якнайшвидше.'}</p>
         </section>}
-        {conversation?.messages.map((item) => <article className={`support-message support-message--${item.senderType}`} key={item.id}>
+        {conversation?.messages.map((item) => <article className={`support-message support-message--${item.senderType}${item.productCards.length ? ' has-product-card' : ''}`} key={item.id}>
           {item.senderType !== 'visitor' && <small>{item.senderName || 'Підтримка'}</small>}
           <SupportMessageText body={item.body} productCards={item.productCards} />
           {item.productCards.map((card) => <SupportProductCard card={card} key={`${item.id}-${card.id}`} />)}
