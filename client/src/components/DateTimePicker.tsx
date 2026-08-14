@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from './Icon';
 import { StyledSelect } from './StyledSelect';
 
@@ -47,50 +47,69 @@ function monthMatrix(viewDate: Date) {
 }
 
 export function DateTimePicker({ label, value, onChange, mode = 'datetime', required = false, className = '' }: DateTimePickerProps) {
-  const rootRef = useRef<HTMLDivElement>(null);
   const parsed = useMemo(() => parseValue(value), [value]);
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState(parsed.date);
-  const selectedDate = parsed.date;
-  const [hour, minute] = parsed.time.split(':');
+  const [draft, setDraft] = useState(parsed);
+  const [hour, minute] = draft.time.split(':');
   const minutes = minuteOptions.includes(minute) ? minuteOptions : [...minuteOptions, minute].sort();
   const minuteSelectOptions = minutes.map((item) => ({ value: item, label: item }));
 
-  useEffect(() => setViewDate(parsed.date), [parsed.date.getFullYear(), parsed.date.getMonth()]);
-
   useEffect(() => {
     if (!open) return undefined;
-    const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('pointerdown', close);
     document.addEventListener('keydown', keydown);
-    return () => {
-      document.removeEventListener('pointerdown', close);
-      document.removeEventListener('keydown', keydown);
-    };
+    return () => document.removeEventListener('keydown', keydown);
   }, [open]);
 
-  function emit(nextDate: Date, nextTime = parsed.time) {
+  function showPicker() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setDraft(parsed);
+    setViewDate(parsed.date);
+    setOpen(true);
+  }
+
+  function emit(nextDate: Date, nextTime: string) {
     const nextDatePart = datePart(nextDate);
     onChange(mode === 'date' ? nextDatePart : `${nextDatePart}T${nextTime}`);
   }
 
   function setTime(nextHour: string, nextMinute: string) {
-    emit(selectedDate, `${nextHour}:${nextMinute}`);
+    setDraft((current) => ({ ...current, time: `${nextHour}:${nextMinute}` }));
+  }
+
+  function selectDate(nextDate: Date) {
+    setDraft((current) => ({ ...current, date: new Date(nextDate) }));
+    if (nextDate.getFullYear() !== viewDate.getFullYear() || nextDate.getMonth() !== viewDate.getMonth()) {
+      setViewDate(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1));
+    }
+  }
+
+  function selectToday() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    setDraft((current) => ({ ...current, date: today }));
+    setViewDate(today);
+  }
+
+  function apply() {
+    emit(draft.date, draft.time);
+    setOpen(false);
   }
 
   const days = monthMatrix(viewDate);
   const display = value
-    ? new Intl.DateTimeFormat('uk-UA', mode === 'date' ? { dateStyle: 'medium' } : { dateStyle: 'medium', timeStyle: 'short' }).format(mode === 'date' ? selectedDate : new Date(`${datePart(selectedDate)}T${parsed.time}`))
+    ? new Intl.DateTimeFormat('uk-UA', mode === 'date' ? { dateStyle: 'medium' } : { dateStyle: 'medium', timeStyle: 'short' }).format(mode === 'date' ? parsed.date : new Date(`${datePart(parsed.date)}T${parsed.time}`))
     : 'Оберіть дату';
 
-  return <div className={`field date-time-field ${className}`.trim()} ref={rootRef}>
+  return <div className={`field date-time-field ${className}`.trim()}>
     <span>{label}</span>
-    <button className="date-time-trigger" type="button" aria-expanded={open} aria-required={required} onClick={() => setOpen((current) => !current)}>
+    <button className="date-time-trigger" type="button" aria-expanded={open} aria-required={required} onClick={showPicker}>
       <Icon name="calendar" size={18} />
       <strong>{display}</strong>
     </button>
@@ -104,10 +123,11 @@ export function DateTimePicker({ label, value, onChange, mode = 'datetime', requ
       <div className="date-time-picker__weekdays">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
       <div className="date-time-picker__days">
         {days.map((day) => {
-          const active = datePart(day) === datePart(selectedDate);
+          const active = datePart(day) === datePart(draft.date);
           const outside = day.getMonth() !== viewDate.getMonth();
           const today = datePart(day) === datePart(new Date());
-          return <button className={`${active ? 'active ' : ''}${outside ? 'outside ' : ''}${today ? 'today' : ''}`.trim()} type="button" key={datePart(day)} onClick={() => emit(day)}>
+          const dayLabel = new Intl.DateTimeFormat('uk-UA', { dateStyle: 'long' }).format(day);
+          return <button className={`${active ? 'active ' : ''}${outside ? 'outside ' : ''}${today ? 'today' : ''}`.trim()} type="button" key={datePart(day)} aria-label={dayLabel} aria-pressed={active} onClick={() => selectDate(day)}>
             {day.getDate()}
           </button>;
         })}
@@ -119,8 +139,8 @@ export function DateTimePicker({ label, value, onChange, mode = 'datetime', requ
         <StyledSelect compact value={minute} options={minuteSelectOptions} onChange={(nextMinute) => setTime(hour, nextMinute)} ariaLabel="Хвилини" />
       </div>}
       <footer className="date-time-picker__footer">
-        <button className="button button--secondary button--small" type="button" onClick={() => emit(new Date())}>Сьогодні</button>
-        <button className="button button--primary button--small" type="button" onClick={() => setOpen(false)}>Готово</button>
+        <button className="button button--secondary button--small" type="button" onClick={selectToday}>Сьогодні</button>
+        <button className="button button--primary button--small" type="button" onClick={apply}>Готово</button>
       </footer>
       </section>
     </div>}
