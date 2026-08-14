@@ -162,4 +162,15 @@ export interface HoroshopAccessoryBulkPublishResult {
   categoryAccessories: number;
 }
 
+export interface HoroshopAccessoryBulkPublishProgress {
+  stage: 'authenticating' | 'publishing' | 'completed';
+  totalProducts: number;
+  processedProducts: number;
+  productAccessories: number;
+  categoryAccessories: number;
+  currentBatch: number;
+  totalBatches: number;
+  percentage: number;
+}
+
 export type HoroshopAccessoryDraftItem = Pick<HoroshopAccessoryTarget, 'type' | 'id'>;

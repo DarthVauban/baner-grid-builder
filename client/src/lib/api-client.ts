@@ -94,6 +94,105 @@ export async function request<T>(path: string, options: ApiRequestOptions = {}):
   }
 }
 
+type ApiNdjsonEvent<TProgress, TResult> =
+  | { type: 'progress'; data: TProgress }
+  | { type: 'result'; data: TResult }
+  | { type: 'error'; status?: number; error?: ApiErrorPayload['error'] };
+
+export async function requestNdjson<TProgress, TResult>(
+  path: string,
+  options: ApiRequestOptions,
+  onProgress: (progress: TProgress) => void
+): Promise<TResult> {
+  const { timeoutMs = DEFAULT_API_TIMEOUT_MS, signal: externalSignal, ...fetchOptions } = options;
+  const headers = new Headers(fetchOptions.headers);
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromExternalSignal();
+  else externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true });
+
+  const timeout = timeoutMs > 0
+    ? globalThis.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs)
+    : undefined;
+  if (fetchOptions.body !== undefined) headers.set('Content-Type', 'application/json');
+  headers.set('Accept', 'application/x-ndjson');
+
+  try {
+    const response = await fetch(path, {
+      ...fetchOptions,
+      headers,
+      credentials: 'same-origin',
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as ApiErrorPayload;
+      const error = new ApiError(response.status, payload);
+      if (response.status === 401 && ['AUTH_REQUIRED', 'INVALID_SESSION'].includes(error.code)) {
+        window.dispatchEvent(new Event('mt:unauthorized'));
+      }
+      throw error;
+    }
+    if (!response.body) {
+      throw new ApiError(502, {
+        error: { code: 'INVALID_STREAM_RESPONSE', message: 'Сервер не повернув прогрес масової публікації.' }
+      });
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: TResult | undefined;
+    const consumeLine = (line: string) => {
+      if (!line.trim()) return;
+      let event: ApiNdjsonEvent<TProgress, TResult>;
+      try {
+        event = JSON.parse(line) as ApiNdjsonEvent<TProgress, TResult>;
+      } catch {
+        throw new ApiError(502, {
+          error: { code: 'INVALID_STREAM_RESPONSE', message: 'Сервер повернув некоректний прогрес масової публікації.' }
+        });
+      }
+      if (event.type === 'progress') onProgress(event.data);
+      else if (event.type === 'result') result = event.data;
+      else if (event.type === 'error') throw new ApiError(event.status || 502, { error: event.error });
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) consumeLine(line);
+      if (done) break;
+    }
+    consumeLine(buffer);
+    if (result === undefined) {
+      throw new ApiError(502, {
+        error: { code: 'INCOMPLETE_STREAM_RESPONSE', message: 'З’єднання завершилось до закінчення масової публікації.' }
+      });
+    }
+    return result;
+  } catch (error) {
+    if (timedOut) {
+      throw new ApiError(408, {
+        error: {
+          code: 'REQUEST_TIMEOUT',
+          message: 'Масова публікація триває надто довго. Оновіть сторінку, щоб перевірити вже передані товари.'
+        }
+      });
+    }
+    throw error;
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromExternalSignal);
+  }
+}
+
 export function jsonBody(value: unknown): string {
   return JSON.stringify(value);
 }

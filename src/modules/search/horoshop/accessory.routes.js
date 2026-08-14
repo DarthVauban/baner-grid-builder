@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { AppError } from '../../../lib/app-error.js';
 import { asyncHandler } from '../../../lib/async-handler.js';
 import { parseInput } from '../../../lib/validation.js';
 import { requireAuth } from '../../../middleware/auth.js';
@@ -69,6 +70,41 @@ router.get('/publications/pending', asyncHandler(async (_req, res) => {
 router.post('/publications/publish-all', asyncHandler(async (req, res) => {
   parseInput(publicationSchema, req.body);
   res.json({ data: await horoshopAccessoryService.publishAll(req.user.id) });
+}));
+
+router.post('/publications/publish-all/stream', asyncHandler(async (req, res) => {
+  parseInput(publicationSchema, req.body);
+  res.status(200);
+  res.set({
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'Cache-Control': 'no-cache, no-store',
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders();
+  const send = (event) => {
+    if (!res.destroyed && !res.writableEnded) {
+      res.write(`${JSON.stringify(event)}\n`);
+      if (typeof res.flush === 'function') res.flush();
+    }
+  };
+  try {
+    const data = await horoshopAccessoryService.publishAll(req.user.id, (progress) => {
+      send({ type: 'progress', data: progress });
+    });
+    send({ type: 'result', data });
+  } catch (error) {
+    const safeError = error instanceof AppError
+      ? error
+      : new AppError(500, 'INTERNAL_ERROR', 'Внутрішня помилка сервера.');
+    if (!(error instanceof AppError)) console.error(error);
+    send({
+      type: 'error',
+      status: safeError.status,
+      error: { code: safeError.code, message: safeError.message, details: safeError.details }
+    });
+  } finally {
+    if (!res.destroyed && !res.writableEnded) res.end();
+  }
 }));
 
 router.get('/products/:productId', asyncHandler(async (req, res) => {

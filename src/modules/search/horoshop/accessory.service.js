@@ -14,17 +14,36 @@ function notFound() {
   return new AppError(404, 'HOROSHOP_PRODUCT_NOT_FOUND', 'Товар відсутній у поточному каталозі Хорошоп.');
 }
 
-function publicationError(error) {
+function publicationError(error, context = null) {
   if (error instanceof AppError) return error;
+  const progressSuffix = context?.processedProducts
+    ? ` До помилки успішно передано ${context.processedProducts} із ${context.totalProducts} товарів; решта чернеток залишилась неопублікованою.`
+    : ' Чернетки залишились неопублікованими.';
+  const details = context ? {
+    processedProducts: context.processedProducts,
+    totalProducts: context.totalProducts,
+    failedBatch: context.failedBatch,
+    failedArticles: context.failedArticles
+  } : undefined;
+  if (error?.name === 'AbortError') {
+    return new AppError(504, 'HOROSHOP_ACCESSORY_PUBLISH_TIMEOUT', `Хорошоп не відповів вчасно під час передачі пакета.${progressSuffix}`, details);
+  }
   if (error instanceof HoroshopApiError) {
     if (error.code === 'permission_denied') {
-      return new AppError(422, 'HOROSHOP_ACCESSORY_ACCESS_DENIED', 'Хорошоп не дозволив змінити аксесуари. Перевірте рівень доступу адміністратора.');
+      return new AppError(422, 'HOROSHOP_ACCESSORY_ACCESS_DENIED', `Хорошоп не дозволив змінити аксесуари. Перевірте рівень доступу адміністратора.${context ? progressSuffix : ''}`, details);
     }
     if (error.code === 'unsupported_operation') {
-      return new AppError(422, 'HOROSHOP_ACCESSORY_IMPORT_UNAVAILABLE', 'Цей магазин не підтримує оновлення аксесуарів через catalog/import.');
+      return new AppError(422, 'HOROSHOP_ACCESSORY_IMPORT_UNAVAILABLE', `Цей магазин не підтримує оновлення аксесуарів через catalog/import.${context ? progressSuffix : ''}`, details);
+    }
+    if (error.code === 'subscription_limit' || error.httpStatus === 429) {
+      return new AppError(429, 'HOROSHOP_ACCESSORY_RATE_LIMIT', `Хорошоп тимчасово вичерпав ліміт API-запитів.${progressSuffix}`, details);
+    }
+    if (error.apiMessage) {
+      const apiMessage = error.apiMessage.replace(/[.\s]+$/u, '');
+      return new AppError(502, 'HOROSHOP_ACCESSORY_PUBLISH_REJECTED', `Хорошоп відхилив пакет: ${apiMessage}.${progressSuffix}`, details);
     }
   }
-  return new AppError(502, 'HOROSHOP_ACCESSORY_PUBLISH_FAILED', 'Хорошоп не прийняв список аксесуарів. Чернетку збережено без змін.');
+  return new AppError(502, 'HOROSHOP_ACCESSORY_PUBLISH_FAILED', `Не вдалося передати пакет аксесуарів у Хорошоп.${progressSuffix}`, details);
 }
 
 function validatePublicationPayload(payload) {
@@ -51,11 +70,21 @@ function publicationTotals(payloads) {
   };
 }
 
+async function withProgressHeartbeat(operation, onHeartbeat) {
+  const interval = setInterval(onHeartbeat, 10_000);
+  try {
+    return await operation();
+  } finally {
+    clearInterval(interval);
+  }
+}
+
 export class HoroshopAccessoryService {
   constructor(options = {}) {
     this.repository = options.repository || new HoroshopAccessoryRepository();
     this.clientFactory = options.clientFactory || ((storeDomain) => new HoroshopClient(storeDomain));
     this.catalogService = options.catalogService || horoshopCatalogService;
+    this.publicationBatchSize = options.publicationBatchSize || 100;
   }
 
   async detail(productId, actorUserId) {
@@ -212,7 +241,7 @@ export class HoroshopAccessoryService {
     };
   }
 
-  async publishAll(actorUserId) {
+  async publishAll(actorUserId, onProgress = null) {
     return this.catalogService.runExclusiveExternalWrite(async () => {
       const publication = await this.repository.bulkPublicationPayloads();
       if (!publication) {
@@ -232,20 +261,59 @@ export class HoroshopAccessoryService {
       }
 
       const publications = await this.repository.startPublications(publication.payloads, actorUserId);
+      const totalBatches = Math.ceil(publication.payloads.length / this.publicationBatchSize);
+      let processedProducts = 0;
+      let publishedProductAccessories = 0;
+      let publishedCategoryAccessories = 0;
+      let currentBatch = 0;
+      const reportProgress = (stage) => {
+        onProgress?.({
+          stage,
+          totalProducts: totals.products,
+          processedProducts,
+          productAccessories: publishedProductAccessories,
+          categoryAccessories: publishedCategoryAccessories,
+          currentBatch,
+          totalBatches,
+          percentage: totals.products === 0 ? 100 : Math.round((processedProducts / totals.products) * 100)
+        });
+      };
       try {
+        reportProgress('authenticating');
         const credentials = decryptHoroshopCredentials(publication.connection.encryptedCredentials);
         const client = this.clientFactory(publication.connection.storeDomain);
         const token = await client.authenticate(credentials.login, credentials.password);
-        await client.importCatalog(token, publication.payloads.map(publicationItem));
-        await this.repository.completePublications(publications, actorUserId);
+        for (let offset = 0; offset < publication.payloads.length; offset += this.publicationBatchSize) {
+          const batchPayloads = publication.payloads.slice(offset, offset + this.publicationBatchSize);
+          const batchPublications = publications.slice(offset, offset + this.publicationBatchSize);
+          currentBatch += 1;
+          reportProgress('publishing');
+          await withProgressHeartbeat(
+            () => client.importCatalog(token, batchPayloads.map(publicationItem)),
+            () => reportProgress('publishing')
+          );
+          await this.repository.completePublications(batchPublications, actorUserId);
+          const batchTotals = publicationTotals(batchPayloads);
+          processedProducts += batchTotals.products;
+          publishedProductAccessories += batchTotals.productAccessories;
+          publishedCategoryAccessories += batchTotals.categoryAccessories;
+          reportProgress(processedProducts === totals.products ? 'completed' : 'publishing');
+        }
         return {
           publishedProducts: totals.products,
           productAccessories: totals.productAccessories,
           categoryAccessories: totals.categoryAccessories
         };
       } catch (error) {
-        await this.repository.failPublications(publications.map((item) => item.id), error).catch(() => {});
-        throw publicationError(error);
+        const remainingPublications = publications.slice(processedProducts);
+        await this.repository.failPublications(remainingPublications.map((item) => item.id), error).catch(() => {});
+        const failedPayloads = publication.payloads.slice(processedProducts, processedProducts + this.publicationBatchSize);
+        throw publicationError(error, {
+          processedProducts,
+          totalProducts: totals.products,
+          failedBatch: currentBatch || 1,
+          failedArticles: failedPayloads.slice(0, 10).map((payload) => payload.context.product.sku)
+        });
       }
     });
   }

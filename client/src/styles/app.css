@@ -4736,8 +4736,17 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .horoshop-accessory-bulk-result strong { color: var(--ink); font-size: 15px; }
 .horoshop-accessory-publish--bulk { grid-column: 1 / -1; }
 .horoshop-accessory-publish--bulk > .horoshop-accessory-message,
-.horoshop-accessory-publish--bulk > .horoshop-accessory-bulk-result { grid-column: 1 / -1; }
+.horoshop-accessory-publish--bulk > .horoshop-accessory-bulk-result,
+.horoshop-accessory-publish--bulk > .horoshop-accessory-publish-progress { grid-column: 1 / -1; }
 .horoshop-accessory-bulk-result--publication { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.horoshop-accessory-publish-progress { display: grid; gap: 8px; border: 1px solid #cbd6ef; border-radius: 12px; padding: 12px 14px; background: rgba(255,255,255,.72); }
+.horoshop-accessory-publish-progress > span { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #3e527f; font-size: 10px; }
+.horoshop-accessory-publish-progress > span b { color: #3658b6; font-size: 12px; }
+.horoshop-accessory-publish-progress > i { height: 8px; overflow: hidden; border-radius: 999px; background: #e1e7f5; }
+.horoshop-accessory-publish-progress > i > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#6d58ff,#8266ff); transition: width .25s ease; }
+.horoshop-accessory-publish-progress > small { color: var(--muted); font-size: 8px; }
+.horoshop-accessory-publish-progress.is-error { border-color: #f0cfd6; background: #fffafb; }
+.horoshop-accessory-publish-progress.is-error > i > i { background: #d65d75; }
 .horoshop-accessory-targets,
 .horoshop-accessory-workspace { min-width: 0; border: 1px solid var(--line); border-radius: 19px; background: var(--surface); box-shadow: var(--shadow); }
 .horoshop-accessory-targets { position: sticky; top: 78px; overflow: hidden; }

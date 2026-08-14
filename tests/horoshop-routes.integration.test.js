@@ -209,6 +209,27 @@ test('Horoshop catalog route returns product cards with nested modification tree
     productAccessories: 0,
     categoryAccessories: 0
   });
+  await request(app)
+    .post('/api/search/horoshop/accessories/publications/publish-all/stream')
+    .send({ confirmOverwrite: true })
+    .expect(401);
+  await admin
+    .post('/api/search/horoshop/accessories/publications/publish-all/stream')
+    .send({})
+    .expect(422);
+  const streamedPublication = await admin
+    .post('/api/search/horoshop/accessories/publications/publish-all/stream')
+    .send({ confirmOverwrite: true })
+    .expect(200);
+  assert.match(streamedPublication.headers['content-type'], /application\/x-ndjson/u);
+  assert.deepEqual(JSON.parse(streamedPublication.text.trim()), {
+    type: 'result',
+    data: {
+      publishedProducts: 0,
+      productAccessories: 0,
+      categoryAccessories: 0
+    }
+  });
 
   await admin
     .post(`/api/search/horoshop/accessories/products/${productId}/publish`)

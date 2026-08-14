@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../lib/api';
 import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
-import type { HoroshopAccessoryDetail } from '../types/horoshop-accessory';
+import type { HoroshopAccessoryBulkPublishResult, HoroshopAccessoryDetail } from '../types/horoshop-accessory';
 import { HoroshopRelatedProductsPage } from './HoroshopRelatedProductsPage';
 
 const feed: HoroshopCatalogFeed = {
@@ -243,10 +243,22 @@ describe('HoroshopRelatedProductsPage', () => {
       productAccessories: 34,
       categoryAccessories: 2
     });
-    const publishAll = vi.spyOn(api.horoshopAccessories, 'publishAll').mockResolvedValue({
-      publishedProducts: 12,
-      productAccessories: 34,
-      categoryAccessories: 2
+    let finishPublish: (value: HoroshopAccessoryBulkPublishResult) => void = () => {};
+    const publication = new Promise<HoroshopAccessoryBulkPublishResult>((resolve) => {
+      finishPublish = resolve;
+    });
+    const publishAll = vi.spyOn(api.horoshopAccessories, 'publishAll').mockImplementation(async (onProgress) => {
+      onProgress({
+        stage: 'publishing',
+        totalProducts: 12,
+        processedProducts: 6,
+        productAccessories: 17,
+        categoryAccessories: 1,
+        currentBatch: 2,
+        totalBatches: 4,
+        percentage: 50
+      });
+      return publication;
     });
     const publish = vi.spyOn(api.horoshopAccessories, 'publish');
 
@@ -265,7 +277,17 @@ describe('HoroshopRelatedProductsPage', () => {
     expect(publishAllButton).toBeEnabled();
     fireEvent.click(publishAllButton);
 
-    await waitFor(() => expect(publishAll).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(publishAll).toHaveBeenCalledWith(expect.any(Function)));
+    const progress = await screen.findByRole('progressbar', { name: 'Прогрес масової публікації в Хорошоп' });
+    expect(progress).toHaveAttribute('aria-valuenow', '6');
+    expect(screen.getByText('Опубліковано 6 із 12 товарів')).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
+
+    await act(async () => finishPublish({
+      publishedProducts: 12,
+      productAccessories: 34,
+      categoryAccessories: 2
+    }));
     expect(await screen.findByText('Масову публікацію завершено: у Хорошоп передано 12 товарів, 34 супутніх товарів і 2 розділів.')).toBeInTheDocument();
     expect(screen.getByText('Опубліковано товарів')).toBeInTheDocument();
     expect(publish).not.toHaveBeenCalled();

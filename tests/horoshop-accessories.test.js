@@ -10,6 +10,7 @@ process.env.COOKIE_SECURE = 'false';
 const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { encryptHoroshopCredentials } = await import('../src/modules/search/horoshop/credential-cipher.js');
+const { HoroshopApiError } = await import('../src/modules/search/horoshop/horoshop.client.js');
 const { HoroshopAccessoryRepository } = await import('../src/modules/search/horoshop/accessory.repository.js');
 const {
   HOROSHOP_CODEX_REVIEW_FORMAT,
@@ -227,13 +228,17 @@ test('Codex proposals can be added to one draft or all drafts without publishing
   assert.equal(caseDetail.draft.selected.some((item) => item.target.id === ids.charger), true);
 });
 
-test('all dirty accessory drafts are published to Horoshop in one explicit bulk import', async () => {
+test('all dirty accessory drafts are published to Horoshop in safe batches with progress', async () => {
   const imports = [];
+  const progress = [];
+  let authentications = 0;
   const service = new HoroshopAccessoryService({
     repository: new HoroshopAccessoryRepository(pool),
     catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    publicationBatchSize: 1,
     clientFactory: () => ({
       async authenticate(login, password) {
+        authentications += 1;
         assert.equal(login, 'owner');
         assert.equal(password, 'secret');
         return 'bulk-token';
@@ -250,17 +255,28 @@ test('all dirty accessory drafts are published to Horoshop in one explicit bulk 
     productAccessories: 4,
     categoryAccessories: 0
   });
-  assert.deepEqual(await service.publishAll(null), {
+  assert.deepEqual(await service.publishAll(null, (value) => progress.push(value)), {
     publishedProducts: 2,
     productAccessories: 4,
     categoryAccessories: 0
   });
-  assert.equal(imports.length, 1);
+  assert.equal(authentications, 1);
+  assert.equal(imports.length, 2);
   assert.equal(imports[0].token, 'bulk-token');
-  assert.deepEqual(imports[0].products.toSorted((left, right) => left.article.localeCompare(right.article)), [
+  assert.deepEqual(imports.flatMap((item) => item.products).toSorted((left, right) => left.article.localeCompare(right.article)), [
     { article: 'CASE-15', accessories: ['CHARGER-30'] },
     { article: 'IPHONE-15', accessories: ['CASE-15', 'CHARGER-30', 'BATTERY-AA'] }
   ]);
+  assert.deepEqual(progress.at(-1), {
+    stage: 'completed',
+    totalProducts: 2,
+    processedProducts: 2,
+    productAccessories: 4,
+    categoryAccessories: 0,
+    currentBatch: 2,
+    totalBatches: 2,
+    percentage: 100
+  });
   assert.equal((await service.detail(ids.phone, null)).draft.isDirty, false);
   assert.equal((await service.detail(ids.case, null)).draft.isDirty, false);
   assert.deepEqual(await service.publicationSummary(), {
@@ -273,7 +289,52 @@ test('all dirty accessory drafts are published to Horoshop in one explicit bulk 
     productAccessories: 0,
     categoryAccessories: 0
   });
-  assert.equal(imports.length, 1);
+  assert.equal(imports.length, 2);
+});
+
+test('a rejected bulk batch preserves remaining drafts and exposes Horoshop diagnostics', async () => {
+  await new HoroshopAccessoryService({ repository: new HoroshopAccessoryRepository(pool) })
+    .saveDraft(ids.phone, [{ type: 'product', id: ids.case }], null);
+  await new HoroshopAccessoryService({ repository: new HoroshopAccessoryRepository(pool) })
+    .saveDraft(ids.case, [
+      { type: 'product', id: ids.charger },
+      { type: 'product', id: ids.battery }
+    ], null);
+  let importCalls = 0;
+  const service = new HoroshopAccessoryService({
+    repository: new HoroshopAccessoryRepository(pool),
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    publicationBatchSize: 1,
+    clientFactory: () => ({
+      async authenticate() {
+        return 'bulk-token';
+      },
+      async importCatalog() {
+        importCalls += 1;
+        if (importCalls === 2) {
+          throw new HoroshopApiError('api_rejected', 422, 'Accessory article TEST-BAD was not found');
+        }
+        return { imported: 1 };
+      }
+    })
+  });
+
+  await assert.rejects(service.publishAll(null), (error) => {
+    assert.equal(error.code, 'HOROSHOP_ACCESSORY_PUBLISH_REJECTED');
+    assert.match(error.message, /Accessory article TEST-BAD was not found/u);
+    assert.deepEqual(error.details.processedProducts, 1);
+    assert.deepEqual(error.details.totalProducts, 2);
+    return true;
+  });
+  assert.equal(importCalls, 2);
+  const details = await Promise.all([
+    service.detail(ids.phone, null),
+    service.detail(ids.case, null)
+  ]);
+  assert.equal(details.filter((item) => item.draft.isDirty).length, 1);
+  const remaining = await service.publicationSummary();
+  assert.equal(remaining.pendingProducts, 1);
+  assert.equal(remaining.categoryAccessories, 0);
 });
 
 test('database rejects the removed algorithm source', async () => {

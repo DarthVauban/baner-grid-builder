@@ -115,6 +115,7 @@ import type { SystemMetrics } from '../types/system';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
   HoroshopAccessoryCandidates,
+  HoroshopAccessoryBulkPublishProgress,
   HoroshopAccessoryBulkPublishResult,
   HoroshopAccessoryBulkPublishSummary,
   HoroshopAccessoryDetail,
@@ -159,6 +160,7 @@ import {
   jsonBody,
   queryString,
   request,
+  requestNdjson,
   type ApiErrorPayload,
   type ApiSuccessPayload
 } from './api-client';
@@ -201,9 +203,10 @@ export const api = {
       '/api/search/horoshop/accessories/publications/pending',
       { signal }
     ),
-    publishAll: () => request<HoroshopAccessoryBulkPublishResult>(
-      '/api/search/horoshop/accessories/publications/publish-all',
-      { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 300_000 }
+    publishAll: (onProgress: (progress: HoroshopAccessoryBulkPublishProgress) => void) => requestNdjson<HoroshopAccessoryBulkPublishProgress, HoroshopAccessoryBulkPublishResult>(
+      '/api/search/horoshop/accessories/publications/publish-all/stream',
+      { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 900_000 },
+      onProgress
     ),
     detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}`,

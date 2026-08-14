@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import type { HoroshopCatalogProduct, HoroshopLocalizedText } from '../../types/horoshop-catalog';
 import type {
   HoroshopAccessoryCategory,
+  HoroshopAccessoryBulkPublishProgress,
   HoroshopAccessoryBulkPublishResult,
   HoroshopAccessoryDetail,
   HoroshopAccessoryLink,
@@ -116,6 +117,7 @@ export function HoroshopAccessoryManager() {
   const [bulkPublishConfirmed, setBulkPublishConfirmed] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [reviewResult, setReviewResult] = useState<HoroshopCodexReviewResult | null>(null);
+  const [bulkPublishProgress, setBulkPublishProgress] = useState<HoroshopAccessoryBulkPublishProgress | null>(null);
   const [bulkPublishResult, setBulkPublishResult] = useState<HoroshopAccessoryBulkPublishResult | null>(null);
   const [reviewFileError, setReviewFileError] = useState<string | null>(null);
 
@@ -226,7 +228,20 @@ export function HoroshopAccessoryManager() {
     }
   });
   const publishAll = useMutation({
-    mutationFn: () => api.horoshopAccessories.publishAll(),
+    mutationFn: () => {
+      setBulkPublishResult(null);
+      setBulkPublishProgress({
+        stage: 'authenticating',
+        totalProducts: publicationSummary.data?.pendingProducts || 0,
+        processedProducts: 0,
+        productAccessories: 0,
+        categoryAccessories: 0,
+        currentBatch: 0,
+        totalBatches: 0,
+        percentage: 0
+      });
+      return api.horoshopAccessories.publishAll(setBulkPublishProgress);
+    },
     onSuccess: async (value) => {
       setBulkPublishConfirmed(false);
       setBulkPublishResult(value);
@@ -235,6 +250,12 @@ export function HoroshopAccessoryManager() {
         queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-publication-summary'] })
       ]);
       setFeedback(`Масову публікацію завершено: у Хорошоп передано ${value.publishedProducts} товарів, ${value.productAccessories} супутніх товарів і ${value.categoryAccessories} розділів.`);
+    },
+    onError: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-detail'] }),
+        queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-publication-summary'] })
+      ]);
     }
   });
   const publish = useMutation({
@@ -363,9 +384,36 @@ export function HoroshopAccessoryManager() {
           onClick={() => publishAll.mutate()}
         >
           <Icon name="send" size={18} />
-          {publishAll.isPending ? 'Передаємо всі чернетки…' : 'Передати всі застосовані рекомендації в Хорошоп'}
+          {publishAll.isPending && bulkPublishProgress
+            ? `Передаємо ${bulkPublishProgress.processedProducts} із ${bulkPublishProgress.totalProducts}…`
+            : 'Передати всі застосовані рекомендації в Хорошоп'}
         </button>
         {localDirty && <small className="horoshop-accessory-publish-hint">Спочатку збережіть зміни поточної чернетки.</small>}
+        {bulkPublishProgress && (publishAll.isPending || publishAll.isError) && (
+          <div
+            className={`horoshop-accessory-publish-progress${publishAll.isError ? ' is-error' : ''}`}
+            role="progressbar"
+            aria-label="Прогрес масової публікації в Хорошоп"
+            aria-valuemin={0}
+            aria-valuemax={bulkPublishProgress.totalProducts}
+            aria-valuenow={bulkPublishProgress.processedProducts}
+          >
+            <span>
+              <strong>
+                {bulkPublishProgress.stage === 'authenticating'
+                  ? 'Авторизація в Хорошоп…'
+                  : `Опубліковано ${bulkPublishProgress.processedProducts} із ${bulkPublishProgress.totalProducts} товарів`}
+              </strong>
+              <b>{bulkPublishProgress.percentage}%</b>
+            </span>
+            <i><i style={{ width: `${bulkPublishProgress.percentage}%` }} /></i>
+            <small>
+              {bulkPublishProgress.currentBatch > 0
+                ? `Пакет ${bulkPublishProgress.currentBatch} із ${bulkPublishProgress.totalBatches} · ${bulkPublishProgress.productAccessories} супутніх товарів · ${bulkPublishProgress.categoryAccessories} розділів`
+                : 'Готуємо безпечні пакети для передачі.'}
+            </small>
+          </div>
+        )}
         {(publicationSummary.isError || publishAll.isError) && (
           <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{publicationSummary.error?.message || publishAll.error?.message}</div>
         )}

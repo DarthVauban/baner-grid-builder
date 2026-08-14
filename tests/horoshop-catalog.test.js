@@ -9,6 +9,7 @@ process.env.COOKIE_SECURE = 'false';
 const { pool, query } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const {
+  HoroshopApiError,
   HoroshopClient,
   normalizeHoroshopStoreDomain
 } = await import('../src/modules/search/horoshop/horoshop.client.js');
@@ -71,6 +72,24 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
   assert.deepEqual(calls[2].body, { token: 'session-token', offset: 0, limit: 1 });
   assert.deepEqual(calls[3].body, {
     token: 'session-token', products: [{ article: 'PHONE-1', accessories: ['CASE-1'] }]
+  });
+});
+
+test('Horoshop client preserves a safe API rejection message for diagnostics', async () => {
+  const client = new HoroshopClient('shop.example.com', {
+    fetchImplementation: async () => new Response(JSON.stringify({
+      status: 'ERROR',
+      response: { message: 'Accessory article CASE-MISSING was not found' }
+    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    lookupImplementation: async () => [{ address: '93.184.216.34', family: 4 }],
+    sleep: async () => {}
+  });
+
+  await assert.rejects(client.importCatalog('session-token', [{ article: 'PHONE-1', accessories: ['CASE-MISSING'] }]), (error) => {
+    assert.equal(error instanceof HoroshopApiError, true);
+    assert.equal(error.code, 'api_rejected');
+    assert.equal(error.apiMessage, 'Accessory article CASE-MISSING was not found');
+    return true;
   });
 });
 

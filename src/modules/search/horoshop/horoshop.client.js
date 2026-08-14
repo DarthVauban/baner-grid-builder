@@ -3,11 +3,12 @@ import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 
 export class HoroshopApiError extends Error {
-  constructor(code, httpStatus = null) {
+  constructor(code, httpStatus = null, apiMessage = null) {
     super(`Horoshop API request failed: ${code}${httpStatus ? ` (HTTP ${httpStatus})` : ''}`);
     this.name = 'HoroshopApiError';
     this.code = code;
     this.httpStatus = httpStatus;
+    this.apiMessage = apiMessage;
   }
 }
 
@@ -167,8 +168,37 @@ function errorCode(status, payload) {
     || /permission|forbidden|access denied|not allowed|доступ|дозвіл|разреш/u.test(detail)) {
     return 'permission_denied';
   }
-  if (status === 404 || /unknown function|not found|unsupported/u.test(detail)) return 'unsupported_operation';
+  if (status === 404
+    || /unknown function|function[^.]{0,80}(?:not found|unsupported)|unsupported (?:function|operation)/u.test(detail)) {
+    return 'unsupported_operation';
+  }
   return 'api_rejected';
+}
+
+function responseMessage(payload) {
+  const messages = [];
+  const visit = (value, key = '', depth = 0) => {
+    if (messages.length >= 4 || depth > 4 || value === null || value === undefined) return;
+    if (/token|password|login|credential|authorization/iu.test(key)) return;
+    if (typeof value === 'string') {
+      const message = value.trim();
+      if (message && !['OK', 'ERROR', 'HTTP_ERROR', 'EMPTY'].includes(message.toUpperCase())) {
+        messages.push(message.slice(0, 500));
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 4)) visit(item, key, depth + 1);
+      return;
+    }
+    if (typeof value !== 'object') return;
+    const preferredKeys = ['message', 'error', 'description', 'errors', 'response', 'details'];
+    for (const preferredKey of preferredKeys) {
+      if (Object.hasOwn(value, preferredKey)) visit(value[preferredKey], preferredKey, depth + 1);
+    }
+  };
+  visit(payload);
+  return [...new Set(messages)].join(' · ').slice(0, 700) || null;
 }
 
 export class HoroshopClient {
@@ -221,12 +251,13 @@ export class HoroshopClient {
   }
 
   async importCatalog(token, products) {
-    return this.post('catalog/import', { token, products });
+    return this.post('catalog/import', { token, products }, { timeoutMilliseconds: 30_000 });
   }
 
-  async post(functionName, body) {
+  async post(functionName, body, options = {}) {
     const endpoint = new URL(`/api/${functionName}/`, this.baseUrl);
     let lastError;
+    const timeoutMilliseconds = options.timeoutMilliseconds || this.timeoutMilliseconds;
 
     if (this.lookupImplementation && isIP(this.hostname) === 0) {
       const addresses = await this.lookupImplementation(this.hostname);
@@ -237,7 +268,7 @@ export class HoroshopClient {
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.timeoutMilliseconds);
+      const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
       try {
         const response = await this.fetchImplementation(endpoint, {
           method: 'POST',
@@ -252,12 +283,14 @@ export class HoroshopClient {
         } catch {
           throw new HoroshopApiError('invalid_response', response.status);
         }
-        if (!response.ok) throw new HoroshopApiError(errorCode(response.status, payload), response.status);
+        if (!response.ok) {
+          throw new HoroshopApiError(errorCode(response.status, payload), response.status, responseMessage(payload));
+        }
         const envelope = payload !== null && typeof payload === 'object' ? payload : {};
         if (envelope.status === 'EMPTY') return {};
         if (envelope.status === 'OK') return envelope.response || {};
         if (Object.hasOwn(envelope, 'status')) {
-          throw new HoroshopApiError(errorCode(response.status, payload), response.status);
+          throw new HoroshopApiError(errorCode(response.status, payload), response.status, responseMessage(payload));
         }
         return payload;
       } catch (error) {
