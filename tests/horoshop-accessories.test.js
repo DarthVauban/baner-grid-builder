@@ -200,6 +200,33 @@ test('Codex proposals become reviewable drafts and publication remains an explic
   }]);
 });
 
+test('Codex proposals can be added to one draft or all drafts without publishing', async () => {
+  const service = new HoroshopAccessoryService({ repository: new HoroshopAccessoryRepository(pool) });
+  await service.importReview(fullReview(new Map([
+    [ids.phone, [recommendation(ids.battery, 'Батарейки доречні як тестова пропозиція для перевірки додавання до поточної чернетки.')]],
+    [ids.case, [recommendation(ids.charger, 'Зарядний пристрій доречний як тестова пропозиція для перевірки масового додавання.')]]
+  ])), null);
+
+  const current = await service.acceptReviewProposals(ids.phone, null);
+  assert.equal(current.productsUpdated, 1);
+  assert.equal(current.recommendationsAdded, 1);
+  assert.equal(current.recommendationsSkipped, 0);
+  assert.equal(current.detail.draft.suggestions.length, 0);
+  assert.equal(current.detail.draft.selected.some((item) => item.target.id === ids.battery), true);
+  assert.equal(current.detail.draft.isDirty, true);
+
+  const all = await service.acceptAllReviewProposals(null);
+  assert.deepEqual(all, {
+    productsUpdated: 1,
+    recommendationsAdded: 1,
+    recommendationsSkipped: 0,
+    detail: null
+  });
+  const caseDetail = await service.detail(ids.case, null);
+  assert.equal(caseDetail.draft.suggestions.length, 0);
+  assert.equal(caseDetail.draft.selected.some((item) => item.target.id === ids.charger), true);
+});
+
 test('database rejects the removed algorithm source', async () => {
   const set = await new HoroshopAccessoryRepository(pool).ensureSet(ids.battery, null);
   await assert.rejects(pool.query(`

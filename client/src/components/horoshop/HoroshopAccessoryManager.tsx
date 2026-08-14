@@ -36,6 +36,15 @@ function formatPrice(value: string | null, currency: string | null) {
   return `${formatted} ${(currency || 'UAH').toUpperCase() === 'UAH' ? 'грн' : currency}`;
 }
 
+function proposalWord(value: number) {
+  const lastTwo = value % 100;
+  const last = value % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'пропозицій';
+  if (last === 1) return 'пропозицію';
+  if (last >= 2 && last <= 4) return 'пропозиції';
+  return 'пропозицій';
+}
+
 function ProductThumb({ product }: { product: Pick<HoroshopAccessoryProduct, 'brand' | 'imageUrl' | 'primaryImageUrl'> }) {
   const [failed, setFailed] = useState(false);
   const source = product.imageUrl || product.primaryImageUrl;
@@ -143,8 +152,8 @@ export function HoroshopAccessoryManager() {
     setDraftTargets(detail.data.draft.selected.map((item) => item.target));
     setLocalDirty(false);
     setConfirmed(false);
-    setFeedback(null);
   }, [detail.data, selectedProductId]);
+  useEffect(() => setFeedback(null), [selectedProductId]);
 
   const candidates = useQuery({
     queryKey: ['horoshop-accessory-candidates', selectedProductId, candidateSearch],
@@ -170,10 +179,30 @@ export function HoroshopAccessoryManager() {
     onSuccess: (value) => {
       setReviewResult(value);
       setReviewFileError(null);
-      setFeedback('Пропозиції Codex імпортовано як чернетки. У Хорошоп нічого не передано.');
+      setFeedback('Пропозиції Codex імпортовано для перегляду. У Хорошоп нічого не передано.');
       if (!localDirty && selectedProductId) {
         void queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-detail', selectedProductId] });
       }
+    }
+  });
+  const acceptAllReviewProposals = useMutation({
+    mutationFn: () => api.horoshopAccessories.acceptAllReviewProposals(),
+    onSuccess: async (value) => {
+      await queryClient.invalidateQueries({ queryKey: ['horoshop-accessory-detail'] });
+      const skipped = value.recommendationsSkipped > 0
+        ? ` ${value.recommendationsSkipped} пропущено через ліміт 16 товарів у чернетці.`
+        : '';
+      setFeedback(`Оновлено чернеток: ${value.productsUpdated}. Додано ${value.recommendationsAdded} ${proposalWord(value.recommendationsAdded)} Codex.${skipped} У Хорошоп нічого не передано.`);
+    }
+  });
+  const acceptCurrentReviewProposals = useMutation({
+    mutationFn: (productId: string) => api.horoshopAccessories.acceptReviewProposals(productId),
+    onSuccess: (value, productId) => {
+      if (value.detail) installDetail(productId, value.detail);
+      const skipped = value.recommendationsSkipped > 0
+        ? ` ${value.recommendationsSkipped} пропущено через ліміт 16 товарів у чернетці.`
+        : '';
+      setFeedback(`До поточної чернетки додано ${value.recommendationsAdded} ${proposalWord(value.recommendationsAdded)} Codex.${skipped} У Хорошоп нічого не передано.`);
     }
   });
   const saveDraft = useMutation({
@@ -196,7 +225,8 @@ export function HoroshopAccessoryManager() {
   const availableSuggestions = (detail.data?.draft.suggestions || []).filter((item) => !selectedKeys.has(item.key));
   const productCount = draftTargets.filter((item) => item.type === 'product').length;
   const categoryCount = draftTargets.length - productCount;
-  const busy = exportReview.isPending || importReview.isPending || saveDraft.isPending || publish.isPending;
+  const busy = exportReview.isPending || importReview.isPending || acceptAllReviewProposals.isPending
+    || acceptCurrentReviewProposals.isPending || saveDraft.isPending || publish.isPending;
 
   const readReviewFile = async (file: File | undefined) => {
     if (!file) return;
@@ -259,10 +289,11 @@ export function HoroshopAccessoryManager() {
               }}
             />
           </label>
+          <button className="button button--secondary" type="button" disabled={busy || localDirty} onClick={() => acceptAllReviewProposals.mutate()} title="Додати всі пропозиції Codex до локальних чернеток усіх товарів"><Icon name="add" size={18} />{acceptAllReviewProposals.isPending ? 'Додаємо до всіх чернеток…' : 'Додати всі пропозиції для всіх товарів'}</button>
         </div>
-        <small>Codex може також отримати каталог і записати рев’ю напряму через API цього інструмента. Усі пропозиції спочатку потрапляють у чернетку.</small>
+        <small>Codex може також отримати каталог і записати рев’ю напряму через API цього інструмента. Пропозиції спочатку доступні для перегляду й лише окремою дією додаються до чернеток.</small>
         {localDirty && <small>Збережіть поточну чернетку перед імпортом нового рев’ю.</small>}
-        {(exportReview.isError || importReview.isError || reviewFileError) && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{reviewFileError || exportReview.error?.message || importReview.error?.message}</div>}
+        {(exportReview.isError || importReview.isError || acceptAllReviewProposals.isError || reviewFileError) && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{reviewFileError || exportReview.error?.message || importReview.error?.message || acceptAllReviewProposals.error?.message}</div>}
         {reviewResult && (
           <div className="horoshop-accessory-bulk-result">
             <span><small>Переглянуто</small><strong>{reviewResult.reviewedProducts}</strong></span>
@@ -302,7 +333,7 @@ export function HoroshopAccessoryManager() {
             {!detail.data.draft.catalogStateKnown && (
               <div className="horoshop-accessory-warning"><Icon name="alarm" size={19} /><span><strong>Поточний список аксесуарів не повернувся з експорту.</strong>Публікація замінить весь список у картці цим проєктом.</span></div>
             )}
-            {mutationError(saveDraft, publish) && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{mutationError(saveDraft, publish)}</div>}
+            {mutationError(acceptCurrentReviewProposals, saveDraft, publish) && <div className="horoshop-accessory-message is-error"><Icon name="alarm" size={18} />{mutationError(acceptCurrentReviewProposals, saveDraft, publish)}</div>}
             {feedback && <div className="horoshop-accessory-message"><Icon name="check" size={18} />{feedback}</div>}
 
             <section className="horoshop-accessory-section">
@@ -328,7 +359,7 @@ export function HoroshopAccessoryManager() {
             </section>
 
             <section className="horoshop-accessory-section">
-              <header><span><h3>Пропозиції Codex</h3><p>Оцінки виставлені Codex під час змістовного рев’ю, а не розраховані алгоритмом.</p></span><b>{availableSuggestions.length} кандидатів</b></header>
+              <header><span><h3>Пропозиції Codex</h3><p>Оцінки виставлені Codex під час змістовного рев’ю, а не розраховані алгоритмом.</p></span><div className="horoshop-accessory-section-heading-actions"><b>{availableSuggestions.length} кандидатів</b><button className="button button--secondary" type="button" disabled={availableSuggestions.length === 0 || productCount >= 16 || localDirty || busy} onClick={() => acceptCurrentReviewProposals.mutate(selectedProductId!)}><Icon name="add" size={17} />{acceptCurrentReviewProposals.isPending ? 'Додаємо…' : 'Додати всі для цього товару'}</button></div></header>
               <div className="horoshop-accessory-suggestions">
                 {availableSuggestions.map((item) => <SuggestionCard link={item} key={item.key} onAdd={() => addTarget(item.target)} />)}
                 {availableSuggestions.length === 0 && <div className="horoshop-accessory-list-empty"><strong>Немає пропозицій Codex</strong><span>Товар міг бути свідомо залишений без супутніх товарів або ще не входив до рев’ю.</span></div>}

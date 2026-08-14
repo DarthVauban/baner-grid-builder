@@ -568,6 +568,91 @@ export class HoroshopAccessoryRepository {
     }
   }
 
+  async acceptCodexProposals(connectionId, productId, actorUserId) {
+    const params = productId ? [connectionId, productId] : [connectionId];
+    const productFilter = productId ? 'AND accessory_set.product_id = $2' : '';
+    const [setsResult, proposalsResult] = await Promise.all([
+      this.pool.query(`
+        SELECT accessory_set.id, accessory_set.product_id,
+               COUNT(selected_link.id) AS selected_product_count
+        FROM search_horoshop_accessory_sets AS accessory_set
+        LEFT JOIN search_horoshop_accessory_links AS selected_link
+          ON selected_link.set_id = accessory_set.id
+          AND selected_link.target_type = 'product'
+          AND selected_link.selected = TRUE
+        WHERE accessory_set.connection_id = $1 ${productFilter}
+        GROUP BY accessory_set.id, accessory_set.product_id
+      `, params),
+      this.pool.query(`
+        SELECT proposal.id, proposal.set_id, accessory_set.product_id
+        FROM search_horoshop_accessory_links AS proposal
+        INNER JOIN search_horoshop_accessory_sets AS accessory_set
+          ON accessory_set.id = proposal.set_id
+        WHERE accessory_set.connection_id = $1 ${productFilter}
+          AND proposal.target_type = 'product'
+          AND proposal.codex_proposed = TRUE
+          AND proposal.selected = FALSE
+        ORDER BY proposal.set_id, proposal.position, proposal.created_at
+      `, params)
+    ]);
+
+    const selectedCountBySet = new Map(setsResult.rows.map((row) => [
+      row.id,
+      Number(row.selected_product_count || 0)
+    ]));
+    const acceptedIds = [];
+    let recommendationsSkipped = 0;
+    for (const proposal of proposalsResult.rows) {
+      const selectedCount = selectedCountBySet.get(proposal.set_id) || 0;
+      if (selectedCount >= 16) {
+        recommendationsSkipped += 1;
+        continue;
+      }
+      acceptedIds.push(proposal.id);
+      selectedCountBySet.set(proposal.set_id, selectedCount + 1);
+    }
+
+    if (acceptedIds.length === 0) {
+      return { productsUpdated: 0, recommendationsAdded: 0, recommendationsSkipped };
+    }
+
+    const client = await this.pool.connect();
+    let savedSetIds = [];
+    let recommendationsAdded = 0;
+    try {
+      await client.query('BEGIN');
+      const proposalPlaceholders = acceptedIds.map((_, index) => `$${index + 1}`).join(', ');
+      const acceptedResult = await client.query(`
+        UPDATE search_horoshop_accessory_links
+        SET selected = TRUE, updated_at = NOW()
+        WHERE id IN (${proposalPlaceholders})
+          AND codex_proposed = TRUE AND selected = FALSE
+        RETURNING set_id
+      `, acceptedIds);
+      recommendationsAdded = acceptedResult.rowCount;
+      savedSetIds = [...new Set(acceptedResult.rows.map((row) => row.set_id))];
+      if (savedSetIds.length > 0) {
+        const setPlaceholders = savedSetIds.map((_, index) => `$${index + 1}`).join(', ');
+        await client.query(`
+          UPDATE search_horoshop_accessory_sets
+          SET updated_by = $${savedSetIds.length + 1}, updated_at = NOW()
+          WHERE id IN (${setPlaceholders})
+        `, [...savedSetIds, actorUserId || null]);
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    return {
+      productsUpdated: savedSetIds.length,
+      recommendationsAdded,
+      recommendationsSkipped
+    };
+  }
+
   async publicationPayload(productId, actorUserId) {
     const state = await this.ensureSet(productId, actorUserId);
     if (!state?.set) return null;

@@ -163,6 +163,23 @@ test('Horoshop catalog route returns product cards with nested modification tree
     recommendationsSaved: 0
   });
 
+  await request(app).post('/api/search/horoshop/accessories/review/proposals/accept-all').expect(401);
+  const acceptedAll = await admin
+    .post('/api/search/horoshop/accessories/review/proposals/accept-all')
+    .expect(200);
+  assert.deepEqual(acceptedAll.body.data, {
+    productsUpdated: 0,
+    recommendationsAdded: 0,
+    recommendationsSkipped: 0,
+    detail: null
+  });
+  const acceptedCurrent = await admin
+    .post(`/api/search/horoshop/accessories/products/${productId}/review/proposals/accept`)
+    .expect(200);
+  assert.equal(acceptedCurrent.body.data.productsUpdated, 0);
+  assert.equal(acceptedCurrent.body.data.recommendationsAdded, 0);
+  assert.equal(acceptedCurrent.body.data.detail.product.id, productId);
+
   await admin.post('/api/search/horoshop/accessories/recommendations/bulk').send({ limit: 12 }).expect(404);
 
   await admin

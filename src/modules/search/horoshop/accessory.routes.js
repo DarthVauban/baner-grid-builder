@@ -58,6 +58,10 @@ router.post('/review/proposals', asyncHandler(async (req, res) => {
   res.json({ data: await horoshopAccessoryService.importReview(document, req.user.id) });
 }));
 
+router.post('/review/proposals/accept-all', asyncHandler(async (req, res) => {
+  res.json({ data: await horoshopAccessoryService.acceptAllReviewProposals(req.user.id) });
+}));
+
 router.get('/products/:productId', asyncHandler(async (req, res) => {
   const { productId } = parseInput(productParamsSchema, req.params);
   res.json({ data: await horoshopAccessoryService.detail(productId, req.user.id) });
@@ -73,6 +77,11 @@ router.put('/products/:productId/draft', asyncHandler(async (req, res) => {
   const { productId } = parseInput(productParamsSchema, req.params);
   const { items } = parseInput(draftSchema, req.body);
   res.json({ data: await horoshopAccessoryService.saveDraft(productId, items, req.user.id) });
+}));
+
+router.post('/products/:productId/review/proposals/accept', asyncHandler(async (req, res) => {
+  const { productId } = parseInput(productParamsSchema, req.params);
+  res.json({ data: await horoshopAccessoryService.acceptReviewProposals(productId, req.user.id) });
 }));
 
 router.post('/products/:productId/publish', asyncHandler(async (req, res) => {

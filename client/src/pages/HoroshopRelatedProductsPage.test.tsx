@@ -186,4 +186,42 @@ describe('HoroshopRelatedProductsPage', () => {
     expect(screen.getByText('646')).toBeInTheDocument();
     expect(publish).not.toHaveBeenCalled();
   });
+
+  it('adds Codex proposals to the current draft or every draft without publishing', async () => {
+    vi.spyOn(api.horoshopCatalog, 'list').mockResolvedValue(feed);
+    vi.spyOn(api.horoshopAccessories, 'detail').mockResolvedValue(accessoryDetail);
+    const acceptedDetail: HoroshopAccessoryDetail = {
+      ...accessoryDetail,
+      draft: {
+        ...accessoryDetail.draft,
+        isDirty: true,
+        selected: [{ ...accessoryDetail.draft.suggestions[0], selected: true }],
+        suggestions: []
+      }
+    };
+    const acceptCurrent = vi.spyOn(api.horoshopAccessories, 'acceptReviewProposals').mockResolvedValue({
+      productsUpdated: 1,
+      recommendationsAdded: 1,
+      recommendationsSkipped: 0,
+      detail: acceptedDetail
+    });
+    const acceptAll = vi.spyOn(api.horoshopAccessories, 'acceptAllReviewProposals').mockResolvedValue({
+      productsUpdated: 12,
+      recommendationsAdded: 34,
+      recommendationsSkipped: 0,
+      detail: null
+    });
+    const publish = vi.spyOn(api.horoshopAccessories, 'publish');
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Керування аксесуарами' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Додати всі для цього товару' }));
+    await waitFor(() => expect(acceptCurrent).toHaveBeenCalledWith('product-1'));
+    expect(await screen.findByText('До поточної чернетки додано 1 пропозицію Codex. У Хорошоп нічого не передано.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Додати всі пропозиції для всіх товарів' }));
+    await waitFor(() => expect(acceptAll).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Оновлено чернеток: 12. Додано 34 пропозиції Codex. У Хорошоп нічого не передано.')).toBeInTheDocument();
+    expect(publish).not.toHaveBeenCalled();
+  });
 });

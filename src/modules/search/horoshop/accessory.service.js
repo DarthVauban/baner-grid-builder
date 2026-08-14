@@ -140,6 +140,38 @@ export class HoroshopAccessoryService {
     };
   }
 
+  async acceptReviewProposals(productId, actorUserId) {
+    const state = await this.repository.ensureSet(productId, actorUserId);
+    if (!state?.set) throw notFound();
+    if (state.context.connection.status !== 'connected') {
+      throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Додавання пропозицій доступне після завершення синхронізації каталогу.');
+    }
+    const result = await this.repository.acceptCodexProposals(
+      state.context.connection.id,
+      productId,
+      actorUserId
+    );
+    return { ...result, detail: await this.detail(productId, actorUserId) };
+  }
+
+  async acceptAllReviewProposals(actorUserId) {
+    const catalog = await this.repository.loadCodexReviewCatalog();
+    if (!catalog) {
+      throw new AppError(404, 'HOROSHOP_CATALOG_NOT_FOUND', 'Спочатку підключіть Хорошоп та імпортуйте каталог.');
+    }
+    if (catalog.connection.status !== 'connected') {
+      throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Додавання пропозицій доступне після завершення синхронізації каталогу.');
+    }
+    return {
+      ...await this.repository.acceptCodexProposals(
+        catalog.connection.id,
+        null,
+        actorUserId
+      ),
+      detail: null
+    };
+  }
+
   async publish(productId, actorUserId) {
     return this.catalogService.runExclusiveExternalWrite(async () => {
       const payload = await this.repository.publicationPayload(productId, actorUserId);

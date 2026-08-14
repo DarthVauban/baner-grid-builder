@@ -143,4 +143,11 @@ export interface HoroshopCodexReviewResult {
   recommendationsSaved: number;
 }
 
+export interface HoroshopCodexAcceptResult {
+  productsUpdated: number;
+  recommendationsAdded: number;
+  recommendationsSkipped: number;
+  detail: HoroshopAccessoryDetail | null;
+}
+
 export type HoroshopAccessoryDraftItem = Pick<HoroshopAccessoryTarget, 'type' | 'id'>;

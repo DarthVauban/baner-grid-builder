@@ -117,6 +117,7 @@ import type {
   HoroshopAccessoryCandidates,
   HoroshopAccessoryDetail,
   HoroshopAccessoryDraftItem,
+  HoroshopCodexAcceptResult,
   HoroshopCodexReviewCatalog,
   HoroshopCodexReviewProposal,
   HoroshopCodexReviewResult
@@ -190,6 +191,10 @@ export const api = {
       '/api/search/horoshop/accessories/review/proposals',
       { method: 'POST', body: jsonBody(document), timeoutMs: 300_000 }
     ),
+    acceptAllReviewProposals: () => request<HoroshopCodexAcceptResult>(
+      '/api/search/horoshop/accessories/review/proposals/accept-all',
+      { method: 'POST', timeoutMs: 300_000 }
+    ),
     detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}`,
       { signal }
@@ -201,6 +206,10 @@ export const api = {
     saveDraft: (productId: string, items: HoroshopAccessoryDraftItem[]) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/draft`,
       { method: 'PUT', body: jsonBody({ items }) }
+    ),
+    acceptReviewProposals: (productId: string) => request<HoroshopCodexAcceptResult>(
+      `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/review/proposals/accept`,
+      { method: 'POST' }
     ),
     publish: (productId: string) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/publish`,
