@@ -96,6 +96,9 @@ const FacebookPublicationsPage = lazy(() => import('../pages/FacebookPublication
 const HoroshopRelatedProductsPage = lazy(() => import('../pages/HoroshopRelatedProductsPage').then((module) => ({
   default: module.HoroshopRelatedProductsPage
 })));
+const HoroshopPhotoParserPage = lazy(() => import('../pages/HoroshopPhotoParserPage').then((module) => ({
+  default: module.HoroshopPhotoParserPage
+})));
 const OnlineSupportPage = lazy(() => import('../pages/OnlineSupportPage').then((module) => ({
   default: module.OnlineSupportPage
 })));
@@ -217,6 +220,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="horoshop_related_products" />}>
             <Route path="tools/horoshop-related-products" element={<Suspense fallback={<LoadingScreen />}><HoroshopRelatedProductsPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="horoshop_photo_parser" />}>
+            <Route path="tools/horoshop-photo-parser" element={<Suspense fallback={<LoadingScreen />}><HoroshopPhotoParserPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="online_support" />}>
             <Route path="tools/online-support" element={<Suspense fallback={<LoadingScreen />}><OnlineSupportPage /></Suspense>} />

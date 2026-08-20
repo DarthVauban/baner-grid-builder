@@ -90,7 +90,7 @@ describe('CatalogAuditPage', () => {
     renderPage('/catalog/audit?source=xlsx');
 
     expect(await screen.findByRole('heading', { name: 'Імпортовано XLSX' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Джерело')).toHaveValue('xlsx');
+    expect(screen.getByLabelText('Джерело')).toHaveTextContent('XLSX');
     expect(historySpy).toHaveBeenCalledWith(expect.objectContaining({ source: 'xlsx' }));
     await user.click(screen.getByRole('button', { name: /Деталі/ }));
     expect(await screen.findByText('iPhone 13 128GB')).toBeInTheDocument();

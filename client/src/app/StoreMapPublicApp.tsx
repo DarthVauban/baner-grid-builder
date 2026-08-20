@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { StyledSelect } from '../components/StyledSelect';
 import type { PublicStoreMapData, StoreMapPoint, StoreMapSchedule } from '../types/store-map';
 
 const defaultMarkerSvg = `<svg viewBox="0 0 42 52" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -242,15 +243,8 @@ export function StoreMapPublicApp() {
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук магазину…" aria-label="Пошук магазину" />
         </label>
         <div>
-          <select value={city} onChange={(event) => setCity(event.target.value)} aria-label="Місто">
-            <option value="ALL">Всі локації</option>
-            {data.cities.map((item) => <option value={item} key={item}>{item}</option>)}
-          </select>
-          <select value={openFilter} onChange={(event) => setOpenFilter(event.target.value as typeof openFilter)} aria-label="Статус">
-            <option value="ALL">Всі статуси</option>
-            <option value="OPEN">Відкриті</option>
-            <option value="CLOSED">Закриті</option>
-          </select>
+          <StyledSelect value={city} options={[{ value: 'ALL', label: 'Всі локації' }, ...data.cities.map((item) => ({ value: item, label: item }))]} onChange={setCity} ariaLabel="Місто" compact searchable />
+          <StyledSelect value={openFilter} options={[{ value: 'ALL', label: 'Всі статуси' }, { value: 'OPEN', label: 'Відкриті' }, { value: 'CLOSED', label: 'Закриті' }]} onChange={(value) => setOpenFilter(value as typeof openFilter)} ariaLabel="Статус" compact />
         </div>
       </header>
       <div className="store-map-widget__list">

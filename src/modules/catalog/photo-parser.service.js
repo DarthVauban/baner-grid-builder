@@ -52,6 +52,8 @@ export async function convertPhotoParserImageToWebp(buffer) {
   if (!usefulImageDimensions(metadata.width, metadata.height)) throw new Error('Зображення замале для фотографії товару');
 
   let webpBuffer = null;
+  let outputWidth = Number(metadata.width);
+  let outputHeight = Number(metadata.height);
   if (
     metadata.format === 'webp'
     && !metadata.orientation
@@ -78,11 +80,15 @@ export async function convertPhotoParserImageToWebp(buffer) {
   if (!webpBuffer || webpBuffer.length > maxCatalogImageBytes) {
     throw new Error('Не вдалося зменшити фотографію до 5 МБ');
   }
-  const output = await sharp(webpBuffer, { failOn: 'error', limitInputPixels: maxInputPixels }).metadata();
+  if (webpBuffer !== buffer) {
+    const output = await sharp(webpBuffer, { failOn: 'error', limitInputPixels: maxInputPixels }).metadata();
+    outputWidth = Number(output.width || metadata.width);
+    outputHeight = Number(output.height || metadata.height);
+  }
   return {
     buffer: webpBuffer,
-    width: Number(output.width || metadata.width),
-    height: Number(output.height || metadata.height),
+    width: outputWidth,
+    height: outputHeight,
     contentSha256: crypto.createHash('sha256').update(webpBuffer).digest('hex')
   };
 }

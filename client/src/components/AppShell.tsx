@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
+import { showSupportDesktopNotification } from '../lib/support-desktop-notifications';
 import { roleLabels } from '../lib/user';
 import { Icon } from './Icon';
 import { NotificationCenter } from './NotificationCenter';
@@ -88,15 +89,26 @@ export function AppShell() {
     sound.preload = 'auto';
     sound.volume = 0.55;
     const refresh = (event: Event) => {
-      let payload: { type?: string; conversationId?: string; senderType?: string } = {};
+      let payload: {
+        type?: string;
+        conversationId?: string;
+        senderType?: string;
+        visitorName?: string;
+        messagePreview?: string;
+      } = {};
       try { payload = JSON.parse((event as MessageEvent).data || '{}'); } catch { /* ignore malformed event data */ }
       void queryClient.invalidateQueries({ queryKey: ['online-support-conversations'] });
       void queryClient.invalidateQueries({ queryKey: ['online-support-unread-count'] });
       if (payload.conversationId) void queryClient.invalidateQueries({ queryKey: ['online-support-conversation', payload.conversationId] });
       const isSupportPage = locationRef.current.pathname === '/tools/online-support';
-      if (payload.type === 'message' && payload.senderType === 'visitor' && !isSupportPage) {
-        sound.currentTime = 0;
-        void sound.play().catch(() => undefined);
+      if (payload.type === 'message' && payload.senderType === 'visitor') {
+        if (!isSupportPage) {
+          sound.currentTime = 0;
+          void sound.play().catch(() => undefined);
+        }
+        if (!isSupportPage || document.visibilityState !== 'visible') {
+          showSupportDesktopNotification(userId, payload);
+        }
       }
     };
     stream.addEventListener('support', refresh);

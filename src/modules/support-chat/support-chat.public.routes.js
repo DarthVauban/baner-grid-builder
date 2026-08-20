@@ -289,7 +289,14 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
   } finally {
     client.release();
   }
-  publishSupportChatUpdate({ type: 'message', conversationId, visitorId: visitor.id, senderType: 'visitor' });
+  publishSupportChatUpdate({
+    type: 'message',
+    conversationId,
+    visitorId: visitor.id,
+    senderType: 'visitor',
+    visitorName: visitor.name || 'Покупець',
+    messagePreview: input.body.slice(0, 180)
+  });
   res.status(201).json({ data: await loadPublicConversation(visitor.id) });
 }));
 

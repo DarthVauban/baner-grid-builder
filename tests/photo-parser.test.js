@@ -199,3 +199,18 @@ test('photo parser converts supported source images to bounded WebP', async () =
     /image|unsupported|header|format/i
   );
 });
+
+test('photo parser preserves an already normalized WebP without recompressing it', async () => {
+  const webp = await sharp({
+    create: {
+      width: 480,
+      height: 640,
+      channels: 3,
+      background: '#5f4bda'
+    }
+  }).webp({ quality: 84 }).toBuffer();
+  const converted = await convertPhotoParserImageToWebp(webp);
+  assert.strictEqual(converted.buffer, webp);
+  assert.equal(converted.width, 480);
+  assert.equal(converted.height, 640);
+});

@@ -109,12 +109,12 @@
 .ti-field { min-width: 0; display: grid; align-content: start; gap: 8px; margin: 0; border: 0; padding: 0; }
 .ti-field--full { grid-column: 1 / -1; }
 .ti-field__label { font-size: 13px; font-weight: 800; }
-.ti-field input:not([type="radio"]):not([type="checkbox"]), .ti-field textarea, .ti-field select { width: 100%; min-height: 52px; border: 1px solid var(--ti-form-border); border-radius: calc(var(--ti-button-radius) * .8); padding: 0 15px; color: var(--ti-form-text); outline: 0; background: var(--ti-form-surface-raised); color-scheme: dark; }
+.ti-field input:not([type="radio"]):not([type="checkbox"]), .ti-field textarea, .ti-field .custom-select__button { width: 100%; min-height: 52px; border: 1px solid var(--ti-form-border); border-radius: calc(var(--ti-button-radius) * .8); padding: 0 15px; color: var(--ti-form-text); outline: 0; background: var(--ti-form-surface-raised); color-scheme: dark; }
 .ti-field input::placeholder, .ti-field textarea::placeholder { color: #858585; opacity: 1; }
 .ti-field textarea { min-height: 118px; padding-block: 13px; resize: vertical; }
-.ti-field input:focus, .ti-field textarea:focus, .ti-field select:focus { border-color: var(--ti-form-accent); box-shadow: 0 0 0 3px rgba(255,225,1,.16); }
+.ti-field input:focus, .ti-field textarea:focus, .ti-field .custom-select__button:focus-visible { border-color: var(--ti-form-accent); box-shadow: 0 0 0 3px rgba(255,225,1,.16); }
 .ti-field > small, .ti-choice > small { color: var(--ti-form-muted); font-size: 11px; }
-.ti-field.is-invalid input, .ti-field.is-invalid textarea, .ti-field.is-invalid select, .ti-field.is-invalid .ti-choice label { border-color: #c33c54; }
+.ti-field.is-invalid input, .ti-field.is-invalid textarea, .ti-field.is-invalid .custom-select__button, .ti-field.is-invalid .ti-choice label { border-color: #c33c54; }
 .ti-choice legend { margin-bottom: 10px; padding: 0; }
 .ti-choice > div { display: grid; grid-template-columns: repeat(auto-fit,minmax(145px,1fr)); gap: 10px; }
 .ti-choice label { min-height: 68px; display: grid; grid-template-columns: minmax(0,1fr) 22px; align-items: center; gap: 8px; border: 1px solid var(--ti-form-border); border-radius: calc(var(--ti-button-radius) * .9); padding: 13px 14px; cursor: pointer; background: var(--ti-form-surface-raised); transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .2s ease; }
@@ -230,7 +230,7 @@
 .ti-page--compact .ti-form-shell__heading small { font-size: 8px; }
 .ti-page--compact .ti-field-grid { gap: 11px; }
 .ti-page--compact .ti-field__label, .ti-page--compact .ti-choice label strong { font-size: 8px; }
-.ti-page--compact .ti-field input:not([type="radio"]):not([type="checkbox"]), .ti-page--compact .ti-field textarea, .ti-page--compact .ti-field select { min-height: 36px; border-radius: 8px; padding-inline: 10px; font-size: 8px; }
+.ti-page--compact .ti-field input:not([type="radio"]):not([type="checkbox"]), .ti-page--compact .ti-field textarea, .ti-page--compact .ti-field .custom-select__button { min-height: 36px; border-radius: 8px; padding-inline: 10px; font-size: 8px; }
 .ti-page--compact .ti-choice label { min-height: 43px; border-radius: 8px; padding: 8px; }
 .ti-page--compact .ti-choice label i { width: 15px; height: 15px; font-size: 7px; }
 .ti-page--compact .ti-form-actions { margin-top: 18px; padding-top: 15px; }

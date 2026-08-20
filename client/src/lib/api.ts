@@ -135,6 +135,16 @@ import type {
   HoroshopCodexReviewResult
 } from '../types/horoshop-accessory';
 import type {
+  HoroshopPhotoBatch,
+  HoroshopPhotoDesktopDevice,
+  HoroshopPhotoDesktopPairing,
+  HoroshopPhotoPublicationMode,
+  HoroshopPhotoPublishProgress,
+  HoroshopPhotoPublishResult,
+  HoroshopPhotoSelection,
+  HoroshopPhotoSelectionSummary
+} from '../types/horoshop-photo';
+import type {
   PublicTradeInSettings,
   TradeInAnswers,
   TradeInConfig,
@@ -176,6 +186,8 @@ import {
 
 export { ApiError } from './api-client';
 
+const HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS = 30_000;
+
 export const api = {
   horoshopCatalog: {
     list: (params: HoroshopCatalogParams = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
@@ -214,7 +226,7 @@ export const api = {
     ),
     publishAll: (onProgress: (progress: HoroshopAccessoryBulkPublishProgress) => void) => requestNdjson<HoroshopAccessoryBulkPublishProgress, HoroshopAccessoryBulkPublishResult>(
       '/api/search/horoshop/accessories/publications/publish-all/stream',
-      { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 900_000 },
+      { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 900_000, idleTimeoutMs: 0 },
       onProgress
     ),
     detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
@@ -236,6 +248,87 @@ export const api = {
     publish: (productId: string) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/publish`,
       { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 45_000 }
+    )
+  },
+  horoshopPhotos: {
+    desktopDevices: () => request<HoroshopPhotoDesktopDevice[]>('/api/search/horoshop/photos/desktop/devices'),
+    createDesktopPairing: () => request<HoroshopPhotoDesktopPairing>(
+      '/api/search/horoshop/photos/desktop/pairings',
+      { method: 'POST' }
+    ),
+    desktopPairing: (pairingId: string) => request<HoroshopPhotoDesktopPairing>(
+      `/api/search/horoshop/photos/desktop/pairings/${encodeURIComponent(pairingId)}`
+    ),
+    revokeDesktopDevice: (deviceId: string) => request<void>(
+      `/api/search/horoshop/photos/desktop/devices/${encodeURIComponent(deviceId)}`,
+      { method: 'DELETE' }
+    ),
+    selections: () => request<HoroshopPhotoSelectionSummary[]>('/api/search/horoshop/photos/selections'),
+    selection: (selectionId: string, signal?: AbortSignal) => request<HoroshopPhotoSelection>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}`,
+      { signal }
+    ),
+    createSelection: (input: { name?: string; entries: string[] }) => request<HoroshopPhotoSelection>(
+      '/api/search/horoshop/photos/selections',
+      { method: 'POST', body: jsonBody(input), timeoutMs: 60_000 }
+    ),
+    createFilteredSelection: (input: {
+      name?: string;
+      filters: Pick<HoroshopCatalogParams, 'search' | 'category' | 'availability' | 'visibility'>;
+    }) => request<HoroshopPhotoSelection>(
+      '/api/search/horoshop/photos/selections/from-filter',
+      { method: 'POST', body: jsonBody(input), timeoutMs: 120_000 }
+    ),
+    removeSelection: (selectionId: string) => request<void>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}`,
+      { method: 'DELETE' }
+    ),
+    addSelectionItem: (selectionId: string, input: {
+      productId: string;
+      modificationId?: string | null;
+      inputValue?: string;
+    }) => request<HoroshopPhotoSelection>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/items`,
+      { method: 'POST', body: jsonBody(input) }
+    ),
+    removeSelectionItem: (selectionId: string, itemId: string) => request<HoroshopPhotoSelection>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/items/${encodeURIComponent(itemId)}`,
+      { method: 'DELETE' }
+    ),
+    saveDraft: (input: { productId: string; modificationId?: string | null; sourceUrl: string }) => request<{
+      id: string;
+      sourceUrl: string;
+    }>('/api/search/horoshop/photos/drafts', { method: 'PUT', body: jsonBody(input) }),
+    selectAssets: (draftId: string, assetIds: string[]) => request<{ updated: boolean }>(
+      `/api/search/horoshop/photos/drafts/${encodeURIComponent(draftId)}/assets`,
+      { method: 'PUT', body: jsonBody({ assetIds }) }
+    ),
+    parseSelection: (selectionId: string) => request<HoroshopPhotoBatch>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/parse`,
+      { method: 'POST' }
+    ),
+    parseDraft: (draftId: string) => request<HoroshopPhotoBatch>(
+      `/api/search/horoshop/photos/drafts/${encodeURIComponent(draftId)}/parse`,
+      { method: 'POST' }
+    ),
+    activeBatch: (selectionId?: string) => request<HoroshopPhotoBatch | null>(
+      `/api/search/horoshop/photos/batches/active${queryString({ selectionId })}`
+    ),
+    batch: (batchId: string) => request<HoroshopPhotoBatch>(
+      `/api/search/horoshop/photos/batches/${encodeURIComponent(batchId)}`
+    ),
+    publishDraft: (draftId: string, mode: HoroshopPhotoPublicationMode) => request<HoroshopPhotoPublishResult>(
+      `/api/search/horoshop/photos/drafts/${encodeURIComponent(draftId)}/publish`,
+      { method: 'POST', body: jsonBody({ mode }), timeoutMs: 420_000 }
+    ),
+    publishSelection: (
+      selectionId: string,
+      mode: HoroshopPhotoPublicationMode,
+      onProgress: (progress: HoroshopPhotoPublishProgress) => void
+    ) => requestNdjson<HoroshopPhotoPublishProgress, HoroshopPhotoPublishResult>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/publish/stream`,
+      { method: 'POST', body: jsonBody({ mode }), idleTimeoutMs: HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS },
+      onProgress
     )
   },
   auth: {

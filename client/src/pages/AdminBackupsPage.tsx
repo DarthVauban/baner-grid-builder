@@ -2,6 +2,7 @@ import { type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
@@ -292,16 +293,11 @@ export function AdminBackupsPage() {
             </label>
             <label className="field">
               <span>Періодичність</span>
-              <select value={scheduleType} onChange={(event) => setScheduleType(event.target.value as BackupScheduleType)} disabled={!automaticEnabled}>
-                <option value="daily">Щодня</option>
-                <option value="weekly">Щотижня</option>
-              </select>
+              <StyledSelect value={scheduleType} options={[{ value: 'daily', label: 'Щодня' }, { value: 'weekly', label: 'Щотижня' }]} onChange={(value) => setScheduleType(value as BackupScheduleType)} disabled={!automaticEnabled} ariaLabel="Періодичність автоматичного бекапу" />
             </label>
             {scheduleType === 'weekly' && <label className="field">
               <span>День тижня</span>
-              <select value={scheduleWeekday} onChange={(event) => setScheduleWeekday(Number(event.target.value))} disabled={!automaticEnabled}>
-                {weekdays.map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}
-              </select>
+              <StyledSelect value={scheduleWeekday} options={weekdays} onChange={setScheduleWeekday} disabled={!automaticEnabled} ariaLabel="День тижня автоматичного бекапу" />
             </label>}
             <label className="field">
               <span>Час</span>
@@ -309,9 +305,7 @@ export function AdminBackupsPage() {
             </label>
             <label className="field">
               <span>Часовий пояс</span>
-              <select value={timezone} onChange={(event) => setTimezone(event.target.value)} disabled={!automaticEnabled}>
-                {timezones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
-              </select>
+              <StyledSelect value={timezone} options={timezones.map((zone) => ({ value: zone, label: zone }))} onChange={setTimezone} disabled={!automaticEnabled} ariaLabel="Часовий пояс автоматичного бекапу" />
             </label>
             <div className="backup-schedule__meta backup-schedule__wide">
               <span><small>Остання копія</small><strong>{formatDate(backupSettings?.lastRunAt, timezone)}</strong></span>

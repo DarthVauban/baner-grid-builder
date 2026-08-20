@@ -1,6 +1,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
@@ -21,6 +22,7 @@ const { default: app } = await import('../src/app.js');
 const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
+const { removeMediaImage, savePreparedMediaImage } = await import('../src/modules/media/media.storage.js');
 
 const admin = request.agent(app);
 
@@ -74,6 +76,22 @@ test('media library converts, lists, updates, serves and deletes uploaded images
   await admin.get(uploaded.body.data.url).expect(404);
   const empty = await admin.get('/api/media').expect(200);
   assert.equal(empty.body.data.total, 0);
+});
+
+test('media library stores an already prepared catalog WebP without recompressing it', async () => {
+  const webp = await sharp({
+    create: { width: 640, height: 480, channels: 3, background: '#5f4bda' }
+  }).webp({ quality: 84 }).toBuffer();
+  const saved = await savePreparedMediaImage(webp, 'prepared-photo.webp', {
+    width: 640,
+    height: 480,
+    contentSha256: createHash('sha256').update(webp).digest('hex')
+  });
+  const stored = await readFile(path.join(mediaDir, 'library', saved.filename));
+  assert.deepEqual(stored, webp);
+  assert.equal(saved.originalSize, webp.length);
+  assert.equal(saved.size, webp.length);
+  await removeMediaImage(saved.filename);
 });
 
 test('media library creates nested folders and keeps uploads in the selected folder', async () => {

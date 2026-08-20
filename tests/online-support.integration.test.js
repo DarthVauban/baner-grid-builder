@@ -180,10 +180,21 @@ test('operator can claim, read, reply and change support conversation status', a
   assert.equal(publicSession.body.data.conversation.messages.at(-1).productCards[0].url, 'https://mobiletrend.com.ua/apple-iphone-16/');
   assert.equal(publicSession.body.data.visitor.name, 'Ірина Ковальчук');
 
-  const resolved = await admin.patch(`/api/support-chat/conversations/${conversationId}/status`)
-    .send({ status: 'RESOLVED' })
-    .expect(200);
-  assert.equal(resolved.body.data.status, 'RESOLVED');
+  for (const status of ['OPEN', 'WAITING_CUSTOMER', 'CLOSED', 'RESOLVED']) {
+    const changed = await admin.patch(`/api/support-chat/conversations/${conversationId}/status`)
+      .send({ status })
+      .expect(200);
+    assert.equal(changed.body.data.status, status);
+  }
+  const statusEvents = await pool.query(
+    `SELECT payload FROM support_chat_events
+     WHERE conversation_id = $1 AND event_type = 'STATUS_CHANGED'
+     ORDER BY created_at`,
+    [conversationId]
+  );
+  assert.deepEqual(statusEvents.rows.slice(-4).map((row) => row.payload.status), [
+    'OPEN', 'WAITING_CUSTOMER', 'CLOSED', 'RESOLVED'
+  ]);
 
   await request(app).post('/api/public/support-chat/messages')
     .set(visitorAuth())

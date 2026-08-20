@@ -699,14 +699,91 @@ export class HoroshopCatalogRepository {
         SELECT
           (SELECT COUNT(*) FROM search_horoshop_categories WHERE connection_id = $1) AS categories,
           (SELECT COUNT(*) FROM search_horoshop_products WHERE connection_id = $1) AS products,
-          (SELECT COUNT(*) FROM search_horoshop_modifications WHERE connection_id = $1) AS modifications
+          (SELECT COUNT(*) FROM search_horoshop_modifications WHERE connection_id = $1) AS modifications,
+          (SELECT COUNT(*) FROM search_horoshop_photo_selections WHERE connection_id = $1) AS photo_selections,
+          (SELECT COUNT(*) FROM search_horoshop_photo_drafts WHERE connection_id = $1) AS photo_drafts,
+          (SELECT COUNT(*) FROM search_horoshop_photo_assets AS photo_asset
+            INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = photo_asset.draft_id
+            WHERE photo_draft.connection_id = $1)
+          +
+          (SELECT COUNT(*) FROM search_horoshop_photo_run_uploads AS upload
+            INNER JOIN search_horoshop_photo_runs AS run ON run.id = upload.run_id
+            INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = run.draft_id
+            WHERE photo_draft.connection_id = $1) AS photo_assets
       `, [connection.id]);
+      const photoMediaResult = await client.query(`
+        SELECT DISTINCT media.media_asset_id
+        FROM (
+          SELECT photo_asset.media_asset_id
+          FROM search_horoshop_photo_assets AS photo_asset
+          INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = photo_asset.draft_id
+          WHERE photo_draft.connection_id = $1
+
+          UNION
+
+          SELECT upload.media_asset_id
+          FROM search_horoshop_photo_run_uploads AS upload
+          INNER JOIN search_horoshop_photo_runs AS run ON run.id = upload.run_id
+          INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = run.draft_id
+          WHERE photo_draft.connection_id = $1
+        ) AS media
+      `, [connection.id]);
+      const photoMediaIds = photoMediaResult.rows.map((row) => row.media_asset_id);
+      const photoFolderResult = await client.query(`
+        SELECT DISTINCT folder.id, folder.parent_id
+        FROM search_horoshop_photo_drafts AS photo_draft
+        INNER JOIN media_library_folders AS folder ON folder.id = photo_draft.media_folder_id
+        WHERE photo_draft.connection_id = $1
+      `, [connection.id]);
+      let mediaRows = [];
+      if (photoMediaIds.length) {
+        const mediaPlaceholders = photoMediaIds.map((_, index) => `$${index + 1}`).join(', ');
+        const mediaResult = await client.query(`
+          SELECT id, storage_key FROM media_library_assets
+          WHERE id IN (${mediaPlaceholders})
+        `, photoMediaIds);
+        mediaRows = mediaResult.rows;
+        await client.query(`
+          DELETE FROM media_library_assets
+          WHERE id IN (${mediaPlaceholders})
+        `, photoMediaIds);
+      }
+      const deleteEmptyFolders = async (folderIds) => {
+        if (!folderIds.length) return;
+        const placeholders = folderIds.map((_, index) => `$${index + 1}`).join(', ');
+        const [foldersWithAssets, foldersWithChildren] = await Promise.all([
+          client.query(`
+            SELECT DISTINCT folder_id AS id FROM media_library_assets
+            WHERE folder_id IN (${placeholders})
+          `, folderIds),
+          client.query(`
+            SELECT DISTINCT parent_id AS id FROM media_library_folders
+            WHERE parent_id IN (${placeholders})
+          `, folderIds)
+        ]);
+        const blocked = new Set([
+          ...foldersWithAssets.rows.map((row) => row.id),
+          ...foldersWithChildren.rows.map((row) => row.id)
+        ]);
+        const emptyIds = folderIds.filter((id) => !blocked.has(id));
+        if (!emptyIds.length) return;
+        const emptyPlaceholders = emptyIds.map((_, index) => `$${index + 1}`).join(', ');
+        await client.query(`
+          DELETE FROM media_library_folders WHERE id IN (${emptyPlaceholders})
+        `, emptyIds);
+      };
+      const productFolderIds = photoFolderResult.rows.map((row) => row.id);
+      await deleteEmptyFolders(productFolderIds);
+      const rootFolderIds = [...new Set(photoFolderResult.rows.map((row) => row.parent_id).filter(Boolean))];
+      await deleteEmptyFolders(rootFolderIds);
       await client.query('DELETE FROM search_horoshop_connections WHERE id = $1 AND generation = $2', [
         connection.id, connection.generation
       ]);
       for (const table of [
         'search_horoshop_categories', 'search_horoshop_products',
-        'search_horoshop_modifications', 'search_horoshop_sync_runs'
+        'search_horoshop_modifications', 'search_horoshop_sync_runs',
+        'search_horoshop_photo_selections', 'search_horoshop_photo_drafts',
+        'search_horoshop_photo_batches'
       ]) {
         const remaining = await client.query(`SELECT COUNT(*) AS count FROM ${table} WHERE connection_id = $1`, [
           connection.id
@@ -721,14 +798,18 @@ export class HoroshopCatalogRepository {
         deleted: {
           categories: Number(countsResult.rows[0]?.categories || 0),
           products: Number(countsResult.rows[0]?.products || 0),
-          modifications: Number(countsResult.rows[0]?.modifications || 0)
+          modifications: Number(countsResult.rows[0]?.modifications || 0),
+          photoSelections: Number(countsResult.rows[0]?.photo_selections || 0),
+          photoDrafts: Number(countsResult.rows[0]?.photo_drafts || 0),
+          photoAssets: Number(countsResult.rows[0]?.photo_assets || 0)
         }
       })]);
       await client.query('COMMIT');
       return {
         categories: Number(countsResult.rows[0]?.categories || 0),
         products: Number(countsResult.rows[0]?.products || 0),
-        modifications: Number(countsResult.rows[0]?.modifications || 0)
+        modifications: Number(countsResult.rows[0]?.modifications || 0),
+        mediaStorageKeys: mediaRows.map((row) => row.storage_key)
       };
     } catch (error) {
       await client.query('ROLLBACK');

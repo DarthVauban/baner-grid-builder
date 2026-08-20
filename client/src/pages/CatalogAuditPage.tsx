@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { CatalogImageLightbox } from '../components/CatalogImageLightbox';
 import type { CatalogLightboxImage } from '../components/CatalogImageLightbox';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import type {
   CatalogAuditCategory,
@@ -418,9 +419,9 @@ export function CatalogAuditPage() {
         <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Назва, код товару або користувач" aria-label="Пошук в історії" />
         <button className="button button--primary button--small" type="submit">Знайти</button>
       </form>
-      <label><span>Джерело</span><select value={filters.source} onChange={(event) => updateFilter('source', event.target.value as CatalogAuditSource)}><option value="all">Усі зміни</option><option value="manual">Вручну</option><option value="xlsx">XLSX</option></select></label>
-      <label><span>Тип дії</span><select value={filters.category} onChange={(event) => updateFilter('category', event.target.value as CatalogAuditCategory)}><option value="all">Усі дії</option><option value="products">Товари</option><option value="publication">Публікація</option><option value="media">Фотографії</option><option value="characteristics">Характеристики</option><option value="modifications">Модифікації</option><option value="settings">Налаштування</option><option value="import">Імпорт XLSX</option></select></label>
-      <label><span>Користувач</span><select value={filters.actorId} onChange={(event) => updateFilter('actorId', event.target.value)}><option value="">Усі користувачі</option>{(feed?.actors || []).map((actor) => <option value={actor.id} key={actor.id}>{actor.name}</option>)}</select></label>
+      <label><span>Джерело</span><StyledSelect value={filters.source} options={[{ value: 'all', label: 'Усі зміни' }, { value: 'manual', label: 'Вручну' }, { value: 'xlsx', label: 'XLSX' }]} onChange={(value) => updateFilter('source', value as CatalogAuditSource)} ariaLabel="Джерело змін" /></label>
+      <label><span>Тип дії</span><StyledSelect value={filters.category} options={[{ value: 'all', label: 'Усі дії' }, { value: 'products', label: 'Товари' }, { value: 'publication', label: 'Публікація' }, { value: 'media', label: 'Фотографії' }, { value: 'characteristics', label: 'Характеристики' }, { value: 'modifications', label: 'Модифікації' }, { value: 'settings', label: 'Налаштування' }, { value: 'import', label: 'Імпорт XLSX' }]} onChange={(value) => updateFilter('category', value as CatalogAuditCategory)} ariaLabel="Тип дії" /></label>
+      <label><span>Користувач</span><StyledSelect value={filters.actorId} options={[{ value: '', label: 'Усі користувачі' }, ...(feed?.actors || []).map((actor) => ({ value: actor.id, label: actor.name }))]} onChange={(value) => updateFilter('actorId', value)} ariaLabel="Користувач" searchable /></label>
       <label><span>Від дати</span><input type="date" value={filters.dateFrom} onChange={(event) => updateFilter('dateFrom', event.target.value)} /></label>
       <label><span>До дати</span><input type="date" value={filters.dateTo} onChange={(event) => updateFilter('dateTo', event.target.value)} /></label>
       <button className="button button--secondary button--small catalog-audit-reset" type="button" onClick={resetFilters}><Icon name="reply" size={16} /> Скинути</button>

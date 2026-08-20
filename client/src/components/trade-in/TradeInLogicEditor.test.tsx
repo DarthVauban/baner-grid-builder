@@ -334,7 +334,8 @@ describe('TradeInLogicEditor', () => {
     );
 
     fireEvent.click(container.querySelector<HTMLElement>('.react-flow__node[data-id="brand-condition"]')!);
-    fireEvent.change(screen.getByLabelText('Крок із варіантами'), { target: { value: 'brand-step' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Крок із варіантами' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Вибір бренду' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Apple' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Samsung' }));
     fireEvent.click(screen.getByRole('button', { name: 'Створити окремі гілки (2)' }));
