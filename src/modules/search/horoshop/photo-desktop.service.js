@@ -79,6 +79,7 @@ export class HoroshopPhotoDesktopService {
     this.pool = options.databasePool || defaultPool;
     this.photoService = options.photoService || horoshopPhotoService;
     this.createAsset = options.createAsset || createMediaAsset;
+    this.selectionSyncs = new Map();
   }
 
   async createPairing(userId) {
@@ -312,6 +313,58 @@ export class HoroshopPhotoDesktopService {
     return result.rows.length;
   }
 
+  async materializeSelectionJobs(userId) {
+    const activeSync = this.selectionSyncs.get(userId);
+    if (activeSync) return activeSync;
+
+    const sync = (async () => {
+      const selections = await this.pool.query(`
+        SELECT DISTINCT selection.id, selection.created_at
+        FROM search_horoshop_photo_selections AS selection
+        INNER JOIN search_horoshop_connections AS connection
+          ON connection.id = selection.connection_id
+         AND connection.generation = selection.generation
+         AND connection.status = 'connected'
+        INNER JOIN search_horoshop_photo_selection_items AS item
+          ON item.selection_id = selection.id
+        LEFT JOIN (
+          SELECT batch.selection_id
+          FROM search_horoshop_photo_batches AS batch
+          INNER JOIN search_horoshop_photo_runs AS run ON run.batch_id = batch.id
+          WHERE batch.created_by = $1 AND run.executor = 'desktop'
+          GROUP BY batch.selection_id
+        ) AS synced_selection ON synced_selection.selection_id = selection.id
+        WHERE selection.created_by = $1
+          AND synced_selection.selection_id IS NULL
+        ORDER BY selection.created_at, selection.id
+      `, [userId]);
+
+      let created = 0;
+      for (const selection of selections.rows) {
+        try {
+          await this.photoService.createBatch({
+            selectionId: selection.id,
+            userId,
+            executor: 'desktop'
+          });
+          created += 1;
+        } catch (error) {
+          if (!['HOROSHOP_PHOTO_BATCH_EMPTY', 'HOROSHOP_PHOTO_SELECTION_NOT_FOUND'].includes(error?.code)) {
+            throw error;
+          }
+        }
+      }
+      return created;
+    })();
+
+    this.selectionSyncs.set(userId, sync);
+    try {
+      return await sync;
+    } finally {
+      if (this.selectionSyncs.get(userId) === sync) this.selectionSyncs.delete(userId);
+    }
+  }
+
   async jobContext(runId, userId, db = this.pool, { forUpdate = false } = {}) {
     if (forUpdate) {
       await db.query(`
@@ -369,6 +422,7 @@ export class HoroshopPhotoDesktopService {
 
   async listJobs(device) {
     await this.recoverExpiredJobs();
+    await this.materializeSelectionJobs(device.userId);
     const result = await this.pool.query(`
       SELECT run.*, batch.selection_id, selection.name AS selection_name,
              draft.product_id, draft.modification_id,

@@ -348,17 +348,13 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
     capabilities: { upload: true }
   });
   const device = await desktopService.authenticate(claimed.accessToken);
-  const batch = await photoService.createBatch({
-    selectionId: selection.id,
-    userId: ids.admin,
-    executor: 'desktop'
-  });
   const jobs = await desktopService.listJobs(device);
 
-  assert.equal(batch.requestedCount, 1);
   assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].selectionId, selection.id);
   assert.equal(jobs[0].sku, 'PHONE-2');
   assert.equal(jobs[0].title, 'Смартфон з однаковою назвою');
+  assert.deepEqual((await desktopService.listJobs(device)).map((item) => item.id), [jobs[0].id]);
 
   const job = await desktopService.claimJob(device, jobs[0].id);
   await desktopService.saveSource(device, job.id, {
@@ -392,6 +388,17 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.equal(draft.rows[0].source_url, 'https://supplier.example/phone-2');
   assert.equal(Number(assets.rows[0].count), 1);
   assert.equal((await desktopService.listJobs(device)).length, 0);
+
+  const newSelection = await photoService.createSelection({
+    name: 'Created after pairing',
+    entries: ['PHONE-1-BLACK'],
+    userId: ids.admin
+  });
+  const newJobs = await desktopService.listJobs(device);
+  assert.equal(newJobs.length, 1);
+  assert.equal(newJobs[0].selectionId, newSelection.id);
+  assert.equal(newJobs[0].sku, 'PHONE-1-BLACK');
+  assert.deepEqual((await desktopService.listJobs(device)).map((item) => item.id), [newJobs[0].id]);
 });
 
 test('disconnect removes selections, drafts and their generated media', async () => {
