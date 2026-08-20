@@ -66,7 +66,12 @@ before(async () => {
 after(async () => pool.end());
 
 test('widget creates a persistent conversation with one automatic reply and optional contacts', async () => {
-  const settings = await admin.get('/api/support-chat/settings').expect(200);
+  const defaultSettings = await admin.get('/api/support-chat/settings').expect(200);
+  assert.equal(defaultSettings.body.data.workingHoursEnabled, true);
+  const settings = await admin.put('/api/support-chat/settings').send({
+    ...defaultSettings.body.data,
+    workingHoursEnabled: false
+  }).expect(200);
   siteId = settings.body.data.publicId;
   assert.equal(settings.body.data.contactFormEnabled, true);
 
