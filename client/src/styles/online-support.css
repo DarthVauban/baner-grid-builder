@@ -29,7 +29,7 @@
 .online-support-conversation__copy em.is-open { color: #2d6840; background: #e4f5e9; }
 .online-support-conversation__copy em.is-waiting_customer { color: #80621e; background: #fff4cf; }
 .online-support-conversation__copy b { overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.online-support-conversation > i { position: absolute; right: 12px; bottom: 11px; min-width: 19px; height: 19px; display: grid; place-items: center; border-radius: 999px; padding: 0 5px; color: #171717; background: var(--brand); font-size: 8px; font-style: normal; font-weight: 950; }
+.online-support-conversation > i { position: absolute; right: 12px; bottom: 11px; min-width: 19px; height: 19px; display: grid; place-items: center; border-radius: 999px; padding: 0 5px; color: #fff; background: var(--brand); font-size: 8px; font-style: normal; font-weight: 950; }
 .online-support-dialog { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0,1fr) auto; background: color-mix(in srgb, var(--surface-soft) 70%, var(--surface)); }
 .online-support-dialog__header { min-width: 0; min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--line); padding: 12px 16px; background: var(--surface); }
 .online-support-dialog__header > div { min-width: 0; display: flex; align-items: center; gap: 10px; }

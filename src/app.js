@@ -36,6 +36,8 @@ import horoshopPhotoRoutes from './modules/search/horoshop/photo.routes.js';
 import horoshopPhotoDesktopRoutes from './modules/search/horoshop/photo-desktop.routes.js';
 import supportChatRoutes from './modules/support-chat/support-chat.routes.js';
 import publicSupportChatRoutes from './modules/support-chat/support-chat.public.routes.js';
+import popupBannerRoutes from './modules/popup-banners/popup-banner.routes.js';
+import publicPopupBannerRoutes from './modules/popup-banners/popup-banner.public.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -148,6 +150,7 @@ if (env.APP_ORIGIN) {
     if (req.path.startsWith('/api/public/store-map')) return next();
     if (req.path.startsWith('/api/public/banner-grids')) return next();
     if (req.path.startsWith('/api/public/support-chat')) return next();
+    if (req.path.startsWith('/api/public/popup-banners')) return next();
     if (req.path.startsWith('/api/storefront')) return next();
     return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
   });
@@ -200,6 +203,7 @@ app.use('/api/publications', publicationRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/support-chat', supportChatRoutes);
+app.use('/api/popup-banners', popupBannerRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/applications', applicationRoutes);
@@ -216,6 +220,7 @@ app.use('/api/public/trade-in', publicEmbedCors, publicTradeInRoutes);
 app.use('/api/public/store-map', publicEmbedCors, publicStoreMapRoutes);
 app.use('/api/public/banner-grids', publicEmbedCors, publicGridRoutes);
 app.use('/api/public/support-chat', publicEmbedCors, publicSupportChatRoutes);
+app.use('/api/public/popup-banners', publicEmbedCors, publicPopupBannerRoutes);
 app.use('/api', notFoundHandler);
 
 app.use('/media/catalog', express.static(catalogMediaDir, {

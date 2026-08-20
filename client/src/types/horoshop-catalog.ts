@@ -17,6 +17,8 @@ export interface HoroshopCatalogModification {
   active: boolean;
   imageUrl: string | null;
   pageUrl: string | null;
+  stickers?: Array<{ id: string; title: string }>;
+  conditionLabel?: string | null;
   attributes: Record<string, unknown>;
   updatedAt: string;
 }
@@ -38,6 +40,8 @@ export interface HoroshopCatalogProduct {
   primaryImageUrl: string | null;
   canonicalUrl: string | null;
   popularity: string | null;
+  stickers?: Array<{ id: string; title: string }>;
+  conditionLabel?: string | null;
   updatedAt: string;
   modifications: HoroshopCatalogModification[];
 }

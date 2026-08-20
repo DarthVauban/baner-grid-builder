@@ -123,6 +123,12 @@ import type {
 import type { SystemMetrics } from '../types/system';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
+  PopupCampaign,
+  PopupCampaignInput,
+  PopupCampaignOptions,
+  PopupCampaignStatus
+} from '../types/popup-banner';
+import type {
   HoroshopAccessoryCandidates,
   HoroshopAccessoryBulkPublishProgress,
   HoroshopAccessoryBulkPublishResult,
@@ -189,6 +195,24 @@ export { ApiError } from './api-client';
 const HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS = 30_000;
 
 export const api = {
+  popupBanners: {
+    list: () => request<PopupCampaign[]>('/api/popup-banners'),
+    options: () => request<PopupCampaignOptions>('/api/popup-banners/options'),
+    embedCode: () => request<{ code: string }>('/api/popup-banners/embed-code'),
+    get: (id: string) => request<PopupCampaign>(`/api/popup-banners/${encodeURIComponent(id)}`),
+    create: (input: PopupCampaignInput) => request<PopupCampaign>('/api/popup-banners', {
+      method: 'POST', body: jsonBody(input), timeoutMs: 60_000
+    }),
+    update: (id: string, input: PopupCampaignInput) => request<PopupCampaign>(
+      `/api/popup-banners/${encodeURIComponent(id)}`,
+      { method: 'PUT', body: jsonBody(input), timeoutMs: 60_000 }
+    ),
+    setStatus: (id: string, status: PopupCampaignStatus) => request<PopupCampaign>(
+      `/api/popup-banners/${encodeURIComponent(id)}/status`,
+      { method: 'PATCH', body: jsonBody({ status }) }
+    ),
+    remove: (id: string) => request<void>(`/api/popup-banners/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
   horoshopCatalog: {
     list: (params: HoroshopCatalogParams = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
       `/api/search/horoshop/catalog${queryString({
