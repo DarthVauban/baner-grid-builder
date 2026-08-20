@@ -30,6 +30,15 @@ function localizedTitle(value, fallback = '') {
   return String(titles.uk || titles.ua || titles.ru || titles.en || Object.values(titles)[0] || fallback || '').trim();
 }
 
+function photoTargetTitle(value, sku, fallback = '') {
+  const normalizedSku = String(sku || '').trim().toLocaleLowerCase('uk-UA');
+  for (const candidate of [localizedTitle(value), fallback]) {
+    const title = String(candidate || '').trim();
+    if (title && title.toLocaleLowerCase('uk-UA') !== normalizedSku) return title;
+  }
+  return 'Назва товару не вказана';
+}
+
 function serializeDevice(row) {
   return {
     id: row.id,
@@ -399,6 +408,7 @@ export class HoroshopPhotoDesktopService {
   }
 
   serializeJob(row) {
+    const sku = row.modification_sku || row.product_sku || '';
     return {
       id: row.id,
       batchId: row.batch_id,
@@ -408,8 +418,12 @@ export class HoroshopPhotoDesktopService {
       productId: row.product_id,
       modificationId: row.modification_id || null,
       status: row.status,
-      title: localizedTitle(row.modification_titles || row.product_titles, row.modification_sku || row.product_sku),
-      sku: row.modification_sku || row.product_sku || '',
+      title: photoTargetTitle(
+        row.modification_titles || row.product_titles,
+        sku,
+        localizedTitle(row.product_titles)
+      ),
+      sku,
       imageUrl: row.modification_image_url || row.primary_image_url || '',
       canonicalUrl: row.canonical_url || '',
       sourceUrl: row.source_url || '',

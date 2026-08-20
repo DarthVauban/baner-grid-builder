@@ -391,13 +391,14 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
 
   const newSelection = await photoService.createSelection({
     name: 'Created after pairing',
-    entries: ['PHONE-1-BLACK'],
+    entries: ['PHONE-1-BLUE'],
     userId: ids.admin
   });
   const newJobs = await desktopService.listJobs(device);
   assert.equal(newJobs.length, 1);
   assert.equal(newJobs[0].selectionId, newSelection.id);
-  assert.equal(newJobs[0].sku, 'PHONE-1-BLACK');
+  assert.equal(newJobs[0].sku, 'PHONE-1-BLUE');
+  assert.equal(newJobs[0].title, 'Смартфон Example One');
   assert.deepEqual((await desktopService.listJobs(device)).map((item) => item.id), [newJobs[0].id]);
 
   await photoService.deleteSelection(newSelection.id);
