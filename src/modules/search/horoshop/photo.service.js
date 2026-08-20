@@ -524,10 +524,42 @@ export class HoroshopPhotoService {
         SELECT id FROM search_horoshop_photo_drafts
         WHERE source_selection_id = $1
       `, [selectionId]);
+      const selectedDrafts = await client.query(`
+        SELECT DISTINCT draft.id
+        FROM search_horoshop_photo_drafts AS draft
+        LEFT JOIN search_horoshop_modifications AS draft_modification
+          ON draft_modification.id = draft.modification_id
+         AND draft_modification.active = TRUE
+        LEFT JOIN (
+          SELECT product_id, COUNT(*)::INTEGER AS active_count
+          FROM search_horoshop_modifications
+          WHERE active = TRUE
+          GROUP BY product_id
+        ) AS active_modifications ON active_modifications.product_id = draft.product_id
+        INNER JOIN search_horoshop_photo_selection_items AS item
+          ON item.product_id = draft.product_id
+         AND (
+           item.modification_id = draft.modification_id
+           OR (
+             item.modification_id IS NULL
+             AND (
+               draft_modification.id IS NOT NULL
+               OR (
+                 draft.modification_id IS NULL
+                 AND COALESCE(active_modifications.active_count, 0) = 0
+               )
+             )
+           )
+         )
+        WHERE item.selection_id = $1
+          AND draft.connection_id = $2
+          AND draft.generation = $3
+      `, [selectionId, connection.id, connection.generation]);
       const batchIds = [...new Set(selectionRuns.rows.map((row) => row.batch_id).filter(Boolean))];
       const draftIds = [...new Set([
         ...selectionRuns.rows.map((row) => row.draft_id),
-        ...sourcedDrafts.rows.map((row) => row.id)
+        ...sourcedDrafts.rows.map((row) => row.id),
+        ...selectedDrafts.rows.map((row) => row.id)
       ].filter(Boolean))];
       const draftPlaceholders = draftIds.map((_, index) => `$${index + 1}`).join(', ');
       let legacyOwnedDraftIds = [];

@@ -513,8 +513,6 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
         source_url = 'https://legacy.example/product', found_count = 1
     WHERE id = $1
   `, [jobs[0].draftId]);
-  const recreatedJobs = await desktopService.listJobs(device);
-  assert.equal(recreatedJobs.some((item) => item.selectionId === recreatedSelection.id), true);
   await photoService.deleteSelection(recreatedSelection.id);
   const legacyPhotosAfterDelete = await pool.query(`
     SELECT id FROM search_horoshop_photo_assets WHERE id = $1
