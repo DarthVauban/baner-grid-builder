@@ -309,7 +309,9 @@ export const api = {
       `/api/search/horoshop/photos/drafts/${encodeURIComponent(draftId)}/parse`,
       { method: 'POST' }
     ),
-    activeBatch: () => request<HoroshopPhotoBatch | null>('/api/search/horoshop/photos/batches/active'),
+    activeBatch: (selectionId?: string) => request<HoroshopPhotoBatch | null>(
+      `/api/search/horoshop/photos/batches/active${queryString({ selectionId })}`
+    ),
     batch: (batchId: string) => request<HoroshopPhotoBatch>(
       `/api/search/horoshop/photos/batches/${encodeURIComponent(batchId)}`
     ),

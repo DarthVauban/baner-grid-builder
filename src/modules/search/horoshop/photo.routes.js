@@ -45,6 +45,7 @@ const draftSchema = z.object({
 });
 const assetSelectionSchema = z.object({ assetIds: z.array(z.string().uuid()).max(40) });
 const publicationSchema = z.object({ mode: z.enum(['append', 'replace']).default('append') });
+const activeBatchQuerySchema = z.object({ selectionId: z.string().uuid().optional() });
 
 function publicAppOrigin() {
   return env.APP_ORIGIN || env.mobilePublicOrigin;
@@ -146,8 +147,9 @@ router.post('/drafts/:id/parse', asyncHandler(async (req, res) => {
   }) });
 }));
 
-router.get('/batches/active', asyncHandler(async (_req, res) => {
-  res.json({ data: await horoshopPhotoService.activeBatch() });
+router.get('/batches/active', asyncHandler(async (req, res) => {
+  const { selectionId } = parseInput(activeBatchQuerySchema, req.query);
+  res.json({ data: await horoshopPhotoService.activeBatch({ selectionId }) });
 }));
 
 router.get('/batches/:id', asyncHandler(async (req, res) => {

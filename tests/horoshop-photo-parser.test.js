@@ -90,6 +90,32 @@ before(async () => {
 
 after(async () => pool.end());
 
+function createDesktopHarness() {
+  const photoService = new HoroshopPhotoService({ databasePool: pool });
+  const desktopService = new HoroshopPhotoDesktopService({
+    databasePool: pool,
+    photoService,
+    createAsset: async ({ buffer, originalName, folderId }, db) => {
+      const id = randomUUID();
+      const storageKey = `desktop-${id}.webp`;
+      const metadata = await sharp(buffer).metadata();
+      const result = await db.query(`
+        INSERT INTO media_library_assets (
+          id, original_name, storage_key, url, mime_type, size_bytes,
+          original_size_bytes, width, height, content_sha256, folder_id
+        ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $5, $6, $7, $8, $9)
+        RETURNING id, url, width, height, size_bytes
+      `, [
+        id, originalName, storageKey, `/media/catalog/library/${storageKey}`, buffer.length,
+        metadata.width || 0, metadata.height || 0, id.replaceAll('-', '').padEnd(64, '0'), folderId
+      ]);
+      const row = result.rows[0];
+      return { ...row, size: Number(row.size_bytes || 0) };
+    }
+  });
+  return { photoService, desktopService };
+}
+
 test('selection resolver prioritizes exact article and title matches without guessing', () => {
   const catalog = {
     products: [
@@ -267,15 +293,47 @@ test('bulk publication skips a common gallery when a product has unique modifica
     WHERE id = $1
   `, [black.id]);
 
+  const legacyPublishedBatch = await pool.query(`
+    INSERT INTO search_horoshop_photo_batches (
+      connection_id, generation, selection_id, selection_based, requested_count, created_by
+    ) VALUES ($1, $2, $3, TRUE, 1, $4)
+    RETURNING id
+  `, [ids.connection, ids.generation, selectionId, ids.admin]);
+  const legacyPublishedRun = await pool.query(`
+    INSERT INTO search_horoshop_photo_runs (batch_id, draft_id, executor, source_url)
+    VALUES ($1, $2, 'desktop', '')
+    RETURNING id
+  `, [legacyPublishedBatch.rows[0].id, black.id]);
+  const publishedMedia = await pool.query(`
+    SELECT photo.media_asset_id, photo.source_url, photo.content_sha256, photo.sort_order
+    FROM search_horoshop_photo_assets AS photo
+    WHERE photo.draft_id = $1
+  `, [black.id]);
+  await pool.query(`
+    INSERT INTO search_horoshop_photo_run_uploads (
+      run_id, media_asset_id, source_url, content_sha256, sort_order
+    ) VALUES ($1, $2, $3, $4, $5)
+  `, [
+    legacyPublishedRun.rows[0].id,
+    publishedMedia.rows[0].media_asset_id,
+    publishedMedia.rows[0].source_url,
+    publishedMedia.rows[0].content_sha256,
+    publishedMedia.rows[0].sort_order
+  ]);
+
   await service.deleteSelection(selectionId);
   const publishedDraft = await pool.query(`
     SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
   `, [black.id]);
   const publishedAssets = await pool.query(`
-    SELECT id FROM search_horoshop_photo_assets WHERE draft_id = $1
+    SELECT id, media_asset_id FROM search_horoshop_photo_assets WHERE draft_id = $1
   `, [black.id]);
+  const preservedMedia = await pool.query('SELECT id FROM media_library_assets WHERE id = $1', [
+    publishedMedia.rows[0].media_asset_id
+  ]);
   assert.equal(publishedDraft.rows[0].publish_status, 'published');
   assert.equal(publishedAssets.rows.length, 1);
+  assert.equal(preservedMedia.rows.length, 1);
 });
 
 test('background queue reuses the shared scraper engine and stores a reviewable draft', async () => {
@@ -325,29 +383,88 @@ test('background queue reuses the shared scraper engine and stores a reviewable 
   assert.equal(Number(assets.rows[0].asset_count), 1);
 });
 
-test('desktop parser pairs securely, claims a selection and completes a reviewable draft', async () => {
-  const photoService = new HoroshopPhotoService({ databasePool: pool });
-  const desktopService = new HoroshopPhotoDesktopService({
-    databasePool: pool,
-    photoService,
-    createAsset: async ({ buffer, originalName, folderId }, db) => {
-      const id = randomUUID();
-      const storageKey = `desktop-${id}.webp`;
-      const metadata = await sharp(buffer).metadata();
-      const result = await db.query(`
-        INSERT INTO media_library_assets (
-          id, original_name, storage_key, url, mime_type, size_bytes,
-          original_size_bytes, width, height, content_sha256, folder_id
-        ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $5, $6, $7, $8, $9)
-        RETURNING id, url, width, height, size_bytes
-      `, [
-        id, originalName, storageKey, `/media/catalog/library/${storageKey}`, buffer.length,
-        metadata.width || 0, metadata.height || 0, id.replaceAll('-', '').padEnd(64, '0'), folderId
-      ]);
-      const row = result.rows[0];
-      return { ...row, size: Number(row.size_bytes || 0) };
-    }
+test('desktop batch with two modifications advances from 50 to 100 percent without stale runs', async () => {
+  const { photoService, desktopService } = createDesktopHarness();
+  const selection = await photoService.createSelection({
+    name: 'Two modification progress',
+    entries: ['PHONE-1'],
+    userId: ids.admin
   });
+  const pairing = await desktopService.createPairing(ids.admin);
+  const claimed = await desktopService.claimPairing({
+    code: pairing.manualCode,
+    deviceName: 'Two target parser',
+    appVersion: '0.9.3',
+    installationId: randomUUID(),
+    capabilities: { upload: true }
+  });
+  const device = await desktopService.authenticate(claimed.accessToken);
+  const jobs = await desktopService.listJobs(device);
+  assert.equal(jobs.length, 2);
+  assert.equal(new Set(jobs.map((item) => item.batchId)).size, 1);
+
+  const image = await sharp({
+    create: { width: 900, height: 900, channels: 3, background: '#3a76ff' }
+  }).webp().toBuffer();
+  for (const [index, queuedJob] of jobs.entries()) {
+    const job = await desktopService.claimJob(device, queuedJob.id);
+    await desktopService.uploadAsset(device, job.id, {
+      buffer: image,
+      sourceUrl: `https://supplier.example/two-targets/${index + 1}.webp`,
+      sortOrder: 0,
+      originalName: `${job.sku}-${index + 1}.webp`
+    });
+    await desktopService.completeJob(device, job.id, {
+      sourceUrl: `https://supplier.example/two-targets/${index + 1}`,
+      adapterId: 'builtin-test',
+      foundCount: 1,
+      errors: []
+    });
+    const progress = await photoService.loadBatch(job.batchId);
+    if (index === 0) {
+      assert.equal(progress.status, 'queued');
+      assert.deepEqual(progress.counts, { queued: 1, running: 0, success: 1, partial: 0, failed: 0 });
+    } else {
+      assert.equal(progress.status, 'completed');
+      assert.deepEqual(progress.counts, { queued: 0, running: 0, success: 2, partial: 0, failed: 0 });
+    }
+  }
+
+  const finalized = await pool.query(`
+    SELECT draft.parse_status, draft.source_run_id, COUNT(asset.id)::INTEGER AS asset_count
+    FROM search_horoshop_photo_drafts AS draft
+    INNER JOIN search_horoshop_photo_assets AS asset ON asset.draft_id = draft.id
+    WHERE draft.source_selection_id = $1
+    GROUP BY draft.id, draft.parse_status, draft.source_run_id
+    ORDER BY draft.id
+  `, [selection.id]);
+  assert.equal(finalized.rows.length, 2);
+  assert.ok(finalized.rows.every((row) => row.parse_status === 'ready' && row.source_run_id && row.asset_count === 1));
+  assert.equal(await photoService.activeBatch({ selectionId: selection.id, userId: ids.admin }), null);
+  assert.deepEqual(await desktopService.listJobs(device), []);
+
+  const finalizedMediaIds = await pool.query(`
+    SELECT asset.media_asset_id
+    FROM search_horoshop_photo_assets AS asset
+    INNER JOIN search_horoshop_photo_drafts AS draft ON draft.id = asset.draft_id
+    WHERE draft.source_selection_id = $1
+  `, [selection.id]);
+  await photoService.deleteSelection(selection.id);
+  assert.equal((await pool.query(`
+    SELECT COUNT(*)::INTEGER AS asset_count
+    FROM search_horoshop_photo_assets
+    WHERE media_asset_id = ANY($1::uuid[])
+  `, [finalizedMediaIds.rows.map((row) => row.media_asset_id)])).rows[0].asset_count, 0);
+  assert.equal((await pool.query(`
+    SELECT COUNT(*)::INTEGER AS media_count
+    FROM media_library_assets
+    WHERE id = ANY($1::uuid[])
+  `, [finalizedMediaIds.rows.map((row) => row.media_asset_id)])).rows[0].media_count, 0);
+  await desktopService.revokeDevice(device.userId, device.id);
+});
+
+test('desktop parser pairs securely, claims a selection and completes a reviewable draft', async () => {
+  const { photoService, desktopService } = createDesktopHarness();
   const selection = await photoService.createSelection({
     name: 'Desktop parser flow',
     entries: ['PHONE-2'],
@@ -384,6 +501,61 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
     sortOrder: 0,
     originalName: 'PHONE-2-1.webp'
   });
+  const replaceDraftAssets = photoService.replaceDraftAssets.bind(photoService);
+  photoService.replaceDraftAssets = async (run, prepared, options) => {
+    assert.equal(run.id, job.id);
+    assert.equal(prepared.length, 1);
+    assert.ok(options?.db, 'asset replacement must share the completion transaction');
+    throw new Error('Simulated failure during atomic finalization');
+  };
+  try {
+    await assert.rejects(
+      () => desktopService.completeJob(device, job.id, {
+        sourceUrl: 'https://supplier.example/phone-2',
+        adapterId: 'builtin-test',
+        foundCount: 1,
+        errors: []
+      }),
+      /Simulated failure during atomic finalization/
+    );
+  } finally {
+    photoService.replaceDraftAssets = replaceDraftAssets;
+  }
+  const rolledBack = await pool.query(`
+    SELECT run.status, draft.parse_status, COALESCE(upload.upload_count, 0)::INTEGER AS upload_count
+    FROM search_horoshop_photo_runs AS run
+    INNER JOIN search_horoshop_photo_drafts AS draft ON draft.id = run.draft_id
+    LEFT JOIN (
+      SELECT run_id, COUNT(*)::INTEGER AS upload_count
+      FROM search_horoshop_photo_run_uploads
+      GROUP BY run_id
+    ) AS upload ON upload.run_id = run.id
+    WHERE run.id = $1
+  `, [job.id]);
+  assert.deepEqual(rolledBack.rows[0], { status: 'running', parse_status: 'running', upload_count: 1 });
+
+  const stagedUpload = await pool.query(`
+    SELECT media_asset_id, source_url, content_sha256, sort_order
+    FROM search_horoshop_photo_run_uploads
+    WHERE run_id = $1
+  `, [job.id]);
+  await pool.query(`
+    INSERT INTO search_horoshop_photo_assets (
+      draft_id, media_asset_id, source_url, content_sha256, selected, sort_order
+    ) VALUES ($1, $2, $3, $4, TRUE, $5)
+  `, [
+    jobs[0].draftId,
+    stagedUpload.rows[0].media_asset_id,
+    stagedUpload.rows[0].source_url,
+    stagedUpload.rows[0].content_sha256,
+    stagedUpload.rows[0].sort_order
+  ]);
+  await pool.query(`
+    UPDATE search_horoshop_photo_drafts
+    SET parse_status = 'ready', source_selection_id = $2, source_run_id = NULL
+    WHERE id = $1
+  `, [jobs[0].draftId, selection.id]);
+
   const refreshBatch = photoService.refreshBatch.bind(photoService);
   photoService.refreshBatch = async () => {
     throw new Error('Simulated derived batch refresh failure');
@@ -396,12 +568,15 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
       foundCount: 1,
       errors: []
     });
+    const derivedBatch = await photoService.loadBatch(job.batchId);
+    assert.equal(derivedBatch.status, 'completed');
+    assert.deepEqual(derivedBatch.counts, { queued: 0, running: 0, success: 1, partial: 0, failed: 0 });
   } finally {
     photoService.refreshBatch = refreshBatch;
   }
   await refreshBatch(job.batchId);
   const draft = await pool.query(`
-    SELECT parse_status, publish_status, source_url, source_selection_id
+    SELECT parse_status, publish_status, source_url, source_selection_id, source_run_id
     FROM search_horoshop_photo_drafts WHERE id = $1
   `, [jobs[0].draftId]);
   const assets = await pool.query(`
@@ -413,7 +588,33 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.equal(draft.rows[0].publish_status, 'draft');
   assert.equal(draft.rows[0].source_url, 'https://supplier.example/phone-2');
   assert.equal(draft.rows[0].source_selection_id, selection.id);
+  assert.equal(draft.rows[0].source_run_id, job.id);
   assert.equal(assets.rows.length, 1);
+  assert.deepEqual(await desktopService.completeJob(device, job.id, {
+    sourceUrl: 'https://supplier.example/phone-2',
+    adapterId: 'builtin-test',
+    foundCount: 1,
+    errors: []
+  }), completed);
+  assert.equal((await pool.query(`
+    SELECT COUNT(*)::INTEGER AS asset_count
+    FROM search_horoshop_photo_assets
+    WHERE draft_id = $1
+  `, [jobs[0].draftId])).rows[0].asset_count, 1);
+
+  await pool.query(`
+    UPDATE search_horoshop_photo_drafts
+    SET source_run_id = NULL, parse_status = 'queued'
+    WHERE id = $1
+  `, [jobs[0].draftId]);
+  const recoveredTerminalBatch = await photoService.loadBatch(job.batchId);
+  const recoveredTerminalDraft = await pool.query(`
+    SELECT source_run_id, parse_status
+    FROM search_horoshop_photo_drafts
+    WHERE id = $1
+  `, [jobs[0].draftId]);
+  assert.equal(recoveredTerminalBatch.status, 'completed');
+  assert.deepEqual(recoveredTerminalDraft.rows[0], { source_run_id: job.id, parse_status: 'ready' });
 
   const finishedRun = await pool.query(`
     SELECT created_at, completed_at
@@ -432,11 +633,17 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
     ) VALUES ($1, $2, $3, TRUE, 1, $4, $5)
     RETURNING id
   `, [ids.connection, ids.generation, duplicateSelection.id, ids.admin, finishedRun.rows[0].created_at]);
-  await pool.query(`
+  const duplicateRun = await pool.query(`
     INSERT INTO search_horoshop_photo_runs (
       batch_id, draft_id, source_url, executor, created_at
     ) VALUES ($1, $2, '', 'desktop', $3)
+    RETURNING id
   `, [duplicateBatch.rows[0].id, jobs[0].draftId, finishedRun.rows[0].created_at]);
+  await pool.query(`
+    UPDATE search_horoshop_photo_drafts
+    SET source_run_id = $2
+    WHERE id = $1
+  `, [jobs[0].draftId, duplicateRun.rows[0].id]);
 
   const repairedBatch = await photoService.loadBatch(duplicateBatch.rows[0].id);
   assert.equal(repairedBatch.status, 'completed');
@@ -444,6 +651,11 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.equal(repairedBatch.items[0].savedCount, 1);
   assert.equal((await desktopService.listJobs(device)).length, 0);
 
+  await pool.query(`
+    UPDATE search_horoshop_photo_drafts
+    SET source_run_id = NULL, source_selection_id = $2, parse_status = 'ready'
+    WHERE id = $1
+  `, [jobs[0].draftId, selection.id]);
   const intentionalRetry = await photoService.createBatch({
     selectionId: selection.id,
     userId: ids.admin,
@@ -510,6 +722,7 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   await pool.query(`
     UPDATE search_horoshop_photo_drafts
     SET parse_status = 'ready', publish_status = 'draft', source_selection_id = NULL,
+        source_run_id = NULL,
         source_url = 'https://legacy.example/product', found_count = 1
     WHERE id = $1
   `, [jobs[0].draftId]);

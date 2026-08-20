@@ -25,6 +25,16 @@ function jsonObject(value) {
   }
 }
 
+function jsonArray(value) {
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function localizedTitle(value, fallback = '') {
   const titles = jsonObject(value);
   return String(titles.uk || titles.ua || titles.ru || titles.en || Object.values(titles)[0] || fallback || '').trim();
@@ -302,24 +312,40 @@ export class HoroshopPhotoDesktopService {
   }
 
   async recoverExpiredJobs() {
-    const result = await this.pool.query(`
-      UPDATE search_horoshop_photo_runs
-      SET status = 'queued', device_id = NULL, lease_expires_at = NULL,
-          heartbeat_at = NULL, progress = '{}'::jsonb, started_at = NULL
-      WHERE executor = 'desktop' AND status = 'running'
-        AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()
-      RETURNING draft_id, batch_id
-    `);
-    if (result.rows.length) {
-      await this.pool.query(`
-        UPDATE search_horoshop_photo_drafts SET parse_status = 'queued', updated_at = NOW()
-        WHERE id = ANY($1::uuid[])
-      `, [result.rows.map((row) => row.draft_id)]);
-      for (const batchId of new Set(result.rows.map((row) => row.batch_id))) {
-        await this.photoService.refreshBatch(batchId).catch(() => {});
+    // A previous application version could promote the photos before it marked the
+    // desktop run as complete. Repair that split state before an expired lease is
+    // returned to the queue, otherwise the completed draft would become queued again.
+    await this.photoService.reconcileRedundantDesktopRuns();
+    const client = await this.pool.connect();
+    let recovered = [];
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(`
+        UPDATE search_horoshop_photo_runs
+        SET status = 'queued', device_id = NULL, lease_expires_at = NULL,
+            heartbeat_at = NULL, progress = '{}'::jsonb, started_at = NULL
+        WHERE executor = 'desktop' AND status = 'running'
+          AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()
+        RETURNING draft_id, batch_id
+      `);
+      recovered = result.rows;
+      if (recovered.length) {
+        await client.query(`
+          UPDATE search_horoshop_photo_drafts SET parse_status = 'queued', updated_at = NOW()
+          WHERE id = ANY($1::uuid[])
+        `, [recovered.map((row) => row.draft_id)]);
       }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
     }
-    return result.rows.length;
+    for (const batchId of new Set(recovered.map((row) => row.batch_id))) {
+      await this.photoService.refreshBatch(batchId).catch(() => {});
+    }
+    return recovered.length;
   }
 
   async materializeSelectionJobs(userId) {
@@ -388,6 +414,7 @@ export class HoroshopPhotoDesktopService {
       SELECT run.*, batch.selection_id, batch.created_by AS batch_created_by,
              selection.name AS selection_name,
              draft.product_id, draft.modification_id, draft.target_type,
+             draft.source_run_id,
              product.sku AS product_sku, product.titles AS product_titles,
              product.primary_image_url, product.canonical_url,
              modification.sku AS modification_sku, modification.titles AS modification_titles,
@@ -437,7 +464,6 @@ export class HoroshopPhotoDesktopService {
   async listJobs(device) {
     await this.photoService.cleanupOrphanedDesktopBatches(device.userId);
     await this.recoverExpiredJobs();
-    await this.photoService.reconcileRedundantDesktopRuns();
     await this.materializeSelectionJobs(device.userId);
     const result = await this.pool.query(`
       SELECT run.*, batch.selection_id, selection.name AS selection_name,
@@ -519,24 +545,39 @@ export class HoroshopPhotoDesktopService {
   async heartbeat(device, runId, progress) {
     await this.assertLeasedJob(device, runId);
     const leaseExpiresAt = new Date(Date.now() + leaseTtlMs);
-    await this.pool.query(`
+    const updated = await this.pool.query(`
       UPDATE search_horoshop_photo_runs
       SET heartbeat_at = NOW(), lease_expires_at = $2, progress = $3::jsonb
-      WHERE id = $1
-    `, [runId, leaseExpiresAt, JSON.stringify(progress || {})]);
+      WHERE id = $1 AND status = 'running' AND device_id = $4
+        AND (lease_expires_at IS NULL OR lease_expires_at > NOW())
+      RETURNING id
+    `, [runId, leaseExpiresAt, JSON.stringify(progress || {}), device.id]);
+    if (!updated.rows[0]) {
+      throw new AppError(409, 'PHOTO_DESKTOP_JOB_NOT_CLAIMED', 'Статус завдання змінився. Оновіть чергу.');
+    }
     return { leaseExpiresAt };
   }
 
   async saveSource(device, runId, { sourceUrl, adapterId = '' }) {
-    const run = await this.assertLeasedJob(device, runId);
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_runs SET source_url = $2, adapter_id = $3 WHERE id = $1
-    `, [runId, sourceUrl, adapterId]);
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_drafts
-      SET source_url = $2, adapter_id = $3, publish_status = 'draft', updated_at = NOW()
-      WHERE id = $1
-    `, [run.draft_id, sourceUrl, adapterId]);
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const run = await this.assertLeasedJob(device, runId, client, { forUpdate: true });
+      await client.query(`
+        UPDATE search_horoshop_photo_runs SET source_url = $2, adapter_id = $3 WHERE id = $1
+      `, [runId, sourceUrl, adapterId]);
+      await client.query(`
+        UPDATE search_horoshop_photo_drafts
+        SET source_url = $2, adapter_id = $3, publish_status = 'draft', updated_at = NOW()
+        WHERE id = $1
+      `, [run.draft_id, sourceUrl, adapterId]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
     return { sourceUrl, adapterId };
   }
 
@@ -584,14 +625,6 @@ export class HoroshopPhotoDesktopService {
         size: Number(row.size_bytes || 0)
       };
     }
-    const conflicting = await this.pool.query(`
-      SELECT media_asset_id FROM search_horoshop_photo_run_uploads
-      WHERE run_id = $1 AND sort_order = $2
-    `, [runId, sortOrder]);
-    if (conflicting.rows[0]) {
-      await this.pool.query(`DELETE FROM search_horoshop_photo_run_uploads WHERE run_id = $1 AND sort_order = $2`, [runId, sortOrder]);
-      await this.removeMediaAsset(conflicting.rows[0].media_asset_id);
-    }
     const folder = await this.ensureTargetFolder(run);
     const asset = await this.createAsset({
       buffer: converted.buffer,
@@ -599,75 +632,203 @@ export class HoroshopPhotoDesktopService {
       folderId: folder.id,
       userId: run.batch_created_by
     }, { query: (...args) => this.pool.query(...args) });
+    const client = await this.pool.connect();
+    let duplicate = null;
+    let insertedId = '';
+    let replacedStorageKey = '';
     try {
-      const inserted = await this.pool.query(`
-        INSERT INTO search_horoshop_photo_run_uploads (
-          run_id, media_asset_id, source_url, content_sha256, sort_order
-        ) VALUES ($1, $2, $3, $4, $5)
-        RETURNING id
-      `, [runId, asset.id, sourceUrl, converted.contentSha256, sortOrder]);
-      await this.pool.query(`
-        UPDATE search_horoshop_photo_drafts SET media_folder_id = $2, updated_at = NOW()
-        WHERE id = $1
-      `, [run.draft_id, folder.id]);
-      return { id: inserted.rows[0].id, sourceUrl, sortOrder, ...asset };
+      await client.query('BEGIN');
+      const lockedRun = await this.assertLeasedJob(device, runId, client, { forUpdate: true });
+      const current = await client.query(`
+        SELECT upload.*, media.url, media.width, media.height, media.size_bytes
+        FROM search_horoshop_photo_run_uploads AS upload
+        INNER JOIN media_library_assets AS media ON media.id = upload.media_asset_id
+        WHERE upload.run_id = $1 AND (upload.source_url = $2 OR upload.content_sha256 = $3)
+        LIMIT 1
+      `, [runId, sourceUrl, converted.contentSha256]);
+      if (current.rows[0]) {
+        duplicate = current.rows[0];
+      } else {
+        const conflicting = await client.query(`
+          SELECT upload.id, upload.media_asset_id, media.storage_key
+          FROM search_horoshop_photo_run_uploads AS upload
+          INNER JOIN media_library_assets AS media ON media.id = upload.media_asset_id
+          WHERE upload.run_id = $1 AND upload.sort_order = $2
+          FOR UPDATE
+        `, [runId, sortOrder]);
+        if (conflicting.rows[0]) {
+          const conflict = conflicting.rows[0];
+          const promoted = await client.query(`
+            SELECT id FROM search_horoshop_photo_assets WHERE media_asset_id = $1 LIMIT 1
+          `, [conflict.media_asset_id]);
+          await client.query('DELETE FROM search_horoshop_photo_run_uploads WHERE id = $1', [conflict.id]);
+          if (!promoted.rows[0]) {
+            await client.query('DELETE FROM media_library_assets WHERE id = $1', [conflict.media_asset_id]);
+            replacedStorageKey = conflict.storage_key;
+          }
+        }
+        const inserted = await client.query(`
+          INSERT INTO search_horoshop_photo_run_uploads (
+            run_id, media_asset_id, source_url, content_sha256, sort_order
+          ) VALUES ($1, $2, $3, $4, $5)
+          RETURNING id
+        `, [runId, asset.id, sourceUrl, converted.contentSha256, sortOrder]);
+        insertedId = inserted.rows[0].id;
+        await client.query(`
+          UPDATE search_horoshop_photo_drafts SET media_folder_id = $2, updated_at = NOW()
+          WHERE id = $1
+        `, [lockedRun.draft_id, folder.id]);
+      }
+      await client.query('COMMIT');
     } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
       await this.removeMediaAsset(asset.id).catch(() => {});
       throw error;
+    } finally {
+      client.release();
     }
+    if (duplicate) {
+      await this.removeMediaAsset(asset.id).catch(() => {});
+      return {
+        id: duplicate.id,
+        sourceUrl: duplicate.source_url,
+        sortOrder: duplicate.sort_order,
+        url: duplicate.url,
+        width: Number(duplicate.width || 0),
+        height: Number(duplicate.height || 0),
+        size: Number(duplicate.size_bytes || 0)
+      };
+    }
+    if (replacedStorageKey) await removeMediaImage(replacedStorageKey).catch(() => {});
+    return { id: insertedId, sourceUrl, sortOrder, ...asset };
   }
 
-  async cleanupUploads(runId) {
-    const result = await this.pool.query(`
-      DELETE FROM search_horoshop_photo_run_uploads
-      WHERE run_id = $1
-      RETURNING media_asset_id
-    `, [runId]);
-    for (const row of result.rows) await this.removeMediaAsset(row.media_asset_id).catch(() => {});
-  }
-
-  async completeJob(device, runId, { sourceUrl, adapterId = '', foundCount = 0, errors = [] }) {
-    const run = await this.assertLeasedJob(device, runId);
-    const uploaded = await this.pool.query(`
-      SELECT upload.*, asset.id AS asset_id, asset.url, asset.width, asset.height, asset.size_bytes
+  async deleteUploadAssets(runId, db) {
+    const result = await db.query(`
+      SELECT upload.media_asset_id, asset.storage_key
       FROM search_horoshop_photo_run_uploads AS upload
       INNER JOIN media_library_assets AS asset ON asset.id = upload.media_asset_id
       WHERE upload.run_id = $1
-      ORDER BY upload.sort_order, upload.created_at
+      FOR UPDATE
     `, [runId]);
-    if (!uploaded.rows.length) {
-      throw new AppError(422, 'PHOTO_DESKTOP_UPLOAD_EMPTY', 'Оберіть і завантажте хоча б одну фотографію.');
+    if (!result.rows.length) return [];
+    const mediaIds = result.rows.map((row) => row.media_asset_id);
+    const promoted = await db.query(`
+      SELECT DISTINCT media_asset_id
+      FROM search_horoshop_photo_assets
+      WHERE media_asset_id IN (${mediaIds.map((_, index) => `$${index + 1}`).join(', ')})
+    `, mediaIds);
+    const promotedIds = new Set(promoted.rows.map((row) => row.media_asset_id));
+    await db.query('DELETE FROM search_horoshop_photo_run_uploads WHERE run_id = $1', [runId]);
+    const obsolete = result.rows.filter((row) => !promotedIds.has(row.media_asset_id));
+    if (obsolete.length) {
+      const obsoleteMediaIds = obsolete.map((row) => row.media_asset_id);
+      await db.query(`
+        DELETE FROM media_library_assets
+        WHERE id IN (${obsoleteMediaIds.map((_, index) => `$${index + 1}`).join(', ')})
+      `, obsoleteMediaIds);
     }
-    const prepared = uploaded.rows.map((row) => ({
-      sourceUrl: row.source_url,
-      contentSha256: row.content_sha256,
-      asset: { id: row.asset_id }
-    }));
-    await this.photoService.replaceDraftAssets(run, prepared);
-    await this.pool.query(`DELETE FROM search_horoshop_photo_run_uploads WHERE run_id = $1`, [runId]);
-    const savedCount = prepared.length;
-    const normalizedFound = Math.max(savedCount, Number(foundCount || 0));
-    const normalizedErrors = Array.isArray(errors) ? errors.slice(0, 40) : [];
-    const status = normalizedErrors.length ? 'partial' : 'success';
-    const draftStatus = normalizedErrors.length ? 'partial' : 'ready';
-    const message = normalizedErrors.length ? `Частину фотографій пропущено: ${normalizedErrors.length}` : '';
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_runs
-      SET status = $2, source_url = $3, adapter_id = $4, found_count = $5,
-          saved_count = $6, skipped_count = $7, error_message = $8,
-          error_details = $9::jsonb, progress = '{"phase":"complete","percentage":100}'::jsonb,
-          lease_expires_at = NULL, heartbeat_at = NOW(), completed_at = NOW()
-      WHERE id = $1
-    `, [
-      runId, status, sourceUrl, adapterId, normalizedFound, savedCount,
-      Math.max(0, normalizedFound - savedCount), message, JSON.stringify(normalizedErrors)
-    ]);
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_drafts
-      SET source_url = $2, adapter_id = $3, parse_status = $4, publish_status = 'draft',
-          found_count = $5, error_message = $6, error_details = $7::jsonb, updated_at = NOW()
-      WHERE id = $1
-    `, [run.draft_id, sourceUrl, adapterId, draftStatus, normalizedFound, message, JSON.stringify(normalizedErrors)]);
+    return obsolete;
+  }
+
+  async completeJob(device, runId, { sourceUrl, adapterId = '', foundCount = 0, errors = [] }) {
+    const client = await this.pool.connect();
+    let run;
+    let replacedAssets = [];
+    let redundantUploads = [];
+    let result;
+    try {
+      await client.query('BEGIN');
+      run = await this.jobContext(runId, device.userId, client, { forUpdate: true });
+      if (run.status === 'success' || run.status === 'partial') {
+        redundantUploads = await this.deleteUploadAssets(runId, client);
+        const saved = await client.query(`
+          SELECT COUNT(*)::INTEGER AS count
+          FROM search_horoshop_photo_assets
+          WHERE draft_id = $1
+        `, [run.draft_id]);
+        if (Number(saved.rows[0]?.count || 0) > 0) {
+          await client.query(`
+            UPDATE search_horoshop_photo_drafts
+            SET source_run_id = $2, parse_status = $3, updated_at = NOW()
+            WHERE id = $1 AND (source_run_id IS NULL OR source_run_id = $2)
+          `, [run.draft_id, run.id, run.status === 'partial' ? 'partial' : 'ready']);
+        }
+        result = {
+          status: run.status,
+          foundCount: Number(run.found_count || 0),
+          savedCount: Number(run.saved_count || 0),
+          errors: jsonArray(run.error_details)
+        };
+        await client.query('COMMIT');
+      } else {
+        if (run.status !== 'running' || run.device_id !== device.id) {
+          throw new AppError(409, 'PHOTO_DESKTOP_JOB_NOT_CLAIMED', 'Спочатку візьміть завдання в роботу.');
+        }
+        if (run.lease_expires_at && new Date(run.lease_expires_at).getTime() <= Date.now()) {
+          throw new AppError(409, 'PHOTO_DESKTOP_JOB_LEASE_EXPIRED', 'Час виконання завдання завершився. Оновіть чергу.');
+        }
+        const uploaded = await client.query(`
+          SELECT upload.*, asset.id AS asset_id, asset.url, asset.width, asset.height, asset.size_bytes
+          FROM search_horoshop_photo_run_uploads AS upload
+          INNER JOIN media_library_assets AS asset ON asset.id = upload.media_asset_id
+          WHERE upload.run_id = $1
+          ORDER BY upload.sort_order, upload.created_at
+          FOR UPDATE
+        `, [runId]);
+        if (!uploaded.rows.length) {
+          throw new AppError(422, 'PHOTO_DESKTOP_UPLOAD_EMPTY', 'Оберіть і завантажте хоча б одну фотографію.');
+        }
+        const prepared = uploaded.rows.map((row) => ({
+          sourceUrl: row.source_url,
+          contentSha256: row.content_sha256,
+          asset: { id: row.asset_id }
+        }));
+        const savedCount = prepared.length;
+        const normalizedFound = Math.max(savedCount, Number(foundCount || 0));
+        const normalizedErrors = Array.isArray(errors) ? errors.slice(0, 40) : [];
+        const status = normalizedErrors.length ? 'partial' : 'success';
+        const draftStatus = normalizedErrors.length ? 'partial' : 'ready';
+        const message = normalizedErrors.length ? `Частину фотографій пропущено: ${normalizedErrors.length}` : '';
+
+        replacedAssets = await this.photoService.replaceDraftAssets(run, prepared, { db: client });
+        await client.query('DELETE FROM search_horoshop_photo_run_uploads WHERE run_id = $1', [runId]);
+        const finalized = await client.query(`
+          UPDATE search_horoshop_photo_runs
+          SET status = $2, source_url = $3, adapter_id = $4, found_count = $5,
+              saved_count = $6, skipped_count = $7, error_message = $8,
+              error_details = $9::jsonb, progress = '{"phase":"complete","percentage":100}'::jsonb,
+              device_id = NULL, lease_expires_at = NULL, heartbeat_at = NOW(), completed_at = NOW()
+          WHERE id = $1 AND status = 'running' AND device_id = $10
+          RETURNING id
+        `, [
+          runId, status, sourceUrl, adapterId, normalizedFound, savedCount,
+          Math.max(0, normalizedFound - savedCount), message, JSON.stringify(normalizedErrors), device.id
+        ]);
+        if (!finalized.rows[0]) {
+          throw new AppError(409, 'PHOTO_DESKTOP_JOB_NOT_CLAIMED', 'Статус завдання змінився. Оновіть чергу.');
+        }
+        await client.query(`
+          UPDATE search_horoshop_photo_drafts
+          SET source_url = $2, adapter_id = $3, parse_status = $4, publish_status = 'draft',
+              found_count = $5, error_message = $6, error_details = $7::jsonb,
+              source_run_id = $8, updated_at = NOW()
+          WHERE id = $1
+        `, [
+          run.draft_id, sourceUrl, adapterId, draftStatus, normalizedFound,
+          message, JSON.stringify(normalizedErrors), runId
+        ]);
+        await client.query('COMMIT');
+        result = { status, foundCount: normalizedFound, savedCount, errors: normalizedErrors };
+      }
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    for (const asset of replacedAssets) await removeMediaImage(asset.storage_key).catch(() => {});
+    for (const asset of redundantUploads) await removeMediaImage(asset.storage_key).catch(() => {});
     await this.photoService.refreshBatch(run.batch_id).catch((error) => {
       console.error('Photo desktop batch refresh failed after completing a job', {
         batchId: run.batch_id,
@@ -675,45 +836,75 @@ export class HoroshopPhotoDesktopService {
         error
       });
     });
-    return { status, foundCount: normalizedFound, savedCount, errors: normalizedErrors };
+    return result;
   }
 
   async failJob(device, runId, { message, errors = [] }) {
-    const run = await this.assertLeasedJob(device, runId);
-    await this.cleanupUploads(runId);
     const safeMessage = cleanError({ message });
-    const details = Array.isArray(errors) && errors.length
-      ? errors.slice(0, 40)
-      : [{ stage: 'desktop', sourceUrl: run.source_url || '', message: safeMessage }];
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_runs
-      SET status = 'failed', error_message = $2, error_details = $3::jsonb,
-          lease_expires_at = NULL, completed_at = NOW()
-      WHERE id = $1
-    `, [runId, safeMessage, JSON.stringify(details)]);
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_drafts
-      SET parse_status = 'failed', error_message = $2, error_details = $3::jsonb, updated_at = NOW()
-      WHERE id = $1
-    `, [run.draft_id, safeMessage, JSON.stringify(details)]);
-    await this.photoService.refreshBatch(run.batch_id);
+    const client = await this.pool.connect();
+    let run;
+    let uploads = [];
+    try {
+      await client.query('BEGIN');
+      run = await this.assertLeasedJob(device, runId, client, { forUpdate: true });
+      const details = Array.isArray(errors) && errors.length
+        ? errors.slice(0, 40)
+        : [{ stage: 'desktop', sourceUrl: run.source_url || '', message: safeMessage }];
+      uploads = await this.deleteUploadAssets(runId, client);
+      const failed = await client.query(`
+        UPDATE search_horoshop_photo_runs
+        SET status = 'failed', error_message = $2, error_details = $3::jsonb,
+            device_id = NULL, lease_expires_at = NULL, heartbeat_at = NOW(), completed_at = NOW()
+        WHERE id = $1 AND status = 'running' AND device_id = $4
+        RETURNING id
+      `, [runId, safeMessage, JSON.stringify(details), device.id]);
+      if (!failed.rows[0]) throw new AppError(409, 'PHOTO_DESKTOP_JOB_NOT_CLAIMED', 'Статус завдання змінився. Оновіть чергу.');
+      await client.query(`
+        UPDATE search_horoshop_photo_drafts
+        SET parse_status = 'failed', error_message = $2, error_details = $3::jsonb, updated_at = NOW()
+        WHERE id = $1
+      `, [run.draft_id, safeMessage, JSON.stringify(details)]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    for (const asset of uploads) await removeMediaImage(asset.storage_key).catch(() => {});
+    await this.photoService.refreshBatch(run.batch_id).catch(() => {});
     return { status: 'failed', errorMessage: safeMessage };
   }
 
   async releaseJob(device, runId) {
-    const run = await this.assertLeasedJob(device, runId);
-    await this.cleanupUploads(runId);
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_runs
-      SET status = 'queued', device_id = NULL, lease_expires_at = NULL,
-          heartbeat_at = NULL, progress = '{}'::jsonb, started_at = NULL
-      WHERE id = $1
-    `, [runId]);
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_drafts SET parse_status = 'queued', updated_at = NOW()
-      WHERE id = $1
-    `, [run.draft_id]);
-    await this.photoService.refreshBatch(run.batch_id);
+    const client = await this.pool.connect();
+    let run;
+    let uploads = [];
+    try {
+      await client.query('BEGIN');
+      run = await this.assertLeasedJob(device, runId, client, { forUpdate: true });
+      uploads = await this.deleteUploadAssets(runId, client);
+      const released = await client.query(`
+        UPDATE search_horoshop_photo_runs
+        SET status = 'queued', device_id = NULL, lease_expires_at = NULL,
+            heartbeat_at = NULL, progress = '{}'::jsonb, started_at = NULL
+        WHERE id = $1 AND status = 'running' AND device_id = $2
+        RETURNING id
+      `, [runId, device.id]);
+      if (!released.rows[0]) throw new AppError(409, 'PHOTO_DESKTOP_JOB_NOT_CLAIMED', 'Статус завдання змінився. Оновіть чергу.');
+      await client.query(`
+        UPDATE search_horoshop_photo_drafts SET parse_status = 'queued', updated_at = NOW()
+        WHERE id = $1
+      `, [run.draft_id]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    for (const asset of uploads) await removeMediaImage(asset.storage_key).catch(() => {});
+    await this.photoService.refreshBatch(run.batch_id).catch(() => {});
     return { status: 'queued' };
   }
 }

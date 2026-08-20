@@ -48,12 +48,13 @@ function formatBytes(value: number) {
 
 function BatchProgress({ batch }: { batch: HoroshopPhotoBatch }) {
   const completed = batch.counts.success + batch.counts.partial + batch.counts.failed;
-  const percent = batch.requestedCount ? Math.min(100, Math.round((completed / batch.requestedCount) * 100)) : 100;
+  const total = batch.items.length || batch.requestedCount;
+  const percent = total ? Math.min(100, Math.round((completed / total) * 100)) : 100;
   return <section className={`horoshop-photo-progress${batchComplete(batch) ? ' is-complete' : ''}`}>
     <header>
       <div>
         <strong>{batchComplete(batch) ? 'Обробку на десктопі завершено' : 'Десктопний парсер обробляє вибірку'}</strong>
-        <span>{completed} із {batch.requestedCount} позицій</span>
+        <span>{completed} із {total} позицій</span>
       </div>
       <b>{percent}%</b>
     </header>
@@ -264,6 +265,7 @@ export function HoroshopPhotoParserPage() {
   const [publishProgress, setPublishProgress] = useState<HoroshopPhotoPublishProgress | null>(null);
   const completedBatch = useRef('');
   const synchronizedBatchRevision = useRef('');
+  const previousSelectionId = useRef('');
 
   const selections = useQuery({ queryKey: ['horoshop-photo-selections'], queryFn: api.horoshopPhotos.selections });
   const desktopDevices = useQuery({
@@ -276,13 +278,13 @@ export function HoroshopPhotoParserPage() {
     queryKey: ['horoshop-photo-selection', selectionId],
     queryFn: ({ signal }) => api.horoshopPhotos.selection(selectionId, signal),
     enabled: Boolean(selectionId),
-    refetchInterval: (query) => batchId || selectionHasActiveDrafts(query.state.data) ? 1_000 : false,
+    refetchInterval: (query) => selectionHasActiveDrafts(query.state.data) ? 1_000 : false,
     refetchIntervalInBackground: true
   });
   const activeBatch = useQuery({
-    queryKey: ['horoshop-photo-active-batch'],
-    queryFn: api.horoshopPhotos.activeBatch,
-    enabled: !batchId,
+    queryKey: ['horoshop-photo-active-batch', selectionId],
+    queryFn: () => api.horoshopPhotos.activeBatch(selectionId),
+    enabled: Boolean(selectionId) && !batchId,
     refetchInterval: 2_000,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: false
@@ -326,18 +328,28 @@ export function HoroshopPhotoParserPage() {
   }, [selectionId, selections.data]);
 
   useEffect(() => {
-    if (activeBatch.data?.id) setBatchId(activeBatch.data.id);
-  }, [activeBatch.data?.id]);
+    if (activeBatch.data?.id && activeBatch.data.selectionId === selectionId) setBatchId(activeBatch.data.id);
+  }, [activeBatch.data?.id, activeBatch.data?.selectionId, selectionId]);
 
   useEffect(() => {
-    if (!batch.data || !selectionId) return;
+    if (previousSelectionId.current && previousSelectionId.current !== selectionId) {
+      setBatchId('');
+      completedBatch.current = '';
+      synchronizedBatchRevision.current = '';
+    }
+    previousSelectionId.current = selectionId;
+  }, [selectionId]);
+
+  useEffect(() => {
+    const targetSelectionId = batch.data?.selectionId;
+    if (!batch.data || !targetSelectionId) return;
     const revision = batch.data.items
       .map((item) => `${item.id}:${item.status}:${item.savedCount}:${item.completedAt || ''}`)
       .join('|');
     if (synchronizedBatchRevision.current === revision) return;
     synchronizedBatchRevision.current = revision;
-    void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection', selectionId], exact: true });
-  }, [batch.data, queryClient, selectionId]);
+    void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection', targetSelectionId], exact: true });
+  }, [batch.data, queryClient]);
 
   useEffect(() => {
     if (!desktopPairing || desktopPairing.status !== 'pending') return;
@@ -360,7 +372,7 @@ export function HoroshopPhotoParserPage() {
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection'] }),
       queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] }),
-      queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch'] })
+      queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch', batch.data.selectionId] })
     ]).finally(() => {
       setBatchId((current) => current === completedBatchId ? '' : current);
     });
@@ -370,10 +382,12 @@ export function HoroshopPhotoParserPage() {
     if (!batchId || !(batch.error instanceof ApiError) || batch.error.status !== 404) return;
     queryClient.removeQueries({ queryKey: ['horoshop-photo-batch', batchId], exact: true });
     setBatchId('');
-    void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch'] });
-  }, [batch.error, batchId, queryClient]);
+    void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch', selectionId] });
+  }, [batch.error, batchId, queryClient, selectionId]);
 
-  const displayedBatch = batch.data || activeBatch.data || null;
+  const displayedBatch = batch.data?.selectionId === selectionId
+    ? batch.data
+    : activeBatch.data?.selectionId === selectionId ? activeBatch.data : null;
   const parserBusy = Boolean(displayedBatch && !batchComplete(displayedBatch));
   const publishBusy = publishSelection.isPending;
 
@@ -516,7 +530,7 @@ export function HoroshopPhotoParserPage() {
     if (!selectionId || !selection.data) return;
     const accepted = await confirm({
       title: 'Видалити вибірку?',
-      message: 'Список товарів буде видалено. Уже спарсені чернетки фотографій залишаться доступними для повторного використання в інших вибірках.',
+      message: 'Список товарів і непередані в Хорошоп чернетки фотографій буде видалено. Фото, які вже передані в Хорошоп, не зміняться.',
       confirmLabel: 'Видалити вибірку',
       tone: 'danger'
     });
@@ -531,7 +545,7 @@ export function HoroshopPhotoParserPage() {
       if (displayedBatch?.selectionId === removedId) {
         if (displayedBatch.id === batchId) setBatchId('');
         queryClient.removeQueries({ queryKey: ['horoshop-photo-batch', displayedBatch.id], exact: true });
-        queryClient.setQueryData(['horoshop-photo-active-batch'], null);
+        queryClient.setQueryData(['horoshop-photo-active-batch', removedId], null);
       }
       setSelectionId(remaining[0]?.id || '');
       await Promise.all([
@@ -549,6 +563,11 @@ export function HoroshopPhotoParserPage() {
     targets: photoTargets.length,
     ready: photoTargets.filter((target) => ['ready', 'partial'].includes(target.draft.parseStatus)).length
   }), [photoTargets, selection.data?.products.length]);
+  const publishableCount = useMemo(() => photoTargets.filter((target) => (
+    Boolean(target.draft.id)
+      && ['ready', 'partial'].includes(target.draft.parseStatus)
+      && target.draft.assets.some((asset) => asset.selected)
+  )).length, [photoTargets]);
 
   if (selections.isError) return <div className="horoshop-photo-page">
     <section className="task-list-state task-list-state--error">
@@ -574,7 +593,7 @@ export function HoroshopPhotoParserPage() {
         <button className="button button--secondary" type="button" disabled={!selectionId || !connectedDevices.length || parserBusy || parseSelection.isPending} onClick={() => void runSelectionParse()}>
           <Icon name="refresh" size={17} /> Передати в парсер
         </button>
-        <button className="button button--primary" type="button" disabled={!selectionId || publishBusy || parserBusy} onClick={() => void runSelectionPublish()}>
+        <button className="button button--primary" type="button" disabled={!selectionId || publishBusy || busyDraftIds.size > 0 || publishableCount === 0} onClick={() => void runSelectionPublish()}>
           <Icon name="upload" size={17} /> Передати готові
         </button>
       </div>

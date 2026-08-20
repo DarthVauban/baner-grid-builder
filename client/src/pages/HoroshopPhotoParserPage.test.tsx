@@ -6,7 +6,7 @@ import { ConfirmDialogProvider } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
 import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
-import type { HoroshopPhotoSelection, HoroshopPhotoSelectionSummary } from '../types/horoshop-photo';
+import type { HoroshopPhotoBatch, HoroshopPhotoSelection, HoroshopPhotoSelectionSummary } from '../types/horoshop-photo';
 import { HoroshopPhotoParserPage } from './HoroshopPhotoParserPage';
 
 const summary: HoroshopPhotoSelectionSummary = {
@@ -126,6 +126,50 @@ const filterFeed: HoroshopCatalogFeed = {
   pageCount: 1
 };
 
+function readySelection(): HoroshopPhotoSelection {
+  const ready = structuredClone(selection);
+  ready.products[0].modifications[1].draft = {
+    ...ready.products[0].modifications[1].draft,
+    id: 'draft-silver',
+    parseStatus: 'ready',
+    foundCount: 1,
+    assets: [{
+      id: 'asset-2',
+      mediaAssetId: 'media-2',
+      sourceUrl: 'https://supplier.example/silver.jpg',
+      url: '/media/catalog/library/silver.webp',
+      width: 1200,
+      height: 1200,
+      size: 90_000,
+      selected: true,
+      sortOrder: 0
+    }]
+  };
+  return ready;
+}
+
+function staleBatch(selectionId = selection.id): HoroshopPhotoBatch {
+  return {
+    id: 'batch-stale',
+    selectionId,
+    status: 'queued',
+    requestedCount: 10,
+    counts: { queued: 1, running: 0, success: 1, partial: 0, failed: 0 },
+    items: [{
+      id: 'run-success', draftId: 'draft-black', status: 'success', sku: 'PHONE-1-BLACK',
+      title: 'Example One Black', sourceUrl: '', adapterId: '', foundCount: 1, savedCount: 1,
+      skippedCount: 0, errorMessage: '', errors: [], startedAt: null, completedAt: '2026-08-20T08:01:00.000Z'
+    }, {
+      id: 'run-queued', draftId: 'draft-silver', status: 'queued', sku: 'PHONE-1-SILVER',
+      title: 'Example One Silver', sourceUrl: '', adapterId: '', foundCount: 0, savedCount: 0,
+      skippedCount: 0, errorMessage: '', errors: [], startedAt: null, completedAt: null
+    }],
+    createdAt: '2026-08-20T08:00:00.000Z',
+    startedAt: '2026-08-20T08:00:00.000Z',
+    completedAt: null
+  };
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -145,6 +189,53 @@ beforeEach(() => {
 });
 
 describe('HoroshopPhotoParserPage', () => {
+  it('allows publishing ready drafts even when a parser batch is stale at 50 percent', async () => {
+    vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
+    vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(readySelection());
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(staleBatch());
+    vi.spyOn(api.horoshopPhotos, 'batch').mockResolvedValue(staleBatch());
+    const publish = vi.spyOn(api.horoshopPhotos, 'publishSelection')
+      .mockResolvedValue({ publishedDrafts: 2, publishedArticles: 2 });
+
+    renderPage();
+
+    expect(await screen.findByText('1 із 2 позицій')).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
+    const publishButton = screen.getByRole('button', { name: 'Передати готові' });
+    expect(publishButton).toBeEnabled();
+    fireEvent.click(publishButton);
+    await waitFor(() => expect(publish).toHaveBeenCalledWith(summary.id, 'append', expect.any(Function)));
+  });
+
+  it('does not show or apply an active batch from another selection', async () => {
+    vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
+    vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(readySelection());
+    const activeBatch = vi.spyOn(api.horoshopPhotos, 'activeBatch')
+      .mockResolvedValue(staleBatch('selection-other'));
+
+    renderPage();
+
+    expect(await screen.findByText('Example One Black')).toBeInTheDocument();
+    expect(activeBatch).toHaveBeenCalledWith(summary.id);
+    expect(screen.queryByText('Десктопний парсер обробляє вибірку')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Передати готові' })).toBeEnabled();
+  });
+
+  it('does not enable bulk publishing when ready drafts have no selected photos', async () => {
+    const withoutSelectedPhotos = readySelection();
+    for (const modification of withoutSelectedPhotos.products[0].modifications) {
+      modification.draft.assets = modification.draft.assets.map((asset) => ({ ...asset, selected: false }));
+    }
+    vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
+    vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(withoutSelectedPhotos);
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
+
+    renderPage();
+
+    expect(await screen.findByText('Example One Black')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Передати готові' })).toBeDisabled();
+  });
+
   it('renders one flat card per modification and never uses an article as its title', async () => {
     vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
     vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(selection);
