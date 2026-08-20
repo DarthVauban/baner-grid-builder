@@ -10,11 +10,13 @@ import { publishSupportChatUpdate, subscribeToSupportOperatorUpdates } from './s
 import { hydrateSupportProductCards, resolveSupportProductReferences } from './support-chat.products.js';
 import {
   loadSupportSite,
+  isValidSupportTimezone,
   normalizeSupportOrigin,
   serializeSupportConversation,
   serializeSupportMessage,
   serializeSupportSettings,
-  supportChatToolId
+  supportChatToolId,
+  supportWorkingDayKeys
 } from './support-chat.service.js';
 
 const router = Router();
@@ -33,6 +35,16 @@ const customerSchema = z.object({
   email: z.union([z.string().trim().email().max(320), z.literal('')]).default(''),
   phone: z.string().trim().max(40).default('')
 });
+const workingHoursDaySchema = z.object({
+  enabled: z.boolean(),
+  start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/u),
+  end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/u)
+}).refine((value) => !value.enabled || value.start < value.end, {
+  message: 'Час завершення робочого дня має бути пізніше часу початку.'
+});
+const workingHoursScheduleSchema = z.object(Object.fromEntries(
+  supportWorkingDayKeys.map((day) => [day, workingHoursDaySchema])
+));
 const settingsSchema = z.object({
   name: z.string().trim().min(1).max(160),
   enabled: z.boolean(),
@@ -43,7 +55,13 @@ const settingsSchema = z.object({
   welcomeText: z.string().trim().min(1).max(500),
   autoReplyText: z.string().trim().min(1).max(1000),
   contactFormEnabled: z.boolean(),
-  contactFormPrompt: z.string().trim().min(1).max(500)
+  contactFormPrompt: z.string().trim().min(1).max(500),
+  workingHoursEnabled: z.boolean(),
+  workingHoursTimezone: z.string().trim().min(1).max(64).refine(isValidSupportTimezone, {
+    message: 'Вкажіть коректний часовий пояс.'
+  }),
+  workingHoursSchedule: workingHoursScheduleSchema,
+  offlineReplyText: z.string().trim().min(1).max(1000)
 });
 
 async function loadConversationRow(id) {
@@ -103,8 +121,10 @@ router.put('/settings', asyncHandler(async (req, res) => {
      SET name = $1, enabled = $2, allowed_origins = $3::JSONB,
          accent_color = $4, welcome_text = $5, auto_reply_text = $6,
          contact_form_enabled = $7, contact_form_prompt = $8,
-         updated_by = $9, updated_at = NOW()
-     WHERE id = $10
+         working_hours_enabled = $9, working_hours_timezone = $10,
+         working_hours_schedule = $11::JSONB, offline_reply_text = $12,
+         updated_by = $13, updated_at = NOW()
+     WHERE id = $14
      RETURNING *`,
     [
       input.name,
@@ -115,6 +135,10 @@ router.put('/settings', asyncHandler(async (req, res) => {
       input.autoReplyText,
       input.contactFormEnabled,
       input.contactFormPrompt,
+      input.workingHoursEnabled,
+      input.workingHoursTimezone,
+      JSON.stringify(input.workingHoursSchedule),
+      input.offlineReplyText,
       req.user.id,
       current.id
     ]

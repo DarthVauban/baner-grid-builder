@@ -35,6 +35,8 @@ button { cursor: pointer; }
 .support-message--system { align-self: flex-start; border: 1px solid #e3e3dc; border-bottom-left-radius: 5px; color: #45453f; background: #eeeeea; }
 .support-message--system small { color: #77776f; }
 .support-contact-card { align-self: stretch; border: 1px solid #deded5; border-radius: 17px; padding: 13px; background: #fff; box-shadow: 0 7px 20px rgba(17,17,17,.05); }
+.support-contact-card--required { border-color: color-mix(in srgb, var(--support-accent) 72%, #b8a000); box-shadow: 0 7px 22px rgba(17,17,17,.08); }
+.support-contact-card--required strong::after { content: " · обов’язково"; color: #8d6500; font-size: 9px; font-weight: 850; }
 .support-contact-card > header { display: grid; grid-template-columns: minmax(0,1fr) 28px; gap: 8px; align-items: start; }
 .support-contact-card header > div { display: grid; gap: 4px; }
 .support-contact-card strong { font-size: 12px; }

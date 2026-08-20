@@ -1,5 +1,14 @@
 export type SupportConversationStatus = 'NEW' | 'OPEN' | 'WAITING_CUSTOMER' | 'RESOLVED' | 'CLOSED';
 export type SupportMessageSender = 'visitor' | 'operator' | 'system';
+export type SupportWorkingDayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
+export interface SupportWorkingDay {
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
+export type SupportWorkingHoursSchedule = Record<SupportWorkingDayKey, SupportWorkingDay>;
 
 export interface SupportProductCard {
   id: string;
@@ -30,6 +39,11 @@ export interface SupportChatSettings {
   autoReplyText: string;
   contactFormEnabled: boolean;
   contactFormPrompt: string;
+  workingHoursEnabled: boolean;
+  workingHoursTimezone: string;
+  workingHoursSchedule: SupportWorkingHoursSchedule;
+  offlineReplyText: string;
+  isWithinWorkingHours: boolean;
   updatedAt: string;
 }
 
@@ -103,4 +117,8 @@ export interface SupportChatSettingsInput {
   autoReplyText: string;
   contactFormEnabled: boolean;
   contactFormPrompt: string;
+  workingHoursEnabled: boolean;
+  workingHoursTimezone: string;
+  workingHoursSchedule: SupportWorkingHoursSchedule;
+  offlineReplyText: string;
 }

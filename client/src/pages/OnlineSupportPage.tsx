@@ -9,7 +9,8 @@ import type {
   SupportCustomerInput,
   SupportConversation,
   SupportConversationStatus,
-  SupportMessage
+  SupportMessage,
+  SupportWorkingDayKey
 } from '../types/support-chat';
 import '../styles/online-support.css';
 
@@ -20,6 +21,23 @@ const statuses: Array<{ value: SupportConversationStatus | ''; label: string }> 
   { value: 'WAITING_CUSTOMER', label: 'Очікуємо покупця' },
   { value: 'RESOLVED', label: 'Вирішені' },
   { value: 'CLOSED', label: 'Закриті' }
+];
+
+const workingDays: Array<{ key: SupportWorkingDayKey; label: string }> = [
+  { key: 'monday', label: 'Понеділок' },
+  { key: 'tuesday', label: 'Вівторок' },
+  { key: 'wednesday', label: 'Середа' },
+  { key: 'thursday', label: 'Четвер' },
+  { key: 'friday', label: 'П’ятниця' },
+  { key: 'saturday', label: 'Субота' },
+  { key: 'sunday', label: 'Неділя' }
+];
+
+const supportTimezones = [
+  { value: 'Europe/Kyiv', label: 'Київ (Europe/Kyiv)' },
+  { value: 'Europe/Warsaw', label: 'Варшава (Europe/Warsaw)' },
+  { value: 'Europe/Chisinau', label: 'Кишинів (Europe/Chisinau)' },
+  { value: 'Europe/Bucharest', label: 'Бухарест (Europe/Bucharest)' }
 ];
 
 const statusLabels: Record<SupportConversationStatus, string> = {
@@ -52,6 +70,8 @@ function SettingsPanel() {
   const [draft, setDraft] = useState<SupportChatSettingsInput | null>(null);
   const [origins, setOrigins] = useState('');
   const save = useMutation({ mutationFn: api.onlineSupport.saveSettings });
+  const panelRef = useRef<HTMLDivElement>(null);
+  const draftReady = draft !== null;
 
   useEffect(() => {
     if (!settings.data) return;
@@ -63,10 +83,20 @@ function SettingsPanel() {
       welcomeText: settings.data.welcomeText,
       autoReplyText: settings.data.autoReplyText,
       contactFormEnabled: settings.data.contactFormEnabled,
-      contactFormPrompt: settings.data.contactFormPrompt
+      contactFormPrompt: settings.data.contactFormPrompt,
+      workingHoursEnabled: settings.data.workingHoursEnabled,
+      workingHoursTimezone: settings.data.workingHoursTimezone,
+      workingHoursSchedule: settings.data.workingHoursSchedule,
+      offlineReplyText: settings.data.offlineReplyText
     });
     setOrigins(settings.data.allowedOrigins.join('\n'));
   }, [settings.data]);
+
+  useEffect(() => {
+    if (!draftReady) return undefined;
+    const frame = requestAnimationFrame(() => { if (panelRef.current) panelRef.current.scrollTop = 0; });
+    return () => cancelAnimationFrame(frame);
+  }, [draftReady]);
 
   if (settings.isLoading || !draft) return <div className="online-support-state">Завантажуємо налаштування…</div>;
   if (settings.isError) return <div className="online-support-state online-support-state--error">Не вдалося завантажити налаштування віджета.</div>;
@@ -88,7 +118,7 @@ function SettingsPanel() {
     }
   }
 
-  return <div className="online-support-settings">
+  return <div className="online-support-settings" ref={panelRef}>
     <form className="online-support-settings__form" onSubmit={(event) => void submit(event)}>
       <section className="online-support-card">
         <header><div><p className="eyebrow">Віджет</p><h2>Основні налаштування</h2></div><label className="online-support-switch"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} /><span />{draft.enabled ? 'Увімкнено' : 'Вимкнено'}</label></header>
@@ -97,9 +127,32 @@ function SettingsPanel() {
           <label className="field online-support-color"><span>Акцентний колір</span><div><input type="color" value={draft.accentColor} onChange={(event) => setDraft({ ...draft, accentColor: event.target.value })} /><input value={draft.accentColor} onChange={(event) => setDraft({ ...draft, accentColor: event.target.value })} pattern="#[0-9a-fA-F]{6}" /></div></label>
           <label className="field field--wide"><span>Привітання до першого повідомлення</span><textarea value={draft.welcomeText} onChange={(event) => setDraft({ ...draft, welcomeText: event.target.value })} maxLength={500} required /></label>
           <label className="field field--wide"><span>Автоматична відповідь після першого повідомлення</span><textarea value={draft.autoReplyText} onChange={(event) => setDraft({ ...draft, autoReplyText: event.target.value })} maxLength={1000} required /></label>
-          <label className="online-support-check field--wide"><input type="checkbox" checked={draft.contactFormEnabled} onChange={(event) => setDraft({ ...draft, contactFormEnabled: event.target.checked })} /><span><strong>Показувати необов’язкову форму контактів</strong><small>Покупець зможе продовжити чат, не заповнюючи її.</small></span></label>
+          <label className="online-support-check field--wide"><input type="checkbox" checked={draft.contactFormEnabled} onChange={(event) => setDraft({ ...draft, contactFormEnabled: event.target.checked })} /><span><strong>Показувати необов’язкову форму контактів у робочий час</strong><small>Поза робочим часом форма показується завжди й просить обов’язково залишити ім’я та телефон.</small></span></label>
           {draft.contactFormEnabled && <label className="field field--wide"><span>Текст над email і телефоном</span><textarea value={draft.contactFormPrompt} onChange={(event) => setDraft({ ...draft, contactFormPrompt: event.target.value })} maxLength={500} required /></label>}
         </div>
+      </section>
+
+      <section className="online-support-card online-support-hours-card">
+        <header><div><p className="eyebrow">Доступність</p><h2>Робочий час</h2></div><label className="online-support-switch"><input type="checkbox" checked={draft.workingHoursEnabled} onChange={(event) => setDraft({ ...draft, workingHoursEnabled: event.target.checked })} /><span />{draft.workingHoursEnabled ? 'Графік увімкнено' : 'Без обмежень'}</label></header>
+        <p className="online-support-hours-note">Коли графік увімкнено, повідомлення поза вказаними годинами отримають окрему автовідповідь, а форма попросить ім’я та номер телефону.</p>
+        <label className="field"><span>Часовий пояс</span><select value={draft.workingHoursTimezone} onChange={(event) => setDraft({ ...draft, workingHoursTimezone: event.target.value })}>{supportTimezones.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></label>
+        <div className="online-support-hours" aria-label="Графік роботи">
+          {workingDays.map(({ key, label }) => {
+            const day = draft.workingHoursSchedule[key];
+            const updateDay = (changes: Partial<typeof day>) => setDraft({
+              ...draft,
+              workingHoursSchedule: {
+                ...draft.workingHoursSchedule,
+                [key]: { ...day, ...changes }
+              }
+            });
+            return <div className={`online-support-hours__day${day.enabled ? ' is-enabled' : ''}`} key={key}>
+              <label><input type="checkbox" checked={day.enabled} onChange={(event) => updateDay({ enabled: event.target.checked })} /><strong>{label}</strong></label>
+              <div><input type="time" value={day.start} onChange={(event) => updateDay({ start: event.target.value })} disabled={!day.enabled} aria-label={`${label}: початок`} /><span>—</span><input type="time" value={day.end} onChange={(event) => updateDay({ end: event.target.value })} disabled={!day.enabled} aria-label={`${label}: завершення`} /></div>
+            </div>;
+          })}
+        </div>
+        <label className="field"><span>Автовідповідь поза робочим часом</span><textarea value={draft.offlineReplyText} onChange={(event) => setDraft({ ...draft, offlineReplyText: event.target.value })} maxLength={1000} required /><small>Текст має пояснювати, коли відповість менеджер, і просити обов’язково залишити ім’я та номер телефону.</small></label>
       </section>
 
       <section className="online-support-card">
@@ -297,8 +350,8 @@ function ConversationsPanel() {
 
 export function OnlineSupportPage() {
   const [tab, setTab] = useState<'chats' | 'settings'>('chats');
-  return <div className="online-support-page">
-    <header className="page-heading online-support-heading"><div><p className="eyebrow">Комунікація з покупцями</p><h1>Онлайн-підтримка</h1><p>Відповідайте на звернення із сайту та керуйте поведінкою віджета.</p></div><div className="online-support-tabs"><button className={tab === 'chats' ? 'is-active' : ''} type="button" onClick={() => setTab('chats')}><Icon name="chat" size={17} /> Діалоги</button><button className={tab === 'settings' ? 'is-active' : ''} type="button" onClick={() => setTab('settings')}><Icon name="integrations" size={17} /> Налаштування</button></div></header>
+  return <div className={`online-support-page is-${tab}`}>
+    <nav className="online-support-toolbar" aria-label="Розділи онлайн-підтримки"><div className="online-support-tabs"><button className={tab === 'chats' ? 'is-active' : ''} type="button" onClick={() => setTab('chats')}><Icon name="chat" size={17} /> Діалоги</button><button className={tab === 'settings' ? 'is-active' : ''} type="button" onClick={() => setTab('settings')}><Icon name="integrations" size={17} /> Налаштування</button></div></nav>
     {tab === 'chats' ? <ConversationsPanel /> : <SettingsPanel />}
   </div>;
 }

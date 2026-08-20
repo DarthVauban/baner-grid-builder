@@ -14,6 +14,7 @@ import {
 import {
   createSupportSessionToken,
   hashSupportSessionToken,
+  isWithinSupportWorkingHours,
   loadSupportSite,
   loadSupportVisitorByToken,
   normalizeSupportOrigin,
@@ -87,6 +88,10 @@ function settingsFromVisitor(visitor) {
     auto_reply_text: visitor.auto_reply_text,
     contact_form_enabled: visitor.contact_form_enabled,
     contact_form_prompt: visitor.contact_form_prompt,
+    working_hours_enabled: visitor.working_hours_enabled,
+    working_hours_timezone: visitor.working_hours_timezone,
+    working_hours_schedule: visitor.working_hours_schedule,
+    offline_reply_text: visitor.offline_reply_text,
     updated_at: visitor.site_updated_at
   });
 }
@@ -166,6 +171,10 @@ router.post('/session', asyncHandler(async (req, res) => {
       auto_reply_text: site.auto_reply_text,
       contact_form_enabled: site.contact_form_enabled,
       contact_form_prompt: site.contact_form_prompt,
+      working_hours_enabled: site.working_hours_enabled,
+      working_hours_timezone: site.working_hours_timezone,
+      working_hours_schedule: site.working_hours_schedule,
+      offline_reply_text: site.offline_reply_text,
       site_updated_at: site.updated_at
     };
   } else {
@@ -193,6 +202,7 @@ router.get('/session', asyncHandler(async (req, res) => {
 router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
   const input = parseInput(messageSchema, req.body);
   const visitor = await loadSupportVisitorByToken(bearerToken(req));
+  const withinWorkingHours = isWithinSupportWorkingHours(visitor);
   const pageUrl = normalizeSupportPageUrl(input.pageUrl);
   const resolvedProductReferences = await resolveSupportProductReferences({ body: input.body, pageUrl });
   const client = await pool.connect();
@@ -232,19 +242,35 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
        RETURNING id`,
       [conversationId, input.body, input.clientMessageId, JSON.stringify(productReferences)]
     );
-    if (inserted.rows[0] && !conversation.auto_reply_sent_at) {
-      const claimedReply = await client.query(
-        `UPDATE support_chat_conversations
-         SET auto_reply_sent_at = NOW()
-         WHERE id = $1 AND auto_reply_sent_at IS NULL
-         RETURNING id`,
-        [conversationId]
-      );
-      if (claimedReply.rows[0]) {
+    if (inserted.rows[0]) {
+      let replyText = '';
+      if (!withinWorkingHours) {
+        const offlineReplyBefore = new Date(Date.now() - 12 * 60 * 60 * 1000);
+        const claimedReply = await client.query(
+          `UPDATE support_chat_conversations
+           SET last_offline_reply_at = NOW(),
+               auto_reply_sent_at = COALESCE(auto_reply_sent_at, NOW())
+           WHERE id = $1
+             AND (last_offline_reply_at IS NULL OR last_offline_reply_at < $2)
+           RETURNING id`,
+          [conversationId, offlineReplyBefore]
+        );
+        if (claimedReply.rows[0]) replyText = visitor.offline_reply_text;
+      } else if (!conversation.auto_reply_sent_at) {
+        const claimedReply = await client.query(
+          `UPDATE support_chat_conversations
+           SET auto_reply_sent_at = NOW()
+           WHERE id = $1 AND auto_reply_sent_at IS NULL
+           RETURNING id`,
+          [conversationId]
+        );
+        if (claimedReply.rows[0]) replyText = visitor.auto_reply_text;
+      }
+      if (replyText) {
         await client.query(
           `INSERT INTO support_chat_messages (conversation_id, sender_type, body)
            VALUES ($1, 'system', $2)`,
-          [conversationId, visitor.auto_reply_text]
+          [conversationId, replyText]
         );
       }
     }

@@ -48,11 +48,12 @@ export function SupportChatWidgetApp() {
   const latestOperatorMessageRef = useRef('');
 
   const conversation = session?.conversation || null;
+  const outsideWorkingHours = Boolean(session?.settings.workingHoursEnabled && !session.settings.isWithinWorkingHours);
+  const missingRequiredOfflineContact = Boolean(outsideWorkingHours && (!session?.visitor.name || !session.visitor.phone));
   const showContactForm = Boolean(
-    session?.settings.contactFormEnabled
+    (session?.settings.contactFormEnabled || outsideWorkingHours)
     && conversation?.messages.some((item) => item.senderType === 'visitor')
-    && !session.visitor.email
-    && !session.visitor.phone
+    && (missingRequiredOfflineContact || (!outsideWorkingHours && !session?.visitor.email && !session?.visitor.phone))
     && !contactSaved
   );
 
@@ -168,6 +169,10 @@ export function SupportChatWidgetApp() {
 
   async function saveContact(event: FormEvent) {
     event.preventDefault();
+    if (outsideWorkingHours && (!name.trim() || !phone.trim())) {
+      setError('Поза робочим часом обов’язково вкажіть ім’я та номер телефону.');
+      return;
+    }
     if ((!name.trim() && !email.trim() && !phone.trim()) || !tokenRef.current) return;
     setContactSaving(true);
     setError('');
@@ -215,13 +220,13 @@ export function SupportChatWidgetApp() {
           <time>{timeLabel(item.createdAt)}</time>
         </article>)}
 
-        {showContactForm && <section className="support-contact-card">
-          <header><div><strong>Залишити контакти</strong><p>{session?.settings.contactFormPrompt}</p></div><button type="button" onClick={() => setContactOpen((value) => !value)}>{contactOpen ? '−' : '+'}</button></header>
+        {showContactForm && <section className={`support-contact-card${outsideWorkingHours ? ' support-contact-card--required' : ''}`}>
+          <header><div><strong>{outsideWorkingHours ? 'Залиште ім’я та телефон' : 'Залишити контакти'}</strong><p>{outsideWorkingHours ? 'Ці дані обов’язкові, щоб менеджер міг зв’язатися з вами у робочий час.' : session?.settings.contactFormPrompt}</p></div><button type="button" onClick={() => setContactOpen((value) => !value)}>{contactOpen ? '−' : '+'}</button></header>
           {contactOpen && <form onSubmit={(event) => void saveContact(event)}>
-            <input type="text" name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ім’я (необов’язково)" maxLength={160} />
+            <input type="text" name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} placeholder={outsideWorkingHours ? 'Ім’я *' : 'Ім’я (необов’язково)'} maxLength={160} required={outsideWorkingHours} />
             <input type="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email (необов’язково)" />
-            <input type="tel" name="phone" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Телефон (необов’язково)" />
-            <div><button type="button" onClick={() => setContactOpen(false)}>Не зараз</button><button type="submit" disabled={contactSaving || (!name.trim() && !email.trim() && !phone.trim())}>{contactSaving ? 'Зберігаємо…' : 'Зберегти'}</button></div>
+            <input type="tel" name="phone" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder={outsideWorkingHours ? 'Номер телефону *' : 'Телефон (необов’язково)'} required={outsideWorkingHours} />
+            <div><button type="button" onClick={() => setContactOpen(false)}>Не зараз</button><button type="submit" disabled={contactSaving || (outsideWorkingHours ? !name.trim() || !phone.trim() : !name.trim() && !email.trim() && !phone.trim())}>{contactSaving ? 'Зберігаємо…' : 'Зберегти'}</button></div>
           </form>}
         </section>}
         {contactSaved && <p className="support-contact-saved">Контакти збережено. Дякуємо!</p>}

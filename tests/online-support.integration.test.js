@@ -210,3 +210,43 @@ test('allowed origin setting blocks unknown embedding sites', async () => {
     embedOrigin: 'https://mobiletrend.com.ua'
   }).expect(200);
 });
+
+test('outside working hours uses the offline reply once and exposes the required-contact state', async () => {
+  const current = await admin.get('/api/support-chat/settings').expect(200);
+  const closedSchedule = Object.fromEntries(Object.keys(current.body.data.workingHoursSchedule).map((day) => [
+    day,
+    { enabled: false, start: '09:00', end: '18:00' }
+  ]));
+  const offlineReplyText = 'Зараз неробочий час. Менеджер відповість за графіком. Обов’язково залиште ім’я та номер телефону.';
+  const updated = await admin.put('/api/support-chat/settings').send({
+    ...current.body.data,
+    workingHoursEnabled: true,
+    workingHoursTimezone: 'Europe/Kyiv',
+    workingHoursSchedule: closedSchedule,
+    offlineReplyText
+  }).expect(200);
+  assert.equal(updated.body.data.workingHoursEnabled, true);
+  assert.equal(updated.body.data.isWithinWorkingHours, false);
+
+  const session = await request(app).post('/api/public/support-chat/session').send({
+    siteId,
+    embedOrigin: 'https://mobiletrend.com.ua',
+    pageUrl: 'https://mobiletrend.com.ua/apple-iphone-16/',
+    pageTitle: 'Apple iPhone 16'
+  }).expect(200);
+  visitorToken = session.body.data.token;
+  assert.equal(session.body.data.settings.isWithinWorkingHours, false);
+
+  const first = await request(app).post('/api/public/support-chat/messages')
+    .set(visitorAuth())
+    .send({ body: 'Напишіть мені завтра.', clientMessageId: crypto.randomUUID() })
+    .expect(201);
+  assert.deepEqual(first.body.data.messages.map((item) => item.senderType), ['visitor', 'system']);
+  assert.equal(first.body.data.messages[1].body, offlineReplyText);
+
+  const second = await request(app).post('/api/public/support-chat/messages')
+    .set(visitorAuth())
+    .send({ body: 'Мій номер залишу нижче.', clientMessageId: crypto.randomUUID() })
+    .expect(201);
+  assert.equal(second.body.data.messages.filter((item) => item.senderType === 'system').length, 1);
+});

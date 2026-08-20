@@ -3,6 +3,64 @@ import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 
 export const supportChatToolId = 'online_support';
+export const supportWorkingDayKeys = [
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
+];
+
+const defaultWorkingHoursSchedule = {
+  monday: { enabled: true, start: '09:00', end: '18:00' },
+  tuesday: { enabled: true, start: '09:00', end: '18:00' },
+  wednesday: { enabled: true, start: '09:00', end: '18:00' },
+  thursday: { enabled: true, start: '09:00', end: '18:00' },
+  friday: { enabled: true, start: '09:00', end: '18:00' },
+  saturday: { enabled: false, start: '10:00', end: '17:00' },
+  sunday: { enabled: false, start: '10:00', end: '17:00' }
+};
+
+const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/u;
+
+export function normalizeSupportWorkingHoursSchedule(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return Object.fromEntries(supportWorkingDayKeys.map((day) => {
+    const fallback = defaultWorkingHoursSchedule[day];
+    const entry = source[day] && typeof source[day] === 'object' ? source[day] : {};
+    const start = timePattern.test(String(entry.start || '')) ? String(entry.start) : fallback.start;
+    const end = timePattern.test(String(entry.end || '')) ? String(entry.end) : fallback.end;
+    const enabled = Object.hasOwn(entry, 'enabled') ? entry.enabled === true : fallback.enabled;
+    return [day, { enabled, start, end }];
+  }));
+}
+
+export function isValidSupportTimezone(value) {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: String(value || '') }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isWithinSupportWorkingHours(settings, now = new Date()) {
+  const enabled = settings.working_hours_enabled ?? settings.workingHoursEnabled;
+  if (enabled !== true) return true;
+  const timezone = String(settings.working_hours_timezone ?? settings.workingHoursTimezone ?? 'Europe/Kyiv');
+  if (!isValidSupportTimezone(timezone)) return false;
+  const schedule = normalizeSupportWorkingHoursSchedule(
+    settings.working_hours_schedule ?? settings.workingHoursSchedule
+  );
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(now).map((part) => [part.type, part.value]));
+  const day = String(parts.weekday || '').toLowerCase();
+  const entry = schedule[day];
+  if (!entry?.enabled) return false;
+  const currentTime = `${parts.hour}:${parts.minute}`;
+  return currentTime >= entry.start && currentTime < entry.end;
+}
 
 export function hashSupportSessionToken(token) {
   return createHash('sha256').update(String(token || '')).digest('hex');
@@ -31,6 +89,7 @@ export function normalizeSupportPageUrl(value) {
 }
 
 export function serializeSupportSettings(row) {
+  const workingHoursSchedule = normalizeSupportWorkingHoursSchedule(row.working_hours_schedule);
   return {
     id: row.id,
     publicId: row.public_id,
@@ -42,6 +101,11 @@ export function serializeSupportSettings(row) {
     autoReplyText: row.auto_reply_text,
     contactFormEnabled: row.contact_form_enabled === true,
     contactFormPrompt: row.contact_form_prompt,
+    workingHoursEnabled: row.working_hours_enabled === true,
+    workingHoursTimezone: row.working_hours_timezone || 'Europe/Kyiv',
+    workingHoursSchedule,
+    offlineReplyText: row.offline_reply_text || '',
+    isWithinWorkingHours: isWithinSupportWorkingHours(row),
     updatedAt: row.updated_at
   };
 }
@@ -115,6 +179,8 @@ export async function loadSupportVisitorByToken(token, { requireEnabled = true }
     `SELECT visitor.*, site.public_id, site.name AS site_name, site.enabled,
             site.allowed_origins, site.accent_color, site.welcome_text,
             site.auto_reply_text, site.contact_form_enabled, site.contact_form_prompt,
+            site.working_hours_enabled, site.working_hours_timezone,
+            site.working_hours_schedule, site.offline_reply_text,
             site.updated_at AS site_updated_at
      FROM support_chat_visitors AS visitor
      JOIN support_chat_sites AS site ON site.id = visitor.site_id
