@@ -266,7 +266,9 @@ export function HoroshopPhotoParserPage() {
   const selection = useQuery({
     queryKey: ['horoshop-photo-selection', selectionId],
     queryFn: ({ signal }) => api.horoshopPhotos.selection(selectionId, signal),
-    enabled: Boolean(selectionId)
+    enabled: Boolean(selectionId),
+    refetchInterval: batchId ? 1_500 : false,
+    refetchIntervalInBackground: true
   });
   const activeBatch = useQuery({
     queryKey: ['horoshop-photo-active-batch'],
@@ -335,11 +337,14 @@ export function HoroshopPhotoParserPage() {
   useEffect(() => {
     if (!batch.data || !batchComplete(batch.data) || completedBatch.current === batch.data.id) return;
     completedBatch.current = batch.data.id;
+    const completedBatchId = batch.data.id;
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection'] }),
       queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] }),
       queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch'] })
-    ]);
+    ]).finally(() => {
+      setBatchId((current) => current === completedBatchId ? '' : current);
+    });
   }, [batch.data, queryClient]);
 
   useEffect(() => {

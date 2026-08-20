@@ -667,7 +667,13 @@ export class HoroshopPhotoDesktopService {
           found_count = $5, error_message = $6, error_details = $7::jsonb, updated_at = NOW()
       WHERE id = $1
     `, [run.draft_id, sourceUrl, adapterId, draftStatus, normalizedFound, message, JSON.stringify(normalizedErrors)]);
-    await this.photoService.refreshBatch(run.batch_id);
+    await this.photoService.refreshBatch(run.batch_id).catch((error) => {
+      console.error('Photo desktop batch refresh failed after completing a job', {
+        batchId: run.batch_id,
+        runId,
+        error
+      });
+    });
     return { status, foundCount: normalizedFound, savedCount, errors: normalizedErrors };
   }
 

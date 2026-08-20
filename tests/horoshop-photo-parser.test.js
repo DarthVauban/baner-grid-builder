@@ -370,12 +370,22 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
     sortOrder: 0,
     originalName: 'PHONE-2-1.webp'
   });
-  const completed = await desktopService.completeJob(device, job.id, {
-    sourceUrl: 'https://supplier.example/phone-2',
-    adapterId: 'builtin-test',
-    foundCount: 1,
-    errors: []
-  });
+  const refreshBatch = photoService.refreshBatch.bind(photoService);
+  photoService.refreshBatch = async () => {
+    throw new Error('Simulated derived batch refresh failure');
+  };
+  let completed;
+  try {
+    completed = await desktopService.completeJob(device, job.id, {
+      sourceUrl: 'https://supplier.example/phone-2',
+      adapterId: 'builtin-test',
+      foundCount: 1,
+      errors: []
+    });
+  } finally {
+    photoService.refreshBatch = refreshBatch;
+  }
+  await refreshBatch(job.batchId);
   const draft = await pool.query(`
     SELECT parse_status, source_url FROM search_horoshop_photo_drafts WHERE id = $1
   `, [jobs[0].draftId]);
