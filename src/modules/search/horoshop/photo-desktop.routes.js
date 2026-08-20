@@ -71,6 +71,11 @@ router.get('/session', asyncHandler(async (req, res) => {
   res.json({ data: { device: req.photoParserDevice } });
 }));
 
+router.delete('/session', asyncHandler(async (req, res) => {
+  await horoshopPhotoDesktopService.revokeDevice(req.photoParserDevice.userId, req.photoParserDevice.id);
+  res.status(204).end();
+}));
+
 router.get('/jobs', asyncHandler(async (req, res) => {
   res.json({ data: await horoshopPhotoDesktopService.listJobs(req.photoParserDevice) });
 }));

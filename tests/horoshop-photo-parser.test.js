@@ -428,6 +428,10 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   const legacyJobs = await desktopService.listJobs(device);
   assert.equal(legacyJobs.length, 2);
   await pool.query(`
+    UPDATE search_horoshop_photo_runs SET source_url = 'https://supplier.example/legacy'
+    WHERE id = $1
+  `, [legacyJobs[0].id]);
+  await pool.query(`
     UPDATE search_horoshop_photo_batches SET selection_id = NULL WHERE id = $1
   `, [legacyJobs[0].batchId]);
   await pool.query('DELETE FROM search_horoshop_photo_selections WHERE id = $1', [legacySelection.id]);
@@ -436,6 +440,12 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.deepEqual(await desktopService.listJobs(device), []);
   const legacyBatch = await pool.query('SELECT id FROM search_horoshop_photo_batches WHERE id = $1', [legacyJobs[0].batchId]);
   assert.equal(legacyBatch.rows.length, 0);
+
+  await desktopService.revokeDevice(device.userId, device.id);
+  await assert.rejects(
+    () => desktopService.authenticate(claimed.accessToken),
+    (error) => error?.code === 'PHOTO_DESKTOP_DEVICE_REVOKED'
+  );
 });
 
 test('disconnect removes selections, drafts and their generated media', async () => {

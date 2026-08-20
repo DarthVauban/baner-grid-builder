@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
-import { api } from '../lib/api';
+import { ApiError, api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import type { HoroshopCatalogVisibility } from '../types/horoshop-catalog';
 import type {
@@ -260,7 +260,8 @@ export function HoroshopPhotoParserPage() {
   const desktopDevices = useQuery({
     queryKey: ['horoshop-photo-desktop-devices'],
     queryFn: api.horoshopPhotos.desktopDevices,
-    refetchInterval: desktopPairing?.status === 'pending' ? 3_000 : false
+    refetchInterval: 2_000,
+    refetchIntervalInBackground: true
   });
   const selection = useQuery({
     queryKey: ['horoshop-photo-selection', selectionId],
@@ -271,6 +272,8 @@ export function HoroshopPhotoParserPage() {
     queryKey: ['horoshop-photo-active-batch'],
     queryFn: api.horoshopPhotos.activeBatch,
     enabled: !batchId,
+    refetchInterval: 2_000,
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: false
   });
   const filterCatalog = useQuery({
@@ -338,6 +341,13 @@ export function HoroshopPhotoParserPage() {
       queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch'] })
     ]);
   }, [batch.data, queryClient]);
+
+  useEffect(() => {
+    if (!batchId || !(batch.error instanceof ApiError) || batch.error.status !== 404) return;
+    queryClient.removeQueries({ queryKey: ['horoshop-photo-batch', batchId], exact: true });
+    setBatchId('');
+    void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch'] });
+  }, [batch.error, batchId, queryClient]);
 
   const displayedBatch = batch.data || activeBatch.data || null;
   const parserBusy = Boolean(displayedBatch && !batchComplete(displayedBatch));

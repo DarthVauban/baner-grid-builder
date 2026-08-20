@@ -825,31 +825,17 @@ export class HoroshopPhotoService {
       ? `AND batch.created_by = $${values.push(userId)}`
       : '';
     const candidates = await this.pool.query(`
-      SELECT batch.id, batch.selection_based, run.source_url, upload.id AS upload_id
+      SELECT DISTINCT batch.id
       FROM search_horoshop_photo_batches AS batch
       INNER JOIN search_horoshop_photo_runs AS active_run
         ON active_run.batch_id = batch.id
        AND active_run.executor = 'desktop'
        AND active_run.status IN ('queued', 'running')
-      INNER JOIN search_horoshop_photo_runs AS run ON run.batch_id = batch.id
-      LEFT JOIN search_horoshop_photo_run_uploads AS upload ON upload.run_id = run.id
       WHERE batch.selection_id IS NULL
         AND (batch.selection_based = TRUE OR batch.requested_count > 1)
         ${ownerClause}
     `, values);
-    const batchSafety = new Map();
-    for (const row of candidates.rows) {
-      const state = batchSafety.get(row.id) || {
-        selectionBased: row.selection_based === true,
-        empty: true
-      };
-      state.selectionBased ||= row.selection_based === true;
-      state.empty &&= !String(row.source_url || '').trim() && !row.upload_id;
-      batchSafety.set(row.id, state);
-    }
-    const batchIds = [...batchSafety.entries()]
-      .filter(([, state]) => state.selectionBased || state.empty)
-      .map(([batchId]) => batchId);
+    const batchIds = candidates.rows.map((row) => row.id);
     if (!batchIds.length) return 0;
 
     const client = await this.pool.connect();
