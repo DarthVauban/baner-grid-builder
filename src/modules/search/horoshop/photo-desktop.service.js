@@ -413,6 +413,7 @@ export class HoroshopPhotoDesktopService {
     }
     const result = await db.query(`
       SELECT run.*, batch.selection_id, batch.created_by AS batch_created_by,
+             batch.created_at AS batch_created_at,
              selection.name AS selection_name,
              draft.product_id, draft.modification_id, draft.target_type,
              draft.source_run_id, draft.media_folder_id,
@@ -446,6 +447,8 @@ export class HoroshopPhotoDesktopService {
       productId: row.product_id,
       modificationId: row.modification_id || null,
       status: row.status,
+      queuePosition: Number(row.queue_position || 0),
+      batchCreatedAt: row.batch_created_at || null,
       title: photoTargetTitle(
         row.modification_titles || row.product_titles,
         sku,
@@ -467,7 +470,8 @@ export class HoroshopPhotoDesktopService {
     await this.recoverExpiredJobs();
     await this.materializeSelectionJobs(device.userId);
     const result = await this.pool.query(`
-      SELECT run.*, batch.selection_id, selection.name AS selection_name,
+      SELECT run.*, batch.selection_id, batch.created_at AS batch_created_at,
+             selection.name AS selection_name,
              draft.product_id, draft.modification_id,
              product.sku AS product_sku, product.titles AS product_titles,
              product.primary_image_url, product.canonical_url,
@@ -487,7 +491,7 @@ export class HoroshopPhotoDesktopService {
       ) AS uploads ON uploads.run_id = run.id
       WHERE run.executor = 'desktop' AND batch.created_by = $1
         AND (run.status = 'queued' OR (run.status = 'running' AND run.device_id = $2))
-      ORDER BY batch.created_at, run.created_at, run.id
+      ORDER BY batch.created_at, run.queue_position, run.id
       LIMIT 1000
     `, [device.userId, device.id]);
     return result.rows.map((row) => ({ ...this.serializeJob(row), uploadedCount: Number(row.uploaded_count || 0) }));

@@ -310,6 +310,18 @@ test('saved selection exposes unique modification targets without an article-onl
   assert.deepEqual(selection.resolution.unmatched, ['відсутній артикул']);
 });
 
+test('selection preserves the order entered by the manager', async () => {
+  const service = new HoroshopPhotoService({ databasePool: pool });
+  const selection = await service.createSelection({
+    name: 'Ordered selection',
+    entries: ['PHONE-2', 'PHONE-1'],
+    userId: null
+  });
+
+  assert.deepEqual(selection.products.map((product) => product.sku), ['PHONE-2', 'PHONE-1']);
+  await service.deleteSelection(selection.id);
+});
+
 test('bulk publication skips a common gallery when a product has unique modification photos', async () => {
   const imports = [];
   const progress = [];
@@ -753,6 +765,11 @@ test('desktop batch with two modifications advances from 50 to 100 percent witho
   const jobs = await desktopService.listJobs(device);
   assert.equal(jobs.length, 2);
   assert.equal(new Set(jobs.map((item) => item.batchId)).size, 1);
+  assert.deepEqual(
+    jobs.map((item) => item.modificationId),
+    selection.products[0].modifications.map((item) => item.id)
+  );
+  assert.deepEqual(jobs.map((item) => item.queuePosition), [0, 1]);
 
   const image = await sharp({
     create: { width: 900, height: 900, channels: 3, background: '#3a76ff' }

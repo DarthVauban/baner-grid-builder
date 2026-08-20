@@ -339,11 +339,11 @@ export class HoroshopPhotoService {
         userId
       ]);
       selectionId = inserted.rows[0].id;
-      for (const match of resolution.matched) {
+      for (const [sortOrder, match] of resolution.matched.entries()) {
         await client.query(`
           INSERT INTO search_horoshop_photo_selection_items (
-            selection_id, product_id, modification_id, target_key, input_value, matched_by
-          ) VALUES ($1, $2, $3, $4, $5, $6)
+            selection_id, product_id, modification_id, target_key, input_value, matched_by, sort_order
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
           ON CONFLICT (selection_id, target_key) DO NOTHING
         `, [
           selectionId,
@@ -351,7 +351,8 @@ export class HoroshopPhotoService {
           match.target.modificationId,
           match.targetKey,
           match.input,
-          match.matchedBy
+          match.matchedBy,
+          sortOrder
         ]);
       }
       await client.query('COMMIT');
@@ -411,7 +412,7 @@ export class HoroshopPhotoService {
       LEFT JOIN search_horoshop_modifications AS selected_modification
         ON selected_modification.id = item.modification_id
       WHERE item.selection_id = $1
-      ORDER BY item.created_at, item.id
+      ORDER BY item.sort_order, item.created_at, item.id
     `, [selectionId]);
     const productIds = [...new Set(itemsResult.rows.map((row) => row.product_id))];
     let modifications = [];
@@ -542,8 +543,11 @@ export class HoroshopPhotoService {
     }
     await this.pool.query(`
       INSERT INTO search_horoshop_photo_selection_items (
-        selection_id, product_id, modification_id, target_key, input_value, matched_by
-      ) VALUES ($1, $2, $3, $4, $5, 'manual')
+        selection_id, product_id, modification_id, target_key, input_value, matched_by, sort_order
+      ) VALUES (
+        $1, $2, $3, $4, $5, 'manual',
+        COALESCE((SELECT MAX(sort_order) + 1 FROM search_horoshop_photo_selection_items WHERE selection_id = $1), 0)
+      )
       ON CONFLICT (selection_id, target_key) DO NOTHING
     `, [selectionId, productId, modificationId, targetKey(productId, modificationId), String(inputValue || '').slice(0, 500)]);
     await this.pool.query('UPDATE search_horoshop_photo_selections SET updated_at = NOW() WHERE id = $1', [selectionId]);
@@ -857,29 +861,55 @@ export class HoroshopPhotoService {
 
   async ensureDesktopSelectionDrafts(selectionId, connection, userId, db) {
     const targets = await db.query(`
-      WITH selected_targets AS (
-        SELECT item.product_id, item.modification_id
+      WITH selected_products AS (
+        SELECT item.product_id,
+               MIN(item.sort_order) AS product_order,
+               BOOL_OR(item.modification_id IS NULL) AS include_all
         FROM search_horoshop_photo_selection_items AS item
+        WHERE item.selection_id = $1
+        GROUP BY item.product_id
+      ), active_modification_counts AS (
+        SELECT modification.product_id, COUNT(*)::INTEGER AS active_count
+        FROM search_horoshop_modifications AS modification
+        WHERE modification.connection_id = $2
+          AND modification.generation = $3
+          AND modification.active = TRUE
+        GROUP BY modification.product_id
+      ), selected_targets AS (
+        SELECT selected.product_id, modification.id AS modification_id,
+               selected.product_order, modification.updated_at AS modification_order
+        FROM selected_products AS selected
+        INNER JOIN search_horoshop_photo_selection_items AS item
+          ON item.selection_id = $1
+         AND item.product_id = selected.product_id
+         AND item.modification_id IS NOT NULL
         INNER JOIN search_horoshop_modifications AS modification
-          ON modification.id = item.modification_id AND modification.active = TRUE
-        WHERE item.selection_id = $1 AND item.modification_id IS NOT NULL
+          ON modification.id = item.modification_id
+         AND modification.connection_id = $2
+         AND modification.generation = $3
+         AND modification.active = TRUE
 
         UNION
 
-        SELECT item.product_id, modification.id AS modification_id
-        FROM search_horoshop_photo_selection_items AS item
+        SELECT selected.product_id, modification.id AS modification_id,
+               selected.product_order, modification.updated_at AS modification_order
+        FROM selected_products AS selected
         INNER JOIN search_horoshop_modifications AS modification
-          ON modification.product_id = item.product_id AND modification.active = TRUE
-        WHERE item.selection_id = $1 AND item.modification_id IS NULL
+          ON modification.product_id = selected.product_id
+         AND modification.connection_id = $2
+         AND modification.generation = $3
+         AND modification.active = TRUE
+        WHERE selected.include_all
 
         UNION
 
-          SELECT item.product_id, NULL::UUID AS modification_id
-          FROM search_horoshop_photo_selection_items AS item
-          LEFT JOIN search_horoshop_modifications AS modification
-            ON modification.product_id = item.product_id AND modification.active = TRUE
-          WHERE item.selection_id = $1 AND item.modification_id IS NULL
-            AND modification.id IS NULL
+        SELECT selected.product_id, NULL::UUID AS modification_id,
+               selected.product_order, NULL::TIMESTAMPTZ AS modification_order
+        FROM selected_products AS selected
+        LEFT JOIN active_modification_counts AS modification_count
+          ON modification_count.product_id = selected.product_id
+        WHERE selected.include_all
+          AND COALESCE(modification_count.active_count, 0) = 0
       )
       SELECT target.product_id, target.modification_id
       FROM selected_targets AS target
@@ -888,7 +918,9 @@ export class HoroshopPhotoService {
        AND product.connection_id = $2
        AND product.generation = $3
        AND product.active = TRUE
-      ORDER BY target.product_id, target.modification_id NULLS FIRST
+      ORDER BY target.product_order,
+               target.modification_order DESC NULLS LAST,
+               target.modification_id NULLS FIRST
     `, [selectionId, connection.id, connection.generation]);
     for (const target of targets.rows) {
       await db.query(`
@@ -907,7 +939,7 @@ export class HoroshopPhotoService {
         userId
       ]);
     }
-    return targets.rows.length;
+    return targets.rows;
   }
 
   async createBatch({ selectionId = null, draftIds = [], userId, executor = 'server' }) {
@@ -929,9 +961,9 @@ export class HoroshopPhotoService {
           throw new AppError(404, 'HOROSHOP_PHOTO_SELECTION_NOT_FOUND', 'Вибірку товарів не знайдено.');
         }
       }
-      if (selectionId && executor === 'desktop') {
-        await this.ensureDesktopSelectionDrafts(selectionId, connection, userId, client);
-      }
+      const orderedDesktopTargets = selectionId && executor === 'desktop'
+        ? await this.ensureDesktopSelectionDrafts(selectionId, connection, userId, client)
+        : null;
       const values = [connection.id, connection.generation];
       const clauses = [
         'draft.connection_id = $1',
@@ -976,7 +1008,7 @@ export class HoroshopPhotoService {
         clauses.push(`draft.id IN (${placeholders.join(', ')})`);
       }
       const drafts = await client.query(`
-        SELECT DISTINCT draft.id, draft.source_url
+        SELECT DISTINCT draft.id, draft.source_url, draft.product_id, draft.modification_id
         FROM search_horoshop_photo_drafts AS draft
         ${selectionJoin}
         LEFT JOIN search_horoshop_photo_runs AS active_run
@@ -984,7 +1016,19 @@ export class HoroshopPhotoService {
         WHERE ${clauses.join(' AND ')}
         ORDER BY draft.id
       `, values);
-      if (!drafts.rows.length) {
+      const desktopTargetPositions = orderedDesktopTargets
+        ? new Map(orderedDesktopTargets.map((target, index) => [
+            targetKey(target.product_id, target.modification_id),
+            index
+          ]))
+        : null;
+      const draftRows = desktopTargetPositions
+        ? [...drafts.rows].sort((left, right) => (
+            (desktopTargetPositions.get(targetKey(left.product_id, left.modification_id)) ?? Number.MAX_SAFE_INTEGER)
+            - (desktopTargetPositions.get(targetKey(right.product_id, right.modification_id)) ?? Number.MAX_SAFE_INTEGER)
+          ))
+        : drafts.rows;
+      if (!draftRows.length) {
         if (selectionId && executor === 'desktop') {
           const active = await client.query(`
             SELECT batch.id
@@ -1015,19 +1059,20 @@ export class HoroshopPhotoService {
             connection_id, generation, selection_id, selection_based, requested_count, created_by
           ) VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING id
-        `, [connection.id, connection.generation, selectionId, Boolean(selectionId), drafts.rows.length, userId]);
+        `, [connection.id, connection.generation, selectionId, Boolean(selectionId), draftRows.length, userId]);
         batchId = batch.rows[0].id;
-        for (const draft of drafts.rows) {
+        for (const [queuePosition, draft] of draftRows.entries()) {
           await client.query(`
-            INSERT INTO search_horoshop_photo_runs (batch_id, draft_id, source_url, executor)
-            VALUES ($1, $2, $3, $4)
-          `, [batchId, draft.id, draft.source_url, executor]);
+            INSERT INTO search_horoshop_photo_runs (
+              batch_id, draft_id, source_url, executor, queue_position
+            ) VALUES ($1, $2, $3, $4, $5)
+          `, [batchId, draft.id, draft.source_url, executor, queuePosition]);
         }
         await client.query(`
           UPDATE search_horoshop_photo_drafts
           SET parse_status = 'queued', error_message = '', error_details = '[]'::jsonb, updated_at = NOW()
           WHERE id = ANY($1::uuid[])
-        `, [drafts.rows.map((draft) => draft.id)]);
+        `, [draftRows.map((draft) => draft.id)]);
       }
       await client.query('COMMIT');
     } catch (error) {
@@ -1354,7 +1399,7 @@ export class HoroshopPhotoService {
       INNER JOIN search_horoshop_products AS product ON product.id = draft.product_id
       LEFT JOIN search_horoshop_modifications AS modification ON modification.id = draft.modification_id
       WHERE run.batch_id = $1
-      ORDER BY run.created_at, run.id
+      ORDER BY run.queue_position, run.id
     `, [batchId]);
     const counts = { queued: 0, running: 0, success: 0, partial: 0, failed: 0 };
     const items = runs.rows.map((row) => {
@@ -1442,7 +1487,7 @@ export class HoroshopPhotoService {
         INNER JOIN search_horoshop_photo_drafts AS draft ON draft.id = run.draft_id
         INNER JOIN search_horoshop_photo_batches AS batch ON batch.id = run.batch_id
         WHERE run.status = 'queued' AND run.executor = 'server'
-        ORDER BY run.created_at, run.id
+        ORDER BY run.queue_position, run.id
         LIMIT 1
         ${lockRows ? 'FOR UPDATE SKIP LOCKED' : ''}
       `);
