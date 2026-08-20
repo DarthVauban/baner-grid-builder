@@ -78,6 +78,26 @@ const selection: HoroshopPhotoSelection = {
           sortOrder: 0
         }]
       }
+    }, {
+      id: 'modification-without-title',
+      sku: 'PHONE-1-SILVER',
+      title: 'PHONE-1-SILVER',
+      imageUrl: '',
+      draft: {
+        id: null,
+        productId: 'product-1',
+        modificationId: 'modification-without-title',
+        targetType: 'images',
+        sourceUrl: '',
+        parseStatus: 'idle',
+        publishStatus: 'draft',
+        foundCount: 0,
+        errorMessage: '',
+        errors: [],
+        publishedAt: null,
+        currentImages: [],
+        assets: []
+      }
     }]
   }],
   createdAt: summary.createdAt,
@@ -122,16 +142,20 @@ function renderPage() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('HoroshopPhotoParserPage', () => {
-  it('renders selected products and modifications as separate photo targets', async () => {
+  it('renders one flat card per modification and never uses an article as its title', async () => {
     vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
     vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(selection);
     vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
 
-    renderPage();
+    const view = renderPage();
 
     expect(await screen.findByText('Смартфон Example One')).toBeInTheDocument();
-    expect(screen.getByText('Спільна галерея всіх модифікацій')).toBeInTheDocument();
     expect(screen.getByText('Example One Black')).toBeInTheDocument();
+    expect(screen.queryByText('Спільна галерея всіх модифікацій')).not.toBeInTheDocument();
+    expect(view.container.querySelector('.horoshop-photo-product__tree')).not.toBeInTheDocument();
+    expect(view.container.querySelectorAll('.horoshop-photo-target')).toHaveLength(2);
+    expect([...view.container.querySelectorAll('.horoshop-photo-target__identity strong')]
+      .map((element) => element.textContent)).toEqual(['Example One Black', 'Смартфон Example One']);
     expect(screen.getByText('Не знайдено')).toBeInTheDocument();
     expect(screen.getByText('UNKNOWN')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Передати в Хорошоп' })).toBeInTheDocument();

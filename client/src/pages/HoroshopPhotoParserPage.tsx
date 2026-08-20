@@ -10,7 +10,6 @@ import type {
   HoroshopPhotoAsset,
   HoroshopPhotoBatch,
   HoroshopPhotoDraft,
-  HoroshopPhotoModification,
   HoroshopPhotoPublicationMode,
   HoroshopPhotoPublishProgress,
   HoroshopPhotoSelectionProduct
@@ -116,6 +115,7 @@ function DraftRow({
   label,
   sku,
   imageUrl,
+  canonicalUrl,
   draft,
   sourceValue,
   busy,
@@ -128,6 +128,7 @@ function DraftRow({
   label: string;
   sku: string;
   imageUrl: string;
+  canonicalUrl: string;
   draft: HoroshopPhotoDraft;
   sourceValue: string;
   busy: boolean;
@@ -143,7 +144,13 @@ function DraftRow({
       <span className="horoshop-photo-target__image">
         {imageUrl ? <img src={imageUrl} alt="" loading="lazy" /> : <Icon name="savedBanners" size={20} />}
       </span>
-      <div><strong>{label}</strong><small>{sku}</small></div>
+      <div>
+        <strong>{label}</strong>
+        <small>{sku}</small>
+        {canonicalUrl && <a className="horoshop-photo-target__link" href={canonicalUrl} target="_blank" rel="noreferrer">
+          <Icon name="openInNew" size={13} /> Хорошоп
+        </a>}
+      </div>
     </div>
     <label className="horoshop-photo-target__source">
       <span>Сторінка-джерело фотографій</span>
@@ -180,75 +187,84 @@ function DraftRow({
   </section>;
 }
 
-function ProductTree({
-  product,
-  expanded,
+interface PhotoTarget {
+  key: string;
+  label: string;
+  sku: string;
+  imageUrl: string;
+  canonicalUrl: string;
+  draft: HoroshopPhotoDraft;
+}
+
+function targetTitle(title: string, sku: string, fallbackTitle = '') {
+  const normalizedSku = sku.trim().toLocaleLowerCase('uk-UA');
+  for (const candidate of [title, fallbackTitle]) {
+    const normalized = candidate.trim();
+    if (normalized && normalized.toLocaleLowerCase('uk-UA') !== normalizedSku) return normalized;
+  }
+  return 'Назва товару не вказана';
+}
+
+function flattenPhotoTargets(products: HoroshopPhotoSelectionProduct[]) {
+  const targets: PhotoTarget[] = [];
+  for (const product of products) {
+    if (product.modifications.length) {
+      for (const modification of product.modifications) targets.push({
+        key: `${product.id}:${modification.id}`,
+        label: targetTitle(modification.title, modification.sku, product.title),
+        sku: modification.sku,
+        imageUrl: modification.imageUrl || product.imageUrl,
+        canonicalUrl: product.canonicalUrl,
+        draft: modification.draft
+      });
+      continue;
+    }
+    if (product.commonDraft) targets.push({
+      key: `${product.id}:product`,
+      label: targetTitle(product.title, product.sku),
+      sku: product.sku,
+      imageUrl: product.imageUrl,
+      canonicalUrl: product.canonicalUrl,
+      draft: product.commonDraft
+    });
+  }
+  return targets;
+}
+
+function ProductTarget({
+  target,
   sourceValues,
   busyDraftIds,
-  onToggle,
   onSourceChange,
   onSave,
   onParse,
   onAssetsChange,
   onPublish
 }: {
-  product: HoroshopPhotoSelectionProduct;
-  expanded: boolean;
+  target: PhotoTarget;
   sourceValues: Record<string, string>;
   busyDraftIds: Set<string>;
-  onToggle: () => void;
   onSourceChange: (draft: HoroshopPhotoDraft, value: string) => void;
   onSave: (draft: HoroshopPhotoDraft) => void;
   onParse: (draft: HoroshopPhotoDraft) => void;
   onAssetsChange: (draft: HoroshopPhotoDraft, ids: string[]) => void;
   onPublish: (draft: HoroshopPhotoDraft) => void;
 }) {
-  const rows: Array<{ key: string; label: string; sku: string; imageUrl: string; draft: HoroshopPhotoDraft }> = [];
-  if (product.commonDraft) rows.push({
-    key: `${product.id}:product`, label: 'Спільна галерея всіх модифікацій', sku: product.sku,
-    imageUrl: product.imageUrl, draft: product.commonDraft
-  });
-  for (const modification of product.modifications) rows.push({
-    key: `${product.id}:${modification.id}`,
-    label: modification.title,
-    sku: modification.sku,
-    imageUrl: modification.imageUrl,
-    draft: modification.draft
-  });
-  return <article className="horoshop-photo-product">
-    <header>
-      <button type="button" className="horoshop-photo-product__toggle" onClick={onToggle} aria-expanded={expanded}>
-        <Icon name={expanded ? 'arrowUp' : 'arrowDown'} size={20} />
-      </button>
-      <span className="horoshop-photo-product__image">
-        {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <Icon name="savedBanners" size={22} />}
-      </span>
-      <div className="horoshop-photo-product__copy">
-        <strong>{product.title}</strong>
-        <span>{product.sku} · {rows.length} цілей для фото</span>
-      </div>
-      {product.canonicalUrl && <a className="button button--secondary button--small" href={product.canonicalUrl} target="_blank" rel="noreferrer"><Icon name="openInNew" size={15} /> Хорошоп</a>}
-    </header>
-    {expanded && <div className="horoshop-photo-product__tree">
-      {rows.map((row) => {
-        const draftKey = row.draft.id || row.key;
-        return <DraftRow
-          key={row.key}
-          label={row.label}
-          sku={row.sku}
-          imageUrl={row.imageUrl}
-          draft={row.draft}
-          sourceValue={sourceValues[row.key] ?? row.draft.sourceUrl}
-          busy={busyDraftIds.has(draftKey)}
-          onSourceChange={(value) => onSourceChange(row.draft, value)}
-          onSave={() => onSave(row.draft)}
-          onParse={() => onParse(row.draft)}
-          onAssetsChange={(ids) => onAssetsChange(row.draft, ids)}
-          onPublish={() => onPublish(row.draft)}
-        />;
-      })}
-    </div>}
-  </article>;
+  const busyKey = target.draft.id || target.key;
+  return <DraftRow
+    label={target.label}
+    sku={target.sku}
+    imageUrl={target.imageUrl}
+    canonicalUrl={target.canonicalUrl}
+    draft={target.draft}
+    sourceValue={sourceValues[target.key] ?? target.draft.sourceUrl}
+    busy={busyDraftIds.has(busyKey)}
+    onSourceChange={(value) => onSourceChange(target.draft, value)}
+    onSave={() => onSave(target.draft)}
+    onParse={() => onParse(target.draft)}
+    onAssetsChange={(ids) => onAssetsChange(target.draft, ids)}
+    onPublish={() => onPublish(target.draft)}
+  />;
 }
 
 export function HoroshopPhotoParserPage() {
@@ -263,7 +279,6 @@ export function HoroshopPhotoParserPage() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterAvailability, setFilterAvailability] = useState('');
   const [filterVisibility, setFilterVisibility] = useState<HoroshopCatalogVisibility>('all');
-  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(() => new Set());
   const [sourceValues, setSourceValues] = useState<Record<string, string>>({});
   const [busyDraftIds, setBusyDraftIds] = useState<Set<string>>(() => new Set());
   const [batchId, setBatchId] = useState('');
@@ -310,6 +325,7 @@ export function HoroshopPhotoParserPage() {
     mutationFn: ({ id, mode }: { id: string; mode: HoroshopPhotoPublicationMode }) =>
       api.horoshopPhotos.publishSelection(id, mode, setPublishProgress)
   });
+  const photoTargets = useMemo(() => flattenPhotoTargets(selection.data?.products || []), [selection.data?.products]);
 
   useEffect(() => {
     if (!selectionId && selections.data?.[0]?.id) setSelectionId(selections.data[0].id);
@@ -322,13 +338,9 @@ export function HoroshopPhotoParserPage() {
   useEffect(() => {
     if (!selection.data) return;
     const next: Record<string, string> = {};
-    for (const product of selection.data.products) {
-      if (product.commonDraft) next[`${product.id}:product`] = product.commonDraft.sourceUrl;
-      for (const modification of product.modifications) next[`${product.id}:${modification.id}`] = modification.draft.sourceUrl;
-    }
+    for (const target of photoTargets) next[target.key] = target.draft.sourceUrl;
     setSourceValues(next);
-    setExpandedProducts((current) => current.size ? current : new Set(selection.data.products.slice(0, 3).map((product) => product.id)));
-  }, [selection.data]);
+  }, [photoTargets, selection.data]);
 
   useEffect(() => {
     if (!batch.data || !batchComplete(batch.data) || completedBatch.current === batch.data.id) return;
@@ -508,12 +520,9 @@ export function HoroshopPhotoParserPage() {
 
   const counts = useMemo(() => ({
     products: selection.data?.products.length || 0,
-    targets: selection.data?.products.reduce((total, product) => total + (product.commonDraft ? 1 : 0) + product.modifications.length, 0) || 0,
-    ready: selection.data?.products.reduce((total, product) => {
-      const drafts = [product.commonDraft, ...product.modifications.map((item: HoroshopPhotoModification) => item.draft)].filter(Boolean) as HoroshopPhotoDraft[];
-      return total + drafts.filter((draft) => ['ready', 'partial'].includes(draft.parseStatus)).length;
-    }, 0) || 0
-  }), [selection.data]);
+    targets: photoTargets.length,
+    ready: photoTargets.filter((target) => ['ready', 'partial'].includes(target.draft.parseStatus)).length
+  }), [photoTargets, selection.data?.products.length]);
 
   if (selections.isError) return <div className="horoshop-photo-page">
     <section className="task-list-state task-list-state--error">
@@ -620,17 +629,11 @@ export function HoroshopPhotoParserPage() {
       {selection.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо вибірку…</p></div>}
       {!selectionId && !selection.isLoading && <div className="empty-state"><Icon name="productSelection" size={30} /><strong>Створіть першу вибірку</strong><span>Вставте назви або артикули товарів у поле вище.</span></div>}
       {selection.data && !selection.data.products.length && <div className="empty-state"><Icon name="search" size={30} /><strong>Точних збігів немає</strong><span>Перевірте блок уточнень і записи, які не були знайдені.</span></div>}
-      {selection.data?.products.map((product) => <ProductTree
-        product={product}
-        key={product.id}
-        expanded={expandedProducts.has(product.id)}
+      {photoTargets.map((target) => <ProductTarget
+        target={target}
+        key={target.key}
         sourceValues={sourceValues}
         busyDraftIds={busyDraftIds}
-        onToggle={() => setExpandedProducts((current) => {
-          const next = new Set(current);
-          if (next.has(product.id)) next.delete(product.id); else next.add(product.id);
-          return next;
-        })}
         onSourceChange={(draft, value) => setSourceValues((current) => ({ ...current, [draftKey(draft)]: value }))}
         onSave={(draft) => void saveDraft(draft)}
         onParse={(draft) => void parseDraft(draft)}

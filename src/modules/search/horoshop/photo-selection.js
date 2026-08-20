@@ -22,16 +22,22 @@ function displayTitle(titles, fallback) {
   return String(source.uk || source.ua || source.ru || source.en || Object.values(source)[0] || fallback || '').trim();
 }
 
+function titleWithoutArticle(title, sku, fallback = 'Назва товару не вказана') {
+  const value = String(title || '').trim();
+  return value && normalizePhotoSelectionValue(value) !== normalizePhotoSelectionValue(sku) ? value : fallback;
+}
+
 function candidate({ product, modification = null }) {
+  const productTitle = titleWithoutArticle(displayTitle(product.titles, ''), product.sku);
+  const modificationTitle = modification ? displayTitle(modification.titles, '') : '';
+  const resolvedModificationTitle = titleWithoutArticle(modificationTitle, modification?.sku, productTitle);
   return {
     targetType: modification ? 'modification' : 'product',
     productId: product.id,
     modificationId: modification?.id || null,
     sku: modification?.sku || product.sku || '',
-    title: modification
-      ? displayTitle(modification.titles, modification.sku)
-      : displayTitle(product.titles, product.sku),
-    productTitle: displayTitle(product.titles, product.sku),
+    title: modification ? resolvedModificationTitle : productTitle,
+    productTitle,
     imageUrl: modification?.image_url || product.primary_image_url || ''
   };
 }

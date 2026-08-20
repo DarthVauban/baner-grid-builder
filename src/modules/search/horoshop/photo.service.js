@@ -43,6 +43,15 @@ function localizedTitle(value, fallback = '') {
   return String(titles.uk || titles.ua || titles.ru || titles.en || Object.values(titles)[0] || fallback || '').trim();
 }
 
+function photoTargetTitle(value, sku, fallback = '') {
+  const normalizedSku = String(sku || '').trim().toLocaleLowerCase('uk-UA');
+  for (const candidate of [localizedTitle(value), fallback]) {
+    const title = String(candidate || '').trim();
+    if (title && title.toLocaleLowerCase('uk-UA') !== normalizedSku) return title;
+  }
+  return 'Назва товару не вказана';
+}
+
 function cleanError(error, fallback = 'Не вдалося обробити фотографії товару') {
   if (error instanceof AppError) return error.message;
   if (error instanceof Error && error.message) return error.message.slice(0, 1_000);
@@ -405,6 +414,7 @@ export class HoroshopPhotoService {
     }
     const products = [...selectionByProduct.values()].map((selected) => {
       const row = selected.row;
+      const productTitle = photoTargetTitle(row.product_titles, row.product_sku);
       const productDraftRow = draftsByKey.get(targetKey(row.product_id));
       const currentGallery = sourcePhotoLinks(row.product_source, 'gallery_common');
       const commonDraft = productDraftRow
@@ -418,7 +428,7 @@ export class HoroshopPhotoService {
           return {
             id: modification.id,
             sku: modification.sku || '',
-            title: localizedTitle(modification.titles, modification.sku),
+            title: photoTargetTitle(modification.titles, modification.sku, productTitle),
             imageUrl: modification.image_url || '',
             draft: draftRow
               ? serializeDraft(draftRow, assetsByDraft.get(draftRow.id) || [], currentImages)
@@ -431,10 +441,10 @@ export class HoroshopPhotoService {
         includeAllModifications: selected.includeAll,
         id: row.product_id,
         sku: row.product_sku || '',
-        title: localizedTitle(row.product_titles, row.product_sku),
+        title: productTitle,
         imageUrl: row.primary_image_url || '',
         canonicalUrl: row.canonical_url || '',
-        commonDraft: selected.includeAll ? commonDraft : null,
+        commonDraft: selected.includeAll && productModifications.length === 0 ? commonDraft : null,
         modifications: productModifications
       };
     });
@@ -604,9 +614,30 @@ export class HoroshopPhotoService {
       let selectionJoin = '';
       if (selectionId) {
         values.push(selectionId);
-        selectionJoin = `INNER JOIN search_horoshop_photo_selection_items AS selection_item
+        selectionJoin = `LEFT JOIN search_horoshop_modifications AS draft_modification
+          ON draft_modification.id = draft.modification_id
+         AND draft_modification.active = TRUE
+        LEFT JOIN (
+          SELECT product_id, COUNT(*)::INTEGER AS active_count
+          FROM search_horoshop_modifications
+          WHERE active = TRUE
+          GROUP BY product_id
+        ) AS active_modifications ON active_modifications.product_id = draft.product_id
+        INNER JOIN search_horoshop_photo_selection_items AS selection_item
           ON selection_item.product_id = draft.product_id
-         AND (selection_item.modification_id IS NULL OR selection_item.modification_id = draft.modification_id)`;
+         AND (
+           selection_item.modification_id = draft.modification_id
+           OR (
+             selection_item.modification_id IS NULL
+             AND (
+               draft_modification.id IS NOT NULL
+               OR (
+                 draft.modification_id IS NULL
+                 AND COALESCE(active_modifications.active_count, 0) = 0
+               )
+             )
+           )
+         )`;
         clauses.push(`selection_item.selection_id = $${values.length}`);
       }
       if (draftIds.length) {
@@ -969,9 +1000,30 @@ export class HoroshopPhotoService {
     const result = await this.pool.query(`
       SELECT DISTINCT draft.id
       FROM search_horoshop_photo_drafts AS draft
+      LEFT JOIN search_horoshop_modifications AS draft_modification
+        ON draft_modification.id = draft.modification_id
+       AND draft_modification.active = TRUE
+      LEFT JOIN (
+        SELECT product_id, COUNT(*)::INTEGER AS active_count
+        FROM search_horoshop_modifications
+        WHERE active = TRUE
+        GROUP BY product_id
+      ) AS active_modifications ON active_modifications.product_id = draft.product_id
       INNER JOIN search_horoshop_photo_selection_items AS item
         ON item.product_id = draft.product_id
-       AND (item.modification_id IS NULL OR item.modification_id = draft.modification_id)
+       AND (
+         item.modification_id = draft.modification_id
+         OR (
+           item.modification_id IS NULL
+           AND (
+             draft_modification.id IS NOT NULL
+             OR (
+               draft.modification_id IS NULL
+               AND COALESCE(active_modifications.active_count, 0) = 0
+             )
+           )
+         )
+       )
       INNER JOIN search_horoshop_photo_assets AS asset
         ON asset.draft_id = draft.id AND asset.selected = TRUE
       WHERE item.selection_id = $1

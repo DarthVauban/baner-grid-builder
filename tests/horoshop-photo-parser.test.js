@@ -61,7 +61,7 @@ before(async () => {
   }
   for (const modification of [
     { id: ids.black, externalId: 'phone-1-black', sku: 'PHONE-1-BLACK', title: 'Example One Black' },
-    { id: ids.blue, externalId: 'phone-1-blue', sku: 'PHONE-1-BLUE', title: 'Example One Blue' }
+    { id: ids.blue, externalId: 'phone-1-blue', sku: 'PHONE-1-BLUE', title: 'PHONE-1-BLUE' }
   ]) {
     await pool.query(`
       INSERT INTO search_horoshop_modifications (
@@ -104,6 +104,17 @@ test('selection resolver prioritizes exact article and title matches without gue
   assert.equal(result.ambiguous.length, 1);
   assert.equal(result.ambiguous[0].candidates.length, 2);
   assert.deepEqual(result.unmatched, ['невідомий товар']);
+
+  const articleTitle = resolveHoroshopPhotoSelection(['PHONE-1-BLUE'], {
+    products: [{ id: ids.phone, sku: 'PHONE-1', titles: { uk: 'Смартфон Example One' } }],
+    modifications: [{
+      id: ids.blue,
+      product_id: ids.phone,
+      sku: 'PHONE-1-BLUE',
+      titles: { uk: 'PHONE-1-BLUE' }
+    }]
+  });
+  assert.equal(articleTitle.matched[0].target.title, 'Смартфон Example One');
 });
 
 test('catalog filters can create a selection while direct lists remain available', async () => {
@@ -132,10 +143,12 @@ test('catalog filters can create a selection while direct lists remain available
     search: 'PHONE', category: 'phones', availability: '', visibility: 'hidden',
     state: 'active', page: 1, pageSize: 100
   });
+  assert.equal(selection.products[0].modifications.length, 0);
+  assert.ok(selection.products[0].commonDraft);
   await service.deleteSelection(selection.id);
 });
 
-test('saved selection keeps the product modification tree and unresolved input', async () => {
+test('saved selection exposes unique modification targets without an article-only title', async () => {
   const service = new HoroshopPhotoService({ databasePool: pool });
   const selection = await service.createSelection({
     name: 'Точкова вибірка',
@@ -150,13 +163,12 @@ test('saved selection keeps the product modification tree and unresolved input',
   assert.equal(selection.products.length, 1);
   assert.equal(selection.products[0].includeAllModifications, true);
   assert.equal(selection.products[0].modifications.length, 2);
-  assert.deepEqual(selection.products[0].commonDraft.currentImages, [
-    'https://photo-shop.example/current-common.webp'
-  ]);
+  assert.equal(selection.products[0].commonDraft, null);
+  assert.equal(selection.products[0].modifications.find((item) => item.id === ids.blue).title, 'Смартфон Example One');
   assert.deepEqual(selection.resolution.unmatched, ['відсутній артикул']);
 });
 
-test('reviewed common and modification photos publish with explicit append mode and progress', async () => {
+test('bulk publication skips a common gallery when a product has unique modification photos', async () => {
   const imports = [];
   const progress = [];
   const service = new HoroshopPhotoService({
@@ -222,20 +234,22 @@ test('reviewed common and modification photos publish with explicit append mode 
     onProgress: (event) => progress.push(event)
   });
 
-  assert.deepEqual(result, { publishedDrafts: 2, publishedArticles: 2 });
-  assert.equal(imports.length, 2);
-  assert.deepEqual(imports.map((entry) => entry.products[0]).sort((left, right) => left.article.localeCompare(right.article)), [
-    {
-      article: 'PHONE-1',
-      gallery_common: { links: ['https://panel.example/media/catalog/library/photo-0.webp'], override: false }
-    },
-    {
-      article: 'PHONE-1-BLACK',
-      images: { links: ['https://panel.example/media/catalog/library/photo-1.webp'], override: false }
-    }
-  ]);
+  assert.deepEqual(result, { publishedDrafts: 1, publishedArticles: 1 });
+  assert.equal(imports.length, 1);
+  assert.deepEqual(imports[0].products[0], {
+    article: 'PHONE-1-BLACK',
+    images: { links: ['https://panel.example/media/catalog/library/photo-1.webp'], override: false }
+  });
   assert.equal(progress.at(-1).stage, 'completed');
   assert.equal(progress.at(-1).percentage, 100);
+
+  const batch = await service.createBatch({ selectionId, userId: null });
+  const queued = await pool.query('SELECT draft_id FROM search_horoshop_photo_runs WHERE batch_id = $1', [batch.id]);
+  assert.equal(batch.requestedCount, 1);
+  assert.deepEqual(queued.rows.map((row) => row.draft_id), [black.id]);
+  await pool.query('DELETE FROM search_horoshop_photo_runs WHERE batch_id = $1', [batch.id]);
+  await pool.query('DELETE FROM search_horoshop_photo_batches WHERE id = $1', [batch.id]);
+  await pool.query("UPDATE search_horoshop_photo_drafts SET parse_status = 'ready' WHERE id = $1", [black.id]);
 });
 
 test('background queue reuses the shared scraper engine and stores a reviewable draft', async () => {

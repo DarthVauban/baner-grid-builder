@@ -75,17 +75,7 @@
 .horoshop-photo-resolution p { margin: 0; color: #8c651c; font-size: 11px; line-height: 1.5; }
 
 .horoshop-photo-products { min-width: 0; display: grid; gap: 11px; }
-.horoshop-photo-product { overflow: hidden; border: 1px solid var(--line); border-radius: 19px; background: var(--surface); box-shadow: 0 8px 24px rgba(28,35,57,.04); }
-.horoshop-photo-product > header { min-height: 82px; display: grid; grid-template-columns: 36px 54px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 12px 15px; }
-.horoshop-photo-product__toggle { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 10px; color: #667086; background: var(--surface-soft); cursor: pointer; }
-.horoshop-photo-product__image { width: 54px; height: 54px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); background: #fff; }
-.horoshop-photo-product__image img { width: 100%; height: 100%; object-fit: contain; }
-.horoshop-photo-product__copy { min-width: 0; display: grid; gap: 4px; }
-.horoshop-photo-product__copy strong { overflow: hidden; color: var(--ink); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.horoshop-photo-product__copy span { color: var(--muted); font-size: 10px; }
-.horoshop-photo-product__tree { display: grid; gap: 9px; border-top: 1px solid var(--line); padding: 12px 14px 14px 62px; background: var(--surface-soft); }
-
-.horoshop-photo-target { min-width: 0; display: grid; grid-template-columns: minmax(220px,.72fr) minmax(330px,1.2fr) auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 15px; padding: 11px; background: var(--surface); }
+.horoshop-photo-target { min-width: 0; display: grid; grid-template-columns: minmax(220px,.72fr) minmax(330px,1.2fr) auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 17px; padding: 13px; background: var(--surface); box-shadow: 0 8px 24px rgba(28,35,57,.04); }
 .horoshop-photo-target__identity { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .horoshop-photo-target__image { width: 46px; height: 46px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: #fff; }
 .horoshop-photo-target__image img { width: 100%; height: 100%; object-fit: contain; }
@@ -94,6 +84,8 @@
 .horoshop-photo-target__identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .horoshop-photo-target__identity strong { color: var(--ink); font-size: 11px; }
 .horoshop-photo-target__identity small { color: var(--muted); font-size: 9px; }
+.horoshop-photo-target__link { width: max-content; display: inline-flex; align-items: center; gap: 4px; color: #5a50d7; font-size: 9px; font-weight: 800; text-decoration: none; }
+.horoshop-photo-target__link:hover { text-decoration: underline; }
 .horoshop-photo-target__source { min-width: 0; display: grid; gap: 5px; }
 .horoshop-photo-target__source > span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .horoshop-photo-target__source > div { display: grid; grid-template-columns: minmax(150px,1fr) auto auto; gap: 7px; }
@@ -153,9 +145,6 @@
   .horoshop-photo-builder__filters { grid-column: auto; grid-template-columns: 1fr; }
   .horoshop-photo-selection-bar { grid-template-columns: 1fr; align-items: stretch; }
   .horoshop-photo-stats { display: grid; grid-template-columns: repeat(3,1fr); }
-  .horoshop-photo-product > header { grid-template-columns: 34px 48px minmax(0,1fr); }
-  .horoshop-photo-product > header > .button { grid-column: 2 / -1; width: 100%; }
-  .horoshop-photo-product__tree { padding-left: 12px; }
   .horoshop-photo-target { grid-template-columns: 1fr; }
   .horoshop-photo-target__source > div { grid-template-columns: 1fr 1fr; }
   .horoshop-photo-target__source input { grid-column: 1 / -1; }
