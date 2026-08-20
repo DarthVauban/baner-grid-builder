@@ -864,6 +864,8 @@ export class HoroshopPhotoService {
       WITH selected_products AS (
         SELECT item.product_id,
                MIN(item.sort_order) AS product_order,
+               MIN(item.created_at) AS product_created_at,
+               MIN(item.id::TEXT) AS product_item_order,
                BOOL_OR(item.modification_id IS NULL) AS include_all
         FROM search_horoshop_photo_selection_items AS item
         WHERE item.selection_id = $1
@@ -877,7 +879,8 @@ export class HoroshopPhotoService {
         GROUP BY modification.product_id
       ), selected_targets AS (
         SELECT selected.product_id, modification.id AS modification_id,
-               selected.product_order, modification.updated_at AS modification_order
+               selected.product_order, selected.product_created_at, selected.product_item_order,
+               modification.updated_at AS modification_order
         FROM selected_products AS selected
         INNER JOIN search_horoshop_photo_selection_items AS item
           ON item.selection_id = $1
@@ -892,7 +895,8 @@ export class HoroshopPhotoService {
         UNION
 
         SELECT selected.product_id, modification.id AS modification_id,
-               selected.product_order, modification.updated_at AS modification_order
+               selected.product_order, selected.product_created_at, selected.product_item_order,
+               modification.updated_at AS modification_order
         FROM selected_products AS selected
         INNER JOIN search_horoshop_modifications AS modification
           ON modification.product_id = selected.product_id
@@ -904,7 +908,8 @@ export class HoroshopPhotoService {
         UNION
 
         SELECT selected.product_id, NULL::UUID AS modification_id,
-               selected.product_order, NULL::TIMESTAMPTZ AS modification_order
+               selected.product_order, selected.product_created_at, selected.product_item_order,
+               NULL::TIMESTAMPTZ AS modification_order
         FROM selected_products AS selected
         LEFT JOIN active_modification_counts AS modification_count
           ON modification_count.product_id = selected.product_id
@@ -919,6 +924,8 @@ export class HoroshopPhotoService {
        AND product.generation = $3
        AND product.active = TRUE
       ORDER BY target.product_order,
+               target.product_created_at,
+               target.product_item_order,
                target.modification_order DESC NULLS LAST,
                target.modification_id NULLS FIRST
     `, [selectionId, connection.id, connection.generation]);
