@@ -26,7 +26,13 @@ const defaultStyles = {
   secondaryButtonBackgroundColor: '#ffffff',
   secondaryButtonTextColor: '#172033',
   checkboxAccentColor: '#6d5dfc',
+  checkboxCheckColor: '#ffffff',
   checkboxTextColor: '#172033',
+  eyebrowFontSize: 12,
+  titleFontSize: 34,
+  bodyFontSize: 16,
+  acknowledgementFontSize: 14,
+  buttonFontSize: 16,
   borderRadius: 24,
   maxWidth: 520
 };
@@ -46,7 +52,8 @@ const defaultBehavior = {
   frequency: 'product',
   cooldownDays: 7,
   dismissible: true,
-  requireAcknowledgement: false
+  requireAcknowledgement: false,
+  buttonCount: 2
 };
 
 const eventStatsKey = {
@@ -116,9 +123,15 @@ function normalizeStyles(value) {
     secondaryButtonBackgroundColor: color(source.secondaryButtonBackgroundColor, backgroundColor),
     secondaryButtonTextColor: color(source.secondaryButtonTextColor, textColor),
     checkboxAccentColor: color(source.checkboxAccentColor, accentColor),
+    checkboxCheckColor: color(source.checkboxCheckColor, defaultStyles.checkboxCheckColor),
     checkboxTextColor: color(source.checkboxTextColor, textColor),
+    eyebrowFontSize: Math.min(32, Math.max(8, Number(source.eyebrowFontSize) || defaultStyles.eyebrowFontSize)),
+    titleFontSize: Math.min(72, Math.max(18, Number(source.titleFontSize) || defaultStyles.titleFontSize)),
+    bodyFontSize: Math.min(36, Math.max(10, Number(source.bodyFontSize) || defaultStyles.bodyFontSize)),
+    acknowledgementFontSize: Math.min(28, Math.max(10, Number(source.acknowledgementFontSize) || defaultStyles.acknowledgementFontSize)),
+    buttonFontSize: Math.min(28, Math.max(10, Number(source.buttonFontSize) || defaultStyles.buttonFontSize)),
     borderRadius: Math.min(40, Math.max(0, Number(source.borderRadius) || defaultStyles.borderRadius)),
-    maxWidth: Math.min(760, Math.max(320, Number(source.maxWidth) || defaultStyles.maxWidth))
+    maxWidth: Math.min(1400, Math.max(320, Number(source.maxWidth) || defaultStyles.maxWidth))
   };
 }
 
@@ -143,7 +156,8 @@ function normalizeBehavior(value) {
       ? source.frequency : defaultBehavior.frequency,
     cooldownDays: Math.min(365, Math.max(1, Number(source.cooldownDays) || defaultBehavior.cooldownDays)),
     dismissible: source.dismissible !== false,
-    requireAcknowledgement: source.requireAcknowledgement === true
+    requireAcknowledgement: source.requireAcknowledgement === true,
+    buttonCount: Number(source.buttonCount) === 1 ? 1 : defaultBehavior.buttonCount
   };
 }
 
@@ -750,6 +764,7 @@ export function popupEmbedScript(origin) {
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
     style.textContent = \`:host{all:initial}.backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.56);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}.card{position:relative;width:min(var(--width),100%);max-height:calc(100vh - 36px);overflow:auto;border-radius:var(--radius);background:var(--bg);box-shadow:0 28px 90px rgba(15,23,42,.3);animation:enter .2s ease-out}.content{padding:30px}.image{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) - 7px) calc(var(--radius) - 7px) 0 0}.eyebrow{margin:0 0 8px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.title{margin:0;color:var(--text);font-size:clamp(24px,4vw,34px);line-height:1.08}.body{margin:14px 0 0;color:var(--muted);font-size:16px;line-height:1.58;white-space:pre-line}.ack{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;margin:20px 0 0;padding:14px;border-radius:14px;color:var(--checkbox-text);background:color-mix(in srgb,var(--checkbox) 9%,var(--bg));font-size:14px;line-height:1.4}.ack input{display:grid;place-content:center;width:18px;height:18px;margin:0;appearance:none;border:1.5px solid color-mix(in srgb,var(--checkbox) 55%,#fff);border-radius:5px;background:var(--bg);cursor:pointer}.ack input:before{width:8px;height:4px;border-bottom:2px solid #fff;border-left:2px solid #fff;content:'';transform:rotate(-45deg) scale(0);transition:transform .12s ease}.ack input:checked{border-color:var(--checkbox);background:var(--checkbox)}.ack input:checked:before{transform:rotate(-45deg) scale(1)}.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.button{min-height:44px;border:1px solid transparent;border-radius:12px;padding:10px 18px;font:inherit;font-weight:750;cursor:pointer}.primary{border-color:var(--primary-bg);background:var(--primary-bg);color:var(--primary-text)}.primary:disabled{opacity:.45;cursor:not-allowed}.secondary{border-color:color-mix(in srgb,var(--secondary-text) 16%,transparent);background:var(--secondary-bg);color:var(--secondary-text)}.close{position:absolute;z-index:2;top:12px;right:12px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(15,23,42,.72);color:#fff;font-size:24px;line-height:1;cursor:pointer}.corner{align-items:flex-end;justify-content:flex-end;background:transparent;pointer-events:none}.corner .card{pointer-events:auto;box-shadow:0 20px 65px rgba(15,23,42,.25)}.bottom-sheet{align-items:flex-end}.bottom-sheet .card{width:min(760px,100%);border-radius:var(--radius) var(--radius) 0 0;margin-bottom:-18px}@keyframes enter{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:600px){.backdrop{padding:10px;align-items:flex-end}.card{border-radius:20px 20px 0 0;margin-bottom:-10px}.content{padding:24px 20px}.actions{flex-direction:column-reverse}.button{width:100%}}\`;
+    style.textContent += \`.eyebrow{font-size:var(--eyebrow-size)}.title{font-size:var(--title-size)}.body{font-size:var(--body-size)}.ack{font-size:var(--ack-size)}.ack input:before{border-bottom-color:var(--checkbox-check);border-left-color:var(--checkbox-check)}.button{font-size:var(--button-size)}.bottom-sheet .card{width:min(var(--width),100%)}\`;
     shadow.append(style);
     const backdrop = document.createElement('div');
     backdrop.className = 'backdrop ' + campaign.styles.layout;
@@ -762,7 +777,13 @@ export function popupEmbedScript(origin) {
     backdrop.style.setProperty('--secondary-bg', campaign.styles.secondaryButtonBackgroundColor);
     backdrop.style.setProperty('--secondary-text', campaign.styles.secondaryButtonTextColor);
     backdrop.style.setProperty('--checkbox', campaign.styles.checkboxAccentColor);
+    backdrop.style.setProperty('--checkbox-check', campaign.styles.checkboxCheckColor);
     backdrop.style.setProperty('--checkbox-text', campaign.styles.checkboxTextColor);
+    backdrop.style.setProperty('--eyebrow-size', campaign.styles.eyebrowFontSize + 'px');
+    backdrop.style.setProperty('--title-size', campaign.styles.titleFontSize + 'px');
+    backdrop.style.setProperty('--body-size', campaign.styles.bodyFontSize + 'px');
+    backdrop.style.setProperty('--ack-size', campaign.styles.acknowledgementFontSize + 'px');
+    backdrop.style.setProperty('--button-size', campaign.styles.buttonFontSize + 'px');
     backdrop.style.setProperty('--radius', campaign.styles.borderRadius + 'px');
     backdrop.style.setProperty('--width', campaign.styles.maxWidth + 'px');
     const card = document.createElement('section');
@@ -792,8 +813,8 @@ export function popupEmbedScript(origin) {
       label.append(acknowledgement, text); content.append(label);
     }
     const actions = document.createElement('div'); actions.className = 'actions';
-    if (campaign.behavior.dismissible && campaign.content.secondaryLabel) {
-      const secondary = document.createElement('button'); secondary.className = 'button secondary'; secondary.type = 'button'; secondary.textContent = campaign.content.secondaryLabel;
+    if (campaign.behavior.buttonCount === 2) {
+      const secondary = document.createElement('button'); secondary.className = 'button secondary'; secondary.type = 'button'; secondary.textContent = campaign.content.secondaryLabel || 'Закрити';
       secondary.addEventListener('click', () => close('dismiss')); actions.append(secondary);
     }
     const primary = document.createElement('button'); primary.className = 'button primary'; primary.type = 'button'; primary.textContent = campaign.content.primaryLabel;

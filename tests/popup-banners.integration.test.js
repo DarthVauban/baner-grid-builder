@@ -49,9 +49,15 @@ function input(overrides = {}) {
       secondaryButtonBackgroundColor: '#ffffff',
       secondaryButtonTextColor: '#172033',
       checkboxAccentColor: '#f04438',
+      checkboxCheckColor: '#101828',
       checkboxTextColor: '#344054',
+      eyebrowFontSize: 14,
+      titleFontSize: 42,
+      bodyFontSize: 18,
+      acknowledgementFontSize: 15,
+      buttonFontSize: 17,
       borderRadius: 24,
-      maxWidth: 520
+      maxWidth: 1200
     },
     targeting: {
       mode: 'products',
@@ -67,7 +73,8 @@ function input(overrides = {}) {
       frequency: 'product',
       cooldownDays: 7,
       dismissible: true,
-      requireAcknowledgement: true
+      requireAcknowledgement: true,
+      buttonCount: 2
     },
     startsAt: null,
     endsAt: null,
@@ -138,6 +145,10 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(created.body.data.productTargets[0].sku, 'USED-IPHONE-128');
   assert.equal(created.body.data.styles.primaryButtonBackgroundColor, '#ffe101');
   assert.equal(created.body.data.styles.checkboxAccentColor, '#f04438');
+  assert.equal(created.body.data.styles.checkboxCheckColor, '#101828');
+  assert.equal(created.body.data.styles.titleFontSize, 42);
+  assert.equal(created.body.data.styles.maxWidth, 1200);
+  assert.equal(created.body.data.behavior.buttonCount, 2);
 
   const campaignId = created.body.data.id;
   const publicId = created.body.data.publicId;
@@ -152,6 +163,8 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(resolved.body.data.product.article, 'USED-IPHONE-128');
   assert.equal(resolved.body.data.campaign.styles.primaryButtonBackgroundColor, '#ffe101');
   assert.equal(resolved.body.data.campaign.styles.checkboxTextColor, '#344054');
+  assert.equal(resolved.body.data.campaign.styles.checkboxCheckColor, '#101828');
+  assert.equal(resolved.body.data.campaign.styles.bodyFontSize, 18);
   assert.match(resolved.body.data.campaign.content.title, /iPhone 15 128GB Black/u);
   assert.match(resolved.body.data.campaign.content.body, /USED-IPHONE-128/u);
 
@@ -209,6 +222,9 @@ test('sticker rules and the embeddable widget work without exact product targets
   assert.match(script.text, /popup-banners\/resolve/u);
   assert.match(script.text, /--primary-bg/u);
   assert.match(script.text, /--checkbox-text/u);
+  assert.match(script.text, /--checkbox-check/u);
+  assert.match(script.text, /--title-size/u);
+  assert.match(script.text, /behavior\.buttonCount === 2/u);
 
   const code = await admin.get('/api/popup-banners/embed-code').expect(200);
   assert.match(code.body.data.code, /popup-banners\/embed\.js/u);

@@ -46,9 +46,15 @@ const stylesSchema = z.object({
   secondaryButtonBackgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   secondaryButtonTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   checkboxAccentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  checkboxCheckColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   checkboxTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  eyebrowFontSize: z.number().min(8).max(32).optional(),
+  titleFontSize: z.number().min(18).max(72).optional(),
+  bodyFontSize: z.number().min(10).max(36).optional(),
+  acknowledgementFontSize: z.number().min(10).max(28).optional(),
+  buttonFontSize: z.number().min(10).max(28).optional(),
   borderRadius: z.number().min(0).max(40),
-  maxWidth: z.number().min(320).max(760)
+  maxWidth: z.number().min(320).max(1400)
 });
 const targetingSchema = z.object({
   mode: z.enum(['all_pages', 'all_products', 'products', 'rules']),
@@ -64,7 +70,8 @@ const behaviorSchema = z.object({
   frequency: z.enum(['always', 'session', 'product', 'days']),
   cooldownDays: z.number().int().min(1).max(365),
   dismissible: z.boolean(),
-  requireAcknowledgement: z.boolean()
+  requireAcknowledgement: z.boolean(),
+  buttonCount: z.union([z.literal(1), z.literal(2)]).optional()
 });
 const campaignSchema = z.object({
   name: z.string().trim().min(1).max(160),

@@ -35,7 +35,13 @@ const baseCampaign: PopupCampaign = {
     secondaryButtonBackgroundColor: '#ffffff',
     secondaryButtonTextColor: '#172033',
     checkboxAccentColor: '#6d5dfc',
+    checkboxCheckColor: '#ffffff',
     checkboxTextColor: '#172033',
+    eyebrowFontSize: 12,
+    titleFontSize: 34,
+    bodyFontSize: 16,
+    acknowledgementFontSize: 14,
+    buttonFontSize: 16,
     borderRadius: 24,
     maxWidth: 520
   },
@@ -53,7 +59,8 @@ const baseCampaign: PopupCampaign = {
     frequency: 'product',
     cooldownDays: 7,
     dismissible: true,
-    requireAcknowledgement: false
+    requireAcknowledgement: false,
+    buttonCount: 2
   },
   startsAt: null,
   endsAt: null,
@@ -171,11 +178,20 @@ describe('PopupBannersPage', () => {
     expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')).toHaveLength(2);
     expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')[0]).toHaveValue('#ffe101');
     expect(screen.getAllByLabelText('Колір тексту: вибрати колір')).toHaveLength(2);
+    expect(screen.getByLabelText('Основний текст: вибрати колір')).toHaveValue('#667085');
+    expect(screen.getByRole('spinbutton', { name: 'Заголовок, px' })).toHaveValue(34);
+    expect(screen.getByRole('spinbutton', { name: 'Основний текст, px' })).toHaveValue(16);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Кількість кнопок' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Одна кнопка' }));
+    expect(screen.queryByRole('textbox', { name: 'Додаткова кнопка' })).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
     fireEvent.click(screen.getByRole('checkbox', { name: /Потрібне явне підтвердження/u }));
 
     expect(screen.getByLabelText('Колір чекбокса: вибрати колір')).toHaveValue('#6d5dfc');
+    expect(screen.getByLabelText('Колір галочки: вибрати колір')).toHaveValue('#ffffff');
     expect(screen.getAllByLabelText('Колір тексту: вибрати колір')).toHaveLength(1);
   });
 });

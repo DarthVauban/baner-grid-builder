@@ -64,7 +64,13 @@ function emptyCampaign(): PopupCampaignInput {
       secondaryButtonBackgroundColor: '#ffffff',
       secondaryButtonTextColor: '#172033',
       checkboxAccentColor: '#6d5dfc',
+      checkboxCheckColor: '#ffffff',
       checkboxTextColor: '#172033',
+      eyebrowFontSize: 12,
+      titleFontSize: 34,
+      bodyFontSize: 16,
+      acknowledgementFontSize: 14,
+      buttonFontSize: 16,
       borderRadius: 24,
       maxWidth: 520
     },
@@ -82,7 +88,8 @@ function emptyCampaign(): PopupCampaignInput {
       frequency: 'product',
       cooldownDays: 7,
       dismissible: true,
-      requireAcknowledgement: false
+      requireAcknowledgement: false,
+      buttonCount: 2
     },
     startsAt: null,
     endsAt: null,
@@ -246,9 +253,15 @@ function Preview({ draft }: { draft: PopupCampaignInput }) {
       '--preview-secondary-bg': styles.secondaryButtonBackgroundColor,
       '--preview-secondary-text': styles.secondaryButtonTextColor,
       '--preview-checkbox': styles.checkboxAccentColor,
+      '--preview-checkbox-check': styles.checkboxCheckColor,
       '--preview-checkbox-text': styles.checkboxTextColor,
+      '--preview-eyebrow-size': `${styles.eyebrowFontSize}px`,
+      '--preview-title-size': `${styles.titleFontSize}px`,
+      '--preview-body-size': `${styles.bodyFontSize}px`,
+      '--preview-ack-size': `${styles.acknowledgementFontSize}px`,
+      '--preview-button-size': `${styles.buttonFontSize}px`,
       '--preview-radius': `${styles.borderRadius}px`,
-      '--preview-width': `${Math.min(styles.maxWidth, 560)}px`
+      '--preview-width': `${styles.maxWidth}px`
     } as CSSProperties}>
       <div className="popup-preview__browser">
         <span /><span /><span />
@@ -271,7 +284,7 @@ function Preview({ draft }: { draft: PopupCampaignInput }) {
               <span>{content.acknowledgementLabel}</span>
             </label>}
             <footer>
-              {draft.behavior.dismissible && content.secondaryLabel && <button type="button">{content.secondaryLabel}</button>}
+              {draft.behavior.buttonCount === 2 && <button type="button">{content.secondaryLabel || 'Закрити'}</button>}
               <button type="button" className="is-primary" disabled={draft.behavior.requireAcknowledgement && !acknowledged}>{content.primaryLabel || 'Продовжити'}</button>
             </footer>
           </div>
@@ -555,8 +568,9 @@ export function PopupBannersPage() {
               <div className="popup-form-section">
                 <SectionHeading icon="link" title="Кнопки й дія" description="Назвіть дію зрозуміло та вкажіть сторінку, куди вона веде." />
                 <div className="popup-form-grid">
+                  <label><span>Кількість кнопок</span><StyledSelect value={String(draft.behavior.buttonCount)} options={[{ value: '1', label: 'Одна кнопка' }, { value: '2', label: 'Дві кнопки' }]} onChange={(value) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, buttonCount: Number(value) as 1 | 2 } }))} ariaLabel="Кількість кнопок" /></label>
                   <label><span>Основна кнопка</span><input value={draft.content.primaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryLabel: event.target.value } }))} /></label>
-                  <label><span>Додаткова кнопка</span><input value={draft.content.secondaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, secondaryLabel: event.target.value } }))} /></label>
+                  {draft.behavior.buttonCount === 2 && <label><span>Додаткова кнопка</span><input value={draft.content.secondaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, secondaryLabel: event.target.value } }))} /></label>}
                   <label className="is-full"><span>Посилання основної кнопки</span><input type="url" placeholder="https://... або /шлях/" value={draft.content.primaryUrl} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryUrl: event.target.value } }))} /></label>
                 </div>
                 <div className="popup-color-groups">
@@ -564,23 +578,34 @@ export function PopupBannersPage() {
                     <ColorField label="Колір кнопки" value={draft.styles.primaryButtonBackgroundColor} onChange={(primaryButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonBackgroundColor } }))} />
                     <ColorField label="Колір тексту" value={draft.styles.primaryButtonTextColor} onChange={(primaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonTextColor } }))} />
                   </div></div>
-                  <div><strong>Додаткова кнопка</strong><div className="popup-color-grid is-pair">
+                  {draft.behavior.buttonCount === 2 && <div><strong>Додаткова кнопка</strong><div className="popup-color-grid is-pair">
                     <ColorField label="Колір кнопки" value={draft.styles.secondaryButtonBackgroundColor} onChange={(secondaryButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, secondaryButtonBackgroundColor } }))} />
                     <ColorField label="Колір тексту" value={draft.styles.secondaryButtonTextColor} onChange={(secondaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, secondaryButtonTextColor } }))} />
-                  </div></div>
+                  </div></div>}
                 </div>
               </div>
 
               <div className="popup-form-section">
                 <SectionHeading icon="productCard" title="Вигляд попапа" description="Оберіть розташування, кольори та комфортний розмір повідомлення." />
                 <LayoutPicker value={draft.styles.layout} onChange={(layout) => setDraft((current) => ({ ...current, styles: { ...current.styles, layout } }))} />
-                <div className="popup-color-grid">
+                <div className="popup-color-grid is-base">
                   <ColorField label="Акцент" value={draft.styles.accentColor} onChange={(accentColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, accentColor } }))} />
                   <ColorField label="Фон" value={draft.styles.backgroundColor} onChange={(backgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, backgroundColor } }))} />
-                  <ColorField label="Текст" value={draft.styles.textColor} onChange={(textColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, textColor } }))} />
+                  <ColorField label="Заголовок" value={draft.styles.textColor} onChange={(textColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, textColor } }))} />
+                  <ColorField label="Основний текст" value={draft.styles.mutedColor} onChange={(mutedColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, mutedColor } }))} />
+                </div>
+                <div className="popup-settings-group">
+                  <strong>Розміри шрифту</strong>
+                  <div className="popup-form-grid popup-font-grid">
+                    <label><span>Надзаголовок, px</span><input type="number" min={8} max={32} value={draft.styles.eyebrowFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, eyebrowFontSize: Number(event.target.value) } }))} /></label>
+                    <label><span>Заголовок, px</span><input type="number" min={18} max={72} value={draft.styles.titleFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, titleFontSize: Number(event.target.value) } }))} /></label>
+                    <label><span>Основний текст, px</span><input type="number" min={10} max={36} value={draft.styles.bodyFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, bodyFontSize: Number(event.target.value) } }))} /></label>
+                    <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>
+                    <label><span>Кнопки, px</span><input type="number" min={10} max={28} value={draft.styles.buttonFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, buttonFontSize: Number(event.target.value) } }))} /></label>
+                  </div>
                 </div>
                 <div className="popup-form-grid">
-                  <label><span>Максимальна ширина, px</span><input type="number" min={320} max={760} value={draft.styles.maxWidth} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, maxWidth: Number(event.target.value) } }))} /></label>
+                  <label><span>Максимальна ширина, px</span><input type="number" min={320} max={1400} step={10} value={draft.styles.maxWidth} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, maxWidth: Number(event.target.value) } }))} /><small>До 1400 px; на вузьких екранах попап автоматично вміститься у viewport.</small></label>
                   <label><span>Заокруглення, px</span><input type="number" min={0} max={40} value={draft.styles.borderRadius} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, borderRadius: Number(event.target.value) } }))} /></label>
                 </div>
               </div>
@@ -619,13 +644,14 @@ export function PopupBannersPage() {
                   {draft.behavior.frequency === 'days' && <label><span>Повторити через, днів</span><input type="number" min={1} max={365} value={draft.behavior.cooldownDays} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, cooldownDays: Number(event.target.value) } }))} /></label>}
                 </div>
                 <div className="popup-toggle-list">
-                  <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description="Показувати хрестик, додаткову кнопку та дозволити клік по фону." onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
+                  <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description="Показувати хрестик і дозволити закриття кліком по затемненому фону." onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
                   <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />
                 </div>
                 {draft.behavior.requireAcknowledgement && <>
                   <label><span>Текст підтвердження</span><textarea rows={3} value={draft.content.acknowledgementLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, acknowledgementLabel: event.target.value } }))} /></label>
-                  <div className="popup-color-grid is-pair">
+                  <div className="popup-color-grid">
                     <ColorField label="Колір чекбокса" value={draft.styles.checkboxAccentColor} onChange={(checkboxAccentColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, checkboxAccentColor } }))} />
+                    <ColorField label="Колір галочки" value={draft.styles.checkboxCheckColor} onChange={(checkboxCheckColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, checkboxCheckColor } }))} />
                     <ColorField label="Колір тексту" value={draft.styles.checkboxTextColor} onChange={(checkboxTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, checkboxTextColor } }))} />
                   </div>
                 </>}

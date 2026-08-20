@@ -25,7 +25,13 @@ export interface PopupStyles {
   secondaryButtonBackgroundColor: string;
   secondaryButtonTextColor: string;
   checkboxAccentColor: string;
+  checkboxCheckColor: string;
   checkboxTextColor: string;
+  eyebrowFontSize: number;
+  titleFontSize: number;
+  bodyFontSize: number;
+  acknowledgementFontSize: number;
+  buttonFontSize: number;
   borderRadius: number;
   maxWidth: number;
 }
@@ -46,6 +52,7 @@ export interface PopupBehavior {
   cooldownDays: number;
   dismissible: boolean;
   requireAcknowledgement: boolean;
+  buttonCount: 1 | 2;
 }
 
 export interface PopupProductTarget {
