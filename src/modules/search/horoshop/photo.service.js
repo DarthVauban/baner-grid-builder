@@ -853,35 +853,34 @@ export class HoroshopPhotoService {
     const batchClause = batchId ? `AND queued.batch_id = $${values.push(batchId)}` : '';
     const result = await this.pool.query(`
       SELECT queued.id, queued.batch_id,
-             finished.status, finished.source_url, finished.adapter_id,
-             finished.found_count, finished.saved_count, finished.skipped_count,
-             finished.error_message, finished.error_details, finished.completed_at
+             draft.parse_status, draft.source_url, draft.adapter_id,
+             draft.found_count, draft.error_message, draft.error_details,
+             draft.updated_at AS completed_at,
+             draft_asset.id AS asset_id
       FROM search_horoshop_photo_runs AS queued
-      INNER JOIN search_horoshop_photo_batches AS queued_batch ON queued_batch.id = queued.batch_id
-      INNER JOIN search_horoshop_photo_runs AS finished ON finished.draft_id = queued.draft_id
-      INNER JOIN search_horoshop_photo_batches AS finished_batch ON finished_batch.id = finished.batch_id
+      INNER JOIN search_horoshop_photo_drafts AS draft ON draft.id = queued.draft_id
+      INNER JOIN search_horoshop_photo_assets AS draft_asset ON draft_asset.draft_id = draft.id
       LEFT JOIN search_horoshop_photo_run_uploads AS queued_upload ON queued_upload.run_id = queued.id
       WHERE queued.executor = 'desktop'
         AND queued.status = 'queued'
         AND queued.device_id IS NULL
-        AND queued_batch.selection_id IS NOT NULL
-        AND queued_batch.selection_id = finished_batch.selection_id
-        AND queued_batch.created_by = finished_batch.created_by
-        AND finished.executor = 'desktop'
-        AND finished.status IN ('success', 'partial')
-        AND finished.completed_at IS NOT NULL
-        AND queued.created_at < finished.completed_at
-        AND queued.id <> finished.id
+        AND draft.parse_status IN ('ready', 'partial')
+        AND queued.created_at <= draft.updated_at
         AND queued_upload.id IS NULL
         ${batchClause}
-      ORDER BY queued.id, finished.completed_at DESC
+      ORDER BY queued.id, draft_asset.sort_order, draft_asset.created_at
     `, values);
     const repaired = new Map();
     for (const row of result.rows) {
-      if (!repaired.has(row.id)) repaired.set(row.id, row);
+      const existing = repaired.get(row.id);
+      if (existing) existing.saved_count += 1;
+      else repaired.set(row.id, { ...row, saved_count: 1 });
     }
     const batchIds = new Set();
     for (const row of repaired.values()) {
+      const savedCount = Number(row.saved_count || 0);
+      const foundCount = Math.max(savedCount, Number(row.found_count || 0));
+      const status = row.parse_status === 'partial' ? 'partial' : 'success';
       const updated = await this.pool.query(`
         UPDATE search_horoshop_photo_runs
         SET status = $2, source_url = $3, adapter_id = $4,
@@ -892,8 +891,8 @@ export class HoroshopPhotoService {
         WHERE id = $1 AND status = 'queued' AND device_id IS NULL
         RETURNING batch_id
       `, [
-        row.id, row.status, row.source_url, row.adapter_id,
-        row.found_count, row.saved_count, row.skipped_count,
+        row.id, status, row.source_url, row.adapter_id,
+        foundCount, savedCount, Math.max(0, foundCount - savedCount),
         row.error_message, JSON.stringify(jsonArray(row.error_details)), row.completed_at
       ]);
       if (updated.rows[0]) batchIds.add(updated.rows[0].batch_id);

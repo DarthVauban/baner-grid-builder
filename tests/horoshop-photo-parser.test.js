@@ -403,13 +403,18 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
     FROM search_horoshop_photo_runs
     WHERE id = $1
   `, [job.id]);
+  const duplicateSelection = await photoService.createSelection({
+    name: 'Concurrent selection for the same draft',
+    entries: ['PHONE-2'],
+    userId: ids.admin
+  });
   const duplicateBatch = await pool.query(`
     INSERT INTO search_horoshop_photo_batches (
       connection_id, generation, selection_id, selection_based,
       requested_count, created_by, created_at
     ) VALUES ($1, $2, $3, TRUE, 1, $4, $5)
     RETURNING id
-  `, [ids.connection, ids.generation, selection.id, ids.admin, finishedRun.rows[0].created_at]);
+  `, [ids.connection, ids.generation, duplicateSelection.id, ids.admin, finishedRun.rows[0].created_at]);
   await pool.query(`
     INSERT INTO search_horoshop_photo_runs (
       batch_id, draft_id, source_url, executor, created_at
