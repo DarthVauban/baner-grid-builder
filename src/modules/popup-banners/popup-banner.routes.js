@@ -41,6 +41,12 @@ const stylesSchema = z.object({
   backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u),
   mutedColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u),
+  primaryButtonBackgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  primaryButtonTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  secondaryButtonBackgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  secondaryButtonTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  checkboxAccentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  checkboxTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   borderRadius: z.number().min(0).max(40),
   maxWidth: z.number().min(320).max(760)
 });

@@ -44,6 +44,12 @@ function input(overrides = {}) {
       backgroundColor: '#ffffff',
       textColor: '#172033',
       mutedColor: '#667085',
+      primaryButtonBackgroundColor: '#ffe101',
+      primaryButtonTextColor: '#101828',
+      secondaryButtonBackgroundColor: '#ffffff',
+      secondaryButtonTextColor: '#172033',
+      checkboxAccentColor: '#f04438',
+      checkboxTextColor: '#344054',
       borderRadius: 24,
       maxWidth: 520
     },
@@ -130,6 +136,8 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(created.body.data.productTargets.length, 1);
   assert.equal(created.body.data.productTargets[0].modificationId, modificationId);
   assert.equal(created.body.data.productTargets[0].sku, 'USED-IPHONE-128');
+  assert.equal(created.body.data.styles.primaryButtonBackgroundColor, '#ffe101');
+  assert.equal(created.body.data.styles.checkboxAccentColor, '#f04438');
 
   const campaignId = created.body.data.id;
   const publicId = created.body.data.publicId;
@@ -142,6 +150,8 @@ test('popup banner tool resolves exact product campaigns and records public even
     .expect(200);
   assert.equal(resolved.body.data.campaign.publicId, publicId);
   assert.equal(resolved.body.data.product.article, 'USED-IPHONE-128');
+  assert.equal(resolved.body.data.campaign.styles.primaryButtonBackgroundColor, '#ffe101');
+  assert.equal(resolved.body.data.campaign.styles.checkboxTextColor, '#344054');
   assert.match(resolved.body.data.campaign.content.title, /iPhone 15 128GB Black/u);
   assert.match(resolved.body.data.campaign.content.body, /USED-IPHONE-128/u);
 
@@ -197,6 +207,8 @@ test('sticker rules and the embeddable widget work without exact product targets
   assert.match(script.headers['content-type'], /javascript/u);
   assert.match(script.text, /attachShadow/u);
   assert.match(script.text, /popup-banners\/resolve/u);
+  assert.match(script.text, /--primary-bg/u);
+  assert.match(script.text, /--checkbox-text/u);
 
   const code = await admin.get('/api/popup-banners/embed-code').expect(200);
   assert.match(code.body.data.code, /popup-banners\/embed\.js/u);

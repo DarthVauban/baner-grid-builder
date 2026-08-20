@@ -20,6 +20,12 @@ export interface PopupStyles {
   backgroundColor: string;
   textColor: string;
   mutedColor: string;
+  primaryButtonBackgroundColor: string;
+  primaryButtonTextColor: string;
+  secondaryButtonBackgroundColor: string;
+  secondaryButtonTextColor: string;
+  checkboxAccentColor: string;
+  checkboxTextColor: string;
   borderRadius: number;
   maxWidth: number;
 }

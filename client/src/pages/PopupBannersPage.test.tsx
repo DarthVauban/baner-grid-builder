@@ -30,6 +30,12 @@ const baseCampaign: PopupCampaign = {
     backgroundColor: '#ffffff',
     textColor: '#172033',
     mutedColor: '#667085',
+    primaryButtonBackgroundColor: '#ffe101',
+    primaryButtonTextColor: '#172033',
+    secondaryButtonBackgroundColor: '#ffffff',
+    secondaryButtonTextColor: '#172033',
+    checkboxAccentColor: '#6d5dfc',
+    checkboxTextColor: '#172033',
     borderRadius: 24,
     maxWidth: 520
   },
@@ -156,5 +162,20 @@ describe('PopupBannersPage', () => {
 
     expect(screen.getByText('Є незбережені зміни')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled());
+  });
+
+  it('exposes button and acknowledgement colors in the branded editor', async () => {
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')).toHaveLength(2);
+    expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')[0]).toHaveValue('#ffe101');
+    expect(screen.getAllByLabelText('Колір тексту: вибрати колір')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Потрібне явне підтвердження/u }));
+
+    expect(screen.getByLabelText('Колір чекбокса: вибрати колір')).toHaveValue('#6d5dfc');
+    expect(screen.getAllByLabelText('Колір тексту: вибрати колір')).toHaveLength(1);
   });
 });

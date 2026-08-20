@@ -59,6 +59,12 @@ function emptyCampaign(): PopupCampaignInput {
       backgroundColor: '#ffffff',
       textColor: '#172033',
       mutedColor: '#667085',
+      primaryButtonBackgroundColor: '#6d5dfc',
+      primaryButtonTextColor: '#ffffff',
+      secondaryButtonBackgroundColor: '#ffffff',
+      secondaryButtonTextColor: '#172033',
+      checkboxAccentColor: '#6d5dfc',
+      checkboxTextColor: '#172033',
       borderRadius: 24,
       maxWidth: 520
     },
@@ -235,6 +241,12 @@ function Preview({ draft }: { draft: PopupCampaignInput }) {
       '--preview-bg': styles.backgroundColor,
       '--preview-text': styles.textColor,
       '--preview-muted': styles.mutedColor,
+      '--preview-primary-bg': styles.primaryButtonBackgroundColor,
+      '--preview-primary-text': styles.primaryButtonTextColor,
+      '--preview-secondary-bg': styles.secondaryButtonBackgroundColor,
+      '--preview-secondary-text': styles.secondaryButtonTextColor,
+      '--preview-checkbox': styles.checkboxAccentColor,
+      '--preview-checkbox-text': styles.checkboxTextColor,
       '--preview-radius': `${styles.borderRadius}px`,
       '--preview-width': `${Math.min(styles.maxWidth, 560)}px`
     } as CSSProperties}>
@@ -547,6 +559,16 @@ export function PopupBannersPage() {
                   <label><span>Додаткова кнопка</span><input value={draft.content.secondaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, secondaryLabel: event.target.value } }))} /></label>
                   <label className="is-full"><span>Посилання основної кнопки</span><input type="url" placeholder="https://... або /шлях/" value={draft.content.primaryUrl} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryUrl: event.target.value } }))} /></label>
                 </div>
+                <div className="popup-color-groups">
+                  <div><strong>Основна кнопка</strong><div className="popup-color-grid is-pair">
+                    <ColorField label="Колір кнопки" value={draft.styles.primaryButtonBackgroundColor} onChange={(primaryButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonBackgroundColor } }))} />
+                    <ColorField label="Колір тексту" value={draft.styles.primaryButtonTextColor} onChange={(primaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonTextColor } }))} />
+                  </div></div>
+                  <div><strong>Додаткова кнопка</strong><div className="popup-color-grid is-pair">
+                    <ColorField label="Колір кнопки" value={draft.styles.secondaryButtonBackgroundColor} onChange={(secondaryButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, secondaryButtonBackgroundColor } }))} />
+                    <ColorField label="Колір тексту" value={draft.styles.secondaryButtonTextColor} onChange={(secondaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, secondaryButtonTextColor } }))} />
+                  </div></div>
+                </div>
               </div>
 
               <div className="popup-form-section">
@@ -600,7 +622,13 @@ export function PopupBannersPage() {
                   <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description="Показувати хрестик, додаткову кнопку та дозволити клік по фону." onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
                   <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />
                 </div>
-                {draft.behavior.requireAcknowledgement && <label><span>Текст підтвердження</span><textarea rows={3} value={draft.content.acknowledgementLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, acknowledgementLabel: event.target.value } }))} /></label>}
+                {draft.behavior.requireAcknowledgement && <>
+                  <label><span>Текст підтвердження</span><textarea rows={3} value={draft.content.acknowledgementLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, acknowledgementLabel: event.target.value } }))} /></label>
+                  <div className="popup-color-grid is-pair">
+                    <ColorField label="Колір чекбокса" value={draft.styles.checkboxAccentColor} onChange={(checkboxAccentColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, checkboxAccentColor } }))} />
+                    <ColorField label="Колір тексту" value={draft.styles.checkboxTextColor} onChange={(checkboxTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, checkboxTextColor } }))} />
+                  </div>
+                </>}
               </div>
               <div className="popup-form-section">
                 <SectionHeading icon="calendar" title="Розклад кампанії" description="Залиште поля порожніми, якщо кампанія не має часових обмежень." />
