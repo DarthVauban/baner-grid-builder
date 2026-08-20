@@ -58,7 +58,7 @@ before(async () => {
       externalId: 'phone-2',
       sku: 'PHONE-2',
       title: 'Смартфон з однаковою назвою',
-      source: {}
+      source: { gallery_common: { links: ['https://photo-shop.example/current-phone-2.webp'] } }
     }
   ]) {
     await pool.query(`
@@ -261,7 +261,21 @@ test('bulk publication skips a common gallery when a product has unique modifica
   assert.deepEqual(queued.rows.map((row) => row.draft_id), [black.id]);
   await pool.query('DELETE FROM search_horoshop_photo_runs WHERE batch_id = $1', [batch.id]);
   await pool.query('DELETE FROM search_horoshop_photo_batches WHERE id = $1', [batch.id]);
-  await pool.query("UPDATE search_horoshop_photo_drafts SET parse_status = 'ready' WHERE id = $1", [black.id]);
+  await pool.query(`
+    UPDATE search_horoshop_photo_drafts
+    SET parse_status = 'ready', publish_status = 'published'
+    WHERE id = $1
+  `, [black.id]);
+
+  await service.deleteSelection(selectionId);
+  const publishedDraft = await pool.query(`
+    SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
+  `, [black.id]);
+  const publishedAssets = await pool.query(`
+    SELECT id FROM search_horoshop_photo_assets WHERE draft_id = $1
+  `, [black.id]);
+  assert.equal(publishedDraft.rows[0].publish_status, 'published');
+  assert.equal(publishedAssets.rows.length, 1);
 });
 
 test('background queue reuses the shared scraper engine and stores a reviewable draft', async () => {
@@ -387,16 +401,19 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   }
   await refreshBatch(job.batchId);
   const draft = await pool.query(`
-    SELECT parse_status, source_url FROM search_horoshop_photo_drafts WHERE id = $1
+    SELECT parse_status, publish_status, source_url, source_selection_id
+    FROM search_horoshop_photo_drafts WHERE id = $1
   `, [jobs[0].draftId]);
   const assets = await pool.query(`
-    SELECT COUNT(*)::INTEGER AS count FROM search_horoshop_photo_assets WHERE draft_id = $1
+    SELECT media_asset_id FROM search_horoshop_photo_assets WHERE draft_id = $1
   `, [jobs[0].draftId]);
 
   assert.deepEqual(completed, { status: 'success', foundCount: 1, savedCount: 1, errors: [] });
   assert.equal(draft.rows[0].parse_status, 'ready');
+  assert.equal(draft.rows[0].publish_status, 'draft');
   assert.equal(draft.rows[0].source_url, 'https://supplier.example/phone-2');
-  assert.equal(Number(assets.rows[0].count), 1);
+  assert.equal(draft.rows[0].source_selection_id, selection.id);
+  assert.equal(assets.rows.length, 1);
 
   const finishedRun = await pool.query(`
     SELECT created_at, completed_at
@@ -436,6 +453,39 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.equal((await photoService.loadBatch(intentionalRetry.id)).counts.queued, 1);
   await pool.query('DELETE FROM search_horoshop_photo_batches WHERE id = $1', [intentionalRetry.id]);
   await pool.query("UPDATE search_horoshop_photo_drafts SET parse_status = 'ready' WHERE id = $1", [jobs[0].draftId]);
+
+  await photoService.deleteSelection(selection.id);
+  const discardedDraft = await pool.query(`
+    SELECT parse_status, publish_status, source_url, source_selection_id, found_count
+    FROM search_horoshop_photo_drafts WHERE id = $1
+  `, [jobs[0].draftId]);
+  const discardedPhotos = await pool.query(`
+    SELECT id FROM search_horoshop_photo_assets WHERE draft_id = $1
+  `, [jobs[0].draftId]);
+  const discardedMedia = await pool.query(`
+    SELECT id FROM media_library_assets WHERE id = $1
+  `, [assets.rows[0].media_asset_id]);
+  assert.deepEqual(discardedDraft.rows[0], {
+    parse_status: 'idle',
+    publish_status: 'draft',
+    source_url: '',
+    source_selection_id: null,
+    found_count: 0
+  });
+  assert.equal(discardedPhotos.rows.length, 0);
+  assert.equal(discardedMedia.rows.length, 0);
+
+  const recreatedSelection = await photoService.createSelection({
+    name: 'Recreated after discarding unpublished photos',
+    entries: ['PHONE-2'],
+    userId: ids.admin
+  });
+  assert.deepEqual(recreatedSelection.products[0].commonDraft.assets, []);
+  assert.deepEqual(recreatedSelection.products[0].commonDraft.currentImages, [
+    'https://photo-shop.example/current-phone-2.webp'
+  ]);
+  await photoService.deleteSelection(recreatedSelection.id);
+  await photoService.deleteSelection(duplicateSelection.id);
 
   const newSelection = await photoService.createSelection({
     name: 'Created after pairing',
