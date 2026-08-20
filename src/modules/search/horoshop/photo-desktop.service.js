@@ -99,6 +99,7 @@ export class HoroshopPhotoDesktopService {
     this.photoService = options.photoService || horoshopPhotoService;
     this.createAsset = options.createAsset || createMediaAsset;
     this.selectionSyncs = new Map();
+    this.targetFolderSyncs = new Map();
   }
 
   async createPairing(userId) {
@@ -414,7 +415,7 @@ export class HoroshopPhotoDesktopService {
       SELECT run.*, batch.selection_id, batch.created_by AS batch_created_by,
              selection.name AS selection_name,
              draft.product_id, draft.modification_id, draft.target_type,
-             draft.source_run_id,
+             draft.source_run_id, draft.media_folder_id,
              product.sku AS product_sku, product.titles AS product_titles,
              product.primary_image_url, product.canonical_url,
              modification.sku AS modification_sku, modification.titles AS modification_titles,
@@ -582,15 +583,32 @@ export class HoroshopPhotoDesktopService {
   }
 
   async ensureTargetFolder(run) {
-    const rootFolder = await ensureMediaFolder({
-      name: `Фото Хорошоп — ${run.store_domain}`.slice(0, 120),
+    if (run.media_folder_id) return { id: run.media_folder_id };
+    const rootName = `Фото Хорошоп — ${run.store_domain}`.slice(0, 120);
+    const rootKey = `root:${run.batch_created_by}:${rootName.toLocaleLowerCase('uk-UA')}`;
+    const rootFolder = await this.ensureFolderOnce(rootKey, () => ensureMediaFolder({
+      name: rootName,
       userId: run.batch_created_by
-    }, { query: (...args) => this.pool.query(...args) });
-    return ensureMediaFolder({
-      name: `${run.product_sku || 'Товар'} ${localizedTitle(run.product_titles)}`.trim().slice(0, 120),
+    }, { query: (...args) => this.pool.query(...args) }));
+    const targetName = `${run.product_sku || 'Товар'} ${localizedTitle(run.product_titles)}`.trim().slice(0, 120);
+    const targetKey = `target:${rootFolder.id}:${targetName.toLocaleLowerCase('uk-UA')}`;
+    return this.ensureFolderOnce(targetKey, () => ensureMediaFolder({
+      name: targetName,
       parentId: rootFolder.id,
       userId: run.batch_created_by
-    }, { query: (...args) => this.pool.query(...args) });
+    }, { query: (...args) => this.pool.query(...args) }));
+  }
+
+  async ensureFolderOnce(key, factory) {
+    const existing = this.targetFolderSyncs.get(key);
+    if (existing) return existing;
+    const pending = Promise.resolve().then(factory);
+    this.targetFolderSyncs.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.targetFolderSyncs.get(key) === pending) this.targetFolderSyncs.delete(key);
+    }
   }
 
   async removeMediaAsset(assetId) {
@@ -630,7 +648,12 @@ export class HoroshopPhotoDesktopService {
       buffer: converted.buffer,
       originalName: originalName || `${run.modification_sku || run.product_sku || 'photo'}-${sortOrder + 1}.webp`,
       folderId: folder.id,
-      userId: run.batch_created_by
+      userId: run.batch_created_by,
+      prepared: {
+        width: converted.width,
+        height: converted.height,
+        contentSha256: converted.contentSha256
+      }
     }, { query: (...args) => this.pool.query(...args) });
     const client = await this.pool.connect();
     let duplicate = null;

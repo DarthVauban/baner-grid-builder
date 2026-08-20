@@ -64,11 +64,21 @@ export async function optimizeMediaImage(buffer) {
 
 export async function saveOptimizedMediaImage(buffer, originalName) {
   const optimized = await optimizeMediaImage(buffer);
+  const stored = await writeMediaImage(optimized.buffer, originalName);
+
+  return {
+    ...optimized,
+    ...stored,
+    mimeType: 'image/webp'
+  };
+}
+
+async function writeMediaImage(buffer, originalName) {
   const filename = `${Date.now()}-${safeStem(originalName)}-${randomUUID()}.webp`;
 
   try {
     await mkdir(mediaLibraryDir, { recursive: true });
-    await writeFile(path.join(mediaLibraryDir, filename), optimized.buffer, { flag: 'wx' });
+    await writeFile(path.join(mediaLibraryDir, filename), buffer, { flag: 'wx' });
   } catch (error) {
     if (storageUnavailableCodes.has(error?.code)) {
       throw new AppError(507, 'MEDIA_STORAGE_UNAVAILABLE', 'Не вдалося записати зображення у файлове сховище.');
@@ -77,10 +87,36 @@ export async function saveOptimizedMediaImage(buffer, originalName) {
   }
 
   return {
-    ...optimized,
     filename,
-    url: `/media/catalog/library/${filename}`,
-    mimeType: 'image/webp'
+    url: `/media/catalog/library/${filename}`
+  };
+}
+
+export async function savePreparedMediaImage(buffer, originalName, prepared = {}) {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) {
+    throw new AppError(422, 'MEDIA_EMPTY', 'Файл зображення порожній.');
+  }
+  if (buffer.length > maxUploadBytes) {
+    throw new AppError(413, 'MEDIA_TOO_LARGE', 'Зображення має бути до 15 МБ.');
+  }
+  const width = Number(prepared.width || 0);
+  const height = Number(prepared.height || 0);
+  if (!width || !height) {
+    throw new AppError(422, 'MEDIA_DIMENSIONS_INVALID', 'Не вдалося визначити розмір зображення.');
+  }
+  const contentSha256 = createHash('sha256').update(buffer).digest('hex');
+  if (prepared.contentSha256 && prepared.contentSha256 !== contentSha256) {
+    throw new AppError(422, 'MEDIA_HASH_INVALID', 'Контрольна сума зображення не збігається.');
+  }
+  const stored = await writeMediaImage(buffer, originalName);
+  return {
+    ...stored,
+    mimeType: 'image/webp',
+    size: buffer.length,
+    originalSize: buffer.length,
+    width,
+    height,
+    contentSha256
   };
 }
 

@@ -1,6 +1,6 @@
 import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
-import { removeMediaImage, saveOptimizedMediaImage } from './media.storage.js';
+import { removeMediaImage, saveOptimizedMediaImage, savePreparedMediaImage } from './media.storage.js';
 
 export function serializeMediaAsset(row) {
   return {
@@ -189,9 +189,11 @@ export async function deleteMediaFolder(id, user, db = { query }) {
   await db.query('DELETE FROM media_library_folders WHERE id = $1', [id]);
 }
 
-export async function createMediaAsset({ buffer, originalName, folderId = null, userId }, db = { query }) {
+export async function createMediaAsset({ buffer, originalName, folderId = null, userId, prepared = null }, db = { query }) {
   await getFolder(folderId, db);
-  const saved = await saveOptimizedMediaImage(buffer, originalName);
+  const saved = prepared
+    ? await savePreparedMediaImage(buffer, originalName, prepared)
+    : await saveOptimizedMediaImage(buffer, originalName);
   try {
     const inserted = await db.query(
       `INSERT INTO media_library_assets (

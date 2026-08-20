@@ -116,6 +116,23 @@ function createDesktopHarness() {
   return { photoService, desktopService };
 }
 
+test('desktop parser coalesces concurrent media-folder creation', async () => {
+  const desktopService = new HoroshopPhotoDesktopService({ databasePool: pool });
+  let resolveFactory;
+  let calls = 0;
+  const factory = async () => {
+    calls += 1;
+    await new Promise((resolve) => { resolveFactory = resolve; });
+    return { id: 'shared-folder' };
+  };
+  const first = desktopService.ensureFolderOnce('shared-path', factory);
+  const second = desktopService.ensureFolderOnce('shared-path', factory);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+  resolveFactory();
+  assert.deepEqual(await Promise.all([first, second]), [{ id: 'shared-folder' }, { id: 'shared-folder' }]);
+});
+
 async function createPublicationFixture(service, modificationCount = 2) {
   const suffix = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
   const productId = randomUUID();
