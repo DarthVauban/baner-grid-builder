@@ -1,4 +1,4 @@
-export type ToolId = 'banner_grid' | 'product_selection' | 'product_tables' | 'blog_publications' | 'chat' | 'applications' | 'form_builder' | 'used_smartphones_catalog' | 'trade_in' | 'store_map' | 'facebook_group_publications' | 'horoshop_related_products' | 'online_support';
+export type ToolId = 'banner_grid' | 'product_selection' | 'product_tables' | 'blog_publications' | 'chat' | 'applications' | 'form_builder' | 'used_smartphones_catalog' | 'trade_in' | 'store_map' | 'facebook_group_publications' | 'horoshop_related_products' | 'horoshop_photo_parser' | 'online_support';
 
 export interface UserToolAccess {
   tools: ToolId[];

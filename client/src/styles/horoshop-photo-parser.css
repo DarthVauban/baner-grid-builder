@@ -1,0 +1,163 @@
+.horoshop-photo-page { min-width: 0; display: grid; gap: 18px; padding-bottom: 32px; }
+.horoshop-photo-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; }
+.horoshop-photo-header > div:first-child { max-width: 760px; }
+.horoshop-photo-header h1 { margin: 4px 0 8px; color: var(--ink); font-size: clamp(31px,4vw,46px); letter-spacing: -.045em; }
+.horoshop-photo-header p:last-child { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.horoshop-photo-header__actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
+.horoshop-photo-header__actions select { min-height: 42px; border: 1px solid var(--line); border-radius: 12px; padding: 0 36px 0 13px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; font-weight: 700; }
+
+.horoshop-photo-builder { display: grid; grid-template-columns: minmax(260px,.9fr) minmax(180px,.55fr) minmax(340px,1.25fr) auto; align-items: end; gap: 14px; border: 1px solid #d8ddff; border-radius: 21px; padding: 18px; background: linear-gradient(135deg,#f9f8ff,#f5f8ff); box-shadow: 0 10px 30px rgba(49,47,112,.05); }
+.horoshop-photo-builder__copy { display: flex; align-items: flex-start; gap: 12px; }
+.horoshop-photo-builder__copy > span { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 13px; color: #5f4df5; background: #ece9ff; }
+.horoshop-photo-builder__copy div { min-width: 0; display: grid; gap: 4px; }
+.horoshop-photo-builder__copy strong { color: var(--ink); font-size: 15px; }
+.horoshop-photo-builder__copy p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.horoshop-photo-builder__modes { grid-column: 2 / -1; justify-self: end; display: flex; gap: 4px; border: 1px solid var(--line); border-radius: 12px; padding: 3px; background: var(--surface); }
+.horoshop-photo-builder__modes button { min-height: 34px; border: 0; border-radius: 9px; padding: 0 13px; color: var(--muted); background: transparent; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.horoshop-photo-builder__modes button.is-active { color: #5447d7; background: #ece9ff; }
+.horoshop-photo-builder label { min-width: 0; display: grid; gap: 6px; }
+.horoshop-photo-builder__entries,
+.horoshop-photo-builder__filters { grid-column: 2 / 4; }
+.horoshop-photo-builder > .button { grid-column: 4; }
+.horoshop-photo-builder__filters { display: grid; grid-template-columns: repeat(4,minmax(130px,1fr)); align-items: end; gap: 9px; }
+.horoshop-photo-builder__filters > p { grid-column: 1 / -1; margin: 0; color: #5d56a9; font-size: 10px; font-weight: 700; }
+.horoshop-photo-builder label > span,
+.horoshop-photo-selection-bar label > span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .035em; text-transform: uppercase; }
+.horoshop-photo-builder input,
+.horoshop-photo-builder textarea,
+.horoshop-photo-builder select,
+.horoshop-photo-selection-bar select,
+.horoshop-photo-target__source input { width: 100%; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--surface); font: inherit; outline: none; transition: border-color .15s ease,box-shadow .15s ease; }
+.horoshop-photo-builder input,
+.horoshop-photo-builder select,
+.horoshop-photo-selection-bar select,
+.horoshop-photo-target__source input { min-height: 42px; padding: 0 12px; }
+.horoshop-photo-builder textarea { min-height: 76px; resize: vertical; padding: 10px 12px; font-size: 12px; line-height: 1.45; }
+.horoshop-photo-builder input:focus,
+.horoshop-photo-builder textarea:focus,
+.horoshop-photo-builder select:focus,
+.horoshop-photo-selection-bar select:focus,
+.horoshop-photo-target__source input:focus { border-color: #8d7aff; box-shadow: 0 0 0 3px rgba(108,88,255,.1); }
+
+.horoshop-photo-selection-bar { display: grid; grid-template-columns: minmax(240px,1fr) auto auto; align-items: end; gap: 16px; border: 1px solid var(--line); border-radius: 17px; padding: 13px 15px; background: var(--surface); }
+.horoshop-photo-selection-bar label { display: grid; gap: 6px; }
+.horoshop-photo-stats { display: flex; gap: 8px; }
+.horoshop-photo-stats > span { min-width: 76px; display: grid; gap: 2px; border-radius: 11px; padding: 8px 11px; background: var(--surface-soft); }
+.horoshop-photo-stats small { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.horoshop-photo-stats b { color: var(--ink); font-size: 17px; }
+
+.horoshop-photo-progress { display: grid; gap: 10px; border: 1px solid #cfd7ff; border-radius: 17px; padding: 15px 17px; background: #f7f8ff; }
+.horoshop-photo-progress.is-complete { border-color: #ccebd7; background: #f7fcf9; }
+.horoshop-photo-progress.is-publishing { border-color: #ded5ff; background: #faf8ff; }
+.horoshop-photo-progress header { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.horoshop-photo-progress header > div { display: grid; gap: 3px; }
+.horoshop-photo-progress header strong { color: var(--ink); font-size: 13px; }
+.horoshop-photo-progress header span,
+.horoshop-photo-progress footer { color: var(--muted); font-size: 10px; }
+.horoshop-photo-progress header b { color: #5b50d8; font-size: 20px; }
+.horoshop-photo-progress__track { height: 7px; overflow: hidden; border-radius: 999px; background: #e5e8f5; }
+.horoshop-photo-progress__track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#7158ff,#4778ff); transition: width .25s ease; }
+.horoshop-photo-progress footer { display: flex; gap: 16px; flex-wrap: wrap; }
+
+.horoshop-photo-resolution { display: grid; gap: 14px; border: 1px solid #f0dca8; border-radius: 17px; padding: 16px; background: #fffcf5; }
+.horoshop-photo-resolution h2 { margin: 0 0 9px; color: var(--ink); font-size: 14px; }
+.horoshop-photo-resolution article { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid rgba(189,154,74,.18); }
+.horoshop-photo-resolution article > strong { font-size: 12px; }
+.horoshop-photo-resolution article > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.horoshop-photo-resolution article button { min-width: 240px; max-width: 390px; display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 9px; border: 1px solid #ead7aa; border-radius: 12px; padding: 7px; color: var(--ink); background: var(--surface); text-align: left; cursor: pointer; }
+.horoshop-photo-resolution article button > img,
+.horoshop-photo-resolution article button > span:first-child { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 8px; object-fit: contain; background: #f6f7fb; }
+.horoshop-photo-resolution article button > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.horoshop-photo-resolution article button b,
+.horoshop-photo-resolution article button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-photo-resolution article button b { font-size: 10px; }
+.horoshop-photo-resolution article button small { color: var(--muted); font-size: 9px; }
+.horoshop-photo-resolution p { margin: 0; color: #8c651c; font-size: 11px; line-height: 1.5; }
+
+.horoshop-photo-products { min-width: 0; display: grid; gap: 11px; }
+.horoshop-photo-product { overflow: hidden; border: 1px solid var(--line); border-radius: 19px; background: var(--surface); box-shadow: 0 8px 24px rgba(28,35,57,.04); }
+.horoshop-photo-product > header { min-height: 82px; display: grid; grid-template-columns: 36px 54px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 12px 15px; }
+.horoshop-photo-product__toggle { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 10px; color: #667086; background: var(--surface-soft); cursor: pointer; }
+.horoshop-photo-product__image { width: 54px; height: 54px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); background: #fff; }
+.horoshop-photo-product__image img { width: 100%; height: 100%; object-fit: contain; }
+.horoshop-photo-product__copy { min-width: 0; display: grid; gap: 4px; }
+.horoshop-photo-product__copy strong { overflow: hidden; color: var(--ink); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-photo-product__copy span { color: var(--muted); font-size: 10px; }
+.horoshop-photo-product__tree { display: grid; gap: 9px; border-top: 1px solid var(--line); padding: 12px 14px 14px 62px; background: var(--surface-soft); }
+
+.horoshop-photo-target { min-width: 0; display: grid; grid-template-columns: minmax(220px,.72fr) minmax(330px,1.2fr) auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 15px; padding: 11px; background: var(--surface); }
+.horoshop-photo-target__identity { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.horoshop-photo-target__image { width: 46px; height: 46px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: #fff; }
+.horoshop-photo-target__image img { width: 100%; height: 100%; object-fit: contain; }
+.horoshop-photo-target__identity > div { min-width: 0; display: grid; gap: 3px; }
+.horoshop-photo-target__identity strong,
+.horoshop-photo-target__identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-photo-target__identity strong { color: var(--ink); font-size: 11px; }
+.horoshop-photo-target__identity small { color: var(--muted); font-size: 9px; }
+.horoshop-photo-target__source { min-width: 0; display: grid; gap: 5px; }
+.horoshop-photo-target__source > span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.horoshop-photo-target__source > div { display: grid; grid-template-columns: minmax(150px,1fr) auto auto; gap: 7px; }
+.horoshop-photo-target__source input { min-width: 0; min-height: 36px; font-size: 11px; }
+.horoshop-photo-target__states { display: flex; align-items: flex-end; gap: 5px; flex-direction: column; }
+.horoshop-photo-status,
+.horoshop-photo-publish-status { width: max-content; display: inline-flex; align-items: center; border-radius: 999px; padding: 5px 8px; font-size: 8px; font-weight: 900; text-transform: uppercase; }
+.horoshop-photo-status { color: #697386; background: #f0f2f6; }
+.horoshop-photo-status.is-ready { color: #207847; background: #eaf8f0; }
+.horoshop-photo-status.is-partial { color: #91661a; background: #fff4d9; }
+.horoshop-photo-status.is-failed { color: #a62d47; background: #ffedf1; }
+.horoshop-photo-status.is-running,
+.horoshop-photo-status.is-queued { color: #4d48ad; background: #efedff; }
+.horoshop-photo-publish-status { color: #5c62a9; background: #f0f1ff; }
+.horoshop-photo-publish-status.is-published { color: #207847; background: #eaf8f0; }
+.horoshop-photo-publish-status.is-failed { color: #a62d47; background: #ffedf1; }
+.horoshop-photo-target__error { grid-column: 1 / -1; margin: 0; border-radius: 9px; padding: 8px 10px; color: #9c2e43; background: #fff3f5; font-size: 10px; }
+.horoshop-photo-current { grid-column: 1 / -1; color: var(--muted); font-size: 9px; }
+.horoshop-photo-current summary { width: max-content; cursor: pointer; }
+.horoshop-photo-current > div { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; }
+.horoshop-photo-current img { width: 58px; height: 58px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 9px; object-fit: contain; background: #fff; }
+
+.horoshop-photo-assets { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill,minmax(112px,1fr)); gap: 9px; padding-top: 4px; }
+.horoshop-photo-asset { min-width: 0; display: grid; gap: 5px; border: 1px solid var(--line); border-radius: 12px; padding: 6px; background: var(--surface-soft); }
+.horoshop-photo-asset.is-selected { border-color: #9c8cff; background: #f7f5ff; box-shadow: 0 0 0 2px rgba(108,88,255,.07); }
+.horoshop-photo-asset__toggle { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; border: 0; border-radius: 9px; padding: 0; background: #fff; cursor: pointer; }
+.horoshop-photo-asset__toggle img { width: 100%; height: 100%; object-fit: contain; }
+.horoshop-photo-asset__toggle > span { position: absolute; top: 5px; right: 5px; width: 23px; height: 23px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: rgba(35,43,63,.72); }
+.horoshop-photo-asset.is-selected .horoshop-photo-asset__toggle > span { background: #6755ed; }
+.horoshop-photo-asset > small { overflow: hidden; color: var(--muted); font-size: 8px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.horoshop-photo-asset__order { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px; }
+.horoshop-photo-asset__order button { height: 25px; display: grid; place-items: center; border: 0; border-radius: 7px; color: #6358c8; background: #ece9ff; cursor: pointer; }
+.horoshop-photo-asset__order button:disabled { opacity: .35; cursor: default; }
+.horoshop-photo-asset__order b { color: #6259b7; font-size: 9px; }
+.horoshop-photo-target__footer { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-top: 9px; color: var(--muted); font-size: 9px; }
+
+@media (max-width: 1180px) {
+  .horoshop-photo-builder { grid-template-columns: 1fr 1fr; }
+  .horoshop-photo-builder__copy { grid-column: 1 / -1; }
+  .horoshop-photo-builder__modes { grid-column: 1 / -1; justify-self: start; }
+  .horoshop-photo-builder__entries,
+  .horoshop-photo-builder > .button { grid-column: auto; }
+  .horoshop-photo-builder__filters { grid-column: 1 / -1; }
+  .horoshop-photo-builder__filters { grid-template-columns: 1fr 1fr; }
+  .horoshop-photo-target { grid-template-columns: minmax(180px,.7fr) minmax(280px,1.2fr); }
+  .horoshop-photo-target__states { grid-column: 1 / -1; align-items: center; flex-direction: row; }
+}
+
+@media (max-width: 850px) {
+  .horoshop-photo-header { align-items: stretch; flex-direction: column; }
+  .horoshop-photo-header__actions { display: grid; grid-template-columns: 1fr; }
+  .horoshop-photo-header__actions > * { width: 100%; }
+  .horoshop-photo-builder { grid-template-columns: 1fr; }
+  .horoshop-photo-builder__copy { grid-column: auto; }
+  .horoshop-photo-builder__modes { grid-column: auto; width: 100%; }
+  .horoshop-photo-builder__modes button { flex: 1; }
+  .horoshop-photo-builder__filters { grid-column: auto; grid-template-columns: 1fr; }
+  .horoshop-photo-selection-bar { grid-template-columns: 1fr; align-items: stretch; }
+  .horoshop-photo-stats { display: grid; grid-template-columns: repeat(3,1fr); }
+  .horoshop-photo-product > header { grid-template-columns: 34px 48px minmax(0,1fr); }
+  .horoshop-photo-product > header > .button { grid-column: 2 / -1; width: 100%; }
+  .horoshop-photo-product__tree { padding-left: 12px; }
+  .horoshop-photo-target { grid-template-columns: 1fr; }
+  .horoshop-photo-target__source > div { grid-template-columns: 1fr 1fr; }
+  .horoshop-photo-target__source input { grid-column: 1 / -1; }
+  .horoshop-photo-target__states { grid-column: auto; }
+}

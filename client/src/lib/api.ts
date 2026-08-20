@@ -135,6 +135,14 @@ import type {
   HoroshopCodexReviewResult
 } from '../types/horoshop-accessory';
 import type {
+  HoroshopPhotoBatch,
+  HoroshopPhotoPublicationMode,
+  HoroshopPhotoPublishProgress,
+  HoroshopPhotoPublishResult,
+  HoroshopPhotoSelection,
+  HoroshopPhotoSelectionSummary
+} from '../types/horoshop-photo';
+import type {
   PublicTradeInSettings,
   TradeInAnswers,
   TradeInConfig,
@@ -236,6 +244,73 @@ export const api = {
     publish: (productId: string) => request<HoroshopAccessoryDetail>(
       `/api/search/horoshop/accessories/products/${encodeURIComponent(productId)}/publish`,
       { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 45_000 }
+    )
+  },
+  horoshopPhotos: {
+    selections: () => request<HoroshopPhotoSelectionSummary[]>('/api/search/horoshop/photos/selections'),
+    selection: (selectionId: string, signal?: AbortSignal) => request<HoroshopPhotoSelection>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}`,
+      { signal }
+    ),
+    createSelection: (input: { name?: string; entries: string[] }) => request<HoroshopPhotoSelection>(
+      '/api/search/horoshop/photos/selections',
+      { method: 'POST', body: jsonBody(input), timeoutMs: 60_000 }
+    ),
+    createFilteredSelection: (input: {
+      name?: string;
+      filters: Pick<HoroshopCatalogParams, 'search' | 'category' | 'availability' | 'visibility'>;
+    }) => request<HoroshopPhotoSelection>(
+      '/api/search/horoshop/photos/selections/from-filter',
+      { method: 'POST', body: jsonBody(input), timeoutMs: 120_000 }
+    ),
+    removeSelection: (selectionId: string) => request<void>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}`,
+      { method: 'DELETE' }
+    ),
+    addSelectionItem: (selectionId: string, input: {
+      productId: string;
+      modificationId?: string | null;
+      inputValue?: string;
+    }) => request<HoroshopPhotoSelection>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/items`,
+      { method: 'POST', body: jsonBody(input) }
+    ),
+    removeSelectionItem: (selectionId: string, itemId: string) => request<HoroshopPhotoSelection>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/items/${encodeURIComponent(itemId)}`,
+      { method: 'DELETE' }
+    ),
+    saveDraft: (input: { productId: string; modificationId?: string | null; sourceUrl: string }) => request<{
+      id: string;
+      sourceUrl: string;
+    }>('/api/search/horoshop/photos/drafts', { method: 'PUT', body: jsonBody(input) }),
+    selectAssets: (draftId: string, assetIds: string[]) => request<{ updated: boolean }>(
+      `/api/search/horoshop/photos/drafts/${encodeURIComponent(draftId)}/assets`,
+      { method: 'PUT', body: jsonBody({ assetIds }) }
+    ),
+    parseSelection: (selectionId: string) => request<HoroshopPhotoBatch>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/parse`,
+      { method: 'POST' }
+    ),
+    parseDraft: (draftId: string) => request<HoroshopPhotoBatch>(
+      `/api/search/horoshop/photos/drafts/${encodeURIComponent(draftId)}/parse`,
+      { method: 'POST' }
+    ),
+    activeBatch: () => request<HoroshopPhotoBatch | null>('/api/search/horoshop/photos/batches/active'),
+    batch: (batchId: string) => request<HoroshopPhotoBatch>(
+      `/api/search/horoshop/photos/batches/${encodeURIComponent(batchId)}`
+    ),
+    publishDraft: (draftId: string, mode: HoroshopPhotoPublicationMode) => request<HoroshopPhotoPublishResult>(
+      `/api/search/horoshop/photos/drafts/${encodeURIComponent(draftId)}/publish`,
+      { method: 'POST', body: jsonBody({ mode }), timeoutMs: 120_000 }
+    ),
+    publishSelection: (
+      selectionId: string,
+      mode: HoroshopPhotoPublicationMode,
+      onProgress: (progress: HoroshopPhotoPublishProgress) => void
+    ) => requestNdjson<HoroshopPhotoPublishProgress, HoroshopPhotoPublishResult>(
+      `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/publish/stream`,
+      { method: 'POST', body: jsonBody({ mode }), timeoutMs: 900_000 },
+      onProgress
     )
   },
   auth: {

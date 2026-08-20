@@ -86,6 +86,13 @@ export const tools: ToolDefinition[] = [
     icon: 'storefront'
   },
   {
+    id: 'horoshop_photo_parser',
+    name: 'Фото товарів Хорошоп',
+    description: 'Вибірки за назвами й артикулами, парсинг фотографій, чернетки модифікацій та публікація у Хорошоп.',
+    path: '/tools/horoshop-photo-parser',
+    icon: 'savedBanners'
+  },
+  {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',

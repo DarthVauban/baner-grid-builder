@@ -5,6 +5,7 @@ import { decryptHoroshopCredentials, encryptHoroshopCredentials } from './creden
 import { HoroshopApiError, HoroshopClient } from './horoshop.client.js';
 import { normalizeHoroshopCategories, normalizeHoroshopProducts } from './catalog.normalizer.js';
 import { HoroshopCatalogRepository } from './catalog.repository.js';
+import { removeMediaImage } from '../../media/media.storage.js';
 
 const pageSize = 200;
 const maximumPages = 250;
@@ -176,10 +177,24 @@ export class HoroshopCatalogService {
     if (this.activeSync) await this.activeSync.catch(() => {});
     if (this.activeExternalWrite) await this.activeExternalWrite.catch(() => {});
     try {
-      return await this.repository.purgeConnection(connection, {
+      const purged = await this.repository.purgeConnection(connection, {
         actorUserId,
         domainFingerprint: domainFingerprint(connection.storeDomain)
       });
+      await Promise.all((purged.mediaStorageKeys || []).map((storageKey) => (
+        removeMediaImage(storageKey).catch((error) => {
+          console.error(JSON.stringify({
+            event: 'horoshop_photo_storage_cleanup_failed',
+            storageKey,
+            message: String(error?.message || error).slice(0, 500)
+          }));
+        })
+      )));
+      return {
+        categories: purged.categories,
+        products: purged.products,
+        modifications: purged.modifications
+      };
     } catch (error) {
       await this.repository.recordAudit({
         connectionId: connection.id,
