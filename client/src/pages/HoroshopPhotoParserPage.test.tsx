@@ -183,6 +183,11 @@ function renderPage() {
   );
 }
 
+async function confirmBulkPublication() {
+  fireEvent.click(screen.getByRole('button', { name: 'Передати готові' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Замінити фотографії' }));
+}
+
 afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
   vi.spyOn(api.horoshopPhotos, 'desktopDevices').mockResolvedValue([]);
@@ -209,8 +214,8 @@ describe('HoroshopPhotoParserPage', () => {
     expect(screen.getByText('50%')).toBeInTheDocument();
     const publishButton = screen.getByRole('button', { name: 'Передати готові' });
     expect(publishButton).toBeEnabled();
-    fireEvent.click(publishButton);
-    await waitFor(() => expect(publish).toHaveBeenCalledWith(summary.id, 'append', expect.any(Function)));
+    await confirmBulkPublication();
+    await waitFor(() => expect(publish).toHaveBeenCalledWith(summary.id, 'replace', expect.any(Function)));
   });
 
   it('does not offer already published drafts for individual or bulk publication', async () => {
@@ -246,7 +251,7 @@ describe('HoroshopPhotoParserPage', () => {
     renderPage();
     const publishButton = await screen.findByRole('button', { name: 'Передати готові' });
     await waitFor(() => expect(publishButton).toBeEnabled());
-    fireEvent.click(publishButton);
+    await confirmBulkPublication();
 
     const warning = await screen.findByRole('alert');
     expect(warning).toHaveTextContent('Фото передано частково');
@@ -265,7 +270,7 @@ describe('HoroshopPhotoParserPage', () => {
     renderPage();
     const publishButton = await screen.findByRole('button', { name: 'Передати готові' });
     await waitFor(() => expect(publishButton).toBeEnabled());
-    fireEvent.click(publishButton);
+    await confirmBulkPublication();
 
     expect(await screen.findByText('Хорошоп відхилив пакет фотографій.')).toBeInTheDocument();
     await waitFor(() => expect(loadSelection.mock.calls.length).toBeGreaterThanOrEqual(2));
@@ -383,11 +388,12 @@ describe('HoroshopPhotoParserPage', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Фільтри каталогу' }));
     fireEvent.change(await screen.findByLabelText('Пошук у каталозі'), { target: { value: 'iPhone' } });
-    await screen.findByRole('option', { name: 'Смартфони · 7' });
-    fireEvent.change(screen.getByLabelText('Розділ'), { target: { value: 'phones' } });
-    await screen.findByRole('option', { name: 'В наявності' });
-    fireEvent.change(screen.getByLabelText('Наявність'), { target: { value: 'В наявності' } });
-    fireEvent.change(screen.getByLabelText('Видимість'), { target: { value: 'hidden' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Розділ' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Смартфони · 7' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Наявність' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'В наявності' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Видимість' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Лише приховані' }));
     fireEvent.click(screen.getByRole('button', { name: 'Створити вибірку' }));
 
     await waitFor(() => expect(createFiltered.mock.calls[0]?.[0]).toEqual({
@@ -414,13 +420,12 @@ describe('HoroshopPhotoParserPage', () => {
     const removeSelection = vi.spyOn(api.horoshopPhotos, 'removeSelection').mockResolvedValue(undefined);
 
     renderPage();
-    expect(await screen.findByRole('option', { name: 'Нові смартфони · 2' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Поточна вибірка товарів' })).toHaveTextContent('Нові смартфони · 2'));
     expect(await screen.findByText('Смартфон Example One')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Видалити' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Видалити вибірку' }));
 
     await waitFor(() => expect(removeSelection).toHaveBeenCalledWith(summary.id));
-    expect(screen.queryByRole('option', { name: 'Нові смартфони · 2' })).not.toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Інша вибірка · 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Поточна вибірка товарів' })).toHaveTextContent('Інша вибірка · 1');
   });
 });

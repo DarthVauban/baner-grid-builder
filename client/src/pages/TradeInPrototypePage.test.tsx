@@ -14,8 +14,10 @@ describe('TradeInPrototypePage', () => {
     await user.click(screen.getByRole('button', { name: 'Далі' }));
 
     await user.click(screen.getByRole('radio', { name: /Обміняти/ }));
-    await user.selectOptions(screen.getByLabelText('Модель'), 'iPhone 15');
-    await user.selectOptions(screen.getByLabelText('Обсяг памʼяті'), '256 GB');
+    await user.click(screen.getByRole('button', { name: 'Модель смартфона' }));
+    await user.click(screen.getByRole('option', { name: 'iPhone 15' }));
+    await user.click(screen.getByRole('button', { name: 'Обсяг памʼяті' }));
+    await user.click(screen.getByRole('option', { name: '256 GB' }));
     await user.click(screen.getByRole('radio', { name: 'eSIM' }));
 
     expect(screen.getByRole('button', { name: 'Далі' })).toBeEnabled();
@@ -33,7 +35,8 @@ describe('TradeInPrototypePage', () => {
     await user.click(screen.getByRole('button', { name: /Ноутбук/ }));
     await user.click(screen.getByRole('button', { name: 'Далі' }));
     await user.click(screen.getByRole('radio', { name: /Продати/ }));
-    await user.selectOptions(screen.getByLabelText('Бренд'), 'Apple');
+    await user.click(screen.getByRole('button', { name: 'Бренд ноутбука' }));
+    await user.click(screen.getByRole('option', { name: 'Apple' }));
     await user.type(screen.getByLabelText('Модель'), 'MacBook Air M2');
     await user.click(screen.getByRole('button', { name: 'Далі' }));
 

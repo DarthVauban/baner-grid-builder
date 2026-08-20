@@ -486,11 +486,7 @@ export function StoreMapPage() {
           <div><p className="eyebrow">База ТТ</p><h2>Торгові точки</h2></div>
           <div className="store-map-list-filters">
             <label className="store-map-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук за назвою, містом або адресою" /></label>
-            <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
-              <option value="ALL">Усі статуси</option>
-              <option value="ACTIVE">Активні</option>
-              <option value="HIDDEN">Приховані</option>
-            </select>
+            <StyledSelect value={status} options={[{ value: 'ALL', label: 'Усі статуси' }, { value: 'ACTIVE', label: 'Активні' }, { value: 'HIDDEN', label: 'Приховані' }]} onChange={(value) => setStatus(value as typeof status)} ariaLabel="Статус торгової точки" />
           </div>
         </div>
         {points.isLoading && <div className="store-map-state">Завантажуємо торгові точки…</div>}

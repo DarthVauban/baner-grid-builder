@@ -977,10 +977,12 @@ function PublicFieldControl({
     return <label className="field storefront-form__field"><span>{field.label}{field.required ? ' *' : ''}</span><textarea required={field.required} placeholder={field.placeholder} value={String(fieldValue(values, field))} onChange={(event) => onChange(field.key, event.target.value)} /></label>;
   }
   if (field.type === 'select' || field.systemFieldType === 'bank') {
-    return <label className="field storefront-form__field"><span>{field.label}{field.required ? ' *' : ''}</span><select required={field.required} value={String(fieldValue(values, field))} onChange={(event) => onChange(field.key, event.target.value)}>
-      <option value="">Оберіть</option>
-      {field.options.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
-    </select></label>;
+    return <label className="field storefront-form__field"><span>{field.label}{field.required ? ' *' : ''}</span><StyledSelect
+      value={String(fieldValue(values, field))}
+      options={[{ value: '', label: 'Оберіть' }, ...field.options.map((option) => ({ value: option.value, label: option.label }))]}
+      onChange={(value) => onChange(field.key, value)}
+      ariaLabel={field.label}
+    /></label>;
   }
   if (field.type === 'radio') {
     return <fieldset className="storefront-choice"><legend>{field.label}{field.required ? ' *' : ''}</legend>{field.options.map((option) => <label key={option.value}><input type="radio" name={field.key} required={field.required} checked={fieldValue(values, field) === option.value} onChange={() => onChange(field.key, option.value)} /> {option.label}</label>)}</fieldset>;

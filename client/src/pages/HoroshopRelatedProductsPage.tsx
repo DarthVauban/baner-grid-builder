@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { HoroshopAccessoryManager } from '../components/horoshop/HoroshopAccessoryManager';
 import { api } from '../lib/api';
 import type {
@@ -276,10 +277,10 @@ export function HoroshopRelatedProductsPage() {
           {activeTab === 'catalog' ? <section className="horoshop-catalog-panel">
             <div className="horoshop-catalog-toolbar">
               <label className="horoshop-search-field"><Icon name="search" size={19} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Назва, артикул або бренд" aria-label="Пошук товарів" /></label>
-              <label><span>Розділ</span><select value={category} onChange={(event) => setFilter(setCategory, event.target.value)}><option value="">Усі розділи</option>{data.categories.map((item) => <option value={item.externalId} key={item.externalId}>{titleFor(item.titles, item.externalId)} ({item.productCount})</option>)}</select></label>
-              <label><span>Наявність</span><select value={availability} onChange={(event) => setFilter(setAvailability, event.target.value)}><option value="">Будь-яка</option>{data.availabilityOptions.map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
-              <label><span>Видимість</span><select value={visibility} onChange={(event) => setFilter(setVisibility, event.target.value as HoroshopCatalogVisibility)}><option value="all">Усі</option><option value="visible">Видимі</option><option value="hidden">Приховані</option></select></label>
-              <label><span>Стан</span><select value={state} onChange={(event) => setFilter(setState, event.target.value as HoroshopCatalogState)}><option value="active">Активні</option><option value="inactive">Неактивні</option><option value="all">Усі</option></select></label>
+              <label><span>Розділ</span><StyledSelect value={category} options={[{ value: '', label: 'Усі розділи' }, ...data.categories.map((item) => ({ value: item.externalId, label: `${titleFor(item.titles, item.externalId)} (${item.productCount})` }))]} onChange={(value) => setFilter(setCategory, value)} ariaLabel="Розділ каталогу" searchable /></label>
+              <label><span>Наявність</span><StyledSelect value={availability} options={[{ value: '', label: 'Будь-яка' }, ...data.availabilityOptions.map((item) => ({ value: item, label: item }))]} onChange={(value) => setFilter(setAvailability, value)} ariaLabel="Наявність товару" /></label>
+              <label><span>Видимість</span><StyledSelect value={visibility} options={[{ value: 'all', label: 'Усі' }, { value: 'visible', label: 'Видимі' }, { value: 'hidden', label: 'Приховані' }]} onChange={(value) => setFilter(setVisibility, value as HoroshopCatalogVisibility)} ariaLabel="Видимість товару" /></label>
+              <label><span>Стан</span><StyledSelect value={state} options={[{ value: 'active', label: 'Активні' }, { value: 'inactive', label: 'Неактивні' }, { value: 'all', label: 'Усі' }]} onChange={(value) => setFilter(setState, value as HoroshopCatalogState)} ariaLabel="Стан товару" /></label>
             </div>
 
             <div className="horoshop-catalog-tree" role="tree" aria-label="Каталог товарів з модифікаціями" aria-busy={catalog.isFetching}>

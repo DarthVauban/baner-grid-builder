@@ -4,7 +4,8 @@
 .horoshop-photo-header h1 { margin: 4px 0 8px; color: var(--ink); font-size: clamp(31px,4vw,46px); letter-spacing: -.045em; }
 .horoshop-photo-header p:last-child { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .horoshop-photo-header__actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
-.horoshop-photo-header__actions select { min-height: 42px; border: 1px solid var(--line); border-radius: 12px; padding: 0 36px 0 13px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; font-weight: 700; }
+.horoshop-photo-header__actions > .custom-select { width: 202px; }
+.horoshop-photo-header__actions > .custom-select .custom-select__button { min-height: 42px; border-radius: 12px; color: var(--ink); background: var(--surface); font-size: 12px; font-weight: 700; }
 
 .horoshop-photo-desktop { display: grid; grid-template-columns: minmax(280px,.8fr) minmax(320px,1.2fr) auto; align-items: center; gap: 14px; border: 1px solid #d8ddff; border-radius: 18px; padding: 14px 16px; background: linear-gradient(135deg,#faf9ff,#f5f7ff); }
 .horoshop-photo-desktop__intro { min-width: 0; display: flex; align-items: center; gap: 11px; }
@@ -46,18 +47,18 @@
 .horoshop-photo-selection-bar label > span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .035em; text-transform: uppercase; }
 .horoshop-photo-builder input,
 .horoshop-photo-builder textarea,
-.horoshop-photo-builder select,
-.horoshop-photo-selection-bar select,
+.horoshop-photo-builder .custom-select__button,
+.horoshop-photo-selection-bar .custom-select__button,
 .horoshop-photo-target__source input { width: 100%; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--surface); font: inherit; outline: none; transition: border-color .15s ease,box-shadow .15s ease; }
 .horoshop-photo-builder input,
-.horoshop-photo-builder select,
-.horoshop-photo-selection-bar select,
+.horoshop-photo-builder .custom-select__button,
+.horoshop-photo-selection-bar .custom-select__button,
 .horoshop-photo-target__source input { min-height: 42px; padding: 0 12px; }
 .horoshop-photo-builder textarea { min-height: 76px; resize: vertical; padding: 10px 12px; font-size: 12px; line-height: 1.45; }
 .horoshop-photo-builder input:focus,
 .horoshop-photo-builder textarea:focus,
-.horoshop-photo-builder select:focus,
-.horoshop-photo-selection-bar select:focus,
+.horoshop-photo-builder .custom-select__button:focus-visible,
+.horoshop-photo-selection-bar .custom-select__button:focus-visible,
 .horoshop-photo-target__source input:focus { border-color: #8d7aff; box-shadow: 0 0 0 3px rgba(108,88,255,.1); }
 
 .horoshop-photo-selection-bar { display: grid; grid-template-columns: minmax(240px,1fr) auto auto; align-items: end; gap: 16px; border: 1px solid var(--line); border-radius: 17px; padding: 13px 15px; background: var(--surface); }

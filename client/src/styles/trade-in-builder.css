@@ -19,7 +19,7 @@
 .trade-in-form-binding > div:first-child > p:last-child { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .trade-in-form-binding .field { gap: 6px; }
 .trade-in-form-binding .field > span { font-size: 9px; font-weight: 800; }
-.trade-in-form-binding .field select { min-height: 43px; border-radius: 9px; font-size: 11px; }
+.trade-in-form-binding .field .custom-select__button { min-height: 43px; border-radius: 9px; font-size: 11px; }
 .trade-in-form-binding__summary { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 14px; }
 .trade-in-form-binding__summary > span:not(:first-child) { color: var(--muted); font-size: 10px; }
 .trade-in-form-binding__summary > span strong { color: var(--ink); }
@@ -43,9 +43,9 @@
 .trade-in-builder-grid__wide { grid-column: 1 / -1; }
 .trade-in-builder-section .field { gap: 6px; }
 .trade-in-builder-section .field > span, .trade-in-field-editor .field > span, .trade-in-step-editor .field > span, .trade-in-domain-card .field > span { font-size: 9px; font-weight: 800; }
-.trade-in-builder-section .field input, .trade-in-builder-section .field select, .trade-in-builder-section .field textarea,
-.trade-in-field-editor .field input, .trade-in-field-editor .field select, .trade-in-field-editor .field textarea,
-.trade-in-step-editor .field input, .trade-in-step-editor .field select, .trade-in-step-editor .field textarea,
+.trade-in-builder-section .field input, .trade-in-builder-section .field .custom-select__button, .trade-in-builder-section .field textarea,
+.trade-in-field-editor .field input, .trade-in-field-editor .field .custom-select__button, .trade-in-field-editor .field textarea,
+.trade-in-step-editor .field input, .trade-in-step-editor .field .custom-select__button, .trade-in-step-editor .field textarea,
 .trade-in-domain-card .field input { min-height: 43px; border-radius: 9px; font-size: 11px; }
 .trade-in-builder-section .field textarea, .trade-in-field-editor .field textarea { min-height: 82px; }
 .trade-in-builder-section .field small, .trade-in-field-editor .field small, .trade-in-domain-card .field small { color: var(--muted); font-size: 8px; }
@@ -95,7 +95,7 @@
 .trade-in-condition > div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
 .trade-in-condition .field { gap: 4px; }
 .trade-in-condition .field > span { font-size: 8px; font-weight: 800; }
-.trade-in-condition .field input, .trade-in-condition .field select { min-height: 37px; border-radius: 8px; font-size: 9px; }
+.trade-in-condition .field input, .trade-in-condition .field .custom-select__button { min-height: 37px; border-radius: 8px; font-size: 9px; }
 
 .trade-in-form-builder { min-width: 0; display: grid; grid-template-columns: 230px minmax(0,1fr); align-items: start; gap: 14px; }
 .trade-in-form-builder__steps { position: sticky; top: 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }

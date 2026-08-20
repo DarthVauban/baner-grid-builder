@@ -5,6 +5,7 @@ import {
   tradeInAnswerLabel,
 } from '../../lib/trade-in';
 import { buildTradeInDisplayPath, getTradeInFormGraph } from '../../lib/trade-in-logic';
+import { StyledSelect } from '../StyledSelect';
 import type {
   TradeInAnswer,
   TradeInAnswers,
@@ -258,10 +259,15 @@ function TradeInFieldControl({
     return (
       <label className={className}>
         {heading}
-        <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)}>
-          <option value="">{field.placeholder || 'Оберіть варіант'}</option>
-          {field.options.map((option) => <option value={option.value} key={option.id}>{option.label}</option>)}
-        </select>
+        <StyledSelect
+          value={String(value ?? '')}
+          options={[
+            { value: '', label: field.placeholder || 'Оберіть варіант' },
+            ...field.options.map((option) => ({ value: option.value, label: option.label }))
+          ]}
+          onChange={onChange}
+          ariaLabel={field.label}
+        />
         {help}
       </label>
     );

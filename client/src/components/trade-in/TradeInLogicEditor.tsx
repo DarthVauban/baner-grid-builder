@@ -22,6 +22,7 @@ import {
   type OnConnectEnd
 } from '@xyflow/react';
 import { Icon, type IconName } from '../Icon';
+import { StyledSelect } from '../StyledSelect';
 import {
   canConnectTradeInGraph,
   connectTradeInGraph,
@@ -244,17 +245,12 @@ function FieldConditionEditor({
       <summary>Додаткова умова видимості поля <i>⌄</i></summary>
       <div>
         <InputField label="Поле">
-          <select value={condition.fieldKey} onChange={(event) => onChange({ ...condition, fieldKey: event.target.value })}>
-            <option value="">Завжди показувати</option>
-            {fields.filter((field) => field.key).map((field) => <option value={field.key} key={field.id}>{field.label} ({field.key})</option>)}
-          </select>
+          <StyledSelect value={condition.fieldKey} options={[{ value: '', label: 'Завжди показувати' }, ...fields.filter((field) => field.key).map((field) => ({ value: field.key, label: `${field.label} (${field.key})` }))]} onChange={(value) => onChange({ ...condition, fieldKey: value })} ariaLabel="Поле додаткової умови" />
         </InputField>
         {condition.fieldKey && (
           <>
             <InputField label="Перевірка">
-              <select value={condition.operator} onChange={(event) => onChange({ ...condition, operator: event.target.value as TradeInConditionOperator })}>
-                {conditionOperatorOptions(selectedField).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-              </select>
+              <StyledSelect value={condition.operator} options={conditionOperatorOptions(selectedField).map(([value, label]) => ({ value, label }))} onChange={(value) => onChange({ ...condition, operator: value as TradeInConditionOperator })} ariaLabel="Перевірка додаткової умови" />
             </InputField>
             {conditionNeedsValue(condition.operator) && <InputField label="Значення" value={condition.value} onChange={(value) => onChange({ ...condition, value })} />}
           </>
@@ -393,23 +389,19 @@ function ConditionRouteGenerator({
         <>
           <div className="trade-in-condition-route-generator__source">
             <InputField label="Крок із варіантами">
-              <select value={stepId} onChange={(event) => selectStep(event.target.value)}>
-                <option value="">Оберіть крок</option>
-                {stepOptions.map(([nodeId, title]) => <option value={nodeId} key={nodeId}>{title}</option>)}
-              </select>
+              <StyledSelect value={stepId} options={[{ value: '', label: 'Оберіть крок' }, ...stepOptions.map(([nodeId, title]) => ({ value: nodeId, label: title }))]} onChange={selectStep} ariaLabel="Крок із варіантами" searchable />
             </InputField>
             <InputField label="Поле для розгалуження">
-              <select
+              <StyledSelect
                 value={fieldKey}
                 disabled={!stepId}
-                onChange={(event) => {
-                  setFieldKey(event.target.value);
+                onChange={(value) => {
+                  setFieldKey(value);
                   setSelectedValues('');
                 }}
-              >
-                <option value="">Оберіть поле</option>
-                {stepEntries.map((entry) => <option value={entry.field.key} key={entry.field.id}>{entry.field.label}</option>)}
-              </select>
+                options={[{ value: '', label: 'Оберіть поле' }, ...stepEntries.map((entry) => ({ value: entry.field.key, label: entry.field.label }))]}
+                ariaLabel="Поле для розгалуження"
+              />
             </InputField>
           </div>
           {selectedField && (
@@ -489,30 +481,20 @@ function ConditionRuleEditor({
       </header>
       <div className="trade-in-condition-rule__source">
         <InputField label="Крок форми">
-          <select value={selectedNodeId} onChange={(event) => {
-            const firstField = entries.find((entry) => entry.nodeId === event.target.value)?.field;
+          <StyledSelect value={selectedNodeId} onChange={(value) => {
+            const firstField = entries.find((entry) => entry.nodeId === value)?.field;
             selectField(firstField?.key || '');
-          }}>
-            <option value="">Оберіть крок</option>
-            {Array.from(new Map(entries.map((entry) => [entry.nodeId, entry.nodeTitle])).entries()).map(([nodeId, title]) => (
-              <option value={nodeId} key={nodeId}>{title}</option>
-            ))}
-          </select>
+          }} options={[{ value: '', label: 'Оберіть крок' }, ...Array.from(new Map(entries.map((entry) => [entry.nodeId, entry.nodeTitle])).entries()).map(([nodeId, title]) => ({ value: nodeId, label: title }))]} ariaLabel="Крок форми" searchable />
         </InputField>
         <InputField label="Поле">
-          <select value={condition.fieldKey} disabled={!selectedNodeId} onChange={(event) => selectField(event.target.value)}>
-            <option value="">Оберіть поле</option>
-            {stepEntries.map((entry) => (
-              <option value={entry.field.key} key={entry.field.id}>{entry.field.label} ({entry.field.key})</option>
-            ))}
-          </select>
+          <StyledSelect value={condition.fieldKey} disabled={!selectedNodeId} onChange={selectField} options={[{ value: '', label: 'Оберіть поле' }, ...stepEntries.map((entry) => ({ value: entry.field.key, label: `${entry.field.label} (${entry.field.key})` }))]} ariaLabel="Поле умови" searchable />
         </InputField>
       </div>
       {condition.fieldKey && (
         <div className="trade-in-condition-rule__comparison">
           <InputField label="Перевірка">
-            <select value={selectedOperator} onChange={(event) => {
-              const operator = event.target.value as TradeInConditionOperator;
+            <StyledSelect value={selectedOperator} onChange={(value) => {
+              const operator = value as TradeInConditionOperator;
               const firstValue = condition.value.split(',').map((value) => value.trim()).find(Boolean) || '';
               onChange({
                 ...condition,
@@ -523,9 +505,7 @@ function ConditionRuleEditor({
                     : condition.value
                   : ''
               });
-            }}>
-              {options.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-            </select>
+            }} options={options.map(([value, label]) => ({ value, label }))} ariaLabel="Перевірка умови" />
           </InputField>
           {conditionNeedsValue(selectedOperator) && (
             selectedField?.options.length ? (
@@ -586,24 +566,10 @@ function FieldEditor({
         <InputField label="Назва поля" value={field.label} onChange={onLabelChange} />
         <InputField label="Технічний ключ" value={field.key} onChange={onKeyChange} />
         <InputField label="Тип поля">
-          <select value={field.type} onChange={(event) => onChange((next) => { next.type = event.target.value as TradeInFieldType; })}>
-            <option value="text">Текст</option>
-            <option value="textarea">Багаторядковий текст</option>
-            <option value="select">Список</option>
-            <option value="radio">Один варіант</option>
-            <option value="checkbox">Прапорці</option>
-            <option value="email">Email</option>
-            <option value="phone">Телефон</option>
-            <option value="number">Число</option>
-          </select>
+          <StyledSelect value={field.type} onChange={(value) => onChange((next) => { next.type = value as TradeInFieldType; })} options={[{ value: 'text', label: 'Текст' }, { value: 'textarea', label: 'Багаторядковий текст' }, { value: 'select', label: 'Список' }, { value: 'radio', label: 'Один варіант' }, { value: 'checkbox', label: 'Прапорці' }, { value: 'email', label: 'Email' }, { value: 'phone', label: 'Телефон' }, { value: 'number', label: 'Число' }]} ariaLabel="Тип поля" />
         </InputField>
         <InputField label="Системне поле">
-          <select value={field.systemFieldType || ''} onChange={(event) => onChange((next) => { next.systemFieldType = (event.target.value || null) as TradeInField['systemFieldType']; })}>
-            <option value="">Звичайне поле</option>
-            <option value="first_name">Імʼя клієнта</option>
-            <option value="last_name">Прізвище</option>
-            <option value="phone">Телефон</option>
-          </select>
+          <StyledSelect value={field.systemFieldType || ''} onChange={(value) => onChange((next) => { next.systemFieldType = (value || null) as TradeInField['systemFieldType']; })} options={[{ value: '', label: 'Звичайне поле' }, { value: 'first_name', label: 'Імʼя клієнта' }, { value: 'last_name', label: 'Прізвище' }, { value: 'phone', label: 'Телефон' }]} ariaLabel="Системне поле" />
         </InputField>
         <InputField label="Placeholder" value={field.placeholder} onChange={(value) => onChange((next) => { next.placeholder = value; })} />
         <InputField label="Підказка" value={field.helpText} onChange={(value) => onChange((next) => { next.helpText = value; })} />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { TradeInPublicPage } from '../components/trade-in/TradeInPublicPage';
 import {
   createTradeInField,
@@ -96,17 +97,8 @@ function ConditionEditor({ condition, fieldKeys, onChange }: {
     <div className="trade-in-condition">
       <header><strong>Умова показу</strong><small>Порожнє поле означає «показувати завжди».</small></header>
       <div>
-        <label className="field"><span>Поле</span><select value={condition.fieldKey} onChange={(event) => onChange({ ...condition, fieldKey: event.target.value })}>
-          <option value="">Завжди</option>
-          {fieldKeys.map((key) => <option value={key} key={key}>{key}</option>)}
-        </select></label>
-        <label className="field"><span>Оператор</span><select value={condition.operator} disabled={!condition.fieldKey} onChange={(event) => onChange({ ...condition, operator: event.target.value as TradeInCondition['operator'] })}>
-          <option value="equals">дорівнює</option>
-          <option value="not_equals">не дорівнює</option>
-          <option value="one_of">одне зі значень</option>
-          <option value="contains">містить</option>
-          <option value="answered">заповнене</option>
-        </select></label>
+        <label className="field"><span>Поле</span><StyledSelect value={condition.fieldKey} options={[{ value: '', label: 'Завжди' }, ...fieldKeys.map((key) => ({ value: key, label: key }))]} onChange={(value) => onChange({ ...condition, fieldKey: value })} ariaLabel="Поле умови показу" /></label>
+        <label className="field"><span>Оператор</span><StyledSelect value={condition.operator} options={[{ value: 'equals', label: 'дорівнює' }, { value: 'not_equals', label: 'не дорівнює' }, { value: 'one_of', label: 'одне зі значень' }, { value: 'contains', label: 'містить' }, { value: 'answered', label: 'заповнене' }]} disabled={!condition.fieldKey} onChange={(value) => onChange({ ...condition, operator: value as TradeInCondition['operator'] })} ariaLabel="Оператор умови показу" /></label>
         <label className="field"><span>Значення</span><input disabled={!condition.fieldKey || condition.operator === 'answered'} value={condition.value} placeholder={condition.operator === 'one_of' ? 'apple,smartphone' : 'Значення'} onChange={(event) => onChange({ ...condition, value: event.target.value })} /></label>
       </div>
     </div>
@@ -148,9 +140,7 @@ function PageEditor({ config, mutate }: {
           ] as const).map(([key, label]) => <ColorField label={label} value={config.theme[key]} onChange={(value) => mutate((next) => { next.theme[key] = value; })} key={key} />)}
         </div>
         <div className="trade-in-builder-grid">
-          <label className="field"><span>Шрифт</span><select value={config.theme.fontFamily} onChange={(event) => mutate((next) => { next.theme.fontFamily = event.target.value; })}>
-            {['Inter', 'Montserrat', 'Roboto', 'Unbounded'].map((font) => <option key={font}>{font}</option>)}
-          </select></label>
+          <label className="field"><span>Шрифт</span><StyledSelect value={config.theme.fontFamily} options={['Inter', 'Montserrat', 'Roboto', 'Unbounded'].map((font) => ({ value: font, label: font }))} onChange={(value) => mutate((next) => { next.theme.fontFamily = value; })} ariaLabel="Шрифт сторінки" /></label>
           <TextField label="Максимальна ширина, px" type="number" min={720} max={1800} value={config.theme.maxWidth} onChange={(value) => mutate((next) => { next.theme.maxWidth = Number(value) || 1180; })} />
           <TextField label="Заокруглення карток, px" type="number" min={0} max={60} value={config.theme.borderRadius} onChange={(value) => mutate((next) => { next.theme.borderRadius = Number(value) || 0; })} />
           <TextField label="Заокруглення кнопок, px" type="number" min={0} max={60} value={config.theme.buttonRadius} onChange={(value) => mutate((next) => { next.theme.buttonRadius = Number(value) || 0; })} />
@@ -322,19 +312,15 @@ function FieldEditor({ field, fieldKeys, onChange, onRemove }: {
       <div className="trade-in-builder-grid">
         <TextField label="Назва поля" value={field.label} onChange={updateFieldLabel} />
         <TextField label="Системний ключ" value={field.key} onChange={updateFieldKey} help="Створюється автоматично з назви; за потреби його можна відредагувати." />
-        <label className="field"><span>Тип поля</span><select value={field.type} onChange={(event) => onChange((next) => {
-          next.type = event.target.value as TradeInFieldType;
+        <label className="field"><span>Тип поля</span><StyledSelect value={field.type} onChange={(value) => onChange((next) => {
+          next.type = value as TradeInFieldType;
           if (!['select', 'radio', 'checkbox'].includes(next.type)) next.options = [];
-        })}>
-          <option value="text">Текст</option><option value="textarea">Багаторядковий текст</option><option value="select">Випадаючий список</option><option value="radio">Один варіант</option><option value="checkbox">Прапорець / кілька варіантів</option><option value="email">Email</option><option value="phone">Телефон</option><option value="number">Число</option>
-        </select></label>
-        <label className="field"><span>Ширина</span><select value={field.width} onChange={(event) => onChange((next) => { next.width = event.target.value as TradeInField['width']; })}><option value="full">Повна</option><option value="half">Половина</option></select></label>
+        })} options={[{ value: 'text', label: 'Текст' }, { value: 'textarea', label: 'Багаторядковий текст' }, { value: 'select', label: 'Випадаючий список' }, { value: 'radio', label: 'Один варіант' }, { value: 'checkbox', label: 'Прапорець / кілька варіантів' }, { value: 'email', label: 'Email' }, { value: 'phone', label: 'Телефон' }, { value: 'number', label: 'Число' }]} ariaLabel="Тип поля" /></label>
+        <label className="field"><span>Ширина</span><StyledSelect value={field.width} options={[{ value: 'full', label: 'Повна' }, { value: 'half', label: 'Половина' }]} onChange={(value) => onChange((next) => { next.width = value as TradeInField['width']; })} ariaLabel="Ширина поля" /></label>
         <TextField label="Placeholder" value={field.placeholder} onChange={(value) => onChange((next) => { next.placeholder = value; })} />
         <TextField label="Підказка" value={field.helpText} onChange={(value) => onChange((next) => { next.helpText = value; })} />
         {field.type === 'number' && <><TextField label="Мінімум" type="number" value={field.min ?? ''} onChange={(value) => onChange((next) => { next.min = value === '' ? null : Number(value); })} /><TextField label="Максимум" type="number" value={field.max ?? ''} onChange={(value) => onChange((next) => { next.max = value === '' ? null : Number(value); })} /></>}
-        <label className="field"><span>Системне призначення</span><select value={field.systemFieldType || ''} onChange={(event) => onChange((next) => { next.systemFieldType = (event.target.value || null) as TradeInField['systemFieldType']; })}>
-          <option value="">Звичайне поле</option><option value="first_name">Імʼя клієнта</option><option value="last_name">Прізвище клієнта</option><option value="phone">Телефон клієнта</option>
-        </select></label>
+        <label className="field"><span>Системне призначення</span><StyledSelect value={field.systemFieldType || ''} options={[{ value: '', label: 'Звичайне поле' }, { value: 'first_name', label: 'Імʼя клієнта' }, { value: 'last_name', label: 'Прізвище клієнта' }, { value: 'phone', label: 'Телефон клієнта' }]} onChange={(value) => onChange((next) => { next.systemFieldType = (value || null) as TradeInField['systemFieldType']; })} ariaLabel="Системне призначення поля" /></label>
       </div>
       <div className="trade-in-builder-switches">
         <SwitchField label="Обовʼязкове" checked={field.required} onChange={(value) => onChange((next) => { next.required = value; })} />
@@ -527,17 +513,19 @@ function FormBindingCard({ forms, selectedId, loading, onChange }: {
     </div>
     <label className="field">
       <span>Форма</span>
-      <select
+      <StyledSelect
         value={selectedId}
         disabled={loading || forms.length === 0}
-        onChange={(event) => {
-          const form = forms.find((item) => item.id === event.target.value);
+        onChange={(value) => {
+          const form = forms.find((item) => item.id === value);
           if (form) onChange(form);
         }}
-      >
-        {!forms.length && <option value="">Покрокових форм немає</option>}
-        {forms.map((form) => <option value={form.id} key={form.id}>{form.name} · {form.status === 'published' ? 'опублікована' : 'чернетка'}</option>)}
-      </select>
+        options={forms.length
+          ? forms.map((form) => ({ value: form.id, label: `${form.name} · ${form.status === 'published' ? 'опублікована' : 'чернетка'}` }))
+          : [{ value: '', label: 'Покрокових форм немає', disabled: true }]}
+        ariaLabel="Підключена покрокова форма"
+        searchable
+      />
     </label>
     {selected && <div className="trade-in-form-binding__summary">
       <span className={`trade-in-form-binding__status trade-in-form-binding__status--${selected.status}`}>

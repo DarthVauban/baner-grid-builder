@@ -668,7 +668,7 @@
 }
 
 .trade-in-logic-inspector .field input,
-.trade-in-logic-inspector .field select,
+.trade-in-logic-inspector .field .custom-select__button,
 .trade-in-logic-inspector .field textarea,
 .trade-in-graph-options input {
   width: 100%;
@@ -689,7 +689,7 @@
 }
 
 .trade-in-logic-inspector .field input:focus,
-.trade-in-logic-inspector .field select:focus,
+.trade-in-logic-inspector .field .custom-select__button:focus-visible,
 .trade-in-logic-inspector .field textarea:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px var(--brand-soft);

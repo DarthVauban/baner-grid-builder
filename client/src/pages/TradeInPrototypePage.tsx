@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Icon, type IconName } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 
 type TradeInCategory = 'smartphone' | 'apple' | 'laptop';
 type AnswerValue = string | string[] | boolean;
@@ -308,30 +309,21 @@ export function TradeInPrototypePage() {
                 {category === 'smartphone' && (
                   <label className="field">
                     <span>Бренд</span>
-                    <select value={String(answers.brand || '')} onChange={(event) => setAnswer('brand', event.target.value)}>
-                      <option value="">Оберіть бренд</option>
-                      {['Samsung', 'Xiaomi', 'Google', 'Motorola', 'OnePlus', 'Інший'].map((brand) => <option key={brand}>{brand}</option>)}
-                    </select>
+                    <StyledSelect value={String(answers.brand || '')} options={[{ value: '', label: 'Оберіть бренд' }, ...['Samsung', 'Xiaomi', 'Google', 'Motorola', 'OnePlus', 'Інший'].map((brand) => ({ value: brand, label: brand }))]} onChange={(value) => setAnswer('brand', value)} ariaLabel="Бренд смартфона" />
                   </label>
                 )}
 
                 {category === 'laptop' && (
                   <label className="field">
                     <span>Бренд</span>
-                    <select value={String(answers.brand || '')} onChange={(event) => setAnswer('brand', event.target.value)}>
-                      <option value="">Оберіть бренд</option>
-                      {['Apple', 'Lenovo', 'HP', 'ASUS', 'Acer', 'Dell', 'Інший'].map((brand) => <option key={brand}>{brand}</option>)}
-                    </select>
+                    <StyledSelect value={String(answers.brand || '')} options={[{ value: '', label: 'Оберіть бренд' }, ...['Apple', 'Lenovo', 'HP', 'ASUS', 'Acer', 'Dell', 'Інший'].map((brand) => ({ value: brand, label: brand }))]} onChange={(value) => setAnswer('brand', value)} ariaLabel="Бренд ноутбука" />
                   </label>
                 )}
 
                 <label className="field">
                   <span>Модель</span>
                   {category === 'apple' ? (
-                    <select value={String(answers.model || '')} onChange={(event) => setAnswer('model', event.target.value)}>
-                      <option value="">Оберіть модель</option>
-                      {['iPhone 13', 'iPhone 14', 'iPhone 15', 'iPhone 16', 'Інша модель'].map((model) => <option key={model}>{model}</option>)}
-                    </select>
+                    <StyledSelect value={String(answers.model || '')} options={[{ value: '', label: 'Оберіть модель' }, ...['iPhone 13', 'iPhone 14', 'iPhone 15', 'iPhone 16', 'Інша модель'].map((model) => ({ value: model, label: model }))]} onChange={(value) => setAnswer('model', value)} ariaLabel="Модель смартфона" />
                   ) : (
                     <input
                       value={String(answers.model || '')}
@@ -344,10 +336,7 @@ export function TradeInPrototypePage() {
                 {category !== 'laptop' && (
                   <label className="field">
                     <span>Обсяг памʼяті</span>
-                    <select value={String(answers.memory || '')} onChange={(event) => setAnswer('memory', event.target.value)}>
-                      <option value="">Оберіть памʼять</option>
-                      {memoryOptions.map((memory) => <option key={memory}>{memory}</option>)}
-                    </select>
+                    <StyledSelect value={String(answers.memory || '')} options={[{ value: '', label: 'Оберіть памʼять' }, ...memoryOptions.map((memory) => ({ value: memory, label: memory }))]} onChange={(value) => setAnswer('memory', value)} ariaLabel="Обсяг памʼяті" />
                   </label>
                 )}
               </div>

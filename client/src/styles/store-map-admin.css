@@ -20,8 +20,10 @@
 .store-map-section-heading h2 { margin: 0; font-size: 22px; }
 .store-map-section-heading p:not(.eyebrow) { margin: 7px 0 0; color: var(--muted); }
 .store-map-list-filters { display: flex; align-items: center; gap: 10px; }
-.store-map-list-filters select, .store-map-search { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--surface-soft); }
-.store-map-list-filters select { min-width: 150px; padding: 0 12px; }
+.store-map-list-filters .custom-select, .store-map-search { min-height: 44px; }
+.store-map-list-filters .custom-select { min-width: 150px; width: 150px; }
+.store-map-list-filters .custom-select__button, .store-map-search { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--surface-soft); }
+.store-map-list-filters .custom-select__button { padding: 0 12px; }
 .store-map-search { min-width: min(360px, 40vw); display: flex; align-items: center; gap: 9px; padding: 0 12px; color: var(--muted); }
 .store-map-search input { width: 100%; border: 0; outline: 0; color: var(--ink); background: transparent; }
 .store-map-points-list { display: grid; border-top: 1px solid var(--line); }
@@ -44,8 +46,7 @@
 .store-map-form-grid { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; overflow: auto; padding: 22px; }
 .store-map-point-form .modal__footer, .store-map-import-modal > .modal__footer { padding: 18px 22px 22px; background: var(--surface); }
 .store-map-field--wide { grid-column: 1 / -1; }
-.store-map-form-grid .field select, .store-map-list-filters select { font: inherit; }
-.store-map-form-grid .field select { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; color: var(--ink); background: var(--surface); }
+.store-map-list-filters .custom-select__button { font: inherit; }
 .store-map-import-modal { width: min(1080px, calc(100vw - 28px)); max-height: min(860px, calc(100vh - 28px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 .store-map-import-content { min-height: 240px; display: grid; gap: 18px; overflow: auto; padding: 22px; }
 .store-map-dropzone { position: relative; min-height: 106px; display: flex; align-items: center; justify-content: center; gap: 15px; border: 2px dashed var(--line); border-radius: 18px; color: var(--muted); background: var(--surface-soft); text-align: left; cursor: pointer; transition: border-color 150ms ease, color 150ms ease, background 150ms ease, box-shadow 150ms ease; }

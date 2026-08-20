@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { ApiError, api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
@@ -274,7 +275,7 @@ export function HoroshopPhotoParserPage() {
   const [busyDraftIds, setBusyDraftIds] = useState<Set<string>>(() => new Set());
   const [batchId, setBatchId] = useState('');
   const [desktopPairing, setDesktopPairing] = useState<HoroshopPhotoDesktopPairing | null>(null);
-  const [publicationMode, setPublicationMode] = useState<HoroshopPhotoPublicationMode>('append');
+  const [publicationMode, setPublicationMode] = useState<HoroshopPhotoPublicationMode>('replace');
   const [publishProgress, setPublishProgress] = useState<HoroshopPhotoPublishProgress | null>(null);
   const [publishOutcome, setPublishOutcome] = useState<HoroshopPhotoPublishResult | null>(null);
   const completedBatch = useRef('');
@@ -614,10 +615,16 @@ export function HoroshopPhotoParserPage() {
         <p>Створюйте вибірки, обробляйте їх десктопним парсером і передавайте перевірені фото у Хорошоп.</p>
       </div>
       <div className="horoshop-photo-header__actions">
-        <select value={publicationMode} onChange={(event) => setPublicationMode(event.target.value as HoroshopPhotoPublicationMode)} aria-label="Режим публікації фотографій">
-          <option value="append">Додати до наявних фото</option>
-          <option value="replace">Замінити наявні фото</option>
-        </select>
+        <StyledSelect
+          value={publicationMode}
+          options={[
+            { value: 'replace', label: 'Замінити наявні фото' },
+            { value: 'append', label: 'Додати до наявних фото' }
+          ]}
+          onChange={(value) => setPublicationMode(value as HoroshopPhotoPublicationMode)}
+          ariaLabel="Режим публікації фотографій"
+          compact
+        />
         <button className="button button--secondary" type="button" disabled={!selectionId || !connectedDevices.length || parserBusy || parseSelection.isPending} onClick={() => void runSelectionParse()}>
           <Icon name="refresh" size={17} /> Передати в парсер
         </button>
@@ -667,19 +674,38 @@ export function HoroshopPhotoParserPage() {
       <label><span>Назва вибірки</span><input value={selectionName} onChange={(event) => setSelectionName(event.target.value)} placeholder="Наприклад, Нові iPhone" /></label>
       {selectionMode === 'list' ? <label className="horoshop-photo-builder__entries"><span>Назви та артикули</span><textarea value={selectionInput} onChange={(event) => setSelectionInput(event.target.value)} placeholder={'IPHONE-15-128-BLK\nСмартфон Apple iPhone 15 128GB Black'} /></label> : <div className="horoshop-photo-builder__filters">
         <label><span>Пошук у каталозі</span><input value={filterSearch} onChange={(event) => setFilterSearch(event.target.value)} placeholder="Назва, артикул або бренд" /></label>
-        <label><span>Розділ</span><select value={filterCategory} onChange={(event) => setFilterCategory(event.target.value)}>
-          <option value="">Усі розділи</option>
-          {filterCatalog.data?.categories.map((category) => <option value={category.externalId} key={category.externalId}>{category.titles.uk || category.titles.ua || category.titles.ru || category.titles.en || category.externalId} · {category.productCount}</option>)}
-        </select></label>
-        <label><span>Наявність</span><select value={filterAvailability} onChange={(event) => setFilterAvailability(event.target.value)}>
-          <option value="">Будь-яка</option>
-          {filterCatalog.data?.availabilityOptions.map((availability) => <option value={availability} key={availability}>{availability}</option>)}
-        </select></label>
-        <label><span>Видимість</span><select value={filterVisibility} onChange={(event) => setFilterVisibility(event.target.value as HoroshopCatalogVisibility)}>
-          <option value="all">Усі товари</option>
-          <option value="visible">Лише видимі</option>
-          <option value="hidden">Лише приховані</option>
-        </select></label>
+        <label><span>Розділ</span><StyledSelect
+          value={filterCategory}
+          options={[
+            { value: '', label: 'Усі розділи' },
+            ...(filterCatalog.data?.categories.map((category) => ({
+              value: category.externalId,
+              label: `${category.titles.uk || category.titles.ua || category.titles.ru || category.titles.en || category.externalId} · ${category.productCount}`
+            })) || [])
+          ]}
+          onChange={setFilterCategory}
+          ariaLabel="Розділ"
+          searchable
+        /></label>
+        <label><span>Наявність</span><StyledSelect
+          value={filterAvailability}
+          options={[
+            { value: '', label: 'Будь-яка' },
+            ...(filterCatalog.data?.availabilityOptions.map((availability) => ({ value: availability, label: availability })) || [])
+          ]}
+          onChange={setFilterAvailability}
+          ariaLabel="Наявність"
+        /></label>
+        <label><span>Видимість</span><StyledSelect
+          value={filterVisibility}
+          options={[
+            { value: 'all', label: 'Усі товари' },
+            { value: 'visible', label: 'Лише видимі' },
+            { value: 'hidden', label: 'Лише приховані' }
+          ]}
+          onChange={(value) => setFilterVisibility(value as HoroshopCatalogVisibility)}
+          ariaLabel="Видимість"
+        /></label>
         <p>{filterCatalog.isLoading ? 'Рахуємо товари…' : `За цими умовами: ${filterCatalog.data?.total || 0} товарів`}</p>
       </div>}
       <button className="button button--primary" type="button" disabled={createSelection.isPending || createFilteredSelection.isPending} onClick={() => void (selectionMode === 'list' ? createFromInput() : createFromFilter())}>
@@ -688,10 +714,16 @@ export function HoroshopPhotoParserPage() {
     </section>
 
     <section className="horoshop-photo-selection-bar">
-      <label><span>Поточна вибірка</span><select value={selectionId} onChange={(event) => setSelectionId(event.target.value)}>
-        {!selections.data?.length && <option value="">Вибірок ще немає</option>}
-        {selections.data?.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.matchedCount}</option>)}
-      </select></label>
+      <label><span>Поточна вибірка</span><StyledSelect
+        value={selectionId}
+        options={selections.data?.length
+          ? selections.data.map((item) => ({ value: item.id, label: `${item.name} · ${item.matchedCount}` }))
+          : [{ value: '', label: 'Вибірок ще немає', disabled: true }]}
+        onChange={setSelectionId}
+        disabled={!selections.data?.length}
+        ariaLabel="Поточна вибірка товарів"
+        searchable
+      /></label>
       <div className="horoshop-photo-stats">
         <span><small>Товарів</small><b>{counts.products}</b></span>
         <span><small>Цілей</small><b>{counts.targets}</b></span>
