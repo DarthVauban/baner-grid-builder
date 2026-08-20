@@ -501,12 +501,79 @@ export class HoroshopPhotoService {
 
   async deleteSelection(selectionId) {
     const connection = await this.connection();
-    const result = await this.pool.query(`
-      DELETE FROM search_horoshop_photo_selections
-      WHERE id = $1 AND connection_id = $2 AND generation = $3
-      RETURNING id
-    `, [selectionId, connection.id, connection.generation]);
-    if (!result.rows[0]) throw new AppError(404, 'HOROSHOP_PHOTO_SELECTION_NOT_FOUND', 'Вибірку товарів не знайдено.');
+    const client = await this.pool.connect();
+    let orphanedUploads = [];
+    try {
+      await client.query('BEGIN');
+      const selection = await client.query(`
+        SELECT id FROM search_horoshop_photo_selections
+        WHERE id = $1 AND connection_id = $2 AND generation = $3
+        FOR UPDATE
+      `, [selectionId, connection.id, connection.generation]);
+      if (!selection.rows[0]) {
+        throw new AppError(404, 'HOROSHOP_PHOTO_SELECTION_NOT_FOUND', 'Вибірку товарів не знайдено.');
+      }
+
+      const desktopRuns = await client.query(`
+        SELECT DISTINCT batch.id AS batch_id, run.draft_id
+        FROM search_horoshop_photo_batches AS batch
+        INNER JOIN search_horoshop_photo_runs AS run ON run.batch_id = batch.id
+        WHERE batch.selection_id = $1 AND run.executor = 'desktop'
+      `, [selectionId]);
+      const batchIds = [...new Set(desktopRuns.rows.map((row) => row.batch_id))];
+      const draftIds = [...new Set(desktopRuns.rows.map((row) => row.draft_id))];
+
+      if (batchIds.length) {
+        const uploads = await client.query(`
+          SELECT DISTINCT asset.id, asset.storage_key
+          FROM search_horoshop_photo_run_uploads AS upload
+          INNER JOIN search_horoshop_photo_runs AS run ON run.id = upload.run_id
+          INNER JOIN media_library_assets AS asset ON asset.id = upload.media_asset_id
+          WHERE run.batch_id = ANY($1::uuid[])
+        `, [batchIds]);
+        orphanedUploads = uploads.rows;
+        if (orphanedUploads.length) {
+          await client.query('DELETE FROM media_library_assets WHERE id = ANY($1::uuid[])', [
+            orphanedUploads.map((asset) => asset.id)
+          ]);
+        }
+        const batchPlaceholders = batchIds.map((_, index) => `$${index + 1}`).join(', ');
+        await client.query(`DELETE FROM search_horoshop_photo_batches WHERE id IN (${batchPlaceholders})`, batchIds);
+      }
+
+      if (draftIds.length) {
+        const activeRuns = await client.query(`
+          SELECT DISTINCT draft_id FROM search_horoshop_photo_runs
+          WHERE draft_id = ANY($1::uuid[]) AND status IN ('queued', 'running')
+        `, [draftIds]);
+        const draftsWithAssets = await client.query(`
+          SELECT DISTINCT draft_id FROM search_horoshop_photo_assets
+          WHERE draft_id = ANY($1::uuid[])
+        `, [draftIds]);
+        const activeDraftIds = new Set(activeRuns.rows.map((row) => row.draft_id));
+        const readyDraftIds = new Set(draftsWithAssets.rows.map((row) => row.draft_id));
+        const resettableDraftIds = draftIds.filter((draftId) => !activeDraftIds.has(draftId));
+        const ready = resettableDraftIds.filter((draftId) => readyDraftIds.has(draftId));
+        const idle = resettableDraftIds.filter((draftId) => !readyDraftIds.has(draftId));
+        for (const [parseStatus, ids] of [['ready', ready], ['idle', idle]]) {
+          if (!ids.length) continue;
+          await client.query(`
+            UPDATE search_horoshop_photo_drafts
+            SET parse_status = $2, error_message = '', error_details = '[]'::jsonb, updated_at = NOW()
+            WHERE id = ANY($1::uuid[])
+          `, [ids, parseStatus]);
+        }
+      }
+
+      await client.query('DELETE FROM search_horoshop_photo_selections WHERE id = $1', [selectionId]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    for (const asset of orphanedUploads) await removeMediaImage(asset.storage_key).catch(() => {});
   }
 
   async saveDraft({ productId, modificationId = null, sourceUrl, userId }) {

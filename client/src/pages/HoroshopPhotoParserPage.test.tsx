@@ -211,4 +211,27 @@ describe('HoroshopPhotoParserPage', () => {
       }
     }));
   });
+
+  it('removes a deleted selection from the page immediately', async () => {
+    const nextSummary = { ...summary, id: 'selection-2', name: 'Інша вибірка', matchedCount: 1 };
+    const nextSelection = { ...selection, id: nextSummary.id, name: nextSummary.name };
+    vi.spyOn(api.horoshopPhotos, 'selections')
+      .mockResolvedValueOnce([summary, nextSummary])
+      .mockResolvedValue([nextSummary]);
+    vi.spyOn(api.horoshopPhotos, 'selection').mockImplementation(async (id) => (
+      id === nextSummary.id ? nextSelection : selection
+    ));
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
+    const removeSelection = vi.spyOn(api.horoshopPhotos, 'removeSelection').mockResolvedValue(undefined);
+
+    renderPage();
+    expect(await screen.findByRole('option', { name: 'Нові смартфони · 2' })).toBeInTheDocument();
+    expect(await screen.findByText('Смартфон Example One')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Видалити' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Видалити вибірку' }));
+
+    await waitFor(() => expect(removeSelection).toHaveBeenCalledWith(summary.id));
+    expect(screen.queryByRole('option', { name: 'Нові смартфони · 2' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Інша вибірка · 1' })).toBeInTheDocument();
+  });
 });

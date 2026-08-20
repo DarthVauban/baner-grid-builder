@@ -399,6 +399,11 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.equal(newJobs[0].selectionId, newSelection.id);
   assert.equal(newJobs[0].sku, 'PHONE-1-BLACK');
   assert.deepEqual((await desktopService.listJobs(device)).map((item) => item.id), [newJobs[0].id]);
+
+  await photoService.deleteSelection(newSelection.id);
+  assert.deepEqual(await desktopService.listJobs(device), []);
+  const deletedBatch = await pool.query('SELECT id FROM search_horoshop_photo_batches WHERE id = $1', [newJobs[0].batchId]);
+  assert.equal(deletedBatch.rows.length, 0);
 });
 
 test('disconnect removes selections, drafts and their generated media', async () => {

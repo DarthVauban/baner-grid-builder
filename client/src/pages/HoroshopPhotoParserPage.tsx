@@ -14,6 +14,7 @@ import type {
   HoroshopPhotoDraft,
   HoroshopPhotoPublicationMode,
   HoroshopPhotoPublishProgress,
+  HoroshopPhotoSelectionSummary,
   HoroshopPhotoSelectionProduct
 } from '../types/horoshop-photo';
 import '../styles/horoshop-photo-parser.css';
@@ -486,9 +487,27 @@ export function HoroshopPhotoParserPage() {
       tone: 'danger'
     });
     if (!accepted) return;
-    await api.horoshopPhotos.removeSelection(selectionId);
-    setSelectionId('');
-    await queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] });
+    const removedId = selectionId;
+    try {
+      await api.horoshopPhotos.removeSelection(removedId);
+      const remaining = (queryClient.getQueryData<HoroshopPhotoSelectionSummary[]>(['horoshop-photo-selections']) || [])
+        .filter((item) => item.id !== removedId);
+      queryClient.setQueryData(['horoshop-photo-selections'], remaining);
+      queryClient.removeQueries({ queryKey: ['horoshop-photo-selection', removedId], exact: true });
+      if (displayedBatch?.selectionId === removedId) {
+        if (displayedBatch.id === batchId) setBatchId('');
+        queryClient.removeQueries({ queryKey: ['horoshop-photo-batch', displayedBatch.id], exact: true });
+        queryClient.setQueryData(['horoshop-photo-active-batch'], null);
+      }
+      setSelectionId(remaining[0]?.id || '');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] }),
+        queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch'] })
+      ]);
+      showToast('Вибірку та її чергу десктопного парсера видалено.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося видалити вибірку.', 'error');
+    }
   }
 
   const counts = useMemo(() => ({
