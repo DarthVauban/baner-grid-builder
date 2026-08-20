@@ -531,6 +531,7 @@ export class HoroshopPhotoService {
       ].filter(Boolean))];
       const draftPlaceholders = draftIds.map((_, index) => `$${index + 1}`).join(', ');
       let legacyOwnedDraftIds = [];
+      let legacyUnownedDraftIds = [];
       if (draftIds.length) {
         const legacySources = await client.query(`
           SELECT run.draft_id, batch.selection_id
@@ -551,6 +552,7 @@ export class HoroshopPhotoService {
         legacyOwnedDraftIds = [...latestSelectionByDraft.entries()]
           .filter(([, ownerSelectionId]) => ownerSelectionId === selectionId)
           .map(([draftId]) => draftId);
+        legacyUnownedDraftIds = draftIds.filter((draftId) => !latestSelectionByDraft.has(draftId));
       }
 
       if (batchIds.length) {
@@ -581,8 +583,9 @@ export class HoroshopPhotoService {
         const activeDraftIds = new Set(activeRuns.rows.map((row) => row.draft_id));
         const ownershipValues = [...draftIds, selectionId];
         const selectionParameter = `$${ownershipValues.length}`;
-        const legacyOwnershipClause = legacyOwnedDraftIds.length
-          ? `OR (draft.source_selection_id IS NULL AND draft.id IN (${legacyOwnedDraftIds.map((draftId) => {
+        const legacyCleanupDraftIds = [...new Set([...legacyOwnedDraftIds, ...legacyUnownedDraftIds])];
+        const legacyOwnershipClause = legacyCleanupDraftIds.length
+          ? `OR (draft.source_selection_id IS NULL AND draft.id IN (${legacyCleanupDraftIds.map((draftId) => {
               ownershipValues.push(draftId);
               return `$${ownershipValues.length}`;
             }).join(', ')}))`

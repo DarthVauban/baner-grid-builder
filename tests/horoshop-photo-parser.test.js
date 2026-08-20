@@ -484,7 +484,46 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.deepEqual(recreatedSelection.products[0].commonDraft.currentImages, [
     'https://photo-shop.example/current-phone-2.webp'
   ]);
+  const legacyMediaId = randomUUID();
+  const legacyPhotoId = randomUUID();
+  const legacyHash = legacyMediaId.replaceAll('-', '').padEnd(64, '0');
+  const legacyFolder = await pool.query(`
+    SELECT media_folder_id FROM search_horoshop_photo_drafts WHERE id = $1
+  `, [jobs[0].draftId]);
+  await pool.query(`
+    INSERT INTO media_library_assets (
+      id, original_name, storage_key, url, mime_type, size_bytes,
+      original_size_bytes, width, height, content_sha256, folder_id
+    ) VALUES ($1, 'legacy.webp', $2, $3, 'image/webp', 100, 100, 900, 900, $4, $5)
+  `, [
+    legacyMediaId,
+    `legacy-${legacyMediaId}.webp`,
+    `/media/catalog/library/legacy-${legacyMediaId}.webp`,
+    legacyHash,
+    legacyFolder.rows[0].media_folder_id
+  ]);
+  await pool.query(`
+    INSERT INTO search_horoshop_photo_assets (
+      id, draft_id, media_asset_id, source_url, content_sha256, selected, sort_order
+    ) VALUES ($1, $2, $3, 'https://legacy.example/photo.webp', $4, TRUE, 0)
+  `, [legacyPhotoId, jobs[0].draftId, legacyMediaId, legacyHash]);
+  await pool.query(`
+    UPDATE search_horoshop_photo_drafts
+    SET parse_status = 'ready', publish_status = 'draft', source_selection_id = NULL,
+        source_url = 'https://legacy.example/product', found_count = 1
+    WHERE id = $1
+  `, [jobs[0].draftId]);
+  const recreatedJobs = await desktopService.listJobs(device);
+  assert.equal(recreatedJobs.some((item) => item.selectionId === recreatedSelection.id), true);
   await photoService.deleteSelection(recreatedSelection.id);
+  const legacyPhotosAfterDelete = await pool.query(`
+    SELECT id FROM search_horoshop_photo_assets WHERE id = $1
+  `, [legacyPhotoId]);
+  const legacyMediaAfterDelete = await pool.query(`
+    SELECT id FROM media_library_assets WHERE id = $1
+  `, [legacyMediaId]);
+  assert.equal(legacyPhotosAfterDelete.rows.length, 0);
+  assert.equal(legacyMediaAfterDelete.rows.length, 0);
   await photoService.deleteSelection(duplicateSelection.id);
 
   const newSelection = await photoService.createSelection({
