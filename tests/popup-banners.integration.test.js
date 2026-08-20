@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL = 'pg-mem://popup-banners-tests';
+process.env.DATABASE_URL = process.env.POPUP_TEST_DATABASE_URL || 'pg-mem://popup-banners-tests';
 process.env.JWT_SECRET = 'popup-banners-test-secret-0123456789';
 process.env.COOKIE_SECURE = 'false';
 process.env.APP_ORIGIN = 'https://mt-panel.example.com';

@@ -496,7 +496,8 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
     }
     await client.query(
       `UPDATE popup_banner_campaigns
-       SET status = $2, published_at = CASE WHEN $2 = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
+       SET status = $2::VARCHAR,
+           published_at = CASE WHEN $2::VARCHAR = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
            updated_by = $3, updated_at = NOW()
        WHERE id = $1`,
       [id, status, actorUserId]
