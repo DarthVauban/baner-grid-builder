@@ -318,7 +318,9 @@
 .popup-color-groups > div > strong { color: var(--ink); font-size: 9px; }
 .popup-settings-group { display: grid; gap: 8px; padding-top: 2px; }
 .popup-settings-group > strong { color: var(--ink); font-size: 9px; }
+.popup-settings-group > small { color: var(--muted); font-size: 8px; line-height: 1.4; }
 .popup-font-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.popup-dimensions-grid { align-items: start; }
 .popup-color-field > div { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; min-height: 42px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
 .popup-color-field input[type='color'] { width: 30px; height: 30px; margin: 4px; padding: 0; overflow: hidden; border: 0; border-radius: 8px; background: transparent; }
 .popup-color-field input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }

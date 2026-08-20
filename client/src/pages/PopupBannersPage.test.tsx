@@ -181,6 +181,10 @@ describe('PopupBannersPage', () => {
     expect(screen.getByLabelText('Основний текст: вибрати колір')).toHaveValue('#667085');
     expect(screen.getByRole('spinbutton', { name: 'Заголовок, px' })).toHaveValue(34);
     expect(screen.getByRole('spinbutton', { name: 'Основний текст, px' })).toHaveValue(16);
+    expect(screen.getByText('Стиль чекбокса підтвердження')).toBeInTheDocument();
+    expect(screen.getByLabelText('Колір чекбокса: вибрати колір')).toHaveValue('#6d5dfc');
+    expect(screen.getByLabelText('Колір галочки: вибрати колір')).toHaveValue('#ffffff');
+    expect(screen.getByLabelText('Колір тексту чекбокса: вибрати колір')).toHaveValue('#172033');
 
     fireEvent.click(screen.getByRole('button', { name: 'Кількість кнопок' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Одна кнопка' }));
@@ -190,8 +194,7 @@ describe('PopupBannersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
     fireEvent.click(screen.getByRole('checkbox', { name: /Потрібне явне підтвердження/u }));
 
-    expect(screen.getByLabelText('Колір чекбокса: вибрати колір')).toHaveValue('#6d5dfc');
-    expect(screen.getByLabelText('Колір галочки: вибрати колір')).toHaveValue('#ffffff');
-    expect(screen.getAllByLabelText('Колір тексту: вибрати колір')).toHaveLength(1);
+    expect(screen.getByRole('textbox', { name: 'Текст підтвердження' })).toHaveValue('Я прочитав(-ла) цю інформацію.');
+    expect(screen.queryByText('Стиль чекбокса підтвердження')).not.toBeInTheDocument();
   });
 });
