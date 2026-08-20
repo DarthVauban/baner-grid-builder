@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { SupportMessageText, SupportProductCard } from '../components/SupportProductCard';
 import { api } from '../lib/api';
+import {
+  requestSupportDesktopNotificationPermission,
+  setSupportDesktopNotificationsEnabled,
+  supportDesktopNotificationPermission,
+  supportDesktopNotificationsEnabled,
+  type SupportDesktopNotificationPermission
+} from '../lib/support-desktop-notifications';
 import { useToast } from '../toast/ToastContext';
 import type {
   SupportChatSettingsInput,
@@ -65,6 +74,7 @@ function messageTime(value: string) {
 }
 
 function SettingsPanel() {
+  const { user } = useAuth();
   const { showToast } = useToast();
   const settings = useQuery({ queryKey: ['online-support-settings'], queryFn: api.onlineSupport.settings });
   const [draft, setDraft] = useState<SupportChatSettingsInput | null>(null);
@@ -72,6 +82,13 @@ function SettingsPanel() {
   const save = useMutation({ mutationFn: api.onlineSupport.saveSettings });
   const panelRef = useRef<HTMLDivElement>(null);
   const draftReady = draft !== null;
+  const [desktopPermission, setDesktopPermission] = useState<SupportDesktopNotificationPermission>(() => supportDesktopNotificationPermission());
+  const [desktopNotifications, setDesktopNotifications] = useState(() => supportDesktopNotificationsEnabled(user?.id || ''));
+
+  useEffect(() => {
+    setDesktopPermission(supportDesktopNotificationPermission());
+    setDesktopNotifications(supportDesktopNotificationsEnabled(user?.id || ''));
+  }, [user?.id]);
 
   useEffect(() => {
     if (!settings.data) return;
@@ -118,6 +135,29 @@ function SettingsPanel() {
     }
   }
 
+  async function toggleDesktopNotifications(enabled: boolean) {
+    if (!user?.id) return;
+    if (!enabled) {
+      setSupportDesktopNotificationsEnabled(user.id, false);
+      setDesktopNotifications(false);
+      showToast('Сповіщення Windows для онлайн-підтримки вимкнено.', 'success');
+      return;
+    }
+    const permission = await requestSupportDesktopNotificationPermission();
+    setDesktopPermission(permission);
+    if (permission !== 'granted') {
+      setSupportDesktopNotificationsEnabled(user.id, false);
+      setDesktopNotifications(false);
+      showToast(permission === 'unsupported'
+        ? 'Цей браузер не підтримує системні сповіщення.'
+        : 'Дозвіл на сповіщення не надано. Увімкніть його в налаштуваннях браузера.', 'error');
+      return;
+    }
+    setSupportDesktopNotificationsEnabled(user.id, true);
+    setDesktopNotifications(true);
+    showToast('Нові повідомлення підтримки з’являтимуться у центрі сповіщень Windows.', 'success');
+  }
+
   return <div className="online-support-settings" ref={panelRef}>
     <form className="online-support-settings__form" onSubmit={(event) => void submit(event)}>
       <section className="online-support-card">
@@ -135,7 +175,7 @@ function SettingsPanel() {
       <section className="online-support-card online-support-hours-card">
         <header><div><p className="eyebrow">Доступність</p><h2>Робочий час</h2></div><label className="online-support-switch"><input type="checkbox" checked={draft.workingHoursEnabled} onChange={(event) => setDraft({ ...draft, workingHoursEnabled: event.target.checked })} /><span />{draft.workingHoursEnabled ? 'Графік увімкнено' : 'Без обмежень'}</label></header>
         <p className="online-support-hours-note">Коли графік увімкнено, повідомлення поза вказаними годинами отримають окрему автовідповідь, а форма попросить ім’я та номер телефону.</p>
-        <label className="field"><span>Часовий пояс</span><select value={draft.workingHoursTimezone} onChange={(event) => setDraft({ ...draft, workingHoursTimezone: event.target.value })}>{supportTimezones.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></label>
+        <label className="field"><span>Часовий пояс</span><StyledSelect value={draft.workingHoursTimezone} options={supportTimezones} onChange={(workingHoursTimezone) => setDraft({ ...draft, workingHoursTimezone })} ariaLabel="Часовий пояс онлайн-підтримки" /></label>
         <div className="online-support-hours" aria-label="Графік роботи">
           {workingDays.map(({ key, label }) => {
             const day = draft.workingHoursSchedule[key];
@@ -164,6 +204,12 @@ function SettingsPanel() {
     </form>
 
     <aside className="online-support-settings__aside">
+      <section className="online-support-card online-support-desktop-notifications">
+        <header><div><p className="eyebrow">На цьому пристрої</p><h2>Сповіщення Windows</h2></div><label className="online-support-switch"><input type="checkbox" checked={desktopNotifications && desktopPermission === 'granted'} disabled={desktopPermission === 'unsupported'} onChange={(event) => void toggleDesktopNotifications(event.target.checked)} /><span />{desktopNotifications && desktopPermission === 'granted' ? 'Увімкнено' : 'Вимкнено'}</label></header>
+        <p>Нові повідомлення покупців з’являтимуться безпосередньо у центрі сповіщень Windows, навіть коли відкрита інша сторінка робочого простору.</p>
+        {desktopPermission === 'denied' && <small>Браузер заблокував сповіщення. Дозвольте їх для цього сайту в налаштуваннях браузера й увімкніть опцію ще раз.</small>}
+        {desktopPermission === 'unsupported' && <small>Системні сповіщення недоступні у цьому браузері.</small>}
+      </section>
       <section className="online-support-card online-support-install">
         <p className="eyebrow">Встановлення</p><h2>Код для сайту</h2><p>Додайте цей скрипт перед закривальним тегом <code>&lt;/body&gt;</code>.</p>
         <pre>{embedCode}</pre>
@@ -321,7 +367,7 @@ function ConversationsPanel() {
       {!selectedId && <div className="online-support-empty"><span><Icon name="chat" size={30} /></span><h2>Оберіть діалог</h2><p>Нові звернення покупців з’являтимуться у черзі зліва.</p></div>}
       {selectedId && detail.isLoading && <div className="online-support-state">Завантажуємо повідомлення…</div>}
       {current && <>
-        <header className="online-support-dialog__header"><div><span className="online-support-avatar">{visitorLabel(current).slice(0, 1).toUpperCase()}</span><div><strong>{visitorLabel(current)}</strong><small>{current.visitor.lastPageTitle || 'Сторінку не визначено'}</small></div></div><div>{!current.assignedUser && <button className="button button--secondary" type="button" onClick={() => void claimCurrent()} disabled={claim.isPending}>Взяти в роботу</button>}<button className="button button--secondary online-support-customer-trigger" type="button" onClick={() => setCustomerPanelOpen(true)}>Покупець</button><select value={current.status} onChange={(event) => void changeStatus(event.target.value as SupportConversationStatus)}>{statuses.filter((item) => item.value).map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></div></header>
+        <header className="online-support-dialog__header"><div><span className="online-support-avatar">{visitorLabel(current).slice(0, 1).toUpperCase()}</span><div><strong>{visitorLabel(current)}</strong><small>{current.visitor.lastPageTitle || 'Сторінку не визначено'}</small></div></div><div>{!current.assignedUser && <button className="button button--secondary" type="button" onClick={() => void claimCurrent()} disabled={claim.isPending}>Взяти в роботу</button>}<button className="button button--secondary online-support-customer-trigger" type="button" onClick={() => setCustomerPanelOpen(true)}>Покупець</button><StyledSelect compact className="online-support-status-select" value={current.status} options={statuses.filter((item): item is { value: SupportConversationStatus; label: string } => Boolean(item.value))} onChange={(next) => void changeStatus(next)} disabled={setConversationStatus.isPending} ariaLabel="Статус діалогу" /></div></header>
         <div className="online-support-transcript" ref={transcriptRef}>{detail.data?.messages.map((item) => <MessageBubble item={item} key={item.id} />)}</div>
         <form className="online-support-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Напишіть відповідь покупцю…" rows={2} maxLength={5000} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending}><Icon name="send" size={18} /> {send.isPending ? 'Надсилаємо…' : 'Надіслати'}</button></form>
       </>}

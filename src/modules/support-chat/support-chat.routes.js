@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { query } from '../../db/pool.js';
+import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
@@ -275,22 +275,33 @@ router.patch('/conversations/:id/customer', asyncHandler(async (req, res) => {
 router.patch('/conversations/:id/status', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const { status } = parseInput(conversationStatusSchema, req.body);
-  const updated = await query(
-    `UPDATE support_chat_conversations
-     SET status = $1,
-         resolved_at = CASE WHEN $1 = 'RESOLVED' THEN NOW() ELSE NULL END,
-         closed_at = CASE WHEN $1 = 'CLOSED' THEN NOW() ELSE NULL END,
-         updated_at = NOW()
-     WHERE id = $2
-     RETURNING id, visitor_id`,
-    [status, id]
-  );
-  if (!updated.rows[0]) throw new AppError(404, 'SUPPORT_CONVERSATION_NOT_FOUND', 'Діалог онлайн-підтримки не знайдено.');
-  await query(
-    `INSERT INTO support_chat_events (conversation_id, actor_user_id, event_type, payload)
-     VALUES ($1, $2, 'STATUS_CHANGED', $3::JSONB)`,
-    [id, req.user.id, JSON.stringify({ status })]
-  );
+  const client = await pool.connect();
+  let updated;
+  try {
+    await client.query('BEGIN');
+    updated = await client.query(
+      `UPDATE support_chat_conversations
+       SET status = $1::VARCHAR,
+           resolved_at = CASE WHEN $1::TEXT = 'RESOLVED' THEN COALESCE(resolved_at, NOW()) ELSE NULL END,
+           closed_at = CASE WHEN $1::TEXT = 'CLOSED' THEN COALESCE(closed_at, NOW()) ELSE NULL END,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, visitor_id`,
+      [status, id]
+    );
+    if (!updated.rows[0]) throw new AppError(404, 'SUPPORT_CONVERSATION_NOT_FOUND', 'Діалог онлайн-підтримки не знайдено.');
+    await client.query(
+      `INSERT INTO support_chat_events (conversation_id, actor_user_id, event_type, payload)
+       VALUES ($1, $2, 'STATUS_CHANGED', $3::JSONB)`,
+      [id, req.user.id, JSON.stringify({ status })]
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
   publishSupportChatUpdate({ type: 'conversation', conversationId: id, visitorId: updated.rows[0].visitor_id });
   res.json({ data: serializeSupportConversation(await loadConversationRow(id)) });
 }));
