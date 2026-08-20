@@ -54,6 +54,16 @@ function jsonObject(value) {
   }
 }
 
+function jsonArray(value) {
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function mapCatalogModification(row) {
   return {
     id: row.id,
@@ -69,6 +79,8 @@ function mapCatalogModification(row) {
     imageUrl: row.image_url,
     pageUrl: row.page_url,
     attributes: jsonObject(row.attributes),
+    stickers: jsonArray(row.stickers),
+    conditionLabel: row.condition_label,
     updatedAt: row.updated_at
   };
 }
@@ -91,6 +103,8 @@ function mapCatalogProduct(row, modifications) {
     primaryImageUrl: row.primary_image_url,
     canonicalUrl: row.canonical_url,
     popularity: row.popularity,
+    stickers: jsonArray(row.stickers),
+    conditionLabel: row.condition_label,
     updatedAt: row.updated_at,
     modifications
   };
@@ -235,7 +249,7 @@ export class HoroshopCatalogRepository {
       this.pool.query(`
         SELECT id, external_id, parent_external_id, sku, titles, brand, category_external_id,
                price, old_price, currency, availability, visible, active, primary_image_url,
-               canonical_url, popularity, updated_at
+               canonical_url, popularity, stickers, condition_label, updated_at
         FROM search_horoshop_products AS product
         WHERE ${where}
         ORDER BY product.updated_at DESC, product.id
@@ -279,7 +293,8 @@ export class HoroshopCatalogRepository {
       const placeholders = productIds.map((_, index) => `$${index + 2}`).join(', ');
       const modificationsResult = await this.pool.query(`
         SELECT id, product_id, external_id, sku, titles, price, old_price, currency,
-               availability, visible, active, image_url, page_url, attributes, updated_at
+               availability, visible, active, image_url, page_url, attributes, stickers,
+               condition_label, updated_at
         FROM search_horoshop_modifications
         WHERE connection_id = $1 AND product_id IN (${placeholders}) ${modificationState}
         ORDER BY updated_at DESC, id
@@ -500,10 +515,10 @@ export class HoroshopCatalogRepository {
               id, connection_id, generation, external_id, parent_external_id, sku, titles,
               descriptions, brand, category_external_id, price, old_price, currency, availability,
               visible, primary_image_url, canonical_url, popularity, characteristics, source_data,
-              sync_signature, active, last_seen_sync_id
+              stickers, condition_label, sync_signature, active, last_seen_sync_id
             ) VALUES (
               $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14,
-              $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, TRUE, $22
+              $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21::jsonb, $22, $23, TRUE, $24
             )
           `, [
             productId, connection.id, connection.generation, product.externalId,
@@ -511,7 +526,8 @@ export class HoroshopCatalogRepository {
             JSON.stringify(product.descriptions), product.brand, product.categoryExternalId,
             product.price, product.oldPrice, product.currency, product.availability, product.visible,
             product.primaryImageUrl, product.canonicalUrl, product.popularity,
-            JSON.stringify(product.characteristics), JSON.stringify(product.source), signature, runId
+            JSON.stringify(product.characteristics), JSON.stringify(product.source),
+            JSON.stringify(product.stickers), product.conditionLabel, signature, runId
           ]);
           existingProduct = { id: productId, external_id: product.externalId, sync_signature: signature, active: true };
           existingProducts.set(product.externalId, existingProduct);
@@ -522,8 +538,9 @@ export class HoroshopCatalogRepository {
                 descriptions = $7::jsonb, brand = $8, category_external_id = $9, price = $10,
                 old_price = $11, currency = $12, availability = $13, visible = $14,
                 primary_image_url = $15, canonical_url = $16, popularity = $17,
-                characteristics = $18::jsonb, source_data = $19::jsonb, sync_signature = $20,
-                active = TRUE, last_seen_sync_id = $21, updated_at = NOW()
+                characteristics = $18::jsonb, source_data = $19::jsonb, stickers = $20::jsonb,
+                condition_label = $21, sync_signature = $22,
+                active = TRUE, last_seen_sync_id = $23, updated_at = NOW()
             WHERE id = $1 AND connection_id = $2
           `, [
             existingProduct.id, connection.id, connection.generation, product.parentExternalId,
@@ -531,7 +548,8 @@ export class HoroshopCatalogRepository {
             product.brand, product.categoryExternalId, product.price, product.oldPrice,
             product.currency, product.availability, product.visible, product.primaryImageUrl,
             product.canonicalUrl, product.popularity, JSON.stringify(product.characteristics),
-            JSON.stringify(product.source), signature, runId
+            JSON.stringify(product.source), JSON.stringify(product.stickers), product.conditionLabel,
+            signature, runId
           ]);
           existingProduct.sync_signature = signature;
           existingProduct.active = true;
@@ -545,10 +563,10 @@ export class HoroshopCatalogRepository {
               INSERT INTO search_horoshop_modifications (
                 id, connection_id, product_id, generation, external_id, sku, titles, price,
                 old_price, currency, availability, visible, image_url, page_url, attributes,
-                source_data, sync_signature, active, last_seen_sync_id
+                source_data, stickers, condition_label, sync_signature, active, last_seen_sync_id
               ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14,
-                $15::jsonb, $16::jsonb, $17, TRUE, $18
+                $15::jsonb, $16::jsonb, $17::jsonb, $18, $19, TRUE, $20
               )
             `, [
               id, connection.id, productId, connection.generation,
@@ -556,7 +574,8 @@ export class HoroshopCatalogRepository {
               modification.price, modification.oldPrice, modification.currency,
               modification.availability, modification.visible, modification.imageUrl,
               modification.pageUrl, JSON.stringify(modification.attributes),
-              JSON.stringify(modification.source), modificationSignature, runId
+              JSON.stringify(modification.source), JSON.stringify(modification.stickers),
+              modification.conditionLabel, modificationSignature, runId
             ]);
             existingModifications.set(modification.externalId, {
               id, product_id: productId, external_id: modification.externalId,
@@ -571,8 +590,9 @@ export class HoroshopCatalogRepository {
             SET product_id = $3, generation = $4, sku = $5, titles = $6::jsonb,
                 price = $7, old_price = $8, currency = $9, availability = $10,
                 visible = $11, image_url = $12, page_url = $13, attributes = $14::jsonb,
-                source_data = $15::jsonb, sync_signature = $16, active = TRUE,
-                last_seen_sync_id = $17, updated_at = NOW()
+                source_data = $15::jsonb, stickers = $16::jsonb, condition_label = $17,
+                sync_signature = $18, active = TRUE,
+                last_seen_sync_id = $19, updated_at = NOW()
             WHERE id = $1 AND connection_id = $2
           `, [
             existingModification.id, connection.id, productId, connection.generation,
@@ -580,6 +600,7 @@ export class HoroshopCatalogRepository {
             modification.oldPrice, modification.currency, modification.availability,
             modification.visible, modification.imageUrl, modification.pageUrl,
             JSON.stringify(modification.attributes), JSON.stringify(modification.source),
+            JSON.stringify(modification.stickers), modification.conditionLabel,
             modificationSignature, runId
           ]);
           existingModification.product_id = productId;

@@ -102,6 +102,9 @@ const HoroshopPhotoParserPage = lazy(() => import('../pages/HoroshopPhotoParserP
 const OnlineSupportPage = lazy(() => import('../pages/OnlineSupportPage').then((module) => ({
   default: module.OnlineSupportPage
 })));
+const PopupBannersPage = lazy(() => import('../pages/PopupBannersPage').then((module) => ({
+  default: module.PopupBannersPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -226,6 +229,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="online_support" />}>
             <Route path="tools/online-support" element={<Suspense fallback={<LoadingScreen />}><OnlineSupportPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="popup_banners" />}>
+            <Route path="tools/popup-banners" element={<Suspense fallback={<LoadingScreen />}><PopupBannersPage /></Suspense>} />
           </Route>
           <Route element={<AccessManagementRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

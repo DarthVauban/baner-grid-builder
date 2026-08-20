@@ -153,9 +153,11 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
     slug: 'phones/501',
     brand: 'Example',
     popularity: 87,
+    icons: [{ id: 14, title: { ua: 'Вживаний' } }],
+    condition: 'Вживаний',
     characteristics: { color: 'black' },
     modifications: [
-      { article: 'PHONE-501-128', mod_title: { ua: '128 ГБ' }, price: 100, quantity: 3 },
+      { article: 'PHONE-501-128', mod_title: { ua: '128 ГБ' }, price: 100, quantity: 3, icons: [{ id: 18, title: 'Розпродаж' }] },
       { article: 'PHONE-501-256', mod_title: { ua: '256 ГБ' }, price: 120, residues: { 1: 0 } }
     ]
   }], 'shop.example.com');
@@ -167,6 +169,9 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
   assert.equal(product.modifications.length, 2);
   assert.equal(product.modifications[0].availability, 'В наявності');
   assert.equal(product.modifications[1].availability, 'Немає в наявності');
+  assert.deepEqual(product.stickers, [{ id: '14', title: 'Вживаний' }]);
+  assert.equal(product.conditionLabel, 'Вживаний');
+  assert.deepEqual(product.modifications[0].stickers, [{ id: '18', title: 'Розпродаж' }]);
   assert.deepEqual(product.source.characteristics, { color: 'black' });
 });
 
@@ -175,8 +180,9 @@ test('full import streams pages, reconciles missing rows and purges before anoth
     ['first.example.com', [
       [{
         id: 'p-1', article: 'FIRST-1', title: { ua: 'Перший' }, parent_id: 'cat-1',
+        icons: [{ id: 'used', title: { ua: 'Вживаний' } }], condition: { ua: 'Вживаний' },
         modifications: [
-          { article: 'FIRST-1-BLACK', price: '100', quantity: 2 },
+          { article: 'FIRST-1-BLACK', price: '100', quantity: 2, icons: [{ id: 'sale', title: 'Розпродаж' }] },
           { article: 'FIRST-1-WHITE', price: '110', quantity: 0 }
         ]
       }],
@@ -217,6 +223,15 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   assert.equal(status.status, 'connected');
   assert.deepEqual(status.counts, { categories: 1, products: 2, modifications: 3 });
   assert.equal(status.latestRun.pagesReceived, 2);
+  const catalogMetadata = await query(`
+    SELECT stickers, condition_label FROM search_horoshop_products WHERE external_id = 'p-1'
+  `);
+  assert.deepEqual(catalogMetadata.rows[0].stickers, [{ id: 'used', title: 'Вживаний' }]);
+  assert.equal(catalogMetadata.rows[0].condition_label, 'Вживаний');
+  const modificationMetadata = await query(`
+    SELECT stickers FROM search_horoshop_modifications WHERE sku = 'FIRST-1-BLACK'
+  `);
+  assert.deepEqual(modificationMetadata.rows[0].stickers, [{ id: 'sale', title: 'Розпродаж' }]);
 
   const staleTimestamp = new Date('2001-01-01T00:00:00.000Z');
   await query('UPDATE search_horoshop_categories SET updated_at = $1', [staleTimestamp]);

@@ -27,6 +27,34 @@ function localizedStringValue(value, depth = 0) {
   return null;
 }
 
+function stickerEntries(value) {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === 'string' ? value.split(';') : value === null || value === undefined ? [] : [value];
+  const seen = new Set();
+  return values.flatMap((item) => {
+    const source = record(item);
+    const title = localizedStringValue(
+      Object.keys(source).length ? source.title ?? source.name ?? source.label ?? source.value : item
+    );
+    if (!title) return [];
+    const id = stringValue(source.id ?? source.external_id) || '';
+    const key = `${id}:${title.toLocaleLowerCase('uk-UA')}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ id, title }];
+  });
+}
+
+function mergeStickers(...collections) {
+  const merged = new Map();
+  for (const sticker of collections.flat()) {
+    const key = `${sticker.id}:${sticker.title.toLocaleLowerCase('uk-UA')}`;
+    if (!merged.has(key)) merged.set(key, sticker);
+  }
+  return [...merged.values()];
+}
+
 function numericStockValue(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim() && /^-?\d+(?:[.,]\d+)?$/u.test(value.trim())) {
@@ -165,6 +193,8 @@ function normalizeModification(source, fallbackSku, productExternalId, inherited
     imageUrl: firstImage(source, storeDomain),
     pageUrl: pageUrl(source, storeDomain) ?? inheritedPageUrl,
     attributes: record(source.characteristics ?? source.attributes),
+    stickers: mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers)),
+    conditionLabel: localizedStringValue(source.condition_label ?? source.condition),
     source
   };
 }
@@ -200,6 +230,8 @@ export function normalizeHoroshopProducts(items, storeDomain) {
           canonicalUrl,
           popularity: stringValue(source.popularity),
           characteristics: record(source.characteristics),
+          stickers: mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers)),
+          conditionLabel: localizedStringValue(source.condition_label ?? source.condition),
           source
         },
         primaryImageUrl: firstImage(source, storeDomain),
@@ -209,6 +241,11 @@ export function normalizeHoroshopProducts(items, storeDomain) {
     } else if (!group.primaryImageUrl) {
       group.primaryImageUrl = firstImage(source, storeDomain);
     }
+    group.base.stickers = mergeStickers(
+      group.base.stickers,
+      mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers))
+    );
+    group.base.conditionLabel ??= localizedStringValue(source.condition_label ?? source.condition);
 
     const sourceModifications = Array.isArray(source.modifications)
       ? source.modifications

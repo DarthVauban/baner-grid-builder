@@ -79,4 +79,22 @@ describe('ToolsPage catalog', () => {
     const tile = await screen.findByRole('link', { name: /Супутні товари Хорошоп/ });
     expect(tile).toHaveAttribute('href', '/tools/horoshop-related-products');
   });
+
+  it('shows the popup banner constructor as a separate tool tile', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
+      tools: [{
+        toolId: 'popup_banners',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    });
+
+    renderPage();
+
+    const tile = await screen.findByRole('link', { name: /Попап-банери/ });
+    expect(tile).toHaveAttribute('href', '/tools/popup-banners');
+  });
 });

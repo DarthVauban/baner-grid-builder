@@ -12,6 +12,13 @@ export interface ToolDefinition {
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'popup_banners',
+    name: 'Попап-банери',
+    description: 'Конструктор попапів, точні товарні вибірки, правила за стікерами й каталогом, розклад та статистика показів.',
+    path: '/tools/popup-banners',
+    icon: 'popup'
+  },
+  {
     id: 'online_support',
     name: 'Онлайн-підтримка',
     description: 'Діалоги з покупцями сайту, черга звернень, контакти та налаштування віджета.',
