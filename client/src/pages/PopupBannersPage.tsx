@@ -10,16 +10,33 @@ import type {
   PopupCampaign,
   PopupCampaignInput,
   PopupCampaignStatus,
+  PopupLayout,
+  PopupTargetMode,
   PopupTargeting
 } from '../types/popup-banner';
 import '../styles/popup-banners.css';
 
 type EditorTab = 'content' | 'targeting' | 'behavior';
+type CampaignFilter = 'all' | PopupCampaignStatus;
+type PreviewViewport = 'desktop' | 'mobile';
 
 const statusLabels: Record<PopupCampaignStatus, string> = {
   draft: 'Чернетка',
   active: 'Активна',
   paused: 'Призупинена'
+};
+
+const layoutLabels: Record<PopupLayout, string> = {
+  modal: 'По центру',
+  'bottom-sheet': 'Знизу',
+  corner: 'У кутку'
+};
+
+const targetModeLabels: Record<PopupTargetMode, string> = {
+  products: 'Вказані товари',
+  rules: 'Умови каталогу',
+  all_products: 'Усі товари',
+  all_pages: 'Усі сторінки'
 };
 
 function emptyCampaign(): PopupCampaignInput {
@@ -107,9 +124,22 @@ function Toggle({ checked, label, description, onChange }: {
   onChange: (checked: boolean) => void;
 }) {
   return <label className="popup-toggle">
-    <span><strong>{label}</strong><small>{description}</small></span>
+    <span className="popup-toggle__copy"><strong>{label}</strong><small>{description}</small></span>
     <input className="switch" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
   </label>;
+}
+
+function SectionHeading({ icon, title, description, aside }: {
+  icon: Parameters<typeof Icon>[0]['name'];
+  title: string;
+  description: string;
+  aside?: string;
+}) {
+  return <header className="popup-section-heading">
+    <span className="popup-section-heading__icon"><Icon name={icon} size={19} /></span>
+    <div><h2>{title}</h2><p>{description}</p></div>
+    {aside && <small>{aside}</small>}
+  </header>;
 }
 
 function RulePicker({ label, values, selected, options, onChange }: {
@@ -137,37 +167,104 @@ function RulePicker({ label, values, selected, options, onChange }: {
   </div>;
 }
 
+function LayoutPicker({ value, onChange }: { value: PopupLayout; onChange: (value: PopupLayout) => void }) {
+  const layouts: PopupLayout[] = ['modal', 'bottom-sheet', 'corner'];
+  return <div className="popup-layout-picker" role="radiogroup" aria-label="Розташування попапа">
+    {layouts.map((layout) => <button
+      type="button"
+      role="radio"
+      aria-checked={layout === value}
+      className={layout === value ? 'is-active' : ''}
+      key={layout}
+      onClick={() => onChange(layout)}
+    >
+      <span className={`popup-layout-picker__scheme is-${layout}`}><i /></span>
+      <strong>{layoutLabels[layout]}</strong>
+    </button>)}
+  </div>;
+}
+
+function TargetModePicker({ value, onChange }: { value: PopupTargetMode; onChange: (value: PopupTargetMode) => void }) {
+  const modes: Array<{ value: PopupTargetMode; icon: Parameters<typeof Icon>[0]['name']; description: string }> = [
+    { value: 'products', icon: 'productSelection', description: 'Назви, артикули або модифікації' },
+    { value: 'rules', icon: 'characteristics', description: 'Стікери, бренди, категорії та стан' },
+    { value: 'all_products', icon: 'storefront', description: 'Будь-яка сторінка товару' },
+    { value: 'all_pages', icon: 'productPage', description: 'Увесь сайт без обмежень' }
+  ];
+  return <div className="popup-target-mode" role="radiogroup" aria-label="Тип вибірки">
+    {modes.map((mode) => <button
+      type="button"
+      role="radio"
+      aria-checked={mode.value === value}
+      className={mode.value === value ? 'is-active' : ''}
+      key={mode.value}
+      onClick={() => onChange(mode.value)}
+    >
+      <span><Icon name={mode.icon} size={18} /></span>
+      <div><strong>{targetModeLabels[mode.value]}</strong><small>{mode.description}</small></div>
+      <i><Icon name="check" size={13} /></i>
+    </button>)}
+  </div>;
+}
+
+function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return <label className="popup-color-field">
+    <span>{label}</span>
+    <div>
+      <input type="color" value={value} onChange={(event) => onChange(event.target.value)} aria-label={`${label}: вибрати колір`} />
+      <input type="text" value={value} readOnly aria-label={`${label}: HEX`} />
+    </div>
+  </label>;
+}
+
 function Preview({ draft }: { draft: PopupCampaignInput }) {
   const [acknowledged, setAcknowledged] = useState(false);
+  const [viewport, setViewport] = useState<PreviewViewport>('desktop');
   const content = draft.content;
   const styles = draft.styles;
-  return <div className={`popup-preview is-${styles.layout}`} style={{
-    '--preview-accent': styles.accentColor,
-    '--preview-bg': styles.backgroundColor,
-    '--preview-text': styles.textColor,
-    '--preview-muted': styles.mutedColor,
-    '--preview-radius': `${styles.borderRadius}px`,
-    '--preview-width': `${Math.min(styles.maxWidth, 520)}px`
-  } as CSSProperties}>
-    <div className="popup-preview__browser"><span /><span /><span /><small>Попередній перегляд</small></div>
-    <div className="popup-preview__stage">
-      <article className="popup-preview__card">
-        {styles.layout !== 'corner' && draft.behavior.dismissible && <span className="popup-preview__close">×</span>}
-        {content.imageUrl && <img src={content.imageUrl} alt="" />}
-        <div className="popup-preview__content">
-          {content.eyebrow && <p>{content.eyebrow}</p>}
-          <h3>{content.title || 'Заголовок попапа'}</h3>
-          <div>{content.body || 'Текст попапа'}</div>
-          {draft.behavior.requireAcknowledgement && <label>
-            <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
-            <span>{content.acknowledgementLabel}</span>
-          </label>}
-          <footer>
-            {draft.behavior.dismissible && content.secondaryLabel && <button type="button">{content.secondaryLabel}</button>}
-            <button type="button" className="is-primary" disabled={draft.behavior.requireAcknowledgement && !acknowledged}>{content.primaryLabel || 'Продовжити'}</button>
-          </footer>
+  return <div className="popup-live-preview">
+    <header>
+      <div><strong>Живий перегляд</strong><small>Так попап виглядатиме на сайті</small></div>
+      <div className="popup-preview-device" role="group" aria-label="Розмір попереднього перегляду">
+        <button type="button" className={viewport === 'desktop' ? 'is-active' : ''} onClick={() => setViewport('desktop')} aria-label="Комп’ютер"><Icon name="monitor" size={16} /></button>
+        <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон"><Icon name="phone" size={16} /></button>
+      </div>
+    </header>
+    <div className={`popup-preview is-${styles.layout} is-${viewport}`} style={{
+      '--preview-accent': styles.accentColor,
+      '--preview-bg': styles.backgroundColor,
+      '--preview-text': styles.textColor,
+      '--preview-muted': styles.mutedColor,
+      '--preview-radius': `${styles.borderRadius}px`,
+      '--preview-width': `${Math.min(styles.maxWidth, 560)}px`
+    } as CSSProperties}>
+      <div className="popup-preview__browser">
+        <span /><span /><span />
+        <div>mobiletrend.com.ua</div>
+      </div>
+      <div className="popup-preview__stage">
+        <div className="popup-preview__storefront" aria-hidden="true">
+          <div className="popup-preview__storefront-header"><b /><span /><span /><span /></div>
+          <div className="popup-preview__storefront-product"><i /><div><b /><span /><span /><button /></div></div>
         </div>
-      </article>
+        <article className="popup-preview__card">
+          {draft.behavior.dismissible && <span className="popup-preview__close">×</span>}
+          {content.imageUrl && <img src={content.imageUrl} alt="" />}
+          <div className="popup-preview__content">
+            {content.eyebrow && <p>{content.eyebrow}</p>}
+            <h3>{content.title || 'Заголовок попапа'}</h3>
+            <div>{content.body || 'Текст попапа'}</div>
+            {draft.behavior.requireAcknowledgement && <label>
+              <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
+              <span>{content.acknowledgementLabel}</span>
+            </label>}
+            <footer>
+              {draft.behavior.dismissible && content.secondaryLabel && <button type="button">{content.secondaryLabel}</button>}
+              <button type="button" className="is-primary" disabled={draft.behavior.requireAcknowledgement && !acknowledged}>{content.primaryLabel || 'Продовжити'}</button>
+            </footer>
+          </div>
+        </article>
+      </div>
     </div>
   </div>;
 }
@@ -180,7 +277,9 @@ export function PopupBannersPage() {
   const [draft, setDraft] = useState<PopupCampaignInput>(() => emptyCampaign());
   const [tab, setTab] = useState<EditorTab>('content');
   const [productText, setProductText] = useState('');
-  const [isCreating, setIsCreating] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [campaignSearch, setCampaignSearch] = useState('');
+  const [campaignFilter, setCampaignFilter] = useState<CampaignFilter>('all');
   const campaigns = useQuery({ queryKey: ['popup-campaigns'], queryFn: api.popupBanners.list });
   const options = useQuery({ queryKey: ['popup-campaign-options'], queryFn: api.popupBanners.options });
   const embed = useQuery({ queryKey: ['popup-embed-code'], queryFn: api.popupBanners.embedCode });
@@ -191,9 +290,30 @@ export function PopupBannersPage() {
   const selectedCampaign = campaigns.data?.find((item) => item.id === selectedId) || null;
   const saving = createCampaign.isPending || updateCampaign.isPending;
 
+  const campaignOverview = useMemo(() => {
+    const items = campaigns.data || [];
+    return {
+      active: items.filter((item) => item.status === 'active').length,
+      impressions: items.reduce((sum, item) => sum + item.stats.impressions, 0),
+      actions: items.reduce((sum, item) => sum + item.stats.acknowledgements + item.stats.clicks, 0)
+    };
+  }, [campaigns.data]);
+
+  const visibleCampaigns = useMemo(() => {
+    const query = campaignSearch.trim().toLocaleLowerCase('uk-UA');
+    return (campaigns.data || []).filter((campaign) => {
+      if (campaignFilter !== 'all' && campaign.status !== campaignFilter) return false;
+      return !query || campaign.name.toLocaleLowerCase('uk-UA').includes(query);
+    });
+  }, [campaignFilter, campaignSearch, campaigns.data]);
+
   useEffect(() => {
-    if (selectedId || isCreating || !campaigns.data?.[0]) return;
+    if (selectedId || isCreating || !campaigns.data) return;
     const campaign = campaigns.data[0];
+    if (!campaign) {
+      setIsCreating(true);
+      return;
+    }
     setSelectedId(campaign.id);
     setDraft(campaignInput(campaign));
     setProductText(campaign.productTargets.map((item) => item.sku).join('\n'));
@@ -208,6 +328,20 @@ export function PopupBannersPage() {
       + target.conditions.length + target.urlContains.length;
     return `${count} умов · ${target.match === 'all' ? 'усі одночасно' : 'будь-яка'}`;
   }, [draft.targeting, productText]);
+
+  const currentInput = useMemo(() => ({ ...draft, productEntries: inputLines(productText) }), [draft, productText]);
+  const isDirty = useMemo(() => {
+    if (isCreating || !selectedCampaign) return true;
+    return JSON.stringify(currentInput) !== JSON.stringify(campaignInput(selectedCampaign));
+  }, [currentInput, isCreating, selectedCampaign]);
+
+  const behaviorSummary = draft.behavior.frequency === 'product'
+    ? 'Раз для кожного товару'
+    : draft.behavior.frequency === 'session'
+      ? 'Раз за сесію'
+      : draft.behavior.frequency === 'days'
+        ? `Раз на ${draft.behavior.cooldownDays} дн.`
+        : 'Кожен перегляд';
 
   function editCampaign(campaign: PopupCampaign) {
     setSelectedId(campaign.id);
@@ -303,111 +437,189 @@ export function PopupBannersPage() {
   const conditionOptions = (options.data?.conditions || []).map((item) => ({ value: item, label: item }));
 
   return <div className="popup-banners-page">
-    <header className="page-heading popup-banners-heading">
-      <div><p className="eyebrow">Комунікація на сайті</p><h1>Попап-банери</h1><p>Створюйте кампанії для конкретних товарів або динамічних умов каталогу Хорошоп.</p></div>
-      <div className="page-heading__actions">
+    <header className="popup-banners-header">
+      <div className="popup-banners-header__copy">
+        <p className="eyebrow">Комунікація на сайті</p>
+        <h1>Попап-банери</h1>
+        <p>Створюйте охайні повідомлення та показуйте їх потрібним покупцям у потрібний момент.</p>
+      </div>
+      <div className="popup-banners-header__actions">
         <button className="button button--secondary" type="button" onClick={() => void copyEmbed()} disabled={!embed.data?.code}><Icon name="copy" size={17} /> Код для сайту</button>
         <button className="button button--primary" type="button" onClick={createNew}><Icon name="add" size={18} /> Нова кампанія</button>
       </div>
     </header>
 
-    {!options.isLoading && !options.data?.integration && <div className="popup-integration-warning"><Icon name="integrations" size={22} /><span><strong>Хорошоп не підключено</strong><small>Підключіть магазин і синхронізуйте каталог, щоб налаштовувати товарні кампанії.</small></span></div>}
-    {options.data?.integration && <div className="popup-integration-status"><span className="status-dot" /> <strong>{options.data.integration.storeDomain}</strong><small>Каталог: {options.data.integration.status} · синхронізація {formatDate(options.data.integration.lastSyncAt)}</small></div>}
+    {!options.isLoading && !options.data?.integration && <div className="popup-connection is-warning">
+      <span className="popup-connection__icon"><Icon name="integrations" size={21} /></span>
+      <div><strong>Хорошоп не підключено</strong><small>Підключіть магазин і синхронізуйте каталог, щоб налаштовувати товарні кампанії.</small></div>
+    </div>}
+    {options.data?.integration && <div className="popup-connection is-connected">
+      <span className="popup-connection__icon"><Icon name="storefront" size={20} /></span>
+      <div><strong>{options.data.integration.storeDomain}</strong><small>Каталог підключено · остання синхронізація {formatDate(options.data.integration.lastSyncAt)}</small></div>
+      <span className="popup-connection__badge"><i /> Підключено</span>
+    </div>}
 
     <div className="popup-banners-workspace">
       <aside className="popup-campaign-list">
-        <header><span><small>КАМПАНІЇ</small><strong>{campaigns.data?.length || 0}</strong></span><button className="icon-button" type="button" onClick={createNew} aria-label="Нова кампанія"><Icon name="add" size={19} /></button></header>
-        {campaigns.isLoading && <div className="popup-list-state">Завантажуємо…</div>}
+        <header className="popup-campaign-list__header">
+          <div><span className="popup-campaign-list__icon"><Icon name="popup" size={19} /></span><div><small>БІБЛІОТЕКА</small><strong>Кампанії</strong></div></div>
+          <button className="icon-button" type="button" onClick={createNew} aria-label="Нова кампанія"><Icon name="add" size={19} /></button>
+        </header>
+
+        <div className="popup-campaign-overview">
+          <span><strong>{campaigns.data?.length || 0}</strong><small>всього</small></span>
+          <span><strong>{campaignOverview.active}</strong><small>активні</small></span>
+          <span><strong>{campaignOverview.impressions}</strong><small>покази</small></span>
+        </div>
+
+        <label className="popup-campaign-search">
+          <Icon name="search" size={18} />
+          <input value={campaignSearch} onChange={(event) => setCampaignSearch(event.target.value)} placeholder="Знайти кампанію" aria-label="Пошук кампаній" />
+        </label>
+
+        <div className="popup-campaign-filters" role="group" aria-label="Фільтр кампаній">
+          {([['all', 'Усі'], ['active', 'Активні'], ['draft', 'Чернетки'], ['paused', 'Пауза']] as Array<[CampaignFilter, string]>).map(([value, label]) => <button type="button" className={campaignFilter === value ? 'is-active' : ''} onClick={() => setCampaignFilter(value)} key={value}>{label}</button>)}
+        </div>
+
+        {campaigns.isLoading && <div className="popup-list-state">Завантажуємо кампанії…</div>}
         {campaigns.isError && <div className="popup-list-state is-error">Не вдалося завантажити кампанії.</div>}
-        {!campaigns.isLoading && !campaigns.data?.length && <div className="popup-list-state"><Icon name="popup" size={26} /><strong>Кампаній ще немає</strong><small>Створіть перший попап для товарів.</small></div>}
+        {!campaigns.isLoading && !campaigns.data?.length && <div className="popup-list-state"><span><Icon name="popup" size={25} /></span><strong>Кампаній ще немає</strong><small>Створіть перше повідомлення для покупців.</small><button className="button button--primary button--small" type="button" onClick={createNew}>Створити кампанію</button></div>}
+        {!campaigns.isLoading && Boolean(campaigns.data?.length) && !visibleCampaigns.length && <div className="popup-list-state"><strong>Нічого не знайдено</strong><small>Змініть пошук або фільтр статусу.</small></div>}
+
         <div className="popup-campaign-list__items">
-          {campaigns.data?.map((campaign) => <button type="button" className={campaign.id === selectedId && !isCreating ? 'is-active' : ''} key={campaign.id} onClick={() => editCampaign(campaign)}>
-            <span className={`popup-status is-${campaign.status}`}>{statusLabels[campaign.status]}</span>
+          {visibleCampaigns.map((campaign) => <button type="button" className={campaign.id === selectedId && !isCreating ? 'is-active' : ''} key={campaign.id} onClick={() => editCampaign(campaign)}>
+            <span className="popup-campaign-list__row"><span className={`popup-status is-${campaign.status}`}><i />{statusLabels[campaign.status]}</span><small>{formatDate(campaign.updatedAt)}</small></span>
             <strong>{campaign.name}</strong>
-            <small>{campaign.targeting.mode === 'products' ? `${campaign.productTargets.length} позицій` : campaign.targeting.mode === 'rules' ? 'Динамічні умови' : campaign.targeting.mode === 'all_pages' ? 'Усі сторінки' : 'Усі товари'}</small>
-            <span className="popup-campaign-list__stats"><span>{campaign.stats.impressions} показів</span><span>{campaign.stats.acknowledgements + campaign.stats.clicks} дій</span></span>
+            <small>{campaign.targeting.mode === 'products' ? `${campaign.productTargets.length} позицій` : targetModeLabels[campaign.targeting.mode]}</small>
+            <span className="popup-campaign-list__stats"><span><b>{campaign.stats.impressions}</b> показів</span><span><b>{campaign.stats.acknowledgements + campaign.stats.clicks}</b> дій</span></span>
           </button>)}
         </div>
+
+        <footer className="popup-campaign-list__footer"><Icon name="visibility" size={15} /><span>Усього взаємодій: <strong>{campaignOverview.actions}</strong></span></footer>
       </aside>
 
       <main className="popup-editor">
         <header className="popup-editor__header">
-          <div><small>{isCreating ? 'НОВА КАМПАНІЯ' : statusLabels[selectedCampaign?.status || 'draft']}</small><input value={draft.name} maxLength={160} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} aria-label="Назва кампанії" /></div>
+          <div className="popup-editor__identity">
+            <div><span className={`popup-status is-${selectedCampaign?.status || 'draft'}`}><i />{isCreating ? 'Нова кампанія' : statusLabels[selectedCampaign?.status || 'draft']}</span>{isDirty && <small className="popup-unsaved"><i /> Є незбережені зміни</small>}</div>
+            <input value={draft.name} maxLength={160} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} aria-label="Назва кампанії" placeholder="Назва кампанії" />
+            <p>{targetSummary} · {behaviorSummary}</p>
+          </div>
           <div className="popup-editor__actions">
-            {!isCreating && selectedCampaign?.status !== 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('active')} disabled={changeStatus.isPending}><Icon name="publication" size={16} /> Опублікувати</button>}
+            {!isCreating && selectedCampaign?.status !== 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('active')} disabled={changeStatus.isPending || isDirty}><Icon name="publication" size={16} /> Опублікувати</button>}
             {!isCreating && selectedCampaign?.status === 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('paused')} disabled={changeStatus.isPending}><Icon name="deadline" size={16} /> Призупинити</button>}
             {!isCreating && <button className="icon-button icon-button--danger" type="button" onClick={() => void remove()} aria-label="Видалити кампанію"><Icon name="delete" size={18} /></button>}
-            <button className="button button--primary button--small" type="button" onClick={() => void save()} disabled={saving || !options.data?.integration}><Icon name="save" size={16} /> {saving ? 'Зберігаємо…' : 'Зберегти'}</button>
+            <button className="button button--primary button--small" type="button" onClick={() => void save()} disabled={saving || !options.data?.integration || !draft.name.trim() || !isDirty}><Icon name="save" size={16} /> {saving ? 'Зберігаємо…' : 'Зберегти'}</button>
           </div>
         </header>
 
         <nav className="popup-editor-tabs" aria-label="Розділи конструктора">
-          {([['content', 'Контент і дизайн'], ['targeting', 'Умови показу'], ['behavior', 'Поведінка й розклад']] as Array<[EditorTab, string]>).map(([value, label]) => <button type="button" className={tab === value ? 'is-active' : ''} onClick={() => setTab(value)} key={value}>{label}</button>)}
+          {([
+            ['content', 'popup', 'Контент і дизайн', `${layoutLabels[draft.styles.layout]} · ${draft.styles.maxWidth}px`],
+            ['targeting', 'productSelection', 'Умови показу', targetSummary],
+            ['behavior', 'schedule', 'Поведінка й розклад', behaviorSummary]
+          ] as Array<[EditorTab, Parameters<typeof Icon>[0]['name'], string, string]>).map(([value, icon, label, summary], index) => <button type="button" className={tab === value ? 'is-active' : ''} onClick={() => setTab(value)} key={value}>
+            <span className="popup-editor-tabs__number">{index + 1}</span>
+            <span className="popup-editor-tabs__icon"><Icon name={icon} size={18} /></span>
+            <span><strong>{label}</strong><small>{summary}</small></span>
+            <Icon name="arrow" size={17} />
+          </button>)}
         </nav>
 
         <div className="popup-editor__body">
           <section className="popup-editor__form">
             {tab === 'content' && <>
-              <div className="popup-form-section"><h2>Текст попапа</h2><p>Доступні змінні: <code>{'{{product.title}}'}</code>, <code>{'{{product.article}}'}</code>, <code>{'{{product.condition}}'}</code>.</p>
+              <div className="popup-form-section">
+                <SectionHeading icon="edit" title="Текст повідомлення" description="Сформулюйте коротке повідомлення, яке покупець зрозуміє з першого погляду." />
+                <div className="popup-template-variables"><span>Змінні товару</span><code>{'{{product.title}}'}</code><code>{'{{product.article}}'}</code><code>{'{{product.condition}}'}</code></div>
                 <div className="popup-form-grid">
-                  <label><span>Надзаголовок</span><input value={draft.content.eyebrow} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, eyebrow: event.target.value } }))} /></label>
-                  <label><span>Заголовок</span><input value={draft.content.title} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, title: event.target.value } }))} /></label>
-                  <label className="is-full"><span>Основний текст</span><textarea rows={6} value={draft.content.body} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, body: event.target.value } }))} /></label>
+                  <label><span>Надзаголовок</span><input value={draft.content.eyebrow} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, eyebrow: event.target.value } }))} placeholder="Наприклад, Важлива інформація" /></label>
+                  <label><span>Заголовок</span><input value={draft.content.title} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, title: event.target.value } }))} placeholder="Зверніть увагу" /></label>
+                  <label className="is-full"><span>Основний текст</span><textarea rows={6} value={draft.content.body} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, body: event.target.value } }))} /><small>{draft.content.body.length} символів</small></label>
+                  <label className="is-full"><span>Зображення</span><input type="url" placeholder="https://..." value={draft.content.imageUrl} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, imageUrl: event.target.value } }))} /><small>Необов’язково. Використовуйте пряме HTTPS-посилання.</small></label>
+                </div>
+              </div>
+
+              <div className="popup-form-section">
+                <SectionHeading icon="link" title="Кнопки й дія" description="Назвіть дію зрозуміло та вкажіть сторінку, куди вона веде." />
+                <div className="popup-form-grid">
                   <label><span>Основна кнопка</span><input value={draft.content.primaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryLabel: event.target.value } }))} /></label>
                   <label><span>Додаткова кнопка</span><input value={draft.content.secondaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, secondaryLabel: event.target.value } }))} /></label>
                   <label className="is-full"><span>Посилання основної кнопки</span><input type="url" placeholder="https://... або /шлях/" value={draft.content.primaryUrl} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryUrl: event.target.value } }))} /></label>
-                  <label className="is-full"><span>Зображення</span><input type="url" placeholder="https://..." value={draft.content.imageUrl} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, imageUrl: event.target.value } }))} /></label>
                 </div>
               </div>
-              <div className="popup-form-section"><h2>Оформлення</h2>
+
+              <div className="popup-form-section">
+                <SectionHeading icon="productCard" title="Вигляд попапа" description="Оберіть розташування, кольори та комфортний розмір повідомлення." />
+                <LayoutPicker value={draft.styles.layout} onChange={(layout) => setDraft((current) => ({ ...current, styles: { ...current.styles, layout } }))} />
+                <div className="popup-color-grid">
+                  <ColorField label="Акцент" value={draft.styles.accentColor} onChange={(accentColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, accentColor } }))} />
+                  <ColorField label="Фон" value={draft.styles.backgroundColor} onChange={(backgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, backgroundColor } }))} />
+                  <ColorField label="Текст" value={draft.styles.textColor} onChange={(textColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, textColor } }))} />
+                </div>
                 <div className="popup-form-grid">
-                  <label><span>Тип попапа</span><StyledSelect value={draft.styles.layout} options={[{ value: 'modal', label: 'Модальне вікно' }, { value: 'bottom-sheet', label: 'Нижня панель' }, { value: 'corner', label: 'Кутова картка' }]} onChange={(layout) => setDraft((current) => ({ ...current, styles: { ...current.styles, layout } }))} /></label>
-                  <label><span>Максимальна ширина</span><input type="number" min={320} max={760} value={draft.styles.maxWidth} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, maxWidth: Number(event.target.value) } }))} /></label>
-                  <label><span>Акцент</span><input className="popup-color-input" type="color" value={draft.styles.accentColor} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, accentColor: event.target.value } }))} /></label>
-                  <label><span>Фон</span><input className="popup-color-input" type="color" value={draft.styles.backgroundColor} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, backgroundColor: event.target.value } }))} /></label>
-                  <label><span>Колір тексту</span><input className="popup-color-input" type="color" value={draft.styles.textColor} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, textColor: event.target.value } }))} /></label>
-                  <label><span>Заокруглення</span><input type="number" min={0} max={40} value={draft.styles.borderRadius} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, borderRadius: Number(event.target.value) } }))} /></label>
+                  <label><span>Максимальна ширина, px</span><input type="number" min={320} max={760} value={draft.styles.maxWidth} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, maxWidth: Number(event.target.value) } }))} /></label>
+                  <label><span>Заокруглення, px</span><input type="number" min={0} max={40} value={draft.styles.borderRadius} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, borderRadius: Number(event.target.value) } }))} /></label>
                 </div>
               </div>
             </>}
 
             {tab === 'targeting' && <>
-              <div className="popup-form-section"><h2>Де показувати</h2><p>{targetSummary}</p>
-                <label><span>Тип вибірки</span><StyledSelect value={draft.targeting.mode} options={[{ value: 'products', label: 'Вказані товари та артикули' }, { value: 'rules', label: 'Динамічні умови каталогу' }, { value: 'all_products', label: 'Усі товари' }, { value: 'all_pages', label: 'Усі сторінки сайту' }]} onChange={(mode) => updateTargeting({ mode })} /></label>
+              <div className="popup-form-section">
+                <SectionHeading icon="productSelection" title="Де показувати" description="Оберіть найпростіший спосіб сформувати аудиторію цієї кампанії." aside={targetSummary} />
+                <TargetModePicker value={draft.targeting.mode} onChange={(mode) => updateTargeting({ mode })} />
               </div>
-              {draft.targeting.mode === 'products' && <div className="popup-form-section"><h2>Назви та артикули</h2><p>Кожна позиція з нового рядка. Можна вказувати батьківські товари або конкретні модифікації.</p><textarea className="popup-products-input" rows={12} value={productText} onChange={(event) => setProductText(event.target.value)} placeholder={'П0000012345\nСмартфон Apple iPhone 15 128GB Black'} /></div>}
-              {draft.targeting.mode === 'rules' && <div className="popup-form-section"><h2>Правила каталогу</h2><p>Порожні групи не враховуються. Усередині групи достатньо одного збігу.</p>
-                <label><span>Логіка між групами</span><StyledSelect value={draft.targeting.match} options={[{ value: 'all', label: 'Мають виконуватись усі групи' }, { value: 'any', label: 'Достатньо будь-якої групи' }]} onChange={(match) => updateTargeting({ match })} /></label>
-                <RulePicker label="Стікери" values={draft.targeting.stickers} selected="" options={stickerOptions} onChange={(value) => toggleRule('stickers', value)} />
-                {!options.isLoading && stickerOptions.length === 0 && <div className="popup-rule-note"><Icon name="deadline" size={16} /> У поточному каталозі Хорошоп не отримано жодного призначеного стікера. Після синхронізації перевірте це поле ще раз.</div>}
-                <RulePicker label="Бренди" values={draft.targeting.brands} selected="" options={brandOptions} onChange={(value) => toggleRule('brands', value)} />
-                <RulePicker label="Категорії" values={draft.targeting.categoryIds} selected="" options={categoryOptions} onChange={(value) => toggleRule('categoryIds', value)} />
-                <RulePicker label="Стан товару" values={draft.targeting.conditions} selected="" options={conditionOptions} onChange={(value) => toggleRule('conditions', value)} />
-                <label><span>URL містить — по одному фрагменту з рядка</span><textarea rows={4} value={draft.targeting.urlContains.join('\n')} onChange={(event) => updateTargeting({ urlContains: inputLines(event.target.value) })} placeholder="/vzhyvani-smartfony/" /></label>
+              {draft.targeting.mode === 'products' && <div className="popup-form-section">
+                <SectionHeading icon="catalog" title="Товари й модифікації" description="Вкажіть кожну назву або артикул з нового рядка. Система знайде точні позиції в каталозі." aside={`${inputLines(productText).length} позицій`} />
+                <label><span>Назви та артикули</span><textarea className="popup-products-input" rows={12} value={productText} onChange={(event) => setProductText(event.target.value)} placeholder={'П0000012345\nСмартфон Apple iPhone 15 128GB Black'} /></label>
               </div>}
+              {draft.targeting.mode === 'rules' && <div className="popup-form-section">
+                <SectionHeading icon="characteristics" title="Правила каталогу" description="Додавайте лише потрібні групи. Порожні правила не впливають на вибірку." aside={`${draft.targeting.stickers.length + draft.targeting.brands.length + draft.targeting.categoryIds.length + draft.targeting.conditions.length + draft.targeting.urlContains.length} умов`} />
+                <label><span>Логіка між групами</span><StyledSelect value={draft.targeting.match} options={[{ value: 'all', label: 'Мають виконуватись усі групи' }, { value: 'any', label: 'Достатньо будь-якої групи' }]} onChange={(match) => updateTargeting({ match })} ariaLabel="Логіка між групами" /></label>
+                <div className="popup-rules-grid">
+                  <RulePicker label="Стікери" values={draft.targeting.stickers} selected="" options={stickerOptions} onChange={(value) => toggleRule('stickers', value)} />
+                  <RulePicker label="Бренди" values={draft.targeting.brands} selected="" options={brandOptions} onChange={(value) => toggleRule('brands', value)} />
+                  <RulePicker label="Категорії" values={draft.targeting.categoryIds} selected="" options={categoryOptions} onChange={(value) => toggleRule('categoryIds', value)} />
+                  <RulePicker label="Стан товару" values={draft.targeting.conditions} selected="" options={conditionOptions} onChange={(value) => toggleRule('conditions', value)} />
+                </div>
+                {!options.isLoading && stickerOptions.length === 0 && <div className="popup-rule-note"><Icon name="deadline" size={16} /> У поточному каталозі Хорошоп ще не отримано призначених стікерів. Після синхронізації перевірте поле ще раз.</div>}
+                <label><span>URL містить — один фрагмент з рядка</span><textarea rows={4} value={draft.targeting.urlContains.join('\n')} onChange={(event) => updateTargeting({ urlContains: inputLines(event.target.value) })} placeholder="/vzhyvani-smartfony/" /></label>
+              </div>}
+              {(draft.targeting.mode === 'all_products' || draft.targeting.mode === 'all_pages') && <div className="popup-wide-target-note"><span><Icon name="visibility" size={20} /></span><div><strong>Широка аудиторія</strong><p>Попап охопить {draft.targeting.mode === 'all_pages' ? 'всі сторінки сайту' : 'всі картки товарів'}. Перевірте частоту показу, щоб повідомлення не заважало покупцям.</p></div></div>}
             </>}
 
             {tab === 'behavior' && <>
-              <div className="popup-form-section"><h2>Поведінка</h2>
+              <div className="popup-form-section">
+                <SectionHeading icon="schedule" title="Частота й взаємодія" description="Керуйте моментом появи та повторними показами для одного покупця." aside={behaviorSummary} />
                 <div className="popup-form-grid">
-                  <label><span>Затримка, мс</span><input type="number" min={0} max={60000} step={100} value={draft.behavior.delayMs} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, delayMs: Number(event.target.value) } }))} /></label>
-                  <label><span>Частота показу</span><StyledSelect value={draft.behavior.frequency} options={[{ value: 'always', label: 'Під час кожного перегляду' }, { value: 'session', label: 'Один раз за сесію' }, { value: 'product', label: 'Один раз для кожного товару' }, { value: 'days', label: 'Повторити через кілька днів' }]} onChange={(frequency) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, frequency } }))} /></label>
+                  <label><span>Затримка перед показом, мс</span><input type="number" min={0} max={60000} step={100} value={draft.behavior.delayMs} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, delayMs: Number(event.target.value) } }))} /><small>300–800 мс зазвичай сприймаються природно.</small></label>
+                  <label><span>Частота показу</span><StyledSelect value={draft.behavior.frequency} options={[{ value: 'always', label: 'Під час кожного перегляду' }, { value: 'session', label: 'Один раз за сесію' }, { value: 'product', label: 'Один раз для кожного товару' }, { value: 'days', label: 'Повторити через кілька днів' }]} onChange={(frequency) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, frequency } }))} ariaLabel="Частота показу" /></label>
                   {draft.behavior.frequency === 'days' && <label><span>Повторити через, днів</span><input type="number" min={1} max={365} value={draft.behavior.cooldownDays} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, cooldownDays: Number(event.target.value) } }))} /></label>}
                 </div>
-                <Toggle checked={draft.behavior.dismissible} label="Можна закрити" description="Показувати хрестик, додаткову кнопку та дозволити клік по фону." onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
-                <Toggle checked={draft.behavior.requireAcknowledgement} label="Обов’язкове підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />
+                <div className="popup-toggle-list">
+                  <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description="Показувати хрестик, додаткову кнопку та дозволити клік по фону." onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
+                  <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />
+                </div>
                 {draft.behavior.requireAcknowledgement && <label><span>Текст підтвердження</span><textarea rows={3} value={draft.content.acknowledgementLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, acknowledgementLabel: event.target.value } }))} /></label>}
               </div>
-              <div className="popup-form-section"><h2>Розклад</h2><p>Час інтерпретується у часовому поясі вашого браузера і зберігається з часовою зоною.</p>
+              <div className="popup-form-section">
+                <SectionHeading icon="calendar" title="Розклад кампанії" description="Залиште поля порожніми, якщо кампанія не має часових обмежень." />
                 <div className="popup-form-grid">
                   <label><span>Початок</span><input type="datetime-local" value={localDateTime(draft.startsAt)} onChange={(event) => setDraft((current) => ({ ...current, startsAt: isoDateTime(event.target.value) }))} /></label>
                   <label><span>Завершення</span><input type="datetime-local" value={localDateTime(draft.endsAt)} onChange={(event) => setDraft((current) => ({ ...current, endsAt: isoDateTime(event.target.value) }))} /></label>
-                  <label><span>Пріоритет</span><input type="number" min={0} max={1000} value={draft.priority} onChange={(event) => setDraft((current) => ({ ...current, priority: Number(event.target.value) }))} /></label>
+                  <label><span>Пріоритет</span><input type="number" min={0} max={1000} value={draft.priority} onChange={(event) => setDraft((current) => ({ ...current, priority: Number(event.target.value) }))} /><small>Якщо підходять кілька кампаній, перемагає більший пріоритет.</small></label>
                 </div>
               </div>
             </>}
           </section>
-          <aside className="popup-editor__preview"><Preview draft={draft} /><div className="popup-preview-summary"><span><strong>Ціль</strong><small>{targetSummary}</small></span><span><strong>Показ</strong><small>{draft.behavior.frequency === 'product' ? 'Раз для кожного товару' : draft.behavior.frequency === 'session' ? 'Раз за сесію' : draft.behavior.frequency === 'days' ? `Раз на ${draft.behavior.cooldownDays} дн.` : 'Кожен перегляд'}</small></span></div></aside>
+          <aside className="popup-editor__preview">
+            <Preview draft={draft} />
+            <div className="popup-preview-summary">
+              <span><i><Icon name="productSelection" size={16} /></i><span><strong>Аудиторія</strong><small>{targetSummary}</small></span></span>
+              <span><i><Icon name="schedule" size={16} /></i><span><strong>Частота</strong><small>{behaviorSummary}</small></span></span>
+              <span><i><Icon name="calendar" size={16} /></i><span><strong>Період</strong><small>{draft.startsAt || draft.endsAt ? `${formatDate(draft.startsAt)} — ${formatDate(draft.endsAt)}` : 'Без обмежень'}</small></span></span>
+            </div>
+          </aside>
         </div>
       </main>
     </div>
