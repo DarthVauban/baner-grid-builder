@@ -16,6 +16,8 @@ import { resolveHoroshopPhotoSelection } from './photo-selection.js';
 
 const maximumSelectionEntries = 1_000;
 const maximumDraftImages = 40;
+const maximumHoroshopImageBytes = 5 * 1024 * 1024;
+const defaultPublicationHeartbeatMilliseconds = 10_000;
 
 function jsonObject(value) {
   if (!value) return {};
@@ -180,8 +182,53 @@ function publicationError(error) {
     if (error.apiMessage) {
       return new AppError(502, 'HOROSHOP_PHOTO_PUBLISH_REJECTED', `Хорошоп відхилив фотографії: ${error.apiMessage}`);
     }
+    if (error.code === 'invalid_response') {
+      return new AppError(502, 'HOROSHOP_PHOTO_INVALID_RESPONSE', 'Хорошоп повернув некоректну відповідь під час оновлення фотографій.');
+    }
+    if (error.code === 'api_rejected') {
+      return new AppError(502, 'HOROSHOP_PHOTO_PUBLISH_REJECTED', 'Хорошоп відхилив оновлення фотографій без пояснення причини.');
+    }
+  }
+  const transportCode = String(error?.code || error?.cause?.code || '').toUpperCase();
+  if (error?.name === 'AbortError' || ['ABORT_ERR', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(transportCode)) {
+    return new AppError(504, 'HOROSHOP_PHOTO_PUBLISH_TIMEOUT', 'Хорошоп не завершив оновлення фотографій у відведений час. Перевірте товар перед повторною передачею.');
+  }
+  if (['ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'ENOTFOUND', 'UND_ERR_SOCKET'].includes(transportCode)) {
+    return new AppError(502, 'HOROSHOP_PHOTO_NETWORK_ERROR', 'Не вдалося з’єднатися з Хорошопом під час оновлення фотографій.');
   }
   return new AppError(502, 'HOROSHOP_PHOTO_PUBLISH_FAILED', 'Не вдалося передати фотографії у Хорошоп.');
+}
+
+function publicationArticle(value) {
+  return String(value || '')
+    .replace(/[\u0000-\u001f\u007f]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .slice(0, 160);
+}
+
+function contextualPublicationError(error, article) {
+  const safe = publicationError(error);
+  const safeArticle = publicationArticle(article);
+  const prefix = safeArticle ? `Артикул «${safeArticle}»: ` : '';
+  return new AppError(safe.status, safe.code, `${prefix}${safe.message}`, {
+    ...(safe.details && typeof safe.details === 'object' ? safe.details : {}),
+    ...(safeArticle ? { article: safeArticle } : {})
+  });
+}
+
+async function withPublicationHeartbeat(operation, onHeartbeat, intervalMilliseconds) {
+  const interval = Number(intervalMilliseconds);
+  if (!onHeartbeat || !Number.isFinite(interval) || interval <= 0) return operation();
+  const timer = setInterval(() => {
+    try { onHeartbeat(); } catch { return; }
+  }, interval);
+  timer.unref?.();
+  try {
+    return await operation();
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 function absoluteMediaUrl(origin, value) {
@@ -207,6 +254,8 @@ export class HoroshopPhotoService {
     this.scrape = options.scrape || scrapePhotoParserProduct;
     this.createAsset = options.createAsset || createMediaAsset;
     this.publicOrigin = options.publicOrigin ?? env.APP_ORIGIN ?? '';
+    this.publicationHeartbeatMilliseconds = options.publicationHeartbeatMilliseconds
+      ?? defaultPublicationHeartbeatMilliseconds;
   }
 
   async connection(db = this.pool) {
@@ -763,21 +812,27 @@ export class HoroshopPhotoService {
 
   async selectAssets(draftId, assetIds) {
     const connection = await this.connection();
-    const draft = await this.pool.query(`
-      SELECT id FROM search_horoshop_photo_drafts
-      WHERE id = $1 AND connection_id = $2 AND generation = $3
-    `, [draftId, connection.id, connection.generation]);
-    if (!draft.rows[0]) throw new AppError(404, 'HOROSHOP_PHOTO_DRAFT_NOT_FOUND', 'Чернетку фотографій не знайдено.');
-    const available = await this.pool.query(`
-      SELECT id FROM search_horoshop_photo_assets WHERE draft_id = $1
-    `, [draftId]);
-    const availableIds = new Set(available.rows.map((row) => row.id));
-    if (assetIds.some((id) => !availableIds.has(id))) {
-      throw new AppError(422, 'HOROSHOP_PHOTO_ASSET_INVALID', 'Одна з вибраних фотографій не належить цій чернетці.');
-    }
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+      const draft = await client.query(`
+        SELECT id, publish_status FROM search_horoshop_photo_drafts
+        WHERE id = $1 AND connection_id = $2 AND generation = $3
+        FOR UPDATE
+      `, [draftId, connection.id, connection.generation]);
+      if (!draft.rows[0]) {
+        throw new AppError(404, 'HOROSHOP_PHOTO_DRAFT_NOT_FOUND', 'Чернетку фотографій не знайдено.');
+      }
+      if (draft.rows[0].publish_status === 'publishing') {
+        throw new AppError(409, 'HOROSHOP_PHOTO_DRAFT_PUBLISHING', 'Дочекайтеся завершення передачі фотографій у Хорошоп.');
+      }
+      const available = await client.query(`
+        SELECT id FROM search_horoshop_photo_assets WHERE draft_id = $1
+      `, [draftId]);
+      const availableIds = new Set(available.rows.map((row) => row.id));
+      if (assetIds.some((id) => !availableIds.has(id))) {
+        throw new AppError(422, 'HOROSHOP_PHOTO_ASSET_INVALID', 'Одна з вибраних фотографій не належить цій чернетці.');
+      }
       await client.query('UPDATE search_horoshop_photo_assets SET selected = FALSE WHERE draft_id = $1', [draftId]);
       for (const [index, assetId] of assetIds.entries()) {
         await client.query(`
@@ -1640,8 +1695,16 @@ export class HoroshopPhotoService {
     const result = await this.pool.query(`
       SELECT DISTINCT draft.id
       FROM search_horoshop_photo_drafts AS draft
+      INNER JOIN search_horoshop_products AS draft_product
+        ON draft_product.id = draft.product_id
+       AND draft_product.connection_id = draft.connection_id
+       AND draft_product.generation = draft.generation
+       AND draft_product.active = TRUE
       LEFT JOIN search_horoshop_modifications AS draft_modification
         ON draft_modification.id = draft.modification_id
+       AND draft_modification.product_id = draft.product_id
+       AND draft_modification.connection_id = draft.connection_id
+       AND draft_modification.generation = draft.generation
        AND draft_modification.active = TRUE
       LEFT JOIN (
         SELECT product_id, COUNT(*)::INTEGER AS active_count
@@ -1670,6 +1733,8 @@ export class HoroshopPhotoService {
         AND draft.connection_id = $2
         AND draft.generation = $3
         AND draft.parse_status IN ('ready', 'partial')
+        AND draft.publish_status IN ('draft', 'failed')
+        AND (draft.modification_id IS NULL OR draft_modification.id IS NOT NULL)
       ORDER BY draft.id
     `, [selectionId, connection.id, connection.generation]);
     return result.rows.map((row) => row.id);
@@ -1679,14 +1744,25 @@ export class HoroshopPhotoService {
     if (!draftIds.length) return [];
     const placeholders = draftIds.map((_, index) => `$${index + 3}`).join(', ');
     const result = await this.pool.query(`
-      SELECT draft.id AS draft_id, draft.target_type,
+      SELECT draft.id AS draft_id, draft.modification_id, draft.target_type,
+             draft.parse_status, draft.publish_status,
+             draft.updated_at,
+             product.active AS product_active,
              product.sku AS product_sku,
+             modification.active AS modification_active,
              modification.sku AS modification_sku,
              photo.id AS photo_id, photo.sort_order,
              asset.url, asset.width, asset.height, asset.size_bytes
       FROM search_horoshop_photo_drafts AS draft
-      INNER JOIN search_horoshop_products AS product ON product.id = draft.product_id
-      LEFT JOIN search_horoshop_modifications AS modification ON modification.id = draft.modification_id
+      INNER JOIN search_horoshop_products AS product
+        ON product.id = draft.product_id
+       AND product.connection_id = draft.connection_id
+       AND product.generation = draft.generation
+      LEFT JOIN search_horoshop_modifications AS modification
+        ON modification.id = draft.modification_id
+       AND modification.product_id = draft.product_id
+       AND modification.connection_id = draft.connection_id
+       AND modification.generation = draft.generation
       LEFT JOIN search_horoshop_photo_assets AS photo
         ON photo.draft_id = draft.id AND photo.selected = TRUE
       LEFT JOIN media_library_assets AS asset ON asset.id = photo.media_asset_id
@@ -1698,11 +1774,17 @@ export class HoroshopPhotoService {
     for (const row of result.rows) {
       const draft = byId.get(row.draft_id) || {
         id: row.draft_id,
+        modificationId: row.modification_id || null,
         targetType: row.target_type,
+        parseStatus: row.parse_status,
+        publishStatus: row.publish_status,
+        updatedAt: row.updated_at,
+        productActive: row.product_active === true,
+        modificationActive: row.modification_active === true,
         article: row.modification_sku || row.product_sku || '',
-        links: []
+        assets: []
       };
-      if (row.url) draft.links.push(row.url);
+      if (row.url) draft.assets.push({ url: row.url, sizeBytes: Number(row.size_bytes || 0) });
       byId.set(row.draft_id, draft);
     }
     const drafts = [...byId.values()];
@@ -1710,76 +1792,228 @@ export class HoroshopPhotoService {
       throw new AppError(404, 'HOROSHOP_PHOTO_DRAFT_NOT_FOUND', 'Одна з чернеток фотографій більше не належить актуальному каталогу.');
     }
     for (const draft of drafts) {
+      const targetIsConsistent = draft.targetType === 'gallery_common'
+        ? draft.modificationId === null
+        : draft.targetType === 'images' && draft.modificationId !== null;
+      if (!targetIsConsistent) {
+        throw contextualPublicationError(new AppError(
+          409,
+          'HOROSHOP_PHOTO_TARGET_INVALID',
+          'Чернетка більше не відповідає цілі фотографій у каталозі.'
+        ), draft.article);
+      }
+      if (!draft.productActive || (draft.modificationId !== null && !draft.modificationActive)) {
+        throw contextualPublicationError(new AppError(
+          409,
+          'HOROSHOP_PHOTO_TARGET_INACTIVE',
+          'Товар або його модифікація вже не активні в актуальному каталозі.'
+        ), draft.article);
+      }
       if (!draft.article) throw new AppError(422, 'HOROSHOP_PHOTO_ARTICLE_MISSING', 'У товару відсутній артикул для передачі фотографій.');
-      if (!draft.links.length) throw new AppError(422, 'HOROSHOP_PHOTO_SELECTION_EMPTY', 'Оберіть хоча б одну фотографію у кожній чернетці.');
+      if (!['ready', 'partial'].includes(draft.parseStatus)) {
+        throw contextualPublicationError(new AppError(
+          409,
+          'HOROSHOP_PHOTO_DRAFT_NOT_READY',
+          'Чернетка ще не готова до передачі.'
+        ), draft.article);
+      }
+      if (!['draft', 'failed'].includes(draft.publishStatus)) {
+        throw contextualPublicationError(new AppError(
+          409,
+          'HOROSHOP_PHOTO_DRAFT_NOT_PUBLISHABLE',
+          draft.publishStatus === 'publishing'
+            ? 'Передача цієї чернетки вже виконується.'
+            : 'Цю чернетку вже передано. Змініть вибрані фото перед повторною передачею.'
+        ), draft.article);
+      }
+      if (!draft.assets.length) throw new AppError(422, 'HOROSHOP_PHOTO_SELECTION_EMPTY', 'Оберіть хоча б одну фотографію у кожній чернетці.');
+      if (draft.assets.some((asset) => asset.sizeBytes > maximumHoroshopImageBytes)) {
+        throw contextualPublicationError(new AppError(
+          422,
+          'HOROSHOP_PHOTO_ASSET_TOO_LARGE',
+          'Розмір кожної фотографії для Хорошопу не повинен перевищувати 5 МБ.'
+        ), draft.article);
+      }
     }
     return drafts;
   }
 
-  async publishDraftIds({ draftIds, mode = 'append', userId, publicOrigin, onProgress = null }) {
-    const uniqueDraftIds = [...new Set(draftIds)];
-    if (!uniqueDraftIds.length) throw new AppError(422, 'HOROSHOP_PHOTO_PUBLICATION_EMPTY', 'У вибірці немає готових фотографій для публікації.');
-    const connection = await this.connection();
-    const drafts = await this.publicationDrafts(uniqueDraftIds, connection);
-    const override = mode === 'replace';
-    return this.catalogService.runExclusiveExternalWrite(async () => {
-      await this.pool.query(`
+  async claimPublicationDrafts(drafts) {
+    const draftIds = drafts.map((draft) => draft.id);
+    const expectedById = new Map(drafts.map((draft) => [draft.id, {
+      publishStatus: draft.publishStatus,
+      updatedAt: new Date(draft.updatedAt).getTime()
+    }]));
+    const client = await this.pool.connect();
+    const placeholders = draftIds.map((_, index) => `$${index + 1}`).join(', ');
+    try {
+      await client.query('BEGIN');
+      const current = await client.query(`
+        SELECT id, publish_status, updated_at
+        FROM search_horoshop_photo_drafts
+        WHERE id IN (${placeholders})
+        FOR UPDATE
+      `, draftIds);
+      if (
+        current.rows.length !== draftIds.length
+        || current.rows.some((draft) => {
+          const expected = expectedById.get(draft.id);
+          return !expected
+            || draft.publish_status !== expected.publishStatus
+            || new Date(draft.updated_at).getTime() !== expected.updatedAt;
+        })
+      ) {
+        throw new AppError(
+          409,
+          'HOROSHOP_PHOTO_DRAFT_NOT_PUBLISHABLE',
+          'Стан чернетки змінився перед передачею. Оновіть вибірку та повторіть дію.'
+        );
+      }
+      const claimed = await client.query(`
         UPDATE search_horoshop_photo_drafts
         SET publish_status = 'publishing', error_message = '', updated_at = NOW()
-        WHERE id = ANY($1::uuid[])
-      `, [drafts.map((draft) => draft.id)]);
+        WHERE id IN (${placeholders})
+          AND publish_status IN ('draft', 'failed')
+        RETURNING id
+      `, draftIds);
+      const claimedCount = Number.isInteger(claimed.rowCount) ? claimed.rowCount : claimed.rows.length;
+      if (claimedCount !== draftIds.length) {
+        throw new AppError(
+          409,
+          'HOROSHOP_PHOTO_DRAFT_NOT_PUBLISHABLE',
+          'Стан чернетки змінився перед передачею. Оновіть вибірку та повторіть дію.'
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async publishDraftIds({
+    draftIds,
+    mode = 'append',
+    userId,
+    publicOrigin,
+    onProgress = null,
+    continueOnError = true
+  }) {
+    const uniqueDraftIds = [...new Set(draftIds)];
+    if (!uniqueDraftIds.length) throw new AppError(422, 'HOROSHOP_PHOTO_PUBLICATION_EMPTY', 'У вибірці немає готових фотографій для публікації.');
+    const override = mode === 'replace';
+    return this.catalogService.runExclusiveExternalWrite(async () => {
+      const connection = await this.connection();
+      const drafts = await this.publicationDrafts(uniqueDraftIds, connection);
       const grouped = new Map();
       for (const draft of drafts) {
         const item = grouped.get(draft.article) || { article: draft.article, draftIds: [] };
+        if (item[draft.targetType]) {
+          throw contextualPublicationError(new AppError(
+            409,
+            'HOROSHOP_PHOTO_ARTICLE_COLLISION',
+            'Кілька чернеток посилаються на одне й те саме поле фотографій. Оновіть каталог і перевірте унікальність артикулів.'
+          ), draft.article);
+        }
         item[draft.targetType] = {
-          links: draft.links.map((url) => absoluteMediaUrl(publicOrigin || this.publicOrigin, url)),
+          links: draft.assets.map((asset) => {
+            try {
+              return absoluteMediaUrl(publicOrigin || this.publicOrigin, asset.url);
+            } catch (error) {
+              throw contextualPublicationError(error, draft.article);
+            }
+          }),
           override
         };
         item.draftIds.push(draft.id);
         grouped.set(draft.article, item);
       }
       const payloads = [...grouped.values()];
-      let processedDrafts = 0;
+      let attemptedDrafts = 0;
+      let publishedDrafts = 0;
+      let publishedArticles = 0;
+      let failedDrafts = 0;
+      let failedArticles = 0;
+      const failures = [];
       const report = (stage, currentArticle = '') => onProgress?.({
         stage,
         totalDrafts: drafts.length,
-        processedDrafts,
+        processedDrafts: attemptedDrafts,
         currentArticle,
-        percentage: drafts.length ? Math.round((processedDrafts / drafts.length) * 100) : 100
+        percentage: drafts.length ? Math.round((attemptedDrafts / drafts.length) * 100) : 100
       });
+
+      report('authenticating');
+      const credentials = decryptHoroshopCredentials(connection.encrypted_credentials);
+      const client = this.clientFactory(connection.store_domain);
+      let token;
       try {
-        report('authenticating');
-        const credentials = decryptHoroshopCredentials(connection.encrypted_credentials);
-        const client = this.clientFactory(connection.store_domain);
-        const token = await client.authenticate(credentials.login, credentials.password);
-        for (const groupedItem of payloads) {
+        token = await withPublicationHeartbeat(
+          () => client.authenticate(credentials.login, credentials.password),
+          () => report('authenticating'),
+          this.publicationHeartbeatMilliseconds
+        );
+      } catch (error) {
+        throw publicationError(error);
+      }
+
+      for (const groupedItem of payloads) {
+        const { draftIds: currentDraftIds, ...payload } = groupedItem;
+        const currentDrafts = drafts.filter((draft) => currentDraftIds.includes(draft.id));
+        const currentDraftPlaceholders = currentDraftIds.map((_, index) => `$${index + 1}`).join(', ');
+        let failure = null;
+        let claimed = false;
+        try {
+          await this.claimPublicationDrafts(currentDrafts);
+          claimed = true;
           report('publishing', groupedItem.article);
-          const { draftIds: publishedIds, ...payload } = groupedItem;
-          await client.importCatalog(token, [payload]);
+          await withPublicationHeartbeat(
+            () => client.importCatalog(token, [payload], {
+              timeoutMilliseconds: 300_000,
+              maxAttempts: 1
+            }),
+            () => report('publishing', groupedItem.article),
+            this.publicationHeartbeatMilliseconds
+          );
           await this.pool.query(`
             UPDATE search_horoshop_photo_drafts
-            SET publish_status = 'published', published_at = NOW(), published_by = $2,
+            SET publish_status = 'published', published_at = NOW(), published_by = $${currentDraftIds.length + 1},
                 error_message = '', updated_at = NOW()
-            WHERE id = ANY($1::uuid[])
-          `, [publishedIds, userId]);
-          processedDrafts += publishedIds.length;
-          report(processedDrafts === drafts.length ? 'completed' : 'publishing', groupedItem.article);
+            WHERE id IN (${currentDraftPlaceholders})
+          `, [...currentDraftIds, userId]);
+          publishedDrafts += currentDraftIds.length;
+          publishedArticles += 1;
+        } catch (error) {
+          const safeFailure = publicationError(error);
+          failure = contextualPublicationError(safeFailure, groupedItem.article);
+          if (claimed) {
+            await this.pool.query(`
+              UPDATE search_horoshop_photo_drafts
+              SET publish_status = 'failed', error_message = $${currentDraftIds.length + 1}, updated_at = NOW()
+              WHERE id IN (${currentDraftPlaceholders}) AND publish_status = 'publishing'
+            `, [...currentDraftIds, failure.message]).catch(() => {});
+          }
+          failedDrafts += currentDraftIds.length;
+          failedArticles += 1;
+          failures.push({
+            article: publicationArticle(groupedItem.article),
+            message: safeFailure.message,
+            code: safeFailure.code
+          });
         }
-        return { publishedDrafts: processedDrafts, publishedArticles: payloads.length };
-      } catch (error) {
-        const safe = publicationError(error);
-        await this.pool.query(`
-          UPDATE search_horoshop_photo_drafts
-          SET publish_status = 'failed', error_message = $2, updated_at = NOW()
-          WHERE id = ANY($1::uuid[]) AND publish_status = 'publishing'
-        `, [drafts.map((draft) => draft.id), safe.message]).catch(() => {});
-        throw safe;
+        attemptedDrafts += currentDraftIds.length;
+        report(attemptedDrafts === drafts.length ? 'completed' : 'publishing', groupedItem.article);
+        if (failure && !continueOnError) throw failure;
       }
+
+      return { publishedDrafts, publishedArticles, failedDrafts, failedArticles, failures };
     });
   }
 
   async publishDraft(draftId, input) {
-    return this.publishDraftIds({ ...input, draftIds: [draftId] });
+    return this.publishDraftIds({ ...input, draftIds: [draftId], continueOnError: false });
   }
 
   async publishSelection(selectionId, input) {

@@ -186,6 +186,8 @@ import {
 
 export { ApiError } from './api-client';
 
+const HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS = 30_000;
+
 export const api = {
   horoshopCatalog: {
     list: (params: HoroshopCatalogParams = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
@@ -224,7 +226,7 @@ export const api = {
     ),
     publishAll: (onProgress: (progress: HoroshopAccessoryBulkPublishProgress) => void) => requestNdjson<HoroshopAccessoryBulkPublishProgress, HoroshopAccessoryBulkPublishResult>(
       '/api/search/horoshop/accessories/publications/publish-all/stream',
-      { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 900_000 },
+      { method: 'POST', body: jsonBody({ confirmOverwrite: true }), timeoutMs: 900_000, idleTimeoutMs: 0 },
       onProgress
     ),
     detail: (productId: string, signal?: AbortSignal) => request<HoroshopAccessoryDetail>(
@@ -317,7 +319,7 @@ export const api = {
     ),
     publishDraft: (draftId: string, mode: HoroshopPhotoPublicationMode) => request<HoroshopPhotoPublishResult>(
       `/api/search/horoshop/photos/drafts/${encodeURIComponent(draftId)}/publish`,
-      { method: 'POST', body: jsonBody({ mode }), timeoutMs: 120_000 }
+      { method: 'POST', body: jsonBody({ mode }), timeoutMs: 420_000 }
     ),
     publishSelection: (
       selectionId: string,
@@ -325,7 +327,7 @@ export const api = {
       onProgress: (progress: HoroshopPhotoPublishProgress) => void
     ) => requestNdjson<HoroshopPhotoPublishProgress, HoroshopPhotoPublishResult>(
       `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}/publish/stream`,
-      { method: 'POST', body: jsonBody({ mode }), timeoutMs: 900_000 },
+      { method: 'POST', body: jsonBody({ mode }), idleTimeoutMs: HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS },
       onProgress
     )
   },

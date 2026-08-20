@@ -195,7 +195,13 @@ describe('HoroshopPhotoParserPage', () => {
     vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(staleBatch());
     vi.spyOn(api.horoshopPhotos, 'batch').mockResolvedValue(staleBatch());
     const publish = vi.spyOn(api.horoshopPhotos, 'publishSelection')
-      .mockResolvedValue({ publishedDrafts: 2, publishedArticles: 2 });
+      .mockResolvedValue({
+        publishedDrafts: 2,
+        publishedArticles: 2,
+        failedDrafts: 0,
+        failedArticles: 0,
+        failures: []
+      });
 
     renderPage();
 
@@ -205,6 +211,65 @@ describe('HoroshopPhotoParserPage', () => {
     expect(publishButton).toBeEnabled();
     fireEvent.click(publishButton);
     await waitFor(() => expect(publish).toHaveBeenCalledWith(summary.id, 'append', expect.any(Function)));
+  });
+
+  it('does not offer already published drafts for individual or bulk publication', async () => {
+    const published = readySelection();
+    for (const modification of published.products[0].modifications) {
+      modification.draft.publishStatus = 'published';
+      modification.draft.publishedAt = '2026-08-20T09:00:00.000Z';
+    }
+    vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
+    vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(published);
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
+
+    renderPage();
+
+    expect(await screen.findByText('Example One Black')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Передати готові' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Передати в Хорошоп' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Передано')).toHaveLength(2);
+  });
+
+  it('shows partial publication failures and refreshes the selection and its summary', async () => {
+    const loadSummaries = vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
+    const loadSelection = vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(readySelection());
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
+    vi.spyOn(api.horoshopPhotos, 'publishSelection').mockResolvedValue({
+      publishedDrafts: 1,
+      publishedArticles: 1,
+      failedDrafts: 1,
+      failedArticles: 1,
+      failures: [{ article: 'PHONE-1-SILVER', message: 'Хорошоп відхилив фотографії.', code: 'PHOTO_REJECTED' }]
+    });
+
+    renderPage();
+    const publishButton = await screen.findByRole('button', { name: 'Передати готові' });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
+
+    const warning = await screen.findByRole('alert');
+    expect(warning).toHaveTextContent('Фото передано частково');
+    expect(warning).toHaveTextContent('Передано 1 чернеток для 1 товарів');
+    expect(warning).toHaveTextContent('PHONE-1-SILVER: Хорошоп відхилив фотографії.');
+    await waitFor(() => expect(loadSelection.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(loadSummaries.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it('refreshes the selection and its summary after a bulk publication error', async () => {
+    const loadSummaries = vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
+    const loadSelection = vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(readySelection());
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
+    vi.spyOn(api.horoshopPhotos, 'publishSelection').mockRejectedValue(new Error('Хорошоп відхилив пакет фотографій.'));
+
+    renderPage();
+    const publishButton = await screen.findByRole('button', { name: 'Передати готові' });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
+
+    expect(await screen.findByText('Хорошоп відхилив пакет фотографій.')).toBeInTheDocument();
+    await waitFor(() => expect(loadSelection.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(loadSummaries.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 
   it('does not show or apply an active batch from another selection', async () => {

@@ -250,14 +250,20 @@ export class HoroshopClient {
     return { products, nextOffset };
   }
 
-  async importCatalog(token, products) {
-    return this.post('catalog/import', { token, products }, { timeoutMilliseconds: 30_000 });
+  async importCatalog(token, products, options = {}) {
+    return this.post('catalog/import', { token, products }, {
+      ...options,
+      timeoutMilliseconds: options.timeoutMilliseconds || 30_000
+    });
   }
 
   async post(functionName, body, options = {}) {
     const endpoint = new URL(`/api/${functionName}/`, this.baseUrl);
     let lastError;
     const timeoutMilliseconds = options.timeoutMilliseconds || this.timeoutMilliseconds;
+    const maxAttempts = Number.isInteger(options.maxAttempts)
+      ? Math.min(3, Math.max(1, options.maxAttempts))
+      : 3;
 
     if (this.lookupImplementation && isIP(this.hostname) === 0) {
       const addresses = await this.lookupImplementation(this.hostname);
@@ -266,7 +272,7 @@ export class HoroshopClient {
       }
     }
 
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
       try {
@@ -299,7 +305,7 @@ export class HoroshopClient {
         const clientFailure = error instanceof HoroshopApiError
           && error.httpStatus !== null && error.httpStatus >= 400 && error.httpStatus < 500
           && error.httpStatus !== 429;
-        if (attempt === 3 || unsafeResolution || clientFailure) break;
+        if (attempt === maxAttempts || unsafeResolution || clientFailure) break;
         await this.sleep(200 * 2 ** (attempt - 1));
       } finally {
         clearTimeout(timeout);

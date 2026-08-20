@@ -14,6 +14,7 @@ import type {
   HoroshopPhotoDraft,
   HoroshopPhotoPublicationMode,
   HoroshopPhotoPublishProgress,
+  HoroshopPhotoPublishResult,
   HoroshopPhotoSelection,
   HoroshopPhotoSelectionSummary,
   HoroshopPhotoSelectionProduct
@@ -38,6 +39,18 @@ function publishLabel(draft: HoroshopPhotoDraft) {
   if (draft.publishStatus === 'published') return 'Передано';
   if (draft.publishStatus === 'failed') return 'Не передано';
   return 'Чернетка';
+}
+
+function draftIsPublishable(draft: HoroshopPhotoDraft) {
+  return Boolean(draft.id)
+    && (draft.parseStatus === 'ready' || draft.parseStatus === 'partial')
+    && draft.publishStatus !== 'published'
+    && draft.publishStatus !== 'publishing'
+    && draft.assets.some((asset) => asset.selected);
+}
+
+function publishResultHasFailures(result: HoroshopPhotoPublishResult) {
+  return result.failedDrafts > 0 || result.failedArticles > 0 || result.failures.length > 0;
 }
 
 function formatBytes(value: number) {
@@ -162,9 +175,9 @@ function DraftRow({
       <div>{draft.currentImages.map((url) => <img src={url} alt="" loading="lazy" key={url} />)}</div>
     </details>}
     <AssetGallery draft={draft} disabled={busy} onChange={onAssetsChange} />
-    {ready && draft.assets.some((asset) => asset.selected) && <footer className="horoshop-photo-target__footer">
+    {ready && draft.assets.some((asset) => asset.selected) && draft.publishStatus !== 'published' && <footer className="horoshop-photo-target__footer">
       <span>Обрано фото: {draft.assets.filter((asset) => asset.selected).length}</span>
-      <button className="button button--primary button--small" type="button" disabled={busy} onClick={onPublish}>
+      <button className="button button--primary button--small" type="button" disabled={busy || !draftIsPublishable(draft)} onClick={onPublish}>
         <Icon name="upload" size={16} /> Передати в Хорошоп
       </button>
     </footer>}
@@ -263,6 +276,7 @@ export function HoroshopPhotoParserPage() {
   const [desktopPairing, setDesktopPairing] = useState<HoroshopPhotoDesktopPairing | null>(null);
   const [publicationMode, setPublicationMode] = useState<HoroshopPhotoPublicationMode>('append');
   const [publishProgress, setPublishProgress] = useState<HoroshopPhotoPublishProgress | null>(null);
+  const [publishOutcome, setPublishOutcome] = useState<HoroshopPhotoPublishResult | null>(null);
   const completedBatch = useRef('');
   const synchronizedBatchRevision = useRef('');
   const previousSelectionId = useRef('');
@@ -334,6 +348,8 @@ export function HoroshopPhotoParserPage() {
   useEffect(() => {
     if (previousSelectionId.current && previousSelectionId.current !== selectionId) {
       setBatchId('');
+      setPublishProgress(null);
+      setPublishOutcome(null);
       completedBatch.current = '';
       synchronizedBatchRevision.current = '';
     }
@@ -516,13 +532,27 @@ export function HoroshopPhotoParserPage() {
 
   async function runSelectionPublish() {
     if (!selectionId || !(await confirmReplace())) return;
+    const publishingSelectionId = selectionId;
+    setPublishOutcome(null);
     setPublishProgress({ stage: 'authenticating', totalDrafts: 0, processedDrafts: 0, currentArticle: '', percentage: 0 });
     try {
-      const result = await publishSelection.mutateAsync({ id: selectionId, mode: publicationMode });
-      await queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection', selectionId] });
-      showToast(`Передано чернеток: ${result.publishedDrafts}.`, 'success');
+      const result = await publishSelection.mutateAsync({ id: publishingSelectionId, mode: publicationMode });
+      if (publishResultHasFailures(result)) {
+        setPublishOutcome(result);
+        showToast(
+          `Фото передано частково: успішно ${result.publishedDrafts}, не передано ${result.failedDrafts}. Перевірте деталі нижче.`,
+          'error'
+        );
+      } else {
+        showToast(`Передано чернеток: ${result.publishedDrafts}.`, 'success');
+      }
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося опублікувати вибірку.', 'error');
+    } finally {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection', publishingSelectionId], exact: true }),
+        queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] })
+      ]).catch(() => {});
     }
   }
 
@@ -564,9 +594,7 @@ export function HoroshopPhotoParserPage() {
     ready: photoTargets.filter((target) => ['ready', 'partial'].includes(target.draft.parseStatus)).length
   }), [photoTargets, selection.data?.products.length]);
   const publishableCount = useMemo(() => photoTargets.filter((target) => (
-    Boolean(target.draft.id)
-      && ['ready', 'partial'].includes(target.draft.parseStatus)
-      && target.draft.assets.some((asset) => asset.selected)
+    draftIsPublishable(target.draft)
   )).length, [photoTargets]);
 
   if (selections.isError) return <div className="horoshop-photo-page">
@@ -677,6 +705,22 @@ export function HoroshopPhotoParserPage() {
       <header><div><strong>{publishProgress.stage === 'authenticating' ? 'Авторизація у Хорошопі' : 'Передаємо фотографії'}</strong><span>{publishProgress.currentArticle || 'Готуємо пакет'}</span></div><b>{publishProgress.percentage}%</b></header>
       <div className="horoshop-photo-progress__track"><span style={{ width: `${publishProgress.percentage}%` }} /></div>
       <footer><span>{publishProgress.processedDrafts} із {publishProgress.totalDrafts || '—'} чернеток</span></footer>
+    </section>}
+    {publishOutcome && publishResultHasFailures(publishOutcome) && <section className="horoshop-photo-publish-warning" role="alert">
+      <Icon name="alarm" size={20} />
+      <div>
+        <strong>Фото передано частково</strong>
+        <p>
+          Передано {publishOutcome.publishedDrafts} чернеток для {publishOutcome.publishedArticles} товарів.
+          {' '}Не передано {publishOutcome.failedDrafts} чернеток для {publishOutcome.failedArticles} товарів.
+        </p>
+        {publishOutcome.failures.length > 0 && <ul>
+          {publishOutcome.failures.slice(0, 5).map((failure, index) => <li key={`${failure.article}:${failure.code || ''}:${index}`}>
+            <b>{failure.article || 'Товар без артикула'}:</b> {failure.message}
+          </li>)}
+          {publishOutcome.failures.length > 5 && <li>Ще помилок: {publishOutcome.failures.length - 5}.</li>}
+        </ul>}
+      </div>
     </section>}
 
     {selection.data && (selection.data.resolution.ambiguous.length > 0 || selection.data.resolution.unmatched.length > 0) && <section className="horoshop-photo-resolution">

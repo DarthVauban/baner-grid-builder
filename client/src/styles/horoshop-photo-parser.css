@@ -79,6 +79,12 @@
 .horoshop-photo-progress__track { height: 7px; overflow: hidden; border-radius: 999px; background: #e5e8f5; }
 .horoshop-photo-progress__track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#7158ff,#4778ff); transition: width .25s ease; }
 .horoshop-photo-progress footer { display: flex; gap: 16px; flex-wrap: wrap; }
+.horoshop-photo-publish-warning { display: flex; align-items: flex-start; gap: 11px; border: 1px solid #f0c978; border-radius: 17px; padding: 15px 17px; color: #765319; background: #fffbef; }
+.horoshop-photo-publish-warning > svg { flex: 0 0 auto; margin-top: 1px; }
+.horoshop-photo-publish-warning > div { min-width: 0; display: grid; gap: 5px; }
+.horoshop-photo-publish-warning strong { color: #5f4315; font-size: 13px; }
+.horoshop-photo-publish-warning p { margin: 0; font-size: 11px; line-height: 1.45; }
+.horoshop-photo-publish-warning ul { display: grid; gap: 3px; margin: 2px 0 0; padding-left: 18px; font-size: 10px; line-height: 1.45; }
 
 .horoshop-photo-resolution { display: grid; gap: 14px; border: 1px solid #f0dca8; border-radius: 17px; padding: 16px; background: #fffcf5; }
 .horoshop-photo-resolution h2 { margin: 0 0 9px; color: var(--ink); font-size: 14px; }

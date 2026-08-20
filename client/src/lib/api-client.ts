@@ -29,6 +29,10 @@ export type ApiRequestOptions = RequestInit & {
   timeoutMs?: number;
 };
 
+export type ApiNdjsonRequestOptions = ApiRequestOptions & {
+  idleTimeoutMs?: number;
+};
+
 const DEFAULT_API_TIMEOUT_MS = 30_000;
 
 export async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -101,24 +105,39 @@ type ApiNdjsonEvent<TProgress, TResult> =
 
 export async function requestNdjson<TProgress, TResult>(
   path: string,
-  options: ApiRequestOptions,
+  options: ApiNdjsonRequestOptions,
   onProgress: (progress: TProgress) => void
 ): Promise<TResult> {
-  const { timeoutMs = DEFAULT_API_TIMEOUT_MS, signal: externalSignal, ...fetchOptions } = options;
+  const {
+    timeoutMs = 0,
+    idleTimeoutMs = DEFAULT_API_TIMEOUT_MS,
+    signal: externalSignal,
+    ...fetchOptions
+  } = options;
   const headers = new Headers(fetchOptions.headers);
   const controller = new AbortController();
   let timedOut = false;
+  let idleTimeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+
+  const abortForTimeout = () => {
+    timedOut = true;
+    controller.abort();
+  };
+  const resetIdleTimeout = () => {
+    if (idleTimeout !== undefined) globalThis.clearTimeout(idleTimeout);
+    idleTimeout = idleTimeoutMs > 0
+      ? globalThis.setTimeout(abortForTimeout, idleTimeoutMs)
+      : undefined;
+  };
 
   const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
   if (externalSignal?.aborted) abortFromExternalSignal();
   else externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true });
 
   const timeout = timeoutMs > 0
-    ? globalThis.setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, timeoutMs)
+    ? globalThis.setTimeout(abortForTimeout, timeoutMs)
     : undefined;
+  resetIdleTimeout();
   if (fetchOptions.body !== undefined) headers.set('Content-Type', 'application/json');
   headers.set('Accept', 'application/x-ndjson');
 
@@ -164,6 +183,7 @@ export async function requestNdjson<TProgress, TResult>(
 
     while (true) {
       const { done, value } = await reader.read();
+      if (value?.byteLength) resetIdleTimeout();
       buffer += decoder.decode(value, { stream: !done });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
@@ -182,13 +202,14 @@ export async function requestNdjson<TProgress, TResult>(
       throw new ApiError(408, {
         error: {
           code: 'REQUEST_TIMEOUT',
-          message: 'Масова публікація триває надто довго. Оновіть сторінку, щоб перевірити вже передані товари.'
+          message: 'Сервер перестав надсилати прогрес масової публікації. Оновіть сторінку, щоб перевірити вже передані товари.'
         }
       });
     }
     throw error;
   } finally {
     if (timeout !== undefined) globalThis.clearTimeout(timeout);
+    if (idleTimeout !== undefined) globalThis.clearTimeout(idleTimeout);
     externalSignal?.removeEventListener('abort', abortFromExternalSignal);
   }
 }

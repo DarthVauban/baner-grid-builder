@@ -116,6 +116,93 @@ function createDesktopHarness() {
   return { photoService, desktopService };
 }
 
+async function createPublicationFixture(service, modificationCount = 2) {
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
+  const productId = randomUUID();
+  const productSku = `PUB-${suffix}`;
+  await pool.query(`
+    INSERT INTO search_horoshop_products (
+      id, connection_id, generation, external_id, sku, titles, source_data,
+      active, visible, last_seen_sync_id
+    ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, '{}'::jsonb, TRUE, TRUE, $7)
+  `, [
+    productId, ids.connection, ids.generation, `publication-${suffix}`, productSku,
+    JSON.stringify({ uk: `Publication ${suffix}` }), ids.sync
+  ]);
+  const modifications = [];
+  for (let index = 0; index < modificationCount; index += 1) {
+    const modification = {
+      id: randomUUID(),
+      sku: `${productSku}-${index + 1}`,
+      externalId: `publication-${suffix}-${index + 1}`
+    };
+    await pool.query(`
+      INSERT INTO search_horoshop_modifications (
+        id, connection_id, product_id, generation, external_id, sku, titles,
+        source_data, active, visible, last_seen_sync_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, '{}'::jsonb, TRUE, TRUE, $8)
+    `, [
+      modification.id, ids.connection, productId, ids.generation, modification.externalId,
+      modification.sku, JSON.stringify({ uk: `Modification ${index + 1}` }), ids.sync
+    ]);
+    modifications.push(modification);
+  }
+  const selection = await service.createSelection({
+    name: `Publication ${suffix}`,
+    entries: [productSku],
+    userId: ids.admin
+  });
+  const drafts = [];
+  for (const modification of modifications) {
+    drafts.push(await service.saveDraft({
+      productId,
+      modificationId: modification.id,
+      sourceUrl: `https://supplier.example/${modification.externalId}`,
+      userId: ids.admin
+    }));
+  }
+  return { productId, productSku, modifications, selection, drafts, mediaAssetIds: [], photoAssetIds: [] };
+}
+
+async function addPublicationAsset(fixture, draftId, options = {}) {
+  const mediaAssetId = randomUUID();
+  const photoAssetId = randomUUID();
+  const storageKey = `publication-${mediaAssetId}.webp`;
+  const hash = mediaAssetId.replaceAll('-', '').padEnd(64, 'a');
+  const sizeBytes = options.sizeBytes ?? 100;
+  const url = options.url ?? `/media/catalog/library/${storageKey}`;
+  await pool.query(`
+    INSERT INTO media_library_assets (
+      id, original_name, storage_key, url, mime_type, size_bytes,
+      original_size_bytes, width, height, content_sha256
+    ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $5, 1000, 1000, $6)
+  `, [mediaAssetId, storageKey, storageKey, url, sizeBytes, hash]);
+  await pool.query(`
+    INSERT INTO search_horoshop_photo_assets (
+      id, draft_id, media_asset_id, source_url, content_sha256, selected, sort_order
+    ) VALUES ($1, $2, $3, $4, $5, TRUE, 0)
+  `, [photoAssetId, draftId, mediaAssetId, `https://supplier.example/${photoAssetId}.webp`, hash]);
+  await pool.query(`
+    UPDATE search_horoshop_photo_drafts
+    SET parse_status = 'ready', publish_status = 'draft', error_message = ''
+    WHERE id = $1
+  `, [draftId]);
+  fixture.mediaAssetIds.push(mediaAssetId);
+  fixture.photoAssetIds.push(photoAssetId);
+  return { mediaAssetId, photoAssetId };
+}
+
+async function removePublicationFixture(fixture) {
+  await pool.query('DELETE FROM search_horoshop_photo_selections WHERE id = $1', [fixture.selection.id]);
+  await pool.query('DELETE FROM search_horoshop_products WHERE id = $1', [fixture.productId]);
+  if (fixture.mediaAssetIds.length) {
+    await pool.query(`
+      DELETE FROM media_library_assets
+      WHERE id IN (${fixture.mediaAssetIds.map((_, index) => `$${index + 1}`).join(', ')})
+    `, fixture.mediaAssetIds);
+  }
+}
+
 test('selection resolver prioritizes exact article and title matches without guessing', () => {
   const catalog = {
     products: [
@@ -272,7 +359,13 @@ test('bulk publication skips a common gallery when a product has unique modifica
     onProgress: (event) => progress.push(event)
   });
 
-  assert.deepEqual(result, { publishedDrafts: 1, publishedArticles: 1 });
+  assert.deepEqual(result, {
+    publishedDrafts: 1,
+    publishedArticles: 1,
+    failedDrafts: 0,
+    failedArticles: 0,
+    failures: []
+  });
   assert.equal(imports.length, 1);
   assert.deepEqual(imports[0].products[0], {
     article: 'PHONE-1-BLACK',
@@ -334,6 +427,247 @@ test('bulk publication skips a common gallery when a product has unique modifica
   assert.equal(publishedDraft.rows[0].publish_status, 'published');
   assert.equal(publishedAssets.rows.length, 1);
   assert.equal(preservedMedia.rows.length, 1);
+});
+
+test('bulk publication continues after one article fails and retries only the failed draft', async () => {
+  const imports = [];
+  const progress = [];
+  let round = 1;
+  let callsInRound = 0;
+  let failedArticle = '';
+  const service = new HoroshopPhotoService({
+    databasePool: pool,
+    publicOrigin: 'https://panel.example',
+    publicationHeartbeatMilliseconds: 2,
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() { return 'token'; },
+      async importCatalog(token, products, options) {
+        const article = products[0].article;
+        imports.push({ round, token, products, options });
+        await new Promise((resolve) => setTimeout(resolve, 12));
+        if (round === 1 && callsInRound++ === 0) {
+          failedArticle = article;
+          throw new Error('private upstream diagnostics must not be exposed');
+        }
+        if (round === 3) throw Object.assign(new Error('single draft failed remotely'), { code: 'ETIMEDOUT' });
+        return {};
+      }
+    })
+  });
+  const fixture = await createPublicationFixture(service, 2);
+  try {
+    for (const draft of fixture.drafts) await addPublicationAsset(fixture, draft.id);
+
+    const first = await service.publishSelection(fixture.selection.id, {
+      mode: 'append',
+      userId: ids.admin,
+      onProgress: (event) => progress.push(event)
+    });
+    assert.equal(first.publishedDrafts, 1);
+    assert.equal(first.publishedArticles, 1);
+    assert.equal(first.failedDrafts, 1);
+    assert.equal(first.failedArticles, 1);
+    assert.equal(first.failures.length, 1);
+    assert.equal(first.failures[0].article, failedArticle);
+    assert.equal(first.failures[0].code, 'HOROSHOP_PHOTO_PUBLISH_FAILED');
+    assert.doesNotMatch(first.failures[0].message, new RegExp(failedArticle, 'u'));
+    assert.doesNotMatch(first.failures[0].message, /private upstream diagnostics/u);
+    assert.equal(imports.filter((item) => item.round === 1).length, 2);
+    assert.ok(imports.filter((item) => item.round === 1).every((item) => (
+      item.token === 'token'
+      && item.options.timeoutMilliseconds === 300_000
+      && item.options.maxAttempts === 1
+    )));
+    assert.ok(progress.filter((event) => event.stage === 'publishing').length > 2, 'expected heartbeat progress events');
+    assert.equal(progress.at(-1).percentage, 100);
+    assert.equal(progress.at(-1).processedDrafts, 2);
+
+    const failedIndex = fixture.modifications.findIndex((item) => item.sku === failedArticle);
+    assert.notEqual(failedIndex, -1);
+    const publishedIndex = failedIndex === 0 ? 1 : 0;
+    assert.equal((await pool.query(`
+      SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
+    `, [fixture.drafts[failedIndex].id])).rows[0].publish_status, 'failed');
+    assert.equal((await pool.query(`
+      SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
+    `, [fixture.drafts[publishedIndex].id])).rows[0].publish_status, 'published');
+
+    round = 2;
+    callsInRound = 0;
+    const retry = await service.publishSelection(fixture.selection.id, {
+      mode: 'append',
+      userId: ids.admin
+    });
+    assert.deepEqual(retry, {
+      publishedDrafts: 1,
+      publishedArticles: 1,
+      failedDrafts: 0,
+      failedArticles: 0,
+      failures: []
+    });
+    assert.deepEqual(imports.filter((item) => item.round === 2).map((item) => item.products[0].article), [failedArticle]);
+    await assert.rejects(
+      () => service.publishSelection(fixture.selection.id, { mode: 'append', userId: ids.admin }),
+      (error) => error?.code === 'HOROSHOP_PHOTO_PUBLICATION_EMPTY'
+    );
+
+    const directIndex = failedIndex;
+    await service.selectAssets(fixture.drafts[directIndex].id, [fixture.photoAssetIds[directIndex]]);
+    round = 3;
+    await assert.rejects(
+      () => service.publishDraft(fixture.drafts[directIndex].id, { mode: 'append', userId: ids.admin }),
+      (error) => error?.code === 'HOROSHOP_PHOTO_PUBLISH_TIMEOUT'
+        && error.message.includes(failedArticle)
+        && !error.message.includes('single draft failed remotely')
+    );
+    const failedDirect = await pool.query(`
+      SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
+    `, [fixture.drafts[directIndex].id]);
+    assert.equal(failedDirect.rows[0].publish_status, 'failed');
+  } finally {
+    await removePublicationFixture(fixture);
+  }
+});
+
+test('publication preflight rejects invalid URLs and oversized assets without leaving publishing state', async () => {
+  let importCalls = 0;
+  const service = new HoroshopPhotoService({
+    databasePool: pool,
+    publicOrigin: 'https://panel.example',
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() { return 'token'; },
+      async importCatalog() { importCalls += 1; return {}; }
+    })
+  });
+  const fixture = await createPublicationFixture(service, 1);
+  try {
+    await addPublicationAsset(fixture, fixture.drafts[0].id, { url: 'ftp://files.example/photo.webp' });
+    await assert.rejects(
+      () => service.publishDraft(fixture.drafts[0].id, { mode: 'replace', userId: ids.admin }),
+      (error) => error?.code === 'HOROSHOP_PHOTO_URL_INVALID'
+        && error.message.includes(fixture.modifications[0].sku)
+    );
+    assert.equal((await pool.query(`
+      SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
+    `, [fixture.drafts[0].id])).rows[0].publish_status, 'draft');
+
+    await pool.query(`
+      UPDATE media_library_assets
+      SET url = '/media/catalog/library/oversized.webp', size_bytes = $2
+      WHERE id = $1
+    `, [fixture.mediaAssetIds[0], (5 * 1024 * 1024) + 1]);
+    await assert.rejects(
+      () => service.publishDraft(fixture.drafts[0].id, { mode: 'replace', userId: ids.admin }),
+      (error) => error?.code === 'HOROSHOP_PHOTO_ASSET_TOO_LARGE'
+        && error.message.includes(fixture.modifications[0].sku)
+    );
+    assert.equal((await pool.query(`
+      SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
+    `, [fixture.drafts[0].id])).rows[0].publish_status, 'draft');
+    assert.equal(importCalls, 0);
+  } finally {
+    await removePublicationFixture(fixture);
+  }
+});
+
+test('publication excludes inactive products and modifications before calling Horoshop', async () => {
+  let importCalls = 0;
+  const service = new HoroshopPhotoService({
+    databasePool: pool,
+    publicOrigin: 'https://panel.example',
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() { return 'token'; },
+      async importCatalog() { importCalls += 1; return {}; }
+    })
+  });
+  const fixture = await createPublicationFixture(service, 1);
+  try {
+    await addPublicationAsset(fixture, fixture.drafts[0].id);
+    await pool.query('UPDATE search_horoshop_products SET active = FALSE WHERE id = $1', [fixture.productId]);
+    await assert.rejects(
+      () => service.publishSelection(fixture.selection.id, { mode: 'replace', userId: ids.admin }),
+      (error) => error?.code === 'HOROSHOP_PHOTO_PUBLICATION_EMPTY'
+    );
+    await assert.rejects(
+      () => service.publishDraft(fixture.drafts[0].id, { mode: 'replace', userId: ids.admin }),
+      (error) => error?.code === 'HOROSHOP_PHOTO_TARGET_INACTIVE'
+        && error.message.includes(fixture.modifications[0].sku)
+    );
+
+    await pool.query('UPDATE search_horoshop_products SET active = TRUE WHERE id = $1', [fixture.productId]);
+    await pool.query('UPDATE search_horoshop_modifications SET active = FALSE WHERE id = $1', [fixture.modifications[0].id]);
+    await assert.rejects(
+      () => service.publishSelection(fixture.selection.id, { mode: 'replace', userId: ids.admin }),
+      (error) => error?.code === 'HOROSHOP_PHOTO_PUBLICATION_EMPTY'
+    );
+    await assert.rejects(
+      () => service.publishDraft(fixture.drafts[0].id, { mode: 'replace', userId: ids.admin }),
+      (error) => error?.code === 'HOROSHOP_PHOTO_TARGET_INACTIVE'
+        && error.message.includes(fixture.modifications[0].sku)
+    );
+    assert.equal((await pool.query(`
+      SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
+    `, [fixture.drafts[0].id])).rows[0].publish_status, 'draft');
+    assert.equal(importCalls, 0);
+  } finally {
+    await removePublicationFixture(fixture);
+  }
+});
+
+test('per-article claim rolls back atomically when one grouped draft becomes stale', async () => {
+  let importCalls = 0;
+  let staleDraftId = '';
+  const service = new HoroshopPhotoService({
+    databasePool: pool,
+    publicOrigin: 'https://panel.example',
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() {
+        await pool.query(`
+          UPDATE search_horoshop_photo_drafts SET publish_status = 'published' WHERE id = $1
+        `, [staleDraftId]);
+        return 'token';
+      },
+      async importCatalog() { importCalls += 1; return {}; }
+    })
+  });
+  const fixture = await createPublicationFixture(service, 1);
+  try {
+    await pool.query(`
+      UPDATE search_horoshop_modifications SET sku = $2 WHERE id = $1
+    `, [fixture.modifications[0].id, fixture.productSku]);
+    fixture.modifications[0].sku = fixture.productSku;
+    await addPublicationAsset(fixture, fixture.drafts[0].id);
+    const commonDraft = await service.saveDraft({
+      productId: fixture.productId,
+      sourceUrl: 'https://supplier.example/common-gallery',
+      userId: ids.admin
+    });
+    await addPublicationAsset(fixture, commonDraft.id);
+    staleDraftId = fixture.drafts[0].id;
+
+    const result = await service.publishDraftIds({
+      draftIds: [commonDraft.id, fixture.drafts[0].id],
+      mode: 'replace',
+      userId: ids.admin
+    });
+    assert.equal(result.publishedDrafts, 0);
+    assert.equal(result.publishedArticles, 0);
+    assert.equal(result.failedDrafts, 2);
+    assert.equal(result.failedArticles, 1);
+    assert.equal(result.failures[0].code, 'HOROSHOP_PHOTO_DRAFT_NOT_PUBLISHABLE');
+    assert.equal(importCalls, 0);
+
+    const states = await Promise.all([commonDraft.id, fixture.drafts[0].id].map(async (draftId) => (
+      await pool.query('SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1', [draftId])
+    ).rows[0].publish_status));
+    assert.deepEqual(states, ['draft', 'published']);
+  } finally {
+    await removePublicationFixture(fixture);
+  }
 });
 
 test('background queue reuses the shared scraper engine and stores a reviewable draft', async () => {

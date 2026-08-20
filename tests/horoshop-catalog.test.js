@@ -93,6 +93,57 @@ test('Horoshop client preserves a safe API rejection message for diagnostics', a
   });
 });
 
+test('Horoshop catalog import forwards request timeout and retry options', async () => {
+  const client = new HoroshopClient('shop.example.com');
+  let capturedCall = null;
+  client.post = async (functionName, body, options) => {
+    capturedCall = { functionName, body, options };
+    return { imported: 1 };
+  };
+
+  const products = [{ article: 'PHONE-1', images: { links: ['https://cdn.example.com/phone.jpg'] } }];
+  assert.deepEqual(await client.importCatalog('session-token', products, {
+    timeoutMilliseconds: 180_000,
+    maxAttempts: 1
+  }), { imported: 1 });
+  assert.deepEqual(capturedCall, {
+    functionName: 'catalog/import',
+    body: { token: 'session-token', products },
+    options: { timeoutMilliseconds: 180_000, maxAttempts: 1 }
+  });
+});
+
+test('Horoshop catalog import does not retry transport failures when maxAttempts is one', async (context) => {
+  const failures = [
+    Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }),
+    Object.assign(new Error('Connection reset'), { code: 'ECONNRESET' })
+  ];
+
+  for (const failure of failures) {
+    await context.test(failure.name === 'AbortError' ? 'abort' : 'network error', async () => {
+      let calls = 0;
+      let sleeps = 0;
+      const client = new HoroshopClient('shop.example.com', {
+        fetchImplementation: async () => {
+          calls += 1;
+          throw failure;
+        },
+        lookupImplementation: async () => [{ address: '93.184.216.34', family: 4 }],
+        sleep: async () => {
+          sleeps += 1;
+        }
+      });
+
+      await assert.rejects(
+        client.importCatalog('session-token', [{ article: 'PHONE-1' }], { maxAttempts: 1 }),
+        (error) => error === failure
+      );
+      assert.equal(calls, 1);
+      assert.equal(sleeps, 0);
+    });
+  }
+});
+
 test('normalizer keeps product modifications, stock, URLs and raw source data', () => {
   const [product] = normalizeHoroshopProducts([{
     id: 501,

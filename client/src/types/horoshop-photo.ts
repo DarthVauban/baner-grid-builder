@@ -124,6 +124,13 @@ export interface HoroshopPhotoPublishProgress {
 export interface HoroshopPhotoPublishResult {
   publishedDrafts: number;
   publishedArticles: number;
+  failedDrafts: number;
+  failedArticles: number;
+  failures: Array<{
+    article: string;
+    message: string;
+    code?: string;
+  }>;
 }
 
 export interface HoroshopPhotoDesktopDevice {
