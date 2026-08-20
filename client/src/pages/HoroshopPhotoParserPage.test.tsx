@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmDialogProvider } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
@@ -140,6 +140,9 @@ function renderPage() {
 }
 
 afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.spyOn(api.horoshopPhotos, 'desktopDevices').mockResolvedValue([]);
+});
 
 describe('HoroshopPhotoParserPage', () => {
   it('renders one flat card per modification and never uses an article as its title', async () => {

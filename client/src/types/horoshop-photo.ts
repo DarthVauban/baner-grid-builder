@@ -125,3 +125,22 @@ export interface HoroshopPhotoPublishResult {
   publishedDrafts: number;
   publishedArticles: number;
 }
+
+export interface HoroshopPhotoDesktopDevice {
+  id: string;
+  name: string;
+  appVersion: string;
+  capabilities: Record<string, string | number | boolean>;
+  pairedAt: string;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface HoroshopPhotoDesktopPairing {
+  id: string;
+  status: 'pending' | 'claimed' | 'expired' | 'cancelled';
+  manualCode?: string;
+  expiresAt: string;
+  createdAt?: string;
+  device?: HoroshopPhotoDesktopDevice | null;
+}

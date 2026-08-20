@@ -704,13 +704,29 @@ export class HoroshopCatalogRepository {
           (SELECT COUNT(*) FROM search_horoshop_photo_drafts WHERE connection_id = $1) AS photo_drafts,
           (SELECT COUNT(*) FROM search_horoshop_photo_assets AS photo_asset
             INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = photo_asset.draft_id
+            WHERE photo_draft.connection_id = $1)
+          +
+          (SELECT COUNT(*) FROM search_horoshop_photo_run_uploads AS upload
+            INNER JOIN search_horoshop_photo_runs AS run ON run.id = upload.run_id
+            INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = run.draft_id
             WHERE photo_draft.connection_id = $1) AS photo_assets
       `, [connection.id]);
       const photoMediaResult = await client.query(`
-        SELECT DISTINCT photo_asset.media_asset_id
-        FROM search_horoshop_photo_assets AS photo_asset
-        INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = photo_asset.draft_id
-        WHERE photo_draft.connection_id = $1
+        SELECT DISTINCT media.media_asset_id
+        FROM (
+          SELECT photo_asset.media_asset_id
+          FROM search_horoshop_photo_assets AS photo_asset
+          INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = photo_asset.draft_id
+          WHERE photo_draft.connection_id = $1
+
+          UNION
+
+          SELECT upload.media_asset_id
+          FROM search_horoshop_photo_run_uploads AS upload
+          INNER JOIN search_horoshop_photo_runs AS run ON run.id = upload.run_id
+          INNER JOIN search_horoshop_photo_drafts AS photo_draft ON photo_draft.id = run.draft_id
+          WHERE photo_draft.connection_id = $1
+        ) AS media
       `, [connection.id]);
       const photoMediaIds = photoMediaResult.rows.map((row) => row.media_asset_id);
       const photoFolderResult = await client.query(`

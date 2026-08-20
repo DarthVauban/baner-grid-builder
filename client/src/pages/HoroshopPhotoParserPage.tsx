@@ -9,6 +9,8 @@ import type { HoroshopCatalogVisibility } from '../types/horoshop-catalog';
 import type {
   HoroshopPhotoAsset,
   HoroshopPhotoBatch,
+  HoroshopPhotoDesktopDevice,
+  HoroshopPhotoDesktopPairing,
   HoroshopPhotoDraft,
   HoroshopPhotoPublicationMode,
   HoroshopPhotoPublishProgress,
@@ -48,7 +50,7 @@ function BatchProgress({ batch }: { batch: HoroshopPhotoBatch }) {
   return <section className={`horoshop-photo-progress${batchComplete(batch) ? ' is-complete' : ''}`}>
     <header>
       <div>
-        <strong>{batchComplete(batch) ? 'Парсинг завершено' : 'Парсинг фотографій'}</strong>
+        <strong>{batchComplete(batch) ? 'Обробку на десктопі завершено' : 'Десктопний парсер обробляє вибірку'}</strong>
         <span>{completed} із {batch.requestedCount} позицій</span>
       </div>
       <b>{percent}%</b>
@@ -117,11 +119,7 @@ function DraftRow({
   imageUrl,
   canonicalUrl,
   draft,
-  sourceValue,
   busy,
-  onSourceChange,
-  onSave,
-  onParse,
   onAssetsChange,
   onPublish
 }: {
@@ -130,11 +128,7 @@ function DraftRow({
   imageUrl: string;
   canonicalUrl: string;
   draft: HoroshopPhotoDraft;
-  sourceValue: string;
   busy: boolean;
-  onSourceChange: (value: string) => void;
-  onSave: () => void;
-  onParse: () => void;
   onAssetsChange: (ids: string[]) => void;
   onPublish: () => void;
 }) {
@@ -152,22 +146,9 @@ function DraftRow({
         </a>}
       </div>
     </div>
-    <label className="horoshop-photo-target__source">
-      <span>Сторінка-джерело фотографій</span>
-      <div>
-        <input
-          type="url"
-          value={sourceValue}
-          placeholder="https://..."
-          disabled={busy}
-          onChange={(event) => onSourceChange(event.target.value)}
-        />
-        <button className="button button--secondary button--small" type="button" disabled={busy} onClick={onSave}>Зберегти</button>
-        <button className="button button--secondary button--small" type="button" disabled={busy || !draft.id || !sourceValue} onClick={onParse}>
-          <Icon name="refresh" size={15} /> Парсити
-        </button>
-      </div>
-    </label>
+    {draft.sourceUrl && <a className="horoshop-photo-target__source-link" href={draft.sourceUrl} target="_blank" rel="noreferrer">
+      <Icon name="openInNew" size={14} /> Джерело, вибране у десктопному парсері
+    </a>}
     <div className="horoshop-photo-target__states">
       <span className={`horoshop-photo-status is-${draft.parseStatus}`}>{statusLabel(draft)}</span>
       <span className={`horoshop-photo-publish-status is-${draft.publishStatus}`}>{publishLabel(draft)}</span>
@@ -233,20 +214,12 @@ function flattenPhotoTargets(products: HoroshopPhotoSelectionProduct[]) {
 
 function ProductTarget({
   target,
-  sourceValues,
   busyDraftIds,
-  onSourceChange,
-  onSave,
-  onParse,
   onAssetsChange,
   onPublish
 }: {
   target: PhotoTarget;
-  sourceValues: Record<string, string>;
   busyDraftIds: Set<string>;
-  onSourceChange: (draft: HoroshopPhotoDraft, value: string) => void;
-  onSave: (draft: HoroshopPhotoDraft) => void;
-  onParse: (draft: HoroshopPhotoDraft) => void;
   onAssetsChange: (draft: HoroshopPhotoDraft, ids: string[]) => void;
   onPublish: (draft: HoroshopPhotoDraft) => void;
 }) {
@@ -257,11 +230,7 @@ function ProductTarget({
     imageUrl={target.imageUrl}
     canonicalUrl={target.canonicalUrl}
     draft={target.draft}
-    sourceValue={sourceValues[target.key] ?? target.draft.sourceUrl}
     busy={busyDraftIds.has(busyKey)}
-    onSourceChange={(value) => onSourceChange(target.draft, value)}
-    onSave={() => onSave(target.draft)}
-    onParse={() => onParse(target.draft)}
     onAssetsChange={(ids) => onAssetsChange(target.draft, ids)}
     onPublish={() => onPublish(target.draft)}
   />;
@@ -279,14 +248,19 @@ export function HoroshopPhotoParserPage() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterAvailability, setFilterAvailability] = useState('');
   const [filterVisibility, setFilterVisibility] = useState<HoroshopCatalogVisibility>('all');
-  const [sourceValues, setSourceValues] = useState<Record<string, string>>({});
   const [busyDraftIds, setBusyDraftIds] = useState<Set<string>>(() => new Set());
   const [batchId, setBatchId] = useState('');
+  const [desktopPairing, setDesktopPairing] = useState<HoroshopPhotoDesktopPairing | null>(null);
   const [publicationMode, setPublicationMode] = useState<HoroshopPhotoPublicationMode>('append');
   const [publishProgress, setPublishProgress] = useState<HoroshopPhotoPublishProgress | null>(null);
   const completedBatch = useRef('');
 
   const selections = useQuery({ queryKey: ['horoshop-photo-selections'], queryFn: api.horoshopPhotos.selections });
+  const desktopDevices = useQuery({
+    queryKey: ['horoshop-photo-desktop-devices'],
+    queryFn: api.horoshopPhotos.desktopDevices,
+    refetchInterval: desktopPairing?.status === 'pending' ? 3_000 : false
+  });
   const selection = useQuery({
     queryKey: ['horoshop-photo-selection', selectionId],
     queryFn: ({ signal }) => api.horoshopPhotos.selection(selectionId, signal),
@@ -320,12 +294,17 @@ export function HoroshopPhotoParserPage() {
   });
   const createSelection = useMutation({ mutationFn: api.horoshopPhotos.createSelection });
   const createFilteredSelection = useMutation({ mutationFn: api.horoshopPhotos.createFilteredSelection });
+  const createDesktopPairing = useMutation({ mutationFn: api.horoshopPhotos.createDesktopPairing });
   const parseSelection = useMutation({ mutationFn: api.horoshopPhotos.parseSelection });
   const publishSelection = useMutation({
     mutationFn: ({ id, mode }: { id: string; mode: HoroshopPhotoPublicationMode }) =>
       api.horoshopPhotos.publishSelection(id, mode, setPublishProgress)
   });
   const photoTargets = useMemo(() => flattenPhotoTargets(selection.data?.products || []), [selection.data?.products]);
+  const connectedDevices = useMemo(
+    () => (desktopDevices.data || []).filter((device) => !device.revokedAt),
+    [desktopDevices.data]
+  );
 
   useEffect(() => {
     if (!selectionId && selections.data?.[0]?.id) setSelectionId(selections.data[0].id);
@@ -336,11 +315,18 @@ export function HoroshopPhotoParserPage() {
   }, [activeBatch.data?.id]);
 
   useEffect(() => {
-    if (!selection.data) return;
-    const next: Record<string, string> = {};
-    for (const target of photoTargets) next[target.key] = target.draft.sourceUrl;
-    setSourceValues(next);
-  }, [photoTargets, selection.data]);
+    if (!desktopPairing || desktopPairing.status !== 'pending') return;
+    const timer = window.setInterval(() => {
+      void api.horoshopPhotos.desktopPairing(desktopPairing.id).then(async (current) => {
+        setDesktopPairing((previous) => previous ? { ...previous, ...current } : current);
+        if (current.status === 'claimed') {
+          await queryClient.invalidateQueries({ queryKey: ['horoshop-photo-desktop-devices'] });
+          showToast('Десктопний фото-парсер підключено.', 'success');
+        }
+      }).catch(() => {});
+    }, 3_000);
+    return () => window.clearInterval(timer);
+  }, [desktopPairing, queryClient, showToast]);
 
   useEffect(() => {
     if (!batch.data || !batchComplete(batch.data) || completedBatch.current === batch.data.id) return;
@@ -396,8 +382,30 @@ export function HoroshopPhotoParserPage() {
     }
   }
 
-  function draftKey(draft: HoroshopPhotoDraft) {
-    return `${draft.productId}:${draft.modificationId || 'product'}`;
+  async function startDesktopPairing() {
+    try {
+      const pairing = await createDesktopPairing.mutateAsync();
+      setDesktopPairing(pairing);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося створити код підключення.', 'error');
+    }
+  }
+
+  async function revokeDesktopDevice(device: HoroshopPhotoDesktopDevice) {
+    const accepted = await confirm({
+      title: 'Відключити десктопний парсер?',
+      message: `Пристрій «${device.name}» втратить доступ. Незавершені завдання повернуться в чергу.`,
+      confirmLabel: 'Відключити',
+      tone: 'danger'
+    });
+    if (!accepted) return;
+    try {
+      await api.horoshopPhotos.revokeDesktopDevice(device.id);
+      await queryClient.invalidateQueries({ queryKey: ['horoshop-photo-desktop-devices'] });
+      showToast('Десктопний парсер відключено.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося відключити парсер.', 'error');
+    }
   }
 
   function setBusy(key: string, busy: boolean) {
@@ -406,41 +414,6 @@ export function HoroshopPhotoParserPage() {
       if (busy) next.add(key); else next.delete(key);
       return next;
     });
-  }
-
-  async function saveDraft(draft: HoroshopPhotoDraft) {
-    const key = draftKey(draft);
-    setBusy(draft.id || key, true);
-    try {
-      const saved = await api.horoshopPhotos.saveDraft({
-        productId: draft.productId,
-        modificationId: draft.modificationId,
-        sourceUrl: sourceValues[key] ?? draft.sourceUrl
-      });
-      await queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection', selectionId] });
-      showToast(saved.sourceUrl ? 'Посилання збережено.' : 'Посилання очищено.', 'success');
-      return saved.id;
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти посилання.', 'error');
-      return null;
-    } finally {
-      setBusy(draft.id || key, false);
-    }
-  }
-
-  async function parseDraft(draft: HoroshopPhotoDraft) {
-    if (!draft.id) return;
-    setBusy(draft.id, true);
-    try {
-      const created = await api.horoshopPhotos.parseDraft(draft.id);
-      completedBatch.current = '';
-      setBatchId(created.id);
-      showToast('Товар додано в чергу парсингу.', 'success');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося запустити парсинг.', 'error');
-    } finally {
-      setBusy(draft.id, false);
-    }
   }
 
   async function updateAssets(draft: HoroshopPhotoDraft, assetIds: string[]) {
@@ -486,9 +459,9 @@ export function HoroshopPhotoParserPage() {
       const created = await parseSelection.mutateAsync(selectionId);
       completedBatch.current = '';
       setBatchId(created.id);
-      showToast(`У чергу додано позицій: ${created.requestedCount}.`, 'success');
+      showToast(`У десктопний парсер передано позицій: ${created.requestedCount}.`, 'success');
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося запустити парсинг вибірки.', 'error');
+      showToast(error instanceof Error ? error.message : 'Не вдалося передати вибірку в десктопний парсер.', 'error');
     }
   }
 
@@ -538,21 +511,49 @@ export function HoroshopPhotoParserPage() {
       <div>
         <p className="eyebrow">Каталог Хорошоп</p>
         <h1>Фото товарів</h1>
-        <p>Створюйте точні вибірки за назвами й артикулами, перевіряйте фото та передавайте їх у Хорошоп.</p>
+        <p>Створюйте вибірки, обробляйте їх десктопним парсером і передавайте перевірені фото у Хорошоп.</p>
       </div>
       <div className="horoshop-photo-header__actions">
         <select value={publicationMode} onChange={(event) => setPublicationMode(event.target.value as HoroshopPhotoPublicationMode)} aria-label="Режим публікації фотографій">
           <option value="append">Додати до наявних фото</option>
           <option value="replace">Замінити наявні фото</option>
         </select>
-        <button className="button button--secondary" type="button" disabled={!selectionId || parserBusy || parseSelection.isPending} onClick={() => void runSelectionParse()}>
-          <Icon name="refresh" size={17} /> Парсити вибірку
+        <button className="button button--secondary" type="button" disabled={!selectionId || !connectedDevices.length || parserBusy || parseSelection.isPending} onClick={() => void runSelectionParse()}>
+          <Icon name="refresh" size={17} /> Передати в парсер
         </button>
         <button className="button button--primary" type="button" disabled={!selectionId || publishBusy || parserBusy} onClick={() => void runSelectionPublish()}>
           <Icon name="upload" size={17} /> Передати готові
         </button>
       </div>
     </header>
+
+    <section className="horoshop-photo-desktop">
+      <div className="horoshop-photo-desktop__intro">
+        <span><Icon name="productSelection" size={22} /></span>
+        <div>
+          <strong>Десктопний фото-парсер</strong>
+          <p>Він отримує вибірки, збирає посилання та фотографії й повертає готові чернетки в робочий простір.</p>
+        </div>
+      </div>
+      <div className="horoshop-photo-desktop__devices">
+        {connectedDevices.map((device) => <article key={device.id}>
+          <span className="is-online" />
+          <div><strong>{device.name}</strong><small>{device.lastSeenAt ? `Був на зв’язку: ${new Date(device.lastSeenAt).toLocaleString('uk-UA')}` : 'Ще не синхронізувався'}{device.appVersion ? ` · v${device.appVersion}` : ''}</small></div>
+          <button className="button button--danger button--small" type="button" onClick={() => void revokeDesktopDevice(device)}>Відключити</button>
+        </article>)}
+        {!connectedDevices.length && !desktopDevices.isLoading && <p className="horoshop-photo-desktop__empty">Підключених парсерів ще немає.</p>}
+      </div>
+      {desktopPairing?.status === 'pending' ? <div className="horoshop-photo-desktop__pairing">
+        <div><small>Адреса робочого простору</small><code>{window.location.origin}</code></div>
+        <div><small>Одноразовий код</small><code>{desktopPairing.manualCode}</code></div>
+        <button className="button button--secondary button--small" type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}\n${desktopPairing.manualCode || ''}`)}>
+          <Icon name="copy" size={15} /> Копіювати
+        </button>
+        <span>Діє до {new Date(desktopPairing.expiresAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}</span>
+      </div> : <button className="button button--secondary" type="button" disabled={createDesktopPairing.isPending} onClick={() => void startDesktopPairing()}>
+        <Icon name="add" size={16} /> {connectedDevices.length ? 'Підключити ще один парсер' : 'Підключити десктопний парсер'}
+      </button>}
+    </section>
 
     <section className="horoshop-photo-builder">
       <div className="horoshop-photo-builder__copy">
@@ -632,11 +633,7 @@ export function HoroshopPhotoParserPage() {
       {photoTargets.map((target) => <ProductTarget
         target={target}
         key={target.key}
-        sourceValues={sourceValues}
         busyDraftIds={busyDraftIds}
-        onSourceChange={(draft, value) => setSourceValues((current) => ({ ...current, [draftKey(draft)]: value }))}
-        onSave={(draft) => void saveDraft(draft)}
-        onParse={(draft) => void parseDraft(draft)}
         onAssetsChange={(draft, ids) => void updateAssets(draft, ids)}
         onPublish={(draft) => void publishDraft(draft)}
       />)}

@@ -597,20 +597,79 @@ export class HoroshopPhotoService {
     }
   }
 
-  async createBatch({ selectionId = null, draftIds = [], userId }) {
+  async ensureDesktopSelectionDrafts(selectionId, connection, userId, db) {
+    const targets = await db.query(`
+      WITH selected_targets AS (
+        SELECT item.product_id, item.modification_id
+        FROM search_horoshop_photo_selection_items AS item
+        INNER JOIN search_horoshop_modifications AS modification
+          ON modification.id = item.modification_id AND modification.active = TRUE
+        WHERE item.selection_id = $1 AND item.modification_id IS NOT NULL
+
+        UNION
+
+        SELECT item.product_id, modification.id AS modification_id
+        FROM search_horoshop_photo_selection_items AS item
+        INNER JOIN search_horoshop_modifications AS modification
+          ON modification.product_id = item.product_id AND modification.active = TRUE
+        WHERE item.selection_id = $1 AND item.modification_id IS NULL
+
+        UNION
+
+          SELECT item.product_id, NULL::UUID AS modification_id
+          FROM search_horoshop_photo_selection_items AS item
+          LEFT JOIN search_horoshop_modifications AS modification
+            ON modification.product_id = item.product_id AND modification.active = TRUE
+          WHERE item.selection_id = $1 AND item.modification_id IS NULL
+            AND modification.id IS NULL
+      )
+      SELECT target.product_id, target.modification_id
+      FROM selected_targets AS target
+      INNER JOIN search_horoshop_products AS product
+        ON product.id = target.product_id
+       AND product.connection_id = $2
+       AND product.generation = $3
+       AND product.active = TRUE
+      ORDER BY target.product_id, target.modification_id NULLS FIRST
+    `, [selectionId, connection.id, connection.generation]);
+    for (const target of targets.rows) {
+      await db.query(`
+        INSERT INTO search_horoshop_photo_drafts (
+          connection_id, generation, product_id, modification_id, target_key,
+          target_type, source_url, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, '', $7)
+        ON CONFLICT (connection_id, target_key) DO NOTHING
+      `, [
+        connection.id,
+        connection.generation,
+        target.product_id,
+        target.modification_id,
+        targetKey(target.product_id, target.modification_id),
+        target.modification_id ? 'images' : 'gallery_common',
+        userId
+      ]);
+    }
+    return targets.rows.length;
+  }
+
+  async createBatch({ selectionId = null, draftIds = [], userId, executor = 'server' }) {
+    if (!['server', 'desktop'].includes(executor)) throw new Error('Unknown Horoshop photo batch executor');
     const connection = await this.connection();
     if (selectionId) await this.assertSelection(selectionId, connection);
     const client = await this.pool.connect();
     let batchId;
     try {
       await client.query('BEGIN');
+      if (selectionId && executor === 'desktop') {
+        await this.ensureDesktopSelectionDrafts(selectionId, connection, userId, client);
+      }
       const values = [connection.id, connection.generation];
       const clauses = [
         'draft.connection_id = $1',
         'draft.generation = $2',
-        `draft.source_url <> ''`,
         `active_run.id IS NULL`
       ];
+      if (executor === 'server') clauses.push(`draft.source_url <> ''`);
       let selectionJoin = '';
       if (selectionId) {
         values.push(selectionId);
@@ -657,7 +716,13 @@ export class HoroshopPhotoService {
         ORDER BY draft.id
       `, values);
       if (!drafts.rows.length) {
-        throw new AppError(422, 'HOROSHOP_PHOTO_BATCH_EMPTY', 'У вибірці немає збережених посилань, готових до парсингу.');
+        throw new AppError(
+          422,
+          'HOROSHOP_PHOTO_BATCH_EMPTY',
+          executor === 'desktop'
+            ? 'У вибірці немає нових позицій, готових до передачі в десктопний парсер.'
+            : 'У вибірці немає збережених посилань, готових до парсингу.'
+        );
       }
       const batch = await client.query(`
         INSERT INTO search_horoshop_photo_batches (
@@ -668,9 +733,9 @@ export class HoroshopPhotoService {
       batchId = batch.rows[0].id;
       for (const draft of drafts.rows) {
         await client.query(`
-          INSERT INTO search_horoshop_photo_runs (batch_id, draft_id, source_url)
-          VALUES ($1, $2, $3)
-        `, [batchId, draft.id, draft.source_url]);
+          INSERT INTO search_horoshop_photo_runs (batch_id, draft_id, source_url, executor)
+          VALUES ($1, $2, $3, $4)
+        `, [batchId, draft.id, draft.source_url, executor]);
       }
       await client.query(`
         UPDATE search_horoshop_photo_drafts
@@ -785,14 +850,14 @@ export class HoroshopPhotoService {
     await this.pool.query(`
       UPDATE search_horoshop_photo_runs
       SET status = 'queued', started_at = NULL, error_message = '', error_details = '[]'::jsonb
-      WHERE status = 'running'
+      WHERE status = 'running' AND executor = 'server'
     `);
     await this.pool.query(`
       UPDATE search_horoshop_photo_drafts AS draft
       SET parse_status = 'queued', updated_at = NOW()
       WHERE EXISTS (
         SELECT 1 FROM search_horoshop_photo_runs AS run
-        WHERE run.draft_id = draft.id AND run.status = 'queued'
+        WHERE run.draft_id = draft.id AND run.status = 'queued' AND run.executor = 'server'
       )
     `);
     await this.reconcileBatches();
@@ -808,7 +873,7 @@ export class HoroshopPhotoService {
         FROM search_horoshop_photo_runs AS run
         INNER JOIN search_horoshop_photo_drafts AS draft ON draft.id = run.draft_id
         INNER JOIN search_horoshop_photo_batches AS batch ON batch.id = run.batch_id
-        WHERE run.status = 'queued'
+        WHERE run.status = 'queued' AND run.executor = 'server'
         ORDER BY run.created_at, run.id
         LIMIT 1
         ${lockRows ? 'FOR UPDATE SKIP LOCKED' : ''}

@@ -136,6 +136,8 @@ import type {
 } from '../types/horoshop-accessory';
 import type {
   HoroshopPhotoBatch,
+  HoroshopPhotoDesktopDevice,
+  HoroshopPhotoDesktopPairing,
   HoroshopPhotoPublicationMode,
   HoroshopPhotoPublishProgress,
   HoroshopPhotoPublishResult,
@@ -247,6 +249,18 @@ export const api = {
     )
   },
   horoshopPhotos: {
+    desktopDevices: () => request<HoroshopPhotoDesktopDevice[]>('/api/search/horoshop/photos/desktop/devices'),
+    createDesktopPairing: () => request<HoroshopPhotoDesktopPairing>(
+      '/api/search/horoshop/photos/desktop/pairings',
+      { method: 'POST' }
+    ),
+    desktopPairing: (pairingId: string) => request<HoroshopPhotoDesktopPairing>(
+      `/api/search/horoshop/photos/desktop/pairings/${encodeURIComponent(pairingId)}`
+    ),
+    revokeDesktopDevice: (deviceId: string) => request<void>(
+      `/api/search/horoshop/photos/desktop/devices/${encodeURIComponent(deviceId)}`,
+      { method: 'DELETE' }
+    ),
     selections: () => request<HoroshopPhotoSelectionSummary[]>('/api/search/horoshop/photos/selections'),
     selection: (selectionId: string, signal?: AbortSignal) => request<HoroshopPhotoSelection>(
       `/api/search/horoshop/photos/selections/${encodeURIComponent(selectionId)}`,

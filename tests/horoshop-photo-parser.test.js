@@ -7,6 +7,9 @@ process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'pg-mem://horoshop-photo-parser-tests';
 process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.COOKIE_SECURE = 'false';
+process.env.ADMIN_NAME = 'Photo Parser Admin';
+process.env.ADMIN_EMAIL = 'photo-parser-admin@test.local';
+process.env.ADMIN_PASSWORD = 'PhotoParserAdmin123!';
 
 const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
@@ -15,6 +18,8 @@ const { HoroshopCatalogRepository } = await import('../src/modules/search/horosh
 const { HoroshopCatalogService } = await import('../src/modules/search/horoshop/catalog.service.js');
 const { resolveHoroshopPhotoSelection } = await import('../src/modules/search/horoshop/photo-selection.js');
 const { HoroshopPhotoService } = await import('../src/modules/search/horoshop/photo.service.js');
+const { HoroshopPhotoDesktopService } = await import('../src/modules/search/horoshop/photo-desktop.service.js');
+const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
 
 const ids = {
   connection: randomUUID(),
@@ -28,6 +33,13 @@ const ids = {
 
 before(async () => {
   await runMigrations();
+  await ensureBootstrapAdmin();
+  const admin = await pool.query(`
+    UPDATE users SET two_factor_enabled = TRUE
+    WHERE email = 'photo-parser-admin@test.local'
+    RETURNING id
+  `);
+  ids.admin = admin.rows[0].id;
   await pool.query(`
     INSERT INTO search_horoshop_connections (
       id, generation, store_domain, encrypted_credentials, status, last_sync_at
@@ -297,6 +309,89 @@ test('background queue reuses the shared scraper engine and stores a reviewable 
   assert.equal(detail.rows[0].parse_status, 'ready');
   assert.ok(detail.rows[0].media_folder_id);
   assert.equal(Number(assets.rows[0].asset_count), 1);
+});
+
+test('desktop parser pairs securely, claims a selection and completes a reviewable draft', async () => {
+  const photoService = new HoroshopPhotoService({ databasePool: pool });
+  const desktopService = new HoroshopPhotoDesktopService({
+    databasePool: pool,
+    photoService,
+    createAsset: async ({ buffer, originalName, folderId }, db) => {
+      const id = randomUUID();
+      const storageKey = `desktop-${id}.webp`;
+      const metadata = await sharp(buffer).metadata();
+      const result = await db.query(`
+        INSERT INTO media_library_assets (
+          id, original_name, storage_key, url, mime_type, size_bytes,
+          original_size_bytes, width, height, content_sha256, folder_id
+        ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $5, $6, $7, $8, $9)
+        RETURNING id, url, width, height, size_bytes
+      `, [
+        id, originalName, storageKey, `/media/catalog/library/${storageKey}`, buffer.length,
+        metadata.width || 0, metadata.height || 0, id.replaceAll('-', '').padEnd(64, '0'), folderId
+      ]);
+      const row = result.rows[0];
+      return { ...row, size: Number(row.size_bytes || 0) };
+    }
+  });
+  const selection = await photoService.createSelection({
+    name: 'Desktop parser flow',
+    entries: ['PHONE-2'],
+    userId: ids.admin
+  });
+  const pairing = await desktopService.createPairing(ids.admin);
+  const claimed = await desktopService.claimPairing({
+    code: pairing.manualCode,
+    deviceName: 'Test Windows parser',
+    appVersion: '0.9.0',
+    installationId: randomUUID(),
+    capabilities: { upload: true }
+  });
+  const device = await desktopService.authenticate(claimed.accessToken);
+  const batch = await photoService.createBatch({
+    selectionId: selection.id,
+    userId: ids.admin,
+    executor: 'desktop'
+  });
+  const jobs = await desktopService.listJobs(device);
+
+  assert.equal(batch.requestedCount, 1);
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].sku, 'PHONE-2');
+  assert.equal(jobs[0].title, 'Смартфон з однаковою назвою');
+
+  const job = await desktopService.claimJob(device, jobs[0].id);
+  await desktopService.saveSource(device, job.id, {
+    sourceUrl: 'https://supplier.example/phone-2',
+    adapterId: 'builtin-test'
+  });
+  const image = await sharp({
+    create: { width: 900, height: 900, channels: 3, background: '#ffd500' }
+  }).webp().toBuffer();
+  await desktopService.uploadAsset(device, job.id, {
+    buffer: image,
+    sourceUrl: 'https://supplier.example/phone-2/front.webp',
+    sortOrder: 0,
+    originalName: 'PHONE-2-1.webp'
+  });
+  const completed = await desktopService.completeJob(device, job.id, {
+    sourceUrl: 'https://supplier.example/phone-2',
+    adapterId: 'builtin-test',
+    foundCount: 1,
+    errors: []
+  });
+  const draft = await pool.query(`
+    SELECT parse_status, source_url FROM search_horoshop_photo_drafts WHERE id = $1
+  `, [jobs[0].draftId]);
+  const assets = await pool.query(`
+    SELECT COUNT(*)::INTEGER AS count FROM search_horoshop_photo_assets WHERE draft_id = $1
+  `, [jobs[0].draftId]);
+
+  assert.deepEqual(completed, { status: 'success', foundCount: 1, savedCount: 1, errors: [] });
+  assert.equal(draft.rows[0].parse_status, 'ready');
+  assert.equal(draft.rows[0].source_url, 'https://supplier.example/phone-2');
+  assert.equal(Number(assets.rows[0].count), 1);
+  assert.equal((await desktopService.listJobs(device)).length, 0);
 });
 
 test('disconnect removes selections, drafts and their generated media', async () => {

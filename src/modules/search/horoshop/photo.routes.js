@@ -6,11 +6,13 @@ import { asyncHandler } from '../../../lib/async-handler.js';
 import { parseInput } from '../../../lib/validation.js';
 import { requireAuth } from '../../../middleware/auth.js';
 import { requireToolAccess } from '../../access/access.service.js';
+import { horoshopPhotoDesktopService } from './photo-desktop.service.js';
 import { horoshopPhotoService } from './photo.service.js';
 
 const router = Router();
 const uuidParams = z.object({ id: z.string().uuid() });
 const selectionItemParams = z.object({ id: z.string().uuid(), itemId: z.string().uuid() });
+const deviceParams = z.object({ id: z.string().uuid() });
 const selectionInputSchema = z.object({
   name: z.string().trim().max(160).optional().default(''),
   entries: z.array(z.string().trim().min(1).max(500)).min(1).max(1_000)
@@ -56,6 +58,25 @@ router.use((_req, res, next) => {
 
 router.get('/selections', asyncHandler(async (_req, res) => {
   res.json({ data: await horoshopPhotoService.listSelections() });
+}));
+
+router.get('/desktop/devices', asyncHandler(async (req, res) => {
+  res.json({ data: await horoshopPhotoDesktopService.listDevices(req.user.id) });
+}));
+
+router.post('/desktop/pairings', asyncHandler(async (req, res) => {
+  res.status(201).json({ data: await horoshopPhotoDesktopService.createPairing(req.user.id) });
+}));
+
+router.get('/desktop/pairings/:id', asyncHandler(async (req, res) => {
+  const { id } = parseInput(deviceParams, req.params);
+  res.json({ data: await horoshopPhotoDesktopService.pairing(req.user.id, id) });
+}));
+
+router.delete('/desktop/devices/:id', asyncHandler(async (req, res) => {
+  const { id } = parseInput(deviceParams, req.params);
+  await horoshopPhotoDesktopService.revokeDevice(req.user.id, id);
+  res.status(204).end();
 }));
 
 router.post('/selections', asyncHandler(async (req, res) => {
@@ -107,12 +128,22 @@ router.put('/drafts/:id/assets', asyncHandler(async (req, res) => {
 
 router.post('/selections/:id/parse', asyncHandler(async (req, res) => {
   const { id } = parseInput(uuidParams, req.params);
-  res.status(202).json({ data: await horoshopPhotoService.createBatch({ selectionId: id, userId: req.user.id }) });
+  await horoshopPhotoDesktopService.assertAvailableDevice(req.user.id);
+  res.status(202).json({ data: await horoshopPhotoService.createBatch({
+    selectionId: id,
+    userId: req.user.id,
+    executor: 'desktop'
+  }) });
 }));
 
 router.post('/drafts/:id/parse', asyncHandler(async (req, res) => {
   const { id } = parseInput(uuidParams, req.params);
-  res.status(202).json({ data: await horoshopPhotoService.createBatch({ draftIds: [id], userId: req.user.id }) });
+  await horoshopPhotoDesktopService.assertAvailableDevice(req.user.id);
+  res.status(202).json({ data: await horoshopPhotoService.createBatch({
+    draftIds: [id],
+    userId: req.user.id,
+    executor: 'desktop'
+  }) });
 }));
 
 router.get('/batches/active', asyncHandler(async (_req, res) => {
