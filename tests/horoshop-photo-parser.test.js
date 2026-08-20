@@ -404,6 +404,38 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.deepEqual(await desktopService.listJobs(device), []);
   const deletedBatch = await pool.query('SELECT id FROM search_horoshop_photo_batches WHERE id = $1', [newJobs[0].batchId]);
   assert.equal(deletedBatch.rows.length, 0);
+
+  const cascadedSelection = await photoService.createSelection({
+    name: 'Deleted outside photo service',
+    entries: ['PHONE-1-BLACK'],
+    userId: ids.admin
+  });
+  const cascadedJobs = await desktopService.listJobs(device);
+  assert.equal(cascadedJobs.length, 1);
+  assert.equal(cascadedJobs[0].selectionId, cascadedSelection.id);
+
+  await pool.query('DELETE FROM search_horoshop_photo_selections WHERE id = $1', [cascadedSelection.id]);
+
+  assert.deepEqual(await desktopService.listJobs(device), []);
+  const cascadedBatch = await pool.query('SELECT id FROM search_horoshop_photo_batches WHERE id = $1', [cascadedJobs[0].batchId]);
+  assert.equal(cascadedBatch.rows.length, 0);
+
+  const legacySelection = await photoService.createSelection({
+    name: 'Legacy orphaned queue',
+    entries: ['PHONE-1'],
+    userId: ids.admin
+  });
+  const legacyJobs = await desktopService.listJobs(device);
+  assert.equal(legacyJobs.length, 2);
+  await pool.query(`
+    UPDATE search_horoshop_photo_batches SET selection_id = NULL WHERE id = $1
+  `, [legacyJobs[0].batchId]);
+  await pool.query('DELETE FROM search_horoshop_photo_selections WHERE id = $1', [legacySelection.id]);
+
+  assert.equal(await photoService.activeBatch(), null);
+  assert.deepEqual(await desktopService.listJobs(device), []);
+  const legacyBatch = await pool.query('SELECT id FROM search_horoshop_photo_batches WHERE id = $1', [legacyJobs[0].batchId]);
+  assert.equal(legacyBatch.rows.length, 0);
 });
 
 test('disconnect removes selections, drafts and their generated media', async () => {

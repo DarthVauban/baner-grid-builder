@@ -421,6 +421,7 @@ export class HoroshopPhotoDesktopService {
   }
 
   async listJobs(device) {
+    await this.photoService.cleanupOrphanedDesktopBatches(device.userId);
     await this.recoverExpiredJobs();
     await this.materializeSelectionJobs(device.userId);
     const result = await this.pool.query(`

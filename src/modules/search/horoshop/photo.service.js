@@ -793,10 +793,10 @@ export class HoroshopPhotoService {
       }
       const batch = await client.query(`
         INSERT INTO search_horoshop_photo_batches (
-          connection_id, generation, selection_id, requested_count, created_by
-        ) VALUES ($1, $2, $3, $4, $5)
+          connection_id, generation, selection_id, selection_based, requested_count, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
-      `, [connection.id, connection.generation, selectionId, drafts.rows.length, userId]);
+      `, [connection.id, connection.generation, selectionId, Boolean(selectionId), drafts.rows.length, userId]);
       batchId = batch.rows[0].id;
       for (const draft of drafts.rows) {
         await client.query(`
@@ -817,6 +817,103 @@ export class HoroshopPhotoService {
       client.release();
     }
     return this.loadBatch(batchId);
+  }
+
+  async cleanupOrphanedDesktopBatches(userId = null) {
+    const values = [];
+    const ownerClause = userId
+      ? `AND batch.created_by = $${values.push(userId)}`
+      : '';
+    const candidates = await this.pool.query(`
+      SELECT batch.id, batch.selection_based, run.source_url, upload.id AS upload_id
+      FROM search_horoshop_photo_batches AS batch
+      INNER JOIN search_horoshop_photo_runs AS active_run
+        ON active_run.batch_id = batch.id
+       AND active_run.executor = 'desktop'
+       AND active_run.status IN ('queued', 'running')
+      INNER JOIN search_horoshop_photo_runs AS run ON run.batch_id = batch.id
+      LEFT JOIN search_horoshop_photo_run_uploads AS upload ON upload.run_id = run.id
+      WHERE batch.selection_id IS NULL
+        AND (batch.selection_based = TRUE OR batch.requested_count > 1)
+        ${ownerClause}
+    `, values);
+    const batchSafety = new Map();
+    for (const row of candidates.rows) {
+      const state = batchSafety.get(row.id) || {
+        selectionBased: row.selection_based === true,
+        empty: true
+      };
+      state.selectionBased ||= row.selection_based === true;
+      state.empty &&= !String(row.source_url || '').trim() && !row.upload_id;
+      batchSafety.set(row.id, state);
+    }
+    const batchIds = [...batchSafety.entries()]
+      .filter(([, state]) => state.selectionBased || state.empty)
+      .map(([batchId]) => batchId);
+    if (!batchIds.length) return 0;
+
+    const client = await this.pool.connect();
+    let orphanedUploads = [];
+    try {
+      await client.query('BEGIN');
+      const drafts = await client.query(`
+        SELECT DISTINCT draft_id
+        FROM search_horoshop_photo_runs
+        WHERE batch_id = ANY($1::uuid[])
+      `, [batchIds]);
+      const draftIds = drafts.rows.map((row) => row.draft_id);
+      const uploads = await client.query(`
+        SELECT DISTINCT asset.id, asset.storage_key
+        FROM search_horoshop_photo_run_uploads AS upload
+        INNER JOIN search_horoshop_photo_runs AS run ON run.id = upload.run_id
+        INNER JOIN media_library_assets AS asset ON asset.id = upload.media_asset_id
+        WHERE run.batch_id = ANY($1::uuid[])
+      `, [batchIds]);
+      orphanedUploads = uploads.rows;
+      if (orphanedUploads.length) {
+        await client.query('DELETE FROM media_library_assets WHERE id = ANY($1::uuid[])', [
+          orphanedUploads.map((asset) => asset.id)
+        ]);
+      }
+      const batchPlaceholders = batchIds.map((_, index) => `$${index + 1}`).join(', ');
+      await client.query(`
+        DELETE FROM search_horoshop_photo_batches
+        WHERE id IN (${batchPlaceholders})
+      `, batchIds);
+
+      if (draftIds.length) {
+        const activeRuns = await client.query(`
+          SELECT DISTINCT draft_id FROM search_horoshop_photo_runs
+          WHERE draft_id = ANY($1::uuid[]) AND status IN ('queued', 'running')
+        `, [draftIds]);
+        const draftsWithAssets = await client.query(`
+          SELECT DISTINCT draft_id FROM search_horoshop_photo_assets
+          WHERE draft_id = ANY($1::uuid[])
+        `, [draftIds]);
+        const activeDraftIds = new Set(activeRuns.rows.map((row) => row.draft_id));
+        const readyDraftIds = new Set(draftsWithAssets.rows.map((row) => row.draft_id));
+        const resettableDraftIds = draftIds.filter((draftId) => !activeDraftIds.has(draftId));
+        const ready = resettableDraftIds.filter((draftId) => readyDraftIds.has(draftId));
+        const idle = resettableDraftIds.filter((draftId) => !readyDraftIds.has(draftId));
+        for (const [parseStatus, ids] of [['ready', ready], ['idle', idle]]) {
+          if (!ids.length) continue;
+          await client.query(`
+            UPDATE search_horoshop_photo_drafts
+            SET parse_status = $2, error_message = '', error_details = '[]'::jsonb, updated_at = NOW()
+            WHERE id = ANY($1::uuid[])
+          `, [ids, parseStatus]);
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    for (const asset of orphanedUploads) await removeMediaImage(asset.storage_key).catch(() => {});
+    return batchIds.length;
   }
 
   async refreshBatch(batchId, db = this.pool) {
@@ -903,6 +1000,7 @@ export class HoroshopPhotoService {
 
   async activeBatch() {
     const connection = await this.connection();
+    await this.cleanupOrphanedDesktopBatches();
     await this.reconcileBatches();
     const result = await this.pool.query(`
       SELECT id FROM search_horoshop_photo_batches
