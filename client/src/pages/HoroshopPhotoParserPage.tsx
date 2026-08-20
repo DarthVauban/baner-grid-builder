@@ -14,6 +14,7 @@ import type {
   HoroshopPhotoDraft,
   HoroshopPhotoPublicationMode,
   HoroshopPhotoPublishProgress,
+  HoroshopPhotoSelection,
   HoroshopPhotoSelectionSummary,
   HoroshopPhotoSelectionProduct
 } from '../types/horoshop-photo';
@@ -47,7 +48,7 @@ function formatBytes(value: number) {
 
 function BatchProgress({ batch }: { batch: HoroshopPhotoBatch }) {
   const completed = batch.counts.success + batch.counts.partial + batch.counts.failed;
-  const percent = batch.requestedCount ? Math.round((completed / batch.requestedCount) * 100) : 100;
+  const percent = batch.requestedCount ? Math.min(100, Math.round((completed / batch.requestedCount) * 100)) : 100;
   return <section className={`horoshop-photo-progress${batchComplete(batch) ? ' is-complete' : ''}`}>
     <header>
       <div>
@@ -213,6 +214,13 @@ function flattenPhotoTargets(products: HoroshopPhotoSelectionProduct[]) {
   return targets;
 }
 
+function selectionHasActiveDrafts(selection: HoroshopPhotoSelection | undefined) {
+  return Boolean(selection?.products.some((product) => {
+    const drafts = [product.commonDraft, ...product.modifications.map((modification) => modification.draft)];
+    return drafts.some((draft) => draft?.parseStatus === 'queued' || draft?.parseStatus === 'running');
+  }));
+}
+
 function ProductTarget({
   target,
   busyDraftIds,
@@ -255,6 +263,7 @@ export function HoroshopPhotoParserPage() {
   const [publicationMode, setPublicationMode] = useState<HoroshopPhotoPublicationMode>('append');
   const [publishProgress, setPublishProgress] = useState<HoroshopPhotoPublishProgress | null>(null);
   const completedBatch = useRef('');
+  const synchronizedBatchRevision = useRef('');
 
   const selections = useQuery({ queryKey: ['horoshop-photo-selections'], queryFn: api.horoshopPhotos.selections });
   const desktopDevices = useQuery({
@@ -267,7 +276,7 @@ export function HoroshopPhotoParserPage() {
     queryKey: ['horoshop-photo-selection', selectionId],
     queryFn: ({ signal }) => api.horoshopPhotos.selection(selectionId, signal),
     enabled: Boolean(selectionId),
-    refetchInterval: batchId ? 1_500 : false,
+    refetchInterval: (query) => batchId || selectionHasActiveDrafts(query.state.data) ? 1_000 : false,
     refetchIntervalInBackground: true
   });
   const activeBatch = useQuery({
@@ -319,6 +328,16 @@ export function HoroshopPhotoParserPage() {
   useEffect(() => {
     if (activeBatch.data?.id) setBatchId(activeBatch.data.id);
   }, [activeBatch.data?.id]);
+
+  useEffect(() => {
+    if (!batch.data || !selectionId) return;
+    const revision = batch.data.items
+      .map((item) => `${item.id}:${item.status}:${item.savedCount}:${item.completedAt || ''}`)
+      .join('|');
+    if (synchronizedBatchRevision.current === revision) return;
+    synchronizedBatchRevision.current = revision;
+    void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection', selectionId], exact: true });
+  }, [batch.data, queryClient, selectionId]);
 
   useEffect(() => {
     if (!desktopPairing || desktopPairing.status !== 'pending') return;

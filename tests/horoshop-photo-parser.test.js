@@ -397,7 +397,40 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.equal(draft.rows[0].parse_status, 'ready');
   assert.equal(draft.rows[0].source_url, 'https://supplier.example/phone-2');
   assert.equal(Number(assets.rows[0].count), 1);
+
+  const finishedRun = await pool.query(`
+    SELECT created_at, completed_at
+    FROM search_horoshop_photo_runs
+    WHERE id = $1
+  `, [job.id]);
+  const duplicateBatch = await pool.query(`
+    INSERT INTO search_horoshop_photo_batches (
+      connection_id, generation, selection_id, selection_based,
+      requested_count, created_by, created_at
+    ) VALUES ($1, $2, $3, TRUE, 1, $4, $5)
+    RETURNING id
+  `, [ids.connection, ids.generation, selection.id, ids.admin, finishedRun.rows[0].created_at]);
+  await pool.query(`
+    INSERT INTO search_horoshop_photo_runs (
+      batch_id, draft_id, source_url, executor, created_at
+    ) VALUES ($1, $2, '', 'desktop', $3)
+  `, [duplicateBatch.rows[0].id, jobs[0].draftId, finishedRun.rows[0].created_at]);
+
+  const repairedBatch = await photoService.loadBatch(duplicateBatch.rows[0].id);
+  assert.equal(repairedBatch.status, 'completed');
+  assert.deepEqual(repairedBatch.counts, { queued: 0, running: 0, success: 1, partial: 0, failed: 0 });
+  assert.equal(repairedBatch.items[0].savedCount, 1);
   assert.equal((await desktopService.listJobs(device)).length, 0);
+
+  const intentionalRetry = await photoService.createBatch({
+    selectionId: selection.id,
+    userId: ids.admin,
+    executor: 'desktop'
+  });
+  assert.equal(intentionalRetry.counts.queued, 1);
+  assert.equal((await photoService.loadBatch(intentionalRetry.id)).counts.queued, 1);
+  await pool.query('DELETE FROM search_horoshop_photo_batches WHERE id = $1', [intentionalRetry.id]);
+  await pool.query("UPDATE search_horoshop_photo_drafts SET parse_status = 'ready' WHERE id = $1", [jobs[0].draftId]);
 
   const newSelection = await photoService.createSelection({
     name: 'Created after pairing',

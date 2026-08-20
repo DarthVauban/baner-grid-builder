@@ -437,6 +437,7 @@ export class HoroshopPhotoDesktopService {
   async listJobs(device) {
     await this.photoService.cleanupOrphanedDesktopBatches(device.userId);
     await this.recoverExpiredJobs();
+    await this.photoService.reconcileRedundantDesktopRuns();
     await this.materializeSelectionJobs(device.userId);
     const result = await this.pool.query(`
       SELECT run.*, batch.selection_id, selection.name AS selection_name,

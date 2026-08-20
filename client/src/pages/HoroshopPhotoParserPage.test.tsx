@@ -164,6 +164,39 @@ describe('HoroshopPhotoParserPage', () => {
     expect(screen.getByRole('button', { name: 'Передати в Хорошоп' })).toBeInTheDocument();
   });
 
+  it('refreshes draft cards live while a desktop parser is connected', async () => {
+    const pendingSelection = structuredClone(selection);
+    pendingSelection.products[0].modifications[0].draft = {
+      ...pendingSelection.products[0].modifications[0].draft,
+      sourceUrl: '',
+      parseStatus: 'queued',
+      foundCount: 0,
+      assets: []
+    };
+    vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
+    const loadSelection = vi.spyOn(api.horoshopPhotos, 'selection')
+      .mockResolvedValueOnce(pendingSelection)
+      .mockResolvedValue(selection);
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
+    vi.mocked(api.horoshopPhotos.desktopDevices).mockResolvedValue([{
+      id: 'desktop-1',
+      name: 'Фото парсер',
+      appVersion: '0.9.2',
+      capabilities: { upload: true },
+      pairedAt: '2026-08-20T08:00:00.000Z',
+      lastSeenAt: '2026-08-20T08:00:00.000Z',
+      revokedAt: null
+    }]);
+
+    renderPage();
+    expect(await screen.findByText('Example One Black')).toBeInTheDocument();
+    expect(screen.queryByText('Джерело, вибране у десктопному парсері')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(loadSelection.mock.calls.length).toBeGreaterThanOrEqual(2), { timeout: 3_000 });
+    expect(await screen.findByText('Джерело, вибране у десктопному парсері')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Передати в Хорошоп' })).toBeInTheDocument();
+  });
+
   it('creates an exact selection from newline-separated names and articles', async () => {
     vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([]);
     vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);

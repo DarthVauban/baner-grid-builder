@@ -727,6 +727,17 @@ export class HoroshopPhotoService {
     let batchId;
     try {
       await client.query('BEGIN');
+      if (selectionId) {
+        const lockedSelection = await client.query(`
+          SELECT id
+          FROM search_horoshop_photo_selections
+          WHERE id = $1 AND connection_id = $2 AND generation = $3
+          FOR UPDATE
+        `, [selectionId, connection.id, connection.generation]);
+        if (!lockedSelection.rows[0]) {
+          throw new AppError(404, 'HOROSHOP_PHOTO_SELECTION_NOT_FOUND', 'Вибірку товарів не знайдено.');
+        }
+      }
       if (selectionId && executor === 'desktop') {
         await this.ensureDesktopSelectionDrafts(selectionId, connection, userId, client);
       }
@@ -783,7 +794,23 @@ export class HoroshopPhotoService {
         ORDER BY draft.id
       `, values);
       if (!drafts.rows.length) {
-        throw new AppError(
+        if (selectionId && executor === 'desktop') {
+          const active = await client.query(`
+            SELECT batch.id
+            FROM search_horoshop_photo_batches AS batch
+            INNER JOIN search_horoshop_photo_runs AS run ON run.batch_id = batch.id
+            WHERE batch.selection_id = $1
+              AND batch.created_by = $2
+              AND run.executor = 'desktop'
+              AND run.status IN ('queued', 'running')
+            ORDER BY batch.created_at DESC
+            LIMIT 1
+          `, [selectionId, userId]);
+          if (active.rows[0]) {
+            batchId = active.rows[0].id;
+          }
+        }
+        if (!batchId) throw new AppError(
           422,
           'HOROSHOP_PHOTO_BATCH_EMPTY',
           executor === 'desktop'
@@ -791,24 +818,26 @@ export class HoroshopPhotoService {
             : 'У вибірці немає збережених посилань, готових до парсингу.'
         );
       }
-      const batch = await client.query(`
-        INSERT INTO search_horoshop_photo_batches (
-          connection_id, generation, selection_id, selection_based, requested_count, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id
-      `, [connection.id, connection.generation, selectionId, Boolean(selectionId), drafts.rows.length, userId]);
-      batchId = batch.rows[0].id;
-      for (const draft of drafts.rows) {
+      if (!batchId) {
+        const batch = await client.query(`
+          INSERT INTO search_horoshop_photo_batches (
+            connection_id, generation, selection_id, selection_based, requested_count, created_by
+          ) VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id
+        `, [connection.id, connection.generation, selectionId, Boolean(selectionId), drafts.rows.length, userId]);
+        batchId = batch.rows[0].id;
+        for (const draft of drafts.rows) {
+          await client.query(`
+            INSERT INTO search_horoshop_photo_runs (batch_id, draft_id, source_url, executor)
+            VALUES ($1, $2, $3, $4)
+          `, [batchId, draft.id, draft.source_url, executor]);
+        }
         await client.query(`
-          INSERT INTO search_horoshop_photo_runs (batch_id, draft_id, source_url, executor)
-          VALUES ($1, $2, $3, $4)
-        `, [batchId, draft.id, draft.source_url, executor]);
+          UPDATE search_horoshop_photo_drafts
+          SET parse_status = 'queued', error_message = '', error_details = '[]'::jsonb, updated_at = NOW()
+          WHERE id = ANY($1::uuid[])
+        `, [drafts.rows.map((draft) => draft.id)]);
       }
-      await client.query(`
-        UPDATE search_horoshop_photo_drafts
-        SET parse_status = 'queued', error_message = '', error_details = '[]'::jsonb, updated_at = NOW()
-        WHERE id = ANY($1::uuid[])
-      `, [drafts.rows.map((draft) => draft.id)]);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -817,6 +846,60 @@ export class HoroshopPhotoService {
       client.release();
     }
     return this.loadBatch(batchId);
+  }
+
+  async reconcileRedundantDesktopRuns(batchId = null) {
+    const values = [];
+    const batchClause = batchId ? `AND queued.batch_id = $${values.push(batchId)}` : '';
+    const result = await this.pool.query(`
+      SELECT queued.id, queued.batch_id,
+             finished.status, finished.source_url, finished.adapter_id,
+             finished.found_count, finished.saved_count, finished.skipped_count,
+             finished.error_message, finished.error_details, finished.completed_at
+      FROM search_horoshop_photo_runs AS queued
+      INNER JOIN search_horoshop_photo_batches AS queued_batch ON queued_batch.id = queued.batch_id
+      INNER JOIN search_horoshop_photo_runs AS finished ON finished.draft_id = queued.draft_id
+      INNER JOIN search_horoshop_photo_batches AS finished_batch ON finished_batch.id = finished.batch_id
+      LEFT JOIN search_horoshop_photo_run_uploads AS queued_upload ON queued_upload.run_id = queued.id
+      WHERE queued.executor = 'desktop'
+        AND queued.status = 'queued'
+        AND queued.device_id IS NULL
+        AND queued_batch.selection_id IS NOT NULL
+        AND queued_batch.selection_id = finished_batch.selection_id
+        AND queued_batch.created_by = finished_batch.created_by
+        AND finished.executor = 'desktop'
+        AND finished.status IN ('success', 'partial')
+        AND finished.completed_at IS NOT NULL
+        AND queued.created_at < finished.completed_at
+        AND queued.id <> finished.id
+        AND queued_upload.id IS NULL
+        ${batchClause}
+      ORDER BY queued.id, finished.completed_at DESC
+    `, values);
+    const repaired = new Map();
+    for (const row of result.rows) {
+      if (!repaired.has(row.id)) repaired.set(row.id, row);
+    }
+    const batchIds = new Set();
+    for (const row of repaired.values()) {
+      const updated = await this.pool.query(`
+        UPDATE search_horoshop_photo_runs
+        SET status = $2, source_url = $3, adapter_id = $4,
+            found_count = $5, saved_count = $6, skipped_count = $7,
+            error_message = $8, error_details = $9::jsonb,
+            progress = '{"phase":"complete","percentage":100}'::jsonb,
+            lease_expires_at = NULL, heartbeat_at = NOW(), completed_at = $10
+        WHERE id = $1 AND status = 'queued' AND device_id IS NULL
+        RETURNING batch_id
+      `, [
+        row.id, row.status, row.source_url, row.adapter_id,
+        row.found_count, row.saved_count, row.skipped_count,
+        row.error_message, JSON.stringify(jsonArray(row.error_details)), row.completed_at
+      ]);
+      if (updated.rows[0]) batchIds.add(updated.rows[0].batch_id);
+    }
+    for (const repairedBatchId of batchIds) await this.refreshBatch(repairedBatchId).catch(() => {});
+    return repaired.size;
   }
 
   async cleanupOrphanedDesktopBatches(userId = null) {
@@ -933,6 +1016,7 @@ export class HoroshopPhotoService {
 
   async loadBatch(batchId) {
     const connection = await this.connection();
+    await this.reconcileRedundantDesktopRuns(batchId);
     const batchResult = await this.pool.query(`
       SELECT * FROM search_horoshop_photo_batches
       WHERE id = $1 AND connection_id = $2 AND generation = $3
