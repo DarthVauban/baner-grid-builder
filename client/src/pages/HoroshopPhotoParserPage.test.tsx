@@ -325,6 +325,51 @@ describe('HoroshopPhotoParserPage', () => {
     expect(screen.getByRole('button', { name: 'Передати в Хорошоп' })).toBeInTheDocument();
   });
 
+  it('paginates a large selection so only ten product cards are mounted at once', async () => {
+    const largeSelection = structuredClone(selection);
+    largeSelection.products = Array.from({ length: 15 }, (_, index) => ({
+      itemIds: [`item-${index + 1}`],
+      inputs: [`SKU-${index + 1}`],
+      includeAllModifications: false,
+      id: `product-${index + 1}`,
+      sku: `SKU-${index + 1}`,
+      title: `Товар ${index + 1}`,
+      imageUrl: `https://cdn.example/product-${index + 1}.webp`,
+      canonicalUrl: `https://photo-shop.example/product-${index + 1}/`,
+      modifications: [],
+      commonDraft: {
+        id: null,
+        productId: `product-${index + 1}`,
+        modificationId: null,
+        targetType: 'gallery_common',
+        sourceUrl: '',
+        parseStatus: 'idle',
+        publishStatus: 'draft',
+        foundCount: 0,
+        errorMessage: '',
+        errors: [],
+        publishedAt: null,
+        currentImages: [],
+        assets: []
+      }
+    }));
+    vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([{ ...summary, matchedCount: 15 }]);
+    vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(largeSelection);
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
+
+    const view = renderPage();
+
+    expect(await screen.findAllByText('Показано 1–10 із 15')).toHaveLength(2);
+    expect(view.container.querySelectorAll('.horoshop-photo-target')).toHaveLength(10);
+    expect(screen.getByText('Товар 1')).toBeInTheDocument();
+    expect(screen.queryByText('Товар 11')).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Наступні товари' })[0]);
+    expect(await screen.findAllByText('Показано 11–15 із 15')).toHaveLength(2);
+    expect(view.container.querySelectorAll('.horoshop-photo-target')).toHaveLength(5);
+    expect(screen.queryByText('Товар 1')).not.toBeInTheDocument();
+    expect(screen.getByText('Товар 11')).toBeInTheDocument();
+  });
+
   it('refreshes draft cards live while a desktop parser is connected', async () => {
     const pendingSelection = structuredClone(selection);
     pendingSelection.products[0].modifications[0].draft = {

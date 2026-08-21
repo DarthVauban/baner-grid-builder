@@ -22,6 +22,8 @@ import type {
 } from '../types/horoshop-photo';
 import '../styles/horoshop-photo-parser.css';
 
+const photoTargetPageSize = 10;
+
 function batchComplete(batch: HoroshopPhotoBatch | null | undefined) {
   return batch?.status === 'completed';
 }
@@ -260,6 +262,34 @@ function ProductTarget({
   />;
 }
 
+function TargetPager({
+  page,
+  pageCount,
+  total,
+  onChange
+}: {
+  page: number;
+  pageCount: number;
+  total: number;
+  onChange: (page: number) => void;
+}) {
+  if (pageCount <= 1) return null;
+  const first = (page - 1) * photoTargetPageSize + 1;
+  const last = Math.min(page * photoTargetPageSize, total);
+  return <nav className="horoshop-photo-target-pager" aria-label="Сторінки товарів вибірки">
+    <span>Показано {first}–{last} із {total}</span>
+    <div>
+      <button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="Попередні товари">
+        <Icon name="chevronLeft" size={16} />
+      </button>
+      <b>{page} / {pageCount}</b>
+      <button type="button" disabled={page >= pageCount} onClick={() => onChange(page + 1)} aria-label="Наступні товари">
+        <Icon name="chevronRight" size={16} />
+      </button>
+    </div>
+  </nav>;
+}
+
 export function HoroshopPhotoParserPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -278,6 +308,7 @@ export function HoroshopPhotoParserPage() {
   const [publicationMode, setPublicationMode] = useState<HoroshopPhotoPublicationMode>('replace');
   const [publishProgress, setPublishProgress] = useState<HoroshopPhotoPublishProgress | null>(null);
   const [publishOutcome, setPublishOutcome] = useState<HoroshopPhotoPublishResult | null>(null);
+  const [targetPage, setTargetPage] = useState(1);
   const completedBatch = useRef('');
   const synchronizedBatchRevision = useRef('');
   const previousSelectionId = useRef('');
@@ -333,6 +364,11 @@ export function HoroshopPhotoParserPage() {
       api.horoshopPhotos.publishSelection(id, mode, setPublishProgress)
   });
   const photoTargets = useMemo(() => flattenPhotoTargets(selection.data?.products || []), [selection.data?.products]);
+  const targetPageCount = Math.max(1, Math.ceil(photoTargets.length / photoTargetPageSize));
+  const visiblePhotoTargets = useMemo(() => {
+    const offset = (targetPage - 1) * photoTargetPageSize;
+    return photoTargets.slice(offset, offset + photoTargetPageSize);
+  }, [photoTargets, targetPage]);
   const connectedDevices = useMemo(
     () => (desktopDevices.data || []).filter((device) => !device.revokedAt),
     [desktopDevices.data]
@@ -341,6 +377,12 @@ export function HoroshopPhotoParserPage() {
   useEffect(() => {
     if (!selectionId && selections.data?.[0]?.id) setSelectionId(selections.data[0].id);
   }, [selectionId, selections.data]);
+
+  useEffect(() => setTargetPage(1), [selectionId]);
+
+  useEffect(() => {
+    setTargetPage((current) => Math.min(current, targetPageCount));
+  }, [targetPageCount]);
 
   useEffect(() => {
     if (activeBatch.data?.id && activeBatch.data.selectionId === selectionId) setBatchId(activeBatch.data.id);
@@ -778,13 +820,15 @@ export function HoroshopPhotoParserPage() {
       {selection.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо вибірку…</p></div>}
       {!selectionId && !selection.isLoading && <div className="empty-state"><Icon name="productSelection" size={30} /><strong>Створіть першу вибірку</strong><span>Вставте назви або артикули товарів у поле вище.</span></div>}
       {selection.data && !selection.data.products.length && <div className="empty-state"><Icon name="search" size={30} /><strong>Точних збігів немає</strong><span>Перевірте блок уточнень і записи, які не були знайдені.</span></div>}
-      {photoTargets.map((target) => <ProductTarget
+      <TargetPager page={targetPage} pageCount={targetPageCount} total={photoTargets.length} onChange={setTargetPage} />
+      {visiblePhotoTargets.map((target) => <ProductTarget
         target={target}
         key={target.key}
         busyDraftIds={busyDraftIds}
         onAssetsChange={(draft, ids) => void updateAssets(draft, ids)}
         onPublish={(draft) => void publishDraft(draft)}
       />)}
+      <TargetPager page={targetPage} pageCount={targetPageCount} total={photoTargets.length} onChange={setTargetPage} />
     </section>
   </div>;
 }

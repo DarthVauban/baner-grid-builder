@@ -103,7 +103,7 @@
 .horoshop-photo-resolution p { margin: 0; color: #8c651c; font-size: 11px; line-height: 1.5; }
 
 .horoshop-photo-products { min-width: 0; display: grid; gap: 11px; }
-.horoshop-photo-target { min-width: 0; display: grid; grid-template-columns: minmax(220px,.72fr) minmax(330px,1.2fr) auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 17px; padding: 13px; background: var(--surface); box-shadow: 0 8px 24px rgba(28,35,57,.04); }
+.horoshop-photo-target { min-width: 0; display: grid; grid-template-columns: minmax(220px,.72fr) minmax(330px,1.2fr) auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 17px; padding: 13px; background: var(--surface); box-shadow: 0 8px 24px rgba(28,35,57,.04); content-visibility: auto; contain-intrinsic-size: 132px; }
 .horoshop-photo-target__identity { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .horoshop-photo-target__image { width: 46px; height: 46px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: #fff; }
 .horoshop-photo-target__image img { width: 100%; height: 100%; object-fit: contain; }
@@ -151,6 +151,11 @@
 .horoshop-photo-asset__order button:disabled { opacity: .35; cursor: default; }
 .horoshop-photo-asset__order b { color: #6259b7; font-size: 9px; }
 .horoshop-photo-target__footer { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-top: 9px; color: var(--muted); font-size: 9px; }
+.horoshop-photo-target-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 14px; padding: 9px 12px; color: var(--muted); background: var(--surface); font-size: 10px; font-weight: 800; }
+.horoshop-photo-target-pager > div { display: flex; align-items: center; gap: 8px; }
+.horoshop-photo-target-pager button { width: 32px; height: 32px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: #5a50d7; background: #fff; cursor: pointer; }
+.horoshop-photo-target-pager button:disabled { color: #b7bdc8; background: #f5f6f8; cursor: not-allowed; }
+.horoshop-photo-target-pager b { min-width: 48px; color: var(--ink); text-align: center; }
 
 @media (max-width: 1180px) {
   .horoshop-photo-desktop { grid-template-columns: 1fr 1fr; }

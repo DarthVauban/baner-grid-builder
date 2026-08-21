@@ -1,4 +1,5 @@
 import { pool as defaultPool } from '../../../db/pool.js';
+import { createAsyncLimiter } from '../../../lib/async-limiter.js';
 import { AppError } from '../../../lib/app-error.js';
 import { createMediaAsset, ensureMediaFolder } from '../../media/media.service.js';
 import { removeMediaImage } from '../../media/media.storage.js';
@@ -13,6 +14,8 @@ import {
 
 const pairingTtlMs = 10 * 60 * 1000;
 const leaseTtlMs = 10 * 60 * 1000;
+const desktopUploadConcurrency = 2;
+const deviceTouchIntervalMs = 60 * 1000;
 
 function jsonObject(value) {
   if (!value) return {};
@@ -98,8 +101,12 @@ export class HoroshopPhotoDesktopService {
     this.pool = options.databasePool || defaultPool;
     this.photoService = options.photoService || horoshopPhotoService;
     this.createAsset = options.createAsset || createMediaAsset;
+    this.limitUpload = options.uploadLimiter || createAsyncLimiter(
+      options.uploadConcurrency || desktopUploadConcurrency
+    );
     this.selectionSyncs = new Map();
     this.targetFolderSyncs = new Map();
+    this.deviceTouchTimes = new Map();
   }
 
   async createPairing(userId) {
@@ -242,21 +249,51 @@ export class HoroshopPhotoDesktopService {
   async authenticate(accessToken) {
     const result = await this.pool.query(`
       SELECT device.*, users.status AS user_status, users.role,
-             users.two_factor_enabled
+             users.two_factor_enabled,
+             COALESCE(requirement.requires_two_factor, FALSE) AS requires_two_factor,
+             COALESCE(access.explicit_access, FALSE) AS explicit_access
       FROM search_horoshop_photo_parser_devices AS device
       INNER JOIN users ON users.id = device.user_id
+      LEFT JOIN tool_security_requirements AS requirement
+        ON requirement.tool_id = 'horoshop_photo_parser'
+      LEFT JOIN (
+        SELECT user_id, TRUE AS explicit_access
+        FROM user_tool_access
+        WHERE tool_id = 'horoshop_photo_parser'
+      ) AS access ON access.user_id = users.id
       WHERE device.access_token_hash = $1
     `, [hashPhotoDesktopAccessToken(accessToken)]);
     const device = result.rows[0];
     if (!device) throw new AppError(401, 'PHOTO_DESKTOP_TOKEN_INVALID', 'Токен десктопного парсера недійсний.');
     if (device.revoked_at) throw new AppError(401, 'PHOTO_DESKTOP_DEVICE_REVOKED', 'Доступ цього парсера відкликано.');
-    await assertUserPhotoAccess(this.pool, device.user_id);
-    await this.pool.query(`
-      UPDATE search_horoshop_photo_parser_devices
-      SET last_seen_at = NOW(), updated_at = NOW()
-      WHERE id = $1 AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute')
-    `, [device.id]);
+    if (device.user_status !== 'approved') {
+      throw new AppError(401, 'PHOTO_DESKTOP_USER_INVALID', 'Користувач підключення більше не активний.');
+    }
+    if (device.role !== 'admin' && device.explicit_access !== true) {
+      throw new AppError(403, 'TOOL_ACCESS_DENIED', 'Немає доступу до інструмента фотографій Хорошоп.');
+    }
+    if (device.requires_two_factor === true && device.two_factor_enabled !== true) {
+      throw new AppError(403, 'TOOL_2FA_REQUIRED', 'Для цього інструмента потрібно увімкнути 2FA.');
+    }
+    await this.touchDevice(device);
     return { ...serializeDevice(device), userId: device.user_id };
+  }
+
+  async touchDevice(device) {
+    const now = Date.now();
+    const persistedAt = device.last_seen_at ? new Date(device.last_seen_at).getTime() : 0;
+    const lastTouch = Math.max(this.deviceTouchTimes.get(device.id) || 0, persistedAt || 0);
+    if (now - lastTouch < deviceTouchIntervalMs) return;
+    this.deviceTouchTimes.set(device.id, now);
+    try {
+      await this.pool.query(`
+        UPDATE search_horoshop_photo_parser_devices
+        SET last_seen_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND revoked_at IS NULL
+      `, [device.id]);
+    } catch {
+      if (this.deviceTouchTimes.get(device.id) === now) this.deviceTouchTimes.delete(device.id);
+    }
   }
 
   async listDevices(userId) {
@@ -304,6 +341,7 @@ export class HoroshopPhotoDesktopService {
         `, [released.rows.map((row) => row.draft_id)]);
       }
       await client.query('COMMIT');
+      this.deviceTouchTimes.delete(deviceId);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
@@ -622,7 +660,11 @@ export class HoroshopPhotoDesktopService {
     if (result.rows[0]?.storage_key) await removeMediaImage(result.rows[0].storage_key).catch(() => {});
   }
 
-  async uploadAsset(device, runId, { buffer, sourceUrl, sortOrder, originalName }) {
+  async uploadAsset(device, runId, input) {
+    return this.limitUpload(() => this.persistUploadAsset(device, runId, input));
+  }
+
+  async persistUploadAsset(device, runId, { buffer, sourceUrl, sortOrder, originalName }) {
     const run = await this.assertLeasedJob(device, runId);
     if (sortOrder < 0 || sortOrder >= 40) {
       throw new AppError(422, 'PHOTO_DESKTOP_SORT_ORDER_INVALID', 'Некоректний порядок фотографії.');

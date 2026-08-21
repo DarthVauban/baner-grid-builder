@@ -133,6 +133,33 @@ test('desktop parser coalesces concurrent media-folder creation', async () => {
   assert.deepEqual(await Promise.all([first, second]), [{ id: 'shared-folder' }, { id: 'shared-folder' }]);
 });
 
+test('desktop parser limits simultaneous workspace photo persistence', async () => {
+  const desktopService = new HoroshopPhotoDesktopService({
+    databasePool: pool,
+    uploadConcurrency: 2
+  });
+  let active = 0;
+  let peak = 0;
+  const order = [];
+  desktopService.persistUploadAsset = async (_device, runId) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    order.push(`start-${runId}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    order.push(`end-${runId}`);
+    active -= 1;
+    return { id: runId };
+  };
+
+  const results = await Promise.all(
+    ['one', 'two', 'three', 'four', 'five'].map((runId) => desktopService.uploadAsset({}, runId, {}))
+  );
+
+  assert.equal(peak, 2);
+  assert.deepEqual(results.map((result) => result.id), ['one', 'two', 'three', 'four', 'five']);
+  assert.deepEqual(order.slice(0, 2), ['start-one', 'start-two']);
+});
+
 async function createPublicationFixture(service, modificationCount = 2) {
   const suffix = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
   const productId = randomUUID();

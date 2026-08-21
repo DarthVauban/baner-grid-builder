@@ -12,6 +12,9 @@ export function ToolsPage() {
   const catalog = useQuery({
     queryKey: ['tool-catalog'],
     queryFn: ({ signal }) => api.users.toolCatalog(signal),
+    staleTime: 30_000,
+    gcTime: 30 * 60_000,
+    retry: 1,
     refetchInterval: 30_000,
     refetchIntervalInBackground: true,
     refetchOnReconnect: true

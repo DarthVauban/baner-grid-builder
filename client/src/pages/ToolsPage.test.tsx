@@ -10,8 +10,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter><ToolsPage /></MemoryRouter>
@@ -44,6 +43,26 @@ describe('ToolsPage loading recovery', () => {
 });
 
 describe('ToolsPage catalog', () => {
+  it('keeps cached tools visible while a slow background refresh is pending', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['tool-catalog'], {
+      tools: [{
+        toolId: 'horoshop_photo_parser',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    }, { updatedAt: Date.now() - 31_000 });
+    vi.spyOn(api.users, 'toolCatalog').mockImplementation(() => new Promise(() => {}));
+
+    renderPage(client);
+
+    expect(await screen.findByRole('link', { name: /Фото товарів Хорошоп/ })).toBeInTheDocument();
+    expect(screen.queryByText('Завантажуємо інструменти…')).not.toBeInTheDocument();
+  });
+
   it('shows Facebook group publications as a separate tool tile', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
       tools: [{
