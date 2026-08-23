@@ -1,74 +1,194 @@
 # Архітектура MT Workspace
 
+Актуально для міграцій `001–072` і коду станом на 2026-08-23.
+
 ## Загальна модель
 
-MT Workspace — модульний моноліт. Один Express-процес надає захищене API, публічні API, статичні frontend-збірки та SEO-HTML сторінок товарів. Дані зберігаються у PostgreSQL, медіафайли каталогу — у persistent volume.
+MT Workspace — модульний моноліт. Один Node.js/Express-процес:
 
-Vite створює чотири entrypoint-и:
+- надає захищені й публічні API;
+- віддає п’ять Vite-збірок та статичні медіафайли;
+- формує SEO-HTML сторінок локального storefront;
+- запускає фонові workers;
+- використовує PostgreSQL як основне сховище.
 
-- `workspace` — внутрішній кабінет;
-- `storefront` — публічна вітрина смартфонів;
-- `tradeIn` — публічна trade-in сторінка;
-- `storeMap` — вбудовувана карта магазинів.
+Ця модель зберігає одну систему автентифікації, міграцій, деплою та адміністрування. Новий домен
+додається у `src/modules`, а не як окремий застосунок або новий package workspace.
 
-## Потік захищеного запиту
+## Runtime і startup
 
-1. Клієнт викликає типізований метод із `client/src/lib/api.ts`.
-2. `client/src/lib/api-client.ts` додає cookie, timeout, abort signal і нормалізує API-помилки.
-3. Express middleware перевіряє JWT та актуальний стан користувача в PostgreSQL.
-4. Модульний route застосовує роль або `requireToolAccess` і валідовує input через Zod.
-5. Service/route виконує SQL і повертає `{ data }` або уніфікований `{ error }`.
-6. TanStack Query оновлює cache; live-модулі отримують додаткові події через SSE.
+`src/server.js` перед відкриттям HTTP-порту:
 
-Перевірки доступу на frontend потрібні для навігації, але джерелом істини завжди залишається backend.
+1. виконує всі невиконані SQL-міграції;
+2. створює bootstrap-admin, якщо задані відповідні environment variables;
+3. запускає HTTP-сервер;
+4. запускає workers нагадувань, публікацій, backups, локального/Horoshop photo parser, mobile push і
+   Horoshop catalog sync.
 
-## Автентифікація та Passkeys
+`SIGTERM` і `SIGINT` зупиняють workers, HTTP listener і PostgreSQL pool. Під час restore backup
+maintenance middleware повертає контрольований `503` для всіх запитів, крім health check.
 
-- Звичайний вхід створює HTTP-only сесію. Для користувачів із 2FA пароль відкриває короткочасний challenge, який можна завершити TOTP-кодом або зареєстрованим Passkey.
-- Passkeys реалізовані через WebAuthn. Приватний ключ ніколи не надходить на сервер; PostgreSQL зберігає лише credential ID, публічний ключ, лічильник і метадані пристрою.
-- QR для входу через телефон є WebAuthn hybrid transport. Його генерує захищений інтерфейс браузера після натискання «Відкрити QR-код»; застосунок не повинен створювати власний QR із JWT, cookie або іншим сесійним секретом.
-- Registration та authentication challenges одноразові, прив'язані до origin/RP ID, мають строк дії п'ять хвилин і позначаються використаними після успішної перевірки.
-- Новий Passkey можна додати лише в авторизованому профілі після повторного підтвердження чинним TOTP або recovery-кодом. Вимкнення 2FA видаляє всі Passkeys користувача.
-- Production `APP_ORIGIN` має бути стабільним HTTPS-origin. Зміна домену/RP ID робить раніше створені Passkeys непридатними для цього origin.
+Express middleware у `src/app.js` відповідає за build revision header, maintenance mode, Helmet/CSP,
+ізоляцію standalone-доменів, CORS, JSON limit, cookies, auth rate limiting, router mounts, статичні
+assets, SPA fallbacks і централізований error handler.
 
-## Backend-модулі
+## Backend-домени
 
-Код організований за бізнес-доменами у `src/modules`: access, admin, applications, auth, backups, banners, catalog, chat, facebook-publications, grids, integrations, notifications, product-tables, publications, store-map, tasks, trade-in та users.
+| Домен | Відповідальність |
+| --- | --- |
+| `access`, `auth`, `users`, `admin` | сесії, 2FA, Passkeys, ролі, tool access, користувачі й адміністрування |
+| `tasks`, `notifications`, `chat` | задачі, нагадування, live-сповіщення й командні чати |
+| `banners`, `grids`, `product-tables` | конструктори й збережені робочі артефакти |
+| `publications`, `media`, `facebook-publications` | контент-план, редактор/медіа та ручні Facebook-публікації |
+| `applications` | форми, public embed, заявки, призначення менеджерів і коментарі |
+| `catalog` | локальний каталог смартфонів, імпорт, storefront, themes і photo parser |
+| `trade-in`, `store-map` | builder/API для Trade-in і карти магазинів |
+| `support-chat`, `popup-banners` | операторські інструменти та публічні віджети |
+| `integrations`, `backups` | encrypted settings, Telegram/Mailtrap і backup/restore |
+| `mobile` | пристрої, pairing, QR login, login approval і Firebase outbox |
+| `search/horoshop` | окремий Horoshop catalog, accessories і photo workflow |
 
-`facebook-publications` не інтегрується з Facebook API і не виконує автопостинг. Модуль зберігає окремі довідники магазинів і груп, створює snapshot-и тексту, адреси, групи та банера для кожної ручної спроби, а повтор після відхилення оформлює новим повʼязаним записом без переписування історії.
+Старіші модулі можуть містити SQL безпосередньо в routes. Для нового коду рекомендований шаблон:
 
-Новий функціонал слід додавати всередині відповідного домену. Якщо зростає великий route/service, його варто ділити за ресурсами або сценаріями, зберігаючи публічний URL і формат відповіді.
+```text
+routes (HTTP + Zod + access)
+  -> service (use case + transaction boundary)
+    -> repository (SQL + mapping)
+      -> PostgreSQL/external client
+```
 
-## Компоненти інтерфейсу
+Великі існуючі файли (`catalog.routes.js`, `catalog.service.js`, Horoshop photo service) не слід
+збільшувати новими незалежними ресурсами — їх треба розділяти зі збереженням контракту.
 
-- У внутрішньому React-інтерфейсі всі одновибірні випадаючі меню мають використовувати фірмовий `StyledSelect` із `client/src/components/StyledSelect.tsx`.
-- Не додавайте сирий HTML `<select>` у новий функціонал адмін-панелі. Передавайте зрозумілий `ariaLabel`, типізовані `options` і використовуйте `compact` лише для щільних панелей інструментів.
-- Якщо потрібної поведінки немає у `StyledSelect`, спочатку розширте спільний компонент зі збереженням доступності та клавіатурного керування, а не створюйте локальний аналог.
-- Нові модальні вікна мають використовувати `ModalDialog` із `client/src/components/ModalDialog.tsx`. Компонент є джерелом істини для відступів, закриття, доступності та структури `header / body / footer`.
-- Коренева `.modal` у структурованій модалці не скролиться: прокручуватися може лише `.modal__body`, а header і footer завжди залишаються видимими. Не додавайте локальний `overflow: auto` на модалку, від'ємні margin для footer або компенсаційні padding у формі.
-- Footer самостійно забезпечує повні внутрішні відступи з усіх боків і safe-area на мобільних пристроях. Нову модалку потрібно перевірити щонайменше у desktop viewport та у вузькому viewport із малою висотою.
+## API і помилки
 
-## Дані та фонові процеси
+Клієнт викликає типізований метод із `client/src/lib/api.ts`. `api-client.ts` додає same-origin
+credentials, timeout/AbortSignal, декодує JSON або NDJSON і нормалізує помилки.
 
-- Середовище деплою завжди передається через `APP_ENVIRONMENT=development|production`. Воно входить у назву, Telegram-caption та підписаний manifest резервної копії. Не визначайте DEV/PROD лише за `NODE_ENV`, бо обидва сервери працюють у production-режимі.
+```json
+{ "data": {} }
+```
 
-- Міграції з `src/migrations` виконуються перед запуском HTTP-сервера під PostgreSQL advisory lock.
-- Кожна міграція виконується у власній транзакції та реєструється у `schema_migrations`.
-- Сервер запускає workers нагадувань, публікацій, резервних копій і парсера фотографій.
-- Graceful shutdown зупиняє workers, HTTP-сервер і connection pool.
+```json
+{ "error": { "code": "VALIDATION_ERROR", "message": "...", "details": [] } }
+```
 
-## Перевірки
+Input перевіряється Zod через `parseInput`; некоректні дані отримують `422`. `AppError` задає
+контрольований HTTP status/code/message. Error middleware також нормалізує invalid JSON, payload
+limits, unique conflicts, відсутність PostgreSQL і неочікувані помилки.
 
-- `npm run lint` — JavaScript, TypeScript і React Hooks;
-- `npm run check` — TypeScript;
-- `npm run test:server` — API, доменні та deployment-тести;
-- `npm run test:web` — React і frontend unit-тести;
-- `npm run build` — production bundle;
-- `npm run test:e2e` — browser smoke-тести на ізольованій `pg-mem` базі;
-- `npm run verify` — основний швидкий quality-gate без завантаження браузера.
+Публічний контракт змінюється атомарно: validation → service/serializer → client type → API method →
+integration/UI/E2E test.
 
-Перед зміною контракту потрібно оновити Zod-валідацію, serializer/response, клієнтські типи, API-клієнт і відповідні integration/E2E-тести.
+## Автентифікація й авторизація
 
-## Deployment
+Захищений запит приймає JWT з HttpOnly cookie або Bearer header. `requireAuth` перевіряє підпис, після
+чого повторно читає користувача з PostgreSQL і відхиляє відсутній або несхвалений обліковий запис.
 
-CI запускається на push і pull request для `dev` та `main`. Deployment workflow повторно виконує quality-gate й E2E, створює immutable GHCR image із SHA, перевіряє revision через health endpoint і видаляє лише невикористані образи цього застосунку.
+Авторизація має три рівні:
+
+- роль (`admin`, `editor`, `content_manager`, `manager`);
+- окремий доступ до `toolId`;
+- опційна вимога ввімкненої 2FA для конкретного інструмента.
+
+Frontend guards керують лише UX. Backend middleware залишається джерелом істини.
+
+Підтримуються password login, TOTP/recovery codes, WebAuthn Passkeys, підтвердження входу в мобільному
+застосунку та browser QR login. QR login зберігає browser secret у body, прив’язаний до origin,
+deployment і одноразового challenge; JWT або cookie не кодуються у QR.
+
+## Frontend
+
+`client/src/main.tsx` створює provider tree:
+
+```text
+QueryClient -> BrowserRouter -> Auth -> Theme -> Toast -> ConfirmDialog -> App
+```
+
+React Router описує захищені workspace routes, admin routes і tool guards. Великі сторінки
+завантажуються через `React.lazy`. TanStack Query є основним сховищем server state; auth/theme/toast,
+confirm dialog і banner workspace використовують React contexts. Redux або окремого глобального
+store немає.
+
+П’ять Vite entrypoint-ів мають окремі HTML-файли й React roots: workspace, storefront, Trade-in,
+store map і support chat. Публічні API підключаються через явні `/api/public/*` або `/api/storefront/*`
+маршрути.
+
+В адмін-інтерфейсі нові single-select поля використовують `StyledSelect`, а модальні вікна —
+`ModalDialog`. Це спільні accessibility/layout контракти, а не лише стилістична рекомендація.
+
+## Realtime і довгі операції
+
+Chat, notifications, applications, catalog, storefront і support chat використовують SSE. Події
+публікуються через process-local `EventEmitter`, а клієнт після сигналу інвалідовує TanStack Query
+cache і повторно читає server state.
+
+Це означає, що live-події розраховані на один app instance. Перед горизонтальним масштабуванням
+потрібен спільний event transport (наприклад, PostgreSQL/Redis pub-sub або durable outbox).
+
+Публікація великих наборів accessories і Horoshop photos використовує `application/x-ndjson` із
+progress records та фінальним результатом. Нові довгі HTTP-операції мають підтримувати cancellation,
+idle timeout і контрольоване відновлення, а durable роботу краще оформляти як job.
+
+## PostgreSQL і міграції
+
+- `src/migrations` — єдине місце зміни схеми;
+- застосовані міграції не редагуються;
+- runner сортує `.sql` за іменем і записує їх у `schema_migrations`;
+- кожна міграція виконується транзакційно під advisory lock;
+- складні use cases використовують явні `BEGIN/COMMIT/ROLLBACK`, row locks і за потреби
+  `FOR UPDATE SKIP LOCKED`;
+- `pg-mem` використовується в automated tests, тому новий SQL має бути сумісним або мати тестовий
+  еквівалент.
+
+PostgreSQL є source of truth. Медіафайли локального каталогу зберігаються у persistent volume.
+OpenSearch — майбутній derived index, Redis — майбутні leases/cache для intelligent search.
+
+## Horoshop і search boundary
+
+Таблиці `search_horoshop_*` належать зовнішньому каталогу Хорошоп і не мають використовувати
+`used_smartphone_*` як джерело істини. Реалізовано singleton connection з immutable `generation`,
+зашифрованими credentials, full/differential reconciliation, accessories drafts/proposals/publication
+та photo selections/drafts/queues.
+
+OpenSearch query runtime, widget, search analytics і versioned linguistic rulesets ще не
+реалізовані. `SEARCH_FEATURE_ENABLED`, `OPENSEARCH_URL` і `REDIS_URL` зарезервовані для цього контуру;
+вони не вимикають уже реалізовані Horoshop admin tools.
+
+Codex не є runtime dependency. Для accessories він може лише створити reviewable proposals; імпорт
+не публікує їх у Хорошоп. Для майбутньої лінгвістики він також буде proposal-only.
+
+## Workers і відмовостійкість
+
+- reminders і publication checks блокують рядки через `FOR UPDATE SKIP LOCKED`;
+- mobile push використовує transactional outbox, leases, retry/backoff і видалення лише невалідного
+  FCM credential;
+- photo parser відновлює перервані server runs, а desktop jobs мають lease/heartbeat;
+- Horoshop catalog worker періодично перевіряє due connection і не створює паралельний sync;
+- backup worker поважає maintenance mode й зберігає історію запусків.
+
+Process-local `running` flags запобігають overlap всередині одного процесу. Для кількох app replicas
+потрібна перевірка кожного worker на database-level lock/lease.
+
+## Тестування й delivery
+
+- `npm run lint` — JavaScript, TypeScript, React Hooks і E2E config;
+- `npm run check` — strict TypeScript;
+- `npm run test:server` — Node unit/integration/contract/deployment tests;
+- `npm run test:web` — Vitest/Testing Library;
+- `npm run build` — production Vite bundle;
+- `npm run verify` — основний quality gate;
+- `npm run test:e2e` — Playwright на ізольованій `pg-mem` базі.
+
+CI запускає verify і E2E окремими jobs для `dev` та `main`. Deployment повторює quality gate, будує
+immutable GHCR image із SHA й перевіряє revision через `/api/health`.
+
+## Типовий новий вертикальний зріз
+
+1. Визначити власника домену й публічний контракт.
+2. Додати нову numbered migration.
+3. Реалізувати routes/service/repository та server-side access checks.
+4. Змонтувати router у `src/app.js`; для job додати startup/shutdown lifecycle у `src/server.js`.
+5. Додати client types, API method, lazy page/route і за потреби `toolId`/tools catalog.
+6. Оновити документацію та focused integration/UI tests.
+7. Запустити focused checks і `npm run verify`, не змінюючи generated/runtime data вручну.

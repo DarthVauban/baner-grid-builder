@@ -1,5 +1,8 @@
 # Morphology policy
 
+Status: approved target policy. The OpenSearch linguistic runtime and project-owned morphology
+exception tables are not implemented yet.
+
 ## Purpose
 
 The standard language analyzer handles ordinary inflection. Project-owned data records exceptions

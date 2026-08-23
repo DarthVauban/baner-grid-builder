@@ -1,5 +1,8 @@
 # Codex search-analysis policy
 
+Status: approved target policy. Search analytics export, proposal schema and publication services
+are not implemented yet; this policy becomes operational only when those capabilities land.
+
 ## Role
 
 Codex reviews redacted aggregate search behavior and produces inert proposals. It does not publish,

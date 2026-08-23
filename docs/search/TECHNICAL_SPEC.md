@@ -1,6 +1,18 @@
-# Horoshop intelligent search — technical specification v1.0
+# Horoshop intelligent search — target technical specification v1.0
 
 Status: approved for implementation on 2026-08-08.
+
+Implementation snapshot (2026-08-23):
+
+- Stage 0 foundation is complete.
+- The Horoshop connection and PostgreSQL catalog mirror from Stage 1 are implemented.
+- Accessory and photo tools were delivered as additional consumers of that catalog boundary.
+- OpenSearch indexing/query, Redis integration, search widget, linguistic rulesets and search
+  analytics are not implemented.
+
+Unless a section explicitly says **implemented**, this document describes the approved target, not
+an endpoint, table or UI that can be used today. Current contracts are documented in
+`architecture.md`, `HOROSHOP_CATALOG_IMPORT.md` and `IMPLEMENTATION_PLAN.md`.
 
 ## 1. Objective
 
@@ -28,6 +40,10 @@ tenant-aware so the service can evolve into a multi-tenant product.
 - Codex is an offline reviewer that writes proposals. Runtime search never calls Codex or an LLM.
 
 ## 3. System context
+
+The following diagram is the target Stage 2–5 context. At present, the `Horoshop -> sync worker ->
+PostgreSQL` path exists; OpenSearch, Redis, widget, event collector and linguistic publication
+nodes do not.
 
 ```mermaid
 flowchart LR
@@ -62,9 +78,10 @@ flowchart LR
 The backend stores a store domain, enabled locales, synchronization settings, and encrypted API
 credentials. Credentials are never logged or returned to the browser after creation.
 
-Before connector implementation, verify the actual account's API access, authentication contract,
-pagination, multilingual fields, rate limits, and order-event availability against the live
-Horoshop documentation and a non-destructive request.
+The current connector already verifies authentication and reads categories/catalog. Before changing
+its contract or enabling search in production, reconfirm pagination, multilingual fields, rate
+limits and order-event availability against official documentation and a staging account with
+non-destructive requests.
 
 ### 4.2 Imported data
 
@@ -83,6 +100,8 @@ Horoshop documentation and a non-destructive request.
 
 ### 4.3 Synchronization modes
 
+Target modes/capabilities:
+
 - initial full import;
 - scheduled polling, default every 15 minutes;
 - nightly full reconciliation;
@@ -94,6 +113,10 @@ Horoshop documentation and a non-destructive request.
 
 A missing product is first marked inactive and is removed from the active index only after a
 complete reconciliation confirms its absence. Imports are idempotent by tenant and external ID.
+
+Current implementation provides initial full, manual and scheduled full traversal with
+signature-based differential writes, inactive reconciliation and sync history. Nightly-specific
+reconciliation, single-product reindex and bounded exponential retry are Stage 2/operations work.
 
 ## 5. Search index and query processing
 
@@ -273,6 +296,24 @@ automatically in v1.
 
 ## 11. Core data entities
 
+### 11.1 Current implemented entities
+
+```text
+search_horoshop_connections
+search_horoshop_sync_runs
+search_horoshop_categories
+search_horoshop_products
+search_horoshop_modifications
+search_horoshop_audit_log
+search_horoshop_accessory_*
+search_horoshop_photo_*
+```
+
+The current connection is singleton and generation-scoped. These tables are the external Horoshop
+mirror and companion workflow state, not the final tenant-aware search schema.
+
+### 11.2 Target intelligent-search entities
+
 ```text
 search_tenants
 search_sites
@@ -302,7 +343,10 @@ separate database.
 
 ## 12. APIs
 
-Public:
+The routes below are planned target APIs and do not exist yet. Current Horoshop admin/catalog,
+accessory and photo endpoints are documented in `HOROSHOP_CATALOG_IMPORT.md`.
+
+Planned public:
 
 ```text
 GET  /api/search/widget/config
@@ -312,7 +356,7 @@ POST /api/search/events/batch
 GET  /search-widget.js
 ```
 
-Protected administration:
+Planned protected administration:
 
 ```text
 POST /api/search/admin/horoshop/connect
@@ -363,12 +407,15 @@ rollback, audit, and the relevant automated tests all work against the real Horo
 
 ## 15. Delivery stages
 
-0. Repository audit, durable instructions, specification, ADRs, opt-in infrastructure, and baseline.
-1. Horoshop connector, external catalog schema, synchronization, and reconciliation.
-2. OpenSearch mappings, indexing, query pipeline, and linguistic core.
-3. Embeddable widget and Horoshop storefront integration.
-4. Administration, analytics, preview, and ruleset management.
-5. Codex export/proposal workflow, relevance evaluations, hardening, and production rollout.
+0. **Complete:** repository audit, durable instructions, specification, ADRs, opt-in infrastructure,
+   and baseline.
+1. **Application implementation complete:** Horoshop connector, external catalog schema,
+   synchronization and reconciliation. Production search operations inputs remain open.
+2. **Not started:** OpenSearch mappings, indexing, query pipeline and linguistic core.
+3. **Not started:** embeddable widget and Horoshop storefront integration.
+4. **Not started:** search administration, analytics, preview and ruleset management.
+5. **Not started:** linguistic Codex export/proposal workflow, relevance evaluations, hardening and
+   production rollout.
 
 Deferred from MVP: autonomous AI publication, personalization, recommendations, voice/image search,
 AI shopping chat, SaaS billing, and connectors for additional commerce platforms.

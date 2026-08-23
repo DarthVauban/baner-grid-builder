@@ -1,100 +1,125 @@
 # Search implementation plan
 
-## Current repository assessment
+Оновлено 2026-08-23. План стосується intelligent product search. Реалізовані на базі того самого
+Horoshop catalog accessory/photo tools позначені окремо й не означають завершення search runtime.
 
-The repository is an established Express 5 + PostgreSQL modular monolith with a React 19/Vite
-workspace, append-only SQL migrations, authentication, role/tool access, audit patterns, Docker
-deployment, and broad automated test coverage. Search will extend this architecture instead of
-introducing a second application stack.
+## Поточна база
 
-The existing `used_smartphone_*` catalog owns a local storefront. It is not the real Horoshop
-catalog and must not become the source of truth for this project. Search receives separate
-`search_*` tables and OpenSearch indices while reusing shared platform capabilities.
+Repository — Express/PostgreSQL modular monolith із React workspace, auth/tool access, append-only
+migrations, Docker delivery і automated tests. Horoshop mirror живе в окремих
+`search_horoshop_*` tables і не використовує `used_smartphone_*`.
 
-## Stage 0 — foundation
+## Stage 0 — foundation: complete
 
-- [x] Audit repository, Git state, runtime, migrations, deployment, and test workflow.
-- [x] Record specification v1.0.
-- [x] Add root project and linguistic safety instructions.
-- [x] Record architecture decisions.
-- [x] Add an opt-in Docker Compose `search` profile for Redis and OpenSearch.
-- [x] Pin OpenSearch and install `analysis-ukrainian` in a derived image.
-- [x] Add validated optional environment settings without enabling search in production.
-- [x] Create proposal/export/snapshot/evaluation directories and policies.
-- [x] Add foundation tests.
-- [x] Run all focused and repository quality gates and record results.
+- [x] Repository/runtime/deployment/test audit.
+- [x] Technical specification v1.0 і ADRs.
+- [x] Repository та linguistic safety instructions.
+- [x] Opt-in Compose profile для Redis/OpenSearch.
+- [x] Pinned OpenSearch 3.7.0 image з `analysis-ukrainian`.
+- [x] Optional validated search environment variables.
+- [x] Proposal/export/snapshot directories і policies.
+- [x] Foundation tests.
 
-### Stage 0 verification — 2026-08-08
+Historical Stage 0 verification (2026-08-08):
 
-- `git diff --check` — passed;
-- `docker compose --profile search config --quiet` — passed (Docker reported only a local
-  `~/.docker/config.json` permission warning, not a Compose error);
+- `docker compose --profile search config --quiet` — passed;
 - `npm run check` — passed;
-- `npm run lint` — passed with 11 pre-existing warnings and no errors;
+- `npm run lint` — passed із 11 тоді наявними warnings;
 - `npm run test:server` — 80 passed;
-- `npm run test:web` — 175 passed across 64 files;
+- `npm run test:web` — 175 passed;
 - `npm run build` — passed.
 
-The OpenSearch image was not pulled or built during Stage 0 because that would download a large
-external image. The derived Dockerfile and Compose configuration are validated structurally; the
-first real image build belongs to Stage 2 infrastructure bring-up.
+Ці counts є історичним записом, не поточним розміром test suite.
 
-## Stage 1 — Horoshop catalog
+## Stage 1 — Horoshop catalog: application implementation complete
 
-1. Obtain a testable store domain and Horoshop API credentials.
-2. Verify live authentication, pagination, product/category schemas, locales, rate limits, and
-   availability of order events with read-only calls.
-3. Add append-only `search_*` catalog/connection/sync migrations.
-4. Encrypt connection credentials with an application-level encryption key.
-5. Implement the connector behind an interface and fixture-backed contract tests.
-6. Implement full import, scheduled polling, reconciliation, retry, and sync audit.
-7. Add protected connection/sync status endpoints and the first admin integration screen.
-8. Define the normalized indexing document contract without yet coupling it to OpenSearch writes.
+- [x] Singleton connection administration і live authentication.
+- [x] AES-256-GCM credential storage.
+- [x] `pages/export` categories і paginated `catalog/export`.
+- [x] Normalization products/modifications/categories.
+- [x] Immutable connection generation і store isolation.
+- [x] Full/manual/scheduled reconciliation.
+- [x] Stable sync signatures й update-only-changed rows.
+- [x] Inactive reconciliation після complete traversal.
+- [x] Sync status/counts/history й sanitized disconnect audit.
+- [x] Protected integration screen і catalog tool.
+- [x] Fixture-backed connector/service/repository tests.
+- [x] Full purge before another store connection.
 
-Stage 1 completion requires an idempotent full sync from the real store into separate PostgreSQL
-tables, visible sync diagnostics, and integration tests that do not contact production by default.
+Operational follow-ups before search production:
 
-## Stage 2 — search and linguistics
+- [ ] Reconfirm current Horoshop rate limits/token behavior against staging.
+- [ ] Record enabled locales and real catalog/variant volume.
+- [ ] Agree peak search traffic and hosting capacity.
+- [ ] Decide whether first production search remains singleton or introduces tenant/site tables.
+
+Delivered companion workflows:
+
+- [x] Accessory drafts and manual product/category candidates.
+- [x] Proposal-only Codex review with generation/revision validation.
+- [x] Explicit accept and single/bulk publication with NDJSON progress.
+- [x] Horoshop photo selections/drafts, server parser and publication.
+- [x] Paired desktop parser with device auth, leases, heartbeat і staging uploads.
+
+These workflows consume the catalog boundary but are not recommendation/search algorithms.
+
+## Stage 2 — indexing, query і linguistics: not started
 
 1. Add OpenSearch/Redis clients with health and feature-flag behavior.
-2. Create tenant/versioned index templates and aliases.
-3. Implement exact, Ukrainian morphology, transliteration, layout, autocomplete, synonym, and fuzzy
-   fields plus protected-term behavior.
-4. Implement bulk and single-product indexing and zero-downtime rebuilds.
-5. Add ruleset, synonym, morphology-exception, protected-term, and product-override migrations.
-6. Implement public query/suggest endpoints, facets, ranking, and rate limits.
-7. Add relevance fixtures and an initial catalog-grounded golden-query suite.
+2. Define tenant/site identity migration or explicitly constrain v1 to singleton.
+3. Create versioned index templates, physical indices and aliases.
+4. Define normalized indexing document contract from existing Horoshop rows.
+5. Implement exact/SKU/brand, Ukrainian morphology, transliteration, keyboard layout, autocomplete,
+   scoped synonym and fuzzy fields.
+6. Add protected-term behavior and field-specific analyzers.
+7. Implement bulk/single indexing, incremental updates and zero-downtime rebuild.
+8. Add ruleset, synonym, morphology exception, protected term and product override migrations.
+9. Implement public query/suggest endpoints, facets, ranking and rate limits.
+10. Add relevance fixtures and initial catalog-grounded golden queries.
 
-## Stage 3 — widget
+Exit criteria:
 
-1. Add a dedicated Vite widget entry and stable public configuration contract.
-2. Build standalone and attach-to-existing-input modes.
-3. Add desktop/mobile UI, keyboard/accessibility behavior, facets, corrections, and zero-results UI.
-4. Add domain allowlisting and resilient event batching.
-5. Integrate on a staging Horoshop theme and verify CSP, layout, navigation, and optional cart action.
+- reproducible index rebuild from PostgreSQL;
+- stable query/suggest contract with version identity;
+- critical golden-query regression gate;
+- controlled unavailable behavior;
+- no runtime Codex dependency.
 
-## Stage 4 — administration and analytics
+## Stage 3 — widget: not started
 
-1. Add a search tool/access entry and workspace routes.
-2. Build connection, sync, product override, linguistic rule, proposal, ruleset, and widget screens.
-3. Add event ingestion, partitions/retention, aggregation jobs, dashboards, query drill-down, exports,
-   and ruleset impact reports.
-4. Add before/after preview, structural rule validation, publication, audit, and rollback.
+1. Add dedicated Vite entrypoint and stable public configuration.
+2. Implement domain allowlist/CORS/rate-limit policy.
+3. Build standalone and attach-to-existing-input modes.
+4. Add desktop/mobile UI, keyboard/focus/screen-reader behavior, facets and zero-results state.
+5. Propagate `query_id` to navigation/events.
+6. Integrate on staging Horoshop theme and verify CSP/layout/cart compatibility.
 
-## Stage 5 — Codex loop and production hardening
+## Stage 4 — administration and analytics: not started
+
+1. Add search-specific `toolId`, routes and pages.
+2. Build index/sync health, overrides, rules, proposals, preview, publication and rollback UI.
+3. Add event ingestion with bounded payloads, redaction and retention.
+4. Add aggregates, dashboards, query drill-down and ruleset impact reports.
+5. Add structural validation, before/after preview and immutable audit.
+
+## Stage 5 — Codex loop і production hardening: not started
 
 1. Implement deterministic redaction and aggregate JSONL/YAML exports.
-2. Implement proposal schemas and import validation.
-3. Add Codex-facing workflow documentation and commands that can only write drafts.
-4. Run relevance, load, security, recovery, and E2E checks.
-5. Complete licensing review for every bundled linguistic data artifact.
-6. Roll out behind a feature flag, monitor, compare to the current search, and retain rollback.
+2. Implement versioned linguistic proposal schemas/import.
+3. Run schema validation and offline relevance evaluation before human review.
+4. Add load, security, recovery and accessibility checks.
+5. Record licenses/checksums/notices for linguistic artifacts.
+6. Roll out behind feature flag with monitoring and rollback.
 
-## Inputs needed before Stage 1 live verification
+Codex remains proposal-only. It cannot publish a ruleset or participate in runtime requests.
 
-- real Horoshop domain and a non-destructive API account;
-- enabled languages and approximate product/variant count;
-- staging or safe theme-integration path;
-- production hosting constraints and expected peak search traffic;
-- brand/UI references for the widget;
-- confirmation of analytics consent and retention policy.
+## Required product/operations inputs
+
+- safe Horoshop staging account for read/write contract verification;
+- enabled languages and approximate products/modifications count;
+- production memory/CPU and expected p95 traffic;
+- staging theme integration path;
+- brand/UI references for widget;
+- analytics consent, raw-query retention and redaction policy;
+- initial golden queries and forbidden-result examples;
+- decision on singleton vs tenant-aware first release.

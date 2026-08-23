@@ -1,33 +1,67 @@
 # Standalone storefront domain
 
-The public used-smartphone storefront can be mounted at the root of a separate domain while the workspace remains on `mt-panel.sbs`.
+Статус: реалізовано для локального каталогу `used_smartphone_*`.
 
-## Application configuration
+Публічна вітрина може працювати в корені окремого HTTPS-домену, тоді як workspace залишається на
+основному домені.
 
-Set the complete HTTPS address in **Public origin** in the storefront builder:
+## Налаштування
+
+У storefront builder збережіть повний origin:
 
 ```text
 https://used.example.com
 ```
 
-Saving the builder activates the hostname immediately. Editing `.env` or restarting the application is not required. `STOREFRONT_ORIGIN` remains an optional emergency fallback when the saved setting is empty or temporarily unavailable.
+Backend нормалізує origin і кешує збережене значення. Зміна починає діяти без редагування `.env` або
+рестарту. `STOREFRONT_ORIGIN` є лише emergency fallback, коли database setting порожній або тимчасово
+недоступний.
 
-Requests with the saved hostname receive only the public storefront surface. Workspace pages and private APIs return `404` on that hostname.
+Host isolation middleware визначає standalone request за `Host`/forwarded host. На цьому hostname
+дозволено тільки:
 
-## DNS and TLS
+- `GET /` і legacy `GET /storefront`;
+- `GET /smartphones/:slug` і legacy storefront product path;
+- `GET|POST|OPTIONS /api/storefront/*`;
+- `GET|POST|OPTIONS /api/public/application-forms/*`;
+- `/media/catalog/*`, `/web-assets/*` і auto-height sandbox asset.
 
-1. Keep the apex and `www` records used by Horoshop unchanged.
-2. Create an `A` record for the selected subdomain and point it to this server.
-3. Install an HTTPS certificate for the subdomain.
-4. Copy `nginx/storefront.conf.example` into the active Nginx configuration and replace `used.example.com` with the real hostname.
-5. Copy `nginx/mt-storefront-proxy.conf.example` to `/etc/nginx/snippets/mt-storefront-proxy.conf`, validate the configuration, and reload Nginx.
+Workspace, admin і всі інші private API повертають `404`. Не додавайте новий endpoint до allowlist
+лише через CORS: він має бути справді частиною публічної storefront surface.
 
-The public routes are:
+## SEO і маршрути
 
-- `/` — storefront catalog;
-- `/smartphones/:slug` — product page;
-- `/api/storefront/*` — public catalog and order API;
-- `/api/public/application-forms/*` — connected public form;
-- `/media/catalog/*` and `/web-assets/*` — product media and frontend assets.
+Product page HTML читається із зібраного `storefront.html`, після чого Express інжектує canonical,
+Open Graph і product metadata. Preview routes вимагають auth/tool access і отримують
+`X-Robots-Tag: noindex, nofollow`.
 
-The legacy `/storefront` URLs remain available on the workspace domain. On the standalone hostname they redirect to the root-mounted equivalents.
+Основні публічні маршрути:
+
+- `/` — каталог;
+- `/smartphones/:slug` — SEO product page;
+- `/api/storefront/*` — products, settings, applications і live stream;
+- `/api/public/application-forms/*` — підключена публічна форма;
+- `/media/catalog/*`, `/web-assets/*` — медіа й compiled assets.
+
+Legacy `/storefront/*` лишається доступним на workspace domain і перенаправляється на root-mounted
+URL на standalone hostname.
+
+## DNS, TLS і Nginx
+
+1. Не змінюйте apex/`www` records, які належать іншому storefront.
+2. Створіть окремий `A` record і направте його на сервер MT Workspace.
+3. Видайте HTTPS certificate.
+4. Скопіюйте `nginx/storefront.conf.example` в активну Nginx-конфігурацію та замініть hostname.
+5. Встановіть `nginx/mt-storefront-proxy.conf.example` як proxy snippet.
+6. Виконайте `nginx -t`, reload і перевірте, що private routes повертають `404`.
+
+## Перевірка
+
+```bash
+curl -fsSI https://used.example.com/
+curl -fsSI https://used.example.com/smartphones/<slug>
+curl -fsS https://used.example.com/api/storefront/settings
+curl -sS -o /dev/null -w '%{http_code}\n' https://used.example.com/admin/system
+```
+
+Остання команда має повернути `404`.

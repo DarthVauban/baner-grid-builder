@@ -2,6 +2,10 @@
 
 Status: accepted.
 
+Implementation status (2026-08-23): policy/specification only. Accessory Codex reviews already use
+proposal-only semantics, but linguistic rule tables, immutable published rulesets and search
+evaluation/publication services are not implemented yet.
+
 ## Decision
 
 Store linguistic rules in PostgreSQL with stable IDs and immutable published ruleset versions.

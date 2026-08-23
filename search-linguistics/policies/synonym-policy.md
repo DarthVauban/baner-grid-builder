@@ -1,5 +1,8 @@
 # Synonym policy
 
+Status: approved target policy. Versioned synonym storage, validation, evaluation and publication
+are not implemented yet.
+
 ## Purpose
 
 Synonyms improve recall without making unrelated products equivalent. Rules are scoped, weighted,

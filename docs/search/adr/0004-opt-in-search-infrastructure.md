@@ -4,6 +4,9 @@ Status: accepted.
 
 Decision date: 2026-08-08.
 
+Implementation status (2026-08-23): Compose services and structural tests exist; application
+OpenSearch/Redis clients do not. The default app deployment still depends only on PostgreSQL.
+
 ## Decision
 
 Pin OpenSearch 3.7.0 with the `analysis-ukrainian` plugin and Redis 7.2 in a Docker Compose profile
@@ -11,8 +14,8 @@ named `search`. The existing default deployment does not depend on or start thes
 
 ## Rationale
 
-OpenSearch 3.7.0 is the current generally available 3.x release confirmed during Stage 0, and the
-official Ukrainian analyzer requires installation as a plugin. An opt-in profile avoids changing
+OpenSearch 3.7.0 was the selected 3.x release when Stage 0 was approved; it is intentionally pinned.
+The official Ukrainian analyzer requires installation as a plugin. An opt-in profile avoids changing
 the memory and operating requirements of the current production application before search is
 implemented and tested.
 

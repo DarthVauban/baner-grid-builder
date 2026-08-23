@@ -1,96 +1,131 @@
-# Імпорт каталогу Хорошоп
+# Інтеграція й каталог Хорошоп
 
-## Реалізований контур
+Статус: connection, synchronization, catalog browsing, accessories і photo workflows реалізовані
+на PostgreSQL. Intelligent search runtime на OpenSearch ще не реалізований.
 
-- Адміністратор підключає один магазин на сторінці **Адміністрування → Інтеграції**.
-- Сервер перевіряє логін і пароль через `POST /api/auth/`; API-токен живе лише в пам'яті одного запуску синхронізації.
-- Облікові дані зберігаються тільки на сервері, зашифрованими AES-256-GCM. API стану не повертає логін, пароль чи токен у браузер.
-- Розділи завантажуються через `pages/export`, каталог — через `catalog/export` пакетами по 200 позицій.
-- API експорту не надає курсора на кшталт `updated_since`, тому для надійного виявлення нових, змінених і зниклих позицій сервер переглядає актуальний перелік повністю. Локальні рядки звіряються за стабільною SHA-256 сигнатурою: нові створюються, змінені оновлюються, а незмінні не перезаписуються й зберігають свій `updated_at`.
-- PostgreSQL зберігає окремі від локального каталогу смартфонів таблиці товарів, модифікацій, розділів і запусків синхронізації.
-- Після повного проходу позиції, яких більше немає у відповіді Хорошоп, деактивуються. Сирий об'єкт API також зберігається у `source_data`, щоб під час подальшого рев’ю не втрачалися характеристики.
+## Connection administration
 
-## Захист цілісності
+Admin підключає один магазин на **Адміністрування → Інтеграції**. Backend:
 
-Кожне підключення отримує незмінні `connection_id` і `generation`. Кожен пакет перед записом блокує та перевіряє саме цю генерацію. Тому пакет зі старої синхронізації не може записатися після відключення або у каталог іншого магазину.
+- нормалізує store domain;
+- автентифікується через Horoshop `/api/auth/`;
+- виконує read-only capability probes;
+- шифрує login/password AES-256-GCM;
+- не повертає login, password, encrypted payload або transient token у браузер;
+- створює immutable `connection_id` і `generation`;
+- запускає initial full sync.
 
-Під час відключення сервіс:
+```text
+GET    /api/admin/integrations/horoshop
+POST   /api/admin/integrations/horoshop/connect
+POST   /api/admin/integrations/horoshop/sync
+PATCH  /api/admin/integrations/horoshop/settings
+DELETE /api/admin/integrations/horoshop
+```
 
-1. переводить підключення у `disconnecting`;
-2. перериває локальний імпорт і чекає завершення активної транзакції;
-3. видаляє рядок підключення, а каскадні зовнішні ключі видаляють розділи, товари, модифікації та запуски;
-4. перевіряє нульові залишки в усіх таблицях;
-5. лише після успіху дозволяє підключити інший магазин.
+Маршрути admin-only і повертають `Cache-Control: no-store`.
 
-Якщо транзакція або контрольна перевірка не завершилися, стан стає `purge_failed`, а нове підключення блокується. Зберігається лише мінімальний журнал дій із HMAC-відбитком домену та лічильниками; каталожних даних у ньому немає.
+## Synchronization
 
-## Адміністративні API
+Categories завантажуються через `pages/export`, products — через `catalog/export` batch-ами до 200.
+Horoshop export не надає надійного `updated_since`, тому manual/scheduled reconciliation читає
+актуальний catalog повністю.
 
-- `GET /api/admin/integrations/horoshop` — стан, лічильники й останній запуск;
-- `POST /api/admin/integrations/horoshop/connect` — перевірка доступів, створення нової генерації й старт повного імпорту;
-- `PATCH /api/admin/integrations/horoshop/settings` — зміна інтервалу автоматичної звірки без перепідключення магазину;
-- `POST /api/admin/integrations/horoshop/sync` — ручна диференційна звірка каталогу;
-- `DELETE /api/admin/integrations/horoshop` — підтверджене доменом відключення та повне локальне очищення.
+Щоб не переписувати незмінні rows, normalizer створює stable SHA-256 `sync_signature`. Repository:
 
-Усі маршрути доступні тільки користувачу з роллю `admin` і повертають `Cache-Control: no-store`.
+1. створює нові categories/products/modifications;
+2. оновлює лише змінені або раніше inactive rows;
+3. позначає `last_seen_sync_id`;
+4. після повного успішного проходу деактивує відсутні rows;
+5. зберігає safe source object у `source_data`.
 
-## Інструмент каталогу
+Connection status переходить між `connected`, `syncing`, `error`, `disconnecting`, `purge_failed`.
+Sync run має mode `full`, `manual` або `scheduled`, counts, timestamps і error. Worker раз на хвилину
+перевіряє, чи настав збережений polling interval; паралельний sync не запускається.
 
-Імпортований каталог доступний як окремий інструмент **Супутні товари Хорошоп** за адресою
-`/tools/horoshop-related-products`. Доступ до нього керується окремим правом
-`horoshop_related_products`; адміністратор отримує його автоматично, іншим користувачам право можна
-надати у звичайному керуванні доступами.
+## Цілісність і disconnect
 
-- `GET /api/search/horoshop/catalog` повертає сторінку батьківських товарів із вкладеними
-  модифікаціями, розділи та реальні значення наявності для фільтрів;
-- `POST /api/search/horoshop/sync` запускає ручне оновлення для користувача з доступом до інструменту;
-- пошук працює за назвою, брендом, SKU товару та SKU або назвою модифікації;
-- модифікації відображаються дочірніми вузлами дерева з окремими фото, ціною, наявністю та
-  видимістю;
-- API каталогу не повертає `source_data`, зашифровані облікові дані або токени й завжди має
-  `Cache-Control: no-store`.
+Кожна write transaction блокує connection row і перевіряє generation. Пакет від старого sync не
+може записатись після reconnect або в інший store.
 
-## Керування аксесуарами
+Disconnect:
 
-У другій вкладці інструменту оператор обирає батьківську картку товару та працює з її
-чернеткою аксесуарів. У застосунку немає вбудованого алгоритму підбору, ваг, балів або автоматичного
-повторного аналізу після синхронізації.
+1. ставить `disconnecting` і блокує нову роботу;
+2. серіалізується з активним sync/external write;
+3. видаляє connection row та всі `search_horoshop_*` children каскадно;
+4. видаляє connection-owned photo media;
+5. перевіряє zero counts;
+6. записує sanitized audit з HMAC domain fingerprint і deletion counts.
 
-Рекомендації готує Codex лише на явний запит оператора. Для цього інструмент експортує актуальний каталог
-із назвами, описами, категоріями, характеристиками, цінами, наявністю, популярністю і деревом модифікацій.
-Codex змістовно переглядає кожний товар, може свідомо залишити його без рекомендацій і повертає тільки ID
-супутніх товарів, пояснення вибору та власні видимі оцінки сумісності, корисності, наявності й популярності.
-Ці оцінки є висновком Codex і не обчислюються кодом застосунку. Результат можна імпортувати JSON-файлом або записати через той самий
-авторизований API з чату Codex.
+Failure залишає `purge_failed`, доки cleanup не завершено. Дані в самому Horoshop не видаляються.
 
-Сервер не приймає рішень про сумісність: він лише перевіряє формат, поточну генерацію підключення,
-повноту рев’ю та належність усіх ID актуальному каталогу. Пропозиції Codex зберігаються невибраними;
-оператор окремо додає потрібні позиції до чернетки. Жоден імпорт рев’ю не публікує дані в Хорошоп.
+## Catalog tool
 
-Публікація вимагає окремого підтвердження перезапису та викликає `catalog/import`. Згідно з офіційною
-документацією, масив `products[].accessories` перезаписує поточне значення; елементами є артикули товарів і
-посилання на розділи у форматі `{ "page": { "id": "..." } }`. Інструмент обмежує список 16 конкретними товарами та
-дозволяє обирати лише кінцеві розділи.
+`/tools/horoshop-related-products` захищений `horoshop_related_products`.
 
-Дані чернеток, ознаки опублікованих зв'язків і журнал спроб публікації зберігаються лише в PostgreSQL та видаляються
-каскадно разом з підключенням магазину.
+```text
+GET  /api/search/horoshop/catalog
+POST /api/search/horoshop/sync
+```
 
-### API аксесуарів
+Catalog endpoint повертає paginated parent products, modification tree, categories й availability
+options. Фільтри: search, category, availability, visibility, active/inactive state. Пошук охоплює
+title, brand, parent SKU та modification title/SKU. `source_data` і credentials не повертаються.
 
-- `GET /api/search/horoshop/accessories/products/:productId` — чернетка, пропозиції та остання публікація;
-- `GET /api/search/horoshop/accessories/products/:productId/candidates` — ручний пошук товарів і кінцевих розділів;
-- `PUT /api/search/horoshop/accessories/products/:productId/draft` — збереження перевіреної чернетки;
-- `GET /api/search/horoshop/accessories/review/catalog` — повний безпечний експорт для рев’ю Codex;
-- `POST /api/search/horoshop/accessories/review/proposals` — перевірка та збереження пропозицій Codex;
-- `POST /api/search/horoshop/accessories/products/:productId/publish` — публікація; тіло запиту має містити `{ "confirmOverwrite": true }`.
+## Accessories
 
-Формат обміну має версію `horoshop-codex-accessory-review/v1`. Документ пропозицій мусить містити
-`connectionGeneration`, `catalogRevision` з експорту та запис для кожного активного товару; порожній масив `recommendations`
-означає свідоме рішення не пропонувати до цього товару нічого.
+У вкладці accessories користувач працює з локальною draft конкретного parent product. Draft може
+містити individual products і leaf categories; limits — по 16 елементів кожного типу.
 
-## Джерела
+Codex review є user-invoked admin-time workflow. Застосунок не має recommendation algorithm і не
+викликає LLM у runtime. Review import:
 
-- [Офіційна сторінка API Хорошоп](https://horoshop.ua/ua/api/)
-- [Офіційна довідка про супутні товари й аксесуари](https://help.horoshop.ua/uk/articles/1954472-виведення-супутніх-і-схожих-товарів-у-картці-товару)
-- [Офіційний метод `catalog/import`](https://horoshop.notion.site/1b6cc2897079812b9127de30b8fd106c)
-- Перевірена реалізація імпорту з локального проєкту `Smart search` була використана як еталон для auth, пагінації, повторних спроб, нормалізації й reconciliation; код адаптований до архітектури MT Workspace.
+- використовує `horoshop-codex-accessory-review/v1`;
+- вимагає незмінні connection generation/catalog revision;
+- охоплює кожен active parent product, включно з порожніми recommendations;
+- зберігає proposals unselected;
+- не публікує їх у Horoshop.
+
+Після import користувач окремо приймає proposals у drafts, редагує їх і окремо запускає publication.
+Bulk publication використовує NDJSON progress. `catalog/import` отримує повний accessories array,
+тому publish завжди вимагає explicit overwrite confirmation.
+
+Повний контракт: [Супутні товари — чинні вимоги](../horoshop-related-products/REQUIREMENTS.md).
+
+## Photos
+
+Окремий інструмент `/tools/horoshop-photo-parser` використовує той самий connection/catalog, але має
+власне право `horoshop_photo_parser`. Він підтримує:
+
+- selections вручну або з catalog filters;
+- draft на product gallery чи modification images;
+- server або paired desktop executor;
+- asset selection до 40 photos;
+- `append` або `replace` publication;
+- streaming bulk publication progress.
+
+Desktop contract: [Десктопний парсер фото](horoshop-photo-desktop-parser.md).
+
+## Data ownership
+
+Основні групи таблиць:
+
+```text
+search_horoshop_connections / sync_runs / audit_log
+search_horoshop_categories / products / modifications
+search_horoshop_accessory_sets / links / proposals / publications
+search_horoshop_photo_selections / drafts / assets / batches / runs
+search_horoshop_photo_parser_devices / pairings / run_uploads
+```
+
+Усі вони незалежні від `used_smartphone_*`. PostgreSQL є source of truth для synchronized metadata й
+local workflow state; Horoshop — source of commercial product truth.
+
+## Зовнішні джерела
+
+- [Офіційна сторінка інтеграцій та API Хорошоп](https://horoshop.ua/ua/integration/)
+- [Центр допомоги Хорошоп](https://help.horoshop.ua/uk/)
+- [Офіційний method `catalog/import`](https://horoshop.notion.site/1b6cc2897079812b9127de30b8fd106c)
+
+Перед зміною auth/import/write contract перевіряйте актуальну official documentation і live staging
+account read-only probes. Production mutation не використовується як capability test.

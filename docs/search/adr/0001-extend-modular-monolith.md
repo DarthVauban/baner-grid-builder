@@ -2,6 +2,10 @@
 
 Status: accepted.
 
+Implementation status (2026-08-23): active. Horoshop connection, catalog, accessories and photos
+are implemented inside `src/modules/search/horoshop`; intelligent query/indexing capabilities remain
+future modules in the same boundary.
+
 ## Decision
 
 Implement search as `src/modules/search` and dedicated React areas within the existing MT Workspace

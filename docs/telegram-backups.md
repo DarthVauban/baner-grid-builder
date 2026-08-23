@@ -1,35 +1,78 @@
 # Telegram backups
 
-Administrators configure backups on the **Integrations** page.
+Статус: ручні/планові backup, Telegram delivery і transactional restore реалізовані. Керування
+доступне admin-користувачу на `/admin/integrations` і `/admin/backups`.
 
-## Telegram setup
+## Telegram integration
 
-1. Create a bot through `@BotFather` and copy its token.
-2. Choose where the bot should send backups:
-   - personal chat: open the new bot, press **Start**, and use your own Telegram account ID (not the bot ID);
-   - group: add the bot and use the group's numeric chat ID;
-   - channel: add the bot as an administrator with permission to post messages and use `@channel_username` or its numeric ID.
-3. Enter the target chat ID (for example, `-100...`) or the channel `@username`.
-4. Save the integration. The server validates the bot token, rejects the bot's own ID, and verifies that the bot can send a document to the target before storing the token encrypted.
+1. Створіть bot через `@BotFather`.
+2. Для personal chat натисніть **Start** і використовуйте ID користувача, не bot ID.
+3. Для group додайте bot і використовуйте numeric chat ID.
+4. Для channel додайте bot як admin із правом публікації та використовуйте `@username` або ID.
+5. Збережіть token і target у **Адміністрування → Інтеграції**.
 
-The standard Telegram Bot API accepts documents up to 50 MB. MT Workspace keeps a small safety margin and rejects a larger generated archive with a visible error instead of attempting a partial backup.
+Сервер перевіряє token, відхиляє власний bot ID і виконує безпечну перевірку надсилання документа до
+збереження encrypted token.
 
-## Backup contents
+Telegram Bot API приймає documents до 50 MB. MT Workspace залишає safety margin і не намагається
+надсилати частковий archive. Restore endpoint приймає compressed upload до 55 MB; розпакований архів
+додатково обмежений 256 MB, а вихідний database/media snapshot — 128 MB.
 
-The generated `mt-workspace-backup_<date>.tar.gz` archive contains:
+## Формат архіву
 
-- `manifest.json` with the creation date, build revision, schema version, checksums, and an HMAC signature;
-- `database.json` with all application tables except the migration ledger;
-- `media/` with catalog media files.
+Ім’я містить environment marker і timestamp:
 
-The HMAC key and integration encryption key are derived from `JWT_SECRET`. Keep that secret stable: an archive from another installation or from the same installation after changing `JWT_SECRET` is intentionally rejected.
+```text
+mt-workspace-backup_<environment>_<date>.tar.gz
+```
 
-## Automatic schedule
+Архів містить:
 
-Automatic backups can run daily or weekly at a selected local time. The IANA timezone is stored with the schedule so daylight-saving changes are calculated correctly. A worker checks due schedules once per minute and records every successful or failed attempt in `backup_runs`.
+- `manifest.json` — format/version, `APP_ENVIRONMENT`, hostname, build SHA, schema migration,
+  checksums і HMAC signature;
+- `database.json` — application tables без `schema_migrations`;
+- `media/` — файли локального catalog media volume.
+
+Environment також входить у Telegram caption. Не визначайте DEV/PROD за `NODE_ENV`: deployment
+передає `APP_ENVIRONMENT=development|production`.
+
+Signing key і integration encryption key походять від `JWT_SECRET`. Після його зміни попередні
+архіви навмисно не проходять перевірку. Зберігайте secret стабільним і поза Git.
+
+## Розклад і API
+
+Підтримуються daily/weekly schedule, local `HH:mm`, weekday й IANA timezone. Worker перевіряє due
+schedule раз на хвилину та записує success/failure у `backup_runs`.
+
+```text
+GET  /api/admin/backups
+PUT  /api/admin/backups/settings
+POST /api/admin/backups/run
+POST /api/admin/backups/restore
+```
+
+Одночасно може виконуватись лише одна backup/restore operation в app process.
 
 ## Restore
 
-Restore is admin-only and accepts the original `.tar.gz` archive. Before changing data, the server validates the format, HMAC signature, database checksum, and every media checksum. During restore the workspace enters maintenance mode. Media are staged with rollback copies, and database replacement runs in one PostgreSQL transaction. If validation or the database transaction fails, the original media are restored.
+Restore доступний лише admin і приймає оригінальний `.tar.gz`:
 
-The reverse proxy permits restore uploads up to 55 MB, matching Telegram's document limit with protocol overhead.
+1. перевіряє format/version, HMAC, database checksum і кожен media checksum;
+2. переходить у maintenance mode;
+3. готує media у staging directory і створює rollback copy;
+4. замінює database snapshot в одній PostgreSQL transaction;
+5. активує staged media;
+6. записує результат у `backup_runs` і виходить із maintenance mode.
+
+Якщо валідація або database transaction не завершилась, попередні media відновлюються. Runtime
+staging directories не є користувацькими backup-копіями й не повинні додаватися в Git.
+
+## Перевірка
+
+Після конфігурації:
+
+1. запустіть manual backup і перевірте caption/environment/file name;
+2. завантажте archive з Telegram без перепакування;
+3. на staging виконайте restore та звірте користувачів, settings і media;
+4. перевірте daily/weekly `nextRunAt` у потрібній timezone;
+5. переконайтеся, що reverse proxy дозволяє `/api/admin/backups/restore` до 55 MB.

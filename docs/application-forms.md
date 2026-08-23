@@ -1,46 +1,81 @@
-# Application forms and submissions
+# Форми й заявки
 
-## Tools and access
+Статус: реалізовано. Основна схема сформована міграціями `018`, `019`, `026`, `032` і `041`.
 
-The module is split into two independent tools:
+## Межі доступу
 
-- `form_builder`: form, bank, field and button configuration.
-- `applications`: submitted applications list, detail card, status changes and internal comments.
+Домен розділено на два незалежні інструменти:
 
-Both tools use the existing `user_tool_access` checks. Admin users keep automatic access through the existing access service.
+- `form_builder` — форми, банки, поля, options, кнопки та embed-скрипти;
+- `applications` — список заявок, лічильники, detail, призначення менеджера, статуси й коментарі.
 
-## Data flow
+Admin має автоматичний доступ. Інші користувачі отримують права через `user_tool_access`; backend
+перевіряє їх на кожному захищеному запиті.
 
-1. A form builder creates a form and at least one active bank.
-2. The form is published and receives a stable `publicId`.
-3. Button configurations generate a lightweight script that inserts the button and calls the public loader only after click.
-4. The public loader fetches the form, validates customer input and submits the application.
-5. The backend assigns a five-digit application number, saves form value snapshots and product context, then notifies users with `applications` access.
+## Модель форми
 
-## Realtime
+Форма має стабільні внутрішній `id` і публічний `publicId`, тип `simple` або `workflow`, статус
+`draft`, `published`, `disabled` чи `archived`, settings/styles і набір полів. Підтримуються текстові,
+числові, email/phone, select/radio/checkbox поля, system fields і options.
 
-Application updates use the existing SSE pattern:
+`workflow` зберігає кроки й переходи у тому самому домені, що й Trade-in form logic. Опублікована
+форма не втрачає історичні snapshots у вже створених заявках після редагування builder-а.
 
-- Protected stream: `GET /api/applications/stream`
-- Event payload includes `eventId`, `timestamp`, `type`, `applicationId`, and minimal state fields.
-- The app shell invalidates applications, counts, notifications and chat-message queries so active lists, modals and chat cards refresh from server state.
+Builder API під `/api/forms` підтримує CRUD банків, форм і кнопок, duplicate, publish, disable,
+archive та генерацію button script. Усі inputs проходять Zod validation.
 
-## Chat links
+## Публічний потік
 
-Applications are shared as internal links:
+1. Оператор створює форму й активні довідники, а потім публікує її.
+2. Button configuration генерує embed-скрипт із selector/position і product selectors.
+3. Скрипт завантажує public loader лише після взаємодії користувача.
+4. Loader читає опубліковану форму, показує UI, валідовує input і надсилає заявку.
+5. Backend створює п’ятизначний номер, snapshot полів і безпечний product context.
+6. Користувачі з потрібним доступом/notification settings отримують live update і сповіщення.
+
+Публічні endpoints:
+
+```text
+GET  /api/public/application-forms/loader.js
+GET  /api/public/application-forms/buttons/:id/embed.js
+GET  /api/public/application-forms/:publicId
+POST /api/public/application-forms/:publicId/applications
+```
+
+Submission endpoint має rate limiter. Generated button script не містить credentials і не отримує
+доступу до захищеного API.
+
+## Робота із заявками
+
+Protected API під `/api/applications` надає:
+
+- paginated feed, counts і form summaries;
+- detail із values, product snapshot, history та comments;
+- explicit claim/manager assignment;
+- статуси `new`, `in_progress`, `rejected`, `closed`;
+- контрольоване видалення з підтвердженням;
+- proxy доступ до snapshot product image.
+
+Зміни призначення, статусу й коментарів записуються транзакційно, оновлюють version/history та
+публікують application, notification і chat entity events.
+
+## Realtime і chat links
+
+`GET /api/applications/stream` відкриває SSE. Подія містить `eventId`, `timestamp`, `type`,
+`applicationId` і лише мінімальний стан; повні дані клієнт повторно читає з API через TanStack Query.
+
+Внутрішнє посилання на заявку:
 
 ```text
 /tools/applications?application=<application-id>
 ```
 
-Chat entity resolution happens server-side per viewer. Users without `applications` access receive an unavailable entity payload instead of application data.
+Chat entity resolution виконується сервером окремо для кожного viewer. Користувач без доступу до
+`applications` отримує unavailable payload, а не дані заявки.
 
-## Public scripts
+## Точки розширення
 
-The public loader is served from:
-
-```text
-/api/public/application-forms/loader.js
-```
-
-Generated button scripts do not call `fetch` or `XMLHttpRequest`; they only insert the button, collect product data from configured selectors, and call the loader on click.
+- Нове поле потребує узгоджених змін Zod schema, snapshots, client types, builder/public UI і tests.
+- Новий статус змінює database constraints, serializers, counts, filters і всі status transitions.
+- Нове notification rule не повинно обходити per-user application notification settings.
+- Public payload не може містити внутрішні user IDs, credentials або необмежений raw product data.

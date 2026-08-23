@@ -1,32 +1,52 @@
 # MT Workspace
 
-Внутрішній робочий простір компанії на React та Express. Усі користувацькі й адміністративні сценарії працюють у єдиному React-інтерфейсі; старий статичний клієнт видалено.
+MT Workspace — внутрішній робочий простір компанії, побудований як модульний моноліт на React,
+Express і PostgreSQL. Один застосунок обслуговує захищений кабінет, публічні віджети й сторінки,
+інтеграції, фонові черги та адміністративні сценарії.
 
-## Можливості
+## Реалізовані можливості
 
-- авторизація та керування профілем;
-- адміністрування користувачів;
-- особистий список справ, запрошення учасників і сповіщення;
-- конструктор сіток банерів із попереднім переглядом та генерацією коду;
-- бібліотеки збережених сіток і банерів;
-- генератор коду для добірки товарів;
-- імпорт, редагування та збереження XLSX-таблиць товарів;
-- каталог уживаних смартфонів із публічною вітриною, темами та парсером фотографій;
-- конструктор заявок і публічні форми;
-- trade-in, карта магазинів, чат і контент-план;
-- підготовка ручних публікацій у міські Facebook-групи з XLSX-довідниками, локалізацією текстів, контролем темпу та історією спроб;
-- системна діагностика, інтеграції та резервні копії.
+- автентифікація через пароль, TOTP/recovery codes, Passkeys, мобільне підтвердження та QR-вхід;
+- профілі, ролі, керування доступом до інструментів і опційна вимога 2FA для окремих інструментів;
+- задачі, нагадування, сповіщення, особисті й групові чати;
+- конструктор банерних сіток, бібліотеки банерів і генератор товарних добірок;
+- XLSX-таблиці товарів, контент-план, редактор блогу й медіабібліотека;
+- конструктор форм, заявки, workflow-форми та публічні embed-скрипти;
+- локальний каталог уживаних смартфонів, публічна вітрина, теми, імпорт і парсер фото;
+- Trade-in, карта магазинів, онлайн-підтримка та popup-банери з публічними віджетами;
+- підготовка ручних публікацій у Facebook-групах без автоматичного постингу;
+- інтеграція з Хорошоп: синхронізований каталог, супутні товари, Codex-рев’ю, парсер і публікація фото;
+- мобільні пристрої, Firebase push outbox, системна діагностика й резервні копії в Telegram.
 
-## Технології
+## Технології й структура
 
-- React 19, TypeScript, Vite;
-- React Router і TanStack Query;
-- Express 5, PostgreSQL;
-- Vitest, Testing Library, Node Test Runner і Playwright.
+- Node.js `>=20.19`, Express 5, PostgreSQL 16 і append-only SQL-міграції;
+- React 19, strict TypeScript, Vite, React Router і TanStack Query;
+- Vitest, Testing Library, Node Test Runner, Supertest, `pg-mem` і Playwright;
+- Docker Compose, GHCR та GitHub Actions.
+
+```text
+client/                 React-застосунки, типи, API-клієнт і frontend unit-тести
+src/modules/            серверні бізнес-домени
+src/migrations/         послідовні PostgreSQL-міграції
+tests/                  server integration, contract і deployment-тести
+tests/e2e/              Playwright-сценарії
+docs/                   актуальна архітектурна й експлуатаційна документація
+search-linguistics/     політики та майбутні proposal/export/snapshot артефакти пошуку
+docker/                 похідні інфраструктурні образи
+```
+
+Vite створює п’ять HTML entrypoint-ів:
+
+- `workspace` — внутрішній кабінет;
+- `storefront` — публічна вітрина смартфонів;
+- `tradeIn` — публічна Trade-in сторінка;
+- `storeMap` — віджет карти магазинів;
+- `supportChat` — віджет онлайн-підтримки.
 
 ## Локальний запуск
 
-Потрібні Node.js 20+ і PostgreSQL.
+Потрібні Node.js `>=20.19` і PostgreSQL.
 
 ```bash
 npm install
@@ -35,62 +55,65 @@ npm run db:migrate
 npm run dev
 ```
 
-Після запуску React-інтерфейс доступний на `http://localhost:5173`, API — на `http://localhost:3000`.
-
-Для production-запуску:
+Frontend працює на `http://localhost:5173`, API — на `http://localhost:3000`. У production Express
+віддає результат `npm run build` з `dist/web`.
 
 ```bash
 npm run build
 npm start
 ```
 
-Зібраний застосунок буде доступний на `http://localhost:3000`.
+Для Docker-запуску заповніть `.env` і виконайте `docker compose up --build`. PostgreSQL входить у
+звичайний профіль. Redis та OpenSearch навмисно лишаються opt-in:
+
+```bash
+npm run infra:search:config
+npm run infra:search:up
+npm run infra:search:stop
+```
+
+Наявність Horoshop-модулів не означає, що intelligent search уже працює. Синхронізація каталогу,
+супутні товари й фото реалізовані на PostgreSQL; OpenSearch-індексація, search API, widget,
+лінгвістичні rulesets та search analytics залишаються наступними етапами.
+
+## Основні маршрути
+
+- `/` — огляд робочого простору;
+- `/tasks`, `/chat`, `/profile`, `/tools` — базові робочі розділи;
+- `/catalog/*` — локальний каталог смартфонів і storefront builder;
+- `/trade-in/*` — Trade-in workspace;
+- `/tools/applications`, `/tools/forms` — заявки та форми;
+- `/tools/blog-publications`, `/tools/blog-publications/media` — контент і медіа;
+- `/tools/store-map`, `/tools/online-support`, `/tools/popup-banners` — публічні віджети;
+- `/tools/horoshop-related-products` — каталог і супутні товари Хорошоп;
+- `/tools/horoshop-photo-parser` — фото товарів Хорошоп;
+- `/admin/users`, `/admin/system`, `/admin/integrations`, `/admin/backups` — адміністрування.
+
+Доступ до більшості інструментів контролюється окремим `toolId`; перевірка frontend потрібна лише
+для навігації, а джерелом істини завжди є backend.
 
 ## Перевірки
 
 ```bash
+npm run lint
+npm run check
+npm run test:server
+npm run test:web
+npm run build
 npm run verify
 ```
 
-`verify` запускає ESLint, перевіряє TypeScript, серверні й клієнтські тести та production-збірку. Для першого локального запуску browser E2E:
+Browser E2E запускаються окремо:
 
 ```bash
 npm run test:e2e:install
 npm run test:e2e
 ```
 
-E2E використовує ізольовану `pg-mem` базу та не підключається до локальної чи production PostgreSQL. CI автоматично запускає всі перевірки для `dev` і `main`; deployment має власний quality-gate перед складанням Docker-образу.
+`npm run verify` виконує lint, TypeScript, server/web тести й production build. E2E використовує
+ізольовану `pg-mem` базу та не підключається до локальної чи production PostgreSQL.
 
-## Основні маршрути
+## Документація
 
-- `/` — огляд робочого простору;
-- `/tasks` — список справ;
-- `/tools/banner-grid` — конструктор і бібліотеки банерних сіток;
-- `/tools/product-selection` — генератор добірки товарів;
-- `/tools/product-tables` — таблиці товарів;
-- `/tools/blog-publications` — контент-план;
-- `/tools/applications` — заявки;
-- `/tools/forms` — конструктор публічних форм;
-- `/chat` — особисті й групові чати;
-- `/catalog` — каталог смартфонів, storefront і налаштування;
-- `/trade-in` — огляд і конструктор trade-in;
-- `/tools/store-map` — карта магазинів;
-- `/tools/facebook-publications` — ручна підготовка й облік публікацій у міських Facebook-групах;
-- `/admin/users` — керування користувачами для адміністратора.
-- `/admin/system`, `/admin/integrations`, `/admin/backups` — системні розділи адміністратора.
-
-## Структура
-
-```text
-client/               React-застосунки й frontend unit-тести
-src/modules/           модулі Express API
-src/migrations/        міграції PostgreSQL
-tests/                 server integration та deployment-тести
-tests/e2e/             Playwright browser smoke-тести
-docs/                  експлуатаційна й архітектурна документація
-dist/web/              production-збірка React (генерується)
-```
-
-Production-збірка також доступна через `docker compose up --build` після заповнення `.env`.
-
-Детальніше про межі модулів і типовий процес змін: [docs/architecture.md](docs/architecture.md).
+Почніть з [індексу документації](docs/README.md) і [архітектури](docs/architecture.md). Search-документи
+чітко розділяють фактичний стан і затверджену цільову архітектуру.

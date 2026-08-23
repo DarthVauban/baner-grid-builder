@@ -1,17 +1,31 @@
 # Trade-in standalone domain
 
-The public Trade-in page is served from `https://tradein.mobiletrend.com.ua` by the production application on `127.0.0.1:3100`.
+Статус: builder, preview, public API й standalone host isolation реалізовані.
 
-## Prerequisites
+Production Trade-in сторінка розрахована на `https://tradein.mobiletrend.com.ua`. Конкретний
+loopback port визначає deployment/Nginx-конфігурація; публічний контракт не залежить від нього.
 
-- The DNS `A` record for `tradein.mobiletrend.com.ua` points to the production server.
-- In the Trade-in builder, the public address is saved as `https://tradein.mobiletrend.com.ua`.
-- TCP ports 80 and 443 are open on the production server.
-- Nginx and Certbot are installed, and the operator can run commands through `sudo`.
+## Application flow
 
-## Initial certificate issuance
+- Інструмент `trade_in` має overview і editor у `/trade-in/*`.
+- Draft config редагується окремо від published config.
+- Public origin зберігається в PostgreSQL і кешується backend-ом.
+- Preview routes вимагають auth та `trade_in` access і забороняють індексацію.
+- `GET /api/public/trade-in/settings` повертає лише published public config.
+- `POST /api/public/trade-in/applications` валідовує відповіді й створює заявку через спільний
+  applications domain.
 
-Run these commands from the repository checkout on the production server:
+Standalone hostname допускає тільки `/`, `/trade-in`, compiled assets, favicon і
+`/api/public/trade-in/*`. Workspace/private API повертають `404`.
+
+## Налаштування
+
+1. DNS `A` record для `tradein.mobiletrend.com.ua` має вказувати на production server.
+2. У Trade-in builder збережіть `https://tradein.mobiletrend.com.ua` як public origin.
+3. TCP 80/443 мають бути доступні для Nginx/ACME.
+4. Встановіть Nginx і Certbot.
+
+## Перше отримання certificate
 
 ```sh
 sudo install -d -m 755 /var/www/certbot
@@ -29,15 +43,17 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Certbot asks for a notification email and acceptance of the Let's Encrypt terms during the first run. Do not install the HTTPS configuration before the certificate exists because Nginx validates the referenced certificate files during `nginx -t`.
+Не встановлюйте HTTPS host config до появи certificate files: `nginx -t` перевіряє їх існування.
 
-## Verification and renewal
+## Перевірка й renewal
 
 ```sh
 curl -fsSI https://tradein.mobiletrend.com.ua/
 curl -fsS https://tradein.mobiletrend.com.ua/api/public/trade-in/settings
+curl -sS -o /dev/null -w '%{http_code}\n' https://tradein.mobiletrend.com.ua/admin/system
 sudo certbot renew --dry-run
 systemctl status certbot.timer
 ```
 
-The Nginx host exposes only the public Trade-in page, its public API, and compiled web assets. Other application routes return `404` on this subdomain.
+Private route має повернути `404`. Після зміни public origin перевірте і root page, і submission на
+staging до production publication.

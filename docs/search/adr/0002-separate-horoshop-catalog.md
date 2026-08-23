@@ -2,6 +2,10 @@
 
 Status: accepted.
 
+Implementation status (2026-08-23): active. Migrations `051–070` use separate
+`search_horoshop_*` tables scoped by connection/generation. No cross-catalog foreign keys were
+introduced.
+
 ## Decision
 
 Create separate `search_*` catalog tables for Horoshop products and variants. Do not repurpose or
