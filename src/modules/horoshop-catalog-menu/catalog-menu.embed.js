@@ -131,17 +131,30 @@ const baseCss = String.raw`
   }
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-tabs-switch {
-    right: 9px !important;
-    transform: scale(.82) !important;
+    box-sizing: border-box !important;
+    width: var(--mt-menu-root-width) !important;
+    min-width: var(--mt-menu-root-width) !important;
+    max-width: var(--mt-menu-root-width) !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    flex: 0 0 var(--mt-menu-root-width) !important;
+    align-self: stretch !important;
+    right: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+    overflow: visible !important;
   }
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-tabs-content {
     box-sizing: border-box !important;
-    width: auto !important;
+    width: calc(100% - var(--mt-menu-root-width)) !important;
+    max-width: calc(100% - var(--mt-menu-root-width)) !important;
     height: 100% !important;
     min-width: 0 !important;
     min-height: 0 !important;
-    flex: 1 1 auto !important;
+    flex: 1 1 0 !important;
     align-self: stretch !important;
     margin: 0 !important;
     padding: 18px 22px !important;

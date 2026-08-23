@@ -92,6 +92,8 @@ test('catalog menu settings publish a selected visual without exposing catalog d
   assert.match(stylesheet.text, /inset-inline-start: 0 !important/u);
   assert.match(stylesheet.text, /font-size: 16px !important/u);
   assert.match(stylesheet.text, /scrollbar-gutter: stable/u);
+  assert.match(stylesheet.text, /\.productsMenu-tabs-switch \{[^}]*flex: 0 0 var\(--mt-menu-root-width\) !important[^}]*transform: none !important/us);
+  assert.doesNotMatch(stylesheet.text, /\.productsMenu-tabs-switch \{[^}]*transform: scale\(/us);
 
   const disabled = await admin.patch('/api/horoshop-catalog-menu/settings/enabled')
     .send({ enabled: false })
@@ -104,10 +106,12 @@ test('embed adapter preserves Horoshop links, labels, icons and markup', () => {
     <div class="products-menu j-products-menu">
       <div class="productsMenu-submenu __hasTabs">
         <div class="productsMenu-tabs">
-          <ul class="productsMenu-tabs-list">
-            <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-1" href="/phones/"><span class="productsMenu-tabs-list__icon"><img src="/phone.jpg" alt="Телефони"></span>Телефони</a></li>
-            <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-2" href="/laptops/"><span class="productsMenu-tabs-list__icon"><img src="/laptop.jpg" alt="Ноутбуки"></span>Ноутбуки</a></li>
-          </ul>
+          <div class="productsMenu-tabs-switch">
+            <ul class="productsMenu-tabs-list">
+              <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-1" href="/phones/"><span class="productsMenu-tabs-list__icon"><img src="/phone.jpg" alt="Телефони"></span>Телефони</a></li>
+              <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-2" href="/laptops/"><span class="productsMenu-tabs-list__icon"><img src="/laptop.jpg" alt="Ноутбуки"></span>Ноутбуки</a></li>
+            </ul>
+          </div>
           <div class="productsMenu-tabs-content"><ul class="productsMenu-submenu-w __visible" id="menu-tab-1"><li class="productsMenu-submenu-i"><a class="productsMenu-submenu-a" href="/smartphones/"><span class="productsMenu-submenu-t">Смартфони</span></a><ul class="productsMenu-list"><li class="productsMenu-list-i"><a href="/apple/">Apple</a></li></ul></li></ul></div>
         </div>
       </div>
@@ -148,10 +152,12 @@ test('embed adapter opens the first populated panel when Horoshop starts with an
     <div class="products-menu j-products-menu">
       <div class="productsMenu-submenu __hasTabs">
         <div class="productsMenu-tabs">
-          <ul class="productsMenu-tabs-list">
-            <li class="productsMenu-tabs-list__tab __hover"><a class="productsMenu-tabs-list__link" data-target="menu-tab-empty" href="/sale/">Розпродаж</a></li>
-            <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-filled" href="/phones/">Телефони</a></li>
-          </ul>
+          <div class="productsMenu-tabs-switch">
+            <ul class="productsMenu-tabs-list">
+              <li class="productsMenu-tabs-list__tab __hover"><a class="productsMenu-tabs-list__link" data-target="menu-tab-empty" href="/sale/">Розпродаж</a></li>
+              <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-filled" href="/phones/">Телефони</a></li>
+            </ul>
+          </div>
           <div class="productsMenu-tabs-content">
             <ul class="productsMenu-submenu-w __visible" id="menu-tab-empty"></ul>
             <ul class="productsMenu-submenu-w" id="menu-tab-filled"><li class="productsMenu-submenu-i"><a href="/apple/">Apple</a></li></ul>
