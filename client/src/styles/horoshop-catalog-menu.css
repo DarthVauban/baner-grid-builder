@@ -74,14 +74,14 @@
   transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 .catalog-menu-theme-card:hover { border-color: #c8cdd5; transform: translateY(-1px); }
-.catalog-menu-theme-card.is-selected { border-color: #d7bf00; background: #fffef4; box-shadow: 0 0 0 3px rgba(255, 225, 1, .16); }
+.catalog-menu-theme-card.is-selected { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 15%, transparent); }
 .catalog-menu-theme-card__copy { min-width: 0; display: grid; gap: 7px; padding: 0 3px 4px; }
 .catalog-menu-theme-card__copy > span { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding-right: 28px; }
 .catalog-menu-theme-card__copy strong { color: var(--ink); font-size: 13px; }
-.catalog-menu-theme-card__copy em { border-radius: 999px; padding: 3px 6px; color: #725d00; background: #fff2a6; font-size: 8px; font-style: normal; font-weight: 850; letter-spacing: .03em; text-transform: uppercase; }
+.catalog-menu-theme-card__copy em { border-radius: 999px; padding: 3px 6px; color: var(--brand-dark); background: var(--brand-soft); font-size: 8px; font-style: normal; font-weight: 850; letter-spacing: .03em; text-transform: uppercase; }
 .catalog-menu-theme-card__copy small { color: var(--muted); font-size: 10.5px; line-height: 1.45; }
 .catalog-menu-theme-card__check { position: absolute; right: 13px; bottom: 55px; width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid #d8dde5; border-radius: 50%; color: transparent; background: #fff; }
-.catalog-menu-theme-card.is-selected .catalog-menu-theme-card__check { color: #171717; border-color: #ffe101; background: #ffe101; }
+.catalog-menu-theme-card.is-selected .catalog-menu-theme-card__check { color: var(--surface); border-color: var(--brand); background: var(--brand); }
 
 .catalog-menu-default-category-control {
   display: grid;

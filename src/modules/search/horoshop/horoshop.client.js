@@ -228,8 +228,8 @@ export class HoroshopClient {
     return source.token;
   }
 
-  async exportCategories(token) {
-    const response = await this.post('pages/export', { token });
+  async exportCategories(token, parent = 0) {
+    const response = await this.post('pages/export', { token, parent });
     return extractArray(response, ['pages', 'categories']);
   }
 

@@ -27,9 +27,11 @@ DELETE /api/admin/integrations/horoshop
 
 ## Synchronization
 
-Categories завантажуються через `pages/export`, products — через `catalog/export` batch-ами до 200.
-Horoshop export не надає надійного `updated_since`, тому manual/scheduled reconciliation читає
-актуальний catalog повністю.
+Categories завантажуються через parent-scoped `pages/export`: перший запит із `parent: 0` знаходить
+кореневі сторінки, після чого окремий запит для кожного такого ID повертає його повне дерево.
+Backend об'єднує й дедуплікує сторінки за API-ID та зберігає зв'язки `parent`. Products
+завантажуються через `catalog/export` batch-ами до 200. Horoshop export не надає надійного
+`updated_since`, тому manual/scheduled reconciliation читає актуальний catalog повністю.
 
 Щоб не переписувати незмінні rows, normalizer створює stable SHA-256 `sync_signature`. Repository:
 
@@ -125,6 +127,7 @@ local workflow state; Horoshop — source of commercial product truth.
 
 - [Офіційна сторінка інтеграцій та API Хорошоп](https://horoshop.ua/ua/integration/)
 - [Центр допомоги Хорошоп](https://help.horoshop.ua/uk/)
+- [Офіційний method `pages/export`](https://horoshop.notion.site/1b6cc289707981d4a0c1c28b8204f28a)
 - [Офіційний method `catalog/import`](https://horoshop.notion.site/1b6cc2897079812b9127de30b8fd106c)
 
 Перед зміною auth/import/write contract перевіряйте актуальну official documentation і live staging

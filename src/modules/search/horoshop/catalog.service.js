@@ -9,6 +9,28 @@ import { removeMediaImage } from '../../media/media.storage.js';
 
 const pageSize = 200;
 const maximumPages = 250;
+const categoryBranchConcurrency = 4;
+const maximumCategoryRoots = 1_000;
+const maximumCategories = 20_000;
+
+function pageReference(value) {
+  const candidate = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value.id
+    : value;
+  if (typeof candidate !== 'string' && typeof candidate !== 'number') return null;
+  const key = String(candidate).trim();
+  return key ? { key, value: candidate } : null;
+}
+
+function categoryPageReference(page) {
+  if (!page || typeof page !== 'object' || Array.isArray(page)) return null;
+  return pageReference(page.id ?? page.external_id);
+}
+
+function categoryParentReference(page) {
+  if (!page || typeof page !== 'object' || Array.isArray(page)) return null;
+  return pageReference(page.parent_id ?? page.parent);
+}
 
 function domainFingerprint(storeDomain) {
   return createHmac('sha256', env.JWT_SECRET)
@@ -223,8 +245,7 @@ export class HoroshopCatalogService {
       const client = this.clientFactory(connection.storeDomain);
       const token = await client.authenticate(credentials.login, credentials.password);
       this.assertNotAborted(signal);
-      const categoryItems = await client.exportCategories(token);
-      const categories = normalizeHoroshopCategories(categoryItems, connection.storeDomain);
+      const categories = await this.exportCategoryTree(client, token, connection.storeDomain, signal);
       await this.repository.applyCategories(connection, runId, categories);
 
       const productIds = new Set();
@@ -298,6 +319,54 @@ export class HoroshopCatalogService {
       }).catch(() => {});
       throw error;
     }
+  }
+
+  async exportCategoryTree(client, token, storeDomain, signal) {
+    this.assertNotAborted(signal);
+    const rootPages = await client.exportCategories(token, 0);
+    this.assertNotAborted(signal);
+
+    const pagesById = new Map();
+    const rootReferences = [];
+    const rootReferenceKeys = new Set();
+    for (const page of rootPages) {
+      const reference = categoryPageReference(page);
+      if (!reference) continue;
+      if (!pagesById.has(reference.key)) pagesById.set(reference.key, page);
+      const parentReference = categoryParentReference(page);
+      if (parentReference && parentReference.key !== '0') continue;
+      if (rootReferenceKeys.has(reference.key)) continue;
+      rootReferenceKeys.add(reference.key);
+      rootReferences.push(reference);
+    }
+    if (pagesById.size > maximumCategories) {
+      throw new Error('Horoshop category export exceeded the safe category limit');
+    }
+    if (rootReferences.length > maximumCategoryRoots) {
+      throw new Error('Horoshop category export exceeded the safe root-page limit');
+    }
+
+    for (let index = 0; index < rootReferences.length; index += categoryBranchConcurrency) {
+      this.assertNotAborted(signal);
+      const branchPages = await Promise.all(
+        rootReferences.slice(index, index + categoryBranchConcurrency).map(async (reference) => {
+          const pages = await client.exportCategories(token, reference.value);
+          this.assertNotAborted(signal);
+          return pages;
+        })
+      );
+      for (const pages of branchPages) {
+        for (const page of pages) {
+          const reference = categoryPageReference(page);
+          if (reference && !pagesById.has(reference.key)) pagesById.set(reference.key, page);
+        }
+      }
+      if (pagesById.size > maximumCategories) {
+        throw new Error('Horoshop category export exceeded the safe category limit');
+      }
+    }
+
+    return normalizeHoroshopCategories([...pagesById.values()], storeDomain);
   }
 
   assertNotAborted(signal) {

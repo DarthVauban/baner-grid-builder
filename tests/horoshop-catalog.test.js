@@ -41,6 +41,7 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
   const responses = [
     { status: 'OK', response: { token: 'session-token' } },
     { status: 'OK', response: { pages: [{ id: 10 }] } },
+    { status: 'OK', response: { pages: [{ id: 11, parent: 10 }] } },
     { status: 'OK', response: { products: [{ id: 1 }], total: 2 } },
     { status: 'OK', response: { imported: 1 } }
   ];
@@ -59,6 +60,7 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
   const token = await client.authenticate('api-admin', 'secret');
   assert.equal(token, 'session-token');
   assert.deepEqual(await client.exportCategories(token), [{ id: 10 }]);
+  assert.deepEqual(await client.exportCategories(token, 10), [{ id: 11, parent: 10 }]);
   assert.deepEqual(await client.exportCatalog(token, 0, 1), {
     products: [{ id: 1 }],
     nextOffset: 1
@@ -67,10 +69,12 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
     imported: 1
   });
   assert.deepEqual(calls.map((call) => new URL(call.url).pathname), [
-    '/api/auth/', '/api/pages/export/', '/api/catalog/export/', '/api/catalog/import/'
+    '/api/auth/', '/api/pages/export/', '/api/pages/export/', '/api/catalog/export/', '/api/catalog/import/'
   ]);
-  assert.deepEqual(calls[2].body, { token: 'session-token', offset: 0, limit: 1 });
-  assert.deepEqual(calls[3].body, {
+  assert.deepEqual(calls[1].body, { token: 'session-token', parent: 0 });
+  assert.deepEqual(calls[2].body, { token: 'session-token', parent: 10 });
+  assert.deepEqual(calls[3].body, { token: 'session-token', offset: 0, limit: 1 });
+  assert.deepEqual(calls[4].body, {
     token: 'session-token', products: [{ article: 'PHONE-1', accessories: ['CASE-1'] }]
   });
 });
@@ -173,6 +177,37 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
   assert.equal(product.conditionLabel, 'Вживаний');
   assert.deepEqual(product.modifications[0].stickers, [{ id: '18', title: 'Розпродаж' }]);
   assert.deepEqual(product.source.characteristics, { color: 'black' });
+});
+
+test('Horoshop category sync expands each API root once and keeps the returned subtree', async () => {
+  const requestedParents = [];
+  const pagesByParent = new Map([
+    ['0', [{ id: 100, parent: 0, title: { ua: 'Каталог' } }]],
+    ['100', [
+      { id: 101, parent: 100, title: { ua: 'Мобільна техніка' } },
+      { id: 102, parent: 100, title: { ua: 'Аудіо' } },
+      { id: 111, parent: 101, title: { ua: 'Смартфони' } }
+    ]]
+  ]);
+  const service = new HoroshopCatalogService({ repository: {} });
+  const categories = await service.exportCategoryTree({
+    async exportCategories(_token, parent) {
+      requestedParents.push(parent);
+      return pagesByParent.get(String(parent)) || [];
+    }
+  }, 'token', 'shop.example.com', new AbortController().signal);
+
+  assert.deepEqual(requestedParents, [0, 100]);
+  assert.deepEqual(categories.map((category) => ({
+    externalId: category.externalId,
+    parentExternalId: category.parentExternalId,
+    title: category.titles.uk
+  })), [
+    { externalId: '100', parentExternalId: '0', title: 'Каталог' },
+    { externalId: '101', parentExternalId: '100', title: 'Мобільна техніка' },
+    { externalId: '102', parentExternalId: '100', title: 'Аудіо' },
+    { externalId: '111', parentExternalId: '101', title: 'Смартфони' }
+  ]);
 });
 
 test('full import streams pages, reconciles missing rows and purges before another store connects', async () => {
