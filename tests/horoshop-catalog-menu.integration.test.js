@@ -23,6 +23,23 @@ const admin = request.agent(app);
 before(async () => {
   await runMigrations();
   await ensureBootstrapAdmin();
+  const connection = await pool.query(`
+    INSERT INTO search_horoshop_connections (store_domain, encrypted_credentials, last_sync_at)
+    VALUES ('mobiletrend.com.ua', 'encrypted-test-credentials', NOW())
+    RETURNING id, generation
+  `);
+  const { id: connectionId, generation } = connection.rows[0];
+  const syncId = '11111111-1111-4111-8111-111111111111';
+  await pool.query(`
+    INSERT INTO search_horoshop_categories (
+      connection_id, generation, external_id, parent_external_id, titles, last_seen_sync_id
+    ) VALUES
+      ($1, $2, '1217', NULL, '{"uk":"Мобільна техніка"}'::jsonb, $3),
+      ($1, $2, '1218', '1217', '{"uk":"Смартфони"}'::jsonb, $3),
+      ($1, $2, '1282', NULL, '{"uk":"Комп''ютерна периферія"}'::jsonb, $3),
+      ($1, $2, '1283', '1282', '{"uk":"Миші"}'::jsonb, $3),
+      ($1, $2, '1600', NULL, '{"uk":"Порожній розділ"}'::jsonb, $3)
+  `, [connectionId, generation, syncId]);
   await admin.post('/api/auth/login').send({
     email: process.env.ADMIN_EMAIL,
     password: process.env.ADMIN_PASSWORD
@@ -40,6 +57,11 @@ test('catalog menu settings publish a selected visual without exposing catalog d
   assert.equal(initial.body.data.settings.enabled, false);
   assert.equal(initial.body.data.settings.draftThemeId, 'compact-columns');
   assert.equal(initial.body.data.settings.publishedThemeId, null);
+  assert.equal(initial.body.data.settings.draftDefaultCategoryExternalId, null);
+  assert.deepEqual(initial.body.data.defaultCategories, [
+    { externalId: '1282', title: "Комп'ютерна периферія" },
+    { externalId: '1217', title: 'Мобільна техніка' }
+  ]);
   assert.deepEqual(
     initial.body.data.themes.map((theme) => theme.id),
     ['compact-columns', 'flat-directory', 'grouped-sections']
@@ -54,19 +76,25 @@ test('catalog menu settings publish a selected visual without exposing catalog d
   assert.match(disabledScript.text, /disabled/u);
 
   await admin.put('/api/horoshop-catalog-menu/settings/draft')
-    .send({ themeId: 'unknown-theme' })
+    .send({ themeId: 'unknown-theme', defaultCategoryExternalId: '1217' })
+    .expect(422);
+
+  await admin.put('/api/horoshop-catalog-menu/settings/draft')
+    .send({ themeId: 'compact-columns', defaultCategoryExternalId: '1600' })
     .expect(422);
 
   const draft = await admin.put('/api/horoshop-catalog-menu/settings/draft')
-    .send({ themeId: 'grouped-sections' })
+    .send({ themeId: 'grouped-sections', defaultCategoryExternalId: '1217' })
     .expect(200);
   assert.equal(draft.body.data.draftThemeId, 'grouped-sections');
+  assert.equal(draft.body.data.draftDefaultCategoryExternalId, '1217');
   assert.equal(draft.body.data.enabled, false);
 
   const published = await admin.post('/api/horoshop-catalog-menu/settings/publish')
-    .send({ themeId: 'grouped-sections' })
+    .send({ themeId: 'grouped-sections', defaultCategoryExternalId: '1217' })
     .expect(200);
   assert.equal(published.body.data.publishedThemeId, 'grouped-sections');
+  assert.equal(published.body.data.publishedDefaultCategoryExternalId, '1217');
   assert.equal(published.body.data.publishedVersion, 1);
   assert.equal(published.body.data.enabled, true);
 
@@ -80,6 +108,8 @@ test('catalog menu settings publish a selected visual without exposing catalog d
   assert.match(script.text, /grouped-sections/u);
   assert.match(script.text, /horoshop-catalog-menu\/theme\.css/u);
   assert.match(script.text, /productsMenu-tabs-list__link\[data-target\]/u);
+  assert.match(script.text, /menu-tab-.*defaultCategoryExternalId/u);
+  assert.match(script.text, /"1217"/u);
   assert.doesNotMatch(script.text, /fetch\(/u);
 
   const stylesheet = await request(app)
@@ -184,6 +214,37 @@ test('embed adapter opens the first populated panel when Horoshop starts with an
     href: link.getAttribute('href'),
     text: link.textContent.trim()
   })), originalLinks);
+  dom.window.close();
+});
+
+test('embed adapter opens the configured Horoshop category on the first catalog view', () => {
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    <button class="j-productsMenu-toggleButton">Каталог</button>
+    <div class="products-menu j-products-menu">
+      <div class="productsMenu-submenu __hasTabs">
+        <div class="productsMenu-tabs">
+          <div class="productsMenu-tabs-switch">
+            <ul class="productsMenu-tabs-list">
+              <li class="productsMenu-tabs-list__tab __hover"><a class="productsMenu-tabs-list__link" data-target="menu-tab-1474" href="/sale/">Розпродаж</a></li>
+              <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-1217" href="/phones/">Мобільна техніка</a></li>
+            </ul>
+          </div>
+          <div class="productsMenu-tabs-content">
+            <ul class="productsMenu-submenu-w __visible" id="menu-tab-1474"><li class="productsMenu-submenu-i"><a href="/sale-items/">Акції</a></li></ul>
+            <ul class="productsMenu-submenu-w" id="menu-tab-1217"><li class="productsMenu-submenu-i"><a href="/smartphones/">Смартфони</a></li></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
+  const root = dom.window.document.querySelector('.j-products-menu');
+
+  dom.window.eval(catalogMenuEmbedScript('compact-columns', '', '1217'));
+
+  assert.equal(root.querySelector('#menu-tab-1474').classList.contains('__visible'), false);
+  assert.equal(root.querySelector('#menu-tab-1217').classList.contains('__visible'), true);
+  assert.equal(root.querySelector('[data-target="menu-tab-1474"]').closest('li').classList.contains('__hover'), false);
+  assert.equal(root.querySelector('[data-target="menu-tab-1217"]').closest('li').classList.contains('__hover'), true);
   dom.window.close();
 });
 

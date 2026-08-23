@@ -12,6 +12,8 @@ const response: HoroshopCatalogMenuSettingsEnvelope = {
     enabled: true,
     draftThemeId: 'compact-columns',
     publishedThemeId: 'compact-columns',
+    draftDefaultCategoryExternalId: '1217',
+    publishedDefaultCategoryExternalId: '1217',
     publishedVersion: 2,
     storeDomain: 'mobiletrend.com.ua',
     updatedAt: '2026-08-23T08:00:00.000Z',
@@ -22,6 +24,10 @@ const response: HoroshopCatalogMenuSettingsEnvelope = {
     { id: 'compact-columns', name: 'Компактні колонки', description: 'Щільний список категорій.', recommended: true },
     { id: 'flat-directory', name: 'Плоский довідник', description: 'Три широкі колонки.', recommended: false },
     { id: 'grouped-sections', name: 'Груповані секції', description: 'Світлі груповані секції.', recommended: false }
+  ],
+  defaultCategories: [
+    { externalId: '1282', title: "Комп'ютерна периферія" },
+    { externalId: '1217', title: 'Мобільна техніка' }
   ]
 };
 
@@ -48,6 +54,7 @@ describe('HoroshopCatalogMenuPage', () => {
     expect(screen.getAllByRole('radio')).toHaveLength(3);
     expect(screen.getByRole('radio', { name: /Компактні колонки/u })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getAllByText('mobiletrend.com.ua')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Розділ каталогу за замовченням' })).toHaveTextContent('Мобільна техніка');
   });
 
   it('publishes the selected theme without exposing catalog editing controls', async () => {
@@ -55,14 +62,32 @@ describe('HoroshopCatalogMenuPage', () => {
     await screen.findByRole('heading', { name: 'Меню каталогу' });
 
     fireEvent.click(screen.getByRole('radio', { name: /Груповані секції/u }));
-    expect(screen.getByText('Є незбережений вибір')).toBeInTheDocument();
+    expect(screen.getByText('Є незбережені зміни')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Зберегти чернетку/u })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: /Опублікувати й увімкнути/u }));
     await waitFor(() => expect(api.horoshopCatalogMenu.publish).toHaveBeenCalled());
-    expect(vi.mocked(api.horoshopCatalogMenu.publish).mock.calls[0][0]).toBe('grouped-sections');
+    expect(vi.mocked(api.horoshopCatalogMenu.publish).mock.calls[0][0]).toEqual({
+      themeId: 'grouped-sections',
+      defaultCategoryExternalId: '1217'
+    });
 
     expect(screen.queryByRole('textbox', { name: /назва категорії/iu })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /додати категорію/iu })).not.toBeInTheDocument();
+  });
+
+  it('publishes the root Horoshop category selected for the first catalog view', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Меню каталогу' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Розділ каталогу за замовченням' }));
+    fireEvent.click(screen.getByRole('option', { name: "Комп'ютерна периферія" }));
+    fireEvent.click(screen.getByRole('button', { name: /Опублікувати й увімкнути/u }));
+
+    await waitFor(() => expect(api.horoshopCatalogMenu.publish).toHaveBeenCalled());
+    expect(vi.mocked(api.horoshopCatalogMenu.publish).mock.calls[0][0]).toEqual({
+      themeId: 'compact-columns',
+      defaultCategoryExternalId: '1282'
+    });
   });
 });

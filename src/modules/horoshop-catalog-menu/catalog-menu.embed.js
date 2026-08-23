@@ -303,13 +303,15 @@ export function catalogMenuCss(themeId) {
   return `${baseCss}\n${themeCss[themeId] || themeCss['compact-columns']}`;
 }
 
-export function catalogMenuEmbedScript(themeId, stylesheetUrl = '') {
+export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCategoryExternalId = null) {
   const css = catalogMenuCss(themeId);
   return `(() => {
   if (window.__mtHoroshopCatalogMenuV1) return;
   window.__mtHoroshopCatalogMenuV1 = true;
   const themeId = ${JSON.stringify(themeId)};
   const stylesheetUrl = ${JSON.stringify(stylesheetUrl)};
+  const defaultCategoryExternalId = ${JSON.stringify(defaultCategoryExternalId)};
+  const defaultTarget = defaultCategoryExternalId ? 'menu-tab-' + defaultCategoryExternalId : '';
   const styleId = 'mt-horoshop-catalog-menu-v1';
 
   function installStyle() {
@@ -339,29 +341,54 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '') {
     return Boolean(panel?.querySelector('.productsMenu-submenu-i, a[href]'));
   }
 
-  function ensurePopulatedPanel(list, content) {
-    const visiblePanel = content.querySelector('.productsMenu-submenu-w.__visible');
-    if (panelHasContent(visiblePanel)) return;
-
-    const links = [...list.querySelectorAll('.productsMenu-tabs-list__link[data-target]')];
-    const candidate = links
-      .map((link) => ({ link, panel: panelForLink(link, content) }))
-      .find(({ panel }) => panelHasContent(panel));
-    if (!candidate) return;
-
+  function activatePanel(list, content, link, panel) {
     list.querySelectorAll('.productsMenu-tabs-list__tab.__hover')
       .forEach((tab) => tab.classList.remove('__hover'));
     content.querySelectorAll('.productsMenu-submenu-w.__visible')
-      .forEach((panel) => panel.classList.remove('__visible'));
-    candidate.link.closest('.productsMenu-tabs-list__tab')?.classList.add('__hover');
-    candidate.panel.classList.add('__visible');
+      .forEach((currentPanel) => currentPanel.classList.remove('__visible'));
+    link.closest('.productsMenu-tabs-list__tab')?.classList.add('__hover');
+    panel.classList.add('__visible');
   }
 
-  function keepInitialPanelPopulated(list, content) {
-    ensurePopulatedPanel(list, content);
+  function ensurePopulatedPanel(list, content, preferDefault = false) {
+    const links = [...list.querySelectorAll('.productsMenu-tabs-list__link[data-target]')];
+    if (preferDefault && defaultTarget) {
+      const defaultLink = links.find((link) => link.getAttribute('data-target')?.replace(/^#/, '') === defaultTarget);
+      const defaultPanel = defaultLink ? panelForLink(defaultLink, content) : null;
+      if (defaultLink && panelHasContent(defaultPanel)) {
+        activatePanel(list, content, defaultLink, defaultPanel);
+        return true;
+      }
+    }
+
+    const visiblePanel = content.querySelector('.productsMenu-submenu-w.__visible');
+    if (panelHasContent(visiblePanel)) return false;
+
+    const candidate = links
+      .map((link) => ({ link, panel: panelForLink(link, content) }))
+      .find(({ panel }) => panelHasContent(panel));
+    if (!candidate) return false;
+    activatePanel(list, content, candidate.link, candidate.panel);
+    return false;
+  }
+
+  function keepInitialPanelPopulated(list, content, tabs) {
+    let firstOpen = true;
+    let defaultApplied = ensurePopulatedPanel(list, content, true);
+    let panelObserver = null;
+    if (defaultTarget && !defaultApplied) {
+      panelObserver = new MutationObserver(() => {
+        defaultApplied = ensurePopulatedPanel(list, content, true);
+        if (defaultApplied) panelObserver.disconnect();
+      });
+      panelObserver.observe(tabs, { childList: true, subtree: true });
+      window.setTimeout(() => panelObserver?.disconnect(), 30000);
+    }
     const toggle = document.querySelector('.j-productsMenu-toggleButton');
     toggle?.addEventListener('click', () => {
-      window.setTimeout(() => ensurePopulatedPanel(list, content), 0);
+      const preferDefault = firstOpen;
+      firstOpen = false;
+      window.setTimeout(() => ensurePopulatedPanel(list, content, preferDefault), 0);
     });
   }
 
@@ -377,7 +404,7 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '') {
     installStyle();
     root.setAttribute('data-mt-catalog-menu', 'v1');
     root.setAttribute('data-mt-catalog-theme', themeId);
-    keepInitialPanelPopulated(list, content);
+    keepInitialPanelPopulated(list, content, tabs);
     return true;
   }
 

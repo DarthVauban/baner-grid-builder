@@ -9,6 +9,7 @@ import {
   catalogMenuThemes,
   getCatalogMenuSettings,
   horoshopCatalogMenuToolId,
+  listCatalogMenuDefaultCategories,
   publishCatalogMenu,
   setCatalogMenuEnabled,
   updateCatalogMenuDraft
@@ -17,7 +18,10 @@ import {
 const router = Router();
 router.use(requireAuth, requireToolAccess(horoshopCatalogMenuToolId));
 
-const themeSchema = z.object({ themeId: z.enum(catalogMenuThemeIds) });
+const settingsSelectionSchema = z.object({
+  themeId: z.enum(catalogMenuThemeIds),
+  defaultCategoryExternalId: z.string().trim().min(1).max(255)
+});
 const enabledSchema = z.object({ enabled: z.boolean() });
 
 function requestOrigin(req) {
@@ -28,22 +32,27 @@ function requestOrigin(req) {
 }
 
 router.get('/settings', asyncHandler(async (req, res) => {
+  const [settings, defaultCategories] = await Promise.all([
+    getCatalogMenuSettings(requestOrigin(req)),
+    listCatalogMenuDefaultCategories()
+  ]);
   res.json({
     data: {
-      settings: await getCatalogMenuSettings(requestOrigin(req)),
-      themes: catalogMenuThemes
+      settings,
+      themes: catalogMenuThemes,
+      defaultCategories
     }
   });
 }));
 
 router.put('/settings/draft', asyncHandler(async (req, res) => {
-  const { themeId } = parseInput(themeSchema, req.body);
-  res.json({ data: await updateCatalogMenuDraft(themeId, req.user.id, requestOrigin(req)) });
+  const selection = parseInput(settingsSelectionSchema, req.body);
+  res.json({ data: await updateCatalogMenuDraft(selection, req.user.id, requestOrigin(req)) });
 }));
 
 router.post('/settings/publish', asyncHandler(async (req, res) => {
-  const { themeId } = parseInput(themeSchema, req.body);
-  res.json({ data: await publishCatalogMenu(themeId, req.user.id, requestOrigin(req)) });
+  const selection = parseInput(settingsSelectionSchema, req.body);
+  res.json({ data: await publishCatalogMenu(selection, req.user.id, requestOrigin(req)) });
 }));
 
 router.patch('/settings/enabled', asyncHandler(async (req, res) => {

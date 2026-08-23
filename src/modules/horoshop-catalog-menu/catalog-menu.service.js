@@ -32,6 +32,58 @@ function assertTheme(themeId) {
   }
 }
 
+function localizedTitle(value) {
+  const titles = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const preferred = titles.uk || titles.ua || titles.ru || titles.en;
+  if (typeof preferred === 'string' && preferred.trim()) return preferred.trim();
+  return Object.values(titles).find((title) => typeof title === 'string' && title.trim())?.trim() || '';
+}
+
+export async function listCatalogMenuDefaultCategories() {
+  const result = await query(
+    `SELECT category.external_id, category.titles
+     FROM search_horoshop_connections AS connection
+     INNER JOIN search_horoshop_categories AS category
+       ON category.connection_id = connection.id
+      AND category.generation = connection.generation
+      AND category.active = TRUE
+     INNER JOIN search_horoshop_categories AS child
+       ON child.connection_id = connection.id
+      AND child.generation = connection.generation
+      AND child.active = TRUE
+      AND child.parent_external_id = category.external_id
+     LEFT JOIN search_horoshop_categories AS parent
+       ON parent.connection_id = connection.id
+      AND parent.generation = connection.generation
+      AND parent.active = TRUE
+      AND parent.external_id = category.parent_external_id
+     WHERE connection.singleton = TRUE
+       AND parent.id IS NULL`
+  );
+  const uniqueRows = [...new Map(result.rows.map((row) => [row.external_id, row])).values()];
+  return uniqueRows
+    .map((row) => ({ externalId: row.external_id, title: localizedTitle(row.titles) || row.external_id }))
+    .sort((left, right) => left.title.localeCompare(right.title, 'uk-UA'));
+}
+
+async function assertDefaultCategory(defaultCategoryExternalId) {
+  const categories = await listCatalogMenuDefaultCategories();
+  if (!categories.length) {
+    throw new AppError(
+      409,
+      'CATALOG_MENU_CATEGORIES_UNAVAILABLE',
+      'Не знайдено кореневих розділів із підкатегоріями. Синхронізуйте каталог Хорошопа.'
+    );
+  }
+  if (!categories.some((category) => category.externalId === defaultCategoryExternalId)) {
+    throw new AppError(
+      422,
+      'CATALOG_MENU_DEFAULT_CATEGORY_INVALID',
+      'Вибраний початковий розділ відсутній в актуальному каталозі Хорошопа.'
+    );
+  }
+}
+
 async function ensureSettings() {
   await query(
     `INSERT INTO horoshop_catalog_menu_settings (id)
@@ -46,6 +98,8 @@ function serializeSettings(row, origin = '') {
     enabled: row.enabled === true,
     draftThemeId: row.draft_theme_id,
     publishedThemeId: row.published_theme_id || null,
+    draftDefaultCategoryExternalId: row.draft_default_category_external_id || null,
+    publishedDefaultCategoryExternalId: row.published_default_category_external_id || null,
     publishedVersion: Number(row.published_version || 0),
     storeDomain: row.store_domain || '',
     updatedAt: row.updated_at,
@@ -71,33 +125,40 @@ export async function getCatalogMenuSettings(origin = '') {
   return serializeSettings(await loadSettingsRow(), origin);
 }
 
-export async function updateCatalogMenuDraft(themeId, userId, origin = '') {
+export async function updateCatalogMenuDraft({ themeId, defaultCategoryExternalId }, userId, origin = '') {
   assertTheme(themeId);
+  await assertDefaultCategory(defaultCategoryExternalId);
   await ensureSettings();
   await query(
     `UPDATE horoshop_catalog_menu_settings
-     SET draft_theme_id = $1, updated_by = $2, updated_at = NOW()
+     SET draft_theme_id = $1,
+         draft_default_category_external_id = $2,
+         updated_by = $3,
+         updated_at = NOW()
      WHERE id = TRUE`,
-    [themeId, userId]
+    [themeId, defaultCategoryExternalId, userId]
   );
   return getCatalogMenuSettings(origin);
 }
 
-export async function publishCatalogMenu(themeId, userId, origin = '') {
+export async function publishCatalogMenu({ themeId, defaultCategoryExternalId }, userId, origin = '') {
   assertTheme(themeId);
+  await assertDefaultCategory(defaultCategoryExternalId);
   await ensureSettings();
   await query(
     `UPDATE horoshop_catalog_menu_settings
      SET draft_theme_id = $1,
          published_theme_id = $1,
+         draft_default_category_external_id = $2,
+         published_default_category_external_id = $2,
          published_version = published_version + 1,
          enabled = TRUE,
-         updated_by = $2,
-         published_by = $2,
+         updated_by = $3,
+         published_by = $3,
          updated_at = NOW(),
          published_at = NOW()
      WHERE id = TRUE`,
-    [themeId, userId]
+    [themeId, defaultCategoryExternalId, userId]
   );
   return getCatalogMenuSettings(origin);
 }
@@ -119,7 +180,7 @@ export async function setCatalogMenuEnabled(enabled, userId, origin = '') {
 
 export async function loadPublishedCatalogMenu(publicId) {
   const result = await query(
-    `SELECT published_theme_id, published_version
+    `SELECT published_theme_id, published_default_category_external_id, published_version
      FROM horoshop_catalog_menu_settings
      WHERE public_id = $1 AND enabled = TRUE AND published_theme_id IS NOT NULL
      LIMIT 1`,
@@ -129,6 +190,7 @@ export async function loadPublishedCatalogMenu(publicId) {
   if (!row) return null;
   return {
     themeId: row.published_theme_id,
+    defaultCategoryExternalId: row.published_default_category_external_id || null,
     version: Number(row.published_version || 0)
   };
 }

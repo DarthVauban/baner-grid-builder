@@ -12,6 +12,8 @@ export interface HoroshopCatalogMenuSettings {
   enabled: boolean;
   draftThemeId: HoroshopCatalogMenuThemeId;
   publishedThemeId: HoroshopCatalogMenuThemeId | null;
+  draftDefaultCategoryExternalId: string | null;
+  publishedDefaultCategoryExternalId: string | null;
   publishedVersion: number;
   storeDomain: string;
   updatedAt: string;
@@ -19,7 +21,13 @@ export interface HoroshopCatalogMenuSettings {
   embedCode: string;
 }
 
+export interface HoroshopCatalogMenuDefaultCategory {
+  externalId: string;
+  title: string;
+}
+
 export interface HoroshopCatalogMenuSettingsEnvelope {
   settings: HoroshopCatalogMenuSettings;
   themes: HoroshopCatalogMenuTheme[];
+  defaultCategories: HoroshopCatalogMenuDefaultCategory[];
 }

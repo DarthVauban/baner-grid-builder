@@ -202,13 +202,13 @@ const HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS = 30_000;
 export const api = {
   horoshopCatalogMenu: {
     settings: () => request<HoroshopCatalogMenuSettingsEnvelope>('/api/horoshop-catalog-menu/settings'),
-    saveDraft: (themeId: HoroshopCatalogMenuThemeId) => request<HoroshopCatalogMenuSettings>(
+    saveDraft: (input: { themeId: HoroshopCatalogMenuThemeId; defaultCategoryExternalId: string }) => request<HoroshopCatalogMenuSettings>(
       '/api/horoshop-catalog-menu/settings/draft',
-      { method: 'PUT', body: jsonBody({ themeId }) }
+      { method: 'PUT', body: jsonBody(input) }
     ),
-    publish: (themeId: HoroshopCatalogMenuThemeId) => request<HoroshopCatalogMenuSettings>(
+    publish: (input: { themeId: HoroshopCatalogMenuThemeId; defaultCategoryExternalId: string }) => request<HoroshopCatalogMenuSettings>(
       '/api/horoshop-catalog-menu/settings/publish',
-      { method: 'POST', body: jsonBody({ themeId }) }
+      { method: 'POST', body: jsonBody(input) }
     ),
     setEnabled: (enabled: boolean) => request<HoroshopCatalogMenuSettings>(
       '/api/horoshop-catalog-menu/settings/enabled',

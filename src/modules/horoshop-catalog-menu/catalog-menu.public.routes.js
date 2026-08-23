@@ -21,7 +21,9 @@ router.get('/embed.js', asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=300');
   const stylesheetUrl = `${requestOrigin(req)}/api/public/horoshop-catalog-menu/theme.css?site=${encodeURIComponent(site)}&v=${published?.version || 0}`;
   res.type('application/javascript').send(
-    published ? catalogMenuEmbedScript(published.themeId, stylesheetUrl) : '/* MT catalog menu is disabled. */'
+    published
+      ? catalogMenuEmbedScript(published.themeId, stylesheetUrl, published.defaultCategoryExternalId)
+      : '/* MT catalog menu is disabled. */'
   );
 }));
 

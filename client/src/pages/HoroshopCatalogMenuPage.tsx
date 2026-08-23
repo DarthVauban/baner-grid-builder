@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HoroshopCatalogMenuPreview } from '../components/HoroshopCatalogMenuPreview';
 import { Icon } from '../components/Icon';
+import { StyledSelect } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import type { HoroshopCatalogMenuThemeId } from '../types/horoshop-catalog-menu';
@@ -20,13 +21,24 @@ export function HoroshopCatalogMenuPage() {
     queryFn: api.horoshopCatalogMenu.settings
   });
   const [selectedTheme, setSelectedTheme] = useState<HoroshopCatalogMenuThemeId>('compact-columns');
+  const [selectedDefaultCategoryExternalId, setSelectedDefaultCategoryExternalId] = useState('');
   const [viewport, setViewport] = useState<'laptop' | 'desktop'>('laptop');
   const saveDraft = useMutation({ mutationFn: api.horoshopCatalogMenu.saveDraft });
   const publish = useMutation({ mutationFn: api.horoshopCatalogMenu.publish });
   const setEnabled = useMutation({ mutationFn: api.horoshopCatalogMenu.setEnabled });
 
   useEffect(() => {
-    if (settingsQuery.data) setSelectedTheme(settingsQuery.data.settings.draftThemeId);
+    if (!settingsQuery.data) return;
+    setSelectedTheme(settingsQuery.data.settings.draftThemeId);
+    const draftDefaultCategoryExternalId = settingsQuery.data.settings.draftDefaultCategoryExternalId;
+    const draftCategoryStillAvailable = settingsQuery.data.defaultCategories.some(
+      (category) => category.externalId === draftDefaultCategoryExternalId
+    );
+    setSelectedDefaultCategoryExternalId(
+      (draftCategoryStillAvailable ? draftDefaultCategoryExternalId : null)
+      || settingsQuery.data.defaultCategories[0]?.externalId
+      || ''
+    );
   }, [settingsQuery.data]);
 
   if (settingsQuery.isLoading) {
@@ -36,9 +48,14 @@ export function HoroshopCatalogMenuPage() {
     return <div className="catalog-menu-tool-state is-error">Не вдалося завантажити інструмент меню каталогу.</div>;
   }
 
-  const { settings, themes } = settingsQuery.data;
+  const { settings, themes, defaultCategories } = settingsQuery.data;
   const selected = themes.find((theme) => theme.id === selectedTheme) || themes[0];
-  const isDirty = selectedTheme !== settings.draftThemeId;
+  const selectedDefaultCategory = defaultCategories.find(
+    (category) => category.externalId === selectedDefaultCategoryExternalId
+  );
+  const isDirty = selectedTheme !== settings.draftThemeId
+    || selectedDefaultCategoryExternalId !== (settings.draftDefaultCategoryExternalId || '');
+  const canSaveSelection = Boolean(selectedDefaultCategory);
   const busy = saveDraft.isPending || publish.isPending || setEnabled.isPending;
 
   async function refresh() {
@@ -47,7 +64,10 @@ export function HoroshopCatalogMenuPage() {
 
   async function saveSelection() {
     try {
-      await saveDraft.mutateAsync(selectedTheme);
+      await saveDraft.mutateAsync({
+        themeId: selectedTheme,
+        defaultCategoryExternalId: selectedDefaultCategoryExternalId
+      });
       await refresh();
       showToast('Чернетку оформлення збережено.', 'success');
     } catch (error) {
@@ -57,7 +77,10 @@ export function HoroshopCatalogMenuPage() {
 
   async function publishSelection() {
     try {
-      await publish.mutateAsync(selectedTheme);
+      await publish.mutateAsync({
+        themeId: selectedTheme,
+        defaultCategoryExternalId: selectedDefaultCategoryExternalId
+      });
       await refresh();
       showToast('Оформлення опубліковано й увімкнено на сайті.', 'success');
     } catch (error) {
@@ -100,7 +123,7 @@ export function HoroshopCatalogMenuPage() {
     <section className="catalog-menu-tool-section">
       <header>
         <div><p className="eyebrow">Варіант 1 із 3</p><h2>Оберіть структуру оформлення</h2><p>Усі варіанти використовують те саме дерево Хорошопа. Змінюються лише щільність, колонки та групування.</p></div>
-        {isDirty && <span className="catalog-menu-tool-unsaved">Є незбережений вибір</span>}
+        {isDirty && <span className="catalog-menu-tool-unsaved">Є незбережені зміни</span>}
       </header>
       <div className="catalog-menu-theme-grid" role="radiogroup" aria-label="Варіант оформлення каталогу">
         {themes.map((theme) => <button
@@ -119,6 +142,39 @@ export function HoroshopCatalogMenuPage() {
           <i className="catalog-menu-theme-card__check"><Icon name="check" size={15} /></i>
         </button>)}
       </div>
+    </section>
+
+    <section className="catalog-menu-tool-section catalog-menu-default-category-section">
+      <header>
+        <div>
+          <p className="eyebrow">Початковий стан</p>
+          <h2>Розділ, вибраний за замовченням</h2>
+          <p>Після першого відкриття каталогу права частина одразу покаже підкатегорії цього розділу.</p>
+        </div>
+      </header>
+      {defaultCategories.length > 0 ? <div className="catalog-menu-default-category-control">
+        <div>
+          <span className="catalog-menu-default-category-control__label">Головний розділ Хорошопа</span>
+          <StyledSelect
+            value={selectedDefaultCategoryExternalId}
+            options={defaultCategories.map((category) => ({ value: category.externalId, label: category.title }))}
+            onChange={setSelectedDefaultCategoryExternalId}
+            ariaLabel="Розділ каталогу за замовченням"
+            searchable
+            searchPlaceholder="Знайти розділ"
+          />
+        </div>
+        <div className="catalog-menu-default-category-summary">
+          <Icon name="check" size={17} />
+          <div>
+            <strong>{selectedDefaultCategory?.title}</strong>
+            <span>Підкатегорії та іконки завантажуються зі штатного меню Хорошопа.</span>
+          </div>
+        </div>
+      </div> : <div className="catalog-menu-default-category-empty">
+        <Icon name="alarm" size={18} />
+        <div><strong>Немає доступних розділів</strong><span>Синхронізуйте каталог Хорошопа, щоб отримати кореневі розділи з підкатегоріями.</span></div>
+      </div>}
     </section>
 
     <section className="catalog-menu-tool-preview-section">
@@ -146,12 +202,13 @@ export function HoroshopCatalogMenuPage() {
         <header><div><p className="eyebrow">Публікація</p><h2>Стан на сайті</h2></div></header>
         <dl>
           <div><dt>Опублікована тема</dt><dd>{themes.find((theme) => theme.id === settings.publishedThemeId)?.name || 'Немає'}</dd></div>
+          <div><dt>Початковий розділ</dt><dd>{defaultCategories.find((category) => category.externalId === settings.publishedDefaultCategoryExternalId)?.title || 'Не вибрано'}</dd></div>
           <div><dt>Версія</dt><dd>{settings.publishedVersion || '—'}</dd></div>
           <div><dt>Остання публікація</dt><dd>{formatDate(settings.publishedAt)}</dd></div>
         </dl>
         <div className="catalog-menu-publish-card__actions">
-          <button className="button button--secondary" type="button" onClick={() => void saveSelection()} disabled={!isDirty || busy}><Icon name="save" size={16} /> Зберегти чернетку</button>
-          <button className="button button--primary" type="button" onClick={() => void publishSelection()} disabled={busy}><Icon name="publication" size={16} /> Опублікувати й увімкнути</button>
+          <button className="button button--secondary" type="button" onClick={() => void saveSelection()} disabled={!isDirty || busy || !canSaveSelection}><Icon name="save" size={16} /> Зберегти чернетку</button>
+          <button className="button button--primary" type="button" onClick={() => void publishSelection()} disabled={busy || !canSaveSelection}><Icon name="publication" size={16} /> Опублікувати й увімкнути</button>
           <button className="catalog-menu-enable-button" type="button" onClick={() => void toggleEnabled()} disabled={!settings.publishedThemeId || busy}>{settings.enabled ? 'Тимчасово вимкнути оформлення' : 'Увімкнути опубліковане оформлення'}</button>
         </div>
       </section>
