@@ -179,14 +179,15 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
   assert.deepEqual(product.source.characteristics, { color: 'black' });
 });
 
-test('Horoshop category sync expands each API root once and keeps the returned subtree', async () => {
+test('Horoshop category sync expands a catalog root whose technical parent is absent from parent=0', async () => {
   const requestedParents = [];
   const pagesByParent = new Map([
-    ['0', [{ id: 100, parent: 0, title: { ua: 'Каталог' } }]],
+    ['0', [{ id: 100, parent: 900, title: { ua: 'Каталог' } }]],
     ['100', [
-      { id: 101, parent: 100, title: { ua: 'Мобільна техніка' } },
-      { id: 102, parent: 100, title: { ua: 'Аудіо' } },
-      { id: 111, parent: 101, title: { ua: 'Смартфони' } }
+      { id: 1474, parent: 100, title: { ua: 'Розпродаж' } },
+      { id: 1442, parent: 100, title: { ua: 'Gaming' } },
+      { id: 1217, parent: 100, title: { ua: 'Мобільна техніка' } },
+      { id: 111, parent: 1217, title: { ua: 'Смартфони' } }
     ]]
   ]);
   const service = new HoroshopCatalogService({ repository: {} });
@@ -203,10 +204,11 @@ test('Horoshop category sync expands each API root once and keeps the returned s
     parentExternalId: category.parentExternalId,
     title: category.titles.uk
   })), [
-    { externalId: '100', parentExternalId: '0', title: 'Каталог' },
-    { externalId: '101', parentExternalId: '100', title: 'Мобільна техніка' },
-    { externalId: '102', parentExternalId: '100', title: 'Аудіо' },
-    { externalId: '111', parentExternalId: '101', title: 'Смартфони' }
+    { externalId: '100', parentExternalId: '900', title: 'Каталог' },
+    { externalId: '1474', parentExternalId: '100', title: 'Розпродаж' },
+    { externalId: '1442', parentExternalId: '100', title: 'Gaming' },
+    { externalId: '1217', parentExternalId: '100', title: 'Мобільна техніка' },
+    { externalId: '111', parentExternalId: '1217', title: 'Смартфони' }
   ]);
 });
 

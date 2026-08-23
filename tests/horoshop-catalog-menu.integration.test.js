@@ -35,6 +35,7 @@ before(async () => {
       connection_id, generation, external_id, parent_external_id, titles, last_seen_sync_id
     ) VALUES
       ($1, $2, '900', NULL, '{"uk":"Головна"}'::jsonb, $3),
+      ($1, $2, '901', '900', '{"uk":"Звичайна сторінка"}'::jsonb, $3),
       ($1, $2, '1000', '900', '{"uk":"Каталог"}'::jsonb, $3),
       ($1, $2, '1217', '1000', '{"uk":"Мобільна техніка"}'::jsonb, $3),
       ($1, $2, '1218', '1217', '{"uk":"Смартфони"}'::jsonb, $3),

@@ -72,18 +72,16 @@ export async function listCatalogMenuDefaultCategories() {
   if (structuralRoots.length === 1) {
     let menuContainer = structuralRoots[0];
     const visited = new Set();
-    while (!visited.has(menuContainer.external_id) && Number(menuContainer.active_child_count) === 1) {
+    while (!visited.has(menuContainer.external_id)) {
       visited.add(menuContainer.external_id);
       const branchChildren = childrenByParentId.get(menuContainer.external_id) || [];
-      if (branchChildren.length !== 1) {
-        menuRoots = [];
-        break;
-      }
+      // Ignore leaf pages next to structural wrappers. Horoshop commonly keeps
+      // "Catalog" beside ordinary pages under "Home"; only the former can lead
+      // to selectable menu sections with a populated right-hand panel.
+      if (branchChildren.length !== 1) break;
       [menuContainer] = branchChildren;
     }
-    if (menuRoots.length > 0) {
-      menuRoots = childrenByParentId.get(menuContainer.external_id) || [];
-    }
+    menuRoots = childrenByParentId.get(menuContainer.external_id) || [];
   }
 
   return menuRoots

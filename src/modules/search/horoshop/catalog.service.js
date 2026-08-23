@@ -327,14 +327,22 @@ export class HoroshopCatalogService {
     this.assertNotAborted(signal);
 
     const pagesById = new Map();
-    const rootReferences = [];
-    const rootReferenceKeys = new Set();
     for (const page of rootPages) {
       const reference = categoryPageReference(page);
       if (!reference) continue;
       if (!pagesById.has(reference.key)) pagesById.set(reference.key, page);
+    }
+
+    const rootReferences = [];
+    const rootReferenceKeys = new Set();
+    for (const page of pagesById.values()) {
+      const reference = categoryPageReference(page);
+      if (!reference) continue;
       const parentReference = categoryParentReference(page);
-      if (parentReference && parentReference.key !== '0') continue;
+      // pages/export(parent=0) can return the storefront catalog container with
+      // a technical parent (for example, the non-exported "Home" page). Treat
+      // a parent absent from this response as an API root and expand it.
+      if (parentReference && parentReference.key !== '0' && pagesById.has(parentReference.key)) continue;
       if (rootReferenceKeys.has(reference.key)) continue;
       rootReferenceKeys.add(reference.key);
       rootReferences.push(reference);
