@@ -39,44 +39,45 @@ function localizedTitle(value) {
   return Object.values(titles).find((title) => typeof title === 'string' && title.trim())?.trim() || '';
 }
 
-function normalizedCategoryTitles(value) {
-  const titles = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  return Object.values(titles)
-    .filter((title) => typeof title === 'string')
-    .map((title) => title.trim().toLocaleLowerCase('uk-UA'));
-}
-
-function isHoroshopHomeContainer(category) {
-  const homeTitles = new Set(['головна', 'главная', 'home']);
-  return normalizedCategoryTitles(category.titles).some((title) => homeTitles.has(title));
-}
-
 export async function listCatalogMenuDefaultCategories() {
   const result = await query(
-    `SELECT category.external_id, category.parent_external_id, category.titles
+    `SELECT DISTINCT category.external_id,
+                     category.parent_external_id,
+                     category.titles,
+                     (parent.id IS NULL) AS is_structural_root
      FROM search_horoshop_connections AS connection
      INNER JOIN search_horoshop_categories AS category
        ON category.connection_id = connection.id
       AND category.generation = connection.generation
       AND category.active = TRUE
-     WHERE connection.singleton = TRUE`
+     INNER JOIN search_horoshop_categories AS child
+       ON child.connection_id = connection.id
+      AND child.generation = connection.generation
+      AND child.active = TRUE
+      AND child.parent_external_id = category.external_id
+     LEFT JOIN search_horoshop_categories AS parent
+       ON parent.connection_id = connection.id
+      AND parent.generation = connection.generation
+      AND parent.active = TRUE
+      AND parent.external_id = category.parent_external_id
+     LEFT JOIN search_horoshop_categories AS grandparent
+       ON grandparent.connection_id = connection.id
+      AND grandparent.generation = connection.generation
+      AND grandparent.active = TRUE
+      AND grandparent.external_id = parent.parent_external_id
+     WHERE connection.singleton = TRUE
+       AND (parent.id IS NULL OR grandparent.id IS NULL)`
   );
-  const categories = [...new Map(result.rows.map((row) => [row.external_id, row])).values()];
-  const categoriesById = new Map(categories.map((category) => [category.external_id, category]));
-  const parentIdsWithChildren = new Set(categories
-    .map((category) => category.parent_external_id)
-    .filter(Boolean));
-  const structuralRoots = categories.filter((category) =>
-    !category.parent_external_id || !categoriesById.has(category.parent_external_id));
-  const homeContainerIds = new Set(structuralRoots
-    .filter(isHoroshopHomeContainer)
-    .map((category) => category.external_id));
-  const menuRoots = homeContainerIds.size > 0
-    ? categories.filter((category) => homeContainerIds.has(category.parent_external_id))
+  const candidates = result.rows;
+  const structuralRoots = candidates.filter((category) => category.is_structural_root === true);
+  const structuralRootIds = new Set(structuralRoots.map((category) => category.external_id));
+  const nestedMenuRoots = candidates.filter((category) =>
+    structuralRootIds.has(category.parent_external_id));
+  const menuRoots = structuralRoots.length === 1 && nestedMenuRoots.length > 0
+    ? nestedMenuRoots
     : structuralRoots;
 
   return menuRoots
-    .filter((category) => parentIdsWithChildren.has(category.external_id))
     .map((row) => ({ externalId: row.external_id, title: localizedTitle(row.titles) || row.external_id }))
     .sort((left, right) => left.title.localeCompare(right.title, 'uk-UA'));
 }
