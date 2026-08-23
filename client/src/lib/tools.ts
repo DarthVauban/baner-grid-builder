@@ -12,6 +12,13 @@ export interface ToolDefinition {
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'horoshop_catalog_menu',
+    name: 'Меню каталогу Хорошоп',
+    description: 'Компактне оформлення чинного меню категорій Хорошоп без зміни дерева, посилань та іконок.',
+    path: '/tools/horoshop-catalog-menu',
+    icon: 'catalog'
+  },
+  {
     id: 'popup_banners',
     name: 'Попап-банери',
     description: 'Конструктор попапів, точні товарні вибірки, правила за стікерами й каталогом, розклад та статистика показів.',

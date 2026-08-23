@@ -116,4 +116,22 @@ describe('ToolsPage catalog', () => {
     const tile = await screen.findByRole('link', { name: /Попап-банери/ });
     expect(tile).toHaveAttribute('href', '/tools/popup-banners');
   });
+
+  it('shows the Horoshop catalog menu visual tool as a separate tile', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
+      tools: [{
+        toolId: 'horoshop_catalog_menu',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    });
+
+    renderPage();
+
+    const tile = await screen.findByRole('link', { name: /Меню каталогу Хорошоп/u });
+    expect(tile).toHaveAttribute('href', '/tools/horoshop-catalog-menu');
+  });
 });

@@ -1,0 +1,107 @@
+# Меню каталогу Хорошоп
+
+## Призначення й межа відповідальності
+
+Інструмент `/tools/horoshop-catalog-menu` змінює **лише зовнішній вигляд** штатного desktop-меню
+категорій Хорошопа. Джерелом істини залишається Хорошоп:
+
+- категорії та підкатегорії;
+- ієрархія й порядок;
+- видимість;
+- назви й URL;
+- іконки категорій.
+
+MT Workspace не імпортує дерево для цього інструмента, не створює копію меню й не публікує зміни
+категорій у Хорошоп. Preview у кабінеті використовує демонстраційний контент тільки для порівняння
+візуальних тем.
+
+## Реалізована архітектура
+
+```text
+/tools/horoshop-catalog-menu
+  -> GET/PUT/POST/PATCH /api/horoshop-catalog-menu/settings/*
+    -> horoshop_catalog_menu_settings (draft + published theme)
+
+Horoshop page
+  -> /api/public/horoshop-catalog-menu/embed.js?site=<publicId>
+    -> /api/public/horoshop-catalog-menu/theme.css?site=<publicId>&v=<version>
+      -> CSS поверх штатного DOM Хорошопа
+```
+
+Публічний JavaScript є невеликим framework-free адаптером. Він перевіряє реальний DOM-контракт,
+підключає зовнішній stylesheet і додає до кореня тільки:
+
+```html
+data-mt-catalog-menu="v1"
+data-mt-catalog-theme="compact-columns"
+```
+
+Скрипт не виконує `fetch`, не передає URL сторінки, cookies або вміст каталогу у Workspace, не
+змінює `href`, текст, `<img>` чи порядок вузлів. Зовнішній CSS використовується замість runtime
+`<style>`, щоб інтеграція була суміснішою з Content Security Policy магазину.
+
+## DOM-контракт Хорошопа
+
+Контракт перевірено 2026-08-23 на `mobiletrend.com.ua` при viewport `1366×768`:
+
+- корінь: `.j-products-menu`;
+- popup: `.productsMenu-submenu.__hasTabs`;
+- контейнер вкладок: `.productsMenu-tabs`;
+- список головних категорій: `.productsMenu-tabs-list`;
+- посилання категорії: `.productsMenu-tabs-list__link[data-target]`;
+- вміст: `.productsMenu-tabs-content`;
+- активна панель: `.productsMenu-submenu-w.__visible`;
+- групи й посилання: `.productsMenu-submenu-i`, `.productsMenu-list-i`.
+
+На момент перевірки список містив 17 головних категорій і мав висоту приблизно `858 px`. Базова
+тема використовує рядок `32 px`, тому всі 17 пунктів уміщаються у `560 px` на типовому ноутбуці.
+За меншої висоти вікна прокрутка залишається локально всередині лівого списку.
+
+Якщо Хорошоп змінить розмітку й структурна перевірка не пройде, адаптер працює за принципом
+fail-open: не додає stylesheet і користувач бачить стандартне меню Хорошопа.
+
+## Теми
+
+| ID | Назва | Призначення |
+| --- | --- | --- |
+| `compact-columns` | Компактні колонки | рекомендована тема; щільний список зліва, чотири колонки та тонкі розділювачі |
+| `flat-directory` | Плоский довідник | три ширші колонки, більше повітря й мінімум декору |
+| `grouped-sections` | Груповані секції | картки-секції для категорій зі складнішою структурою |
+
+Усі теми використовують один DOM-адаптер і відрізняються тільки CSS. Правила обгорнуті в
+`@media (min-width: 1024px)`, тому mobile/tablet меню Хорошопа не змінюється.
+
+## Чернетка, публікація й кеш
+
+`horoshop_catalog_menu_settings` — singleton-таблиця:
+
+- `draft_theme_id` зберігає вибір у кабінеті;
+- `published_theme_id` — тему публічного embed;
+- `enabled` дозволяє миттєво повернути штатне оформлення;
+- `published_version` змінює URL CSS після кожної публікації;
+- `public_id` входить до install-коду й не змінюється між темами.
+
+Публічні JS/CSS відповіді кешуються на 5 хвилин. Тому після публікації вже відкрита вкладка може
+побачити нову тему після перезавантаження та завершення короткого cache TTL.
+
+## Встановлення
+
+1. Відкрити `/tools/horoshop-catalog-menu`.
+2. Обрати тему й перевірити laptop/desktop preview.
+3. Натиснути **Опублікувати й увімкнути**.
+4. Один раз додати згенерований `<script async ...>` у шаблон Хорошопа перед `</body>`.
+
+Наступна зміна теми не потребує заміни коду. Кнопка тимчасового вимкнення повертає стандартний
+вигляд без видалення install-коду.
+
+## Перевірки
+
+Focused-тести:
+
+```bash
+node --import ./tests/test-env.js --test tests/horoshop-catalog-menu.integration.test.js
+npx vitest run client/src/pages/HoroshopCatalogMenuPage.test.tsx client/src/pages/ToolsPage.test.tsx
+```
+
+Integration-тест перевіряє auth/tool access, draft/publish/disable, public JS/CSS, відсутність runtime
+`fetch`, незмінність markup/посилань/іконок і fail-open поведінку.

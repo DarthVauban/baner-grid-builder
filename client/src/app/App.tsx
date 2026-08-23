@@ -105,6 +105,9 @@ const OnlineSupportPage = lazy(() => import('../pages/OnlineSupportPage').then((
 const PopupBannersPage = lazy(() => import('../pages/PopupBannersPage').then((module) => ({
   default: module.PopupBannersPage
 })));
+const HoroshopCatalogMenuPage = lazy(() => import('../pages/HoroshopCatalogMenuPage').then((module) => ({
+  default: module.HoroshopCatalogMenuPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -232,6 +235,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="popup_banners" />}>
             <Route path="tools/popup-banners" element={<Suspense fallback={<LoadingScreen />}><PopupBannersPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="horoshop_catalog_menu" />}>
+            <Route path="tools/horoshop-catalog-menu" element={<Suspense fallback={<LoadingScreen />}><HoroshopCatalogMenuPage /></Suspense>} />
           </Route>
           <Route element={<AccessManagementRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

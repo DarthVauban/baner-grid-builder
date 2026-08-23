@@ -14,6 +14,8 @@
 
 ## Хорошоп
 
+- [Меню каталогу Хорошоп](horoshop-catalog-menu/README.md) — CSS-only оформлення штатного дерева,
+  три теми, install-код і fail-open контракт.
 - [Імпорт каталогу й супутні товари](search/HOROSHOP_CATALOG_IMPORT.md) — реалізований контракт.
 - [Супутні товари: чинні вимоги](horoshop-related-products/REQUIREMENTS.md) — безпечний Codex-review workflow.
 - [Десктопний парсер фото](search/horoshop-photo-desktop-parser.md) — pairing, queue, leases та uploads.

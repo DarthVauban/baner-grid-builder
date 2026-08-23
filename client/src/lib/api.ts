@@ -129,6 +129,11 @@ import type {
   PopupCampaignStatus
 } from '../types/popup-banner';
 import type {
+  HoroshopCatalogMenuSettings,
+  HoroshopCatalogMenuSettingsEnvelope,
+  HoroshopCatalogMenuThemeId
+} from '../types/horoshop-catalog-menu';
+import type {
   HoroshopAccessoryCandidates,
   HoroshopAccessoryBulkPublishProgress,
   HoroshopAccessoryBulkPublishResult,
@@ -195,6 +200,21 @@ export { ApiError } from './api-client';
 const HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS = 30_000;
 
 export const api = {
+  horoshopCatalogMenu: {
+    settings: () => request<HoroshopCatalogMenuSettingsEnvelope>('/api/horoshop-catalog-menu/settings'),
+    saveDraft: (themeId: HoroshopCatalogMenuThemeId) => request<HoroshopCatalogMenuSettings>(
+      '/api/horoshop-catalog-menu/settings/draft',
+      { method: 'PUT', body: jsonBody({ themeId }) }
+    ),
+    publish: (themeId: HoroshopCatalogMenuThemeId) => request<HoroshopCatalogMenuSettings>(
+      '/api/horoshop-catalog-menu/settings/publish',
+      { method: 'POST', body: jsonBody({ themeId }) }
+    ),
+    setEnabled: (enabled: boolean) => request<HoroshopCatalogMenuSettings>(
+      '/api/horoshop-catalog-menu/settings/enabled',
+      { method: 'PATCH', body: jsonBody({ enabled }) }
+    )
+  },
   popupBanners: {
     list: () => request<PopupCampaign[]>('/api/popup-banners'),
     options: () => request<PopupCampaignOptions>('/api/popup-banners/options'),

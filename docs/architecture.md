@@ -1,6 +1,6 @@
 # Архітектура MT Workspace
 
-Актуально для міграцій `001–072` і коду станом на 2026-08-23.
+Актуально для міграцій `001–073` і коду станом на 2026-08-23.
 
 ## Загальна модель
 
@@ -44,6 +44,7 @@ assets, SPA fallbacks і централізований error handler.
 | `catalog` | локальний каталог смартфонів, імпорт, storefront, themes і photo parser |
 | `trade-in`, `store-map` | builder/API для Trade-in і карти магазинів |
 | `support-chat`, `popup-banners` | операторські інструменти та публічні віджети |
+| `horoshop-catalog-menu` | CSS-only оформлення штатного меню категорій Хорошопа |
 | `integrations`, `backups` | encrypted settings, Telegram/Mailtrap і backup/restore |
 | `mobile` | пристрої, pairing, QR login, login approval і Firebase outbox |
 | `search/horoshop` | окремий Horoshop catalog, accessories і photo workflow |
@@ -113,6 +114,10 @@ store немає.
 П’ять Vite entrypoint-ів мають окремі HTML-файли й React roots: workspace, storefront, Trade-in,
 store map і support chat. Публічні API підключаються через явні `/api/public/*` або `/api/storefront/*`
 маршрути.
+
+Меню каталогу Хорошопа не є окремим Vite entrypoint або iframe: публічний framework-free адаптер має
+працювати безпосередньо зі штатним DOM магазину. Він підключає версіонований CSS, не читає й не
+надсилає каталог і при невідомій розмітці залишає стандартне меню без змін.
 
 В адмін-інтерфейсі нові single-select поля використовують `StyledSelect`, а модальні вікна —
 `ModalDialog`. Це спільні accessibility/layout контракти, а не лише стилістична рекомендація.
