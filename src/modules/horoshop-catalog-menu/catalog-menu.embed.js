@@ -15,6 +15,10 @@ const baseCss = String.raw`
     height: min(640px, calc(100vh - 80px)) !important;
     min-height: 0 !important;
     max-height: calc(100vh - 80px) !important;
+    left: 0 !important;
+    right: auto !important;
+    inset-inline-start: 0 !important;
+    transform: none !important;
     margin: 0 !important;
     padding: 0 !important;
     border: 1px solid var(--mt-menu-line) !important;
@@ -30,6 +34,7 @@ const baseCss = String.raw`
     width: 100% !important;
     height: 100% !important;
     min-height: 0 !important;
+    overflow: hidden !important;
     margin: 0 !important;
     padding: 0 !important;
     align-items: stretch !important;
@@ -38,18 +43,24 @@ const baseCss = String.raw`
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-tabs-list {
     box-sizing: border-box !important;
     width: var(--mt-menu-root-width) !important;
+    min-width: var(--mt-menu-root-width) !important;
+    max-width: var(--mt-menu-root-width) !important;
     height: 100% !important;
     min-height: 0 !important;
+    max-height: 100% !important;
     flex: 0 0 var(--mt-menu-root-width) !important;
+    align-self: stretch !important;
     margin: 0 !important;
     padding: 0 !important;
     border-right: 1px solid var(--mt-menu-line) !important;
     background: #fff !important;
-    display: grid !important;
-    grid-auto-rows: minmax(30px, 1fr) !important;
+    display: flex !important;
+    flex-direction: column !important;
     align-content: stretch !important;
+    justify-content: stretch !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
   }
 
@@ -58,6 +69,8 @@ const baseCss = String.raw`
     box-sizing: border-box !important;
     height: auto !important;
     min-height: 30px !important;
+    width: 100% !important;
+    flex: 1 1 0 !important;
     margin: 0 !important;
     padding: 0 !important;
   }
@@ -73,8 +86,8 @@ const baseCss = String.raw`
     margin: 0 !important;
     padding: 4px 30px 4px 14px !important;
     color: var(--mt-menu-muted) !important;
-    font-size: 15px !important;
-    font-weight: 500 !important;
+    font-size: 16px !important;
+    font-weight: 550 !important;
     line-height: 1.25 !important;
     text-decoration: none !important;
     white-space: normal !important;
@@ -129,11 +142,13 @@ const baseCss = String.raw`
     min-width: 0 !important;
     min-height: 0 !important;
     flex: 1 1 auto !important;
+    align-self: stretch !important;
     margin: 0 !important;
     padding: 18px 22px !important;
     background: #fff !important;
     overflow: auto !important;
     overscroll-behavior: contain !important;
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
   }
 

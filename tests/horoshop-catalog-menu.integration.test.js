@@ -88,6 +88,10 @@ test('catalog menu settings publish a selected visual without exposing catalog d
     .expect(200);
   assert.match(stylesheet.headers['content-type'], /text\/css/u);
   assert.match(stylesheet.text, /data-mt-catalog-theme="grouped-sections"/u);
+  assert.match(stylesheet.text, /align-self: stretch !important/u);
+  assert.match(stylesheet.text, /inset-inline-start: 0 !important/u);
+  assert.match(stylesheet.text, /font-size: 16px !important/u);
+  assert.match(stylesheet.text, /scrollbar-gutter: stable/u);
 
   const disabled = await admin.patch('/api/horoshop-catalog-menu/settings/enabled')
     .send({ enabled: false })
