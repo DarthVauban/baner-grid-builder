@@ -34,7 +34,8 @@ before(async () => {
     INSERT INTO search_horoshop_categories (
       connection_id, generation, external_id, parent_external_id, titles, last_seen_sync_id
     ) VALUES
-      ($1, $2, '1000', NULL, '{"uk":"Каталог"}'::jsonb, $3),
+      ($1, $2, '900', NULL, '{"uk":"Головна"}'::jsonb, $3),
+      ($1, $2, '1000', '900', '{"uk":"Каталог"}'::jsonb, $3),
       ($1, $2, '1217', '1000', '{"uk":"Мобільна техніка"}'::jsonb, $3),
       ($1, $2, '1218', '1217', '{"uk":"Смартфони"}'::jsonb, $3),
       ($1, $2, '1282', '1000', '{"uk":"Комп''ютерна периферія"}'::jsonb, $3),
@@ -82,6 +83,14 @@ test('catalog menu settings publish a selected visual without exposing catalog d
 
   await admin.put('/api/horoshop-catalog-menu/settings/draft')
     .send({ themeId: 'compact-columns', defaultCategoryExternalId: '1600' })
+    .expect(422);
+
+  await admin.put('/api/horoshop-catalog-menu/settings/draft')
+    .send({ themeId: 'compact-columns', defaultCategoryExternalId: '900' })
+    .expect(422);
+
+  await admin.put('/api/horoshop-catalog-menu/settings/draft')
+    .send({ themeId: 'compact-columns', defaultCategoryExternalId: '1000' })
     .expect(422);
 
   const draft = await admin.put('/api/horoshop-catalog-menu/settings/draft')

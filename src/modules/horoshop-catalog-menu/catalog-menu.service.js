@@ -41,10 +41,10 @@ function localizedTitle(value) {
 
 export async function listCatalogMenuDefaultCategories() {
   const result = await query(
-    `SELECT DISTINCT category.external_id,
-                     category.parent_external_id,
-                     category.titles,
-                     (parent.id IS NULL) AS is_structural_root
+    `SELECT category.external_id,
+            category.parent_external_id,
+            category.titles,
+            COUNT(child.id)::INTEGER AS active_child_count
      FROM search_horoshop_connections AS connection
      INNER JOIN search_horoshop_categories AS category
        ON category.connection_id = connection.id
@@ -55,27 +55,36 @@ export async function listCatalogMenuDefaultCategories() {
       AND child.generation = connection.generation
       AND child.active = TRUE
       AND child.parent_external_id = category.external_id
-     LEFT JOIN search_horoshop_categories AS parent
-       ON parent.connection_id = connection.id
-      AND parent.generation = connection.generation
-      AND parent.active = TRUE
-      AND parent.external_id = category.parent_external_id
-     LEFT JOIN search_horoshop_categories AS grandparent
-       ON grandparent.connection_id = connection.id
-      AND grandparent.generation = connection.generation
-      AND grandparent.active = TRUE
-      AND grandparent.external_id = parent.parent_external_id
      WHERE connection.singleton = TRUE
-       AND (parent.id IS NULL OR grandparent.id IS NULL)`
+     GROUP BY category.external_id, category.parent_external_id, category.titles`
   );
   const candidates = result.rows;
-  const structuralRoots = candidates.filter((category) => category.is_structural_root === true);
-  const structuralRootIds = new Set(structuralRoots.map((category) => category.external_id));
-  const nestedMenuRoots = candidates.filter((category) =>
-    structuralRootIds.has(category.parent_external_id));
-  const menuRoots = structuralRoots.length === 1 && nestedMenuRoots.length > 0
-    ? nestedMenuRoots
-    : structuralRoots;
+  const candidatesById = new Map(candidates.map((category) => [category.external_id, category]));
+  const childrenByParentId = new Map();
+  for (const category of candidates) {
+    const children = childrenByParentId.get(category.parent_external_id) || [];
+    children.push(category);
+    childrenByParentId.set(category.parent_external_id, children);
+  }
+  const structuralRoots = candidates.filter((category) =>
+    !category.parent_external_id || !candidatesById.has(category.parent_external_id));
+  let menuRoots = structuralRoots;
+  if (structuralRoots.length === 1) {
+    let menuContainer = structuralRoots[0];
+    const visited = new Set();
+    while (!visited.has(menuContainer.external_id) && Number(menuContainer.active_child_count) === 1) {
+      visited.add(menuContainer.external_id);
+      const branchChildren = childrenByParentId.get(menuContainer.external_id) || [];
+      if (branchChildren.length !== 1) {
+        menuRoots = [];
+        break;
+      }
+      [menuContainer] = branchChildren;
+    }
+    if (menuRoots.length > 0) {
+      menuRoots = childrenByParentId.get(menuContainer.external_id) || [];
+    }
+  }
 
   return menuRoots
     .map((row) => ({ externalId: row.external_id, title: localizedTitle(row.titles) || row.external_id }))
