@@ -5,16 +5,18 @@ const baseCss = String.raw`
     --mt-menu-ink: #20242c;
     --mt-menu-muted: #626975;
     --mt-menu-line: #e6e8ec;
-    --mt-menu-root-width: 252px;
+    --mt-menu-root-width: 276px;
     --mt-menu-columns: 4;
   }
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-submenu.__hasTabs {
     box-sizing: border-box !important;
-    width: min(1180px, calc(100vw - 60px)) !important;
-    height: min(560px, calc(100vh - 110px)) !important;
-    min-height: 420px !important;
-    max-height: calc(100vh - 110px) !important;
+    width: min(1280px, calc(100vw - 80px)) !important;
+    height: min(640px, calc(100vh - 80px)) !important;
+    min-height: 0 !important;
+    max-height: calc(100vh - 80px) !important;
+    margin: 0 !important;
+    padding: 0 !important;
     border: 1px solid var(--mt-menu-line) !important;
     border-radius: 0 0 10px 10px !important;
     background: #fff !important;
@@ -28,6 +30,9 @@ const baseCss = String.raw`
     width: 100% !important;
     height: 100% !important;
     min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    align-items: stretch !important;
   }
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-tabs-list {
@@ -37,9 +42,12 @@ const baseCss = String.raw`
     min-height: 0 !important;
     flex: 0 0 var(--mt-menu-root-width) !important;
     margin: 0 !important;
-    padding: 8px 0 !important;
+    padding: 0 !important;
     border-right: 1px solid var(--mt-menu-line) !important;
     background: #fff !important;
+    display: grid !important;
+    grid-auto-rows: minmax(30px, 1fr) !important;
+    align-content: stretch !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
     scrollbar-width: thin;
@@ -48,8 +56,8 @@ const baseCss = String.raw`
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-tabs-list__tab {
     position: relative !important;
     box-sizing: border-box !important;
-    height: 32px !important;
-    min-height: 32px !important;
+    height: auto !important;
+    min-height: 30px !important;
     margin: 0 !important;
     padding: 0 !important;
   }
@@ -57,17 +65,17 @@ const baseCss = String.raw`
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-tabs-list__link {
     box-sizing: border-box !important;
     width: 100% !important;
-    height: 32px !important;
-    min-height: 32px !important;
+    height: 100% !important;
+    min-height: 30px !important;
     display: flex !important;
     align-items: center !important;
     gap: 9px !important;
     margin: 0 !important;
-    padding: 4px 28px 4px 12px !important;
+    padding: 4px 30px 4px 14px !important;
     color: var(--mt-menu-muted) !important;
-    font-size: 13px !important;
+    font-size: 15px !important;
     font-weight: 500 !important;
-    line-height: 1.15 !important;
+    line-height: 1.25 !important;
     text-decoration: none !important;
     white-space: normal !important;
     transition: color .14s ease, background-color .14s ease !important;
@@ -121,7 +129,8 @@ const baseCss = String.raw`
     min-width: 0 !important;
     min-height: 0 !important;
     flex: 1 1 auto !important;
-    padding: 22px 24px !important;
+    margin: 0 !important;
+    padding: 18px 22px !important;
     background: #fff !important;
     overflow: auto !important;
     overscroll-behavior: contain !important;
@@ -157,9 +166,9 @@ const baseCss = String.raw`
     margin: 0 0 11px !important;
     padding: 0 0 6px !important;
     color: var(--mt-menu-ink) !important;
-    font-size: 13px !important;
+    font-size: 15px !important;
     font-weight: 750 !important;
-    line-height: 1.25 !important;
+    line-height: 1.3 !important;
     text-decoration: none !important;
   }
 
@@ -169,7 +178,7 @@ const baseCss = String.raw`
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-list {
     display: grid !important;
-    gap: 7px !important;
+    gap: 8px !important;
     margin: 0 !important;
     padding: 0 !important;
   }
@@ -183,9 +192,9 @@ const baseCss = String.raw`
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-list-i a {
     color: var(--mt-menu-muted) !important;
-    font-size: 12.5px !important;
+    font-size: 14px !important;
     font-weight: 450 !important;
-    line-height: 1.3 !important;
+    line-height: 1.35 !important;
     text-decoration: none !important;
   }
 
@@ -217,7 +226,7 @@ const themeCss = {
   'flat-directory': String.raw`
 @media (min-width: 1024px) {
   .j-products-menu[data-mt-catalog-theme="flat-directory"] {
-    --mt-menu-root-width: 238px;
+    --mt-menu-root-width: 264px;
     --mt-menu-columns: 3;
   }
   .j-products-menu[data-mt-catalog-theme="flat-directory"] .productsMenu-tabs-content {
@@ -238,7 +247,7 @@ const themeCss = {
   'grouped-sections': String.raw`
 @media (min-width: 1024px) {
   .j-products-menu[data-mt-catalog-theme="grouped-sections"] {
-    --mt-menu-root-width: 252px;
+    --mt-menu-root-width: 276px;
     --mt-menu-columns: 3;
   }
   .j-products-menu[data-mt-catalog-theme="grouped-sections"] .productsMenu-tabs-content {
@@ -291,6 +300,43 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '') {
     (document.head || document.documentElement).appendChild(style);
   }
 
+  function panelForLink(link, content) {
+    const target = link.getAttribute('data-target')?.replace(/^#/, '');
+    if (!target) return null;
+    const panel = document.getElementById(target);
+    return panel && content.contains(panel) ? panel : null;
+  }
+
+  function panelHasContent(panel) {
+    return Boolean(panel?.querySelector('.productsMenu-submenu-i, a[href]'));
+  }
+
+  function ensurePopulatedPanel(list, content) {
+    const visiblePanel = content.querySelector('.productsMenu-submenu-w.__visible');
+    if (panelHasContent(visiblePanel)) return;
+
+    const links = [...list.querySelectorAll('.productsMenu-tabs-list__link[data-target]')];
+    const candidate = links
+      .map((link) => ({ link, panel: panelForLink(link, content) }))
+      .find(({ panel }) => panelHasContent(panel));
+    if (!candidate) return;
+
+    list.querySelectorAll('.productsMenu-tabs-list__tab.__hover')
+      .forEach((tab) => tab.classList.remove('__hover'));
+    content.querySelectorAll('.productsMenu-submenu-w.__visible')
+      .forEach((panel) => panel.classList.remove('__visible'));
+    candidate.link.closest('.productsMenu-tabs-list__tab')?.classList.add('__hover');
+    candidate.panel.classList.add('__visible');
+  }
+
+  function keepInitialPanelPopulated(list, content) {
+    ensurePopulatedPanel(list, content);
+    const toggle = document.querySelector('.j-productsMenu-toggleButton');
+    toggle?.addEventListener('click', () => {
+      window.setTimeout(() => ensurePopulatedPanel(list, content), 0);
+    });
+  }
+
   function apply() {
     if (!globalThis.document || typeof document.querySelector !== 'function') return false;
     const root = document.querySelector('.j-products-menu');
@@ -303,6 +349,7 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '') {
     installStyle();
     root.setAttribute('data-mt-catalog-menu', 'v1');
     root.setAttribute('data-mt-catalog-theme', themeId);
+    keepInitialPanelPopulated(list, content);
     return true;
   }
 

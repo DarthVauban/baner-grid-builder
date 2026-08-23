@@ -138,6 +138,45 @@ test('embed adapter preserves Horoshop links, labels, icons and markup', () => {
   dom.window.close();
 });
 
+test('embed adapter opens the first populated panel when Horoshop starts with an empty category', () => {
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    <button class="j-productsMenu-toggleButton">Каталог</button>
+    <div class="products-menu j-products-menu">
+      <div class="productsMenu-submenu __hasTabs">
+        <div class="productsMenu-tabs">
+          <ul class="productsMenu-tabs-list">
+            <li class="productsMenu-tabs-list__tab __hover"><a class="productsMenu-tabs-list__link" data-target="menu-tab-empty" href="/sale/">Розпродаж</a></li>
+            <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-filled" href="/phones/">Телефони</a></li>
+          </ul>
+          <div class="productsMenu-tabs-content">
+            <ul class="productsMenu-submenu-w __visible" id="menu-tab-empty"></ul>
+            <ul class="productsMenu-submenu-w" id="menu-tab-filled"><li class="productsMenu-submenu-i"><a href="/apple/">Apple</a></li></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
+  const root = dom.window.document.querySelector('.j-products-menu');
+  const originalLinks = [...root.querySelectorAll('a')].map((link) => ({
+    href: link.getAttribute('href'),
+    text: link.textContent.trim()
+  }));
+  const originalElementCount = root.querySelectorAll('*').length;
+
+  dom.window.eval(catalogMenuEmbedScript('compact-columns'));
+
+  assert.equal(root.querySelector('#menu-tab-empty').classList.contains('__visible'), false);
+  assert.equal(root.querySelector('#menu-tab-filled').classList.contains('__visible'), true);
+  assert.equal(root.querySelector('[data-target="menu-tab-empty"]').closest('li').classList.contains('__hover'), false);
+  assert.equal(root.querySelector('[data-target="menu-tab-filled"]').closest('li').classList.contains('__hover'), true);
+  assert.equal(root.querySelectorAll('*').length, originalElementCount);
+  assert.deepEqual([...root.querySelectorAll('a')].map((link) => ({
+    href: link.getAttribute('href'),
+    text: link.textContent.trim()
+  })), originalLinks);
+  dom.window.close();
+});
+
 test('embed adapter fails open when the Horoshop menu contract is absent', () => {
   const dom = new JSDOM('<!doctype html><html><head></head><body><nav>Каталог</nav></body></html>', {
     runScripts: 'outside-only',
