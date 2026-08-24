@@ -185,10 +185,6 @@ const baseCss = String.raw`
     list-style: none !important;
   }
 
-  .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-submenu-i:first-child {
-    padding-left: 0 !important;
-  }
-
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-submenu-a {
     display: inline-flex !important;
     margin: 0 0 11px !important;
@@ -243,8 +239,9 @@ const themeCss = {
   .j-products-menu[data-mt-catalog-theme="compact-columns"] .productsMenu-submenu-i {
     border-left: 1px solid #eceef1 !important;
   }
-  .j-products-menu[data-mt-catalog-theme="compact-columns"] .productsMenu-submenu-i:first-child {
+  .j-products-menu[data-mt-catalog-theme="compact-columns"] .productsMenu-submenu-i:nth-child(4n + 1) {
     border-left: 0 !important;
+    padding-left: 0 !important;
   }
   .j-products-menu[data-mt-catalog-theme="compact-columns"] .productsMenu-submenu-a {
     border-bottom: 2px solid var(--mt-menu-accent) !important;

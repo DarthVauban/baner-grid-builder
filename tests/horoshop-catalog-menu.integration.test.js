@@ -16,7 +16,7 @@ const { default: app } = await import('../src/app.js');
 const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
-const { catalogMenuEmbedScript } = await import('../src/modules/horoshop-catalog-menu/catalog-menu.embed.js');
+const { catalogMenuCss, catalogMenuEmbedScript } = await import('../src/modules/horoshop-catalog-menu/catalog-menu.embed.js');
 
 const admin = request.agent(app);
 
@@ -51,6 +51,21 @@ before(async () => {
 
 after(async () => {
   await pool.end();
+});
+
+test('catalog menu themes keep every submenu block aligned with its grid column', () => {
+  for (const themeId of ['compact-columns', 'flat-directory', 'grouped-sections']) {
+    assert.doesNotMatch(
+      catalogMenuCss(themeId),
+      /\.productsMenu-submenu-i:first-child\s*\{[^}]*padding-left:/su
+    );
+  }
+
+  const compactCss = catalogMenuCss('compact-columns');
+  assert.match(
+    compactCss,
+    /\.productsMenu-submenu-i:nth-child\(4n \+ 1\)\s*\{[^}]*border-left: 0 !important;[^}]*padding-left: 0 !important;/su
+  );
 });
 
 test('catalog menu settings publish a selected visual without exposing catalog data', async () => {

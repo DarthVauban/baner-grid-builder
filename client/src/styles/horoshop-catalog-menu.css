@@ -155,7 +155,7 @@
 .catalog-menu-preview__roots > div.is-active::before { position: absolute; inset: 4px auto 4px 0; width: 2px; border-radius: 0 2px 2px 0; background: #ffe101; content: ''; }
 .catalog-menu-preview__content { display: grid; grid-template-columns: repeat(var(--demo-columns), minmax(0, 1fr)); align-content: start; gap: 20px 0; padding: 20px 22px; background: #fff; }
 .catalog-menu-preview__content section { min-width: 0; padding: 0 16px; }
-.catalog-menu-preview__content section:first-child { padding-left: 0; }
+.catalog-menu-preview__content section:nth-child(4n + 1) { padding-left: 0; }
 .catalog-menu-preview__content h3 { width: fit-content; margin: 0 0 9px; padding-bottom: 5px; border-bottom: 2px solid #ffe101; font-size: 10px; line-height: 1.2; }
 .catalog-menu-preview__content section > div { display: grid; gap: 6px; }
 .catalog-menu-preview__content section span { color: #626771; font-size: 8px; }
