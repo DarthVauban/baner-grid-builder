@@ -145,7 +145,7 @@ test('catalog menu settings publish a selected visual without exposing catalog d
   assert.match(stylesheet.headers['content-type'], /text\/css/u);
   assert.match(stylesheet.text, /data-mt-catalog-theme="grouped-sections"/u);
   assert.match(stylesheet.text, /align-self: stretch !important/u);
-  assert.match(stylesheet.text, /inset-inline-start: 0 !important/u);
+  assert.match(stylesheet.text, /inset-inline-start: var\(--mt-menu-viewport-left\) !important/u);
   assert.match(stylesheet.text, /font-size: 16px !important/u);
   assert.match(stylesheet.text, /scrollbar-gutter: stable/u);
   assert.match(stylesheet.text, /width: var\(--mt-menu-viewport-width\) !important/u);
@@ -300,10 +300,14 @@ test('embed adapter sizes the menu to the viewport and locks page scroll only wh
   </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
   const root = dom.window.document.querySelector('.j-products-menu');
   const menu = root.querySelector('.productsMenu-submenu.__hasTabs');
+  root.getBoundingClientRect = () => ({ left: 220, bottom: 100 });
+  menu.getBoundingClientRect = () => ({ left: 220, top: 100 });
 
   dom.window.eval(catalogMenuEmbedScript('compact-columns'));
 
-  assert.match(root.style.getPropertyValue('--mt-menu-viewport-width'), /px$/u);
+  const horizontalGap = Math.max(24, Math.min(48, Math.round(dom.window.innerWidth * 0.025)));
+  assert.equal(root.style.getPropertyValue('--mt-menu-viewport-left'), `${horizontalGap - 220}px`);
+  assert.equal(root.style.getPropertyValue('--mt-menu-viewport-width'), `${dom.window.innerWidth - horizontalGap * 2}px`);
   assert.match(root.style.getPropertyValue('--mt-menu-viewport-height'), /px$/u);
   assert.equal(dom.window.document.documentElement.classList.contains('mt-catalog-menu-open'), false);
   assert.equal(dom.window.document.body.classList.contains('mt-catalog-menu-open'), false);

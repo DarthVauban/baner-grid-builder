@@ -7,6 +7,7 @@ const baseCss = String.raw`
     --mt-menu-line: #e6e8ec;
     --mt-menu-root-width: 276px;
     --mt-menu-columns: 4;
+    --mt-menu-viewport-left: 0px;
     --mt-menu-viewport-width: calc(100vw - 80px);
     --mt-menu-viewport-height: calc(100vh - 120px);
   }
@@ -25,9 +26,9 @@ const baseCss = String.raw`
     height: var(--mt-menu-viewport-height) !important;
     min-height: 0 !important;
     max-height: calc(100vh - 16px) !important;
-    left: 0 !important;
+    left: var(--mt-menu-viewport-left) !important;
     right: auto !important;
-    inset-inline-start: 0 !important;
+    inset-inline-start: var(--mt-menu-viewport-left) !important;
     transform: none !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -406,12 +407,13 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCateg
     const rootRect = root.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     const menuTop = Math.max(0, menuRect.top || rootRect.bottom);
-    const menuLeft = Math.max(0, menuRect.left || rootRect.left);
     const bottomGap = Math.max(16, Math.min(32, Math.round(window.innerHeight * 0.025)));
-    const rightGap = Math.max(24, Math.min(48, Math.round(window.innerWidth * 0.025)));
+    const horizontalGap = Math.max(24, Math.min(48, Math.round(window.innerWidth * 0.025)));
     const availableHeight = Math.max(320, Math.floor(window.innerHeight - menuTop - bottomGap));
-    const availableWidth = Math.max(720, Math.floor(window.innerWidth - menuLeft - rightGap));
+    const availableWidth = Math.max(720, Math.floor(window.innerWidth - horizontalGap * 2));
+    const menuLeft = Math.floor(horizontalGap - rootRect.left);
     root.style.setProperty('--mt-menu-viewport-height', availableHeight + 'px');
+    root.style.setProperty('--mt-menu-viewport-left', menuLeft + 'px');
     root.style.setProperty('--mt-menu-viewport-width', availableWidth + 'px');
   }
 
