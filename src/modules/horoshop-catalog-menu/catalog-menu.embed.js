@@ -7,14 +7,24 @@ const baseCss = String.raw`
     --mt-menu-line: #e6e8ec;
     --mt-menu-root-width: 276px;
     --mt-menu-columns: 4;
+    --mt-menu-viewport-width: calc(100vw - 80px);
+    --mt-menu-viewport-height: calc(100vh - 120px);
+  }
+
+  html.mt-catalog-menu-open,
+  body.mt-catalog-menu-open {
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    scrollbar-gutter: stable;
   }
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-submenu.__hasTabs {
     box-sizing: border-box !important;
-    width: min(1280px, calc(100vw - 80px)) !important;
-    height: min(640px, calc(100vh - 80px)) !important;
+    width: var(--mt-menu-viewport-width) !important;
+    max-width: calc(100vw - 24px) !important;
+    height: var(--mt-menu-viewport-height) !important;
     min-height: 0 !important;
-    max-height: calc(100vh - 80px) !important;
+    max-height: calc(100vh - 16px) !important;
     left: 0 !important;
     right: auto !important;
     inset-inline-start: 0 !important;
@@ -60,6 +70,7 @@ const baseCss = String.raw`
     justify-content: stretch !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
+    overscroll-behavior: contain !important;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
   }
@@ -68,9 +79,9 @@ const baseCss = String.raw`
     position: relative !important;
     box-sizing: border-box !important;
     height: auto !important;
-    min-height: 30px !important;
+    min-height: 40px !important;
     width: 100% !important;
-    flex: 1 1 0 !important;
+    flex: 0 0 auto !important;
     margin: 0 !important;
     padding: 0 !important;
   }
@@ -78,13 +89,13 @@ const baseCss = String.raw`
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-tabs-list__link {
     box-sizing: border-box !important;
     width: 100% !important;
-    height: 100% !important;
-    min-height: 30px !important;
+    height: auto !important;
+    min-height: 40px !important;
     display: flex !important;
     align-items: center !important;
     gap: 9px !important;
     margin: 0 !important;
-    padding: 4px 30px 4px 14px !important;
+    padding: 7px 30px 7px 14px !important;
     color: var(--mt-menu-muted) !important;
     font-size: 16px !important;
     font-weight: 550 !important;
@@ -144,7 +155,7 @@ const baseCss = String.raw`
     margin: 0 !important;
     padding: 0 !important;
     transform: none !important;
-    overflow: visible !important;
+    overflow: hidden !important;
   }
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-tabs-content {
@@ -310,6 +321,7 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCateg
   const defaultCategoryExternalId = ${JSON.stringify(defaultCategoryExternalId)};
   const defaultTarget = defaultCategoryExternalId ? 'menu-tab-' + defaultCategoryExternalId : '';
   const styleId = 'mt-horoshop-catalog-menu-v1';
+  const scrollLockClass = 'mt-catalog-menu-open';
 
   function installStyle() {
     if (document.getElementById(styleId)) return;
@@ -389,6 +401,42 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCateg
     });
   }
 
+  function syncMenuViewport(root, menu) {
+    if (window.innerWidth < 1024) return;
+    const rootRect = root.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const menuTop = Math.max(0, menuRect.top || rootRect.bottom);
+    const menuLeft = Math.max(0, menuRect.left || rootRect.left);
+    const bottomGap = Math.max(16, Math.min(32, Math.round(window.innerHeight * 0.025)));
+    const rightGap = Math.max(24, Math.min(48, Math.round(window.innerWidth * 0.025)));
+    const availableHeight = Math.max(320, Math.floor(window.innerHeight - menuTop - bottomGap));
+    const availableWidth = Math.max(720, Math.floor(window.innerWidth - menuLeft - rightGap));
+    root.style.setProperty('--mt-menu-viewport-height', availableHeight + 'px');
+    root.style.setProperty('--mt-menu-viewport-width', availableWidth + 'px');
+  }
+
+  function setupViewportBehavior(root, menu) {
+    let frame = 0;
+    const sync = () => {
+      frame = 0;
+      const desktop = window.innerWidth >= 1024;
+      const open = desktop && menu.classList.contains('__visible') && !menu.hasAttribute('hidden');
+      syncMenuViewport(root, menu);
+      document.documentElement.classList.toggle(scrollLockClass, open);
+      document.body?.classList.toggle(scrollLockClass, open);
+    };
+    const scheduleSync = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame ? window.requestAnimationFrame(sync) : window.setTimeout(sync, 0);
+    };
+    const stateObserver = new MutationObserver(scheduleSync);
+    stateObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
+    stateObserver.observe(menu, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
+    window.addEventListener('resize', scheduleSync, { passive: true });
+    window.visualViewport?.addEventListener('resize', scheduleSync, { passive: true });
+    sync();
+  }
+
   function apply() {
     if (!globalThis.document || typeof document.querySelector !== 'function') return false;
     const root = document.querySelector('.j-products-menu');
@@ -402,6 +450,7 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCateg
     root.setAttribute('data-mt-catalog-menu', 'v1');
     root.setAttribute('data-mt-catalog-theme', themeId);
     keepInitialPanelPopulated(list, content, tabs);
+    setupViewportBehavior(root, menu);
     return true;
   }
 

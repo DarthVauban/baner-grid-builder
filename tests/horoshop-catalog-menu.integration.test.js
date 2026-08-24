@@ -148,6 +148,11 @@ test('catalog menu settings publish a selected visual without exposing catalog d
   assert.match(stylesheet.text, /inset-inline-start: 0 !important/u);
   assert.match(stylesheet.text, /font-size: 16px !important/u);
   assert.match(stylesheet.text, /scrollbar-gutter: stable/u);
+  assert.match(stylesheet.text, /width: var\(--mt-menu-viewport-width\) !important/u);
+  assert.match(stylesheet.text, /height: var\(--mt-menu-viewport-height\) !important/u);
+  assert.match(stylesheet.text, /\.productsMenu-tabs-list__tab \{[^}]*flex: 0 0 auto !important/us);
+  assert.match(stylesheet.text, /html\.mt-catalog-menu-open,[^}]*overflow: hidden !important/us);
+  assert.doesNotMatch(stylesheet.text, /width: min\(1280px/u);
   assert.match(stylesheet.text, /\.productsMenu-tabs-switch \{[^}]*flex: 0 0 var\(--mt-menu-root-width\) !important[^}]*transform: none !important/us);
   assert.doesNotMatch(stylesheet.text, /\.productsMenu-tabs-switch \{[^}]*transform: scale\(/us);
 
@@ -271,6 +276,47 @@ test('embed adapter opens the configured Horoshop category on the first catalog 
   assert.equal(root.querySelector('#menu-tab-1217').classList.contains('__visible'), true);
   assert.equal(root.querySelector('[data-target="menu-tab-1474"]').closest('li').classList.contains('__hover'), false);
   assert.equal(root.querySelector('[data-target="menu-tab-1217"]').closest('li').classList.contains('__hover'), true);
+  dom.window.close();
+});
+
+test('embed adapter sizes the menu to the viewport and locks page scroll only while it is open', async () => {
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    <div class="products-menu j-products-menu">
+      <div class="productsMenu-submenu __hasTabs">
+        <div class="productsMenu-tabs">
+          <div class="productsMenu-tabs-switch">
+            <ul class="productsMenu-tabs-list">
+              <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-1" href="/phones/">Телефони</a></li>
+              <li class="productsMenu-tabs-list__tab"><a class="productsMenu-tabs-list__link" data-target="menu-tab-2" href="/laptops/">Ноутбуки</a></li>
+            </ul>
+          </div>
+          <div class="productsMenu-tabs-content">
+            <ul class="productsMenu-submenu-w __visible" id="menu-tab-1"><li class="productsMenu-submenu-i"><a href="/smartphones/">Смартфони</a></li></ul>
+            <ul class="productsMenu-submenu-w" id="menu-tab-2"><li class="productsMenu-submenu-i"><a href="/ultrabooks/">Ультрабуки</a></li></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
+  const root = dom.window.document.querySelector('.j-products-menu');
+  const menu = root.querySelector('.productsMenu-submenu.__hasTabs');
+
+  dom.window.eval(catalogMenuEmbedScript('compact-columns'));
+
+  assert.match(root.style.getPropertyValue('--mt-menu-viewport-width'), /px$/u);
+  assert.match(root.style.getPropertyValue('--mt-menu-viewport-height'), /px$/u);
+  assert.equal(dom.window.document.documentElement.classList.contains('mt-catalog-menu-open'), false);
+  assert.equal(dom.window.document.body.classList.contains('mt-catalog-menu-open'), false);
+
+  menu.classList.add('__visible');
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 10));
+  assert.equal(dom.window.document.documentElement.classList.contains('mt-catalog-menu-open'), true);
+  assert.equal(dom.window.document.body.classList.contains('mt-catalog-menu-open'), true);
+
+  menu.classList.remove('__visible');
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 10));
+  assert.equal(dom.window.document.documentElement.classList.contains('mt-catalog-menu-open'), false);
+  assert.equal(dom.window.document.body.classList.contains('mt-catalog-menu-open'), false);
   dom.window.close();
 });
 
