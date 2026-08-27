@@ -1,5 +1,9 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -12,20 +16,31 @@ process.env.APP_ORIGIN = 'https://dev.mt-panel.sbs';
 process.env.ADMIN_NAME = 'Backup Admin';
 process.env.ADMIN_EMAIL = 'backup-admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
+const backupTransferDir = await mkdtemp(path.join(os.tmpdir(), 'mt-backup-transfer-test-'));
+process.env.TELEGRAM_LOCAL_MODE = 'true';
+process.env.TELEGRAM_API_BASE_URL = 'http://telegram-bot-api:8081';
+process.env.TELEGRAM_BACKUP_TEMP_DIR = backupTransferDir;
+process.env.TELEGRAM_LOCAL_FILE_URI_DIR = backupTransferDir;
 
 const telegramCalls = [];
 let sendDocumentFailure = '';
+let sentBackupArchive = Buffer.alloc(0);
+let sentBackupPath = '';
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options) => {
   const method = String(url).split('/').pop();
-  telegramCalls.push({ method, options });
+  const body = options.body instanceof FormData ? null : JSON.parse(options.body || '{}');
+  telegramCalls.push({ url: String(url), method, options, body });
+  if (method === 'sendDocument') {
+    sentBackupPath = fileURLToPath(body.document);
+    sentBackupArchive = await readFile(sentBackupPath);
+  }
   if (method === 'sendDocument' && sendDocumentFailure) {
     return new Response(JSON.stringify({ ok: false, description: sendDocumentFailure }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' }
     });
   }
-  const body = options.body instanceof FormData ? null : JSON.parse(options.body || '{}');
   const result = method === 'getMe'
     ? { id: 100, is_bot: true, first_name: 'Backup', username: 'mt_backup_bot' }
     : method === 'getChat'
@@ -53,6 +68,7 @@ before(async () => {
 
 after(async () => {
   globalThis.fetch = originalFetch;
+  await rm(backupTransferDir, { recursive: true, force: true });
   await pool.end();
 });
 
@@ -92,19 +108,18 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
   assert.equal(backup.body.data.status, 'success');
   assert.match(backup.body.data.fileName, /^mt-workspace-backup_dev_.*\.tar\.gz$/);
   assert.equal(telegramCalls.at(-1).method, 'sendDocument');
-  assert.ok(telegramCalls.at(-1).options.body instanceof FormData);
-  const telegramForm = telegramCalls.at(-1).options.body;
-  assert.match(telegramForm.get('caption'), /^🟦 DEV · Резервна копія MT Workspace/);
-  assert.match(telegramForm.get('caption'), /Середовище: DEV · dev\.mt-panel\.sbs/);
-  const backupDocument = telegramForm.get('document');
-  assert.equal(backupDocument.name, backup.body.data.fileName);
-  const invalidArchive = Buffer.from(await backupDocument.arrayBuffer());
+  assert.match(telegramCalls.at(-1).url, /^http:\/\/telegram-bot-api:8081\/bot/);
+  assert.match(telegramCalls.at(-1).body.caption, /^🟦 DEV · Резервна копія MT Workspace/);
+  assert.match(telegramCalls.at(-1).body.caption, /Середовище: DEV · dev\.mt-panel\.sbs/);
+  assert.equal(path.basename(sentBackupPath), backup.body.data.fileName);
+  await assert.rejects(access(sentBackupPath), { code: 'ENOENT' });
+  const invalidArchive = Buffer.from(sentBackupArchive);
   invalidArchive[0] = 0;
 
   const state = await agent.get('/api/admin/backups').expect(200);
   assert.equal(state.body.data.runs[0].status, 'success');
   assert.equal(state.body.data.runs[0].telegramMessageId, 7788);
-  assert.equal(state.body.data.telegramDocumentLimitBytes, 50 * 1024 * 1024);
+  assert.equal(state.body.data.telegramDocumentLimitBytes, 2_000 * 1024 * 1024);
 
   const rejectedRestore = await agent.post('/api/admin/backups/restore')
     .set('Content-Type', 'application/gzip')
@@ -145,6 +160,7 @@ test('manual backup returns a readable configuration error instead of Bad Gatewa
     const state = await agent.get('/api/admin/backups').expect(200);
     assert.equal(state.body.data.runs[0].status, 'failed');
     assert.match(state.body.data.runs[0].errorMessage, /Chat ID.*боту/);
+    await assert.rejects(access(sentBackupPath), { code: 'ENOENT' });
   } finally {
     sendDocumentFailure = '';
   }

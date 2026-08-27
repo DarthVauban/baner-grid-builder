@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'node:path';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -27,6 +28,19 @@ const schema = z.object({
   ADMIN_NAME: z.string().optional(),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(10).optional(),
+  TELEGRAM_LOCAL_MODE: z.enum(['true', 'false']).default('false'),
+  TELEGRAM_API_BASE_URL: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().url().optional()
+  ),
+  TELEGRAM_BACKUP_TEMP_DIR: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().min(1).optional()
+  ),
+  TELEGRAM_LOCAL_FILE_URI_DIR: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().min(1).optional()
+  ),
   SEARCH_FEATURE_ENABLED: z.enum(['true', 'false']).default('false'),
   OPENSEARCH_URL: z.string().url().default('http://localhost:9200'),
   OPENSEARCH_INDEX_PREFIX: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/).default('mt-search'),
@@ -88,6 +102,20 @@ if (!result.success) {
 
 const appEnvironment = result.data.APP_ENVIRONMENT
   || (result.data.NODE_ENV === 'production' ? 'production' : 'development');
+const telegramLocalMode = result.data.TELEGRAM_LOCAL_MODE === 'true';
+const telegramApiBaseUrl = (
+  result.data.TELEGRAM_API_BASE_URL
+  || (telegramLocalMode ? 'http://telegram-bot-api:8081' : 'https://api.telegram.org')
+).replace(/\/$/, '');
+if (telegramLocalMode && new URL(telegramApiBaseUrl).hostname === 'api.telegram.org') {
+  throw new Error('Invalid environment configuration:\nTELEGRAM_LOCAL_MODE requires a local TELEGRAM_API_BASE_URL.');
+}
+const telegramBackupTempDir = path.resolve(
+  result.data.TELEGRAM_BACKUP_TEMP_DIR || 'storage/telegram-backup-transfer'
+);
+const telegramLocalFileUriDir = path.resolve(
+  result.data.TELEGRAM_LOCAL_FILE_URI_DIR || telegramBackupTempDir
+);
 const mobileEnvironment = result.data.MOBILE_ENVIRONMENT
   || (result.data.NODE_ENV === 'test' ? 'test' : appEnvironment);
 if (result.data.MOBILE_ENVIRONMENT
@@ -126,6 +154,10 @@ export const env = {
   isProduction: result.data.NODE_ENV === 'production',
   databaseSsl: result.data.DATABASE_SSL === 'true',
   searchFeatureEnabled: result.data.SEARCH_FEATURE_ENABLED === 'true',
+  telegramLocalMode,
+  telegramApiBaseUrl,
+  telegramBackupTempDir,
+  telegramLocalFileUriDir,
   mobileTokenPepper: result.data.MOBILE_TOKEN_PEPPER || result.data.JWT_SECRET,
   mobilePushEnabled: result.data.MOBILE_PUSH_ENABLED === 'true',
   mobileDeploymentId: result.data.MOBILE_DEPLOYMENT_ID || `mt-workspace-${mobileEnvironment}`,

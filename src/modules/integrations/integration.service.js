@@ -114,7 +114,7 @@ export async function telegramApiRequest(token, method, body, { fetchImpl = fetc
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetchImpl(`https://api.telegram.org/bot${token}/${method}`, {
+    const response = await fetchImpl(`${env.telegramApiBaseUrl}/bot${token}/${method}`, {
       method: 'POST',
       headers: body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
       body: body instanceof FormData ? body : JSON.stringify(body || {}),
