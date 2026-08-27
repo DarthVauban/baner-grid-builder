@@ -23,7 +23,7 @@ function graphField(id, key, showInSummary = true) {
 test('legacy Trade-in steps are converted to the current graph version', () => {
   const config = normalizeTradeInConfig(defaultTradeInConfig);
 
-  assert.equal(config.version, 4);
+  assert.equal(config.version, 5);
   assert.equal(config.form.graph.nodes.filter((node) => node.type === 'start').length, 1);
   assert.ok(config.form.graph.nodes.some((node) => node.type === 'condition'));
   assert.ok(config.form.graph.nodes.some((node) => node.type === 'finish'));

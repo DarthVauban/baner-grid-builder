@@ -645,6 +645,8 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
         </section>
       )}
 
+      <div className="ti-container"><TradeInWizard config={config} preview={preview} autoRevealSuccess={!compact} onSubmit={onSubmit} /></div>
+
       {config.benefits.visible && (
         <section className="ti-section ti-section--soft">
           <div className="ti-container">
@@ -660,8 +662,6 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
           </div>
         </section>
       )}
-
-      <div className="ti-container"><TradeInWizard config={config} preview={preview} autoRevealSuccess={!compact} onSubmit={onSubmit} /></div>
 
       {config.faq.visible && config.faq.items.length > 0 && (
         <section className="ti-section ti-faq">

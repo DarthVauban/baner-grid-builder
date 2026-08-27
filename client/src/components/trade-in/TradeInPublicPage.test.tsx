@@ -136,4 +136,30 @@ describe('TradeInPublicPage preview', () => {
     expect(summary).not.toBeNull();
     expect(within(summary as HTMLElement).getByText('Тестова відповідь')).toBeInTheDocument();
   });
+
+  it('places the form directly after the process and before the benefits', () => {
+    const config = structuredClone(previewConfig) as TradeInConfig;
+    config.process = {
+      visible: true,
+      eyebrow: 'Усе просто',
+      title: 'Як проходить оцінка',
+      description: '',
+      items: []
+    };
+    config.benefits = {
+      visible: true,
+      eyebrow: 'Чому Mobile Trend',
+      title: 'Чому з нами зрозуміло',
+      items: []
+    };
+
+    render(<TradeInPublicPage config={config} preview compact />);
+
+    const processHeading = screen.getByRole('heading', { name: 'Як проходить оцінка' });
+    const formHeading = screen.getByRole('heading', { name: 'Тестова анкета' });
+    const benefitsHeading = screen.getByRole('heading', { name: 'Чому з нами зрозуміло' });
+
+    expect(processHeading.compareDocumentPosition(formHeading) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(formHeading.compareDocumentPosition(benefitsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
 });

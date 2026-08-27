@@ -78,6 +78,7 @@ test('normalizes Trade-in configuration and evaluates conditional scenarios', ()
     theme: { ...defaultTradeInConfig.theme, maxWidth: 99999 },
     form: defaultTradeInConfig.form
   });
+  assert.equal(config.version, 5);
   assert.equal(config.theme.maxWidth, 1800);
   assert.ok(config.form.steps.length >= 5);
   assert.equal(matchesTradeInCondition({ fieldKey: 'category', operator: 'one_of', value: 'smartphone,apple' }, { category: 'apple' }), true);
@@ -100,4 +101,41 @@ test('upgrades the legacy Trade-in palette to Mobile Trend brand colors', () => 
   assert.equal(config.theme.primaryColor, '#ffe101');
   assert.equal(config.theme.primaryTextColor, '#000000');
   assert.equal(config.theme.successColor, '#000000');
+});
+
+test('upgrades saved Trade-in page copy without changing form content or page settings', () => {
+  const config = normalizeTradeInConfig({
+    ...defaultTradeInConfig,
+    version: 4,
+    header: {
+      ...defaultTradeInConfig.header,
+      sticky: false,
+      ctaLabel: 'Старий заклик'
+    },
+    hero: {
+      ...defaultTradeInConfig.hero,
+      visible: false,
+      title: 'Старий заголовок'
+    },
+    footer: {
+      ...defaultTradeInConfig.footer,
+      phone: '+380991112233',
+      description: 'Старий опис'
+    },
+    form: {
+      ...defaultTradeInConfig.form,
+      title: 'Моя покрокова форма',
+      successText: 'Моє повідомлення після надсилання'
+    }
+  });
+
+  assert.equal(config.version, 5);
+  assert.equal(config.header.ctaLabel, 'Почати оцінку');
+  assert.equal(config.header.sticky, false);
+  assert.equal(config.hero.title, 'Ваша техніка ще має цінність');
+  assert.equal(config.hero.visible, false);
+  assert.equal(config.footer.description, defaultTradeInConfig.footer.description);
+  assert.equal(config.footer.phone, '+380991112233');
+  assert.equal(config.form.title, 'Моя покрокова форма');
+  assert.equal(config.form.successText, 'Моє повідомлення після надсилання');
 });

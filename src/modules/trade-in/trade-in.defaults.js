@@ -2,7 +2,7 @@ const option = (label, value) => ({ id: `option_${value}`, label, value });
 const condition = (fieldKey = '', value = '') => ({ fieldKey, operator: 'equals', value });
 
 export const defaultTradeInConfig = {
-  version: 1,
+  version: 5,
   formReference: {
     formId: '',
     formName: ''
@@ -27,74 +27,76 @@ export const defaultTradeInConfig = {
     sticky: true,
     brandName: 'Mobile Trend',
     sectionLabel: 'Trade-in',
-    ctaLabel: 'Оцінити пристрій'
+    ctaLabel: 'Почати оцінку'
   },
   hero: {
     visible: true,
     eyebrow: 'Trade-in у Mobile Trend',
-    title: 'Обміняйте стару техніку на нові можливості',
-    description: 'Заповніть коротку покрокову анкету. Менеджер отримає характеристики пристрою, підготує попередню оцінку та звʼяжеться з вами.',
-    primaryActionLabel: 'Оцінити пристрій',
-    secondaryText: 'Фінальна вартість визначається після огляду пристрою',
+    title: 'Ваша техніка ще має цінність',
+    description: 'Розкажіть нам про пристрій. Ми переглянемо дані, підготуємо попередню оцінку й пояснимо наступний крок — просто, чесно та без складних термінів.',
+    primaryActionLabel: 'Почати оцінку',
+    secondaryText: 'Онлайн — попередньо. Остаточна вартість — після огляду пристрою.',
     badge: 'Попередня оцінка онлайн'
   },
   stats: {
     visible: true,
     items: [
-      { id: 'stat_years', value: '15+', label: 'років на українському ринку' },
-      { id: 'stat_shops', value: '114+', label: 'магазинів мережі' },
+      { id: 'stat_years', value: '15+', label: 'років допомагаємо розібратися з технікою' },
+      { id: 'stat_shops', value: '114+', label: 'магазинів Mobile Trend' },
       { id: 'stat_regions', value: '21', label: 'область України' }
     ]
   },
   process: {
     visible: true,
-    eyebrow: 'Як це працює',
-    title: 'Від анкети до вигідної пропозиції',
-    description: 'Проста послідовність без автоматичного заниження вартості.',
+    eyebrow: 'Усе просто',
+    title: 'Від анкети до оцінки — три зрозумілі кроки',
+    description: 'Ви розповідаєте про техніку. Ми розбираємося в деталях і пояснюємо, що далі.',
     items: [
-      { id: 'process_form', title: 'Опишіть пристрій', text: 'Оберіть категорію та вкажіть модель, комплектацію і стан техніки.' },
-      { id: 'process_manager', title: 'Отримайте консультацію', text: 'Менеджер перегляне заявку та звʼяжеться з вами для уточнення деталей.' },
-      { id: 'process_check', title: 'Пройдіть діагностику', text: 'Остаточна вартість визначається після фізичного огляду пристрою.' }
+      { id: 'process_form', title: 'Розкажіть про пристрій', text: 'Оберіть категорію, вкажіть модель, комплектацію та опишіть стан так, як бачите його Ви. Анкета покаже лише потрібні запитання.' },
+      { id: 'process_manager', title: 'Ми переглянемо заявку', text: 'Менеджер перевірить відповіді та звʼяжеться з Вами, якщо потрібно щось уточнити.' },
+      { id: 'process_check', title: 'Узгодимо остаточну вартість', text: 'Після огляду пристрою назвемо фінальну суму й пояснимо, від чого вона залежить.' }
     ]
   },
   benefits: {
     visible: true,
     eyebrow: 'Чому Mobile Trend',
-    title: 'Зрозумілий Trade-in без зайвих кроків',
+    title: 'Trade-in, у якому все зрозуміло',
     items: [
-      { id: 'benefit_fast', title: 'Швидкий старт', text: 'Анкета адаптується до категорії та показує лише потрібні питання.' },
-      { id: 'benefit_clear', title: 'Чесна комунікація', text: 'Онлайн-анкета є попередньою оцінкою, а не остаточною ціною.' },
-      { id: 'benefit_contact', title: 'Живий менеджер', text: 'Після відправлення заявки з вами звʼяжеться спеціаліст Mobile Trend.' }
+      { id: 'benefit_fast', title: 'Лише потрібні запитання', text: 'Анкета підлаштовується під Ваш пристрій і не змушує відповідати на те, що його не стосується.' },
+      { id: 'benefit_contact', title: 'Розбираємося разом', text: 'Заявку переглядає менеджер. Якщо є нюанси — уточнить деталі та все пояснить.' },
+      { id: 'benefit_clear', title: 'Чесно про оцінку', text: 'Одразу кажемо: онлайн-оцінка попередня. Остаточна сума залежить від фактичного стану пристрою.' }
     ]
   },
   faq: {
     visible: true,
-    eyebrow: 'Поширені питання',
-    title: 'Що варто знати до оцінки',
+    eyebrow: 'Відповідаємо просто',
+    title: 'Що варто знати про Trade-in',
     items: [
-      { id: 'faq_price', question: 'Чи є онлайн-оцінка остаточною?', answer: 'Ні. Остаточна сума залежить від результатів діагностики та фактичного стану пристрою.' },
-      { id: 'faq_data', question: 'Що буде з моїми даними?', answer: 'Контактні дані використовуються для опрацювання Trade-in заявки та зворотного звʼязку.' },
-      { id: 'faq_accessories', question: 'Чи впливає комплектація на оцінку?', answer: 'Так, наявність зарядного пристрою, коробки та документів може враховуватися менеджером.' }
+      { id: 'faq_price', question: 'Чи є онлайн-оцінка остаточною?', answer: 'Ні. За анкетою ми готуємо попередню оцінку. Остаточну вартість називаємо після огляду пристрою.' },
+      { id: 'faq_factors', question: 'Що впливає на вартість?', answer: 'Модель, обсяг памʼяті, технічний і зовнішній стан, батарея та комплектація. Для різних категорій набір критеріїв відрізняється.' },
+      { id: 'faq_unknown_details', question: 'Що робити, якщо я не знаю точну модель або характеристики?', answer: 'Вкажіть те, що знаєте. Решту допоможе уточнити менеджер — розбиратися в усьому самостійно не потрібно.' },
+      { id: 'faq_accessories', question: 'Чи потрібні коробка, зарядка та документи?', answer: 'Заявку можна надіслати й без них, але комплектація може вплинути на оцінку. Просто вкажіть, що залишилося.' },
+      { id: 'faq_data', question: 'Як використовуватимуть мої контактні дані?', answer: 'Тільки для опрацювання Trade-in заявки та звʼязку з Вами.' }
     ]
   },
   contact: {
     visible: true,
-    eyebrow: 'Готові почати?',
-    title: 'Розкажіть про свій пристрій',
-    description: 'Почніть анкету зараз — відповіді автоматично потраплять менеджеру.',
-    buttonLabel: 'Перейти до анкети'
+    eyebrow: 'Почнемо?',
+    title: 'Розкажіть про техніку — далі допоможемо ми',
+    description: 'Кілька хвилин на анкету — і заявка вже у менеджера. Він перегляне деталі, звʼяжеться з Вами та все пояснить.',
+    buttonLabel: 'Почати оцінку'
   },
   footer: {
     visible: true,
     companyName: 'Mobile Trend',
-    description: 'Попередня оцінка техніки для Trade-in.',
+    description: 'Свої люди у світі технологій. Допомагаємо розібратися, вибрати та користуватися із задоволенням.',
     phone: '',
     email: '',
-    legalText: 'Інформація на сторінці не є публічною офертою.'
+    legalText: 'Онлайн-оцінка є попередньою. Остаточна вартість визначається після огляду пристрою. Інформація на сторінці не є публічною офертою.'
   },
   seo: {
-    title: 'Trade-in Mobile Trend — попередня оцінка техніки',
-    description: 'Оцініть смартфон або ноутбук онлайн та отримайте пропозицію від менеджера Mobile Trend.',
+    title: 'Trade-in Mobile Trend — оцініть свою техніку онлайн',
+    description: 'Розкажіть про свій пристрій. Менеджер Mobile Trend перегляне заявку, підготує попередню оцінку та пояснить наступний крок.',
     robots: 'index, follow'
   },
   form: {
@@ -712,6 +714,17 @@ export function normalizeTradeInConfig(value) {
   const seo = object(source.seo);
   const form = object(source.form);
   const defaults = defaultTradeInConfig;
+  const usesPreBrandPlatformCopy = Number(source.version || 0) < 5;
+  const pageText = (section, key, fallback, maxLength) => text(
+    usesPreBrandPlatformCopy ? fallback : section[key],
+    fallback,
+    maxLength
+  );
+  const pageItems = (section, fallback, prefix) => normalizeItems(
+    usesPreBrandPlatformCopy ? fallback : section.items,
+    fallback,
+    prefix
+  );
   const legacySteps = normalizeSteps(form.steps);
   const normalizedTheme = {
     fontFamily: text(theme.fontFamily, defaults.theme.fontFamily, 80),
@@ -740,7 +753,7 @@ export function normalizeTradeInConfig(value) {
   }
 
   return {
-    version: 4,
+    version: 5,
     formReference: {
       formId: text(formReference.formId, '', 80),
       formName: text(formReference.formName, '', 160)
@@ -751,58 +764,58 @@ export function normalizeTradeInConfig(value) {
       sticky: boolean(header.sticky, defaults.header.sticky),
       brandName: text(header.brandName, defaults.header.brandName, 120),
       sectionLabel: text(header.sectionLabel, defaults.header.sectionLabel, 120),
-      ctaLabel: text(header.ctaLabel, defaults.header.ctaLabel, 120)
+      ctaLabel: pageText(header, 'ctaLabel', defaults.header.ctaLabel, 120)
     },
     hero: {
       visible: boolean(hero.visible, defaults.hero.visible),
-      eyebrow: text(hero.eyebrow, defaults.hero.eyebrow, 180),
-      title: text(hero.title, defaults.hero.title, 300),
-      description: text(hero.description, defaults.hero.description, 1200),
-      primaryActionLabel: text(hero.primaryActionLabel, defaults.hero.primaryActionLabel, 120),
-      secondaryText: text(hero.secondaryText, defaults.hero.secondaryText, 500),
-      badge: text(hero.badge, defaults.hero.badge, 160)
+      eyebrow: pageText(hero, 'eyebrow', defaults.hero.eyebrow, 180),
+      title: pageText(hero, 'title', defaults.hero.title, 300),
+      description: pageText(hero, 'description', defaults.hero.description, 1200),
+      primaryActionLabel: pageText(hero, 'primaryActionLabel', defaults.hero.primaryActionLabel, 120),
+      secondaryText: pageText(hero, 'secondaryText', defaults.hero.secondaryText, 500),
+      badge: pageText(hero, 'badge', defaults.hero.badge, 160)
     },
     stats: {
       visible: boolean(stats.visible, defaults.stats.visible),
-      items: normalizeItems(stats.items, defaults.stats.items, 'stat')
+      items: pageItems(stats, defaults.stats.items, 'stat')
     },
     process: {
       visible: boolean(process.visible, defaults.process.visible),
-      eyebrow: text(process.eyebrow, defaults.process.eyebrow, 180),
-      title: text(process.title, defaults.process.title, 300),
-      description: text(process.description, defaults.process.description, 1200),
-      items: normalizeItems(process.items, defaults.process.items, 'process')
+      eyebrow: pageText(process, 'eyebrow', defaults.process.eyebrow, 180),
+      title: pageText(process, 'title', defaults.process.title, 300),
+      description: pageText(process, 'description', defaults.process.description, 1200),
+      items: pageItems(process, defaults.process.items, 'process')
     },
     benefits: {
       visible: boolean(benefits.visible, defaults.benefits.visible),
-      eyebrow: text(benefits.eyebrow, defaults.benefits.eyebrow, 180),
-      title: text(benefits.title, defaults.benefits.title, 300),
-      items: normalizeItems(benefits.items, defaults.benefits.items, 'benefit')
+      eyebrow: pageText(benefits, 'eyebrow', defaults.benefits.eyebrow, 180),
+      title: pageText(benefits, 'title', defaults.benefits.title, 300),
+      items: pageItems(benefits, defaults.benefits.items, 'benefit')
     },
     faq: {
       visible: boolean(faq.visible, defaults.faq.visible),
-      eyebrow: text(faq.eyebrow, defaults.faq.eyebrow, 180),
-      title: text(faq.title, defaults.faq.title, 300),
-      items: normalizeItems(faq.items, defaults.faq.items, 'faq')
+      eyebrow: pageText(faq, 'eyebrow', defaults.faq.eyebrow, 180),
+      title: pageText(faq, 'title', defaults.faq.title, 300),
+      items: pageItems(faq, defaults.faq.items, 'faq')
     },
     contact: {
       visible: boolean(contact.visible, defaults.contact.visible),
-      eyebrow: text(contact.eyebrow, defaults.contact.eyebrow, 180),
-      title: text(contact.title, defaults.contact.title, 300),
-      description: text(contact.description, defaults.contact.description, 1200),
-      buttonLabel: text(contact.buttonLabel, defaults.contact.buttonLabel, 120)
+      eyebrow: pageText(contact, 'eyebrow', defaults.contact.eyebrow, 180),
+      title: pageText(contact, 'title', defaults.contact.title, 300),
+      description: pageText(contact, 'description', defaults.contact.description, 1200),
+      buttonLabel: pageText(contact, 'buttonLabel', defaults.contact.buttonLabel, 120)
     },
     footer: {
       visible: boolean(footer.visible, defaults.footer.visible),
       companyName: text(footer.companyName, defaults.footer.companyName, 160),
-      description: text(footer.description, defaults.footer.description, 600),
+      description: pageText(footer, 'description', defaults.footer.description, 600),
       phone: text(footer.phone, defaults.footer.phone, 80),
       email: text(footer.email, defaults.footer.email, 160),
-      legalText: text(footer.legalText, defaults.footer.legalText, 800)
+      legalText: pageText(footer, 'legalText', defaults.footer.legalText, 800)
     },
     seo: {
-      title: text(seo.title, defaults.seo.title, 240),
-      description: text(seo.description, defaults.seo.description, 500),
+      title: pageText(seo, 'title', defaults.seo.title, 240),
+      description: pageText(seo, 'description', defaults.seo.description, 500),
       robots: text(seo.robots, defaults.seo.robots, 80)
     },
     form: {
