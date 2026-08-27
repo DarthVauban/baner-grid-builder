@@ -14,7 +14,8 @@ const SAFE_TELEGRAM_DOCUMENT_LIMIT_BYTES = 49 * 1024 * 1024;
 const LOCAL_TELEGRAM_DOCUMENT_LIMIT_BYTES = 2_000 * 1024 * 1024;
 const SAFE_LOCAL_TELEGRAM_DOCUMENT_LIMIT_BYTES = 1_990 * 1024 * 1024;
 const LOCAL_TELEGRAM_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
-const MAX_BACKUP_SOURCE_BYTES = 128 * 1024 * 1024;
+const MAX_BACKUP_SOURCE_BYTES = 512 * 1024 * 1024;
+const MAX_RESTORE_ARCHIVE_BYTES = 520 * 1024 * 1024;
 const BACKUP_FORMAT = 'mt-workspace-backup';
 const BACKUP_FORMAT_VERSION = 1;
 const BACKUP_ENVIRONMENTS = Object.freeze({
@@ -40,6 +41,13 @@ function quoteIdentifier(value) {
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function backupSourceTooLargeMessage(actualBytes, includesMedia = false) {
+  const actualMiB = Math.ceil(actualBytes / (1024 * 1024));
+  const limitMiB = MAX_BACKUP_SOURCE_BYTES / (1024 * 1024);
+  const source = includesMedia ? 'Дані й медіафайли резервної копії' : 'Дані резервної копії';
+  return `${source} займають приблизно ${actualMiB} МіБ і перевищують безпечний ліміт ${limitMiB} МіБ.`;
 }
 
 function signManifest(manifest) {
@@ -274,7 +282,7 @@ export async function buildWorkspaceBackup({ now = new Date(), db = { query }, m
   const snapshot = await databaseSnapshot(db);
   const databaseData = Buffer.from(JSON.stringify(snapshot), 'utf8');
   if (databaseData.length > MAX_BACKUP_SOURCE_BYTES) {
-    throw new BackupError(413, 'BACKUP_SOURCE_TOO_LARGE', 'Дані резервної копії завеликі для безпечного формування архіву.');
+    throw new BackupError(413, 'BACKUP_SOURCE_TOO_LARGE', backupSourceTooLargeMessage(databaseData.length));
   }
   const mediaEntries = [];
   const archiveEntries = [{ name: 'database.json', data: databaseData }];
@@ -290,7 +298,7 @@ export async function buildWorkspaceBackup({ now = new Date(), db = { query }, m
     const data = await readFile(path.join(mediaDir, entry.name));
     sourceBytes += data.length;
     if (sourceBytes > MAX_BACKUP_SOURCE_BYTES) {
-      throw new BackupError(413, 'BACKUP_SOURCE_TOO_LARGE', 'Дані й медіафайли завеликі для безпечного формування архіву.');
+      throw new BackupError(413, 'BACKUP_SOURCE_TOO_LARGE', backupSourceTooLargeMessage(sourceBytes, true));
     }
     mediaEntries.push({ name: entry.name, size: data.length, sha256: sha256(data) });
     archiveEntries.push({ name: `media/${entry.name}`, data });
@@ -713,6 +721,8 @@ export async function processDueBackups({ now = new Date() } = {}) {
 }
 
 export const backupLimits = {
+  sourceBytes: MAX_BACKUP_SOURCE_BYTES,
+  restoreArchiveBytes: MAX_RESTORE_ARCHIVE_BYTES,
   telegramDocumentBytes: env.telegramLocalMode
     ? LOCAL_TELEGRAM_DOCUMENT_LIMIT_BYTES
     : TELEGRAM_DOCUMENT_LIMIT_BYTES,

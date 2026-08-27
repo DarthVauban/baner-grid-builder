@@ -20,10 +20,11 @@
 окремий Local Bot API на тій самій VPS. Офіційний local mode підтримує upload до 2000 MB і
 передавання файлу локальним `file://` URI.
 
-Restore endpoint приймає compressed upload до 55 MB; розпакований архів додатково обмежений
-256 MB, а вихідний database/media snapshot — 128 MB. Ліміт restore є окремим від транспортного
-ліміту Local Bot API; для більшого архіву потрібне потокове відновлення, яке не входить у
-цю транспортну зміну.
+Restore endpoint приймає compressed upload до 520 MB; розпакований архів додатково обмежений
+640 MB, а вихідний database/media snapshot — 512 MB. Це дає понад двократний запас відносно
+production snapshot станом на серпень 2026 року. Ліміти залишаються скінченними, оскільки поточне
+формування і перевірка архіву виконуються в пам’яті процесу; повне зняття обмежень створило б ризик
+вичерпання RAM. Для архівів понад ці межі потрібен окремий потоковий формат backup/restore.
 
 ## Local Telegram Bot API
 
@@ -145,4 +146,4 @@ staging directories не є користувацькими backup-копіями
 2. завантажте archive з Telegram без перепакування;
 3. на staging виконайте restore та звірте користувачів, settings і media;
 4. перевірте daily/weekly `nextRunAt` у потрібній timezone;
-5. переконайтеся, що reverse proxy дозволяє `/api/admin/backups/restore` до 55 MB.
+5. переконайтеся, що reverse proxy дозволяє `/api/admin/backups/restore` до 520 MB.

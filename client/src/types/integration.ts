@@ -123,6 +123,7 @@ export interface BackupAdminState {
   settings: BackupSettings;
   runs: BackupRun[];
   telegramDocumentLimitBytes: number;
+  restoreArchiveLimitBytes: number;
 }
 
 export interface BackupRestoreResult {

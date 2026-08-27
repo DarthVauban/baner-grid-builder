@@ -26,7 +26,7 @@ const triggerLabels: Record<BackupRunTrigger, string> = {
   restore: 'Відновлення'
 };
 
-const MAX_RESTORE_ARCHIVE_SIZE = 55 * 1024 * 1024;
+const DEFAULT_RESTORE_ARCHIVE_SIZE = 520 * 1024 * 1024;
 
 type ActiveBackupOperation = 'create' | 'restore';
 
@@ -158,15 +158,16 @@ export function AdminBackupsPage() {
   function selectArchive(file: File | null) {
     setIsDragActive(false);
     if (!file) return;
+    const restoreArchiveLimit = backups.data?.restoreArchiveLimitBytes || DEFAULT_RESTORE_ARCHIVE_SIZE;
     const fileName = file.name.toLowerCase();
     if (!fileName.endsWith('.tar.gz') && !fileName.endsWith('.tgz')) {
       setArchive(null);
       setBackupError('Оберіть оригінальний архів резервної копії у форматі .tar.gz або .tgz.');
       return;
     }
-    if (file.size > MAX_RESTORE_ARCHIVE_SIZE) {
+    if (file.size > restoreArchiveLimit) {
       setArchive(null);
-      setBackupError(`Архів перевищує допустимий розмір ${formatBytes(MAX_RESTORE_ARCHIVE_SIZE)}.`);
+      setBackupError(`Архів перевищує допустимий розмір ${formatBytes(restoreArchiveLimit)}.`);
       return;
     }
     setBackupError('');
@@ -385,7 +386,10 @@ export function AdminBackupsPage() {
             </div>
           </div>
 
-          <small className="backup-limit-note">Telegram приймає документи до {formatBytes(backups.data?.telegramDocumentLimitBytes || 50 * 1024 * 1024)}.</small>
+          <small className="backup-limit-note">
+            Telegram приймає документи до {formatBytes(backups.data?.telegramDocumentLimitBytes || 50 * 1024 * 1024)}.
+            {' '}Відновлення приймає архіви до {formatBytes(backups.data?.restoreArchiveLimitBytes || DEFAULT_RESTORE_ARCHIVE_SIZE)}.
+          </small>
         </section>
 
         <section className="admin-section backup-page-card backup-page-card--history">
