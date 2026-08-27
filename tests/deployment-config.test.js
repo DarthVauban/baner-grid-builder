@@ -8,7 +8,7 @@ const tradeInTlsWorkflow = readFileSync(new URL('../.github/workflows/configure-
 const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
-const telegramEntrypoint = readFileSync(new URL('../docker/telegram-bot-api/runtime-entrypoint.sh', import.meta.url), 'utf8');
+const telegramEntrypoint = readFileSync(new URL('../telegram-bot-api-runtime-entrypoint.sh', import.meta.url), 'utf8');
 const nginx = readFileSync(new URL('../nginx/nginx.conf', import.meta.url), 'utf8');
 const tradeInNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-host.conf', import.meta.url), 'utf8');
 const tradeInBootstrapNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-bootstrap.conf', import.meta.url), 'utf8');
@@ -130,7 +130,9 @@ test('local Telegram Bot API is pinned, private, and reloads encrypted workspace
   assert.match(telegramService, /entrypoint:\s*\["\/bin\/sh", "\/opt\/mt\/runtime-entrypoint\.sh"\]/);
   assert.match(telegramEntrypoint, /credentials changed; restarting the local server/);
   assert.doesNotMatch(telegramEntrypoint, /echo.*TELEGRAM_API_(?:ID|HASH)/);
-  assert.match(workflow, /source: docker-compose\.yml,docker\/telegram-bot-api\/runtime-entrypoint\.sh/);
+  assert.match(compose, /\.\/telegram-bot-api-runtime-entrypoint\.sh:\/opt\/mt\/runtime-entrypoint\.sh:ro/);
+  assert.match(workflow, /source: docker-compose\.yml,telegram-bot-api-runtime-entrypoint\.sh/);
+  assert.doesNotMatch(workflow, /source: [^\r\n]*docker\/telegram-bot-api\/runtime-entrypoint\.sh/);
   assert.match(workflow, /TELEGRAM_LOCAL_ENABLED=.*TELEGRAM_LOCAL_MODE/);
   assert.match(workflow, /if \[ -f \.telegram-bot-api\.env \]; then/);
   assert.match(workflow, /stat -c '%a' \.telegram-bot-api\.env/);
