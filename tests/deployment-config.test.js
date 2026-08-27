@@ -8,9 +8,13 @@ const tradeInTlsWorkflow = readFileSync(new URL('../.github/workflows/configure-
 const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
+const telegramEntrypoint = readFileSync(new URL('../docker/telegram-bot-api/runtime-entrypoint.sh', import.meta.url), 'utf8');
 const nginx = readFileSync(new URL('../nginx/nginx.conf', import.meta.url), 'utf8');
 const tradeInNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-host.conf', import.meta.url), 'utf8');
 const tradeInBootstrapNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-bootstrap.conf', import.meta.url), 'utf8');
+const telegramService = compose.replace(/\r\n/g, '\n').match(
+  /\n {2}telegram-bot-api:\n([\s\S]*?)(?=\n {2}[a-z0-9_-]+:\n|\n[a-z0-9_-]+:\n|$)/i
+)?.[1] || '';
 
 test('deployment publishes and pulls the same immutable full-SHA image', () => {
   assert.match(workflow, /type=sha,prefix=sha-,format=long/);
@@ -62,7 +66,7 @@ test('remote deployment starts PostgreSQL, waits for readiness, and prints diagn
   assert.match(workflow, /DB_CONTAINER_ID="\$\(docker compose ps -q db\)"/);
   assert.match(workflow, /DB_HEALTH=.*\.State\.Health\.Status/);
   assert.match(workflow, /if ! wait_for_database; then[\s\S]*docker compose restart db[\s\S]*wait_for_database/);
-  assert.match(workflow, /docker compose logs --no-color --tail=120 db app/);
+  assert.match(workflow, /docker compose(?: --profile telegram-local)? logs --no-color --tail=120 db app/);
 });
 
 test('remote deployment only cleans unused Mobile Trend images and limits container logs', () => {
@@ -112,6 +116,29 @@ test('catalog photos use persistent writable storage in production', () => {
   assert.match(dockerfile, /chown -R nodeapp:nodeapp \/app\/storage/);
   assert.match(catalogMedia, /NODE_ENV === 'production'/);
   assert.match(catalogMedia, /Configure a writable persistent CATALOG_MEDIA_DIR/);
+});
+
+test('local Telegram Bot API is pinned, private, and reloads encrypted workspace credentials', () => {
+  assert.ok(telegramService, 'telegram-bot-api service must remain present');
+  assert.match(compose, /telegram-bot-api:[\s\S]*image: aiogram\/telegram-bot-api@sha256:[a-f0-9]{64}/);
+  assert.match(telegramService, /profiles:\s*\["telegram-local"\]/);
+  assert.doesNotMatch(telegramService, /^\s+ports:\s*$/m);
+  assert.match(compose, /telegram_backup_transfer:\/app\/storage\/telegram-backup-transfer/);
+  assert.match(compose, /telegram_backup_transfer:\/var\/lib\/telegram-bot-api\/backup-upload:ro/);
+  assert.match(compose, /telegram_bot_api_config:\/app\/storage\/telegram-bot-api-config/);
+  assert.match(compose, /telegram_bot_api_config:\/run\/mt-telegram-config:ro/);
+  assert.match(telegramService, /entrypoint:\s*\["\/bin\/sh", "\/opt\/mt\/runtime-entrypoint\.sh"\]/);
+  assert.match(telegramEntrypoint, /credentials changed; restarting the local server/);
+  assert.doesNotMatch(telegramEntrypoint, /echo.*TELEGRAM_API_(?:ID|HASH)/);
+  assert.match(workflow, /source: docker-compose\.yml,docker\/telegram-bot-api\/runtime-entrypoint\.sh/);
+  assert.match(workflow, /TELEGRAM_LOCAL_ENABLED=.*TELEGRAM_LOCAL_MODE/);
+  assert.match(workflow, /if \[ -f \.telegram-bot-api\.env \]; then/);
+  assert.match(workflow, /stat -c '%a' \.telegram-bot-api\.env/);
+  assert.match(workflow, /docker compose --profile telegram-local up -d --no-build telegram-bot-api/);
+  assert.match(workflow, /BACKUP_TRANSFER_MOUNT_TYPE=.*\/app\/storage\/telegram-backup-transfer/);
+  assert.match(workflow, /docker exec "\$CONTAINER_ID" test -w \/app\/storage\/telegram-backup-transfer/);
+  assert.match(workflow, /TELEGRAM_CONFIG_MOUNT_TYPE=.*\/app\/storage\/telegram-bot-api-config/);
+  assert.match(workflow, /docker exec "\$CONTAINER_ID" test -w \/app\/storage\/telegram-bot-api-config/);
 });
 
 test('reverse proxy accepts Telegram backup restore archives', () => {

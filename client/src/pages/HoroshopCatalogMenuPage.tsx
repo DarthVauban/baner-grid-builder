@@ -50,11 +50,18 @@ export function HoroshopCatalogMenuPage() {
 
   const { settings, themes, defaultCategories } = settingsQuery.data;
   const selected = themes.find((theme) => theme.id === selectedTheme) || themes[0];
-  const selectedDefaultCategory = defaultCategories.find(
+  const configuredDefaultCategoryExternalId = defaultCategories.some(
     (category) => category.externalId === selectedDefaultCategoryExternalId
+  )
+    ? selectedDefaultCategoryExternalId
+    : (defaultCategories.some((category) => category.externalId === settings.draftDefaultCategoryExternalId)
+      ? settings.draftDefaultCategoryExternalId
+      : defaultCategories[0]?.externalId) || '';
+  const selectedDefaultCategory = defaultCategories.find(
+    (category) => category.externalId === configuredDefaultCategoryExternalId
   );
   const isDirty = selectedTheme !== settings.draftThemeId
-    || selectedDefaultCategoryExternalId !== (settings.draftDefaultCategoryExternalId || '');
+    || configuredDefaultCategoryExternalId !== (settings.draftDefaultCategoryExternalId || '');
   const canSaveSelection = Boolean(selectedDefaultCategory);
   const busy = saveDraft.isPending || publish.isPending || setEnabled.isPending;
 
@@ -66,7 +73,7 @@ export function HoroshopCatalogMenuPage() {
     try {
       await saveDraft.mutateAsync({
         themeId: selectedTheme,
-        defaultCategoryExternalId: selectedDefaultCategoryExternalId
+        defaultCategoryExternalId: configuredDefaultCategoryExternalId
       });
       await refresh();
       showToast('Чернетку оформлення збережено.', 'success');
@@ -79,7 +86,7 @@ export function HoroshopCatalogMenuPage() {
     try {
       await publish.mutateAsync({
         themeId: selectedTheme,
-        defaultCategoryExternalId: selectedDefaultCategoryExternalId
+        defaultCategoryExternalId: configuredDefaultCategoryExternalId
       });
       await refresh();
       showToast('Оформлення опубліковано й увімкнено на сайті.', 'success');
@@ -156,7 +163,7 @@ export function HoroshopCatalogMenuPage() {
         <div>
           <span className="catalog-menu-default-category-control__label">Головний розділ Хорошопа</span>
           <StyledSelect
-            value={selectedDefaultCategoryExternalId}
+            value={configuredDefaultCategoryExternalId}
             options={defaultCategories.map((category) => ({ value: category.externalId, label: category.title }))}
             onChange={setSelectedDefaultCategoryExternalId}
             ariaLabel="Розділ каталогу за замовченням"

@@ -40,11 +40,17 @@ beforeEach(() => {
     },
     telegram: {
       configured: true,
-      token: 'telegram-token',
+      tokenConfigured: true,
       chatId: '-1001234567890',
       botUsername: 'backup_bot',
       botName: 'Backup Bot',
-      updatedAt: '2030-01-01T10:00:00.000Z'
+      updatedAt: '2030-01-01T10:00:00.000Z',
+      localApi: {
+        enabled: false,
+        credentialsConfigured: false,
+        documentLimitBytes: 50 * 1024 * 1024,
+        updatedAt: null
+      }
     }
   });
   vi.spyOn(api.admin, 'backups').mockResolvedValue({

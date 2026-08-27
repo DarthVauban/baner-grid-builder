@@ -1,5 +1,9 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -12,20 +16,32 @@ process.env.APP_ORIGIN = 'https://dev.mt-panel.sbs';
 process.env.ADMIN_NAME = 'Backup Admin';
 process.env.ADMIN_EMAIL = 'backup-admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
+const backupTransferDir = await mkdtemp(path.join(os.tmpdir(), 'mt-backup-transfer-test-'));
+process.env.TELEGRAM_LOCAL_MODE = 'true';
+process.env.TELEGRAM_API_BASE_URL = 'http://telegram-bot-api:8081';
+process.env.TELEGRAM_BACKUP_TEMP_DIR = backupTransferDir;
+process.env.TELEGRAM_LOCAL_FILE_URI_DIR = backupTransferDir;
+process.env.TELEGRAM_LOCAL_CREDENTIALS_DIR = path.join(backupTransferDir, 'telegram-local-api-config');
 
 const telegramCalls = [];
 let sendDocumentFailure = '';
+let sentBackupArchive = Buffer.alloc(0);
+let sentBackupPath = '';
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options) => {
   const method = String(url).split('/').pop();
-  telegramCalls.push({ method, options });
+  const body = options.body instanceof FormData ? null : JSON.parse(options.body || '{}');
+  telegramCalls.push({ url: String(url), method, options, body });
+  if (method === 'sendDocument') {
+    sentBackupPath = fileURLToPath(body.document);
+    sentBackupArchive = await readFile(sentBackupPath);
+  }
   if (method === 'sendDocument' && sendDocumentFailure) {
     return new Response(JSON.stringify({ ok: false, description: sendDocumentFailure }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' }
     });
   }
-  const body = options.body instanceof FormData ? null : JSON.parse(options.body || '{}');
   const result = method === 'getMe'
     ? { id: 100, is_bot: true, first_name: 'Backup', username: 'mt_backup_bot' }
     : method === 'getChat'
@@ -53,6 +69,7 @@ before(async () => {
 
 after(async () => {
   globalThis.fetch = originalFetch;
+  await rm(backupTransferDir, { recursive: true, force: true });
   await pool.end();
 });
 
@@ -68,6 +85,8 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
     token: '123456:integration-test-token'
   }).expect(200);
   assert.equal(telegram.body.data.configured, true);
+  assert.equal(telegram.body.data.tokenConfigured, true);
+  assert.equal(telegram.body.data.token, undefined);
   assert.equal(telegram.body.data.botUsername, 'mt_backup_bot');
   assert.equal(telegramCalls[0].method, 'getMe');
   assert.equal(telegramCalls[1].method, 'getChat');
@@ -75,8 +94,36 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
 
   const integrations = await agent.get('/api/admin/integrations').expect(200);
   assert.equal(integrations.body.data.telegram.chatId, '-1001234567890');
-  assert.equal(integrations.body.data.telegram.token, '123456:integration-test-token');
+  assert.equal(integrations.body.data.telegram.tokenConfigured, true);
+  assert.equal(integrations.body.data.telegram.token, undefined);
   assert.equal(integrations.headers['cache-control'], 'no-store');
+
+  const localApi = await agent.put('/api/admin/integrations/telegram/local-api').send({
+    apiId: '12345678',
+    apiHash: '0123456789abcdef0123456789abcdef'
+  }).expect(200);
+  assert.equal(localApi.body.data.enabled, true);
+  assert.equal(localApi.body.data.credentialsConfigured, true);
+  assert.equal(localApi.body.data.apiId, undefined);
+  assert.equal(localApi.body.data.apiHash, undefined);
+  assert.equal(
+    await readFile(path.join(process.env.TELEGRAM_LOCAL_CREDENTIALS_DIR, 'credentials.env'), 'utf8'),
+    'TELEGRAM_API_ID=12345678\nTELEGRAM_API_HASH=0123456789abcdef0123456789abcdef\n'
+  );
+  await agent.put('/api/admin/integrations/telegram/local-api').send({
+    apiId: '87654321',
+    apiHash: 'abcdef0123456789abcdef0123456789'
+  }).expect(200);
+  assert.equal(
+    await readFile(path.join(process.env.TELEGRAM_LOCAL_CREDENTIALS_DIR, 'credentials.env'), 'utf8'),
+    'TELEGRAM_API_ID=87654321\nTELEGRAM_API_HASH=abcdef0123456789abcdef0123456789\n'
+  );
+  const storedLocalApi = await pool.query(
+    "SELECT secret_ciphertext, public_config FROM integration_settings WHERE key = 'telegram_local_api'"
+  );
+  assert.equal(storedLocalApi.rows.length, 1);
+  assert.doesNotMatch(storedLocalApi.rows[0].secret_ciphertext, /87654321|abcdef0123456789/);
+  assert.deepEqual(storedLocalApi.rows[0].public_config, {});
 
   const settings = await agent.put('/api/admin/backups/settings').send({
     automaticEnabled: true,
@@ -92,19 +139,18 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
   assert.equal(backup.body.data.status, 'success');
   assert.match(backup.body.data.fileName, /^mt-workspace-backup_dev_.*\.tar\.gz$/);
   assert.equal(telegramCalls.at(-1).method, 'sendDocument');
-  assert.ok(telegramCalls.at(-1).options.body instanceof FormData);
-  const telegramForm = telegramCalls.at(-1).options.body;
-  assert.match(telegramForm.get('caption'), /^🟦 DEV · Резервна копія MT Workspace/);
-  assert.match(telegramForm.get('caption'), /Середовище: DEV · dev\.mt-panel\.sbs/);
-  const backupDocument = telegramForm.get('document');
-  assert.equal(backupDocument.name, backup.body.data.fileName);
-  const invalidArchive = Buffer.from(await backupDocument.arrayBuffer());
+  assert.match(telegramCalls.at(-1).url, /^http:\/\/telegram-bot-api:8081\/bot/);
+  assert.match(telegramCalls.at(-1).body.caption, /^🟦 DEV · Резервна копія MT Workspace/);
+  assert.match(telegramCalls.at(-1).body.caption, /Середовище: DEV · dev\.mt-panel\.sbs/);
+  assert.equal(path.basename(sentBackupPath), backup.body.data.fileName);
+  await assert.rejects(access(sentBackupPath), { code: 'ENOENT' });
+  const invalidArchive = Buffer.from(sentBackupArchive);
   invalidArchive[0] = 0;
 
   const state = await agent.get('/api/admin/backups').expect(200);
   assert.equal(state.body.data.runs[0].status, 'success');
   assert.equal(state.body.data.runs[0].telegramMessageId, 7788);
-  assert.equal(state.body.data.telegramDocumentLimitBytes, 50 * 1024 * 1024);
+  assert.equal(state.body.data.telegramDocumentLimitBytes, 2_000 * 1024 * 1024);
 
   const rejectedRestore = await agent.post('/api/admin/backups/restore')
     .set('Content-Type', 'application/gzip')
@@ -145,6 +191,7 @@ test('manual backup returns a readable configuration error instead of Bad Gatewa
     const state = await agent.get('/api/admin/backups').expect(200);
     assert.equal(state.body.data.runs[0].status, 'failed');
     assert.match(state.body.data.runs[0].errorMessage, /Chat ID.*боту/);
+    await assert.rejects(access(sentBackupPath), { code: 'ENOENT' });
   } finally {
     sendDocumentFailure = '';
   }

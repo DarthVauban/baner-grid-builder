@@ -20,16 +20,29 @@ export interface MailtrapIntegrationInput {
 
 export interface TelegramIntegration {
   configured: boolean;
-  token: string;
+  tokenConfigured: boolean;
   chatId: string;
   botUsername: string;
   botName: string;
   updatedAt: string | null;
+  localApi: TelegramLocalApiIntegration;
 }
 
 export interface TelegramIntegrationInput {
   chatId: string;
   token: string;
+}
+
+export interface TelegramLocalApiIntegration {
+  enabled: boolean;
+  credentialsConfigured: boolean;
+  documentLimitBytes: number;
+  updatedAt: string | null;
+}
+
+export interface TelegramLocalApiIntegrationInput {
+  apiId: string;
+  apiHash: string;
 }
 
 export type HoroshopConnectionStatus =

@@ -1,6 +1,7 @@
 node_modules/
 .codegraph/
 .env
+.telegram-bot-api.env
 npm-debug.log*
 debug.log
 coverage/

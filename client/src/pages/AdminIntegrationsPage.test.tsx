@@ -31,11 +31,17 @@ describe('AdminIntegrationsPage', () => {
       },
       telegram: {
         configured: true,
-        token: '123456:telegram-secret-token',
+        tokenConfigured: true,
         chatId: '-1001234567890',
         botUsername: 'mt_backup_bot',
         botName: 'MT Backup',
-        updatedAt: '2030-01-01T10:00:00.000Z'
+        updatedAt: '2030-01-01T10:00:00.000Z',
+        localApi: {
+          enabled: true,
+          credentialsConfigured: true,
+          documentLimitBytes: 2_000 * 1024 * 1024,
+          updatedAt: '2030-01-01T10:00:00.000Z'
+        }
       }
     });
     vi.spyOn(api.admin, 'horoshopIntegration').mockResolvedValue({
@@ -47,6 +53,12 @@ describe('AdminIntegrationsPage', () => {
       lastError: null,
       counts: { categories: 0, products: 0, modifications: 0 },
       latestRun: null
+    });
+    const saveLocalApi = vi.spyOn(api.admin, 'saveTelegramLocalApiIntegration').mockResolvedValue({
+      enabled: true,
+      credentialsConfigured: true,
+      documentLimitBytes: 2_000 * 1024 * 1024,
+      updatedAt: '2030-01-01T11:00:00.000Z'
     });
 
     const user = userEvent.setup();
@@ -61,15 +73,23 @@ describe('AdminIntegrationsPage', () => {
     await user.click(telegramTile);
     expect(screen.getByRole('dialog', { name: 'Telegram' })).toBeInTheDocument();
     const telegramToken = screen.getByLabelText('Bot token');
-    expect(telegramToken).toHaveValue('••••••••••••');
-    expect(telegramToken).toHaveAttribute('type', 'text');
-    expect(telegramToken).toHaveAttribute('readonly');
+    expect(telegramToken).toHaveValue('');
+    expect(telegramToken).toHaveAttribute('type', 'password');
+    expect(telegramToken).toHaveAttribute('placeholder', 'Збережено — введіть новий для заміни');
 
     await user.click(screen.getByRole('button', { name: 'Показати Telegram bot token' }));
-    expect(telegramToken).toHaveValue('123456:telegram-secret-token');
+    expect(telegramToken).toHaveValue('');
     expect(telegramToken).toHaveAttribute('type', 'text');
-    expect(telegramToken).not.toHaveAttribute('readonly');
-    await user.click(screen.getByRole('button', { name: 'Закрити' }));
+
+    await user.type(screen.getByLabelText('Telegram API ID'), '12345678');
+    await user.type(screen.getByLabelText('Telegram API Hash'), '0123456789abcdef0123456789abcdef');
+    await user.click(screen.getByRole('button', { name: 'Замінити API-ключі' }));
+    expect(saveLocalApi.mock.calls[0]?.[0]).toEqual({
+      apiId: '12345678',
+      apiHash: '0123456789abcdef0123456789abcdef'
+    });
+    expect(await screen.findByText('Ключі локального Telegram Bot API збережено й застосовано.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Готово' }));
 
     await user.click(screen.getByRole('button', { name: 'Відкрити налаштування Mailtrap. Підключено' }));
     expect(screen.getByRole('dialog', { name: 'Mailtrap' })).toBeInTheDocument();
@@ -85,7 +105,8 @@ describe('AdminIntegrationsPage', () => {
         configured: false, token: '', senderEmail: '', senderName: '', domain: '', updatedAt: null
       },
       telegram: {
-        configured: false, token: '', chatId: '', botUsername: '', botName: '', updatedAt: null
+        configured: false, tokenConfigured: false, chatId: '', botUsername: '', botName: '', updatedAt: null,
+        localApi: { enabled: false, credentialsConfigured: false, documentLimitBytes: 50 * 1024 * 1024, updatedAt: null }
       }
     });
     vi.spyOn(api.admin, 'horoshopIntegration').mockResolvedValue({
@@ -133,7 +154,8 @@ describe('AdminIntegrationsPage', () => {
         configured: false, token: '', senderEmail: '', senderName: '', domain: '', updatedAt: null
       },
       telegram: {
-        configured: false, token: '', chatId: '', botUsername: '', botName: '', updatedAt: null
+        configured: false, tokenConfigured: false, chatId: '', botUsername: '', botName: '', updatedAt: null,
+        localApi: { enabled: false, credentialsConfigured: false, documentLimitBytes: 50 * 1024 * 1024, updatedAt: null }
       }
     });
     vi.spyOn(api.admin, 'horoshopIntegration').mockResolvedValue({

@@ -910,6 +910,7 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .integration-tile__icon--telegram { color: #168bd2; background: #e8f6ff; }
 .integration-tile__icon--horoshop { color: #e94928; background: #fff0ec; }
 .integration-modal { width: min(100%,720px); }
+.integration-modal--telegram { width: min(100%,920px); max-height: min(860px,calc(100vh - 40px)); }
 .integration-modal--horoshop { width: min(100%,820px); }
 .integration-modal__header { align-items: center; }
 .integration-modal__title,
@@ -937,6 +938,20 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .integration-field-hint { color: #8791a2; font-size: 9px; line-height: 1.4; }
 .integration-form__wide { grid-column: 1 / -1; }
 .integration-note { border: 1px solid #dedaff; border-radius: 11px; padding: 11px 13px; color: #665ca9; background: #f8f7ff; font-size: 10px; line-height: 1.55; }
+.telegram-integration-settings { min-height: 0; }
+.telegram-integration-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1px; border-bottom: 1px solid var(--line); background: var(--line); }
+.telegram-integration-summary > div { min-width: 0; display: grid; gap: 4px; padding: 14px 28px; background: var(--surface,#fff); }
+.telegram-integration-summary span { color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .055em; }
+.telegram-integration-summary strong { overflow-wrap: anywhere; font-size: 12px; }
+.telegram-integration-section { margin: 20px 28px 0; border: 1px solid var(--line); border-radius: 15px; padding: 18px; }
+.telegram-integration-section__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.telegram-integration-section__heading > div { min-width: 0; display: flex; align-items: flex-start; gap: 11px; }
+.telegram-integration-section__heading h3 { margin: 0 0 4px; font-size: 14px; }
+.telegram-integration-section__heading p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.telegram-integration-section__step { flex: 0 0 25px; width: 25px; height: 25px; display: grid; place-items: center; border-radius: 8px; color: var(--brand); background: var(--brand-soft); font-size: 11px; font-weight: 900; }
+.telegram-integration-section__actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; border-top: 1px solid var(--line); padding-top: 15px; }
+.telegram-integration-section__actions small { margin-right: auto; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.telegram-integration-footer { margin-top: 20px; padding: 18px 28px 24px; }
 .integration-card__icon--horoshop { color: #e94928; background: #fff0ec; }
 .horoshop-integration-content { display: grid; }
 .horoshop-integration-content > .form-message { width: 100%; }
@@ -2365,6 +2380,7 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 :root[data-theme="brand"] .integration-card__icon--horoshop { color: #ff795d; background: rgba(233,73,40,.14); }
 :root[data-theme="brand"] .integration-modal__footer small { color: #999992; }
 :root[data-theme="brand"] .integration-note { color: #c4bfea; border-color: #46415f; background: #211f2b; }
+:root[data-theme="brand"] .telegram-integration-summary > div { background: var(--surface); }
 :root[data-theme="brand"] .horoshop-integration-summary > div { border-color: var(--line); background: var(--surface-soft); }
 :root[data-theme="brand"] .horoshop-integration-summary strong { color: var(--ink); }
 :root[data-theme="brand"] .horoshop-sync-settings { border-color: var(--line); background: var(--surface-soft); }
@@ -3990,6 +4006,14 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .integration-modal__header { align-items: flex-start; }
   .integration-modal__header-actions { align-items: flex-end; flex-direction: column-reverse; }
   .integration-modal__footer small { width: 100%; margin-right: 0; }
+  .telegram-integration-summary { grid-template-columns: 1fr; }
+  .telegram-integration-summary > div { padding: 12px 19px; }
+  .telegram-integration-section { margin: 16px 19px 0; padding: 15px; }
+  .telegram-integration-section__heading,
+  .telegram-integration-section__actions { align-items: stretch; flex-direction: column; }
+  .telegram-integration-section__heading .integration-status { align-self: flex-start; }
+  .telegram-integration-section__actions .button { width: 100%; justify-content: center; }
+  .telegram-integration-footer { padding: 16px 19px calc(16px + env(safe-area-inset-bottom)); }
   .horoshop-integration-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .horoshop-integration-summary__domain { grid-column: 1 / -1; }
   .horoshop-sync-settings { grid-template-columns: 1fr; }

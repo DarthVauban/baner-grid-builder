@@ -37,6 +37,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-banner_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-banner_builder}
       DATABASE_SSL: "false"
       CATALOG_MEDIA_DIR: /app/storage/catalog-media
+      TELEGRAM_LOCAL_MODE: ${TELEGRAM_LOCAL_MODE:-false}
+      TELEGRAM_API_BASE_URL: ${TELEGRAM_API_BASE_URL:-}
+      TELEGRAM_BACKUP_TEMP_DIR: /app/storage/telegram-backup-transfer
+      TELEGRAM_LOCAL_FILE_URI_DIR: /var/lib/telegram-bot-api/backup-upload
+      TELEGRAM_LOCAL_CREDENTIALS_DIR: /app/storage/telegram-bot-api-config
       SEARCH_FEATURE_ENABLED: ${SEARCH_FEATURE_ENABLED:-false}
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
       OPENSEARCH_INDEX_PREFIX: ${OPENSEARCH_INDEX_PREFIX:-mt-search}
@@ -48,9 +53,42 @@ services:
       - "127.0.0.1:${APP_BIND_PORT:-3000}:3000"
     volumes:
       - catalog_media_data:/app/storage/catalog-media
+      - telegram_backup_transfer:/app/storage/telegram-backup-transfer
+      - telegram_bot_api_config:/app/storage/telegram-bot-api-config
     depends_on:
       db:
         condition: service_healthy
+
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api@sha256:014ba432afdccd97f41a72a79ba3dc3947c89c7ea5cfdea53621c882e5e06553
+    profiles: ["telegram-local"]
+    restart: unless-stopped
+    env_file:
+      - path: .telegram-bot-api.env
+        required: false
+    environment:
+      TELEGRAM_LOCAL: "1"
+      TELEGRAM_VERBOSITY: "1"
+      TELEGRAM_RUNTIME_CREDENTIALS_FILE: /run/mt-telegram-config/credentials.env
+    entrypoint: ["/bin/sh", "/opt/mt/runtime-entrypoint.sh"]
+    depends_on:
+      app:
+        condition: service_started
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - telegram_bot_api_data:/var/lib/telegram-bot-api
+      - telegram_backup_transfer:/var/lib/telegram-bot-api/backup-upload:ro
+      - telegram_bot_api_config:/run/mt-telegram-config:ro
+      - ./docker/telegram-bot-api/runtime-entrypoint.sh:/opt/mt/runtime-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8081"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
 
   redis:
     image: redis:7.2-alpine
@@ -103,5 +141,8 @@ services:
 volumes:
   banner_db_data:
   catalog_media_data:
+  telegram_bot_api_data:
+  telegram_backup_transfer:
+  telegram_bot_api_config:
   search_redis_data:
   search_opensearch_data:

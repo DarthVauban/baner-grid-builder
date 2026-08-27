@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { env } from '../../config/env.js';
 import { query } from '../../db/pool.js';
 
@@ -54,19 +56,64 @@ function serializeMailtrap(row, { includeToken = false } = {}) {
   return integration;
 }
 
-function serializeTelegram(row, { includeToken = false } = {}) {
+function serializeTelegram(row, localApiRow) {
   const config = row?.public_config || {};
 
-  const integration = {
+  return {
     configured: Boolean(row?.secret_ciphertext && config.chatId),
+    tokenConfigured: Boolean(row?.secret_ciphertext),
     chatId: config.chatId || '',
     botUsername: config.botUsername || '',
     botName: config.botName || '',
-    updatedAt: row?.updated_at || null
+    updatedAt: row?.updated_at || null,
+    localApi: {
+      enabled: env.telegramLocalMode,
+      credentialsConfigured: Boolean(localApiRow?.secret_ciphertext),
+      documentLimitBytes: env.telegramLocalMode ? 2_000 * 1024 * 1024 : 50 * 1024 * 1024,
+      updatedAt: localApiRow?.updated_at || null
+    }
   };
+}
 
-  if (includeToken) integration.token = row?.secret_ciphertext ? decryptSecret(row) : '';
-  return integration;
+function parseTelegramLocalApiCredentials(row) {
+  if (!row?.secret_ciphertext) return null;
+  try {
+    const parsed = JSON.parse(decryptSecret(row));
+    const apiId = String(parsed?.apiId || '').trim();
+    const apiHash = String(parsed?.apiHash || '').trim();
+    if (!/^\d+$/.test(apiId) || !/^[a-fA-F0-9]{32}$/.test(apiHash)) return null;
+    return { apiId, apiHash };
+  } catch {
+    return null;
+  }
+}
+
+function telegramLocalApiCredentialFile(credentials) {
+  return `TELEGRAM_API_ID=${credentials.apiId}\nTELEGRAM_API_HASH=${credentials.apiHash.toLowerCase()}\n`;
+}
+
+async function writeTelegramLocalApiRuntimeCredentials(credentials) {
+  const directory = env.telegramLocalCredentialsDir;
+  const target = path.join(directory, 'credentials.env');
+  const content = telegramLocalApiCredentialFile(credentials);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
+
+  const current = await readFile(target, 'utf8').catch((error) => {
+    if (error?.code === 'ENOENT') return '';
+    throw error;
+  });
+  if (current === content) return target;
+
+  const temporary = path.join(directory, `.credentials-${crypto.randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    await chmod(temporary, 0o600);
+    await rename(temporary, target);
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {});
+  }
+  return target;
 }
 
 function readableTelegramApiError(description, status) {
@@ -114,7 +161,7 @@ export async function telegramApiRequest(token, method, body, { fetchImpl = fetc
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetchImpl(`https://api.telegram.org/bot${token}/${method}`, {
+    const response = await fetchImpl(`${env.telegramApiBaseUrl}/bot${token}/${method}`, {
       method: 'POST',
       headers: body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
       body: body instanceof FormData ? body : JSON.stringify(body || {}),
@@ -173,14 +220,14 @@ export async function getAdminIntegrations() {
   const result = await query(
     `SELECT key, public_config, secret_ciphertext, secret_iv, secret_tag, updated_at
      FROM integration_settings
-     WHERE key IN ('mailtrap', 'telegram')`
+     WHERE key IN ('mailtrap', 'telegram', 'telegram_local_api')`
   );
 
   const rows = new Map(result.rows.map((row) => [row.key, row]));
 
   return {
     mailtrap: serializeMailtrap(rows.get('mailtrap'), { includeToken: true }),
-    telegram: serializeTelegram(rows.get('telegram'), { includeToken: true })
+    telegram: serializeTelegram(rows.get('telegram'), rows.get('telegram_local_api'))
   };
 }
 
@@ -292,7 +339,56 @@ export async function saveTelegramIntegration(input, userId, { fetchImpl = fetch
     [JSON.stringify(publicConfig), secret.secretCiphertext, secret.secretIv, secret.secretTag, userId]
   );
 
-  return serializeTelegram(result.rows[0]);
+  const localApiResult = await query(
+    `SELECT secret_ciphertext, updated_at
+     FROM integration_settings
+     WHERE key = 'telegram_local_api'`
+  );
+  return serializeTelegram(result.rows[0], localApiResult.rows[0]);
+}
+
+export async function saveTelegramLocalApiCredentials(input, userId) {
+  const secret = encryptSecret(JSON.stringify({
+    apiId: input.apiId.trim(),
+    apiHash: input.apiHash.trim().toLowerCase()
+  }));
+  const result = await query(
+    `INSERT INTO integration_settings (
+       key, display_name, public_config, secret_ciphertext, secret_iv, secret_tag, updated_by, updated_at
+     )
+     VALUES ('telegram_local_api', 'Локальний Telegram Bot API', '{}'::jsonb, $1, $2, $3, $4, NOW())
+     ON CONFLICT (key)
+     DO UPDATE SET secret_ciphertext = EXCLUDED.secret_ciphertext,
+                   secret_iv = EXCLUDED.secret_iv,
+                   secret_tag = EXCLUDED.secret_tag,
+                   updated_by = EXCLUDED.updated_by,
+                   updated_at = NOW()
+     RETURNING secret_ciphertext, secret_iv, secret_tag, updated_at`,
+    [secret.secretCiphertext, secret.secretIv, secret.secretTag, userId]
+  );
+
+  const credentials = parseTelegramLocalApiCredentials(result.rows[0]);
+  if (!credentials) throw new Error('TELEGRAM_LOCAL_API_CREDENTIALS_INVALID');
+  await writeTelegramLocalApiRuntimeCredentials(credentials);
+
+  return {
+    enabled: env.telegramLocalMode,
+    credentialsConfigured: true,
+    documentLimitBytes: env.telegramLocalMode ? 2_000 * 1024 * 1024 : 50 * 1024 * 1024,
+    updatedAt: result.rows[0].updated_at || null
+  };
+}
+
+export async function syncTelegramLocalApiRuntimeCredentials() {
+  const result = await query(
+    `SELECT secret_ciphertext, secret_iv, secret_tag
+     FROM integration_settings
+     WHERE key = 'telegram_local_api'`
+  );
+  const credentials = parseTelegramLocalApiCredentials(result.rows[0]);
+  if (!credentials) return false;
+  await writeTelegramLocalApiRuntimeCredentials(credentials);
+  return true;
 }
 
 export async function getTelegramCredentials() {

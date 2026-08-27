@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { env } from '../../config/env.js';
 import { pool, query } from '../../db/pool.js';
 import { catalogMediaDir } from '../catalog/catalog.media.js';
@@ -10,6 +11,9 @@ import { enterMaintenance, getMaintenanceReason, leaveMaintenance } from './main
 
 const TELEGRAM_DOCUMENT_LIMIT_BYTES = 50 * 1024 * 1024;
 const SAFE_TELEGRAM_DOCUMENT_LIMIT_BYTES = 49 * 1024 * 1024;
+const LOCAL_TELEGRAM_DOCUMENT_LIMIT_BYTES = 2_000 * 1024 * 1024;
+const SAFE_LOCAL_TELEGRAM_DOCUMENT_LIMIT_BYTES = 1_990 * 1024 * 1024;
+const LOCAL_TELEGRAM_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BACKUP_SOURCE_BYTES = 128 * 1024 * 1024;
 const BACKUP_FORMAT = 'mt-workspace-backup';
 const BACKUP_FORMAT_VERSION = 1;
@@ -270,7 +274,7 @@ export async function buildWorkspaceBackup({ now = new Date(), db = { query }, m
   const snapshot = await databaseSnapshot(db);
   const databaseData = Buffer.from(JSON.stringify(snapshot), 'utf8');
   if (databaseData.length > MAX_BACKUP_SOURCE_BYTES) {
-    throw new BackupError(413, 'BACKUP_SOURCE_TOO_LARGE', 'Дані резервної копії завеликі для безпечного надсилання через Telegram.');
+    throw new BackupError(413, 'BACKUP_SOURCE_TOO_LARGE', 'Дані резервної копії завеликі для безпечного формування архіву.');
   }
   const mediaEntries = [];
   const archiveEntries = [{ name: 'database.json', data: databaseData }];
@@ -286,7 +290,7 @@ export async function buildWorkspaceBackup({ now = new Date(), db = { query }, m
     const data = await readFile(path.join(mediaDir, entry.name));
     sourceBytes += data.length;
     if (sourceBytes > MAX_BACKUP_SOURCE_BYTES) {
-      throw new BackupError(413, 'BACKUP_SOURCE_TOO_LARGE', 'Дані й медіафайли завеликі для безпечного надсилання через Telegram.');
+      throw new BackupError(413, 'BACKUP_SOURCE_TOO_LARGE', 'Дані й медіафайли завеликі для безпечного формування архіву.');
     }
     mediaEntries.push({ name: entry.name, size: data.length, sha256: sha256(data) });
     archiveEntries.push({ name: `media/${entry.name}`, data });
@@ -556,12 +560,24 @@ function readableBackupDate(date, timezone = 'Europe/Kyiv') {
   }).format(date);
 }
 
+async function stageBackupForLocalTelegram(backup) {
+  await mkdir(env.telegramBackupTempDir, { recursive: true });
+  const operationDir = await mkdtemp(path.join(env.telegramBackupTempDir, 'mt-backup-'));
+  await chmod(operationDir, 0o755);
+  const archivePath = path.join(operationDir, backup.fileName);
+  await writeFile(archivePath, backup.archive, { flag: 'wx', mode: 0o644 });
+  await chmod(archivePath, 0o644);
+  const telegramPath = path.join(env.telegramLocalFileUriDir, path.basename(operationDir), backup.fileName);
+  return { operationDir, documentUri: pathToFileURL(telegramPath).href };
+}
+
 export async function createAndSendBackup({ trigger = 'manual', userId = null, now = new Date() } = {}) {
   if (backupOperationActive) throw new BackupError(409, 'BACKUP_BUSY', 'Інша операція з резервною копією вже виконується.');
   backupOperationActive = true;
   const startedAt = now;
   let fileName = '';
   let sizeBytes = 0;
+  let transferDir = '';
   try {
     const credentials = await getTelegramCredentials();
     if (!credentials) throw new BackupError(422, 'TELEGRAM_NOT_CONFIGURED', 'Спочатку підключіть Telegram-бота.');
@@ -569,16 +585,36 @@ export async function createAndSendBackup({ trigger = 'manual', userId = null, n
     const backup = await buildWorkspaceBackup({ now });
     fileName = backup.fileName;
     sizeBytes = backup.archive.length;
-    if (sizeBytes > SAFE_TELEGRAM_DOCUMENT_LIMIT_BYTES) {
+    const safeDocumentLimit = env.telegramLocalMode
+      ? SAFE_LOCAL_TELEGRAM_DOCUMENT_LIMIT_BYTES
+      : SAFE_TELEGRAM_DOCUMENT_LIMIT_BYTES;
+    if (sizeBytes > safeDocumentLimit) {
       const sizeMb = (sizeBytes / 1024 / 1024).toFixed(1);
-      throw new BackupError(413, 'BACKUP_TOO_LARGE', `Архів має ${sizeMb} МБ і перевищує ліміт Telegram 50 МБ.`);
+      const limitMb = Math.floor(safeDocumentLimit / 1024 / 1024);
+      throw new BackupError(413, 'BACKUP_TOO_LARGE', `Архів має ${sizeMb} МБ і перевищує безпечний ліміт ${limitMb} МБ.`);
     }
-    const form = new FormData();
-    form.append('chat_id', credentials.chatId);
     const environmentOrigin = backup.environment.hostname ? ` · ${backup.environment.hostname}` : '';
-    form.append('caption', `${backup.environment.marker} ${backup.environment.label} · Резервна копія MT Workspace\nСередовище: ${backup.environment.label}${environmentOrigin}\nСтворено: ${readableBackupDate(now, settings.timezone)} (${settings.timezone})\nТаблиць: ${backup.tableCount}; медіафайлів: ${backup.mediaCount}`);
-    form.append('document', new Blob([backup.archive], { type: 'application/gzip' }), backup.fileName);
-    const message = await telegramApiRequest(credentials.token, 'sendDocument', form, { timeoutMs: 120_000 });
+    const caption = `${backup.environment.marker} ${backup.environment.label} · Резервна копія MT Workspace\nСередовище: ${backup.environment.label}${environmentOrigin}\nСтворено: ${readableBackupDate(now, settings.timezone)} (${settings.timezone})\nТаблиць: ${backup.tableCount}; медіафайлів: ${backup.mediaCount}`;
+    let requestBody;
+    if (env.telegramLocalMode) {
+      const staged = await stageBackupForLocalTelegram(backup);
+      transferDir = staged.operationDir;
+      requestBody = {
+        chat_id: credentials.chatId,
+        caption,
+        document: staged.documentUri
+      };
+      backup.archive = null;
+    } else {
+      const form = new FormData();
+      form.append('chat_id', credentials.chatId);
+      form.append('caption', caption);
+      form.append('document', new Blob([backup.archive], { type: 'application/gzip' }), backup.fileName);
+      requestBody = form;
+    }
+    const message = await telegramApiRequest(credentials.token, 'sendDocument', requestBody, {
+      timeoutMs: env.telegramLocalMode ? LOCAL_TELEGRAM_UPLOAD_TIMEOUT_MS : 120_000
+    });
     const run = await recordBackupRun({
       trigger, status: 'success', fileName, sizeBytes,
       telegramMessageId: message.message_id ?? null, createdBy: userId, startedAt
@@ -590,6 +626,11 @@ export async function createAndSendBackup({ trigger = 'manual', userId = null, n
     await recordBackupRun({ trigger, status: 'failed', fileName, sizeBytes, errorMessage: message, createdBy: userId, startedAt }).catch(() => {});
     throw error;
   } finally {
+    if (transferDir) {
+      await rm(transferDir, { recursive: true, force: true }).catch((error) => {
+        console.error('Could not remove temporary Telegram backup archive', error);
+      });
+    }
     backupOperationActive = false;
   }
 }
@@ -672,6 +713,10 @@ export async function processDueBackups({ now = new Date() } = {}) {
 }
 
 export const backupLimits = {
-  telegramDocumentBytes: TELEGRAM_DOCUMENT_LIMIT_BYTES,
-  safeTelegramDocumentBytes: SAFE_TELEGRAM_DOCUMENT_LIMIT_BYTES
+  telegramDocumentBytes: env.telegramLocalMode
+    ? LOCAL_TELEGRAM_DOCUMENT_LIMIT_BYTES
+    : TELEGRAM_DOCUMENT_LIMIT_BYTES,
+  safeTelegramDocumentBytes: env.telegramLocalMode
+    ? SAFE_LOCAL_TELEGRAM_DOCUMENT_LIMIT_BYTES
+    : SAFE_TELEGRAM_DOCUMENT_LIMIT_BYTES
 };
