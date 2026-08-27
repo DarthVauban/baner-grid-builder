@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { DateTimePicker } from '../components/DateTimePicker';
 import { StyledSelect } from '../components/StyledSelect';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { ApiError, api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
-import type { HoroshopCatalogVisibility } from '../types/horoshop-catalog';
+import type { HoroshopCatalogPhotoStatus, HoroshopCatalogVisibility } from '../types/horoshop-catalog';
+import type { HoroshopIntegration } from '../types/integration';
 import type {
   HoroshopPhotoAsset,
   HoroshopPhotoBatch,
@@ -80,6 +82,30 @@ function BatchProgress({ batch }: { batch: HoroshopPhotoBatch }) {
       <span>Частково: {batch.counts.partial}</span>
       <span>Помилки: {batch.counts.failed}</span>
       <span>У черзі: {batch.counts.queued + batch.counts.running}</span>
+    </footer>
+  </section>;
+}
+
+function CatalogSyncProgress({ integration }: { integration: HoroshopIntegration }) {
+  const run = integration.latestRun;
+  const running = integration.status === 'syncing' || run?.status === 'running';
+  const failed = integration.status === 'error' || run?.status === 'failed';
+  const percentage = running ? run?.progressPercentage : failed ? run?.progressPercentage : 100;
+  return <section className={`horoshop-photo-progress horoshop-photo-catalog-sync${running ? ' is-running' : ''}${failed ? ' is-failed' : ' is-complete'}`} aria-live="polite">
+    <header>
+      <div>
+        <strong>{running ? 'Синхронізуємо каталог з Хорошопом' : failed ? 'Синхронізацію не завершено' : 'Каталог синхронізовано'}</strong>
+        <span>{running ? 'Отримуємо актуальні товари, модифікації та фотографії' : failed ? (run?.errorMessage || integration.lastError || 'Спробуйте запустити ще раз.') : `Останнє оновлення: ${integration.lastSyncAt ? new Date(integration.lastSyncAt).toLocaleString('uk-UA') : 'щойно'}`}</span>
+      </div>
+      <b>{percentage === null || percentage === undefined ? (running ? 'Триває' : failed ? 'Помилка' : 'Готово') : `${percentage}%`}</b>
+    </header>
+    <div className={`horoshop-photo-progress__track${running && percentage === null ? ' is-indeterminate' : ''}`}><span style={{ width: percentage === null || percentage === undefined ? '38%' : `${percentage}%` }} /></div>
+    <footer>
+      <span>Отримано: {run?.exportItemsReceived || 0}{run?.exportItemsTotal ? ` із ${run.exportItemsTotal}` : ''}</span>
+      <span>Сторінок: {run?.pagesReceived || 0}</span>
+      <span>Розділів: {run?.categoriesReceived || 0}</span>
+      <span>Товарів: {run?.productsReceived || 0}</span>
+      <span>Модифікацій: {run?.modificationsReceived || 0}</span>
     </footer>
   </section>;
 }
@@ -302,16 +328,23 @@ export function HoroshopPhotoParserPage() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterAvailability, setFilterAvailability] = useState('');
   const [filterVisibility, setFilterVisibility] = useState<HoroshopCatalogVisibility>('all');
+  const [filterCreatedFrom, setFilterCreatedFrom] = useState('');
+  const [filterCreatedTo, setFilterCreatedTo] = useState('');
+  const [filterPhotoStatus, setFilterPhotoStatus] = useState<HoroshopCatalogPhotoStatus>('without_photos');
   const [busyDraftIds, setBusyDraftIds] = useState<Set<string>>(() => new Set());
   const [batchId, setBatchId] = useState('');
   const [desktopPairing, setDesktopPairing] = useState<HoroshopPhotoDesktopPairing | null>(null);
   const [publicationMode, setPublicationMode] = useState<HoroshopPhotoPublicationMode>('replace');
   const [publishProgress, setPublishProgress] = useState<HoroshopPhotoPublishProgress | null>(null);
   const [publishOutcome, setPublishOutcome] = useState<HoroshopPhotoPublishResult | null>(null);
+  const [catalogSyncSnapshot, setCatalogSyncSnapshot] = useState<HoroshopIntegration | null>(null);
+  const [catalogSyncTracking, setCatalogSyncTracking] = useState(false);
+  const [dismissedResolutionIds, setDismissedResolutionIds] = useState<Set<string>>(() => new Set());
   const [targetPage, setTargetPage] = useState(1);
   const completedBatch = useRef('');
   const synchronizedBatchRevision = useRef('');
   const previousSelectionId = useRef('');
+  const reportedCatalogSync = useRef('');
 
   const selections = useQuery({ queryKey: ['horoshop-photo-selections'], queryFn: api.horoshopPhotos.selections });
   const desktopDevices = useQuery({
@@ -336,17 +369,28 @@ export function HoroshopPhotoParserPage() {
     refetchOnWindowFocus: false
   });
   const filterCatalog = useQuery({
-    queryKey: ['horoshop-photo-filter-catalog', filterSearch, filterCategory, filterAvailability, filterVisibility],
+    queryKey: ['horoshop-photo-filter-catalog', filterSearch, filterCategory, filterAvailability, filterVisibility, filterCreatedFrom, filterCreatedTo, filterPhotoStatus],
     queryFn: ({ signal }) => api.horoshopCatalog.list({
       search: filterSearch,
       category: filterCategory,
       availability: filterAvailability,
       visibility: filterVisibility,
+      createdFrom: filterCreatedFrom || undefined,
+      createdTo: filterCreatedTo || undefined,
+      photoStatus: filterPhotoStatus,
       state: 'active',
       page: 1,
       pageSize: 10
     }, signal),
     enabled: selectionMode === 'filter'
+  });
+  const catalogSyncProgress = useQuery({
+    queryKey: ['horoshop-photo-catalog-sync-progress'],
+    queryFn: api.horoshopPhotos.catalogSyncStatus,
+    enabled: catalogSyncTracking,
+    refetchInterval: catalogSyncTracking ? 1_200 : false,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: false
   });
   const batch = useQuery({
     queryKey: ['horoshop-photo-batch', batchId],
@@ -357,6 +401,7 @@ export function HoroshopPhotoParserPage() {
   });
   const createSelection = useMutation({ mutationFn: api.horoshopPhotos.createSelection });
   const createFilteredSelection = useMutation({ mutationFn: api.horoshopPhotos.createFilteredSelection });
+  const syncCatalog = useMutation({ mutationFn: api.horoshopPhotos.syncCatalog });
   const createDesktopPairing = useMutation({ mutationFn: api.horoshopPhotos.createDesktopPairing });
   const parseSelection = useMutation({ mutationFn: api.horoshopPhotos.parseSelection });
   const publishSelection = useMutation({
@@ -373,6 +418,7 @@ export function HoroshopPhotoParserPage() {
     () => (desktopDevices.data || []).filter((device) => !device.revokedAt),
     [desktopDevices.data]
   );
+  const catalogSyncIntegration = catalogSyncProgress.data?.integration || catalogSyncSnapshot;
 
   useEffect(() => {
     if (!selectionId && selections.data?.[0]?.id) setSelectionId(selections.data[0].id);
@@ -444,11 +490,87 @@ export function HoroshopPhotoParserPage() {
     void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch', selectionId] });
   }, [batch.error, batchId, queryClient, selectionId]);
 
+  useEffect(() => {
+    if (!catalogSyncTracking || !catalogSyncProgress.data) return;
+    const integration = catalogSyncProgress.data.integration;
+    const run = integration.latestRun;
+    if (integration.status === 'syncing' || run?.status === 'running') return;
+    const signature = `${run?.id || 'none'}:${run?.status || integration.status}`;
+    if (reportedCatalogSync.current === signature) return;
+    reportedCatalogSync.current = signature;
+    setCatalogSyncSnapshot(integration);
+    setCatalogSyncTracking(false);
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['horoshop-photo-filter-catalog'] }),
+      queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] })
+    ]);
+    if (run?.status === 'failed' || integration.status === 'error') {
+      showToast(run?.errorMessage || integration.lastError || 'Не вдалося синхронізувати каталог.', 'error');
+    } else {
+      showToast('Каталог Хорошоп синхронізовано.', 'success');
+    }
+  }, [catalogSyncProgress.data, catalogSyncTracking, queryClient, showToast]);
+
   const displayedBatch = batch.data?.selectionId === selectionId
     ? batch.data
     : activeBatch.data?.selectionId === selectionId ? activeBatch.data : null;
   const parserBusy = Boolean(displayedBatch && !batchComplete(displayedBatch));
   const publishBusy = publishSelection.isPending;
+
+  function dismissCurrentResolution() {
+    createSelection.reset();
+    createFilteredSelection.reset();
+    if (!selectionId) return;
+    setDismissedResolutionIds((current) => new Set(current).add(selectionId));
+  }
+
+  function changeSelectionMode(mode: 'list' | 'filter') {
+    dismissCurrentResolution();
+    setSelectionMode(mode);
+  }
+
+  function chooseSelection(nextSelectionId: string) {
+    setDismissedResolutionIds((current) => {
+      const next = new Set(current);
+      next.delete(nextSelectionId);
+      return next;
+    });
+    setSelectionId(nextSelectionId);
+  }
+
+  function clearSelectionFromUi(removedId: string) {
+    const remaining = (queryClient.getQueryData<HoroshopPhotoSelectionSummary[]>(['horoshop-photo-selections']) || [])
+      .filter((item) => item.id !== removedId);
+    queryClient.setQueryData(['horoshop-photo-selections'], remaining);
+    queryClient.removeQueries({ queryKey: ['horoshop-photo-selection', removedId], exact: true });
+    queryClient.setQueryData(['horoshop-photo-active-batch', removedId], null);
+    if (displayedBatch?.selectionId === removedId) {
+      if (displayedBatch.id === batchId) setBatchId('');
+      queryClient.removeQueries({ queryKey: ['horoshop-photo-batch', displayedBatch.id], exact: true });
+    }
+    setPublishProgress(null);
+    setPublishOutcome(null);
+    setSelectionId(remaining[0]?.id || '');
+  }
+
+  async function synchronizeCatalog() {
+    reportedCatalogSync.current = '';
+    setCatalogSyncSnapshot(null);
+    try {
+      const result = await syncCatalog.mutateAsync();
+      setCatalogSyncSnapshot(result.integration);
+      const running = result.started
+        || result.integration.status === 'syncing'
+        || result.integration.latestRun?.status === 'running';
+      setCatalogSyncTracking(running);
+      if (!running) {
+        showToast('Каталог вже синхронізовано.', 'success');
+      }
+    } catch (error) {
+      setCatalogSyncTracking(false);
+      showToast(error instanceof Error ? error.message : 'Не вдалося запустити синхронізацію каталогу.', 'error');
+    }
+  }
 
   async function createFromInput() {
     const entries = selectionInput.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean);
@@ -470,6 +592,10 @@ export function HoroshopPhotoParserPage() {
   }
 
   async function createFromFilter() {
+    if (filterCreatedFrom && filterCreatedTo && filterCreatedFrom > filterCreatedTo) {
+      showToast('Дата «Від» не може бути пізнішою за дату «До».', 'error');
+      return;
+    }
     try {
       const created = await createFilteredSelection.mutateAsync({
         name: selectionName,
@@ -477,7 +603,10 @@ export function HoroshopPhotoParserPage() {
           search: filterSearch,
           category: filterCategory,
           availability: filterAvailability,
-          visibility: filterVisibility
+          visibility: filterVisibility,
+          createdFrom: filterCreatedFrom || undefined,
+          createdTo: filterCreatedTo || undefined,
+          photoStatus: filterPhotoStatus
         }
       });
       await queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] });
@@ -578,6 +707,7 @@ export function HoroshopPhotoParserPage() {
     const publishingSelectionId = selectionId;
     setPublishOutcome(null);
     setPublishProgress({ stage: 'authenticating', totalDrafts: 0, processedDrafts: 0, currentArticle: '', percentage: 0 });
+    let selectionCleared = false;
     try {
       const result = await publishSelection.mutateAsync({ id: publishingSelectionId, mode: publicationMode });
       if (publishResultHasFailures(result)) {
@@ -587,15 +717,21 @@ export function HoroshopPhotoParserPage() {
           'error'
         );
       } else {
+        selectionCleared = result.selectionCleared === true;
+        if (result.selectionCleared) clearSelectionFromUi(publishingSelectionId);
         showToast(`Передано чернеток: ${result.publishedDrafts}.`, 'success');
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося опублікувати вибірку.', 'error');
     } finally {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection', publishingSelectionId], exact: true }),
-        queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] })
-      ]).catch(() => {});
+      if (selectionCleared) {
+        await queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'], refetchType: 'none' }).catch(() => {});
+      } else {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selection', publishingSelectionId], exact: true }),
+          queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] })
+        ]).catch(() => {});
+      }
     }
   }
 
@@ -611,16 +747,7 @@ export function HoroshopPhotoParserPage() {
     const removedId = selectionId;
     try {
       await api.horoshopPhotos.removeSelection(removedId);
-      const remaining = (queryClient.getQueryData<HoroshopPhotoSelectionSummary[]>(['horoshop-photo-selections']) || [])
-        .filter((item) => item.id !== removedId);
-      queryClient.setQueryData(['horoshop-photo-selections'], remaining);
-      queryClient.removeQueries({ queryKey: ['horoshop-photo-selection', removedId], exact: true });
-      if (displayedBatch?.selectionId === removedId) {
-        if (displayedBatch.id === batchId) setBatchId('');
-        queryClient.removeQueries({ queryKey: ['horoshop-photo-batch', displayedBatch.id], exact: true });
-        queryClient.setQueryData(['horoshop-photo-active-batch', removedId], null);
-      }
-      setSelectionId(remaining[0]?.id || '');
+      clearSelectionFromUi(removedId);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'] }),
         queryClient.invalidateQueries({ queryKey: ['horoshop-photo-active-batch'] })
@@ -639,6 +766,9 @@ export function HoroshopPhotoParserPage() {
   const publishableCount = useMemo(() => photoTargets.filter((target) => (
     draftIsPublishable(target.draft)
   )).length, [photoTargets]);
+  const showResolution = Boolean(selection.data
+    && !dismissedResolutionIds.has(selection.data.id)
+    && (selection.data.resolution.ambiguous.length > 0 || selection.data.resolution.unmatched.length > 0));
 
   if (selections.isError) return <div className="horoshop-photo-page">
     <section className="task-list-state task-list-state--error">
@@ -667,6 +797,9 @@ export function HoroshopPhotoParserPage() {
           ariaLabel="Режим публікації фотографій"
           compact
         />
+        <button className="button button--secondary" type="button" disabled={syncCatalog.isPending || catalogSyncTracking} onClick={() => void synchronizeCatalog()}>
+          <Icon name="refresh" size={17} /> {syncCatalog.isPending ? 'Запускаємо…' : catalogSyncTracking ? 'Синхронізуємо…' : 'Синхронізувати каталог'}
+        </button>
         <button className="button button--secondary" type="button" disabled={!selectionId || !connectedDevices.length || parserBusy || parseSelection.isPending} onClick={() => void runSelectionParse()}>
           <Icon name="refresh" size={17} /> Передати в парсер
         </button>
@@ -675,6 +808,8 @@ export function HoroshopPhotoParserPage() {
         </button>
       </div>
     </header>
+
+    {catalogSyncIntegration && <CatalogSyncProgress integration={catalogSyncIntegration} />}
 
     <section className="horoshop-photo-desktop">
       <div className="horoshop-photo-desktop__intro">
@@ -710,12 +845,12 @@ export function HoroshopPhotoParserPage() {
         <div><strong>Нова вибірка товарів</strong><p>Вкажіть точний список назв чи артикулів або сформуйте групу фільтрами каталогу.</p></div>
       </div>
       <div className="horoshop-photo-builder__modes" role="group" aria-label="Спосіб створення вибірки">
-        <button type="button" className={selectionMode === 'list' ? 'is-active' : ''} onClick={() => setSelectionMode('list')}>Назви та артикули</button>
-        <button type="button" className={selectionMode === 'filter' ? 'is-active' : ''} onClick={() => setSelectionMode('filter')}>Фільтри каталогу</button>
+        <button type="button" className={selectionMode === 'list' ? 'is-active' : ''} onClick={() => changeSelectionMode('list')}>Назви та артикули</button>
+        <button type="button" className={selectionMode === 'filter' ? 'is-active' : ''} onClick={() => changeSelectionMode('filter')}>Фільтри каталогу</button>
       </div>
       <label><span>Назва вибірки</span><input value={selectionName} onChange={(event) => setSelectionName(event.target.value)} placeholder="Наприклад, Нові iPhone" /></label>
-      {selectionMode === 'list' ? <label className="horoshop-photo-builder__entries"><span>Назви та артикули</span><textarea value={selectionInput} onChange={(event) => setSelectionInput(event.target.value)} placeholder={'IPHONE-15-128-BLK\nСмартфон Apple iPhone 15 128GB Black'} /></label> : <div className="horoshop-photo-builder__filters">
-        <label><span>Пошук у каталозі</span><input value={filterSearch} onChange={(event) => setFilterSearch(event.target.value)} placeholder="Назва, артикул або бренд" /></label>
+      {selectionMode === 'list' ? <label className="horoshop-photo-builder__entries"><span>Назви та артикули</span><textarea value={selectionInput} onChange={(event) => { dismissCurrentResolution(); setSelectionInput(event.target.value); }} placeholder={'IPHONE-15-128-BLK\nСмартфон Apple iPhone 15 128GB Black'} /></label> : <div className="horoshop-photo-builder__filters">
+        <label><span>Пошук у каталозі</span><input value={filterSearch} onChange={(event) => { dismissCurrentResolution(); setFilterSearch(event.target.value); }} placeholder="Назва, артикул або бренд" /></label>
         <label><span>Розділ</span><StyledSelect
           value={filterCategory}
           options={[
@@ -725,7 +860,7 @@ export function HoroshopPhotoParserPage() {
               label: `${category.titles.uk || category.titles.ua || category.titles.ru || category.titles.en || category.externalId} · ${category.productCount}`
             })) || [])
           ]}
-          onChange={setFilterCategory}
+          onChange={(value) => { dismissCurrentResolution(); setFilterCategory(value); }}
           ariaLabel="Розділ"
           searchable
         /></label>
@@ -735,7 +870,7 @@ export function HoroshopPhotoParserPage() {
             { value: '', label: 'Будь-яка' },
             ...(filterCatalog.data?.availabilityOptions.map((availability) => ({ value: availability, label: availability })) || [])
           ]}
-          onChange={setFilterAvailability}
+          onChange={(value) => { dismissCurrentResolution(); setFilterAvailability(value); }}
           ariaLabel="Наявність"
         /></label>
         <label><span>Видимість</span><StyledSelect
@@ -745,10 +880,25 @@ export function HoroshopPhotoParserPage() {
             { value: 'visible', label: 'Лише видимі' },
             { value: 'hidden', label: 'Лише приховані' }
           ]}
-          onChange={(value) => setFilterVisibility(value as HoroshopCatalogVisibility)}
+          onChange={(value) => { dismissCurrentResolution(); setFilterVisibility(value as HoroshopCatalogVisibility); }}
           ariaLabel="Видимість"
         /></label>
-        <p>{filterCatalog.isLoading ? 'Рахуємо товари…' : `За цими умовами: ${filterCatalog.data?.total || 0} товарів`}</p>
+        <DateTimePicker label="Додано в Хорошоп від" value={filterCreatedFrom} mode="date" onChange={(value) => { dismissCurrentResolution(); setFilterCreatedFrom(value); }} />
+        <DateTimePicker label="Додано в Хорошоп до" value={filterCreatedTo} mode="date" onChange={(value) => { dismissCurrentResolution(); setFilterCreatedTo(value); }} />
+        <label><span>Фото у Хорошопі</span><StyledSelect
+          value={filterPhotoStatus}
+          options={[
+            { value: 'all', label: 'Усі товари' },
+            { value: 'with_photos', label: 'З фото' },
+            { value: 'without_photos', label: 'Без фото' }
+          ]}
+          onChange={(value) => { dismissCurrentResolution(); setFilterPhotoStatus(value as HoroshopCatalogPhotoStatus); }}
+          ariaLabel="Фото у Хорошопі"
+        /></label>
+        <div className="horoshop-photo-builder__filter-summary">
+          <p>{filterCatalog.isLoading ? 'Рахуємо товари…' : `Орієнтовно за цими умовами: ${filterCatalog.data?.total || 0} товарів. Точна кількість врахує модифікації під час створення вибірки.`}</p>
+          {(filterCreatedFrom || filterCreatedTo) && <button type="button" onClick={() => { dismissCurrentResolution(); setFilterCreatedFrom(''); setFilterCreatedTo(''); }}>Очистити дати</button>}
+        </div>
       </div>}
       <button className="button button--primary" type="button" disabled={createSelection.isPending || createFilteredSelection.isPending} onClick={() => void (selectionMode === 'list' ? createFromInput() : createFromFilter())}>
         <Icon name="add" size={17} /> {createSelection.isPending || createFilteredSelection.isPending ? 'Створюємо…' : 'Створити вибірку'}
@@ -761,7 +911,7 @@ export function HoroshopPhotoParserPage() {
         options={selections.data?.length
           ? selections.data.map((item) => ({ value: item.id, label: `${item.name} · ${item.matchedCount}` }))
           : [{ value: '', label: 'Вибірок ще немає', disabled: true }]}
-        onChange={setSelectionId}
+        onChange={chooseSelection}
         disabled={!selections.data?.length}
         ariaLabel="Поточна вибірка товарів"
         searchable
@@ -797,7 +947,8 @@ export function HoroshopPhotoParserPage() {
       </div>
     </section>}
 
-    {selection.data && (selection.data.resolution.ambiguous.length > 0 || selection.data.resolution.unmatched.length > 0) && <section className="horoshop-photo-resolution">
+    {showResolution && selection.data && <section className="horoshop-photo-resolution">
+      <button className="horoshop-photo-resolution__close" type="button" aria-label="Сховати повідомлення про збіги" onClick={dismissCurrentResolution}><Icon name="close" size={16} /></button>
       {selection.data.resolution.ambiguous.length > 0 && <div>
         <h2>Потрібно уточнити</h2>
         {selection.data.resolution.ambiguous.map((entry) => <article key={entry.input}>
@@ -819,7 +970,7 @@ export function HoroshopPhotoParserPage() {
     <section className="horoshop-photo-products">
       {selection.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо вибірку…</p></div>}
       {!selectionId && !selection.isLoading && <div className="empty-state"><Icon name="productSelection" size={30} /><strong>Створіть першу вибірку</strong><span>Вставте назви або артикули товарів у поле вище.</span></div>}
-      {selection.data && !selection.data.products.length && <div className="empty-state"><Icon name="search" size={30} /><strong>Точних збігів немає</strong><span>Перевірте блок уточнень і записи, які не були знайдені.</span></div>}
+      {selection.data && !selection.data.products.length && <div className="empty-state"><Icon name="search" size={30} /><strong>Точних збігів немає</strong><span>Ця стара порожня вибірка не блокує роботу. Видаліть її або вкажіть інші назви та артикули.</span><button className="button button--danger button--small" type="button" onClick={() => void removeCurrentSelection()}><Icon name="delete" size={15} /> Видалити порожню вибірку</button></div>}
       <TargetPager page={targetPage} pageCount={targetPageCount} total={photoTargets.length} onChange={setTargetPage} />
       {visiblePhotoTargets.map((target) => <ProductTarget
         target={target}

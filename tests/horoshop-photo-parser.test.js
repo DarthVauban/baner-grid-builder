@@ -291,12 +291,16 @@ test('catalog filters can create a selection while direct lists remain available
   const service = new HoroshopPhotoService({
     databasePool: pool,
     catalogService: {
-      async catalog(input) {
+      async photoTargets(input) {
         calls.push(input);
-        return {
-          items: [{ sku: 'PHONE-2', titles: { uk: 'Смартфон з однаковою назвою' } }],
-          pageCount: 1
-        };
+        return [{
+          productId: ids.duplicatePhone,
+          modificationId: null,
+          sku: 'PHONE-2',
+          titles: { uk: 'Смартфон з однаковою назвою' },
+          productTitles: { uk: 'Смартфон з однаковою назвою' },
+          imageUrl: ''
+        }];
       }
     }
   });
@@ -309,12 +313,71 @@ test('catalog filters can create a selection while direct lists remain available
   assert.equal(selection.products.length, 1);
   assert.equal(selection.products[0].id, ids.duplicatePhone);
   assert.deepEqual(calls[0], {
-    search: 'PHONE', category: 'phones', availability: '', visibility: 'hidden',
-    state: 'active', page: 1, pageSize: 100
+    search: 'PHONE', category: 'phones', availability: '', visibility: 'hidden'
   });
   assert.equal(selection.products[0].modifications.length, 0);
   assert.ok(selection.products[0].commonDraft);
   await service.deleteSelection(selection.id);
+});
+
+test('an exact selection with no matches fails without persisting an empty selection', async () => {
+  const service = new HoroshopPhotoService({ databasePool: pool });
+  const before = await pool.query('SELECT COUNT(*)::INTEGER AS total FROM search_horoshop_photo_selections');
+  await assert.rejects(
+    service.createSelection({ name: 'Не знайдено', entries: ['19156'], userId: null }),
+    (error) => error?.status === 422 && error?.code === 'HOROSHOP_PHOTO_SELECTION_NO_MATCHES'
+  );
+  const afterResult = await pool.query('SELECT COUNT(*)::INTEGER AS total FROM search_horoshop_photo_selections');
+  assert.equal(afterResult.rows[0].total, before.rows[0].total);
+});
+
+test('photo and creation-date filters select only matching flat modification targets', async () => {
+  const productId = randomUUID();
+  const withPhotoId = randomUUID();
+  const withoutPhotoId = randomUUID();
+  await pool.query(`
+    INSERT INTO search_horoshop_products (
+      id, connection_id, generation, external_id, sku, titles, category_external_id,
+      horoshop_created_at, has_photos, active, visible, last_seen_sync_id
+    ) VALUES ($1, $2, $3, 'mixed-product', 'MIXED', $4::jsonb, 'tablets', $5, FALSE, TRUE, TRUE, $6)
+  `, [
+    productId, ids.connection, ids.generation, JSON.stringify({ uk: 'Планшет Mixed' }),
+    new Date('2026-08-20T10:00:00.000Z'), ids.sync
+  ]);
+  for (const modification of [
+    { id: withPhotoId, externalId: 'mixed-with', sku: 'MIXED-WITH', hasPhotos: true, createdAt: '2026-08-19T10:00:00.000Z' },
+    { id: withoutPhotoId, externalId: 'mixed-without', sku: 'MIXED-WITHOUT', hasPhotos: false, createdAt: '2026-08-21T10:00:00.000Z' }
+  ]) {
+    await pool.query(`
+      INSERT INTO search_horoshop_modifications (
+        id, connection_id, product_id, generation, external_id, sku, titles,
+        horoshop_created_at, has_photos, active, visible, last_seen_sync_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, TRUE, TRUE, $10)
+    `, [
+      modification.id, ids.connection, productId, ids.generation, modification.externalId,
+      modification.sku, JSON.stringify({ uk: modification.sku }), new Date(modification.createdAt),
+      modification.hasPhotos, ids.sync
+    ]);
+  }
+
+  const service = new HoroshopPhotoService({
+    databasePool: pool,
+    catalogService: new HoroshopCatalogService({ repository: new HoroshopCatalogRepository(pool) })
+  });
+  const selection = await service.createFilteredSelection({
+    name: 'Без фото',
+    filters: {
+      search: 'MIXED', category: 'tablets', availability: '', visibility: 'all',
+      photoStatus: 'without_photos', createdFrom: '2026-08-21', createdTo: '2026-08-21'
+    },
+    userId: null
+  });
+
+  assert.equal(selection.products.length, 1);
+  assert.equal(selection.products[0].includeAllModifications, false);
+  assert.deepEqual(selection.products[0].modifications.map((item) => item.id), [withoutPhotoId]);
+  await service.deleteSelection(selection.id);
+  await pool.query('DELETE FROM search_horoshop_products WHERE id = $1', [productId]);
 });
 
 test('saved selection exposes unique modification targets without an article-only title', async () => {
@@ -420,7 +483,9 @@ test('bulk publication skips a common gallery when a product has unique modifica
     publishedArticles: 1,
     failedDrafts: 0,
     failedArticles: 0,
-    failures: []
+    failures: [],
+    selectionCleared: false,
+    remainingTargets: 1
   });
   assert.equal(imports.length, 1);
   assert.deepEqual(imports[0].products[0], {
@@ -560,12 +625,14 @@ test('bulk publication continues after one article fails and retries only the fa
       publishedArticles: 1,
       failedDrafts: 0,
       failedArticles: 0,
-      failures: []
+      failures: [],
+      selectionCleared: true,
+      remainingTargets: 0
     });
     assert.deepEqual(imports.filter((item) => item.round === 2).map((item) => item.products[0].article), [failedArticle]);
     await assert.rejects(
       () => service.publishSelection(fixture.selection.id, { mode: 'append', userId: ids.admin }),
-      (error) => error?.code === 'HOROSHOP_PHOTO_PUBLICATION_EMPTY'
+      (error) => error?.code === 'HOROSHOP_PHOTO_SELECTION_NOT_FOUND'
     );
 
     const directIndex = failedIndex;
@@ -581,6 +648,116 @@ test('bulk publication continues after one article fails and retries only the fa
       SELECT publish_status FROM search_horoshop_photo_drafts WHERE id = $1
     `, [fixture.drafts[directIndex].id]);
     assert.equal(failedDirect.rows[0].publish_status, 'failed');
+  } finally {
+    await removePublicationFixture(fixture);
+  }
+});
+
+test('successful selection publication clears its workspace selection and desktop queue atomically', async () => {
+  let importCalls = 0;
+  const service = new HoroshopPhotoService({
+    databasePool: pool,
+    publicOrigin: 'https://panel.example',
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() { return 'token'; },
+      async importCatalog() { importCalls += 1; return {}; }
+    })
+  });
+  const fixture = await createPublicationFixture(service, 1);
+  try {
+    await addPublicationAsset(fixture, fixture.drafts[0].id);
+    const batch = await service.createBatch({
+      selectionId: fixture.selection.id,
+      userId: ids.admin,
+      executor: 'desktop'
+    });
+    await pool.query(`
+      UPDATE search_horoshop_photo_runs
+      SET status = 'success', completed_at = NOW()
+      WHERE batch_id = $1
+    `, [batch.id]);
+    await pool.query(`
+      UPDATE search_horoshop_photo_drafts
+      SET parse_status = 'ready'
+      WHERE id = $1
+    `, [fixture.drafts[0].id]);
+    await service.refreshBatch(batch.id);
+
+    const result = await service.publishSelection(fixture.selection.id, {
+      mode: 'replace',
+      userId: ids.admin
+    });
+
+    assert.equal(importCalls, 1);
+    assert.deepEqual(result, {
+      publishedDrafts: 1,
+      publishedArticles: 1,
+      failedDrafts: 0,
+      failedArticles: 0,
+      failures: [],
+      selectionCleared: true,
+      remainingTargets: 0
+    });
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::INTEGER AS count FROM search_horoshop_photo_selections WHERE id = $1',
+      [fixture.selection.id]
+    )).rows[0].count, 0);
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::INTEGER AS count FROM search_horoshop_photo_batches WHERE id = $1',
+      [batch.id]
+    )).rows[0].count, 0);
+    assert.deepEqual((await pool.query(`
+      SELECT publish_status, parse_status
+      FROM search_horoshop_photo_drafts
+      WHERE id = $1
+    `, [fixture.drafts[0].id])).rows[0], {
+      publish_status: 'published',
+      parse_status: 'ready'
+    });
+    assert.equal((await pool.query(`
+      SELECT COUNT(*)::INTEGER AS count
+      FROM search_horoshop_photo_assets
+      WHERE draft_id = $1
+    `, [fixture.drafts[0].id])).rows[0].count, 1);
+  } finally {
+    await removePublicationFixture(fixture);
+  }
+});
+
+test('a completed external publication can finish stale selection cleanup without publishing twice', async () => {
+  let importCalls = 0;
+  const service = new HoroshopPhotoService({
+    databasePool: pool,
+    publicOrigin: 'https://panel.example',
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() { return 'token'; },
+      async importCatalog() { importCalls += 1; return {}; }
+    })
+  });
+  const fixture = await createPublicationFixture(service, 1);
+  try {
+    await addPublicationAsset(fixture, fixture.drafts[0].id);
+    await pool.query(`
+      UPDATE search_horoshop_photo_drafts
+      SET publish_status = 'published', published_at = NOW(), published_by = $2
+      WHERE id = $1
+    `, [fixture.drafts[0].id, ids.admin]);
+
+    const result = await service.publishSelection(fixture.selection.id, {
+      mode: 'replace',
+      userId: ids.admin
+    });
+
+    assert.equal(importCalls, 0);
+    assert.equal(result.selectionCleared, true);
+    assert.equal(result.remainingTargets, 0);
+    assert.equal(result.publishedDrafts, 0);
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::INTEGER AS count FROM search_horoshop_photo_selections WHERE id = $1',
+      [fixture.selection.id]
+    )).rows[0].count, 0);
   } finally {
     await removePublicationFixture(fixture);
   }
@@ -1143,9 +1320,15 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   assert.equal(newJobs[0].sku, 'PHONE-1-BLUE');
   assert.equal(newJobs[0].title, 'Смартфон Example One');
   assert.deepEqual((await desktopService.listJobs(device)).map((item) => item.id), [newJobs[0].id]);
+  const activeSnapshot = await desktopService.queueSnapshot(device);
+  assert.deepEqual(activeSnapshot.jobs.map((item) => item.id), [newJobs[0].id]);
+  assert.ok(activeSnapshot.activeSelectionIds.includes(newSelection.id));
 
   await photoService.deleteSelection(newSelection.id);
   assert.deepEqual(await desktopService.listJobs(device), []);
+  const clearedSnapshot = await desktopService.queueSnapshot(device);
+  assert.deepEqual(clearedSnapshot.jobs, []);
+  assert.equal(clearedSnapshot.activeSelectionIds.includes(newSelection.id), false);
   const deletedBatch = await pool.query('SELECT id FROM search_horoshop_photo_batches WHERE id = $1', [newJobs[0].batchId]);
   assert.equal(deletedBatch.rows.length, 0);
 

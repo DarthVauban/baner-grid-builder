@@ -86,6 +86,10 @@ export class HoroshopCatalogService {
     return { integration, ...catalog };
   }
 
+  async photoTargets(input) {
+    return this.repository.listPhotoTargets(input);
+  }
+
   async connect(input, actorUserId) {
     let client;
     try {
@@ -254,6 +258,8 @@ export class HoroshopCatalogService {
       const visitedPages = new Set();
       let offset = 0;
       let pages = 0;
+      let exportItemsReceived = 0;
+      let exportItemsTotal = null;
       let finished = false;
 
       for (let pageNumber = 0; pageNumber < maximumPages; pageNumber += 1) {
@@ -261,6 +267,8 @@ export class HoroshopCatalogService {
         if (visitedOffsets.has(offset)) throw new Error('Horoshop pagination repeated an offset');
         visitedOffsets.add(offset);
         const page = await client.exportCatalog(token, offset, pageSize);
+        exportItemsReceived += page.products.length;
+        if (Number.isInteger(page.total) && page.total >= 0) exportItemsTotal = page.total;
         const pageFingerprint = createHash('sha256').update(JSON.stringify(page.products)).digest('hex');
         if (page.products.length > 0 && visitedPages.has(pageFingerprint)) {
           throw new Error('Horoshop pagination returned a repeated product page');
@@ -277,7 +285,9 @@ export class HoroshopCatalogService {
           categories: categories.length,
           products: productIds.size,
           modifications: modificationIds.size,
-          pages
+          pages,
+          exportItemsReceived,
+          exportItemsTotal
         });
         if (page.nextOffset === null) {
           finished = true;
@@ -291,7 +301,9 @@ export class HoroshopCatalogService {
         categories: categories.length,
         products: productIds.size,
         modifications: modificationIds.size,
-        pages
+        pages,
+        exportItemsReceived,
+        exportItemsTotal
       };
       await this.repository.completeSync(connection, runId, counts, {
         categories: categories.map((category) => category.externalId),

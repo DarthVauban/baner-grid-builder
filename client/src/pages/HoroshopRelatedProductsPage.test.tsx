@@ -35,18 +35,22 @@ const feed: HoroshopCatalogFeed = {
     primaryImageUrl: 'https://cdn.example/black.jpg',
     canonicalUrl: 'https://test-shop.example/redmi-buds-6',
     popularity: null,
+    horoshopCreatedAt: '2026-08-13T09:00:00.000Z',
+    hasPhotos: true,
     updatedAt: '2026-08-13T09:00:00.000Z',
     modifications: [{
       id: 'modification-black', externalId: 'black', sku: '34208-B',
       titles: { uk: 'Xiaomi Redmi Buds 6 Active Black' }, price: '1299', oldPrice: null,
       currency: 'UAH', availability: 'В наявності', visible: true, active: true,
       imageUrl: 'https://cdn.example/black.jpg', pageUrl: null, attributes: {},
+      horoshopCreatedAt: '2026-08-13T09:00:00.000Z', hasPhotos: true,
       updatedAt: '2026-08-13T09:00:00.000Z'
     }, {
       id: 'modification-pink', externalId: 'pink', sku: '34209-P',
       titles: { uk: 'Xiaomi Redmi Buds 6 Active Pink' }, price: '1099', oldPrice: null,
       currency: 'UAH', availability: 'Немає в наявності', visible: false, active: true,
       imageUrl: 'https://cdn.example/pink.jpg', pageUrl: null, attributes: {},
+      horoshopCreatedAt: '2026-08-13T09:00:00.000Z', hasPhotos: true,
       updatedAt: '2026-08-13T09:00:00.000Z'
     }]
   }],

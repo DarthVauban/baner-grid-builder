@@ -3,6 +3,7 @@ import type { HoroshopIntegration } from './integration';
 export type HoroshopLocalizedText = Record<string, string>;
 export type HoroshopCatalogVisibility = 'all' | 'visible' | 'hidden';
 export type HoroshopCatalogState = 'active' | 'inactive' | 'all';
+export type HoroshopCatalogPhotoStatus = 'all' | 'with_photos' | 'without_photos';
 
 export interface HoroshopCatalogModification {
   id: string;
@@ -20,6 +21,8 @@ export interface HoroshopCatalogModification {
   stickers?: Array<{ id: string; title: string }>;
   conditionLabel?: string | null;
   attributes: Record<string, unknown>;
+  horoshopCreatedAt: string | null;
+  hasPhotos: boolean;
   updatedAt: string;
 }
 
@@ -42,6 +45,8 @@ export interface HoroshopCatalogProduct {
   popularity: string | null;
   stickers?: Array<{ id: string; title: string }>;
   conditionLabel?: string | null;
+  horoshopCreatedAt: string | null;
+  hasPhotos: boolean;
   updatedAt: string;
   modifications: HoroshopCatalogModification[];
 }
@@ -70,6 +75,9 @@ export interface HoroshopCatalogParams {
   availability?: string;
   visibility?: HoroshopCatalogVisibility;
   state?: HoroshopCatalogState;
+  createdFrom?: string;
+  createdTo?: string;
+  photoStatus?: HoroshopCatalogPhotoStatus;
   page?: number;
   pageSize?: number;
 }

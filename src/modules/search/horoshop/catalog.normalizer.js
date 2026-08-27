@@ -111,6 +111,24 @@ function booleanValue(value, fallback = true) {
   return fallback;
 }
 
+function dateTimeValue(value) {
+  let candidate = value;
+  if (typeof candidate === 'string') {
+    candidate = candidate.trim();
+    if (!candidate) return null;
+    if (/^\d{10,13}$/u.test(candidate)) candidate = Number(candidate);
+  }
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+    candidate = candidate < 1_000_000_000_000 ? candidate * 1_000 : candidate;
+  }
+  if (typeof candidate === 'string'
+    && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/u.test(candidate)) {
+    candidate = `${candidate.replace(' ', 'T')}Z`;
+  }
+  const parsed = new Date(candidate);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 export function normalizeLocalizedText(value) {
   if (typeof value === 'string' && value.trim()) return { uk: value.trim() };
   const source = record(value);
@@ -131,13 +149,25 @@ function normalizedHttpsUrl(candidate, storeDomain, requireStoreHost) {
   }
 }
 
+function photoItems(value) {
+  if (Array.isArray(value)) return value;
+  const source = record(value);
+  return Array.isArray(source.links) ? source.links : [];
+}
+
+function hasPhotoCollection(value) {
+  return photoItems(value).some((item) => {
+    const candidate = stringValue(item) ?? stringValue(record(item).url ?? record(item).src);
+    return Boolean(candidate);
+  });
+}
+
 function firstImage(source, storeDomain) {
   const candidates = [];
   const direct = stringValue(source.image ?? source.image_url ?? source.main_image);
   if (direct) candidates.push(direct);
   for (const collection of [source.images, source.gallery_common]) {
-    if (!Array.isArray(collection)) continue;
-    for (const item of collection) {
+    for (const item of photoItems(collection)) {
       const candidate = stringValue(item) ?? stringValue(record(item).url ?? record(item).src);
       if (candidate) candidates.push(candidate);
     }
@@ -177,7 +207,15 @@ export function normalizeHoroshopCategories(items, storeDomain) {
   });
 }
 
-function normalizeModification(source, fallbackSku, productExternalId, inheritedAvailability, storeDomain, inheritedPageUrl) {
+function normalizeModification(
+  source,
+  fallbackSku,
+  productExternalId,
+  inheritedAvailability,
+  inheritedCreationTime,
+  storeDomain,
+  inheritedPageUrl
+) {
   const sku = stringValue(source.article ?? source.sku) ?? fallbackSku;
   const offerIdentity = stringValue(source.article ?? source.sku ?? source.external_id ?? source.id) ?? fallbackSku;
   if (!sku || !offerIdentity) return null;
@@ -195,6 +233,8 @@ function normalizeModification(source, fallbackSku, productExternalId, inherited
     attributes: record(source.characteristics ?? source.attributes),
     stickers: mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers)),
     conditionLabel: localizedStringValue(source.condition_label ?? source.condition),
+    creationTime: dateTimeValue(source.creation_time) ?? inheritedCreationTime,
+    hasPhotos: hasPhotoCollection(source.images),
     source
   };
 }
@@ -232,6 +272,8 @@ export function normalizeHoroshopProducts(items, storeDomain) {
           characteristics: record(source.characteristics),
           stickers: mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers)),
           conditionLabel: localizedStringValue(source.condition_label ?? source.condition),
+          creationTime: dateTimeValue(source.creation_time),
+          hasPhotos: hasPhotoCollection(source.gallery_common),
           source
         },
         primaryImageUrl: firstImage(source, storeDomain),
@@ -246,6 +288,11 @@ export function normalizeHoroshopProducts(items, storeDomain) {
       mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers))
     );
     group.base.conditionLabel ??= localizedStringValue(source.condition_label ?? source.condition);
+    group.base.hasPhotos ||= hasPhotoCollection(source.gallery_common);
+    const creationTime = dateTimeValue(source.creation_time);
+    if (creationTime && (!group.base.creationTime || creationTime < group.base.creationTime)) {
+      group.base.creationTime = creationTime;
+    }
 
     const sourceModifications = Array.isArray(source.modifications)
       ? source.modifications
@@ -254,7 +301,8 @@ export function normalizeHoroshopProducts(items, storeDomain) {
     const inheritedAvailability = availabilityValue(source) ?? group.base.availability;
     for (const modificationSource of modificationSources) {
       const modification = normalizeModification(
-        record(modificationSource), sku, externalId, inheritedAvailability, storeDomain, group.base.canonicalUrl
+        record(modificationSource), sku, externalId, inheritedAvailability, group.base.creationTime,
+        storeDomain, group.base.canonicalUrl
       );
       if (!modification) continue;
       group.modifications.set(modification.externalId, modification);

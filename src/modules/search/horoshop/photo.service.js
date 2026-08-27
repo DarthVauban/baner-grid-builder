@@ -321,6 +321,23 @@ export class HoroshopPhotoService {
     const connection = await this.connection();
     const cleanEntries = entries.map((entry) => String(entry || '').trim()).filter(Boolean).slice(0, maximumSelectionEntries);
     const resolution = resolveHoroshopPhotoSelection(cleanEntries, await this.matchingCatalog(connection));
+    if (resolution.matched.length === 0) {
+      throw new AppError(
+        422,
+        'HOROSHOP_PHOTO_SELECTION_NO_MATCHES',
+        'Жоден із вказаних товарів не знайдено в актуальному каталозі.',
+        { unmatched: resolution.unmatched, ambiguous: resolution.ambiguous }
+      );
+    }
+    return this.persistSelection(connection, {
+      name,
+      inputLines: cleanEntries,
+      resolution,
+      userId
+    });
+  }
+
+  async persistSelection(connection, { name, inputLines, resolution, userId }) {
     const client = await this.pool.connect();
     let selectionId;
     try {
@@ -334,7 +351,7 @@ export class HoroshopPhotoService {
         connection.id,
         connection.generation,
         selectionName(name),
-        JSON.stringify(cleanEntries),
+        JSON.stringify(inputLines),
         JSON.stringify(resolution),
         userId
       ]);
@@ -366,28 +383,37 @@ export class HoroshopPhotoService {
   }
 
   async createFilteredSelection({ name, filters, userId }) {
-    const entries = [];
-    let page = 1;
-    let pageCount = 1;
-    while (page <= pageCount && entries.length < maximumSelectionEntries) {
-      const catalog = await this.catalogService.catalog({
-        ...filters,
-        state: 'active',
-        page,
-        pageSize: 100
-      });
-      pageCount = Math.max(1, Number(catalog.pageCount || 1));
-      for (const product of catalog.items || []) {
-        const identifier = String(product.sku || localizedTitle(product.titles)).trim();
-        if (identifier) entries.push(identifier);
-        if (entries.length >= maximumSelectionEntries) break;
-      }
-      page += 1;
-    }
-    if (!entries.length) {
+    const connection = await this.connection();
+    const targets = (await this.catalogService.photoTargets(filters)).slice(0, maximumSelectionEntries);
+    if (!targets.length) {
       throw new AppError(422, 'HOROSHOP_PHOTO_FILTER_EMPTY', 'За вибраними фільтрами не знайдено товарів для обробки.');
     }
-    return this.createSelection({ name, entries, userId });
+    const matched = targets.map((target) => {
+      const productTitle = photoTargetTitle(target.productTitles, target.sku);
+      const title = target.modificationId
+        ? photoTargetTitle(target.titles, target.sku, productTitle)
+        : productTitle;
+      return {
+        input: target.sku || title,
+        matchedBy: 'manual',
+        targetKey: targetKey(target.productId, target.modificationId),
+        target: {
+          targetType: target.modificationId ? 'modification' : 'product',
+          productId: target.productId,
+          modificationId: target.modificationId || null,
+          sku: target.sku || '',
+          title,
+          productTitle,
+          imageUrl: target.imageUrl || ''
+        }
+      };
+    });
+    return this.persistSelection(connection, {
+      name,
+      inputLines: matched.map((match) => match.input),
+      resolution: { matched, ambiguous: [], unmatched: [] },
+      userId
+    });
   }
 
   async assertSelection(selectionId, connection) {
@@ -565,10 +591,14 @@ export class HoroshopPhotoService {
     return this.selection(selectionId);
   }
 
-  async deleteSelection(selectionId) {
+  async deleteSelection(selectionId, {
+    requireFullyPublished = false,
+    allowMissing = false
+  } = {}) {
     const connection = await this.connection();
     const client = await this.pool.connect();
     let orphanedMedia = [];
+    let deletion = { deleted: false, remainingTargets: 0 };
     try {
       await client.query('BEGIN');
       const selection = await client.query(`
@@ -577,7 +607,86 @@ export class HoroshopPhotoService {
         FOR UPDATE
       `, [selectionId, connection.id, connection.generation]);
       if (!selection.rows[0]) {
+        if (allowMissing) {
+          await client.query('COMMIT');
+          return deletion;
+        }
         throw new AppError(404, 'HOROSHOP_PHOTO_SELECTION_NOT_FOUND', 'Вибірку товарів не знайдено.');
+      }
+
+      if (requireFullyPublished) {
+        const targetState = await client.query(`
+          WITH selected_products AS (
+            SELECT item.product_id, BOOL_OR(item.modification_id IS NULL) AS include_all
+            FROM search_horoshop_photo_selection_items AS item
+            WHERE item.selection_id = $1
+            GROUP BY item.product_id
+          ), active_modification_counts AS (
+            SELECT modification.product_id, COUNT(*)::INTEGER AS active_count
+            FROM search_horoshop_modifications AS modification
+            WHERE modification.connection_id = $2
+              AND modification.generation = $3
+              AND modification.active = TRUE
+            GROUP BY modification.product_id
+          ), selected_targets AS (
+            SELECT selected.product_id, modification.id AS modification_id
+            FROM selected_products AS selected
+            INNER JOIN search_horoshop_photo_selection_items AS item
+              ON item.selection_id = $1
+             AND item.product_id = selected.product_id
+             AND item.modification_id IS NOT NULL
+            INNER JOIN search_horoshop_modifications AS modification
+              ON modification.id = item.modification_id
+             AND modification.connection_id = $2
+             AND modification.generation = $3
+             AND modification.active = TRUE
+
+            UNION
+
+            SELECT selected.product_id, modification.id AS modification_id
+            FROM selected_products AS selected
+            INNER JOIN search_horoshop_modifications AS modification
+              ON modification.product_id = selected.product_id
+             AND modification.connection_id = $2
+             AND modification.generation = $3
+             AND modification.active = TRUE
+            WHERE selected.include_all
+
+            UNION
+
+            SELECT selected.product_id, NULL::UUID AS modification_id
+            FROM selected_products AS selected
+            LEFT JOIN active_modification_counts AS modification_count
+              ON modification_count.product_id = selected.product_id
+            WHERE selected.include_all
+              AND COALESCE(modification_count.active_count, 0) = 0
+          )
+          SELECT target.product_id, target.modification_id,
+                 draft.id AS draft_id, draft.publish_status
+          FROM selected_targets AS target
+          INNER JOIN search_horoshop_products AS product
+            ON product.id = target.product_id
+           AND product.connection_id = $2
+           AND product.generation = $3
+           AND product.active = TRUE
+          LEFT JOIN search_horoshop_photo_drafts AS draft
+            ON draft.connection_id = $2
+           AND draft.generation = $3
+           AND draft.product_id = target.product_id
+           AND (
+             draft.modification_id = target.modification_id
+             OR (draft.modification_id IS NULL AND target.modification_id IS NULL)
+           )
+          ORDER BY target.product_id, target.modification_id NULLS FIRST
+        `, [selectionId, connection.id, connection.generation]);
+        const remainingTargets = targetState.rows.filter((row) => (
+          !row.draft_id || row.publish_status !== 'published'
+        )).length;
+        if (!targetState.rows.length || remainingTargets > 0) {
+          deletion = { deleted: false, remainingTargets };
+          await client.query('COMMIT');
+          return deletion;
+        }
       }
 
       const selectionRuns = await client.query(`
@@ -756,6 +865,7 @@ export class HoroshopPhotoService {
 
       await client.query('DELETE FROM search_horoshop_photo_selections WHERE id = $1', [selectionId]);
       await client.query('COMMIT');
+      deletion = { deleted: true, remainingTargets: 0 };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
@@ -763,6 +873,7 @@ export class HoroshopPhotoService {
       client.release();
     }
     for (const asset of orphanedMedia) await removeMediaImage(asset.storage_key).catch(() => {});
+    return deletion;
   }
 
   async saveDraft({ productId, modificationId = null, sourceUrl, userId }) {
@@ -2070,7 +2181,45 @@ export class HoroshopPhotoService {
 
   async publishSelection(selectionId, input) {
     const draftIds = await this.selectionPublishDraftIds(selectionId);
-    return this.publishDraftIds({ ...input, draftIds });
+    if (!draftIds.length) {
+      const cleanup = await this.deleteSelection(selectionId, {
+        requireFullyPublished: true,
+        allowMissing: true
+      });
+      if (cleanup.deleted) {
+        return {
+          publishedDrafts: 0,
+          publishedArticles: 0,
+          failedDrafts: 0,
+          failedArticles: 0,
+          failures: [],
+          selectionCleared: true,
+          remainingTargets: 0
+        };
+      }
+      throw new AppError(422, 'HOROSHOP_PHOTO_PUBLICATION_EMPTY', 'У вибірці немає готових фотографій для публікації.');
+    }
+    const result = await this.publishDraftIds({ ...input, draftIds });
+    if (result.failedDrafts > 0 || result.failedArticles > 0) {
+      const cleanup = await this.deleteSelection(selectionId, {
+        requireFullyPublished: true,
+        allowMissing: true
+      });
+      return {
+        ...result,
+        selectionCleared: cleanup.deleted,
+        remainingTargets: cleanup.remainingTargets
+      };
+    }
+    const cleanup = await this.deleteSelection(selectionId, {
+      requireFullyPublished: true,
+      allowMissing: true
+    });
+    return {
+      ...result,
+      selectionCleared: cleanup.deleted,
+      remainingTargets: cleanup.remainingTargets
+    };
   }
 }
 

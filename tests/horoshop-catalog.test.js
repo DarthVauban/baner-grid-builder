@@ -63,7 +63,8 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
   assert.deepEqual(await client.exportCategories(token, 10), [{ id: 11, parent: 10 }]);
   assert.deepEqual(await client.exportCatalog(token, 0, 1), {
     products: [{ id: 1 }],
-    nextOffset: 1
+    nextOffset: 1,
+    total: 2
   });
   assert.deepEqual(await client.importCatalog(token, [{ article: 'PHONE-1', accessories: ['CASE-1'] }]), {
     imported: 1
@@ -157,11 +158,16 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
     slug: 'phones/501',
     brand: 'Example',
     popularity: 87,
+    creation_time: '2026-08-20 12:30:00',
     icons: [{ id: 14, title: { ua: 'Вживаний' } }],
     condition: 'Вживаний',
     characteristics: { color: 'black' },
     modifications: [
-      { article: 'PHONE-501-128', mod_title: { ua: '128 ГБ' }, price: 100, quantity: 3, icons: [{ id: 18, title: 'Розпродаж' }] },
+      {
+        article: 'PHONE-501-128', mod_title: { ua: '128 ГБ' }, price: 100, quantity: 3,
+        creation_time: 1_776_688_200, images: { links: ['https://cdn.example.com/501-128.webp'] },
+        icons: [{ id: 18, title: 'Розпродаж' }]
+      },
       { article: 'PHONE-501-256', mod_title: { ua: '256 ГБ' }, price: 120, residues: { 1: 0 } }
     ]
   }], 'shop.example.com');
@@ -176,6 +182,9 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
   assert.deepEqual(product.stickers, [{ id: '14', title: 'Вживаний' }]);
   assert.equal(product.conditionLabel, 'Вживаний');
   assert.deepEqual(product.modifications[0].stickers, [{ id: '18', title: 'Розпродаж' }]);
+  assert.equal(product.creationTime, '2026-08-20T12:30:00.000Z');
+  assert.equal(product.modifications[0].hasPhotos, true);
+  assert.equal(product.modifications[1].hasPhotos, false);
   assert.deepEqual(product.source.characteristics, { color: 'black' });
 });
 
@@ -217,6 +226,7 @@ test('full import streams pages, reconciles missing rows and purges before anoth
     ['first.example.com', [
       [{
         id: 'p-1', article: 'FIRST-1', title: { ua: 'Перший' }, parent_id: 'cat-1',
+        creation_time: '2026-08-19 08:15:00',
         icons: [{ id: 'used', title: { ua: 'Вживаний' } }], condition: { ua: 'Вживаний' },
         modifications: [
           { article: 'FIRST-1-BLACK', price: '100', quantity: 2, icons: [{ id: 'sale', title: 'Розпродаж' }] },
@@ -243,7 +253,11 @@ test('full import streams pages, reconciles missing rows and purges before anoth
       const pages = catalogs.get(domain);
       const index = offset === 0 ? 0 : 1;
       const products = pages[index] || [];
-      return { products, nextOffset: index + 1 < pages.length ? 200 : null };
+      return {
+        products,
+        nextOffset: index + 1 < pages.length ? 200 : null,
+        total: pages.reduce((sum, items) => sum + items.length, 0)
+      };
     }
   });
   const service = new HoroshopCatalogService({
@@ -260,11 +274,16 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   assert.equal(status.status, 'connected');
   assert.deepEqual(status.counts, { categories: 1, products: 2, modifications: 3 });
   assert.equal(status.latestRun.pagesReceived, 2);
+  assert.equal(status.latestRun.exportItemsReceived, 2);
+  assert.equal(status.latestRun.exportItemsTotal, 2);
+  assert.equal(status.latestRun.progressPercentage, 100);
   const catalogMetadata = await query(`
-    SELECT stickers, condition_label FROM search_horoshop_products WHERE external_id = 'p-1'
+    SELECT stickers, condition_label, horoshop_created_at
+    FROM search_horoshop_products WHERE external_id = 'p-1'
   `);
   assert.deepEqual(catalogMetadata.rows[0].stickers, [{ id: 'used', title: 'Вживаний' }]);
   assert.equal(catalogMetadata.rows[0].condition_label, 'Вживаний');
+  assert.equal(catalogMetadata.rows[0].horoshop_created_at.toISOString(), '2026-08-19T08:15:00.000Z');
   const modificationMetadata = await query(`
     SELECT stickers FROM search_horoshop_modifications WHERE sku = 'FIRST-1-BLACK'
   `);

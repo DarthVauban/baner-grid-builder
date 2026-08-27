@@ -243,6 +243,9 @@ export const api = {
         availability: params.availability,
         visibility: params.visibility,
         state: params.state,
+        createdFrom: params.createdFrom,
+        createdTo: params.createdTo,
+        photoStatus: params.photoStatus,
         page: params.page,
         pageSize: params.pageSize
       })}`,
@@ -297,6 +300,13 @@ export const api = {
     )
   },
   horoshopPhotos: {
+    catalogSyncStatus: () => request<{ integration: HoroshopIntegration }>(
+      '/api/search/horoshop/photos/catalog/sync'
+    ),
+    syncCatalog: () => request<{ started: boolean; integration: HoroshopIntegration }>(
+      '/api/search/horoshop/photos/catalog/sync',
+      { method: 'POST' }
+    ),
     desktopDevices: () => request<HoroshopPhotoDesktopDevice[]>('/api/search/horoshop/photos/desktop/devices'),
     createDesktopPairing: () => request<HoroshopPhotoDesktopPairing>(
       '/api/search/horoshop/photos/desktop/pairings',
@@ -320,7 +330,8 @@ export const api = {
     ),
     createFilteredSelection: (input: {
       name?: string;
-      filters: Pick<HoroshopCatalogParams, 'search' | 'category' | 'availability' | 'visibility'>;
+      filters: Pick<HoroshopCatalogParams,
+        'search' | 'category' | 'availability' | 'visibility' | 'createdFrom' | 'createdTo' | 'photoStatus'>;
     }) => request<HoroshopPhotoSelection>(
       '/api/search/horoshop/photos/selections/from-filter',
       { method: 'POST', body: jsonBody(input), timeoutMs: 120_000 }

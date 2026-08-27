@@ -7,14 +7,29 @@ import { requireToolAccess } from '../../access/access.service.js';
 import { horoshopCatalogService } from './catalog.service.js';
 
 const router = Router();
+const catalogDateSchema = z.union([
+  z.literal(''),
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, 'Вкажіть дату у форматі РРРР-ММ-ДД.')
+]);
 const catalogQuerySchema = z.object({
   search: z.string().trim().max(160).optional().default(''),
   category: z.string().trim().max(255).optional().default(''),
   availability: z.string().trim().max(200).optional().default(''),
   visibility: z.enum(['all', 'visible', 'hidden']).optional().default('all'),
+  photoStatus: z.enum(['all', 'with_photos', 'without_photos']).optional().default('all'),
+  createdFrom: catalogDateSchema.optional().default(''),
+  createdTo: catalogDateSchema.optional().default(''),
   state: z.enum(['active', 'inactive', 'all']).optional().default('active'),
   page: z.coerce.number().int().min(1).optional().default(1),
   pageSize: z.coerce.number().int().min(10).max(100).optional().default(25)
+}).superRefine((input, context) => {
+  if (input.createdFrom && input.createdTo && input.createdFrom > input.createdTo) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['createdTo'],
+      message: 'Кінцева дата не може бути ранішою за початкову.'
+    });
+  }
 });
 
 router.use(requireAuth, requireToolAccess('horoshop_related_products'));
