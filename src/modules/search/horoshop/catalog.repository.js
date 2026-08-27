@@ -236,8 +236,12 @@ export class HoroshopCatalogRepository {
         )
       )`);
     }
-    if (createdFrom) clauses.push(`product.horoshop_created_at >= ${addValue(createdFrom)}`);
-    if (createdTo) clauses.push(`product.horoshop_created_at <= ${addValue(createdTo)}`);
+    if (createdFrom) {
+      clauses.push(`COALESCE(product.horoshop_created_at, product.created_at) >= ${addValue(createdFrom)}`);
+    }
+    if (createdTo) {
+      clauses.push(`COALESCE(product.horoshop_created_at, product.created_at) <= ${addValue(createdTo)}`);
+    }
     if (photoStatus !== 'all') {
       const comparison = photoStatus === 'with_photos' ? 'TRUE' : 'FALSE';
       clauses.push(`(
@@ -300,11 +304,13 @@ export class HoroshopCatalogRepository {
       this.pool.query(`
         SELECT id, external_id, parent_external_id, sku, titles, brand, category_external_id,
                price, old_price, currency, availability, visible, active, primary_image_url,
-               canonical_url, popularity, stickers, condition_label, horoshop_created_at,
+               canonical_url, popularity, stickers, condition_label,
+               COALESCE(horoshop_created_at, created_at) AS horoshop_created_at,
                has_photos, updated_at
         FROM search_horoshop_products AS product
         WHERE ${where}
-        ORDER BY product.horoshop_created_at DESC NULLS LAST, product.updated_at DESC, product.id
+        ORDER BY COALESCE(product.horoshop_created_at, product.created_at) DESC,
+                 product.updated_at DESC, product.id
         LIMIT ${limitParameter} OFFSET ${offsetParameter}
       `, pageValues),
       this.pool.query(`
@@ -349,11 +355,12 @@ export class HoroshopCatalogRepository {
       const modificationsResult = await this.pool.query(`
         SELECT id, product_id, external_id, sku, titles, price, old_price, currency,
                availability, visible, active, image_url, page_url, attributes, stickers,
-               condition_label, horoshop_created_at, has_photos, updated_at
+               condition_label, COALESCE(horoshop_created_at, created_at) AS horoshop_created_at,
+               has_photos, updated_at
         FROM search_horoshop_modifications
         WHERE connection_id = $1 AND product_id IN (${placeholders})
           ${modificationState} ${modificationPhotoState}
-        ORDER BY horoshop_created_at DESC NULLS LAST, updated_at DESC, id
+        ORDER BY COALESCE(horoshop_created_at, created_at) DESC, updated_at DESC, id
       `, [connection.id, ...productIds]);
       modificationRows = modificationsResult.rows;
     }
@@ -421,8 +428,8 @@ export class HoroshopCatalogRepository {
     if (visibility === 'hidden') clauses.push('target.visible = FALSE');
     if (photoStatus === 'with_photos') clauses.push('target.has_photos = TRUE');
     if (photoStatus === 'without_photos') clauses.push('target.has_photos = FALSE');
-    if (createdFrom) clauses.push(`target.horoshop_created_at >= ${addValue(createdFrom)}`);
-    if (createdTo) clauses.push(`target.horoshop_created_at <= ${addValue(createdTo)}`);
+    if (createdFrom) clauses.push(`target.effective_created_at >= ${addValue(createdFrom)}`);
+    if (createdTo) clauses.push(`target.effective_created_at <= ${addValue(createdTo)}`);
     if (availability) {
       clauses.push(`LOWER(COALESCE(target.availability, '')) = ${addValue(availability.toLocaleLowerCase('uk-UA'))}`);
     }
@@ -442,7 +449,9 @@ export class HoroshopCatalogRepository {
                NULL::UUID AS modification_id, product.sku, product.titles,
                product.titles AS product_titles, product.brand, product.category_external_id,
                product.availability, product.visible, product.primary_image_url AS image_url,
-               product.has_photos, product.horoshop_created_at, product.updated_at
+               product.has_photos,
+               COALESCE(product.horoshop_created_at, product.created_at) AS effective_created_at,
+               product.updated_at
         FROM search_horoshop_products AS product
         LEFT JOIN search_horoshop_modifications AS active_modification
           ON active_modification.product_id = product.id
@@ -457,7 +466,12 @@ export class HoroshopCatalogRepository {
                product.titles AS product_titles, product.brand, product.category_external_id,
                COALESCE(modification.availability, product.availability) AS availability,
                modification.visible, modification.image_url, modification.has_photos,
-               COALESCE(modification.horoshop_created_at, product.horoshop_created_at),
+               COALESCE(
+                 modification.horoshop_created_at,
+                 modification.created_at,
+                 product.horoshop_created_at,
+                 product.created_at
+               ) AS effective_created_at,
                modification.updated_at
         FROM search_horoshop_modifications AS modification
         INNER JOIN search_horoshop_products AS product ON product.id = modification.product_id
@@ -465,10 +479,10 @@ export class HoroshopCatalogRepository {
           AND modification.active = TRUE AND product.active = TRUE
       )
       SELECT product_id, modification_id, sku, titles, product_titles, image_url,
-             has_photos, horoshop_created_at
+             has_photos, effective_created_at AS horoshop_created_at
       FROM target
       WHERE ${clauses.join('\n AND ')}
-      ORDER BY horoshop_created_at DESC NULLS LAST, updated_at DESC,
+      ORDER BY effective_created_at DESC, updated_at DESC,
                product_id, modification_id NULLS FIRST
       LIMIT 1000
     `, values);
