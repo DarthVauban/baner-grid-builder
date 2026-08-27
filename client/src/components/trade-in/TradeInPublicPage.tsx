@@ -540,6 +540,15 @@ function TradeInWizard({
 
 export function TradeInPublicPage({ config, preview = false, compact = false, onSubmit }: TradeInPublicPageProps) {
   const rootRef = useRef<HTMLElement>(null);
+  const typographyStyle = Object.entries(config.typography).reduce<Record<string, string | number>>((variables, [section, typography]) => {
+    variables[`--ti-${section}-heading-font`] = typography.headingFontFamily;
+    variables[`--ti-${section}-heading-size`] = `${typography.headingFontSize}px`;
+    variables[`--ti-${section}-heading-weight`] = typography.headingFontWeight;
+    variables[`--ti-${section}-body-font`] = typography.bodyFontFamily;
+    variables[`--ti-${section}-body-size`] = `${typography.bodyFontSize}px`;
+    variables[`--ti-${section}-body-weight`] = typography.bodyFontWeight;
+    return variables;
+  }, {});
   const style = {
     '--ti-font': config.theme.fontFamily,
     '--ti-bg': config.theme.backgroundColor,
@@ -553,7 +562,8 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
     '--ti-max-width': `${config.theme.maxWidth}px`,
     '--ti-radius': `${config.theme.borderRadius}px`,
     '--ti-button-radius': `${config.theme.buttonRadius}px`,
-    '--ti-section-gap': `${config.theme.sectionSpacing}px`
+    '--ti-section-gap': `${config.theme.sectionSpacing}px`,
+    ...typographyStyle
   } as CSSProperties;
 
   useEffect(() => {
@@ -629,7 +639,7 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
       )}
 
       {config.process.visible && (
-        <section className="ti-section">
+        <section className="ti-section ti-process">
           <div className="ti-container">
             <div className="ti-section-heading">
               <p className="ti-eyebrow">{config.process.eyebrow}</p>
@@ -645,10 +655,10 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
         </section>
       )}
 
-      <div className="ti-container"><TradeInWizard config={config} preview={preview} autoRevealSuccess={!compact} onSubmit={onSubmit} /></div>
+      <div className="ti-container ti-form-block"><TradeInWizard config={config} preview={preview} autoRevealSuccess={!compact} onSubmit={onSubmit} /></div>
 
       {config.benefits.visible && (
-        <section className="ti-section ti-section--soft">
+        <section className="ti-section ti-section--soft ti-benefits">
           <div className="ti-container">
             <div className="ti-section-heading ti-section-heading--center">
               <p className="ti-eyebrow">{config.benefits.eyebrow}</p>

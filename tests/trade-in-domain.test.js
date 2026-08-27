@@ -78,7 +78,7 @@ test('normalizes Trade-in configuration and evaluates conditional scenarios', ()
     theme: { ...defaultTradeInConfig.theme, maxWidth: 99999 },
     form: defaultTradeInConfig.form
   });
-  assert.equal(config.version, 5);
+  assert.equal(config.version, 6);
   assert.equal(config.theme.maxWidth, 1800);
   assert.ok(config.form.steps.length >= 5);
   assert.equal(matchesTradeInCondition({ fieldKey: 'category', operator: 'one_of', value: 'smartphone,apple' }, { category: 'apple' }), true);
@@ -129,7 +129,7 @@ test('upgrades saved Trade-in page copy without changing form content or page se
     }
   });
 
-  assert.equal(config.version, 5);
+  assert.equal(config.version, 6);
   assert.equal(config.header.ctaLabel, 'Почати оцінку');
   assert.equal(config.header.sticky, false);
   assert.equal(config.hero.title, 'Ваша техніка ще має цінність');
@@ -138,4 +138,46 @@ test('upgrades saved Trade-in page copy without changing form content or page se
   assert.equal(config.footer.phone, '+380991112233');
   assert.equal(config.form.title, 'Моя покрокова форма');
   assert.equal(config.form.successText, 'Моє повідомлення після надсилання');
+});
+
+test('upgrades saved Trade-in typography to Garet body text and Unbounded headings without changing content', () => {
+  const config = normalizeTradeInConfig({
+    ...defaultTradeInConfig,
+    version: 5,
+    theme: { ...defaultTradeInConfig.theme, fontFamily: 'Inter' },
+    hero: { ...defaultTradeInConfig.hero, title: 'Збережений заголовок' },
+    form: { ...defaultTradeInConfig.form, title: 'Збережена форма' }
+  });
+
+  assert.equal(config.version, 6);
+  assert.equal(config.theme.fontFamily, 'Garet');
+  assert.equal(config.typography.hero.headingFontFamily, 'Unbounded');
+  assert.equal(config.typography.hero.bodyFontFamily, 'Garet');
+  assert.equal(config.hero.title, 'Збережений заголовок');
+  assert.equal(config.form.title, 'Збережена форма');
+});
+
+test('normalizes section typography settings', () => {
+  const config = normalizeTradeInConfig({
+    ...defaultTradeInConfig,
+    typography: {
+      ...defaultTradeInConfig.typography,
+      hero: {
+        ...defaultTradeInConfig.typography.hero,
+        headingFontFamily: 'Unknown',
+        headingFontSize: 999,
+        headingFontWeight: 50,
+        bodyFontFamily: 'Roboto',
+        bodyFontSize: 2,
+        bodyFontWeight: 950
+      }
+    }
+  });
+
+  assert.equal(config.typography.hero.headingFontFamily, 'Unbounded');
+  assert.equal(config.typography.hero.headingFontSize, 120);
+  assert.equal(config.typography.hero.headingFontWeight, 100);
+  assert.equal(config.typography.hero.bodyFontFamily, 'Roboto');
+  assert.equal(config.typography.hero.bodyFontSize, 8);
+  assert.equal(config.typography.hero.bodyFontWeight, 900);
 });

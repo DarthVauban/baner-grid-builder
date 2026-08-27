@@ -21,6 +21,8 @@ import type {
   TradeInConfig,
   TradeInField,
   TradeInFieldType,
+  TradeInFontFamily,
+  TradeInSectionTypography,
   TradeInSettings
 } from '../types/trade-in';
 import type { ApplicationForm } from '../types/application';
@@ -28,6 +30,10 @@ import '../styles/trade-in-builder.css';
 
 type BuilderTab = 'page' | 'publish';
 type PreviewDevice = 'desktop' | 'mobile';
+
+const tradeInFontOptions = ['Garet', 'Inter', 'Montserrat', 'Roboto', 'Unbounded'].map((font) => ({ value: font, label: font }));
+const tradeInWeightOptions = [300, 400, 500, 600, 700, 800, 900].map((weight) => ({ value: String(weight), label: String(weight) }));
+const garetWeightOptions = [400, 800].map((weight) => ({ value: String(weight), label: String(weight) }));
 
 function BuilderSection({ title, description, children, open = false }: {
   title: string;
@@ -88,6 +94,64 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   );
 }
 
+function TypographyEditor({ value, onChange, headingLabel = 'Заголовки', bodyLabel = 'Основний текст' }: {
+  value: TradeInSectionTypography;
+  onChange: (value: TradeInSectionTypography) => void;
+  headingLabel?: string;
+  bodyLabel?: string;
+}) {
+  const renderGroup = (kind: 'heading' | 'body', label: string) => {
+    const familyKey = kind === 'heading' ? 'headingFontFamily' : 'bodyFontFamily';
+    const sizeKey = kind === 'heading' ? 'headingFontSize' : 'bodyFontSize';
+    const weightKey = kind === 'heading' ? 'headingFontWeight' : 'bodyFontWeight';
+    const weightOptions = value[familyKey] === 'Garet' ? garetWeightOptions : tradeInWeightOptions;
+    return (
+      <section className="trade-in-typography-editor__group">
+        <strong>{label}</strong>
+        <div className="trade-in-builder-grid trade-in-builder-grid--typography">
+          <label className="field">
+            <span>Шрифт</span>
+            <StyledSelect
+              value={value[familyKey]}
+              options={tradeInFontOptions}
+              onChange={(font) => {
+                const family = font as TradeInFontFamily;
+                const weight = family === 'Garet' ? (value[weightKey] >= 600 ? 800 : 400) : value[weightKey];
+                onChange({ ...value, [familyKey]: family, [weightKey]: weight });
+              }}
+              ariaLabel={`Шрифт: ${label}`}
+            />
+          </label>
+          <TextField
+            label="Розмір, px"
+            type="number"
+            min={8}
+            max={kind === 'heading' ? 120 : 72}
+            value={value[sizeKey]}
+            onChange={(size) => onChange({ ...value, [sizeKey]: Number(size) || 8 })}
+          />
+          <label className="field">
+            <span>Насиченість</span>
+            <StyledSelect
+              value={String(value[weightKey])}
+              options={weightOptions}
+              onChange={(weight) => onChange({ ...value, [weightKey]: Number(weight) })}
+              ariaLabel={`Насиченість: ${label}`}
+            />
+          </label>
+        </div>
+      </section>
+    );
+  };
+
+  return (
+    <div className="trade-in-typography-editor">
+      <header><strong>Типографіка секції</strong><small>Окремі параметри для заголовків і звичайного тексту.</small></header>
+      <div>{renderGroup('heading', headingLabel)}{renderGroup('body', bodyLabel)}</div>
+    </div>
+  );
+}
+
 function ConditionEditor({ condition, fieldKeys, onChange }: {
   condition: TradeInCondition;
   fieldKeys: string[];
@@ -140,7 +204,7 @@ function PageEditor({ config, mutate }: {
           ] as const).map(([key, label]) => <ColorField label={label} value={config.theme[key]} onChange={(value) => mutate((next) => { next.theme[key] = value; })} key={key} />)}
         </div>
         <div className="trade-in-builder-grid">
-          <label className="field"><span>Шрифт</span><StyledSelect value={config.theme.fontFamily} options={['Inter', 'Montserrat', 'Roboto', 'Unbounded'].map((font) => ({ value: font, label: font }))} onChange={(value) => mutate((next) => { next.theme.fontFamily = value; })} ariaLabel="Шрифт сторінки" /></label>
+          <label className="field"><span>Основний шрифт сторінки</span><StyledSelect value={config.theme.fontFamily} options={tradeInFontOptions} onChange={(value) => mutate((next) => { next.theme.fontFamily = value as TradeInFontFamily; })} ariaLabel="Основний шрифт сторінки" /></label>
           <TextField label="Максимальна ширина, px" type="number" min={720} max={1800} value={config.theme.maxWidth} onChange={(value) => mutate((next) => { next.theme.maxWidth = Number(value) || 1180; })} />
           <TextField label="Заокруглення карток, px" type="number" min={0} max={60} value={config.theme.borderRadius} onChange={(value) => mutate((next) => { next.theme.borderRadius = Number(value) || 0; })} />
           <TextField label="Заокруглення кнопок, px" type="number" min={0} max={60} value={config.theme.buttonRadius} onChange={(value) => mutate((next) => { next.theme.buttonRadius = Number(value) || 0; })} />
@@ -149,6 +213,7 @@ function PageEditor({ config, mutate }: {
       </BuilderSection>
 
       <BuilderSection title="Шапка сторінки" description="Бренд, назва розділу та головна кнопка.">
+        <TypographyEditor value={config.typography.header} onChange={(value) => mutate((next) => { next.typography.header = value; })} />
         <SwitchField label="Показувати шапку" checked={config.header.visible} onChange={(value) => mutate((next) => { next.header.visible = value; })} />
         <SwitchField label="Закріплювати під час прокрутки" checked={config.header.sticky} onChange={(value) => mutate((next) => { next.header.sticky = value; })} />
         <div className="trade-in-builder-grid">
@@ -159,6 +224,7 @@ function PageEditor({ config, mutate }: {
       </BuilderSection>
 
       <BuilderSection title="Головний екран" description="Перший екран сторінки та основний заклик до дії.">
+        <TypographyEditor value={config.typography.hero} onChange={(value) => mutate((next) => { next.typography.hero = value; })} />
         <SwitchField label="Показувати головний екран" checked={config.hero.visible} onChange={(value) => mutate((next) => { next.hero.visible = value; })} />
         <div className="trade-in-builder-grid">
           <TextField label="Надзаголовок" value={config.hero.eyebrow} onChange={(value) => mutate((next) => { next.hero.eyebrow = value; })} />
@@ -171,6 +237,7 @@ function PageEditor({ config, mutate }: {
       </BuilderSection>
 
       <BuilderSection title="Показники мережі" description="Короткі факти або ключові цифри.">
+        <TypographyEditor value={config.typography.stats} headingLabel="Цифри" bodyLabel="Пояснення" onChange={(value) => mutate((next) => { next.typography.stats = value; })} />
         <SwitchField label="Показувати секцію" checked={config.stats.visible} onChange={(value) => mutate((next) => { next.stats.visible = value; })} />
         <div className="trade-in-repeater">
           {config.stats.items.map((item, index) => <article key={item.id}>
@@ -182,6 +249,7 @@ function PageEditor({ config, mutate }: {
       </BuilderSection>
 
       <BuilderSection title="Як це працює" description="Заголовки та кроки, які пояснюють процес клієнту.">
+        <TypographyEditor value={config.typography.process} onChange={(value) => mutate((next) => { next.typography.process = value; })} />
         <SwitchField label="Показувати секцію" checked={config.process.visible} onChange={(value) => mutate((next) => { next.process.visible = value; })} />
         <div className="trade-in-builder-grid">
           <TextField label="Надзаголовок" value={config.process.eyebrow} onChange={(value) => mutate((next) => { next.process.eyebrow = value; })} />
@@ -198,7 +266,12 @@ function PageEditor({ config, mutate }: {
         </div>
       </BuilderSection>
 
+      <BuilderSection title="Форма на сторінці" description="Типографіка підключеної покрокової форми.">
+        <TypographyEditor value={config.typography.form} onChange={(value) => mutate((next) => { next.typography.form = value; })} />
+      </BuilderSection>
+
       <BuilderSection title="Переваги" description="Картки з аргументами на користь Trade-in.">
+        <TypographyEditor value={config.typography.benefits} onChange={(value) => mutate((next) => { next.typography.benefits = value; })} />
         <SwitchField label="Показувати секцію" checked={config.benefits.visible} onChange={(value) => mutate((next) => { next.benefits.visible = value; })} />
         <div className="trade-in-builder-grid">
           <TextField label="Надзаголовок" value={config.benefits.eyebrow} onChange={(value) => mutate((next) => { next.benefits.eyebrow = value; })} />
@@ -215,6 +288,7 @@ function PageEditor({ config, mutate }: {
       </BuilderSection>
 
       <BuilderSection title="Поширені питання" description="FAQ у нижній частині сторінки.">
+        <TypographyEditor value={config.typography.faq} onChange={(value) => mutate((next) => { next.typography.faq = value; })} />
         <SwitchField label="Показувати секцію" checked={config.faq.visible} onChange={(value) => mutate((next) => { next.faq.visible = value; })} />
         <div className="trade-in-builder-grid">
           <TextField label="Надзаголовок" value={config.faq.eyebrow} onChange={(value) => mutate((next) => { next.faq.eyebrow = value; })} />
@@ -231,6 +305,7 @@ function PageEditor({ config, mutate }: {
       </BuilderSection>
 
       <BuilderSection title="Фінальний заклик" description="Акцентний блок після форми.">
+        <TypographyEditor value={config.typography.contact} onChange={(value) => mutate((next) => { next.typography.contact = value; })} />
         <SwitchField label="Показувати секцію" checked={config.contact.visible} onChange={(value) => mutate((next) => { next.contact.visible = value; })} />
         <div className="trade-in-builder-grid">
           <TextField label="Надзаголовок" value={config.contact.eyebrow} onChange={(value) => mutate((next) => { next.contact.eyebrow = value; })} />
@@ -241,6 +316,7 @@ function PageEditor({ config, mutate }: {
       </BuilderSection>
 
       <BuilderSection title="Підвал і контакти" description="Контактні дані та юридична примітка.">
+        <TypographyEditor value={config.typography.footer} onChange={(value) => mutate((next) => { next.typography.footer = value; })} />
         <SwitchField label="Показувати підвал" checked={config.footer.visible} onChange={(value) => mutate((next) => { next.footer.visible = value; })} />
         <div className="trade-in-builder-grid">
           <TextField label="Назва компанії" value={config.footer.companyName} onChange={(value) => mutate((next) => { next.footer.companyName = value; })} />

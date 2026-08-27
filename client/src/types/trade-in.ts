@@ -116,6 +116,18 @@ export interface TradeInFaqItem {
   answer: string;
 }
 
+export type TradeInFontFamily = 'Garet' | 'Inter' | 'Montserrat' | 'Roboto' | 'Unbounded';
+export type TradeInTypographySectionKey = 'header' | 'hero' | 'stats' | 'process' | 'form' | 'benefits' | 'faq' | 'contact' | 'footer';
+
+export interface TradeInSectionTypography {
+  headingFontFamily: TradeInFontFamily;
+  headingFontSize: number;
+  headingFontWeight: number;
+  bodyFontFamily: TradeInFontFamily;
+  bodyFontSize: number;
+  bodyFontWeight: number;
+}
+
 export interface TradeInConfig {
   version: number;
   formReference: {
@@ -123,7 +135,7 @@ export interface TradeInConfig {
     formName: string;
   };
   theme: {
-    fontFamily: string;
+    fontFamily: TradeInFontFamily;
     backgroundColor: string;
     surfaceColor: string;
     textColor: string;
@@ -137,6 +149,7 @@ export interface TradeInConfig {
     buttonRadius: number;
     sectionSpacing: number;
   };
+  typography: Record<TradeInTypographySectionKey, TradeInSectionTypography>;
   header: {
     visible: boolean;
     sticky: boolean;

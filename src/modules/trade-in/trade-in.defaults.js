@@ -1,14 +1,22 @@
 const option = (label, value) => ({ id: `option_${value}`, label, value });
 const condition = (fieldKey = '', value = '') => ({ fieldKey, operator: 'equals', value });
+const typography = (headingFontSize, bodyFontSize, headingFontWeight = 700, bodyFontWeight = 400) => ({
+  headingFontFamily: 'Unbounded',
+  headingFontSize,
+  headingFontWeight,
+  bodyFontFamily: 'Garet',
+  bodyFontSize,
+  bodyFontWeight
+});
 
 export const defaultTradeInConfig = {
-  version: 5,
+  version: 6,
   formReference: {
     formId: '',
     formName: ''
   },
   theme: {
-    fontFamily: 'Inter',
+    fontFamily: 'Garet',
     backgroundColor: '#f6f7fb',
     surfaceColor: '#ffffff',
     textColor: '#000000',
@@ -21,6 +29,17 @@ export const defaultTradeInConfig = {
     borderRadius: 24,
     buttonRadius: 14,
     sectionSpacing: 88
+  },
+  typography: {
+    header: typography(17, 12),
+    hero: typography(78, 20),
+    stats: typography(45, 13, 800),
+    process: typography(52, 17),
+    form: typography(44, 13),
+    benefits: typography(52, 14),
+    faq: typography(52, 14),
+    contact: typography(52, 16),
+    footer: typography(18, 12)
   },
   header: {
     visible: true,
@@ -415,6 +434,24 @@ function number(value, fallback, min, max) {
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
 }
 
+const tradeInFontFamilies = ['Garet', 'Inter', 'Montserrat', 'Roboto', 'Unbounded'];
+
+function normalizeFontFamily(value, fallback) {
+  return tradeInFontFamilies.includes(value) ? value : fallback;
+}
+
+function normalizeTypography(value, fallback) {
+  const source = object(value);
+  return {
+    headingFontFamily: normalizeFontFamily(source.headingFontFamily, fallback.headingFontFamily),
+    headingFontSize: number(source.headingFontSize, fallback.headingFontSize, 8, 120),
+    headingFontWeight: number(source.headingFontWeight, fallback.headingFontWeight, 100, 900),
+    bodyFontFamily: normalizeFontFamily(source.bodyFontFamily, fallback.bodyFontFamily),
+    bodyFontSize: number(source.bodyFontSize, fallback.bodyFontSize, 8, 72),
+    bodyFontWeight: number(source.bodyFontWeight, fallback.bodyFontWeight, 100, 900)
+  };
+}
+
 function normalizeCondition(value) {
   const source = object(value);
   const operators = [
@@ -703,6 +740,7 @@ export function normalizeTradeInConfig(value) {
   const source = object(value);
   const formReference = object(source.formReference);
   const theme = object(source.theme);
+  const typographySettings = object(source.typography);
   const header = object(source.header);
   const hero = object(source.hero);
   const stats = object(source.stats);
@@ -715,6 +753,7 @@ export function normalizeTradeInConfig(value) {
   const form = object(source.form);
   const defaults = defaultTradeInConfig;
   const usesPreBrandPlatformCopy = Number(source.version || 0) < 5;
+  const usesPreSectionTypography = Number(source.version || 0) < 6;
   const pageText = (section, key, fallback, maxLength) => text(
     usesPreBrandPlatformCopy ? fallback : section[key],
     fallback,
@@ -727,7 +766,9 @@ export function normalizeTradeInConfig(value) {
   );
   const legacySteps = normalizeSteps(form.steps);
   const normalizedTheme = {
-    fontFamily: text(theme.fontFamily, defaults.theme.fontFamily, 80),
+    fontFamily: usesPreSectionTypography
+      ? defaults.theme.fontFamily
+      : normalizeFontFamily(theme.fontFamily, defaults.theme.fontFamily),
     backgroundColor: text(theme.backgroundColor, defaults.theme.backgroundColor, 40),
     surfaceColor: text(theme.surfaceColor, defaults.theme.surfaceColor, 40),
     textColor: text(theme.textColor, defaults.theme.textColor, 40),
@@ -753,12 +794,18 @@ export function normalizeTradeInConfig(value) {
   }
 
   return {
-    version: 5,
+    version: 6,
     formReference: {
       formId: text(formReference.formId, '', 80),
       formName: text(formReference.formName, '', 160)
     },
     theme: normalizedTheme,
+    typography: Object.fromEntries(Object.entries(defaults.typography).map(([key, fallback]) => [
+      key,
+      usesPreSectionTypography
+        ? structuredClone(fallback)
+        : normalizeTypography(typographySettings[key], fallback)
+    ])),
     header: {
       visible: boolean(header.visible, defaults.header.visible),
       sticky: boolean(header.sticky, defaults.header.sticky),

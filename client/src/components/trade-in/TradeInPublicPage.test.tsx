@@ -4,10 +4,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TradeInConfig } from '../../types/trade-in';
 import { TradeInPublicPage } from './TradeInPublicPage';
 
+const typography = Object.fromEntries(['header', 'hero', 'stats', 'process', 'form', 'benefits', 'faq', 'contact', 'footer'].map((section) => [section, {
+  headingFontFamily: 'Unbounded',
+  headingFontSize: section === 'hero' ? 78 : 52,
+  headingFontWeight: 700,
+  bodyFontFamily: 'Garet',
+  bodyFontSize: 14,
+  bodyFontWeight: 400
+}]));
+
 const previewConfig = {
   version: 1,
   theme: {
-    fontFamily: 'Inter',
+    fontFamily: 'Garet',
     backgroundColor: '#ffffff',
     surfaceColor: '#ffffff',
     textColor: '#000000',
@@ -21,6 +30,7 @@ const previewConfig = {
     buttonRadius: 14,
     sectionSpacing: 80
   },
+  typography,
   header: { visible: false },
   hero: { visible: false },
   stats: { visible: false, items: [] },
@@ -96,6 +106,10 @@ describe('TradeInPublicPage preview', () => {
     expect(page).toHaveStyle('--ti-primary: #ffe101');
     expect(page).toHaveStyle('--ti-primary-text: #000000');
     expect(page).toHaveStyle('--ti-text: #000000');
+    expect(page).toHaveStyle('--ti-font: Garet');
+    expect(page).toHaveStyle('--ti-hero-heading-font: Unbounded');
+    expect(page).toHaveStyle('--ti-hero-heading-size: 78px');
+    expect(page).toHaveStyle('--ti-hero-body-font: Garet');
     expect(screen.queryByRole('heading', { name: 'Нова покрокова форма' })).not.toBeInTheDocument();
     expect(screen.getByText('Онлайн-анкета')).toBeInTheDocument();
   });

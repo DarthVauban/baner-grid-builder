@@ -5,11 +5,19 @@ import type { TradeInConfig } from '../../types/trade-in';
 import { TradeInPublicPage } from './TradeInPublicPage';
 
 const emptyCondition = { fieldKey: '', operator: 'equals' as const, value: '' };
+const typography = Object.fromEntries(['header', 'hero', 'stats', 'process', 'form', 'benefits', 'faq', 'contact', 'footer'].map((section) => [section, {
+  headingFontFamily: 'Unbounded',
+  headingFontSize: section === 'hero' ? 78 : 52,
+  headingFontWeight: 700,
+  bodyFontFamily: 'Garet',
+  bodyFontSize: 14,
+  bodyFontWeight: 400
+}]));
 
 const motionConfig = {
   version: 1,
   theme: {
-    fontFamily: 'Inter',
+    fontFamily: 'Garet',
     backgroundColor: '#ffffff',
     surfaceColor: '#ffffff',
     textColor: '#000000',
@@ -23,6 +31,7 @@ const motionConfig = {
     buttonRadius: 14,
     sectionSpacing: 80
   },
+  typography,
   header: { visible: false },
   hero: { visible: false },
   stats: {
