@@ -151,6 +151,7 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
   assert.equal(state.body.data.runs[0].status, 'success');
   assert.equal(state.body.data.runs[0].telegramMessageId, 7788);
   assert.equal(state.body.data.telegramDocumentLimitBytes, 2_000 * 1024 * 1024);
+  assert.equal(state.body.data.restoreArchiveLimitBytes, 520 * 1024 * 1024);
 
   const rejectedRestore = await agent.post('/api/admin/backups/restore')
     .set('Content-Type', 'application/gzip')

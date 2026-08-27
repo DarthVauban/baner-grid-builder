@@ -65,7 +65,8 @@ beforeEach(() => {
       updatedAt: '2030-01-01T01:00:00.000Z'
     },
     runs: [],
-    telegramDocumentLimitBytes: 50 * 1024 * 1024
+    telegramDocumentLimitBytes: 50 * 1024 * 1024,
+    restoreArchiveLimitBytes: 520 * 1024 * 1024
   });
 });
 
@@ -94,6 +95,17 @@ describe('AdminBackupsPage', () => {
     expect(screen.getByRole('button', { name: 'Відновити дані' })).toBeInTheDocument();
     expect(screen.getByLabelText('Вибрано архів workspace-2030-01-01.tar.gz. Натисніть, щоб вибрати інший')).toBeInTheDocument();
     expect(appStyles).toMatch(/\.backup-dropzone\s*\{[^}]*border:\s*1\.5px dashed/);
+  });
+
+  it('uses the restore archive limit returned by the server', async () => {
+    renderPage();
+
+    const dropzone = await screen.findByRole('button', { name: 'Перетягніть архів сюди або натисніть, щоб відкрити провідник' });
+    const archive = new File(['oversized'], 'workspace-2030-01-01.tar.gz', { type: 'application/gzip' });
+    Object.defineProperty(archive, 'size', { value: 521 * 1024 * 1024 });
+    fireEvent.drop(dropzone, { dataTransfer: { files: [archive] } });
+
+    expect(screen.getByText('Архів перевищує допустимий розмір 520.0 МБ.')).toBeInTheDocument();
   });
 
   it('shows a loader and progress bar while a manual backup is running', async () => {

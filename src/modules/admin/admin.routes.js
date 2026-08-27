@@ -332,7 +332,8 @@ router.get('/backups', adminOnly, asyncHandler(async (req, res) => {
     data: {
       settings,
       runs,
-      telegramDocumentLimitBytes: backupLimits.telegramDocumentBytes
+      telegramDocumentLimitBytes: backupLimits.telegramDocumentBytes,
+      restoreArchiveLimitBytes: backupLimits.restoreArchiveBytes
     }
   });
 }));
@@ -363,7 +364,10 @@ router.post('/backups/run', adminOnly, asyncHandler(async (req, res) => {
 router.post(
   '/backups/restore',
   adminOnly,
-  raw({ type: ['application/gzip', 'application/x-gzip', 'application/octet-stream'], limit: '55mb' }),
+  raw({
+    type: ['application/gzip', 'application/x-gzip', 'application/octet-stream'],
+    limit: backupLimits.restoreArchiveBytes
+  }),
   asyncHandler(async (req, res) => {
     try {
       res.json({ data: await restoreWorkspaceBackup(req.body, { userId: req.user.id }) });

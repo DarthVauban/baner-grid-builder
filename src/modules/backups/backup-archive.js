@@ -1,7 +1,7 @@
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 const TAR_BLOCK_SIZE = 512;
-const MAX_UNCOMPRESSED_BACKUP_BYTES = 256 * 1024 * 1024;
+const MAX_UNCOMPRESSED_BACKUP_BYTES = 640 * 1024 * 1024;
 
 function assertArchivePath(name) {
   if (!name || Buffer.byteLength(name, 'utf8') > 100) throw new Error('INVALID_ARCHIVE_PATH');

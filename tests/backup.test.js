@@ -10,8 +10,19 @@ process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
 process.env.APP_BUILD_SHA = 'backup-test-build';
 process.env.APP_ENVIRONMENT = 'development';
 
-const { createBackupArchive, readBackupArchive } = await import('../src/modules/backups/backup-archive.js');
-const { buildWorkspaceBackup, calculateNextBackupAt, resolveBackupEnvironment } = await import('../src/modules/backups/backup.service.js');
+const { backupArchiveLimits, createBackupArchive, readBackupArchive } = await import('../src/modules/backups/backup-archive.js');
+const {
+  backupLimits,
+  buildWorkspaceBackup,
+  calculateNextBackupAt,
+  resolveBackupEnvironment
+} = await import('../src/modules/backups/backup.service.js');
+
+test('backup limits leave safe headroom for the production snapshot', () => {
+  assert.equal(backupLimits.sourceBytes, 512 * 1024 * 1024);
+  assert.equal(backupLimits.restoreArchiveBytes, 520 * 1024 * 1024);
+  assert.equal(backupArchiveLimits.maxUncompressedBytes, 640 * 1024 * 1024);
+});
 
 test('backup archive round-trips manifest, database and binary media', () => {
   const archive = createBackupArchive([

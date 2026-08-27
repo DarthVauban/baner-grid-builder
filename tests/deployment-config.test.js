@@ -142,7 +142,7 @@ test('local Telegram Bot API is pinned, private, and reloads encrypted workspace
 });
 
 test('reverse proxy accepts Telegram backup restore archives', () => {
-  assert.match(nginx, /client_max_body_size\s+55m/);
+  assert.match(nginx, /client_max_body_size\s+520m/);
   assert.match(nginx, /location \/api\/admin\/backups\/\s*\{[\s\S]*client_body_timeout\s+900s/);
   assert.match(nginx, /location \/api\/admin\/backups\/\s*\{[\s\S]*proxy_read_timeout\s+900s/);
 });
