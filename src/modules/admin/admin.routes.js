@@ -18,6 +18,7 @@ import { revokeAllMobileAccessInTransaction } from '../mobile/mobile-access.serv
 import {
   getAdminIntegrations,
   saveMailtrapIntegration,
+  saveTelegramLocalApiCredentials,
   saveTelegramIntegration,
   TelegramApiError
 } from '../integrations/integration.service.js';
@@ -65,6 +66,11 @@ const mailtrapIntegrationSchema = z.object({
 const telegramIntegrationSchema = z.object({
   chatId: z.string().trim().min(1, 'Вкажіть ID чату або @username каналу.').max(255),
   token: z.string().trim().max(4000, 'Токен завеликий.').optional().default('')
+});
+const telegramLocalApiCredentialsSchema = z.object({
+  apiId: z.string().trim().regex(/^[1-9]\d{0,9}$/, 'Вкажіть коректний Telegram API ID.')
+    .refine((value) => Number(value) <= 2_147_483_647, 'Вкажіть коректний Telegram API ID.'),
+  apiHash: z.string().trim().regex(/^[a-fA-F0-9]{32}$/, 'Telegram API Hash має містити 32 шістнадцяткові символи.')
 });
 const backupSettingsSchema = z.object({
   automaticEnabled: z.boolean(),
@@ -303,6 +309,18 @@ router.put('/integrations/telegram', adminOnly, asyncHandler(async (req, res) =>
     }
     if (error instanceof TelegramApiError) {
       throw new AppError(error.status >= 500 ? 502 : 422, 'TELEGRAM_CONNECTION_FAILED', error.message);
+    }
+    throw error;
+  }
+}));
+
+router.put('/integrations/telegram/local-api', adminOnly, asyncHandler(async (req, res) => {
+  const input = parseInput(telegramLocalApiCredentialsSchema, req.body);
+  try {
+    res.json({ data: await saveTelegramLocalApiCredentials(input, req.user.id) });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'TELEGRAM_LOCAL_API_CREDENTIALS_INVALID') {
+      throw new AppError(422, 'TELEGRAM_LOCAL_API_CREDENTIALS_INVALID', 'Не вдалося зберегти Telegram API ID та API Hash.');
     }
     throw error;
   }

@@ -36,6 +36,7 @@ export function AdminIntegrationsPage() {
   });
   const saveMailtrap = useMutation({ mutationFn: api.admin.saveMailtrapIntegration });
   const saveTelegram = useMutation({ mutationFn: api.admin.saveTelegramIntegration });
+  const saveTelegramLocalApi = useMutation({ mutationFn: api.admin.saveTelegramLocalApiIntegration });
   const connectHoroshop = useMutation({ mutationFn: api.admin.connectHoroshopIntegration });
   const updateHoroshopSettings = useMutation({ mutationFn: api.admin.updateHoroshopIntegrationSettings });
   const syncHoroshop = useMutation({ mutationFn: api.admin.syncHoroshopCatalog });
@@ -52,8 +53,12 @@ export function AdminIntegrationsPage() {
   const [chatId, setChatId] = useState('');
   const [telegramToken, setTelegramToken] = useState('');
   const [telegramTokenVisible, setTelegramTokenVisible] = useState(false);
+  const [telegramApiId, setTelegramApiId] = useState('');
+  const [telegramApiHash, setTelegramApiHash] = useState('');
+  const [telegramApiHashVisible, setTelegramApiHashVisible] = useState(false);
   const [mailtrapError, setMailtrapError] = useState('');
   const [telegramError, setTelegramError] = useState('');
+  const [telegramLocalApiError, setTelegramLocalApiError] = useState('');
   const [storeDomain, setStoreDomain] = useState('');
   const [horoshopLogin, setHoroshopLogin] = useState('');
   const [horoshopPassword, setHoroshopPassword] = useState('');
@@ -73,9 +78,13 @@ export function AdminIntegrationsPage() {
 
   function openTelegram() {
     setChatId(telegram?.chatId || '');
-    setTelegramToken(telegram?.token || '');
+    setTelegramToken('');
     setTelegramTokenVisible(false);
+    setTelegramApiId('');
+    setTelegramApiHash('');
+    setTelegramApiHashVisible(false);
     setTelegramError('');
+    setTelegramLocalApiError('');
     setActiveIntegration('telegram');
   }
 
@@ -91,7 +100,7 @@ export function AdminIntegrationsPage() {
   }
 
   function closeModal() {
-    if (saveMailtrap.isPending || saveTelegram.isPending || connectHoroshop.isPending
+    if (saveMailtrap.isPending || saveTelegram.isPending || saveTelegramLocalApi.isPending || connectHoroshop.isPending
       || updateHoroshopSettings.isPending
       || syncHoroshop.isPending || disconnectHoroshop.isPending) return;
     setActiveIntegration(null);
@@ -124,6 +133,24 @@ export function AdminIntegrationsPage() {
       setActiveIntegration(null);
     } catch (caught) {
       setTelegramError(caught instanceof Error ? caught.message : 'Не вдалося підключити Telegram.');
+    }
+  }
+
+  async function submitTelegramLocalApi(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTelegramLocalApiError('');
+    try {
+      await saveTelegramLocalApi.mutateAsync({
+        apiId: telegramApiId.trim(),
+        apiHash: telegramApiHash.trim()
+      });
+      await queryClient.invalidateQueries({ queryKey: ['admin-integrations'] });
+      showToast('Ключі локального Telegram Bot API збережено й застосовано.');
+      setTelegramApiId('');
+      setTelegramApiHash('');
+      setTelegramApiHashVisible(false);
+    } catch (caught) {
+      setTelegramLocalApiError(caught instanceof Error ? caught.message : 'Не вдалося зберегти ключі локального Telegram Bot API.');
     }
   }
 
@@ -289,11 +316,11 @@ export function AdminIntegrationsPage() {
       </div>}
 
       {activeIntegration === 'telegram' && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeModal()}>
-        <section className="modal integration-modal" role="dialog" aria-modal="true" aria-labelledby="telegram-integration-title">
+        <section className="modal integration-modal integration-modal--telegram" role="dialog" aria-modal="true" aria-labelledby="telegram-integration-title">
           <header className="modal__header integration-modal__header">
             <div className="integration-modal__title">
               <span className="integration-card__icon integration-card__icon--telegram"><Icon name="send" size={20} /></span>
-              <div><p className="eyebrow">Службовий канал</p><h2 id="telegram-integration-title">Telegram</h2></div>
+              <div><p className="eyebrow">Бекапи та службові сповіщення</p><h2 id="telegram-integration-title">Telegram</h2></div>
             </div>
             <div className="integration-modal__header-actions">
               <span className={telegram?.configured ? 'integration-status integration-status--ready' : 'integration-status'}>
@@ -303,41 +330,82 @@ export function AdminIntegrationsPage() {
             </div>
           </header>
 
-          <form className="integration-form integration-modal__form" autoComplete="off" data-form-type="other" onSubmit={submitTelegram}>
-            {telegramError && <div className="form-message form-message--error integration-form__wide" role="alert">{telegramError}</div>}
-            <label className="field">
-              <span>ID чату або @канал</span>
-              <input value={chatId} onChange={(event) => setChatId(event.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="-1001234567890" required autoFocus />
-              <small className="integration-field-hint">Не ID бота. Для закритого каналу використовуйте числовий ID у форматі -100…</small>
-            </label>
-            <label className="field">
-              <span>Bot token</span>
-              <span className="password-field__control">
-                <input
-                  type="text"
-                  value={!telegramTokenVisible && telegramToken ? maskedSecretValue : telegramToken}
-                  onChange={(event) => { setTelegramTokenVisible(true); setTelegramToken(event.target.value); }}
-                  readOnly={!telegramTokenVisible && Boolean(telegramToken)}
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  data-lpignore="true"
-                  data-1p-ignore="true"
-                  data-bwignore="true"
-                  spellCheck={false}
-                  placeholder="Токен від @BotFather"
-                  required
-                />
-                <button type="button" onClick={() => setTelegramTokenVisible((value) => !value)} aria-label={telegramTokenVisible ? 'Сховати Telegram bot token' : 'Показати Telegram bot token'}><Icon name={telegramTokenVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
-              </span>
-            </label>
-            <footer className="modal__footer integration-modal__footer integration-form__wide">
-              <small>{telegram?.botUsername ? `Підключено @${telegram.botUsername} · ${formatDate(telegram.updatedAt)}` : 'Під час збереження бот і чат будуть перевірені'}</small>
-              <button className="button button--secondary" type="button" onClick={closeModal}>Скасувати</button>
-              <button className="button button--primary" type="submit" disabled={!chatId.trim() || !telegramToken.trim() || saveTelegram.isPending}>
-                <Icon name="save" size={17} />{saveTelegram.isPending ? 'Перевіряємо...' : telegram?.configured ? 'Зберегти' : 'Підключити'}
-              </button>
+          <div className="telegram-integration-settings">
+            <div className="telegram-integration-summary" aria-label="Стан Telegram-інтеграції">
+              <div><span>Бот і чат</span><strong>{telegram?.configured ? 'Готово' : 'Потребує налаштування'}</strong></div>
+              <div><span>Режим бекапів</span><strong>{telegram?.localApi?.enabled ? 'Локальний API · до 2 ГБ' : 'Хмарний API · до 50 МБ'}</strong></div>
+              <div><span>API_ID / API_HASH</span><strong>{telegram?.localApi?.credentialsConfigured ? 'Збережено' : 'Не збережено'}</strong></div>
+            </div>
+
+            <form className="integration-form telegram-integration-section" autoComplete="off" data-form-type="other" onSubmit={submitTelegram}>
+              <div className="telegram-integration-section__heading integration-form__wide">
+                <div><span className="telegram-integration-section__step">1</span><div><h3>Бот і місце доставки</h3><p>Токен не повертається у браузер. Залиште поле порожнім, щоб не змінювати чинний.</p></div></div>
+                <span className={telegram?.configured ? 'integration-status integration-status--ready' : 'integration-status'}>{telegram?.configured ? 'Перевірено' : 'Не перевірено'}</span>
+              </div>
+              {telegramError && <div className="form-message form-message--error integration-form__wide" role="alert">{telegramError}</div>}
+              <label className="field">
+                <span>ID чату або @канал</span>
+                <input value={chatId} onChange={(event) => setChatId(event.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="-1001234567890" required autoFocus />
+                <small className="integration-field-hint">Для закритого каналу використовуйте ID у форматі -100…</small>
+              </label>
+              <label className="field">
+                <span>Bot token</span>
+                <span className="password-field__control">
+                  <input
+                    type={telegramTokenVisible ? 'text' : 'password'}
+                    value={telegramToken}
+                    onChange={(event) => setTelegramToken(event.target.value)}
+                    autoComplete="new-password"
+                    autoCapitalize="none"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    spellCheck={false}
+                    placeholder={telegram?.tokenConfigured ? 'Збережено — введіть новий для заміни' : 'Токен від @BotFather'}
+                    required={!telegram?.tokenConfigured}
+                  />
+                  <button type="button" onClick={() => setTelegramTokenVisible((value) => !value)} aria-label={telegramTokenVisible ? 'Сховати Telegram bot token' : 'Показати Telegram bot token'}><Icon name={telegramTokenVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
+                </span>
+              </label>
+              <div className="telegram-integration-section__actions integration-form__wide">
+                <small>{telegram?.botUsername ? `Підключено @${telegram.botUsername} · ${formatDate(telegram.updatedAt)}` : 'Під час збереження бот і чат будуть перевірені'}</small>
+                <button className="button button--primary" type="submit" disabled={!chatId.trim() || (!telegram?.tokenConfigured && !telegramToken.trim()) || saveTelegram.isPending}>
+                  <Icon name="save" size={17} />{saveTelegram.isPending ? 'Перевіряємо...' : telegram?.configured ? 'Зберегти доставку' : 'Підключити бота'}
+                </button>
+              </div>
+            </form>
+
+            <form className="integration-form telegram-integration-section" autoComplete="off" data-form-type="other" onSubmit={submitTelegramLocalApi}>
+              <div className="telegram-integration-section__heading integration-form__wide">
+                <div><span className="telegram-integration-section__step">2</span><div><h3>Великі бекапи через Local Bot API</h3><p>Введіть пару з my.telegram.org. Для заміни завжди вказуйте обидва нові значення.</p></div></div>
+                <span className={telegram?.localApi?.credentialsConfigured ? 'integration-status integration-status--ready' : 'integration-status'}>{telegram?.localApi?.credentialsConfigured ? 'Ключі збережено' : 'Ключі відсутні'}</span>
+              </div>
+              {telegramLocalApiError && <div className="form-message form-message--error integration-form__wide" role="alert">{telegramLocalApiError}</div>}
+              {!telegram?.localApi?.enabled && <div className="integration-note integration-form__wide">Локальний API вимкнено в конфігурації VPS. Ключі можна зберегти заздалегідь, але ліміт 2 ГБ запрацює після увімкнення <code>TELEGRAM_LOCAL_MODE=true</code>.</div>}
+              <label className="field">
+                <span>Telegram API ID</span>
+                <input inputMode="numeric" value={telegramApiId} onChange={(event) => setTelegramApiId(event.target.value.replace(/\D/g, ''))} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder={telegram?.localApi?.credentialsConfigured ? 'Збережено — введіть новий' : '12345678'} required />
+              </label>
+              <label className="field">
+                <span>Telegram API Hash</span>
+                <span className="password-field__control">
+                  <input type={telegramApiHashVisible ? 'text' : 'password'} value={telegramApiHash} onChange={(event) => setTelegramApiHash(event.target.value)} autoComplete="new-password" autoCapitalize="none" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" spellCheck={false} placeholder={telegram?.localApi?.credentialsConfigured ? 'Збережено — введіть новий' : '32 шістнадцяткові символи'} required />
+                  <button type="button" onClick={() => setTelegramApiHashVisible((value) => !value)} aria-label={telegramApiHashVisible ? 'Сховати Telegram API Hash' : 'Показати Telegram API Hash'}><Icon name={telegramApiHashVisible ? 'visibilityOff' : 'visibility'} size={18} /></button>
+                </span>
+              </label>
+              <div className="telegram-integration-section__actions integration-form__wide">
+                <small>Ключі зберігаються зашифрованими та не відображаються повторно.</small>
+                <button className="button button--primary" type="submit" disabled={!telegramApiId.trim() || !telegramApiHash.trim() || saveTelegramLocalApi.isPending}>
+                  <Icon name="save" size={17} />{saveTelegramLocalApi.isPending ? 'Застосовуємо...' : telegram?.localApi?.credentialsConfigured ? 'Замінити API-ключі' : 'Зберегти API-ключі'}
+                </button>
+              </div>
+            </form>
+
+            <footer className="modal__footer integration-modal__footer telegram-integration-footer">
+              <small>{telegram?.localApi?.updatedAt ? `API-ключі оновлено ${formatDate(telegram.localApi.updatedAt)}` : 'Великі архіви потребують локального Telegram Bot API.'}</small>
+              <button className="button button--secondary" type="button" onClick={closeModal}>Готово</button>
             </footer>
-          </form>
+          </div>
         </section>
       </div>}
 

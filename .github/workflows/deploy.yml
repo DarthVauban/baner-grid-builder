@@ -143,10 +143,11 @@ jobs:
             docker compose config --quiet
             TELEGRAM_LOCAL_ENABLED="$(sed -n 's/^TELEGRAM_LOCAL_MODE=//p' .env | tail -n 1 | tr -d '\r"' | tr '[:upper:]' '[:lower:]')"
             if [ "$TELEGRAM_LOCAL_ENABLED" = "true" ]; then
-              test -f .telegram-bot-api.env
-              test "$(stat -c '%a' .telegram-bot-api.env)" = "600"
-              grep -Eq '^TELEGRAM_API_ID=[0-9]+$' .telegram-bot-api.env
-              grep -Eq '^TELEGRAM_API_HASH=[a-fA-F0-9]{32}$' .telegram-bot-api.env
+              if [ -f .telegram-bot-api.env ]; then
+                test "$(stat -c '%a' .telegram-bot-api.env)" = "600"
+                grep -Eq '^TELEGRAM_API_ID=[0-9]+$' .telegram-bot-api.env
+                grep -Eq '^TELEGRAM_API_HASH=[a-fA-F0-9]{32}$' .telegram-bot-api.env
+              fi
               docker compose --profile telegram-local config --quiet
               retry 5 10 docker compose --profile telegram-local pull telegram-bot-api
             fi
@@ -200,17 +201,6 @@ jobs:
               docker compose restart db
               wait_for_database
             fi
-            if [ "$TELEGRAM_LOCAL_ENABLED" = "true" ]; then
-              docker compose --profile telegram-local up -d --no-build telegram-bot-api
-              TELEGRAM_CONTAINER_ID="$(docker compose --profile telegram-local ps -q telegram-bot-api)"
-              test -n "$TELEGRAM_CONTAINER_ID"
-              for attempt in $(seq 1 30); do
-                TELEGRAM_HEALTH="$(docker inspect "$TELEGRAM_CONTAINER_ID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')"
-                [ "$TELEGRAM_HEALTH" = "healthy" ] && break
-                [ "$attempt" -lt 30 ] || { echo "Telegram Bot API did not become healthy." >&2; exit 1; }
-                sleep 5
-              done
-            fi
             docker compose up -d --no-build --force-recreate app
             docker compose ps app
             sleep 8
@@ -223,6 +213,25 @@ jobs:
             BACKUP_TRANSFER_MOUNT_TYPE="$(docker inspect "$CONTAINER_ID" --format '{{range .Mounts}}{{if eq .Destination "/app/storage/telegram-backup-transfer"}}{{.Type}}{{end}}{{end}}')"
             test "$BACKUP_TRANSFER_MOUNT_TYPE" = "volume"
             docker exec "$CONTAINER_ID" test -w /app/storage/telegram-backup-transfer
+            TELEGRAM_CONFIG_MOUNT_TYPE="$(docker inspect "$CONTAINER_ID" --format '{{range .Mounts}}{{if eq .Destination "/app/storage/telegram-bot-api-config"}}{{.Type}}{{end}}{{end}}')"
+            test "$TELEGRAM_CONFIG_MOUNT_TYPE" = "volume"
+            docker exec "$CONTAINER_ID" test -w /app/storage/telegram-bot-api-config
+            if [ "$TELEGRAM_LOCAL_ENABLED" = "true" ]; then
+              docker compose --profile telegram-local up -d --no-build telegram-bot-api
+              TELEGRAM_CONTAINER_ID="$(docker compose --profile telegram-local ps -q telegram-bot-api)"
+              test -n "$TELEGRAM_CONTAINER_ID"
+              if docker exec "$CONTAINER_ID" test -s /app/storage/telegram-bot-api-config/credentials.env \
+                || [ -f .telegram-bot-api.env ]; then
+                for attempt in $(seq 1 30); do
+                  TELEGRAM_HEALTH="$(docker inspect "$TELEGRAM_CONTAINER_ID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')"
+                  [ "$TELEGRAM_HEALTH" = "healthy" ] && break
+                  [ "$attempt" -lt 30 ] || { echo "Telegram Bot API did not become healthy." >&2; exit 1; }
+                  sleep 5
+                done
+              else
+                echo "Telegram Bot API is waiting for API_ID and API_HASH from the Integrations page."
+              fi
+            fi
             if [ "$MIGRATE_LEGACY_MEDIA" = "true" ]; then
               docker cp "$MEDIA_BACKUP/." "$CONTAINER_ID:/app/storage/catalog-media/"
               docker exec -u root "$CONTAINER_ID" chown -R nodeapp:nodeapp /app/storage/catalog-media

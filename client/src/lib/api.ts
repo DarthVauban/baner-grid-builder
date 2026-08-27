@@ -75,7 +75,9 @@ import type {
   MailtrapIntegration,
   MailtrapIntegrationInput,
   TelegramIntegration,
-  TelegramIntegrationInput
+  TelegramIntegrationInput,
+  TelegramLocalApiIntegration,
+  TelegramLocalApiIntegrationInput
 } from '../types/integration';
 import type {
   ApplicationBank,
@@ -1045,6 +1047,10 @@ export const api = {
     ),
     saveTelegramIntegration: (input: TelegramIntegrationInput) => request<TelegramIntegration>(
       '/api/admin/integrations/telegram',
+      { method: 'PUT', body: jsonBody(input), timeoutMs: 45_000 }
+    ),
+    saveTelegramLocalApiIntegration: (input: TelegramLocalApiIntegrationInput) => request<TelegramLocalApiIntegration>(
+      '/api/admin/integrations/telegram/local-api',
       { method: 'PUT', body: jsonBody(input), timeoutMs: 45_000 }
     ),
     horoshopIntegration: () => request<HoroshopIntegration>('/api/admin/integrations/horoshop'),

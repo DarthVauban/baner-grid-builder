@@ -9,7 +9,8 @@
 2. Для personal chat натисніть **Start** і використовуйте ID користувача, не bot ID.
 3. Для group додайте bot і використовуйте numeric chat ID.
 4. Для channel додайте bot як admin із правом публікації та використовуйте `@username` або ID.
-5. Збережіть token і target у **Адміністрування → Інтеграції**.
+5. Відкрийте **Адміністрування → Інтеграції → Telegram** і збережіть token та target у блоці
+   **Бот і місце доставки**.
 
 Сервер перевіряє token, відхиляє власний bot ID і виконує безпечну перевірку надсилання документа до
 збереження encrypted token.
@@ -35,19 +36,33 @@ Docker Compose містить opt-in profile `telegram-local`. Сервіс не
 TELEGRAM_LOCAL_MODE=true
 ```
 
-Окремо створіть на VPS файл `.telegram-bot-api.env` з режимом `600`:
+У картці **Telegram** заповніть блок **Великі бекапи через Local Bot API**:
+
+```dotenv
+Telegram API ID=<api_id from my.telegram.org>
+Telegram API Hash=<api_hash from my.telegram.org>
+```
+
+Пара шифрується тим самим AES-256-GCM контуром, що й інші integration secrets, і ніколи не
+повертається у browser API. Для заміни введіть обидва нові значення. Application записує їх у
+приватний runtime volume з правами `0600`; Local Bot API відстежує зміну файла і автоматично
+перезапускається. Відкриті значення потрібні в runtime volume, оскільки сам процес Telegram читає
+`API_ID/API_HASH` лише під час запуску.
+
+Файл `.telegram-bot-api.env` з режимом `600` залишається необов’язковим bootstrap/rollback способом.
+Якщо він існує, container використовує його до першого збереження ключів із робочого простору:
 
 ```dotenv
 TELEGRAM_API_ID=<api_id from my.telegram.org>
 TELEGRAM_API_HASH=<api_hash from my.telegram.org>
 ```
 
-Цей файл доданий до `.gitignore` і підключається лише до container Local Bot API; application container не
-отримує `api_id` чи `api_hash`. Шаблон є у `.telegram-bot-api.env.example`.
+Шаблон є у `.telegram-bot-api.env.example`, а сам файл доданий до `.gitignore`.
 
 `TELEGRAM_API_BASE_URL` можна не вказувати: у local mode замовчуванням є
 `http://telegram-bot-api:8081`. Deployment workflow побачить `TELEGRAM_LOCAL_MODE=true`, завантажить
-зафіксований image, запустить profile і дочекається health check.
+зафіксований image і запустить profile. Якщо ключі ще не налаштовані, container безпечно очікує їх,
+а робочий простір залишається доступним для первинного налаштування.
 
 Перед першим запуском local API один раз викличте `logOut` у cloud Bot API. Токен не передавайте
 у chat і не зберігайте у shell history:
@@ -102,6 +117,8 @@ GET  /api/admin/backups
 PUT  /api/admin/backups/settings
 POST /api/admin/backups/run
 POST /api/admin/backups/restore
+PUT  /api/admin/integrations/telegram
+PUT  /api/admin/integrations/telegram/local-api
 ```
 
 Одночасно може виконуватись лише одна backup/restore operation в app process.

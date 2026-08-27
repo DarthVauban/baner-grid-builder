@@ -41,6 +41,10 @@ const schema = z.object({
     (value) => String(value || '').trim() || undefined,
     z.string().min(1).optional()
   ),
+  TELEGRAM_LOCAL_CREDENTIALS_DIR: z.preprocess(
+    (value) => String(value || '').trim() || undefined,
+    z.string().min(1).optional()
+  ),
   SEARCH_FEATURE_ENABLED: z.enum(['true', 'false']).default('false'),
   OPENSEARCH_URL: z.string().url().default('http://localhost:9200'),
   OPENSEARCH_INDEX_PREFIX: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/).default('mt-search'),
@@ -116,6 +120,9 @@ const telegramBackupTempDir = path.resolve(
 const telegramLocalFileUriDir = path.resolve(
   result.data.TELEGRAM_LOCAL_FILE_URI_DIR || telegramBackupTempDir
 );
+const telegramLocalCredentialsDir = path.resolve(
+  result.data.TELEGRAM_LOCAL_CREDENTIALS_DIR || 'storage/telegram-bot-api-config'
+);
 const mobileEnvironment = result.data.MOBILE_ENVIRONMENT
   || (result.data.NODE_ENV === 'test' ? 'test' : appEnvironment);
 if (result.data.MOBILE_ENVIRONMENT
@@ -158,6 +165,7 @@ export const env = {
   telegramApiBaseUrl,
   telegramBackupTempDir,
   telegramLocalFileUriDir,
+  telegramLocalCredentialsDir,
   mobileTokenPepper: result.data.MOBILE_TOKEN_PEPPER || result.data.JWT_SECRET,
   mobilePushEnabled: result.data.MOBILE_PUSH_ENABLED === 'true',
   mobileDeploymentId: result.data.MOBILE_DEPLOYMENT_ID || `mt-workspace-${mobileEnvironment}`,

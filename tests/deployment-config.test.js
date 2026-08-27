@@ -8,6 +8,7 @@ const tradeInTlsWorkflow = readFileSync(new URL('../.github/workflows/configure-
 const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
+const telegramEntrypoint = readFileSync(new URL('../docker/telegram-bot-api/runtime-entrypoint.sh', import.meta.url), 'utf8');
 const nginx = readFileSync(new URL('../nginx/nginx.conf', import.meta.url), 'utf8');
 const tradeInNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-host.conf', import.meta.url), 'utf8');
 const tradeInBootstrapNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-bootstrap.conf', import.meta.url), 'utf8');
@@ -117,19 +118,26 @@ test('catalog photos use persistent writable storage in production', () => {
   assert.match(catalogMedia, /Configure a writable persistent CATALOG_MEDIA_DIR/);
 });
 
-test('local Telegram Bot API is pinned, private, and shares only temporary backup files', () => {
+test('local Telegram Bot API is pinned, private, and reloads encrypted workspace credentials', () => {
   assert.ok(telegramService, 'telegram-bot-api service must remain present');
   assert.match(compose, /telegram-bot-api:[\s\S]*image: aiogram\/telegram-bot-api@sha256:[a-f0-9]{64}/);
   assert.match(telegramService, /profiles:\s*\["telegram-local"\]/);
   assert.doesNotMatch(telegramService, /^\s+ports:\s*$/m);
   assert.match(compose, /telegram_backup_transfer:\/app\/storage\/telegram-backup-transfer/);
   assert.match(compose, /telegram_backup_transfer:\/var\/lib\/telegram-bot-api\/backup-upload:ro/);
+  assert.match(compose, /telegram_bot_api_config:\/app\/storage\/telegram-bot-api-config/);
+  assert.match(compose, /telegram_bot_api_config:\/run\/mt-telegram-config:ro/);
+  assert.match(telegramService, /entrypoint:\s*\["\/bin\/sh", "\/opt\/mt\/runtime-entrypoint\.sh"\]/);
+  assert.match(telegramEntrypoint, /credentials changed; restarting the local server/);
+  assert.doesNotMatch(telegramEntrypoint, /echo.*TELEGRAM_API_(?:ID|HASH)/);
   assert.match(workflow, /TELEGRAM_LOCAL_ENABLED=.*TELEGRAM_LOCAL_MODE/);
-  assert.match(workflow, /test -f \.telegram-bot-api\.env/);
+  assert.match(workflow, /if \[ -f \.telegram-bot-api\.env \]; then/);
   assert.match(workflow, /stat -c '%a' \.telegram-bot-api\.env/);
   assert.match(workflow, /docker compose --profile telegram-local up -d --no-build telegram-bot-api/);
   assert.match(workflow, /BACKUP_TRANSFER_MOUNT_TYPE=.*\/app\/storage\/telegram-backup-transfer/);
   assert.match(workflow, /docker exec "\$CONTAINER_ID" test -w \/app\/storage\/telegram-backup-transfer/);
+  assert.match(workflow, /TELEGRAM_CONFIG_MOUNT_TYPE=.*\/app\/storage\/telegram-bot-api-config/);
+  assert.match(workflow, /docker exec "\$CONTAINER_ID" test -w \/app\/storage\/telegram-bot-api-config/);
 });
 
 test('reverse proxy accepts Telegram backup restore archives', () => {

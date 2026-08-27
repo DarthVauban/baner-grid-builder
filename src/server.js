@@ -9,9 +9,13 @@ import { startBackupWorker } from './modules/backups/backup.worker.js';
 import { startPhotoParserWorker } from './modules/catalog/photo-parser.worker.js';
 import { startMobilePushWorker } from './modules/mobile/mobile-push.worker.js';
 import { startHoroshopCatalogWorker } from './modules/search/horoshop/catalog.worker.js';
+import { syncTelegramLocalApiRuntimeCredentials } from './modules/integrations/integration.service.js';
 
 await runMigrations();
 await ensureBootstrapAdmin();
+await syncTelegramLocalApiRuntimeCredentials().catch((error) => {
+  console.error('Could not synchronize Telegram Local Bot API credentials:', error?.message || error);
+});
 
 const server = app.listen(env.PORT, () => {
   console.log(`MT Workspace is running on port ${env.PORT}`);

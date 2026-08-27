@@ -21,6 +21,7 @@ process.env.TELEGRAM_LOCAL_MODE = 'true';
 process.env.TELEGRAM_API_BASE_URL = 'http://telegram-bot-api:8081';
 process.env.TELEGRAM_BACKUP_TEMP_DIR = backupTransferDir;
 process.env.TELEGRAM_LOCAL_FILE_URI_DIR = backupTransferDir;
+process.env.TELEGRAM_LOCAL_CREDENTIALS_DIR = path.join(backupTransferDir, 'telegram-local-api-config');
 
 const telegramCalls = [];
 let sendDocumentFailure = '';
@@ -84,6 +85,8 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
     token: '123456:integration-test-token'
   }).expect(200);
   assert.equal(telegram.body.data.configured, true);
+  assert.equal(telegram.body.data.tokenConfigured, true);
+  assert.equal(telegram.body.data.token, undefined);
   assert.equal(telegram.body.data.botUsername, 'mt_backup_bot');
   assert.equal(telegramCalls[0].method, 'getMe');
   assert.equal(telegramCalls[1].method, 'getChat');
@@ -91,8 +94,36 @@ test('admin configures Telegram, saves a schedule and sends a manual backup', as
 
   const integrations = await agent.get('/api/admin/integrations').expect(200);
   assert.equal(integrations.body.data.telegram.chatId, '-1001234567890');
-  assert.equal(integrations.body.data.telegram.token, '123456:integration-test-token');
+  assert.equal(integrations.body.data.telegram.tokenConfigured, true);
+  assert.equal(integrations.body.data.telegram.token, undefined);
   assert.equal(integrations.headers['cache-control'], 'no-store');
+
+  const localApi = await agent.put('/api/admin/integrations/telegram/local-api').send({
+    apiId: '12345678',
+    apiHash: '0123456789abcdef0123456789abcdef'
+  }).expect(200);
+  assert.equal(localApi.body.data.enabled, true);
+  assert.equal(localApi.body.data.credentialsConfigured, true);
+  assert.equal(localApi.body.data.apiId, undefined);
+  assert.equal(localApi.body.data.apiHash, undefined);
+  assert.equal(
+    await readFile(path.join(process.env.TELEGRAM_LOCAL_CREDENTIALS_DIR, 'credentials.env'), 'utf8'),
+    'TELEGRAM_API_ID=12345678\nTELEGRAM_API_HASH=0123456789abcdef0123456789abcdef\n'
+  );
+  await agent.put('/api/admin/integrations/telegram/local-api').send({
+    apiId: '87654321',
+    apiHash: 'abcdef0123456789abcdef0123456789'
+  }).expect(200);
+  assert.equal(
+    await readFile(path.join(process.env.TELEGRAM_LOCAL_CREDENTIALS_DIR, 'credentials.env'), 'utf8'),
+    'TELEGRAM_API_ID=87654321\nTELEGRAM_API_HASH=abcdef0123456789abcdef0123456789\n'
+  );
+  const storedLocalApi = await pool.query(
+    "SELECT secret_ciphertext, public_config FROM integration_settings WHERE key = 'telegram_local_api'"
+  );
+  assert.equal(storedLocalApi.rows.length, 1);
+  assert.doesNotMatch(storedLocalApi.rows[0].secret_ciphertext, /87654321|abcdef0123456789/);
+  assert.deepEqual(storedLocalApi.rows[0].public_config, {});
 
   const settings = await agent.put('/api/admin/backups/settings').send({
     automaticEnabled: true,
