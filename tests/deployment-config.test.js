@@ -130,6 +130,7 @@ test('local Telegram Bot API is pinned, private, and reloads encrypted workspace
   assert.match(telegramService, /entrypoint:\s*\["\/bin\/sh", "\/opt\/mt\/runtime-entrypoint\.sh"\]/);
   assert.match(telegramEntrypoint, /credentials changed; restarting the local server/);
   assert.doesNotMatch(telegramEntrypoint, /echo.*TELEGRAM_API_(?:ID|HASH)/);
+  assert.match(workflow, /source: docker-compose\.yml,docker\/telegram-bot-api\/runtime-entrypoint\.sh/);
   assert.match(workflow, /TELEGRAM_LOCAL_ENABLED=.*TELEGRAM_LOCAL_MODE/);
   assert.match(workflow, /if \[ -f \.telegram-bot-api\.env \]; then/);
   assert.match(workflow, /stat -c '%a' \.telegram-bot-api\.env/);

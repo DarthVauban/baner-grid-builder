@@ -80,7 +80,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: docker-compose.yml
+          source: docker-compose.yml,docker/telegram-bot-api/runtime-entrypoint.sh
           target: ${{ env.APP_DIR }}
           overwrite: true
 
