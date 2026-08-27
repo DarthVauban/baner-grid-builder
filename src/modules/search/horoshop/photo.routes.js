@@ -6,6 +6,7 @@ import { asyncHandler } from '../../../lib/async-handler.js';
 import { parseInput } from '../../../lib/validation.js';
 import { requireAuth } from '../../../middleware/auth.js';
 import { requireToolAccess } from '../../access/access.service.js';
+import { horoshopCatalogService } from './catalog.service.js';
 import { horoshopPhotoDesktopService } from './photo-desktop.service.js';
 import { horoshopPhotoService } from './photo.service.js';
 
@@ -17,14 +18,30 @@ const selectionInputSchema = z.object({
   name: z.string().trim().max(160).optional().default(''),
   entries: z.array(z.string().trim().min(1).max(500)).min(1).max(1_000)
 });
+const catalogDateSchema = z.union([
+  z.literal(''),
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, 'Вкажіть дату у форматі РРРР-ММ-ДД.')
+]);
 const filteredSelectionSchema = z.object({
   name: z.string().trim().max(160).optional().default(''),
   filters: z.object({
     search: z.string().trim().max(160).optional().default(''),
     category: z.string().trim().max(255).optional().default(''),
     availability: z.string().trim().max(200).optional().default(''),
-    visibility: z.enum(['all', 'visible', 'hidden']).optional().default('all')
+    visibility: z.enum(['all', 'visible', 'hidden']).optional().default('all'),
+    photoStatus: z.enum(['all', 'with_photos', 'without_photos']).optional().default('all'),
+    createdFrom: catalogDateSchema.optional().default(''),
+    createdTo: catalogDateSchema.optional().default('')
   })
+}).superRefine((input, context) => {
+  if (input.filters.createdFrom && input.filters.createdTo
+    && input.filters.createdFrom > input.filters.createdTo) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['filters', 'createdTo'],
+      message: 'Кінцева дата не може бути ранішою за початкову.'
+    });
+  }
 });
 const selectionItemSchema = z.object({
   productId: z.string().uuid(),
@@ -59,6 +76,17 @@ router.use((_req, res, next) => {
 
 router.get('/selections', asyncHandler(async (_req, res) => {
   res.json({ data: await horoshopPhotoService.listSelections() });
+}));
+
+router.get('/catalog/sync', asyncHandler(async (_req, res) => {
+  res.json({ data: { integration: await horoshopCatalogService.status() } });
+}));
+
+router.post('/catalog/sync', asyncHandler(async (req, res) => {
+  const started = await horoshopCatalogService.startSync('manual', req.user.id);
+  res.status(202).json({
+    data: { started, integration: await horoshopCatalogService.status() }
+  });
 }));
 
 router.get('/desktop/devices', asyncHandler(async (req, res) => {

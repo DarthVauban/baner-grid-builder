@@ -131,6 +131,8 @@ export interface HoroshopPhotoPublishResult {
     message: string;
     code?: string;
   }>;
+  selectionCleared?: boolean;
+  remainingTargets?: number;
 }
 
 export interface HoroshopPhotoDesktopDevice {

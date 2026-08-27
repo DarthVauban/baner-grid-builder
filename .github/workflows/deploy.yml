@@ -80,7 +80,10 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: docker-compose.yml,docker/telegram-bot-api/runtime-entrypoint.sh
+          # Keep both deploy-owned files directly in APP_DIR. Older servers may
+          # contain a root-owned docker/telegram-bot-api directory created by
+          # Docker, which the unprivileged deployment account cannot overwrite.
+          source: docker-compose.yml,telegram-bot-api-runtime-entrypoint.sh
           target: ${{ env.APP_DIR }}
           overwrite: true
 

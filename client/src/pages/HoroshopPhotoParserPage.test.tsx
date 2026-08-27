@@ -205,7 +205,9 @@ describe('HoroshopPhotoParserPage', () => {
         publishedArticles: 2,
         failedDrafts: 0,
         failedArticles: 0,
-        failures: []
+        failures: [],
+        selectionCleared: true,
+        remainingTargets: 0
       });
 
     renderPage();
@@ -216,6 +218,7 @@ describe('HoroshopPhotoParserPage', () => {
     expect(publishButton).toBeEnabled();
     await confirmBulkPublication();
     await waitFor(() => expect(publish).toHaveBeenCalledWith(summary.id, 'replace', expect.any(Function)));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Поточна вибірка товарів' })).toHaveTextContent('Вибірок ще немає'));
   });
 
   it('does not offer already published drafts for individual or bulk publication', async () => {
@@ -245,7 +248,9 @@ describe('HoroshopPhotoParserPage', () => {
       publishedArticles: 1,
       failedDrafts: 1,
       failedArticles: 1,
-      failures: [{ article: 'PHONE-1-SILVER', message: 'Хорошоп відхилив фотографії.', code: 'PHOTO_REJECTED' }]
+      failures: [{ article: 'PHONE-1-SILVER', message: 'Хорошоп відхилив фотографії.', code: 'PHOTO_REJECTED' }],
+      selectionCleared: false,
+      remainingTargets: 1
     });
 
     renderPage();
@@ -323,6 +328,19 @@ describe('HoroshopPhotoParserPage', () => {
     expect(screen.getByText('Не знайдено')).toBeInTheDocument();
     expect(screen.getByText('UNKNOWN')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Передати в Хорошоп' })).toBeInTheDocument();
+  });
+
+  it('allows dismissing unresolved matches without keeping the warning stuck in the interface', async () => {
+    vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
+    vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(selection);
+    vi.spyOn(api.horoshopPhotos, 'activeBatch').mockResolvedValue(null);
+
+    renderPage();
+
+    expect(await screen.findByText('Не знайдено')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Сховати повідомлення про збіги' }));
+    expect(screen.queryByText('Не знайдено')).not.toBeInTheDocument();
+    expect(screen.getByText('Смартфон Example One')).toBeInTheDocument();
   });
 
   it('paginates a large selection so only ten product cards are mounted at once', async () => {
@@ -439,6 +457,8 @@ describe('HoroshopPhotoParserPage', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'В наявності' }));
     fireEvent.click(screen.getByRole('button', { name: 'Видимість' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Лише приховані' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Фото у Хорошопі' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'З фото' }));
     fireEvent.click(screen.getByRole('button', { name: 'Створити вибірку' }));
 
     await waitFor(() => expect(createFiltered.mock.calls[0]?.[0]).toEqual({
@@ -447,7 +467,10 @@ describe('HoroshopPhotoParserPage', () => {
         search: 'iPhone',
         category: 'phones',
         availability: 'В наявності',
-        visibility: 'hidden'
+        visibility: 'hidden',
+        createdFrom: undefined,
+        createdTo: undefined,
+        photoStatus: 'with_photos'
       }
     }));
   });

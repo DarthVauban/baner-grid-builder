@@ -61,6 +61,9 @@ export interface HoroshopSyncRun {
   productsReceived: number;
   modificationsReceived: number;
   pagesReceived: number;
+  exportItemsReceived: number;
+  exportItemsTotal: number | null;
+  progressPercentage: number | null;
   errorMessage: string | null;
   startedAt: string;
   completedAt: string | null;

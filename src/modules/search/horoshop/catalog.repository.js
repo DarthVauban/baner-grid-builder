@@ -29,6 +29,15 @@ function mapConnection(row) {
 
 function mapRun(row) {
   if (!row) return null;
+  const exportItemsReceived = Number(row.export_items_received || 0);
+  const exportItemsTotal = row.export_items_total === null || row.export_items_total === undefined
+    ? null
+    : Number(row.export_items_total);
+  const progressPercentage = row.status === 'succeeded'
+    ? 100
+    : exportItemsTotal && exportItemsTotal > 0
+      ? Math.min(99, Math.floor((exportItemsReceived / exportItemsTotal) * 100))
+      : null;
   return {
     id: row.id,
     mode: row.mode,
@@ -37,6 +46,9 @@ function mapRun(row) {
     productsReceived: Number(row.products_received),
     modificationsReceived: Number(row.modifications_received),
     pagesReceived: Number(row.pages_received),
+    exportItemsReceived,
+    exportItemsTotal,
+    progressPercentage,
     errorMessage: row.error_message,
     startedAt: row.started_at,
     completedAt: row.completed_at
@@ -81,6 +93,8 @@ function mapCatalogModification(row) {
     attributes: jsonObject(row.attributes),
     stickers: jsonArray(row.stickers),
     conditionLabel: row.condition_label,
+    horoshopCreatedAt: row.horoshop_created_at,
+    hasPhotos: row.has_photos === true,
     updatedAt: row.updated_at
   };
 }
@@ -105,6 +119,8 @@ function mapCatalogProduct(row, modifications) {
     popularity: row.popularity,
     stickers: jsonArray(row.stickers),
     conditionLabel: row.condition_label,
+    horoshopCreatedAt: row.horoshop_created_at,
+    hasPhotos: row.has_photos === true,
     updatedAt: row.updated_at,
     modifications
   };
@@ -149,7 +165,8 @@ export class HoroshopCatalogRepository {
       `, [connection.id]),
       this.pool.query(`
         SELECT id, mode, status, categories_received, products_received, modifications_received,
-               pages_received, error_message, started_at, completed_at
+               pages_received, export_items_received, export_items_total, error_message,
+               started_at, completed_at
         FROM search_horoshop_sync_runs
         WHERE connection_id = $1
         ORDER BY started_at DESC
@@ -186,9 +203,18 @@ export class HoroshopCatalogRepository {
 
     const state = ['all', 'inactive'].includes(input.state) ? input.state : 'active';
     const visibility = ['visible', 'hidden'].includes(input.visibility) ? input.visibility : 'all';
+    const photoStatus = ['with_photos', 'without_photos'].includes(input.photoStatus)
+      ? input.photoStatus
+      : 'all';
     const search = String(input.search || '').trim().slice(0, 160);
     const category = String(input.category || '').trim().slice(0, 255);
     const availability = String(input.availability || '').trim().slice(0, 200);
+    const createdFrom = /^\d{4}-\d{2}-\d{2}$/u.test(String(input.createdFrom || ''))
+      ? new Date(`${input.createdFrom}T00:00:00.000Z`)
+      : null;
+    const createdTo = /^\d{4}-\d{2}-\d{2}$/u.test(String(input.createdTo || ''))
+      ? new Date(`${input.createdTo}T23:59:59.999Z`)
+      : null;
     const values = [connection.id];
     const clauses = ['product.connection_id = $1'];
     const addValue = (value) => {
@@ -207,6 +233,31 @@ export class HoroshopCatalogRepository {
           WHERE hidden_modification.connection_id = $1
             AND hidden_modification.active = TRUE
             AND hidden_modification.visible = FALSE
+        )
+      )`);
+    }
+    if (createdFrom) clauses.push(`product.horoshop_created_at >= ${addValue(createdFrom)}`);
+    if (createdTo) clauses.push(`product.horoshop_created_at <= ${addValue(createdTo)}`);
+    if (photoStatus !== 'all') {
+      const comparison = photoStatus === 'with_photos' ? 'TRUE' : 'FALSE';
+      clauses.push(`(
+        EXISTS (
+          SELECT 1
+          FROM search_horoshop_modifications AS photo_modification
+          WHERE photo_modification.connection_id = $1
+            AND photo_modification.product_id = product.id
+            AND photo_modification.active = TRUE
+            AND photo_modification.has_photos = ${comparison}
+        )
+        OR (
+          NOT EXISTS (
+            SELECT 1
+            FROM search_horoshop_modifications AS active_photo_modification
+            WHERE active_photo_modification.connection_id = $1
+              AND active_photo_modification.product_id = product.id
+              AND active_photo_modification.active = TRUE
+          )
+          AND product.has_photos = ${comparison}
         )
       )`);
     }
@@ -249,10 +300,11 @@ export class HoroshopCatalogRepository {
       this.pool.query(`
         SELECT id, external_id, parent_external_id, sku, titles, brand, category_external_id,
                price, old_price, currency, availability, visible, active, primary_image_url,
-               canonical_url, popularity, stickers, condition_label, updated_at
+               canonical_url, popularity, stickers, condition_label, horoshop_created_at,
+               has_photos, updated_at
         FROM search_horoshop_products AS product
         WHERE ${where}
-        ORDER BY product.updated_at DESC, product.id
+        ORDER BY product.horoshop_created_at DESC NULLS LAST, product.updated_at DESC, product.id
         LIMIT ${limitParameter} OFFSET ${offsetParameter}
       `, pageValues),
       this.pool.query(`
@@ -290,14 +342,18 @@ export class HoroshopCatalogRepository {
       const modificationState = state === 'active'
         ? 'AND active = TRUE'
         : state === 'inactive' ? 'AND active = FALSE' : '';
+      const modificationPhotoState = photoStatus === 'with_photos'
+        ? 'AND has_photos = TRUE'
+        : photoStatus === 'without_photos' ? 'AND has_photos = FALSE' : '';
       const placeholders = productIds.map((_, index) => `$${index + 2}`).join(', ');
       const modificationsResult = await this.pool.query(`
         SELECT id, product_id, external_id, sku, titles, price, old_price, currency,
                availability, visible, active, image_url, page_url, attributes, stickers,
-               condition_label, updated_at
+               condition_label, horoshop_created_at, has_photos, updated_at
         FROM search_horoshop_modifications
-        WHERE connection_id = $1 AND product_id IN (${placeholders}) ${modificationState}
-        ORDER BY updated_at DESC, id
+        WHERE connection_id = $1 AND product_id IN (${placeholders})
+          ${modificationState} ${modificationPhotoState}
+        ORDER BY horoshop_created_at DESC NULLS LAST, updated_at DESC, id
       `, [connection.id, ...productIds]);
       modificationRows = modificationsResult.rows;
     }
@@ -334,6 +390,99 @@ export class HoroshopCatalogRepository {
       pageSize,
       pageCount: total > 0 ? Math.ceil(total / pageSize) : 0
     };
+  }
+
+  async listPhotoTargets(input = {}) {
+    const connection = await this.getConnection();
+    if (!connection) return [];
+
+    const visibility = ['visible', 'hidden'].includes(input.visibility) ? input.visibility : 'all';
+    const photoStatus = ['with_photos', 'without_photos'].includes(input.photoStatus)
+      ? input.photoStatus
+      : 'all';
+    const search = String(input.search || '').trim().slice(0, 160);
+    const category = String(input.category || '').trim().slice(0, 255);
+    const availability = String(input.availability || '').trim().slice(0, 200);
+    const createdFrom = /^\d{4}-\d{2}-\d{2}$/u.test(String(input.createdFrom || ''))
+      ? new Date(`${input.createdFrom}T00:00:00.000Z`)
+      : null;
+    const createdTo = /^\d{4}-\d{2}-\d{2}$/u.test(String(input.createdTo || ''))
+      ? new Date(`${input.createdTo}T23:59:59.999Z`)
+      : null;
+    const values = [connection.id, connection.generation];
+    const clauses = ['target.connection_id = $1', 'target.generation = $2'];
+    const addValue = (value) => {
+      values.push(value);
+      return `$${values.length}`;
+    };
+
+    if (category) clauses.push(`target.category_external_id = ${addValue(category)}`);
+    if (visibility === 'visible') clauses.push('target.visible = TRUE');
+    if (visibility === 'hidden') clauses.push('target.visible = FALSE');
+    if (photoStatus === 'with_photos') clauses.push('target.has_photos = TRUE');
+    if (photoStatus === 'without_photos') clauses.push('target.has_photos = FALSE');
+    if (createdFrom) clauses.push(`target.horoshop_created_at >= ${addValue(createdFrom)}`);
+    if (createdTo) clauses.push(`target.horoshop_created_at <= ${addValue(createdTo)}`);
+    if (availability) {
+      clauses.push(`LOWER(COALESCE(target.availability, '')) = ${addValue(availability.toLocaleLowerCase('uk-UA'))}`);
+    }
+    if (search) {
+      const parameter = addValue(`%${search.toLocaleLowerCase('uk-UA')}%`);
+      clauses.push(`(
+        LOWER(COALESCE(target.sku, '')) LIKE ${parameter}
+        OR LOWER(COALESCE(target.brand, '')) LIKE ${parameter}
+        OR LOWER(CAST(target.titles AS TEXT)) LIKE ${parameter}
+        OR LOWER(CAST(target.product_titles AS TEXT)) LIKE ${parameter}
+      )`);
+    }
+
+    const result = await this.pool.query(`
+      WITH target AS (
+        SELECT product.connection_id, product.generation, product.id AS product_id,
+               NULL::UUID AS modification_id, product.sku, product.titles,
+               product.titles AS product_titles, product.brand, product.category_external_id,
+               product.availability, product.visible, product.primary_image_url AS image_url,
+               product.has_photos, product.horoshop_created_at, product.updated_at
+        FROM search_horoshop_products AS product
+        LEFT JOIN search_horoshop_modifications AS active_modification
+          ON active_modification.product_id = product.id
+         AND active_modification.active = TRUE
+        WHERE product.connection_id = $1 AND product.generation = $2 AND product.active = TRUE
+          AND active_modification.id IS NULL
+
+        UNION ALL
+
+        SELECT product.connection_id, product.generation, product.id AS product_id,
+               modification.id AS modification_id, modification.sku, modification.titles,
+               product.titles AS product_titles, product.brand, product.category_external_id,
+               COALESCE(modification.availability, product.availability) AS availability,
+               modification.visible, modification.image_url, modification.has_photos,
+               COALESCE(modification.horoshop_created_at, product.horoshop_created_at),
+               modification.updated_at
+        FROM search_horoshop_modifications AS modification
+        INNER JOIN search_horoshop_products AS product ON product.id = modification.product_id
+        WHERE modification.connection_id = $1 AND modification.generation = $2
+          AND modification.active = TRUE AND product.active = TRUE
+      )
+      SELECT product_id, modification_id, sku, titles, product_titles, image_url,
+             has_photos, horoshop_created_at
+      FROM target
+      WHERE ${clauses.join('\n AND ')}
+      ORDER BY horoshop_created_at DESC NULLS LAST, updated_at DESC,
+               product_id, modification_id NULLS FIRST
+      LIMIT 1000
+    `, values);
+
+    return result.rows.map((row) => ({
+      productId: row.product_id,
+      modificationId: row.modification_id,
+      sku: row.sku || '',
+      titles: jsonObject(row.titles),
+      productTitles: jsonObject(row.product_titles),
+      imageUrl: row.image_url || '',
+      hasPhotos: row.has_photos === true,
+      horoshopCreatedAt: row.horoshop_created_at
+    }));
   }
 
   async createConnection(input) {
@@ -515,10 +664,12 @@ export class HoroshopCatalogRepository {
               id, connection_id, generation, external_id, parent_external_id, sku, titles,
               descriptions, brand, category_external_id, price, old_price, currency, availability,
               visible, primary_image_url, canonical_url, popularity, characteristics, source_data,
-              stickers, condition_label, sync_signature, active, last_seen_sync_id
+              stickers, condition_label, horoshop_created_at, has_photos, sync_signature, active,
+              last_seen_sync_id
             ) VALUES (
               $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14,
-              $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21::jsonb, $22, $23, TRUE, $24
+              $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21::jsonb, $22, $23, $24, $25,
+              TRUE, $26
             )
           `, [
             productId, connection.id, connection.generation, product.externalId,
@@ -527,7 +678,8 @@ export class HoroshopCatalogRepository {
             product.price, product.oldPrice, product.currency, product.availability, product.visible,
             product.primaryImageUrl, product.canonicalUrl, product.popularity,
             JSON.stringify(product.characteristics), JSON.stringify(product.source),
-            JSON.stringify(product.stickers), product.conditionLabel, signature, runId
+            JSON.stringify(product.stickers), product.conditionLabel, product.creationTime,
+            product.hasPhotos, signature, runId
           ]);
           existingProduct = { id: productId, external_id: product.externalId, sync_signature: signature, active: true };
           existingProducts.set(product.externalId, existingProduct);
@@ -539,8 +691,8 @@ export class HoroshopCatalogRepository {
                 old_price = $11, currency = $12, availability = $13, visible = $14,
                 primary_image_url = $15, canonical_url = $16, popularity = $17,
                 characteristics = $18::jsonb, source_data = $19::jsonb, stickers = $20::jsonb,
-                condition_label = $21, sync_signature = $22,
-                active = TRUE, last_seen_sync_id = $23, updated_at = NOW()
+                condition_label = $21, horoshop_created_at = $22, has_photos = $23,
+                sync_signature = $24, active = TRUE, last_seen_sync_id = $25, updated_at = NOW()
             WHERE id = $1 AND connection_id = $2
           `, [
             existingProduct.id, connection.id, connection.generation, product.parentExternalId,
@@ -549,7 +701,7 @@ export class HoroshopCatalogRepository {
             product.currency, product.availability, product.visible, product.primaryImageUrl,
             product.canonicalUrl, product.popularity, JSON.stringify(product.characteristics),
             JSON.stringify(product.source), JSON.stringify(product.stickers), product.conditionLabel,
-            signature, runId
+            product.creationTime, product.hasPhotos, signature, runId
           ]);
           existingProduct.sync_signature = signature;
           existingProduct.active = true;
@@ -563,10 +715,11 @@ export class HoroshopCatalogRepository {
               INSERT INTO search_horoshop_modifications (
                 id, connection_id, product_id, generation, external_id, sku, titles, price,
                 old_price, currency, availability, visible, image_url, page_url, attributes,
-                source_data, stickers, condition_label, sync_signature, active, last_seen_sync_id
+                source_data, stickers, condition_label, horoshop_created_at, has_photos,
+                sync_signature, active, last_seen_sync_id
               ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14,
-                $15::jsonb, $16::jsonb, $17::jsonb, $18, $19, TRUE, $20
+                $15::jsonb, $16::jsonb, $17::jsonb, $18, $19, $20, $21, TRUE, $22
               )
             `, [
               id, connection.id, productId, connection.generation,
@@ -575,7 +728,8 @@ export class HoroshopCatalogRepository {
               modification.availability, modification.visible, modification.imageUrl,
               modification.pageUrl, JSON.stringify(modification.attributes),
               JSON.stringify(modification.source), JSON.stringify(modification.stickers),
-              modification.conditionLabel, modificationSignature, runId
+              modification.conditionLabel, modification.creationTime, modification.hasPhotos,
+              modificationSignature, runId
             ]);
             existingModifications.set(modification.externalId, {
               id, product_id: productId, external_id: modification.externalId,
@@ -591,8 +745,8 @@ export class HoroshopCatalogRepository {
                 price = $7, old_price = $8, currency = $9, availability = $10,
                 visible = $11, image_url = $12, page_url = $13, attributes = $14::jsonb,
                 source_data = $15::jsonb, stickers = $16::jsonb, condition_label = $17,
-                sync_signature = $18, active = TRUE,
-                last_seen_sync_id = $19, updated_at = NOW()
+                horoshop_created_at = $18, has_photos = $19, sync_signature = $20,
+                active = TRUE, last_seen_sync_id = $21, updated_at = NOW()
             WHERE id = $1 AND connection_id = $2
           `, [
             existingModification.id, connection.id, productId, connection.generation,
@@ -601,7 +755,7 @@ export class HoroshopCatalogRepository {
             modification.visible, modification.imageUrl, modification.pageUrl,
             JSON.stringify(modification.attributes), JSON.stringify(modification.source),
             JSON.stringify(modification.stickers), modification.conditionLabel,
-            modificationSignature, runId
+            modification.creationTime, modification.hasPhotos, modificationSignature, runId
           ]);
           existingModification.product_id = productId;
           existingModification.sync_signature = modificationSignature;
@@ -621,9 +775,12 @@ export class HoroshopCatalogRepository {
     await this.pool.query(`
       UPDATE search_horoshop_sync_runs
       SET categories_received = $2, products_received = $3, modifications_received = $4,
-          pages_received = $5
+          pages_received = $5, export_items_received = $6, export_items_total = $7
       WHERE id = $1 AND status = 'running'
-    `, [runId, counts.categories, counts.products, counts.modifications, counts.pages]);
+    `, [
+      runId, counts.categories, counts.products, counts.modifications, counts.pages,
+      counts.exportItemsReceived, counts.exportItemsTotal
+    ]);
   }
 
   async completeSync(connection, runId, counts, seenExternalIds) {
@@ -652,10 +809,12 @@ export class HoroshopCatalogRepository {
       await client.query(`
         UPDATE search_horoshop_sync_runs
         SET status = 'succeeded', categories_received = $2, products_received = $3,
-            modifications_received = $4, pages_received = $5, completed_at = NOW()
-        WHERE id = $1 AND connection_id = $6 AND generation = $7
+            modifications_received = $4, pages_received = $5, export_items_received = $6,
+            export_items_total = $7, completed_at = NOW()
+        WHERE id = $1 AND connection_id = $8 AND generation = $9
       `, [
         runId, counts.categories, counts.products, counts.modifications, counts.pages,
+        counts.exportItemsReceived, counts.exportItemsTotal ?? counts.exportItemsReceived,
         connection.id, connection.generation
       ]);
       await client.query(`

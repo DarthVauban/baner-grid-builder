@@ -241,13 +241,14 @@ export class HoroshopClient {
       ? source.pagination
       : {};
     const explicitNext = Number(source.next_offset ?? pagination.next_offset);
-    const total = Number(source.total ?? pagination.total);
+    const totalValue = Number(source.total ?? pagination.total);
+    const total = Number.isInteger(totalValue) && totalValue >= 0 ? totalValue : null;
     const nextOffset = Number.isInteger(explicitNext) && explicitNext > offset
       ? explicitNext
-      : Number.isFinite(total) && offset + products.length < total
+      : total !== null && offset + products.length < total
         ? offset + products.length
         : products.length >= limit ? offset + products.length : null;
-    return { products, nextOffset };
+    return { products, nextOffset, total };
   }
 
   async importCatalog(token, products, options = {}) {

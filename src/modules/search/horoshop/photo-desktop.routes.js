@@ -80,6 +80,10 @@ router.get('/jobs', asyncHandler(async (req, res) => {
   res.json({ data: await horoshopPhotoDesktopService.listJobs(req.photoParserDevice) });
 }));
 
+router.get('/queue', asyncHandler(async (req, res) => {
+  res.json({ data: await horoshopPhotoDesktopService.queueSnapshot(req.photoParserDevice) });
+}));
+
 router.post('/jobs/:id/claim', asyncHandler(async (req, res) => {
   const { id } = parseInput(idParams, req.params);
   res.json({ data: await horoshopPhotoDesktopService.claimJob(req.photoParserDevice, id) });

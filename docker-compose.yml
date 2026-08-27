@@ -83,7 +83,7 @@ services:
       - telegram_bot_api_data:/var/lib/telegram-bot-api
       - telegram_backup_transfer:/var/lib/telegram-bot-api/backup-upload:ro
       - telegram_bot_api_config:/run/mt-telegram-config:ro
-      - ./docker/telegram-bot-api/runtime-entrypoint.sh:/opt/mt/runtime-entrypoint.sh:ro
+      - ./telegram-bot-api-runtime-entrypoint.sh:/opt/mt/runtime-entrypoint.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 8081"]
       interval: 10s

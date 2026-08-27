@@ -535,6 +535,24 @@ export class HoroshopPhotoDesktopService {
     return result.rows.map((row) => ({ ...this.serializeJob(row), uploadedCount: Number(row.uploaded_count || 0) }));
   }
 
+  async queueSnapshot(device) {
+    const jobs = await this.listJobs(device);
+    const selections = await this.pool.query(`
+      SELECT selection.id
+      FROM search_horoshop_photo_selections AS selection
+      INNER JOIN search_horoshop_connections AS connection
+        ON connection.id = selection.connection_id
+       AND connection.generation = selection.generation
+       AND connection.status = 'connected'
+      WHERE selection.created_by = $1
+      ORDER BY selection.created_at, selection.id
+    `, [device.userId]);
+    return {
+      jobs,
+      activeSelectionIds: selections.rows.map((row) => row.id)
+    };
+  }
+
   async claimJob(device, runId) {
     await this.recoverExpiredJobs();
     const client = await this.pool.connect();

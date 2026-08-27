@@ -42,7 +42,13 @@
 .horoshop-photo-builder__filters { grid-column: 2 / 4; }
 .horoshop-photo-builder > .button { grid-column: 4; }
 .horoshop-photo-builder__filters { display: grid; grid-template-columns: repeat(4,minmax(130px,1fr)); align-items: end; gap: 9px; }
-.horoshop-photo-builder__filters > p { grid-column: 1 / -1; margin: 0; color: #5d56a9; font-size: 10px; font-weight: 700; }
+.horoshop-photo-builder__filters .date-time-field { min-width: 0; display: grid; gap: 6px; }
+.horoshop-photo-builder__filters .date-time-field > span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .035em; text-transform: uppercase; }
+.horoshop-photo-builder__filters .date-time-trigger { min-height: 42px; padding: 0 12px; }
+.horoshop-photo-builder__filter-summary { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.horoshop-photo-builder__filter-summary p { margin: 0; color: #5d56a9; font-size: 10px; font-weight: 700; line-height: 1.45; }
+.horoshop-photo-builder__filter-summary button { flex: 0 0 auto; border: 0; padding: 3px 0; color: #5a50d7; background: transparent; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.horoshop-photo-builder__filter-summary button:hover { text-decoration: underline; }
 .horoshop-photo-builder label > span,
 .horoshop-photo-selection-bar label > span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .035em; text-transform: uppercase; }
 .horoshop-photo-builder input,
@@ -71,6 +77,7 @@
 .horoshop-photo-progress { display: grid; gap: 10px; border: 1px solid #cfd7ff; border-radius: 17px; padding: 15px 17px; background: #f7f8ff; }
 .horoshop-photo-progress.is-complete { border-color: #ccebd7; background: #f7fcf9; }
 .horoshop-photo-progress.is-publishing { border-color: #ded5ff; background: #faf8ff; }
+.horoshop-photo-progress.is-failed { border-color: #f2c8d1; background: #fff8fa; }
 .horoshop-photo-progress header { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
 .horoshop-photo-progress header > div { display: grid; gap: 3px; }
 .horoshop-photo-progress header strong { color: var(--ink); font-size: 13px; }
@@ -79,6 +86,9 @@
 .horoshop-photo-progress header b { color: #5b50d8; font-size: 20px; }
 .horoshop-photo-progress__track { height: 7px; overflow: hidden; border-radius: 999px; background: #e5e8f5; }
 .horoshop-photo-progress__track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#7158ff,#4778ff); transition: width .25s ease; }
+.horoshop-photo-progress__track.is-indeterminate { position: relative; }
+.horoshop-photo-progress__track.is-indeterminate span { position: absolute; inset-block: 0; animation: horoshop-photo-sync-progress 1.15s ease-in-out infinite; }
+.horoshop-photo-catalog-sync.is-failed header b { color: #a62d47; }
 .horoshop-photo-progress footer { display: flex; gap: 16px; flex-wrap: wrap; }
 .horoshop-photo-publish-warning { display: flex; align-items: flex-start; gap: 11px; border: 1px solid #f0c978; border-radius: 17px; padding: 15px 17px; color: #765319; background: #fffbef; }
 .horoshop-photo-publish-warning > svg { flex: 0 0 auto; margin-top: 1px; }
@@ -87,7 +97,8 @@
 .horoshop-photo-publish-warning p { margin: 0; font-size: 11px; line-height: 1.45; }
 .horoshop-photo-publish-warning ul { display: grid; gap: 3px; margin: 2px 0 0; padding-left: 18px; font-size: 10px; line-height: 1.45; }
 
-.horoshop-photo-resolution { display: grid; gap: 14px; border: 1px solid #f0dca8; border-radius: 17px; padding: 16px; background: #fffcf5; }
+.horoshop-photo-resolution { position: relative; display: grid; gap: 14px; border: 1px solid #f0dca8; border-radius: 17px; padding: 16px 50px 16px 16px; background: #fffcf5; }
+.horoshop-photo-resolution__close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #ead7aa; border-radius: 9px; color: #8c651c; background: #fff; cursor: pointer; }
 .horoshop-photo-resolution h2 { margin: 0 0 9px; color: var(--ink); font-size: 14px; }
 .horoshop-photo-resolution article { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid rgba(189,154,74,.18); }
 .horoshop-photo-resolution article > strong { font-size: 12px; }
@@ -157,6 +168,11 @@
 .horoshop-photo-target-pager button:disabled { color: #b7bdc8; background: #f5f6f8; cursor: not-allowed; }
 .horoshop-photo-target-pager b { min-width: 48px; color: var(--ink); text-align: center; }
 
+@keyframes horoshop-photo-sync-progress {
+  from { left: -38%; }
+  to { left: 100%; }
+}
+
 @media (max-width: 1180px) {
   .horoshop-photo-desktop { grid-template-columns: 1fr 1fr; }
   .horoshop-photo-desktop > .button { justify-self: start; }
@@ -182,6 +198,7 @@
   .horoshop-photo-builder__modes { grid-column: auto; width: 100%; }
   .horoshop-photo-builder__modes button { flex: 1; }
   .horoshop-photo-builder__filters { grid-column: auto; grid-template-columns: 1fr; }
+  .horoshop-photo-builder__filter-summary { align-items: flex-start; flex-direction: column; }
   .horoshop-photo-selection-bar { grid-template-columns: 1fr; align-items: stretch; }
   .horoshop-photo-stats { display: grid; grid-template-columns: repeat(3,1fr); }
   .horoshop-photo-target { grid-template-columns: 1fr; }
