@@ -612,11 +612,11 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__slideLeft::before {
-    transform: translateX(2px) rotate(135deg) !important;
+    transform: rotate(135deg) !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__slideRight::before {
-    transform: translateX(-2px) rotate(-45deg) !important;
+    transform: rotate(-45deg) !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn:hover {
