@@ -44,6 +44,7 @@ const defaultTargeting = {
   brands: [],
   categoryIds: [],
   conditions: [],
+  targetPageUrl: '',
   urlContains: []
 };
 
@@ -138,12 +139,14 @@ function normalizeStyles(value) {
 function normalizeTargeting(value) {
   const source = object(value);
   return {
-    mode: ['all_pages', 'all_products', 'products', 'rules'].includes(source.mode) ? source.mode : defaultTargeting.mode,
+    mode: ['all_pages', 'all_products', 'products', 'rules', 'target_page'].includes(source.mode)
+      ? source.mode : defaultTargeting.mode,
     match: source.match === 'any' ? 'any' : 'all',
     stickers: stringList(source.stickers),
     brands: stringList(source.brands),
     categoryIds: stringList(source.categoryIds),
     conditions: stringList(source.conditions),
+    targetPageUrl: normalizeTargetPageUrl(source.targetPageUrl),
     urlContains: stringList(source.urlContains, 30).map((item) => item.toLocaleLowerCase('uk-UA'))
   };
 }
@@ -403,13 +406,15 @@ async function savePopupCampaign(existingId, input, actorUserId) {
   try {
     await client.query('BEGIN');
     const connectionResult = await client.query(
-      `SELECT id, generation FROM search_horoshop_connections WHERE singleton = TRUE LIMIT 1 FOR UPDATE`
+      `SELECT id, generation, store_domain FROM search_horoshop_connections
+       WHERE singleton = TRUE LIMIT 1 FOR UPDATE`
     );
     const connection = connectionResult.rows[0] || null;
     if (!connection) throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед створенням попап-кампанії.');
     const content = normalizeContent(input.content);
     const styles = normalizeStyles(input.styles);
     const targeting = normalizeTargeting(input.targeting);
+    validateTargetPage(targeting, connection.store_domain);
     const behavior = normalizeBehavior(input.behavior);
     const startsAt = input.startsAt || null;
     const endsAt = input.endsAt || null;
@@ -489,12 +494,13 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
       [id]
     );
     const connection = await client.query(
-      'SELECT id, generation FROM search_horoshop_connections WHERE singleton = TRUE LIMIT 1'
+      'SELECT id, generation, store_domain FROM search_horoshop_connections WHERE singleton = TRUE LIMIT 1'
     );
     const current = campaign.rows[0] ? {
       ...campaign.rows[0],
       current_connection_id: connection.rows[0]?.id || null,
-      current_generation: connection.rows[0]?.generation || null
+      current_generation: connection.rows[0]?.generation || null,
+      current_store_domain: connection.rows[0]?.store_domain || ''
     } : null;
     if (!current) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
     if (status === 'active') {
@@ -503,6 +509,7 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
         throw new AppError(409, 'POPUP_CATALOG_STALE', 'Кампанія належить до попереднього підключення Хорошоп. Збережіть її повторно для поточного каталогу.');
       }
       const targeting = normalizeTargeting(current.targeting);
+      validateTargetPage(targeting, current.current_store_domain);
       if (targeting.mode === 'products') {
         const targets = await client.query('SELECT 1 FROM popup_banner_product_targets WHERE campaign_id = $1 LIMIT 1', [id]);
         if (!targets.rows[0]) throw new AppError(422, 'POPUP_TARGETS_EMPTY', 'Додайте хоча б один товар до кампанії.');
@@ -542,9 +549,39 @@ function normalizedPageUrl(value) {
   }
 }
 
+function normalizedPagePath(url) {
+  return url.pathname.replace(/\/+$/u, '') || '/';
+}
+
+function normalizeTargetPageUrl(value) {
+  const url = normalizedPageUrl(value);
+  if (!url) return '';
+  url.pathname = url.pathname.replace(/\/+$/u, '') || '/';
+  url.search = '';
+  return url.href;
+}
+
 function sameStoreHost(left, right) {
   const normalize = (value) => String(value || '').toLowerCase().replace(/^www\./u, '');
   return normalize(left) === normalize(right);
+}
+
+function validateTargetPage(targeting, storeDomain) {
+  if (targeting.mode !== 'target_page') return;
+  const targetPage = normalizedPageUrl(targeting.targetPageUrl);
+  if (!targetPage) {
+    throw new AppError(422, 'POPUP_TARGET_PAGE_INVALID', 'Вкажіть коректне посилання цільової сторінки.');
+  }
+  if (!sameStoreHost(targetPage.hostname, storeDomain)) {
+    throw new AppError(422, 'POPUP_TARGET_PAGE_STORE_MISMATCH', 'Цільова сторінка має належати підключеному магазину Хорошоп.');
+  }
+}
+
+function matchesTargetPage(targetPageUrl, pageUrl) {
+  const targetPage = normalizedPageUrl(targetPageUrl);
+  return Boolean(targetPage
+    && sameStoreHost(targetPage.hostname, pageUrl.hostname)
+    && normalizedPagePath(targetPage) === normalizedPagePath(pageUrl));
 }
 
 function templateText(value, product) {
@@ -560,6 +597,7 @@ function templateText(value, product) {
 
 function matchesTargeting(campaign, product, pageUrl, targets) {
   const targeting = normalizeTargeting(campaign.targeting);
+  if (targeting.mode === 'target_page') return matchesTargetPage(targeting.targetPageUrl, pageUrl);
   if (targeting.mode === 'all_pages') return true;
   if (!product) return false;
   if (targeting.mode === 'all_products') return true;

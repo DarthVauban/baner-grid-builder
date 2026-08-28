@@ -35,6 +35,7 @@ const layoutLabels: Record<PopupLayout, string> = {
 const targetModeLabels: Record<PopupTargetMode, string> = {
   products: 'Вказані товари',
   rules: 'Умови каталогу',
+  target_page: 'Цільова сторінка',
   all_products: 'Усі товари',
   all_pages: 'Усі сторінки'
 };
@@ -81,6 +82,7 @@ function emptyCampaign(): PopupCampaignInput {
       brands: [],
       categoryIds: [],
       conditions: [],
+      targetPageUrl: '',
       urlContains: []
     },
     behavior: {
@@ -201,6 +203,7 @@ function TargetModePicker({ value, onChange }: { value: PopupTargetMode; onChang
   const modes: Array<{ value: PopupTargetMode; icon: Parameters<typeof Icon>[0]['name']; description: string }> = [
     { value: 'products', icon: 'productSelection', description: 'Назви, артикули або модифікації' },
     { value: 'rules', icon: 'characteristics', description: 'Стікери, бренди, категорії та стан' },
+    { value: 'target_page', icon: 'link', description: 'Точне посилання окремої сторінки' },
     { value: 'all_products', icon: 'storefront', description: 'Будь-яка сторінка товару' },
     { value: 'all_pages', icon: 'productPage', description: 'Увесь сайт без обмежень' }
   ];
@@ -346,6 +349,7 @@ export function PopupBannersPage() {
 
   const targetSummary = useMemo(() => {
     const target = draft.targeting;
+    if (target.mode === 'target_page') return target.targetPageUrl ? 'Одна цільова сторінка' : 'Вкажіть посилання';
     if (target.mode === 'all_pages') return 'Усі сторінки сайту';
     if (target.mode === 'all_products') return 'Усі сторінки товарів';
     if (target.mode === 'products') return `${inputLines(productText).length} вказаних позицій`;
@@ -355,6 +359,7 @@ export function PopupBannersPage() {
   }, [draft.targeting, productText]);
 
   const currentInput = useMemo(() => ({ ...draft, productEntries: inputLines(productText) }), [draft, productText]);
+  const targetPageMissing = draft.targeting.mode === 'target_page' && !draft.targeting.targetPageUrl.trim();
   const isDirty = useMemo(() => {
     if (isCreating || !selectedCampaign) return true;
     return JSON.stringify(currentInput) !== JSON.stringify(campaignInput(selectedCampaign));
@@ -534,7 +539,7 @@ export function PopupBannersPage() {
             {!isCreating && selectedCampaign?.status !== 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('active')} disabled={changeStatus.isPending || isDirty}><Icon name="publication" size={16} /> Опублікувати</button>}
             {!isCreating && selectedCampaign?.status === 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('paused')} disabled={changeStatus.isPending}><Icon name="deadline" size={16} /> Призупинити</button>}
             {!isCreating && <button className="icon-button icon-button--danger" type="button" onClick={() => void remove()} aria-label="Видалити кампанію"><Icon name="delete" size={18} /></button>}
-            <button className="button button--primary button--small" type="button" onClick={() => void save()} disabled={saving || !options.data?.integration || !draft.name.trim() || !isDirty}><Icon name="save" size={16} /> {saving ? 'Зберігаємо…' : 'Зберегти'}</button>
+            <button className="button button--primary button--small" type="button" onClick={() => void save()} disabled={saving || !options.data?.integration || !draft.name.trim() || targetPageMissing || !isDirty}><Icon name="save" size={16} /> {saving ? 'Зберігаємо…' : 'Зберегти'}</button>
           </div>
         </header>
 
@@ -625,6 +630,10 @@ export function PopupBannersPage() {
                 <SectionHeading icon="productSelection" title="Де показувати" description="Оберіть найпростіший спосіб сформувати аудиторію цієї кампанії." aside={targetSummary} />
                 <TargetModePicker value={draft.targeting.mode} onChange={(mode) => updateTargeting({ mode })} />
               </div>
+              {draft.targeting.mode === 'target_page' && <div className="popup-form-section">
+                <SectionHeading icon="link" title="Цільова сторінка" description="Попап з’явиться лише тоді, коли покупець відкриє саме цю сторінку." aside="Точний збіг" />
+                <label><span>Цільова сторінка</span><input type="url" required aria-label="Цільова сторінка" placeholder="https://mobiletrend.com.ua/potribna-storinka/" value={draft.targeting.targetPageUrl} onChange={(event) => updateTargeting({ targetPageUrl: event.target.value })} /><small>Вставте повне посилання з підключеного магазину. Параметри після «?» і фрагмент після «#» не впливають на збіг.</small></label>
+              </div>}
               {draft.targeting.mode === 'products' && <div className="popup-form-section">
                 <SectionHeading icon="catalog" title="Товари й модифікації" description="Вкажіть кожну назву або артикул з нового рядка. Система знайде точні позиції в каталозі." aside={`${inputLines(productText).length} позицій`} />
                 <label><span>Назви та артикули</span><textarea className="popup-products-input" rows={12} value={productText} onChange={(event) => setProductText(event.target.value)} placeholder={'П0000012345\nСмартфон Apple iPhone 15 128GB Black'} /></label>
