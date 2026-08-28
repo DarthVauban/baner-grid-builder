@@ -460,6 +460,8 @@ const baseCss = String.raw`
     max-height: 100% !important;
     display: flex !important;
     align-items: stretch !important;
+    transition: transform .32s cubic-bezier(.22, .61, .36, 1) !important;
+    will-change: transform !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-i {

@@ -128,7 +128,7 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(balanced, /\.cart-buttons \{[^}]*box-sizing: border-box !important;[^}]*padding: 0 !important;/su);
   assert.match(balanced, /\.cart-btnOrder \.btn \{[^}]*padding: 0 24px !important;/su);
   assert.match(balanced, /\.cart-buttons::before,[^}]*\.cart-buttons::after \{[^}]*content: none !important;[^}]*display: none !important;/su);
-  assert.match(balanced, /\.productsSlider-wrapper \{[^}]*height: 100% !important;[^}]*min-height: 0 !important;[^}]*max-height: 100% !important;/su);
+  assert.match(balanced, /\.productsSlider-wrapper \{[^}]*height: 100% !important;[^}]*min-height: 0 !important;[^}]*max-height: 100% !important;[^}]*transition: transform \.32s cubic-bezier\(\.22, \.61, \.36, 1\) !important;/su);
   assert.match(balanced, /\.productsSlider-i > a \{[^}]*min-height: 0 !important;[^}]*display: flex !important;[^}]*flex-direction: column !important;/su);
   assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 100px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
   assert.match(balanced, /\.productsSlider-img \{[^}]*min-height: 0 !important;[^}]*object-fit: contain !important;/su);
