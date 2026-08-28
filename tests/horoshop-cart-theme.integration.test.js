@@ -134,6 +134,7 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(balanced, /\.productsSlider-img \{[^}]*min-height: 0 !important;[^}]*object-fit: contain !important;/su);
   assert.match(balanced, /\.productsSlider-i \{[^}]*margin-right: 14px !important;[^}]*border-radius: 14px !important;[^}]*box-shadow: 0 1px 2px/su);
   assert.match(balanced, /\.slideCarousel-nav-btn \{[^}]*background: var\(--mt-cart-accent\) !important;[^}]*transform: translateY\(-50%\) !important;/su);
+  assert.match(balanced, /\.slideCarousel-nav-btn::before \{[^}]*position: static !important;[^}]*inset: auto !important;[^}]*margin: 0 !important;/su);
   assert.match(balanced, /\.slideCarousel-nav-btn\.__slideLeft::before \{[^}]*transform: rotate\(135deg\) !important;/su);
   assert.match(balanced, /\.slideCarousel-nav-btn\.__slideRight::before \{[^}]*transform: rotate\(-45deg\) !important;/su);
   assert.doesNotMatch(balanced, /\.slideCarousel-nav-btn\.__slide(?:Left|Right)::before \{[^}]*translateX\(/su);

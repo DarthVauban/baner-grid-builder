@@ -605,6 +605,9 @@ const baseCss = String.raw`
     width: 11px !important;
     height: 11px !important;
     display: block !important;
+    position: static !important;
+    inset: auto !important;
+    margin: 0 !important;
     border: solid var(--mt-cart-ink) !important;
     border-width: 0 2px 2px 0 !important;
     background: transparent !important;
