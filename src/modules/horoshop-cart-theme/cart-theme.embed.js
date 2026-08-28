@@ -464,15 +464,15 @@ const baseCss = String.raw`
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-i {
     box-sizing: border-box !important;
-    width: var(--mt-cart-slider-card-width, var(--mt-cart-card-width)) !important;
-    min-width: var(--mt-cart-slider-card-width, var(--mt-cart-card-width)) !important;
-    max-width: var(--mt-cart-slider-card-width, var(--mt-cart-card-width)) !important;
+    width: var(--mt-cart-card-width) !important;
+    min-width: var(--mt-cart-card-width) !important;
+    max-width: var(--mt-cart-card-width) !important;
     height: 100% !important;
     min-height: 0 !important;
-    flex: 0 0 var(--mt-cart-slider-card-width, var(--mt-cart-card-width)) !important;
+    flex: 0 0 var(--mt-cart-card-width) !important;
     display: flex !important;
     flex-direction: column !important;
-    margin-right: var(--mt-cart-slider-card-gap, 14px) !important;
+    margin-right: 14px !important;
     padding: 12px !important;
     border: 1px solid #dde1e7 !important;
     border-radius: 14px !important;
@@ -855,7 +855,7 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
   const themeId = ${JSON.stringify(themeId)};
   const stylesheetUrl = ${JSON.stringify(stylesheetUrl)};
   const styleId = 'mt-horoshop-cart-theme-v1';
-  const enhancedCarousels = new WeakSet();
+  const carouselControllers = new WeakMap();
   const enhancedImages = new WeakSet();
   let scheduledFrame = 0;
 
@@ -922,27 +922,105 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
     return true;
   }
 
-  function preserveDesktopCarouselGeometry(root) {
-    const carousel = root.querySelector('.productsSlider-container');
-    const card = carousel?.querySelector('.productsSlider-i');
-    if (!carousel || !card || enhancedCarousels.has(carousel)) return false;
-    const computed = window.getComputedStyle(card);
-    const measuredWidth = card.getBoundingClientRect().width || Number.parseFloat(computed.width);
-    const measuredGap = Number.parseFloat(computed.marginRight);
-    if (!Number.isFinite(measuredWidth) || measuredWidth <= 0) return false;
-    root.style.setProperty('--mt-cart-slider-card-width', measuredWidth + 'px');
-    if (Number.isFinite(measuredGap) && measuredGap >= 0) {
-      root.style.setProperty('--mt-cart-slider-card-gap', measuredGap + 'px');
+  function createDesktopCarouselController(slider) {
+    let currentIndex = 0;
+    let scheduledResize = 0;
+
+    function measure() {
+      const container = slider.querySelector('.productsSlider-container');
+      const wrapper = slider.querySelector('.productsSlider-wrapper');
+      const cards = wrapper ? [...wrapper.querySelectorAll('.productsSlider-i')] : [];
+      if (!container || !wrapper || !cards.length) return null;
+      const firstStyle = window.getComputedStyle(cards[0]);
+      const gap = Number.parseFloat(firstStyle.marginRight) || 0;
+      let stride = cards.length > 1
+        ? Math.abs(cards[1].offsetLeft - cards[0].offsetLeft)
+        : 0;
+      if (!Number.isFinite(stride) || stride <= 0) {
+        const firstRect = cards[0].getBoundingClientRect();
+        const secondRect = cards[1]?.getBoundingClientRect();
+        stride = secondRect ? Math.abs(secondRect.left - firstRect.left) : firstRect.width + gap;
+      }
+      if (!Number.isFinite(stride) || stride <= 0) return null;
+      const visibleCards = Math.max(1, Math.floor((container.clientWidth + gap) / stride));
+      return {
+        wrapper,
+        stride,
+        maxIndex: Math.max(0, cards.length - visibleCards)
+      };
     }
-    enhancedCarousels.add(carousel);
+
+    function updateButtons(index, maxIndex) {
+      const left = slider.querySelector('.slideCarousel-nav-btn.__slideLeft');
+      const right = slider.querySelector('.slideCarousel-nav-btn.__slideRight');
+      [[left, index === 0], [right, index === maxIndex]].forEach(([button, disabled]) => {
+        if (!button) return;
+        button.classList.toggle('__disabled', disabled);
+        button.disabled = disabled;
+        button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      });
+    }
+
+    function sync(nextIndex = currentIndex) {
+      const geometry = measure();
+      if (!geometry) return false;
+      currentIndex = Math.max(0, Math.min(geometry.maxIndex, nextIndex));
+      geometry.wrapper.style.setProperty(
+        'transform',
+        'translate3d(' + (-currentIndex * geometry.stride) + 'px, 0, 0)',
+        'important'
+      );
+      updateButtons(currentIndex, geometry.maxIndex);
+      return true;
+    }
+
+    slider.addEventListener('click', (event) => {
+      const button = event.target instanceof Element
+        ? event.target.closest('.slideCarousel-nav-btn')
+        : null;
+      if (!button || !slider.contains(button)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      const direction = button.classList.contains('__slideRight') ? 1 : -1;
+      sync(currentIndex + direction);
+    }, true);
+
+    function handleResize() {
+      if (!slider.isConnected) {
+        window.removeEventListener('resize', handleResize);
+        return;
+      }
+      if (scheduledResize) return;
+      const schedule = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0));
+      scheduledResize = schedule(() => {
+        scheduledResize = 0;
+        if (slider.isConnected) sync();
+        else window.removeEventListener('resize', handleResize);
+      });
+    }
+
+    window.addEventListener('resize', handleResize);
+
+    return { sync };
+  }
+
+  function enhanceDesktopCarousel(root) {
+    const slider = root.querySelector('.productsSlider');
+    if (!slider) return false;
+    const existing = carouselControllers.get(slider);
+    if (existing) {
+      existing.sync();
+      return false;
+    }
+    const controller = createDesktopCarouselController(slider);
+    carouselControllers.set(slider, controller);
+    controller.sync();
     return true;
   }
 
   function markRoot(root, surface) {
     let changed = false;
-    if (surface === 'desktop') {
-      changed = preserveDesktopCarouselGeometry(root) || changed;
-    }
     if (root.getAttribute('data-mt-cart-theme') !== 'v1') {
       root.setAttribute('data-mt-cart-theme', 'v1');
       changed = true;
@@ -958,6 +1036,7 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
     if (surface === 'desktop') {
       changed = enhanceRecommendationImages(root) || changed;
       changed = organizeDesktopLayout(root) || changed;
+      changed = enhanceDesktopCarousel(root) || changed;
       const overlay = root.closest('.overlay');
       if (overlay) {
         if (overlay.getAttribute('data-mt-cart-overlay') !== 'v1') {
@@ -973,13 +1052,6 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
           changed = true;
         }
       }
-    }
-    const carousel = surface === 'desktop'
-      ? root.querySelector('.productsSlider-container')
-      : root.querySelector('.cart__related-goods .carousel');
-    if (carousel && !enhancedCarousels.has(carousel)) {
-      enhancedCarousels.add(carousel);
-      changed = true;
     }
     return changed;
   }

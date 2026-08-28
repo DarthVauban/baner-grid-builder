@@ -132,7 +132,7 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(balanced, /\.productsSlider-i > a \{[^}]*min-height: 0 !important;[^}]*display: flex !important;[^}]*flex-direction: column !important;/su);
   assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 100px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
   assert.match(balanced, /\.productsSlider-img \{[^}]*min-height: 0 !important;[^}]*object-fit: contain !important;/su);
-  assert.match(balanced, /\.productsSlider-i \{[^}]*width: var\(--mt-cart-slider-card-width, var\(--mt-cart-card-width\)\) !important;[^}]*margin-right: var\(--mt-cart-slider-card-gap, 14px\) !important;[^}]*border-radius: 14px !important;/su);
+  assert.match(balanced, /\.productsSlider-i \{[^}]*width: var\(--mt-cart-card-width\) !important;[^}]*margin-right: 14px !important;[^}]*border-radius: 14px !important;/su);
   assert.match(balanced, /\.productsSlider-container::before \{[^}]*width: 0 !important;[^}]*display: none !important;[^}]*content: none !important;/su);
   assert.match(balanced, /\.slideCarousel-nav-btn \{[^}]*background: var\(--mt-cart-accent\) !important;[^}]*transform: translateY\(-50%\) !important;/su);
   assert.match(balanced, /\.slideCarousel-nav-btn::before \{[^}]*position: static !important;[^}]*inset: auto !important;[^}]*margin: 0 !important;/su);
@@ -192,27 +192,44 @@ test('embed adapter preserves Horoshop cart markup, links and event handlers', a
   dom.window.close();
 });
 
-test('embed adapter preserves Horoshop slide geometry before applying desktop card styles', async () => {
+test('embed adapter advances exactly one themed card per carousel click without native drift', async () => {
   const dom = new JSDOM(`<!doctype html><html><head></head><body>
     <div class="overlay">
       <section id="cart" class="popup __cart">
-        <div class="productsSlider-container">
-          <div class="productsSlider-wrapper">
-            <article class="productsSlider-i" style="width: 284px; margin-right: 15px"><a href="/case/">Чохол</a></article>
+        <div class="productsSlider">
+          <div class="productsSlider-container">
+            <div class="productsSlider-wrapper">
+              ${Array.from({ length: 6 }, (_, index) => `<article class="productsSlider-i" style="width: 240px; margin-right: 14px"><a href="/case-${index}/">Чохол ${index}</a></article>`).join('')}
+            </div>
           </div>
+          <button class="slideCarousel-nav-btn __slideLeft __disabled" type="button"></button>
+          <button class="slideCarousel-nav-btn __slideRight" type="button"></button>
         </div>
       </section>
     </div>
   </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
 
-  dom.window.eval(cartThemeEmbedScript('accessory-showcase'));
-  const root = dom.window.document.querySelector('.popup.__cart');
-  const cardWidth = Number.parseFloat(root.style.getPropertyValue('--mt-cart-slider-card-width'));
-  const cardGap = Number.parseFloat(root.style.getPropertyValue('--mt-cart-slider-card-gap'));
+  const container = dom.window.document.querySelector('.productsSlider-container');
+  const wrapper = dom.window.document.querySelector('.productsSlider-wrapper');
+  const cards = [...dom.window.document.querySelectorAll('.productsSlider-i')];
+  Object.defineProperty(container, 'clientWidth', { configurable: true, value: 598 });
+  cards.forEach((card, index) => {
+    Object.defineProperty(card, 'offsetLeft', { configurable: true, value: index * 254 });
+  });
+  const right = dom.window.document.querySelector('.__slideRight');
+  let nativeClicks = 0;
+  right.addEventListener('click', () => { nativeClicks += 1; });
 
-  assert.equal(cardWidth, 284);
-  assert.equal(cardGap, 15);
-  assert.equal((cardWidth + cardGap) * 2, 598);
+  dom.window.eval(cartThemeEmbedScript('accessory-showcase'));
+  assert.equal(wrapper.style.getPropertyValue('transform'), 'translate3d(0px, 0, 0)');
+
+  right.click();
+  assert.equal(wrapper.style.getPropertyValue('transform'), 'translate3d(-254px, 0, 0)');
+  right.click();
+  assert.equal(wrapper.style.getPropertyValue('transform'), 'translate3d(-508px, 0, 0)');
+  right.click();
+  assert.equal(wrapper.style.getPropertyValue('transform'), 'translate3d(-762px, 0, 0)');
+  assert.equal(nativeClicks, 0);
 
   await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
   dom.window.close();
