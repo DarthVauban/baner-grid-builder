@@ -118,6 +118,10 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(compact, /--mt-cart-card-image-height: 170px/u);
   assert.match(balanced, /max-height: calc\(var\(--mt-cart-product-row-height\) \* 2 \+ 9px\)/u);
   assert.match(balanced, /height: min\(820px, calc\(100dvh - 24px\)\)/u);
+  assert.match(balanced, /max-height: 330px !important/u);
+  assert.match(balanced, /\.productsSlider-wrapper \{[^}]*height: 100% !important;[^}]*min-height: 0 !important;[^}]*max-height: 100% !important;/su);
+  assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 120px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
+  assert.match(balanced, /\[data-mt-cart-overlay="v1"\]\[data-mt-cart-overlay-open="true"\]/u);
 });
 
 test('embed adapter preserves Horoshop cart markup, links and event handlers', async () => {
@@ -157,6 +161,7 @@ test('embed adapter preserves Horoshop cart markup, links and event handlers', a
   assert.equal(desktopRoot.getAttribute('data-mt-cart-surface'), 'desktop');
   assert.equal(mobileRoot.getAttribute('data-mt-cart-surface'), 'mobile');
   assert.equal(desktopRoot.closest('.overlay').getAttribute('data-mt-cart-overlay'), 'v1');
+  assert.equal(desktopRoot.closest('.overlay').getAttribute('data-mt-cart-overlay-open'), 'true');
   assert.equal(desktopRoot.innerHTML, desktopMarkup);
   assert.equal(mobileRoot.innerHTML, mobileMarkup);
   assert.equal(desktopRoot.querySelector('.cart-title').getAttribute('href'), '/product/');
@@ -164,6 +169,38 @@ test('embed adapter preserves Horoshop cart markup, links and event handlers', a
   orderButton.click();
   assert.equal(orderClicks, 1);
   assert.equal(dom.window.document.querySelectorAll('#mt-horoshop-cart-theme-v1').length, 1);
+
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
+  dom.window.close();
+});
+
+test('embed adapter releases the desktop overlay when Horoshop closes and reopens the cart', async () => {
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    <div class="overlay" style="display: block">
+      <section id="cart" class="popup __cart" style="display: block">
+        <button class="popup-close" type="button">Закрити</button>
+      </section>
+    </div>
+  </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
+  const root = dom.window.document.querySelector('.popup.__cart');
+  const overlay = dom.window.document.querySelector('.overlay');
+
+  dom.window.eval(cartThemeEmbedScript('balanced-upsell'));
+  assert.equal(overlay.getAttribute('data-mt-cart-overlay-open'), 'true');
+
+  root.style.display = 'none';
+  overlay.style.display = 'none';
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+  assert.equal(overlay.getAttribute('data-mt-cart-overlay-open'), 'false');
+
+  overlay.style.display = 'block';
+  root.style.display = 'block';
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+  assert.equal(overlay.getAttribute('data-mt-cart-overlay-open'), 'true');
+
+  root.remove();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+  assert.equal(overlay.getAttribute('data-mt-cart-overlay-open'), 'false');
 
   await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
   dom.window.close();

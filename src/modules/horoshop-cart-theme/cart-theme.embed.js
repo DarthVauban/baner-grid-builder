@@ -13,7 +13,7 @@ const baseCss = String.raw`
 }
 
 @media (min-width: 1024px) {
-  [data-mt-cart-overlay="v1"] {
+  [data-mt-cart-overlay="v1"][data-mt-cart-overlay-open="true"] {
     box-sizing: border-box !important;
     display: flex !important;
     align-items: center !important;
@@ -82,7 +82,7 @@ const baseCss = String.raw`
     width: 100% !important;
     min-width: 0 !important;
     min-height: 0 !important;
-    max-height: 310px !important;
+    max-height: 330px !important;
     border: 1px solid var(--mt-cart-line) !important;
     border-radius: 10px !important;
     overflow: hidden !important;
@@ -331,7 +331,9 @@ const baseCss = String.raw`
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-wrapper {
     width: max-content !important;
-    min-height: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
     display: flex !important;
     align-items: stretch !important;
   }
@@ -354,9 +356,12 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-image {
+    box-sizing: border-box !important;
     width: 100% !important;
-    height: var(--mt-cart-card-image-height) !important;
-    flex: 0 0 var(--mt-cart-card-image-height) !important;
+    height: auto !important;
+    min-height: 120px !important;
+    max-height: var(--mt-cart-card-image-height) !important;
+    flex: 1 1 var(--mt-cart-card-image-height) !important;
     display: grid !important;
     place-items: center !important;
     border-radius: 8px !important;
@@ -677,9 +682,19 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
     }
     if (surface === 'desktop') {
       const overlay = root.closest('.overlay');
-      if (overlay && overlay.getAttribute('data-mt-cart-overlay') !== 'v1') {
-        overlay.setAttribute('data-mt-cart-overlay', 'v1');
-        changed = true;
+      if (overlay) {
+        if (overlay.getAttribute('data-mt-cart-overlay') !== 'v1') {
+          overlay.setAttribute('data-mt-cart-overlay', 'v1');
+          changed = true;
+        }
+        const open = !root.hidden
+          && root.getAttribute('aria-hidden') !== 'true'
+          && window.getComputedStyle(root).display !== 'none';
+        const openValue = open ? 'true' : 'false';
+        if (overlay.getAttribute('data-mt-cart-overlay-open') !== openValue) {
+          overlay.setAttribute('data-mt-cart-overlay-open', openValue);
+          changed = true;
+        }
       }
     }
     const carousel = surface === 'desktop'
@@ -696,11 +711,23 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
     const desktopRoots = [...document.querySelectorAll('.popup.__cart, #cart.popup')];
     const mobileRoots = [...document.querySelectorAll('#cart-drawer.cart, #cart-drawer')];
     const roots = [...new Set([...desktopRoots, ...mobileRoots])];
-    if (!roots.length) return false;
+    if (!roots.length) {
+      document.querySelectorAll('[data-mt-cart-overlay="v1"]').forEach((overlay) => {
+        overlay.setAttribute('data-mt-cart-overlay-open', 'false');
+      });
+      return false;
+    }
     installStyle();
     let changed = false;
     desktopRoots.forEach((root) => { changed = markRoot(root, 'desktop') || changed; });
     mobileRoots.forEach((root) => { changed = markRoot(root, 'mobile') || changed; });
+    document.querySelectorAll('[data-mt-cart-overlay="v1"]').forEach((overlay) => {
+      if (!overlay.querySelector('.popup.__cart, #cart.popup')
+        && overlay.getAttribute('data-mt-cart-overlay-open') !== 'false') {
+        overlay.setAttribute('data-mt-cart-overlay-open', 'false');
+        changed = true;
+      }
+    });
     if (changed) requestCarouselRefresh();
     return true;
   }
@@ -715,7 +742,18 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
   }
 
   apply();
-  const observer = new MutationObserver(scheduleApply);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  const observer = new MutationObserver((mutations) => {
+    const relevant = mutations.some((mutation) => mutation.type === 'childList'
+      || (mutation.type === 'attributes'
+        && mutation.target instanceof Element
+        && mutation.target.matches('.popup.__cart, #cart.popup, .overlay, #cart-drawer')));
+    if (relevant) scheduleApply();
+  });
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style', 'class', 'hidden', 'aria-hidden']
+  });
 })();`;
 }
