@@ -116,10 +116,14 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(showcase, /--mt-cart-card-image-height: 220px/u);
   assert.match(compact, /--mt-cart-product-row-height: 88px/u);
   assert.match(compact, /--mt-cart-card-image-height: 170px/u);
-  assert.match(balanced, /max-height: calc\(var\(--mt-cart-product-row-height\) \* 2 \+ 9px\)/u);
   assert.match(balanced, /height: min\(820px, calc\(100dvh - 24px\)\)/u);
+  assert.match(balanced, /height: min\(330px, 44dvh\) !important/u);
   assert.match(balanced, /max-height: 330px !important/u);
+  assert.match(balanced, /\.cart-items \{[^}]*height: 100% !important;[^}]*overflow-y: auto !important;/su);
+  assert.match(balanced, /\.cart-section \{[^}]*max-height: none !important;[^}]*overflow-y: visible !important;/su);
+  assert.match(balanced, /\.cart-foot \{[^}]*position: sticky !important;[^}]*bottom: 0 !important;/su);
   assert.match(balanced, /\.productsSlider-wrapper \{[^}]*height: 100% !important;[^}]*min-height: 0 !important;[^}]*max-height: 100% !important;/su);
+  assert.match(balanced, /\.productsSlider-i > a \{[^}]*min-height: 0 !important;[^}]*display: flex !important;[^}]*flex-direction: column !important;/su);
   assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 120px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
   assert.match(balanced, /\[data-mt-cart-overlay="v1"\]\[data-mt-cart-overlay-open="true"\]/u);
 });

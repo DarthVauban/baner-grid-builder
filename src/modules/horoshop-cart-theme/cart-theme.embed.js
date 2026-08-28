@@ -82,7 +82,9 @@ const baseCss = String.raw`
     width: 100% !important;
     min-width: 0 !important;
     min-height: 0 !important;
+    height: min(330px, 44dvh) !important;
     max-height: 330px !important;
+    position: relative !important;
     border: 1px solid var(--mt-cart-line) !important;
     border-radius: 10px !important;
     overflow: hidden !important;
@@ -90,9 +92,16 @@ const baseCss = String.raw`
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-items {
     width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
     display: block !important;
     border: 0 !important;
     table-layout: fixed !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    scrollbar-gutter: stable !important;
+    scrollbar-width: thin !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-items > thead {
@@ -102,14 +111,12 @@ const baseCss = String.raw`
   .popup.__cart[data-mt-cart-theme="v1"] .cart-section {
     box-sizing: border-box !important;
     width: 100% !important;
-    max-height: calc(var(--mt-cart-product-row-height) * 2 + 9px) !important;
+    max-height: none !important;
     display: grid !important;
     gap: 8px !important;
-    padding: 8px !important;
+    padding: 5px 8px !important;
     overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain !important;
-    scrollbar-width: thin !important;
+    overflow-y: visible !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-item {
@@ -201,7 +208,12 @@ const baseCss = String.raw`
   .popup.__cart[data-mt-cart-theme="v1"] .cart-foot {
     width: 100% !important;
     display: block !important;
+    position: sticky !important;
+    z-index: 5 !important;
+    bottom: 0 !important;
     border-top: 1px solid var(--mt-cart-line) !important;
+    background: #fff !important;
+    box-shadow: 0 -8px 18px rgba(255, 255, 255, .96) !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-foot > tr {
@@ -221,11 +233,13 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-discount {
-    min-height: 34px !important;
+    min-height: 32px !important;
+    height: 32px !important;
     display: flex !important;
     align-items: center !important;
-    padding: 7px 16px !important;
+    padding: 4px 12px !important;
     border: 0 !important;
+    overflow: hidden !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-discount-l,
@@ -237,13 +251,13 @@ const baseCss = String.raw`
   .popup.__cart[data-mt-cart-theme="v1"] .cart-footer {
     box-sizing: border-box !important;
     width: 100% !important;
-    min-height: 70px !important;
+    min-height: 76px !important;
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     grid-template-rows: auto auto !important;
     align-items: center !important;
-    gap: 5px 16px !important;
-    padding: 9px 16px 11px !important;
+    gap: 4px 14px !important;
+    padding: 6px 12px 8px !important;
     border-top: 1px solid var(--mt-cart-line) !important;
   }
 
@@ -353,6 +367,18 @@ const baseCss = String.raw`
     border: 1px solid var(--mt-cart-line) !important;
     border-radius: 11px !important;
     background: #fff !important;
+    overflow: hidden !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-i > a {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-image {
@@ -388,6 +414,7 @@ const baseCss = String.raw`
     display: -webkit-box !important;
     -webkit-box-orient: vertical !important;
     -webkit-line-clamp: 2 !important;
+    flex: 0 0 42px !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-price {
@@ -396,12 +423,14 @@ const baseCss = String.raw`
     color: var(--mt-cart-ink) !important;
     font-size: 18px !important;
     font-weight: 700 !important;
+    flex: 0 0 auto !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-order {
     width: 100% !important;
     height: 40px !important;
     display: block !important;
+    flex: 0 0 40px !important;
     margin: auto 0 0 !important;
   }
 
