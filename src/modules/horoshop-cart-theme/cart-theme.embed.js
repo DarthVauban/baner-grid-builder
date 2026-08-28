@@ -6,9 +6,9 @@ const baseCss = String.raw`
   --mt-cart-line: #e4e6ea;
   --mt-cart-soft: #f7f8fa;
   --mt-cart-desktop-width: 1180px;
-  --mt-cart-product-row-height: 84px;
+  --mt-cart-product-row-height: 100px;
   --mt-cart-card-width: 240px;
-  --mt-cart-card-image-height: 190px;
+  --mt-cart-card-image-height: 270px;
   --mt-cart-mobile-card-width: 166px;
 }
 
@@ -72,8 +72,9 @@ const baseCss = String.raw`
     min-height: 0 !important;
     flex: 1 1 auto !important;
     display: grid !important;
-    grid-template-rows: auto minmax(0, 1fr) !important;
-    gap: 17px !important;
+    grid-template-columns: minmax(420px, 43fr) minmax(0, 57fr) !important;
+    grid-template-rows: minmax(0, 1fr) auto !important;
+    gap: 16px 18px !important;
     overflow: hidden !important;
   }
 
@@ -82,8 +83,10 @@ const baseCss = String.raw`
     width: 100% !important;
     min-width: 0 !important;
     min-height: 0 !important;
-    height: clamp(240px, 38dvh, 330px) !important;
-    max-height: 330px !important;
+    height: 100% !important;
+    max-height: none !important;
+    grid-column: 1 !important;
+    grid-row: 1 / 3 !important;
     position: relative !important;
     border: 1px solid var(--mt-cart-line) !important;
     border-radius: 10px !important;
@@ -112,9 +115,8 @@ const baseCss = String.raw`
     box-sizing: border-box !important;
     width: 100% !important;
     max-height: none !important;
-    display: grid !important;
-    gap: 8px !important;
-    padding: 5px 8px !important;
+    display: block !important;
+    padding: 8px 8px 0 !important;
     overflow-x: hidden !important;
     overflow-y: visible !important;
   }
@@ -126,7 +128,8 @@ const baseCss = String.raw`
     min-height: var(--mt-cart-product-row-height) !important;
     height: var(--mt-cart-product-row-height) !important;
     display: grid !important;
-    grid-template-columns: 76px minmax(0, 1fr) 112px 128px !important;
+    grid-template-columns: 68px minmax(0, 1fr) 106px !important;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) !important;
     align-items: center !important;
     border: 1px solid #eceef1 !important;
     border-radius: 9px !important;
@@ -145,14 +148,16 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-item .cart-cell.__image {
+    grid-column: 1 !important;
+    grid-row: 1 / 3 !important;
     position: relative !important;
     justify-content: center !important;
     padding: 6px !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-image {
-    width: 62px !important;
-    height: 62px !important;
+    width: 56px !important;
+    height: 70px !important;
     display: grid !important;
     place-items: center !important;
   }
@@ -173,7 +178,7 @@ const baseCss = String.raw`
     width: 100% !important;
     margin: 0 !important;
     color: var(--mt-cart-ink) !important;
-    font-size: 15px !important;
+    font-size: 14px !important;
     line-height: 1.3 !important;
     overflow: hidden !important;
     display: -webkit-box !important;
@@ -182,12 +187,33 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-container {
-    margin: 4px 0 0 !important;
+    margin: 6px 0 0 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-price {
     color: var(--mt-cart-muted) !important;
     font-size: 13px !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-item > .cart-cell.__details {
+    grid-column: 2 !important;
+    grid-row: 1 / 3 !important;
+    align-content: center !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-item > .cart-cell.__quantity {
+    grid-column: 3 !important;
+    grid-row: 2 !important;
+    padding: 2px 8px 8px !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-item > .cart-cell.__cost {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    padding: 8px 8px 2px !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-quantity,
@@ -200,25 +226,39 @@ const baseCss = String.raw`
   .popup.__cart[data-mt-cart-theme="v1"] .cart-cost {
     width: 100% !important;
     color: var(--mt-cart-ink) !important;
-    font-size: 15px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     text-align: right !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-foot {
+    box-sizing: border-box !important;
     width: 100% !important;
-    display: block !important;
-    position: sticky !important;
-    z-index: 5 !important;
-    bottom: 0 !important;
-    border-top: 1px solid var(--mt-cart-line) !important;
-    background: #fff !important;
-    box-shadow: 0 -8px 18px rgba(255, 255, 255, .96) !important;
+    min-width: 0 !important;
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    position: static !important;
+    padding: 16px !important;
+    border: 1px solid var(--mt-cart-line) !important;
+    border-radius: 14px !important;
+    background: var(--mt-cart-soft) !important;
+    box-shadow: none !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-foot > tr {
     width: 100% !important;
     display: block !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-foot > tr:first-child {
+    order: 2 !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-foot > tr:last-child {
+    order: 1 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-foot > tr > .cart-cell.__image {
@@ -233,41 +273,54 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-discount {
-    min-height: 32px !important;
-    height: 32px !important;
+    width: 100% !important;
+    min-height: 26px !important;
+    height: auto !important;
     display: flex !important;
     align-items: center !important;
-    padding: 4px 12px !important;
+    padding: 0 !important;
     border: 0 !important;
     overflow: hidden !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-discount-l,
   .popup.__cart[data-mt-cart-theme="v1"] .cart-discount-info {
-    width: auto !important;
+    width: 100% !important;
     margin: 0 !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-discount .j-coupon-add {
+    color: var(--mt-cart-muted) !important;
+    font-size: 13px !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-discount-coupon,
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-discount-coupon .coupon {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-footer {
     box-sizing: border-box !important;
     width: 100% !important;
-    min-height: 76px !important;
+    min-height: 0 !important;
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    grid-template-rows: auto auto !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto 46px !important;
     align-items: center !important;
-    gap: 4px 14px !important;
-    padding: 6px 12px 8px !important;
-    border-top: 1px solid var(--mt-cart-line) !important;
+    gap: 10px !important;
+    padding: 0 !important;
+    border: 0 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-summary {
-    grid-column: 2 !important;
+    grid-column: 1 !important;
     grid-row: 1 !important;
-    width: auto !important;
+    width: 100% !important;
     display: flex !important;
     align-items: baseline !important;
-    justify-content: flex-end !important;
+    justify-content: space-between !important;
     gap: 12px !important;
     margin: 0 !important;
   }
@@ -282,14 +335,14 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-buttons {
-    grid-column: 1 / -1 !important;
+    grid-column: 1 !important;
     grid-row: 2 !important;
     width: 100% !important;
-    height: 42px !important;
+    height: 46px !important;
     display: flex !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    gap: 12px !important;
+    justify-content: stretch !important;
+    gap: 0 !important;
     margin: 0 !important;
   }
 
@@ -307,9 +360,24 @@ const baseCss = String.raw`
     margin: 0 !important;
   }
 
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-btnBack {
+    display: none !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-btnOrder {
+    width: 100% !important;
+    height: 46px !important;
+    display: block !important;
+  }
+
   .popup.__cart[data-mt-cart-theme="v1"] .cart-btnOrder .btn {
-    min-width: 228px !important;
-    height: 42px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 46px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     border-radius: 9px !important;
     background: var(--mt-cart-accent) !important;
   }
@@ -327,9 +395,21 @@ const baseCss = String.raw`
     overflow: hidden !important;
   }
 
+  .popup.__cart[data-mt-cart-theme="v1"] .j-cart-additional {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-recommended {
+    padding: 16px !important;
+    border: 1px solid var(--mt-cart-line) !important;
+    border-radius: 14px !important;
+    background: #fff !important;
+  }
+
   .popup.__cart[data-mt-cart-theme="v1"] .cart-recommended > .h3 {
     flex: 0 0 auto !important;
-    margin: 0 0 10px !important;
+    margin: 0 0 12px !important;
     color: var(--mt-cart-ink) !important;
     font-size: 20px !important;
     line-height: 1.25 !important;
@@ -391,12 +471,13 @@ const baseCss = String.raw`
     box-sizing: border-box !important;
     width: 100% !important;
     height: auto !important;
-    min-height: 72px !important;
+    min-height: 100px !important;
     max-height: var(--mt-cart-card-image-height) !important;
     flex: 1 1 var(--mt-cart-card-image-height) !important;
     display: grid !important;
     place-items: center !important;
     border-radius: 8px !important;
+    padding: 8px !important;
     background: var(--mt-cart-soft) !important;
     overflow: hidden !important;
   }
@@ -640,27 +721,27 @@ const themeCss = {
   'balanced-upsell': String.raw`
 [data-mt-cart-theme="v1"][data-mt-cart-layout="balanced-upsell"] {
   --mt-cart-desktop-width: 1180px;
-  --mt-cart-product-row-height: 84px;
+  --mt-cart-product-row-height: 100px;
   --mt-cart-card-width: 240px;
-  --mt-cart-card-image-height: 190px;
+  --mt-cart-card-image-height: 270px;
   --mt-cart-mobile-card-width: 166px;
 }
 `,
   'accessory-showcase': String.raw`
 [data-mt-cart-theme="v1"][data-mt-cart-layout="accessory-showcase"] {
   --mt-cart-desktop-width: 1280px;
-  --mt-cart-product-row-height: 80px;
+  --mt-cart-product-row-height: 96px;
   --mt-cart-card-width: 270px;
-  --mt-cart-card-image-height: 220px;
+  --mt-cart-card-image-height: 300px;
   --mt-cart-mobile-card-width: 178px;
 }
 `,
   'compact-wide': String.raw`
 [data-mt-cart-theme="v1"][data-mt-cart-layout="compact-wide"] {
   --mt-cart-desktop-width: 1060px;
-  --mt-cart-product-row-height: 88px;
+  --mt-cart-product-row-height: 92px;
   --mt-cart-card-width: 210px;
-  --mt-cart-card-image-height: 170px;
+  --mt-cart-card-image-height: 240px;
   --mt-cart-mobile-card-width: 154px;
 }
 `
@@ -737,6 +818,14 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
     return changed;
   }
 
+  function organizeDesktopLayout(root) {
+    const cart = root.querySelector('.cart');
+    const footer = root.querySelector('.cart-foot');
+    if (!cart || !footer || footer.parentElement === cart) return false;
+    cart.appendChild(footer);
+    return true;
+  }
+
   function markRoot(root, surface) {
     let changed = false;
     if (root.getAttribute('data-mt-cart-theme') !== 'v1') {
@@ -753,6 +842,7 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
     }
     if (surface === 'desktop') {
       changed = enhanceRecommendationImages(root) || changed;
+      changed = organizeDesktopLayout(root) || changed;
       const overlay = root.closest('.overlay');
       if (overlay) {
         if (overlay.getAttribute('data-mt-cart-overlay') !== 'v1') {

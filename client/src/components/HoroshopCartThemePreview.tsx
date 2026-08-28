@@ -22,12 +22,20 @@ function RecommendationCards() {
   </div>;
 }
 
-function CartProduct() {
+function CartProduct({
+  name = 'Смартфон Samsung A26 5G 6/128GB Black',
+  price = '10 999 грн',
+  tone = 'phone'
+}: {
+  name?: string;
+  price?: string;
+  tone?: string;
+}) {
   return <div className="cart-theme-preview__cart-product">
-    <ProductMark />
-    <div><strong>Смартфон Samsung A26 5G 6/128GB Black</strong><small>10 999 грн</small></div>
+    <ProductMark tone={tone} />
+    <div><strong>{name}</strong><small>{price}</small></div>
     <span className="cart-theme-preview__counter">− <b>1</b> +</span>
-    <b className="cart-theme-preview__line-price">10 999 грн</b>
+    <b className="cart-theme-preview__line-price">{price}</b>
   </div>;
 }
 
@@ -36,17 +44,21 @@ function DesktopPreview() {
     <div className="cart-theme-preview__site"><span /><span /><span /><span /></div>
     <section className="cart-theme-preview__modal">
       <header><strong>Кошик</strong><span>×</span></header>
-      <div className="cart-theme-preview__summary">
-        <CartProduct />
+      <div className="cart-theme-preview__desktop-grid">
+        <div className="cart-theme-preview__summary">
+          <CartProduct />
+          <CartProduct name="Захисне скло Samsung A26" price="299 грн" tone="blue" />
+          <CartProduct name="Накладка Cosmic Shield" price="279 грн" tone="violet" />
+        </div>
+        <div className="cart-theme-preview__recommendations">
+          <h3>Рекомендуємо придбати</h3>
+          <RecommendationCards />
+        </div>
         <div className="cart-theme-preview__checkout-row">
-          <span>Є купон зі знижкою?</span>
           <div><small>Всього</small><strong>10 999 грн</strong></div>
           <button type="button" tabIndex={-1}>Оформити замовлення</button>
+          <span>Є купон зі знижкою?</span>
         </div>
-      </div>
-      <div className="cart-theme-preview__recommendations">
-        <h3>Рекомендуємо придбати</h3>
-        <RecommendationCards />
       </div>
     </section>
   </div>;

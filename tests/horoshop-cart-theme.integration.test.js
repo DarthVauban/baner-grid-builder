@@ -110,22 +110,25 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   const showcase = cartThemeCss('accessory-showcase');
   const compact = cartThemeCss('compact-wide');
 
-  assert.match(balanced, /--mt-cart-product-row-height: 84px/u);
-  assert.match(balanced, /--mt-cart-card-image-height: 190px/u);
-  assert.match(showcase, /--mt-cart-product-row-height: 80px/u);
-  assert.match(showcase, /--mt-cart-card-image-height: 220px/u);
-  assert.match(compact, /--mt-cart-product-row-height: 88px/u);
-  assert.match(compact, /--mt-cart-card-image-height: 170px/u);
+  assert.match(balanced, /--mt-cart-product-row-height: 100px/u);
+  assert.match(balanced, /--mt-cart-card-image-height: 270px/u);
+  assert.match(showcase, /--mt-cart-product-row-height: 96px/u);
+  assert.match(showcase, /--mt-cart-card-image-height: 300px/u);
+  assert.match(compact, /--mt-cart-product-row-height: 92px/u);
+  assert.match(compact, /--mt-cart-card-image-height: 240px/u);
   assert.match(balanced, /height: min\(820px, calc\(100dvh - 24px\)\)/u);
-  assert.match(balanced, /height: clamp\(240px, 38dvh, 330px\) !important/u);
-  assert.match(balanced, /max-height: 330px !important/u);
+  assert.match(balanced, /grid-template-columns: minmax\(420px, 43fr\) minmax\(0, 57fr\) !important/u);
+  assert.match(balanced, /grid-template-rows: minmax\(0, 1fr\) auto !important/u);
+  assert.match(balanced, /\.cart-content \{[^}]*height: 100% !important;[^}]*grid-column: 1 !important;[^}]*grid-row: 1 \/ 3 !important;/su);
   assert.match(balanced, /\.cart-items \{[^}]*height: 100% !important;[^}]*overflow-y: auto !important;/su);
   assert.match(balanced, /\.cart-section \{[^}]*max-height: none !important;[^}]*overflow-y: visible !important;/su);
-  assert.match(balanced, /\.cart-foot \{[^}]*position: sticky !important;[^}]*bottom: 0 !important;/su);
+  assert.match(balanced, /\.cart-foot \{[^}]*grid-column: 2 !important;[^}]*grid-row: 2 !important;[^}]*position: static !important;/su);
+  assert.match(balanced, /\.j-cart-additional \{[^}]*grid-column: 2 !important;[^}]*grid-row: 1 !important;/su);
+  assert.match(balanced, /\.cart-btnOrder \{[^}]*width: 100% !important;[^}]*display: block !important;/su);
   assert.match(balanced, /\.cart-buttons::before,[^}]*\.cart-buttons::after \{[^}]*content: none !important;[^}]*display: none !important;/su);
   assert.match(balanced, /\.productsSlider-wrapper \{[^}]*height: 100% !important;[^}]*min-height: 0 !important;[^}]*max-height: 100% !important;/su);
   assert.match(balanced, /\.productsSlider-i > a \{[^}]*min-height: 0 !important;[^}]*display: flex !important;[^}]*flex-direction: column !important;/su);
-  assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 72px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
+  assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 100px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
   assert.match(balanced, /\.productsSlider-img \{[^}]*min-height: 0 !important;[^}]*object-fit: contain !important;/su);
   assert.match(balanced, /\[data-mt-cart-overlay="v1"\]\[data-mt-cart-overlay-open="true"\]/u);
 });
@@ -175,6 +178,42 @@ test('embed adapter preserves Horoshop cart markup, links and event handlers', a
   orderButton.click();
   assert.equal(orderClicks, 1);
   assert.equal(dom.window.document.querySelectorAll('#mt-horoshop-cart-theme-v1').length, 1);
+
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
+  dom.window.close();
+});
+
+test('embed adapter organizes the desktop cart into list, recommendations and checkout zones', async () => {
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    <div class="overlay">
+      <section id="cart" class="popup __cart">
+        <div class="cart">
+          <div class="cart-content">
+            <table class="cart-items">
+              <tbody class="cart-section"><tr class="cart-item"><td>Товар</td></tr></tbody>
+              <tfoot class="cart-foot"><tr><td><button class="j-coupon-add" type="button">Купон</button></td></tr></tfoot>
+            </table>
+          </div>
+          <div class="j-cart-additional"><div class="cart-recommended">Рекомендації</div></div>
+        </div>
+      </section>
+    </div>
+  </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
+  const root = dom.window.document.querySelector('.popup.__cart');
+  const cart = root.querySelector('.cart');
+  const content = root.querySelector('.cart-content');
+  const recommendations = root.querySelector('.j-cart-additional');
+  const footer = root.querySelector('.cart-foot');
+  const couponButton = root.querySelector('.j-coupon-add');
+  let couponClicks = 0;
+  couponButton.addEventListener('click', () => { couponClicks += 1; });
+
+  dom.window.eval(cartThemeEmbedScript('balanced-upsell'));
+
+  assert.deepEqual(Array.from(cart.children), [content, recommendations, footer]);
+  assert.equal(footer.parentElement, cart);
+  couponButton.click();
+  assert.equal(couponClicks, 1);
 
   await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
   dom.window.close();
