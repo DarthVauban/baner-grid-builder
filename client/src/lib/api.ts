@@ -135,6 +135,11 @@ import type {
   HoroshopCatalogMenuThemeId
 } from '../types/horoshop-catalog-menu';
 import type {
+  HoroshopCartThemeId,
+  HoroshopCartThemeSettings,
+  HoroshopCartThemeSettingsEnvelope
+} from '../types/horoshop-cart-theme';
+import type {
   PublicTradeInSettings,
   TradeInAnswers,
   TradeInConfig,
@@ -177,6 +182,21 @@ import { horoshopApi } from './api-horoshop';
 export { ApiError } from './api-client';
 
 export const api = {
+  horoshopCartTheme: {
+    settings: () => request<HoroshopCartThemeSettingsEnvelope>('/api/horoshop-cart-theme/settings'),
+    saveDraft: (input: { themeId: HoroshopCartThemeId }) => request<HoroshopCartThemeSettings>(
+      '/api/horoshop-cart-theme/settings/draft',
+      { method: 'PUT', body: jsonBody(input) }
+    ),
+    publish: (input: { themeId: HoroshopCartThemeId }) => request<HoroshopCartThemeSettings>(
+      '/api/horoshop-cart-theme/settings/publish',
+      { method: 'POST', body: jsonBody(input) }
+    ),
+    setEnabled: (enabled: boolean) => request<HoroshopCartThemeSettings>(
+      '/api/horoshop-cart-theme/settings/enabled',
+      { method: 'PATCH', body: jsonBody({ enabled }) }
+    )
+  },
   horoshopCatalogMenu: {
     settings: () => request<HoroshopCatalogMenuSettingsEnvelope>('/api/horoshop-catalog-menu/settings'),
     saveDraft: (input: { themeId: HoroshopCatalogMenuThemeId; defaultCategoryExternalId: string }) => request<HoroshopCatalogMenuSettings>(

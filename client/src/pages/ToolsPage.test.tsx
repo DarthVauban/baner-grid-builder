@@ -134,4 +134,22 @@ describe('ToolsPage catalog', () => {
     const tile = await screen.findByRole('link', { name: /Меню каталогу Хорошоп/u });
     expect(tile).toHaveAttribute('href', '/tools/horoshop-catalog-menu');
   });
+
+  it('shows the Horoshop cart appearance tool as a separate tile', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
+      tools: [{
+        toolId: 'horoshop_cart_theme',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    });
+
+    renderPage();
+
+    const tile = await screen.findByRole('link', { name: /Кошик Хорошоп/u });
+    expect(tile).toHaveAttribute('href', '/tools/horoshop-cart-theme');
+  });
 });

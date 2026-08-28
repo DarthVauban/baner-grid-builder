@@ -12,6 +12,13 @@ export interface ToolDefinition {
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'horoshop_cart_theme',
+    name: 'Кошик Хорошоп',
+    description: 'Широкий кошик із компактним замовленням і великими картками рекомендованих товарів. Окремі теми для десктопа та мобільної версії.',
+    path: '/tools/horoshop-cart-theme',
+    icon: 'storefront'
+  },
+  {
     id: 'horoshop_catalog_menu',
     name: 'Меню каталогу Хорошоп',
     description: 'Компактне оформлення чинного меню категорій Хорошоп без зміни дерева, посилань та іконок.',
