@@ -442,8 +442,12 @@ const baseCss = String.raw`
     transition: opacity .18s ease !important;
   }
 
-  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider:has(.slideCarousel-nav-btn.__slideLeft.__disabled) .productsSlider-container::before,
-  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider:has(.slideCarousel-nav-btn.__slideLeft:disabled) .productsSlider-container::before,
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-container::before {
+    width: 0 !important;
+    display: none !important;
+    content: none !important;
+  }
+
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider:has(.slideCarousel-nav-btn.__slideRight.__disabled) .productsSlider-container::after,
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider:has(.slideCarousel-nav-btn.__slideRight:disabled) .productsSlider-container::after {
     opacity: 0 !important;
@@ -615,11 +619,11 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__slideLeft::before {
-    transform: rotate(135deg) !important;
+    transform: translateX(4px) rotate(135deg) !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__slideRight::before {
-    transform: rotate(-45deg) !important;
+    transform: translateX(-4px) rotate(-45deg) !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn:hover {
