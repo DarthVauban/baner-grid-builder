@@ -139,6 +139,8 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(balanced, /\.slideCarousel-nav-btn\.__slideLeft::before \{[^}]*transform: translateX\(4px\) rotate\(135deg\) !important;/su);
   assert.match(balanced, /\.slideCarousel-nav-btn\.__slideRight::before \{[^}]*transform: translateX\(-4px\) rotate\(-45deg\) !important;/su);
   assert.match(balanced, /\.slideCarousel-nav-btn\.__disabled,[^}]*\.slideCarousel-nav-btn:disabled \{[^}]*visibility: hidden !important;[^}]*pointer-events: none !important;/su);
+  assert.match(balanced, /#cart-drawer\[data-mt-cart-theme="v1"\] \.cart__block \{[^}]*overflow-y: auto !important;[^}]*overscroll-behavior-y: contain !important;[^}]*-webkit-overflow-scrolling: touch !important;/su);
+  assert.match(balanced, /#cart-drawer\[data-mt-cart-theme="v1"\] \.cart__body \{[^}]*overflow: visible !important;[^}]*overscroll-behavior: auto !important;/su);
   assert.match(balanced, /\[data-mt-cart-overlay="v1"\]\[data-mt-cart-overlay-open="true"\]/u);
 });
 

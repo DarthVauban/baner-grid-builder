@@ -660,10 +660,16 @@ const baseCss = String.raw`
     max-width: 100% !important;
   }
 
-  #cart-drawer[data-mt-cart-theme="v1"] .cart__body {
+  #cart-drawer[data-mt-cart-theme="v1"] .cart__block {
     overflow-x: hidden !important;
     overflow-y: auto !important;
-    overscroll-behavior: contain !important;
+    overscroll-behavior-y: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  #cart-drawer[data-mt-cart-theme="v1"] .cart__body {
+    overflow: visible !important;
+    overscroll-behavior: auto !important;
     scrollbar-width: thin !important;
   }
 
