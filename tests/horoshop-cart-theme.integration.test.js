@@ -132,7 +132,7 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(balanced, /\.productsSlider-i > a \{[^}]*min-height: 0 !important;[^}]*display: flex !important;[^}]*flex-direction: column !important;/su);
   assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 100px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
   assert.match(balanced, /\.productsSlider-img \{[^}]*min-height: 0 !important;[^}]*object-fit: contain !important;/su);
-  assert.match(balanced, /\.productsSlider-i \{[^}]*margin-right: 14px !important;[^}]*border-radius: 14px !important;[^}]*box-shadow: 0 1px 2px/su);
+  assert.match(balanced, /\.productsSlider-i \{[^}]*width: var\(--mt-cart-slider-card-width, var\(--mt-cart-card-width\)\) !important;[^}]*margin-right: var\(--mt-cart-slider-card-gap, 14px\) !important;[^}]*border-radius: 14px !important;/su);
   assert.match(balanced, /\.productsSlider-container::before \{[^}]*width: 0 !important;[^}]*display: none !important;[^}]*content: none !important;/su);
   assert.match(balanced, /\.slideCarousel-nav-btn \{[^}]*background: var\(--mt-cart-accent\) !important;[^}]*transform: translateY\(-50%\) !important;/su);
   assert.match(balanced, /\.slideCarousel-nav-btn::before \{[^}]*position: static !important;[^}]*inset: auto !important;[^}]*margin: 0 !important;/su);
@@ -187,6 +187,32 @@ test('embed adapter preserves Horoshop cart markup, links and event handlers', a
   orderButton.click();
   assert.equal(orderClicks, 1);
   assert.equal(dom.window.document.querySelectorAll('#mt-horoshop-cart-theme-v1').length, 1);
+
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
+  dom.window.close();
+});
+
+test('embed adapter preserves Horoshop slide geometry before applying desktop card styles', async () => {
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    <div class="overlay">
+      <section id="cart" class="popup __cart">
+        <div class="productsSlider-container">
+          <div class="productsSlider-wrapper">
+            <article class="productsSlider-i" style="width: 284px; margin-right: 15px"><a href="/case/">Чохол</a></article>
+          </div>
+        </div>
+      </section>
+    </div>
+  </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
+
+  dom.window.eval(cartThemeEmbedScript('accessory-showcase'));
+  const root = dom.window.document.querySelector('.popup.__cart');
+  const cardWidth = Number.parseFloat(root.style.getPropertyValue('--mt-cart-slider-card-width'));
+  const cardGap = Number.parseFloat(root.style.getPropertyValue('--mt-cart-slider-card-gap'));
+
+  assert.equal(cardWidth, 284);
+  assert.equal(cardGap, 15);
+  assert.equal((cardWidth + cardGap) * 2, 598);
 
   await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
   dom.window.close();

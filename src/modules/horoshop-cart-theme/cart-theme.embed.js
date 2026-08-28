@@ -464,15 +464,15 @@ const baseCss = String.raw`
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-i {
     box-sizing: border-box !important;
-    width: var(--mt-cart-card-width) !important;
-    min-width: var(--mt-cart-card-width) !important;
-    max-width: var(--mt-cart-card-width) !important;
+    width: var(--mt-cart-slider-card-width, var(--mt-cart-card-width)) !important;
+    min-width: var(--mt-cart-slider-card-width, var(--mt-cart-card-width)) !important;
+    max-width: var(--mt-cart-slider-card-width, var(--mt-cart-card-width)) !important;
     height: 100% !important;
     min-height: 0 !important;
-    flex: 0 0 var(--mt-cart-card-width) !important;
+    flex: 0 0 var(--mt-cart-slider-card-width, var(--mt-cart-card-width)) !important;
     display: flex !important;
     flex-direction: column !important;
-    margin-right: 14px !important;
+    margin-right: var(--mt-cart-slider-card-gap, 14px) !important;
     padding: 12px !important;
     border: 1px solid #dde1e7 !important;
     border-radius: 14px !important;
@@ -922,8 +922,27 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
     return true;
   }
 
+  function preserveDesktopCarouselGeometry(root) {
+    const carousel = root.querySelector('.productsSlider-container');
+    const card = carousel?.querySelector('.productsSlider-i');
+    if (!carousel || !card || enhancedCarousels.has(carousel)) return false;
+    const computed = window.getComputedStyle(card);
+    const measuredWidth = card.getBoundingClientRect().width || Number.parseFloat(computed.width);
+    const measuredGap = Number.parseFloat(computed.marginRight);
+    if (!Number.isFinite(measuredWidth) || measuredWidth <= 0) return false;
+    root.style.setProperty('--mt-cart-slider-card-width', measuredWidth + 'px');
+    if (Number.isFinite(measuredGap) && measuredGap >= 0) {
+      root.style.setProperty('--mt-cart-slider-card-gap', measuredGap + 'px');
+    }
+    enhancedCarousels.add(carousel);
+    return true;
+  }
+
   function markRoot(root, surface) {
     let changed = false;
+    if (surface === 'desktop') {
+      changed = preserveDesktopCarouselGeometry(root) || changed;
+    }
     if (root.getAttribute('data-mt-cart-theme') !== 'v1') {
       root.setAttribute('data-mt-cart-theme', 'v1');
       changed = true;
