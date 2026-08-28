@@ -1,6 +1,6 @@
 # Search architecture
 
-Актуально станом на 2026-08-23. Документ розділяє фактичний Horoshop-контур і цільовий intelligent
+Актуально станом на 2026-08-28. Документ розділяє фактичний Horoshop-контур і цільовий intelligent
 search, щоб майбутні API не сприймались як уже доступні.
 
 ## Статус можливостей
@@ -8,8 +8,8 @@ search, щоб майбутні API не сприймались як уже до
 | Capability | Статус |
 | --- | --- |
 | Horoshop connection, encrypted credentials і sync history | реалізовано |
-| PostgreSQL categories/products/modifications mirror | реалізовано |
-| Catalog tool і manual/scheduled reconciliation | реалізовано |
+| PostgreSQL category hierarchy та products/modifications mirror із creation/photo metadata | реалізовано |
+| Catalog tool і manual/scheduled reconciliation із received/total progress | реалізовано |
 | Accessory drafts, Codex proposals, accept/publish і bulk progress | реалізовано |
 | Horoshop photo selections, server/desktop queue і publication | реалізовано |
 | Opt-in Redis/OpenSearch Compose services | підготовлено, не runtime dependency |
@@ -31,9 +31,11 @@ src/modules/search/
     catalog.{routes,service,repository,normalizer,worker}.js
     accessory.{routes,service,repository,review}.js
     photo.{routes,service}.js
+    photo-{selection,publication}.js
     photo-desktop.{routes,service,crypto}.js
 
 client/src/
+  lib/api-horoshop.ts
   pages/HoroshopRelatedProductsPage.tsx
   pages/HoroshopPhotoParserPage.tsx
   components/horoshop/
@@ -62,6 +64,11 @@ Horoshop API
 
 Connection є singleton для однієї інсталяції. `connection_id` і immutable `generation` ізолюють
 reconnect; це ще не повна tenant model із target specification.
+
+Category traversal зберігає `parent_external_id` і вміє повторно синхронізувати parent-scoped trees,
+зокрема catalogs із неекспортованим technical root. Product/modification rows зберігають
+`horoshop_created_at` і `has_photos`; sync runs окремо фіксують `export_items_received` та
+`export_items_total` для видимого прогресу довгого export.
 
 ## Data ownership
 

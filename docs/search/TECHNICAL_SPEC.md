@@ -2,10 +2,11 @@
 
 Status: approved for implementation on 2026-08-08.
 
-Implementation snapshot (2026-08-23):
+Implementation snapshot (2026-08-28):
 
 - Stage 0 foundation is complete.
-- The Horoshop connection and PostgreSQL catalog mirror from Stage 1 are implemented.
+- The Horoshop connection and PostgreSQL catalog mirror from Stage 1 are implemented, including
+  parent-scoped category recovery, creation/photo metadata and received/total sync progress.
 - Accessory and photo tools were delivered as additional consumers of that catalog boundary.
 - OpenSearch indexing/query, Redis integration, search widget, linguistic rulesets and search
   analytics are not implemented.
