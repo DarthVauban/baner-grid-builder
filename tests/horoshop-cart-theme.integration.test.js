@@ -125,11 +125,16 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(balanced, /\.cart-foot \{[^}]*grid-column: 2 !important;[^}]*grid-row: 2 !important;[^}]*position: static !important;/su);
   assert.match(balanced, /\.j-cart-additional \{[^}]*grid-column: 2 !important;[^}]*grid-row: 1 !important;/su);
   assert.match(balanced, /\.cart-btnOrder \{[^}]*width: 100% !important;[^}]*display: block !important;/su);
+  assert.match(balanced, /\.cart-buttons \{[^}]*box-sizing: border-box !important;[^}]*padding: 0 !important;/su);
+  assert.match(balanced, /\.cart-btnOrder \.btn \{[^}]*padding: 0 24px !important;/su);
   assert.match(balanced, /\.cart-buttons::before,[^}]*\.cart-buttons::after \{[^}]*content: none !important;[^}]*display: none !important;/su);
   assert.match(balanced, /\.productsSlider-wrapper \{[^}]*height: 100% !important;[^}]*min-height: 0 !important;[^}]*max-height: 100% !important;/su);
   assert.match(balanced, /\.productsSlider-i > a \{[^}]*min-height: 0 !important;[^}]*display: flex !important;[^}]*flex-direction: column !important;/su);
   assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 100px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
   assert.match(balanced, /\.productsSlider-img \{[^}]*min-height: 0 !important;[^}]*object-fit: contain !important;/su);
+  assert.match(balanced, /\.productsSlider-i \{[^}]*margin-right: 14px !important;[^}]*border-radius: 14px !important;[^}]*box-shadow: 0 1px 2px/su);
+  assert.match(balanced, /\.slideCarousel-nav-btn \{[^}]*background: var\(--mt-cart-accent\) !important;[^}]*transform: translateY\(-50%\) !important;/su);
+  assert.match(balanced, /\.slideCarousel-nav-btn\.__disabled,[^}]*\.slideCarousel-nav-btn:disabled \{[^}]*visibility: hidden !important;[^}]*pointer-events: none !important;/su);
   assert.match(balanced, /\[data-mt-cart-overlay="v1"\]\[data-mt-cart-overlay-open="true"\]/u);
 });
 

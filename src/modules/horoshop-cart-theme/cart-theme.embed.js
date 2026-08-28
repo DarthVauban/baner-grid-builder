@@ -335,6 +335,7 @@ const baseCss = String.raw`
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-buttons {
+    box-sizing: border-box !important;
     grid-column: 1 !important;
     grid-row: 2 !important;
     width: 100% !important;
@@ -344,6 +345,7 @@ const baseCss = String.raw`
     justify-content: stretch !important;
     gap: 0 !important;
     margin: 0 !important;
+    padding: 0 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .cart-buttons::before,
@@ -379,7 +381,10 @@ const baseCss = String.raw`
     align-items: center !important;
     justify-content: center !important;
     border-radius: 9px !important;
+    padding: 0 24px !important;
     background: var(--mt-cart-accent) !important;
+    color: var(--mt-cart-ink) !important;
+    font-weight: 600 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .j-cart-additional,
@@ -429,6 +434,21 @@ const baseCss = String.raw`
     overflow: hidden !important;
   }
 
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-container::before,
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-container::after {
+    width: 58px !important;
+    z-index: 8 !important;
+    pointer-events: none !important;
+    transition: opacity .18s ease !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider:has(.slideCarousel-nav-btn.__slideLeft.__disabled) .productsSlider-container::before,
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider:has(.slideCarousel-nav-btn.__slideLeft:disabled) .productsSlider-container::before,
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider:has(.slideCarousel-nav-btn.__slideRight.__disabled) .productsSlider-container::after,
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider:has(.slideCarousel-nav-btn.__slideRight:disabled) .productsSlider-container::after {
+    opacity: 0 !important;
+  }
+
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-wrapper {
     width: max-content !important;
     height: 100% !important;
@@ -448,12 +468,19 @@ const baseCss = String.raw`
     flex: 0 0 var(--mt-cart-card-width) !important;
     display: flex !important;
     flex-direction: column !important;
-    margin-right: 18px !important;
-    padding: 10px !important;
-    border: 1px solid var(--mt-cart-line) !important;
-    border-radius: 11px !important;
+    margin-right: 14px !important;
+    padding: 12px !important;
+    border: 1px solid #dde1e7 !important;
+    border-radius: 14px !important;
     background: #fff !important;
+    box-shadow: 0 1px 2px rgba(18, 25, 38, .04) !important;
     overflow: hidden !important;
+    transition: border-color .18s ease, box-shadow .18s ease !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-i:hover {
+    border-color: #cfd4dc !important;
+    box-shadow: 0 8px 22px rgba(18, 25, 38, .09) !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-i > a {
@@ -476,8 +503,10 @@ const baseCss = String.raw`
     flex: 1 1 var(--mt-cart-card-image-height) !important;
     display: grid !important;
     place-items: center !important;
-    border-radius: 8px !important;
-    padding: 8px !important;
+    margin: 0 !important;
+    border: 1px solid #eef0f3 !important;
+    border-radius: 11px !important;
+    padding: 10px !important;
     background: var(--mt-cart-soft) !important;
     overflow: hidden !important;
   }
@@ -498,9 +527,10 @@ const baseCss = String.raw`
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-title {
     width: 100% !important;
     height: 42px !important;
-    margin: 10px 0 0 !important;
+    margin: 12px 0 0 !important;
     color: var(--mt-cart-ink) !important;
     font-size: 14px !important;
+    font-weight: 500 !important;
     line-height: 1.45 !important;
     overflow: hidden !important;
     display: -webkit-box !important;
@@ -511,7 +541,7 @@ const baseCss = String.raw`
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-price {
     min-height: 26px !important;
-    margin: 7px 0 0 !important;
+    margin: 8px 0 0 !important;
     color: var(--mt-cart-ink) !important;
     font-size: 18px !important;
     font-weight: 700 !important;
@@ -520,31 +550,90 @@ const baseCss = String.raw`
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-order {
     width: 100% !important;
-    height: 40px !important;
+    height: 42px !important;
     display: block !important;
-    flex: 0 0 40px !important;
-    margin: auto 0 0 !important;
+    flex: 0 0 42px !important;
+    margin: 10px 0 0 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-order .btn,
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-order > a {
     box-sizing: border-box !important;
     width: 100% !important;
-    min-height: 40px !important;
+    min-height: 42px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border-radius: 9px !important;
+    border-radius: 10px !important;
+    padding: 0 14px !important;
     background: var(--mt-cart-accent) !important;
-    font-size: 15px !important;
+    color: var(--mt-cart-ink) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn {
-    width: 42px !important;
-    height: 42px !important;
-    border-radius: 50% !important;
-    background: #fff !important;
-    box-shadow: 0 6px 18px rgba(18, 25, 38, .14) !important;
+    box-sizing: border-box !important;
+    width: 44px !important;
+    height: 44px !important;
+    z-index: 12 !important;
+    top: 50% !important;
+    display: grid !important;
+    place-items: center !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 11px !important;
+    padding: 0 !important;
+    background: var(--mt-cart-accent) !important;
+    box-shadow: 0 7px 20px rgba(18, 25, 38, .18) !important;
+    transform: translateY(-50%) !important;
+    transition: background .18s ease, box-shadow .18s ease, opacity .18s ease !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__slideLeft {
+    right: auto !important;
+    left: 12px !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__slideRight {
+    right: 12px !important;
+    left: auto !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn::before {
+    box-sizing: border-box !important;
+    width: 11px !important;
+    height: 11px !important;
+    display: block !important;
+    border: solid var(--mt-cart-ink) !important;
+    border-width: 0 2px 2px 0 !important;
+    background: transparent !important;
+    content: "" !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__slideLeft::before {
+    transform: translateX(2px) rotate(135deg) !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__slideRight::before {
+    transform: translateX(-2px) rotate(-45deg) !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn:hover {
+    background: #ffe23d !important;
+    box-shadow: 0 9px 24px rgba(18, 25, 38, .22) !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn:focus-visible {
+    outline: 3px solid rgba(31, 31, 31, .28) !important;
+    outline-offset: 2px !important;
+  }
+
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn.__disabled,
+  .popup.__cart[data-mt-cart-theme="v1"] .slideCarousel-nav-btn:disabled {
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 }
 

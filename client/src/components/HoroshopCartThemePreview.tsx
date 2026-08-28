@@ -53,6 +53,7 @@ function DesktopPreview() {
         <div className="cart-theme-preview__recommendations">
           <h3>Рекомендуємо придбати</h3>
           <RecommendationCards />
+          <span className="cart-theme-preview__slider-arrow is-next">›</span>
         </div>
         <div className="cart-theme-preview__checkout-row">
           <div><small>Всього</small><strong>10 999 грн</strong></div>
