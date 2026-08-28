@@ -1,30 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { TradeInPublicPage } from '../components/trade-in/TradeInPublicPage';
-import {
-  createTradeInField,
-  createTradeInOption,
-  createTradeInStep,
-  moveTradeInItem,
-  nextTradeInGeneratedKey,
-  transliterateTradeInFieldKey,
-  tradeInId
-} from '../lib/trade-in';
-import { formatTradeInCondition, getTradeInFormGraph, validateTradeInLogic } from '../lib/trade-in-logic';
+import { moveTradeInItem, tradeInId } from '../lib/trade-in';
+import { getTradeInFormGraph, validateTradeInLogic } from '../lib/trade-in-logic';
 import { api } from '../lib/api';
 import { useUndoableState } from '../lib/use-undoable-state';
 import { useToast } from '../toast/ToastContext';
-import type {
-  TradeInCondition,
-  TradeInConfig,
-  TradeInField,
-  TradeInFieldType,
-  TradeInFontFamily,
-  TradeInSectionTypography,
-  TradeInSettings
-} from '../types/trade-in';
+import type { TradeInConfig, TradeInFontFamily, TradeInSectionTypography, TradeInSettings } from '../types/trade-in';
 import type { ApplicationForm } from '../types/application';
 import '../styles/trade-in-builder.css';
 
@@ -148,23 +132,6 @@ function TypographyEditor({ value, onChange, headingLabel = 'Заголовки'
     <div className="trade-in-typography-editor">
       <header><strong>Типографіка секції</strong><small>Окремі параметри для заголовків і звичайного тексту.</small></header>
       <div>{renderGroup('heading', headingLabel)}{renderGroup('body', bodyLabel)}</div>
-    </div>
-  );
-}
-
-function ConditionEditor({ condition, fieldKeys, onChange }: {
-  condition: TradeInCondition;
-  fieldKeys: string[];
-  onChange: (condition: TradeInCondition) => void;
-}) {
-  return (
-    <div className="trade-in-condition">
-      <header><strong>Умова показу</strong><small>Порожнє поле означає «показувати завжди».</small></header>
-      <div>
-        <label className="field"><span>Поле</span><StyledSelect value={condition.fieldKey} options={[{ value: '', label: 'Завжди' }, ...fieldKeys.map((key) => ({ value: key, label: key }))]} onChange={(value) => onChange({ ...condition, fieldKey: value })} ariaLabel="Поле умови показу" /></label>
-        <label className="field"><span>Оператор</span><StyledSelect value={condition.operator} options={[{ value: 'equals', label: 'дорівнює' }, { value: 'not_equals', label: 'не дорівнює' }, { value: 'one_of', label: 'одне зі значень' }, { value: 'contains', label: 'містить' }, { value: 'answered', label: 'заповнене' }]} disabled={!condition.fieldKey} onChange={(value) => onChange({ ...condition, operator: value as TradeInCondition['operator'] })} ariaLabel="Оператор умови показу" /></label>
-        <label className="field"><span>Значення</span><input disabled={!condition.fieldKey || condition.operator === 'answered'} value={condition.value} placeholder={condition.operator === 'one_of' ? 'apple,smartphone' : 'Значення'} onChange={(event) => onChange({ ...condition, value: event.target.value })} /></label>
-      </div>
     </div>
   );
 }
@@ -332,208 +299,6 @@ function PageEditor({ config, mutate }: {
         <TextField label="SEO description" textarea value={config.seo.description} onChange={(value) => mutate((next) => { next.seo.description = value; })} help={`${config.seo.description.length}/500 символів`} />
         <TextField label="Robots" value={config.seo.robots} onChange={(value) => mutate((next) => { next.seo.robots = value; })} />
       </BuilderSection>
-    </div>
-  );
-}
-
-function FieldEditor({ field, fieldKeys, onChange, onRemove }: {
-  field: TradeInField;
-  fieldKeys: string[];
-  onChange: (change: (field: TradeInField) => void) => void;
-  onRemove: () => void;
-}) {
-  const hasOptions = ['select', 'radio', 'checkbox'].includes(field.type);
-  const manuallyEditedFieldKeysRef = useRef(new Set<string>());
-  const manuallyEditedOptionValuesRef = useRef(new Set<string>());
-  const updateFieldLabel = (label: string) => {
-    const usedKeys = fieldKeys.filter((key) => key !== field.key);
-    const nextKey = manuallyEditedFieldKeysRef.current.has(field.id)
-      ? field.key
-      : nextTradeInGeneratedKey(label, field.key, field.label, usedKeys);
-    onChange((next) => {
-      next.label = label;
-      next.key = nextKey;
-    });
-  };
-  const updateFieldKey = (value: string) => {
-    manuallyEditedFieldKeysRef.current.add(field.id);
-    onChange((next) => {
-      next.key = value.trim() ? transliterateTradeInFieldKey(value) : '';
-    });
-  };
-  const updateOptionLabel = (optionId: string, label: string) => {
-    const option = field.options.find((item) => item.id === optionId);
-    if (!option) return;
-    const usedValues = field.options.filter((item) => item.id !== optionId).map((item) => item.value);
-    const nextValue = manuallyEditedOptionValuesRef.current.has(optionId)
-      ? option.value
-      : nextTradeInGeneratedKey(label, option.value, option.label, usedValues, 'option');
-    onChange((next) => {
-      const target = next.options.find((item) => item.id === optionId);
-      if (!target) return;
-      target.label = label;
-      target.value = nextValue;
-    });
-  };
-  const updateOptionValue = (optionId: string, value: string) => {
-    manuallyEditedOptionValuesRef.current.add(optionId);
-    onChange((next) => {
-      const option = next.options.find((item) => item.id === optionId);
-      if (option) option.value = value.trim() ? transliterateTradeInFieldKey(value, 'option') : '';
-    });
-  };
-  return (
-    <div className="trade-in-field-editor">
-      <header><div><p className="eyebrow">Налаштування поля</p><h3>{field.label}</h3></div><button className="button button--danger button--small" type="button" onClick={onRemove}>Видалити поле</button></header>
-      <div className="trade-in-builder-grid">
-        <TextField label="Назва поля" value={field.label} onChange={updateFieldLabel} />
-        <TextField label="Системний ключ" value={field.key} onChange={updateFieldKey} help="Створюється автоматично з назви; за потреби його можна відредагувати." />
-        <label className="field"><span>Тип поля</span><StyledSelect value={field.type} onChange={(value) => onChange((next) => {
-          next.type = value as TradeInFieldType;
-          if (!['select', 'radio', 'checkbox'].includes(next.type)) next.options = [];
-        })} options={[{ value: 'text', label: 'Текст' }, { value: 'textarea', label: 'Багаторядковий текст' }, { value: 'select', label: 'Випадаючий список' }, { value: 'radio', label: 'Один варіант' }, { value: 'checkbox', label: 'Прапорець / кілька варіантів' }, { value: 'email', label: 'Email' }, { value: 'phone', label: 'Телефон' }, { value: 'number', label: 'Число' }]} ariaLabel="Тип поля" /></label>
-        <label className="field"><span>Ширина</span><StyledSelect value={field.width} options={[{ value: 'full', label: 'Повна' }, { value: 'half', label: 'Половина' }]} onChange={(value) => onChange((next) => { next.width = value as TradeInField['width']; })} ariaLabel="Ширина поля" /></label>
-        <TextField label="Placeholder" value={field.placeholder} onChange={(value) => onChange((next) => { next.placeholder = value; })} />
-        <TextField label="Підказка" value={field.helpText} onChange={(value) => onChange((next) => { next.helpText = value; })} />
-        {field.type === 'number' && <><TextField label="Мінімум" type="number" value={field.min ?? ''} onChange={(value) => onChange((next) => { next.min = value === '' ? null : Number(value); })} /><TextField label="Максимум" type="number" value={field.max ?? ''} onChange={(value) => onChange((next) => { next.max = value === '' ? null : Number(value); })} /></>}
-        <label className="field"><span>Системне призначення</span><StyledSelect value={field.systemFieldType || ''} options={[{ value: '', label: 'Звичайне поле' }, { value: 'first_name', label: 'Імʼя клієнта' }, { value: 'last_name', label: 'Прізвище клієнта' }, { value: 'phone', label: 'Телефон клієнта' }]} onChange={(value) => onChange((next) => { next.systemFieldType = (value || null) as TradeInField['systemFieldType']; })} ariaLabel="Системне призначення поля" /></label>
-      </div>
-      <div className="trade-in-builder-switches">
-        <SwitchField label="Обовʼязкове" checked={field.required} onChange={(value) => onChange((next) => { next.required = value; })} />
-        <SwitchField label="Показувати в основній інформації заявки" checked={field.showInSummary} onChange={(value) => onChange((next) => { next.showInSummary = value; })} />
-      </div>
-      <ConditionEditor condition={field.condition} fieldKeys={fieldKeys.filter((key) => key !== field.key)} onChange={(value) => onChange((next) => { next.condition = value; })} />
-      {hasOptions && (
-        <section className="trade-in-options-editor">
-          <header><div><strong>Варіанти відповіді</strong><small>Для чекбокса без варіантів буде показано один прапорець згоди.</small></div><button type="button" onClick={() => onChange((next) => {
-            next.options.push(createTradeInOption(next.options.length, next.options.map((option) => option.value)));
-          })}>+ Додати</button></header>
-          <div>{field.options.map((option, index) => <article key={option.id}>
-            <input aria-label="Назва варіанта" value={option.label} onChange={(event) => updateOptionLabel(option.id, event.target.value)} />
-            <input aria-label="Значення варіанта" value={option.value} onChange={(event) => updateOptionValue(option.id, event.target.value)} />
-            <RepeaterActions index={index} count={field.options.length} onMove={(direction) => onChange((next) => { next.options = moveTradeInItem(next.options, index, direction); })} onRemove={() => onChange((next) => { next.options.splice(index, 1); })} />
-          </article>)}</div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-function FormEditor({ config, mutate, focusedStepId, onOpenLogic }: {
-  config: TradeInConfig;
-  mutate: (change: (next: TradeInConfig) => void) => void;
-  focusedStepId: string;
-  onOpenLogic: (stepId: string) => void;
-}) {
-  const [selectedStepId, setSelectedStepId] = useState(focusedStepId || config.form.steps[0]?.id || '');
-  const [selectedFieldId, setSelectedFieldId] = useState('');
-  const selectedStep = config.form.steps.find((step) => step.id === selectedStepId) || config.form.steps[0];
-  const selectedField = selectedStep?.fields.find((field) => field.id === selectedFieldId) || selectedStep?.fields[0];
-  const allFieldKeys = useMemo(() => config.form.steps.flatMap((step) => step.fields.map((field) => field.key)).filter(Boolean), [config.form.steps]);
-
-  useEffect(() => {
-    if (!selectedStep) return;
-    if (selectedStep.id !== selectedStepId) setSelectedStepId(selectedStep.id);
-    if (!selectedStep.fields.some((field) => field.id === selectedFieldId)) setSelectedFieldId(selectedStep.fields[0]?.id || '');
-  }, [selectedFieldId, selectedStep, selectedStepId]);
-
-  useEffect(() => {
-    if (focusedStepId && config.form.steps.some((step) => step.id === focusedStepId)) {
-      setSelectedStepId(focusedStepId);
-    }
-  }, [config.form.steps, focusedStepId]);
-
-  function updateSelectedStep(change: (step: NonNullable<typeof selectedStep>) => void) {
-    if (!selectedStep) return;
-    mutate((next) => {
-      const step = next.form.steps.find((item) => item.id === selectedStep.id);
-      if (step) change(step);
-    });
-  }
-
-  function updateSelectedField(change: (field: TradeInField) => void) {
-    if (!selectedStep || !selectedField) return;
-    mutate((next) => {
-      const field = next.form.steps.find((item) => item.id === selectedStep.id)?.fields.find((item) => item.id === selectedField.id);
-      if (field) change(field);
-    });
-  }
-
-  return (
-    <div className="trade-in-builder-stack">
-      <BuilderSection title="Загальні налаштування форми" description="Заголовки, кнопки, прогрес і екран успіху." open>
-        <div className="trade-in-builder-grid">
-          <TextField label="Заголовок форми" value={config.form.title} onChange={(value) => mutate((next) => { next.form.title = value; })} />
-          <TextField label="Опис форми" value={config.form.description} onChange={(value) => mutate((next) => { next.form.description = value; })} />
-          <TextField label="Кнопка «Назад»" value={config.form.backLabel} onChange={(value) => mutate((next) => { next.form.backLabel = value; })} />
-          <TextField label="Кнопка «Далі»" value={config.form.nextLabel} onChange={(value) => mutate((next) => { next.form.nextLabel = value; })} />
-          <TextField label="Кнопка відправлення" value={config.form.submitLabel} onChange={(value) => mutate((next) => { next.form.submitLabel = value; })} />
-          <TextField label="Заголовок після відправлення" value={config.form.successTitle} onChange={(value) => mutate((next) => { next.form.successTitle = value; })} />
-          <div className="trade-in-builder-grid__wide"><TextField label="Текст після відправлення" textarea value={config.form.successText} onChange={(value) => mutate((next) => { next.form.successText = value; })} /></div>
-        </div>
-        <div className="trade-in-builder-switches">
-          <SwitchField label="Показувати прогрес" checked={config.form.showProgress} onChange={(value) => mutate((next) => { next.form.showProgress = value; })} />
-          <SwitchField label="Показувати номери кроків" checked={config.form.showStepNumbers} onChange={(value) => mutate((next) => { next.form.showStepNumbers = value; })} />
-          <SwitchField label="Показувати підсумок" checked={config.form.showSummary} onChange={(value) => mutate((next) => { next.form.showSummary = value; })} />
-        </div>
-      </BuilderSection>
-
-      <div className="trade-in-form-builder">
-        <aside className="trade-in-form-builder__steps">
-          <header><div><strong>Кроки</strong><small>{config.form.steps.length} у формі</small></div><button type="button" onClick={() => {
-            const step = createTradeInStep(config.form.steps.length);
-            mutate((next) => { next.form.steps.push(step); });
-            setSelectedStepId(step.id);
-            setSelectedFieldId('');
-          }}>+</button></header>
-          <ol>{config.form.steps.map((step, index) => <li className={step.id === selectedStep?.id ? 'is-active' : ''} key={step.id}>
-            <button type="button" onClick={() => { setSelectedStepId(step.id); setSelectedFieldId(step.fields[0]?.id || ''); }}><span>{index + 1}</span><span><strong>{step.title}</strong><small>{step.fields.length} полів</small></span></button>
-            <RepeaterActions index={index} count={config.form.steps.length} onMove={(direction) => mutate((next) => { next.form.steps = moveTradeInItem(next.form.steps, index, direction); })} onRemove={() => {
-              mutate((next) => { next.form.steps.splice(index, 1); });
-              const fallback = config.form.steps[index + 1] || config.form.steps[index - 1];
-              setSelectedStepId(fallback?.id || '');
-            }} />
-          </li>)}</ol>
-        </aside>
-
-        <section className="trade-in-form-builder__workspace">
-          {!selectedStep ? <div className="admin-list-state">Додайте перший крок форми.</div> : <>
-            <div className="trade-in-step-editor">
-              <header><div><p className="eyebrow">Крок форми</p><h2>{selectedStep.title}</h2></div><span>{selectedStep.fields.length} полів</span></header>
-              <div className="trade-in-builder-grid">
-                <TextField label="Назва кроку" value={selectedStep.title} onChange={(value) => updateSelectedStep((next) => { next.title = value; })} />
-                <TextField label="Опис кроку" value={selectedStep.description} onChange={(value) => updateSelectedStep((next) => { next.description = value; })} />
-              </div>
-              <div className="trade-in-step-logic-summary">
-                <span><Icon name={selectedStep.condition.fieldKey ? 'variants' : 'arrowRight'} size={17} /></span>
-                <div>
-                  <strong>{selectedStep.condition.fieldKey ? 'Умовний перехід' : 'Звичайна послідовність'}</strong>
-                  <small>{formatTradeInCondition(getTradeInFormGraph(config.form), selectedStep.condition)}</small>
-                </div>
-                <button type="button" onClick={() => onOpenLogic(selectedStep.id)}>Налаштувати логіку</button>
-              </div>
-            </div>
-            <div className="trade-in-fields-toolbar"><div><strong>Поля кроку</strong><small>Оберіть поле для детального налаштування.</small></div><button className="button button--primary button--small" type="button" onClick={() => {
-              const field = createTradeInField(selectedStep.fields.length);
-              updateSelectedStep((next) => { next.fields.push(field); });
-              setSelectedFieldId(field.id);
-            }}>+ Додати поле</button></div>
-            <div className="trade-in-field-tabs">
-              {selectedStep.fields.map((field, index) => <article className={field.id === selectedField?.id ? 'is-active' : ''} key={field.id}>
-                <button type="button" onClick={() => setSelectedFieldId(field.id)}><span>{field.type}</span><strong>{field.label}</strong><small>{field.key}</small></button>
-                <div><button type="button" disabled={index === 0} onClick={() => updateSelectedStep((next) => { next.fields = moveTradeInItem(next.fields, index, -1); })}>↑</button><button type="button" disabled={index === selectedStep.fields.length - 1} onClick={() => updateSelectedStep((next) => { next.fields = moveTradeInItem(next.fields, index, 1); })}>↓</button></div>
-              </article>)}
-            </div>
-            {selectedField
-              ? <FieldEditor field={selectedField} fieldKeys={allFieldKeys} onChange={updateSelectedField} onRemove={() => {
-                const fieldIndex = selectedStep.fields.findIndex((item) => item.id === selectedField.id);
-                updateSelectedStep((next) => { next.fields.splice(fieldIndex, 1); });
-                setSelectedFieldId(selectedStep.fields[fieldIndex + 1]?.id || selectedStep.fields[fieldIndex - 1]?.id || '');
-              }} />
-              : <div className="admin-list-state">У цьому кроці ще немає полів.</div>}
-          </>}
-        </section>
-      </div>
     </div>
   );
 }

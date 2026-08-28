@@ -37,7 +37,9 @@ vi.mock('swiper/react', async () => {
   function Swiper({ children, className, initialSlide = 0, onSwiper, onSlideChange, 'aria-label': ariaLabel }: MockSwiperProps) {
     const slideCount = React.Children.count(children);
     const [activeIndex, setActiveIndex] = React.useState(initialSlide);
+    const onSwiperRef = React.useRef(onSwiper);
     const onSlideChangeRef = React.useRef(onSlideChange);
+    onSwiperRef.current = onSwiper;
     onSlideChangeRef.current = onSlideChange;
     const swiperRef = React.useRef<MockSwiper | null>(null);
 
@@ -53,7 +55,7 @@ vi.mock('swiper/react', async () => {
     }
 
     swiperRef.current.realIndex = activeIndex;
-    React.useEffect(() => { onSwiper?.(swiperRef.current!); }, []);
+    React.useEffect(() => { onSwiperRef.current?.(swiperRef.current!); }, []);
     React.useEffect(() => {
       swiperRef.current!.realIndex = activeIndex;
       onSlideChangeRef.current?.(swiperRef.current!);
