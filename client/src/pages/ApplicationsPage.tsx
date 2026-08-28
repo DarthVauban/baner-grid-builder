@@ -218,10 +218,10 @@ export function ApplicationsPage() {
   }
 
   const items = applications.data?.items || [];
-  const formFilters = applicationForms.data || [];
+  const formFilters = useMemo(() => applicationForms.data || [], [applicationForms.data]);
   const selectedForm = selectedFormId === 'all' ? null : formFilters.find((form) => form.id === selectedFormId) || null;
   const formFilterTotal = formFilters.reduce((total, form) => total + form.all, 0);
-  const managerStats = counts.data?.managerStats || [];
+  const managerStats = useMemo(() => counts.data?.managerStats || [], [counts.data?.managerStats]);
   const unassignedStats = counts.data?.unassigned;
   const managerTotals = useMemo(() => aggregateManagerStats(managerStats), [managerStats]);
   const selectedManagerStats = selectedStatsManagerId === 'all' ? null : managerStats.find((item) => item.manager.id === selectedStatsManagerId) || null;

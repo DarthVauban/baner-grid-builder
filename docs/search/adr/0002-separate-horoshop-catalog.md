@@ -2,9 +2,10 @@
 
 Status: accepted.
 
-Implementation status (2026-08-23): active. Migrations `051–070` use separate
-`search_horoshop_*` tables scoped by connection/generation. No cross-catalog foreign keys were
-introduced.
+Implementation status (2026-08-28): active. Migrations `051–070` established separate
+`search_horoshop_*` tables scoped by connection/generation; migrations `075–078` extend that mirror
+with hierarchy recovery, creation/photo metadata and sync progress. No cross-catalog foreign keys
+were introduced.
 
 ## Decision
 

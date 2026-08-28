@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import appStyles from '../styles/app.css?raw';
-import { CatalogDescriptionField } from './UsedSmartphonesCatalogPage';
+import { CatalogDescriptionField, catalogProductEditorIdentity } from './UsedSmartphonesCatalogPage';
 
 function ControlledDescriptionField({ initialValue }: { initialValue: string }) {
   const [value, setValue] = useState(initialValue);
@@ -12,6 +12,22 @@ function ControlledDescriptionField({ initialValue }: { initialValue: string }) 
     <output data-testid="description-value">{value}</output>
   </>;
 }
+
+describe('catalog product editor identity', () => {
+  it('resets the product editor only when the product or brand directory identity changes', () => {
+    const initialIdentity = catalogProductEditorIdentity('product-1', 'directory-1');
+    const refreshedProductIdentity = catalogProductEditorIdentity('product-1', 'directory-1');
+
+    expect(initialIdentity).toBe('product-1:directory-1');
+    expect(refreshedProductIdentity).toBe(initialIdentity);
+    expect(catalogProductEditorIdentity('product-2', 'directory-1')).not.toBe(
+      initialIdentity
+    );
+    expect(catalogProductEditorIdentity('product-1', 'directory-2')).not.toBe(
+      initialIdentity
+    );
+  });
+});
 
 describe('RichTextEditor source mode', () => {
   it('uses a syntax-aware HTML editor and keeps HTML, CSS and JavaScript in preview', async () => {

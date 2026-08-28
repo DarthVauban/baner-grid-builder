@@ -1,6 +1,6 @@
 # Архітектура MT Workspace
 
-Актуально для міграцій `001–073` і коду станом на 2026-08-23.
+Актуально для міграцій `001–078` і коду станом на 2026-08-28.
 
 ## Загальна модель
 
@@ -63,8 +63,10 @@ routes (HTTP + Zod + access)
 
 ## API і помилки
 
-Клієнт викликає типізований метод із `client/src/lib/api.ts`. `api-client.ts` додає same-origin
-credentials, timeout/AbortSignal, декодує JSON або NDJSON і нормалізує помилки.
+`client/src/lib/api.ts` збирає типізовані domain clients у стабільний об’єкт `api`. Horoshop
+catalog/accessory/photo methods належать `client/src/lib/api-horoshop.ts`, а shared transport у
+`api-client.ts` додає same-origin credentials, timeout/AbortSignal, декодує JSON або NDJSON і
+нормалізує помилки.
 
 ```json
 { "data": {} }
@@ -153,8 +155,9 @@ OpenSearch — майбутній derived index, Redis — майбутні leas
 
 Таблиці `search_horoshop_*` належать зовнішньому каталогу Хорошоп і не мають використовувати
 `used_smartphone_*` як джерело істини. Реалізовано singleton connection з immutable `generation`,
-зашифрованими credentials, full/differential reconciliation, accessories drafts/proposals/publication
-та photo selections/drafts/queues.
+зашифрованими credentials, full/differential reconciliation, parent-scoped category hierarchy,
+Horoshop creation/photo metadata, received/total export progress, accessories
+drafts/proposals/publication та photo selections/drafts/queues.
 
 OpenSearch query runtime, widget, search analytics і versioned linguistic rulesets ще не
 реалізовані. `SEARCH_FEATURE_ENABLED`, `OPENSEARCH_URL` і `REDIS_URL` зарезервовані для цього контуру;

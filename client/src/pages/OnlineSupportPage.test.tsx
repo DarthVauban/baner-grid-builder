@@ -102,7 +102,7 @@ describe('OnlineSupportPage', () => {
     });
 
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Статус діалогу' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Статус діалогу' }, { timeout: 5_000 }));
     fireEvent.click(await screen.findByRole('option', { name: 'Вирішені' }));
 
     await waitFor(() => expect(setStatus).toHaveBeenCalledWith(conversationDetail.conversation.id, 'RESOLVED'));

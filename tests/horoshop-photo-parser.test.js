@@ -380,6 +380,39 @@ test('photo and creation-date filters select only matching flat modification tar
   await pool.query('DELETE FROM search_horoshop_products WHERE id = $1', [productId]);
 });
 
+test('creation-date filters fall back to the stable first catalog import date', async () => {
+  const productId = randomUUID();
+  const firstImportedAt = new Date('2026-08-22T09:30:00.000Z');
+  await pool.query(`
+    INSERT INTO search_horoshop_products (
+      id, connection_id, generation, external_id, sku, titles, category_external_id,
+      horoshop_created_at, has_photos, active, visible, last_seen_sync_id, created_at
+    ) VALUES ($1, $2, $3, 'fallback-created-product', 'FALLBACK-CREATED', $4::jsonb,
+              'tablets', NULL, FALSE, TRUE, TRUE, $5, $6)
+  `, [
+    productId, ids.connection, ids.generation,
+    JSON.stringify({ uk: 'Товар без дати створення в API' }), ids.sync, firstImportedAt
+  ]);
+
+  const service = new HoroshopPhotoService({
+    databasePool: pool,
+    catalogService: new HoroshopCatalogService({ repository: new HoroshopCatalogRepository(pool) })
+  });
+  const selection = await service.createFilteredSelection({
+    name: 'За датою першого імпорту',
+    filters: {
+      search: 'FALLBACK-CREATED', category: 'tablets', availability: '', visibility: 'all',
+      photoStatus: 'without_photos', createdFrom: '2026-08-22', createdTo: '2026-08-22'
+    },
+    userId: null
+  });
+
+  assert.equal(selection.products.length, 1);
+  assert.equal(selection.products[0].id, productId);
+  await service.deleteSelection(selection.id);
+  await pool.query('DELETE FROM search_horoshop_products WHERE id = $1', [productId]);
+});
+
 test('saved selection exposes unique modification targets without an article-only title', async () => {
   const service = new HoroshopPhotoService({ databasePool: pool });
   const selection = await service.createSelection({

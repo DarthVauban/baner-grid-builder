@@ -1,6 +1,6 @@
 # Search implementation plan
 
-Оновлено 2026-08-23. План стосується intelligent product search. Реалізовані на базі того самого
+Оновлено 2026-08-28. План стосується intelligent product search. Реалізовані на базі того самого
 Horoshop catalog accessory/photo tools позначені окремо й не означають завершення search runtime.
 
 ## Поточна база
@@ -37,11 +37,13 @@ Historical Stage 0 verification (2026-08-08):
 - [x] AES-256-GCM credential storage.
 - [x] `pages/export` categories і paginated `catalog/export`.
 - [x] Normalization products/modifications/categories.
+- [x] Parent-scoped category hierarchy і recovery для неекспортованих technical roots.
+- [x] Horoshop creation timestamps та photo-availability metadata для products/modifications.
 - [x] Immutable connection generation і store isolation.
 - [x] Full/manual/scheduled reconciliation.
 - [x] Stable sync signatures й update-only-changed rows.
 - [x] Inactive reconciliation після complete traversal.
-- [x] Sync status/counts/history й sanitized disconnect audit.
+- [x] Sync status/counts/history, received/total export progress й sanitized disconnect audit.
 - [x] Protected integration screen і catalog tool.
 - [x] Fixture-backed connector/service/repository tests.
 - [x] Full purge before another store connection.

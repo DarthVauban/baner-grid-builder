@@ -66,6 +66,7 @@ function input(overrides = {}) {
       brands: [],
       categoryIds: [],
       conditions: [],
+      targetPageUrl: '',
       urlContains: []
     },
     behavior: {
@@ -202,6 +203,7 @@ test('sticker rules and the embeddable widget work without exact product targets
       brands: [],
       categoryIds: [],
       conditions: [],
+      targetPageUrl: '',
       urlContains: []
     },
     productEntries: []
@@ -228,4 +230,54 @@ test('sticker rules and the embeddable widget work without exact product targets
 
   const code = await admin.get('/api/popup-banners/embed-code').expect(200);
   assert.match(code.body.data.code, /popup-banners\/embed\.js/u);
+});
+
+test('target-page campaigns match one exact storefront URL without requiring a product', async () => {
+  const campaigns = (await admin.get('/api/popup-banners').expect(200)).body.data;
+  for (const campaign of campaigns.filter((item) => item.status === 'active')) {
+    await admin.patch(`/api/popup-banners/${campaign.id}/status`).send({ status: 'paused' }).expect(200);
+  }
+
+  const targeting = {
+    mode: 'target_page',
+    match: 'all',
+    stickers: [],
+    brands: [],
+    categoryIds: [],
+    conditions: [],
+    targetPageUrl: 'https://www.shop.example.com/delivery-and-payment/?source=popup#details',
+    urlContains: []
+  };
+  const foreignStore = await admin.post('/api/popup-banners').send(input({
+    targeting: { ...targeting, targetPageUrl: 'https://other.example.com/delivery-and-payment/' },
+    productEntries: []
+  })).expect(422);
+  assert.equal(foreignStore.body.error.code, 'POPUP_TARGET_PAGE_STORE_MISMATCH');
+
+  const created = await admin.post('/api/popup-banners').send(input({
+    name: 'Доставка та оплата',
+    priority: 500,
+    targeting,
+    productEntries: []
+  })).expect(201);
+  assert.equal(
+    created.body.data.targeting.targetPageUrl,
+    'https://www.shop.example.com/delivery-and-payment'
+  );
+  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+
+  const resolved = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/delivery-and-payment/?source=menu#shipping' })
+    .expect(200);
+  assert.equal(resolved.body.data.campaign.publicId, created.body.data.publicId);
+  assert.equal(resolved.body.data.product, null);
+
+  const differentPage = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/returns/?source=popup' })
+    .expect(200);
+  assert.equal(differentPage.body.data, null);
 });

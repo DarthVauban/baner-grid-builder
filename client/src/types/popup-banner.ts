@@ -1,6 +1,6 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
 export type PopupLayout = 'modal' | 'bottom-sheet' | 'corner';
-export type PopupTargetMode = 'all_pages' | 'all_products' | 'products' | 'rules';
+export type PopupTargetMode = 'all_pages' | 'all_products' | 'products' | 'rules' | 'target_page';
 export type PopupFrequency = 'always' | 'session' | 'product' | 'days';
 
 export interface PopupContent {
@@ -43,6 +43,7 @@ export interface PopupTargeting {
   brands: string[];
   categoryIds: string[];
   conditions: string[];
+  targetPageUrl: string;
   urlContains: string[];
 }
 

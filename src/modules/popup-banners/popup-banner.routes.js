@@ -56,14 +56,31 @@ const stylesSchema = z.object({
   borderRadius: z.number().min(0).max(40),
   maxWidth: z.number().min(320).max(1400)
 });
+const targetPageUrlSchema = z.string().trim().max(2000).default('').refine((value) => {
+  if (!value) return true;
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}, 'Вкажіть повне посилання сторінки з http:// або https://.');
 const targetingSchema = z.object({
-  mode: z.enum(['all_pages', 'all_products', 'products', 'rules']),
+  mode: z.enum(['all_pages', 'all_products', 'products', 'rules', 'target_page']),
   match: z.enum(['all', 'any']).default('all'),
   stickers: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   brands: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   categoryIds: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   conditions: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
+  targetPageUrl: targetPageUrlSchema,
   urlContains: z.array(z.string().trim().min(1).max(500)).max(30).default([])
+}).superRefine((value, context) => {
+  if (value.mode === 'target_page' && !value.targetPageUrl) {
+    context.addIssue({
+      code: 'custom',
+      path: ['targetPageUrl'],
+      message: 'Вкажіть цільову сторінку для показу попапа.'
+    });
+  }
 });
 const behaviorSchema = z.object({
   delayMs: z.number().int().min(0).max(60_000),

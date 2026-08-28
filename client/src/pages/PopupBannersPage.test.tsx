@@ -52,6 +52,7 @@ const baseCampaign: PopupCampaign = {
     brands: [],
     categoryIds: [],
     conditions: [],
+    targetPageUrl: '',
     urlContains: []
   },
   behavior: {
@@ -159,6 +160,34 @@ describe('PopupBannersPage', () => {
     expect(screen.getByText('Правила каталогу')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Логіка між групами' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Стікери' })).toBeInTheDocument();
+  });
+
+  it('saves an exact target page as a dedicated targeting mode', async () => {
+    const targetPageUrl = 'https://mobiletrend.com.ua/dostavka-ta-oplata/';
+    const update = vi.spyOn(api.popupBanners, 'update').mockResolvedValue({
+      ...structuredClone(baseCampaign),
+      targeting: { ...baseCampaign.targeting, mode: 'target_page', targetPageUrl },
+      productTargets: []
+    });
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
+    fireEvent.click(screen.getByRole('radio', { name: /Цільова сторінка/u }));
+    const targetPage = screen.getByRole('textbox', { name: 'Цільова сторінка' });
+    expect(targetPage).toBeRequired();
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
+
+    fireEvent.change(targetPage, { target: { value: targetPageUrl } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith(
+      baseCampaign.id,
+      expect.objectContaining({
+        targeting: expect.objectContaining({ mode: 'target_page', targetPageUrl })
+      })
+    ));
   });
 
   it('marks edited content as unsaved and enables saving', async () => {

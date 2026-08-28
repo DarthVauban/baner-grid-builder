@@ -307,6 +307,10 @@ function stableSnapshot(value: unknown) {
   return JSON.stringify(stableSnapshotValue(value));
 }
 
+export function catalogProductEditorIdentity(productId?: string, brandDirectoryId?: string) {
+  return `${productId || 'new'}:${brandDirectoryId || ''}`;
+}
+
 function CharacteristicFieldControl({
   field,
   value,
@@ -424,6 +428,8 @@ function ProductEditorScreen({
   const currentLocationRef = useRef('');
   const allowNextNavigationRef = useRef(false);
   const browserUnloadArmedRef = useRef(false);
+  const productIdentityRef = useRef('');
+  const productIdentity = catalogProductEditorIdentity(product?.id, product?.brand?.directoryId);
 
   const characteristicTemplates = useQuery<CatalogCharacteristicTemplate[]>({
     queryKey: ['catalog-characteristic-templates'],
@@ -504,6 +510,8 @@ function ProductEditorScreen({
   }, [hasUnsavedChanges, location.hash, location.pathname, location.search]);
 
   useEffect(() => {
+    if (productIdentityRef.current === productIdentity) return;
+    productIdentityRef.current = productIdentity;
     setDraft(product ? productToInput(product) : { ...emptyCatalogProductInput });
     setSelectedBrandDirectoryId(product?.brand?.directoryId || '');
     setSelectedCharacteristicTemplateId('');
@@ -519,7 +527,7 @@ function ProductEditorScreen({
     setLeavePrompt(null);
     browserUnloadArmedRef.current = false;
     allowNextNavigationRef.current = false;
-  }, [product?.brand?.directoryId, product?.id]);
+  }, [product, productIdentity]);
 
   useEffect(() => {
     if (selectedBrand && selectedBrand.directoryId !== selectedBrandDirectoryId) {
@@ -1877,7 +1885,7 @@ export function UsedSmartphonesCatalogPage() {
     }
   }
 
-  const rows = products.data?.items || [];
+  const rows = useMemo(() => products.data?.items || [], [products.data?.items]);
   const rowIds = new Set(rows.map((product) => product.id));
   const topRows = rows.filter((product) => (
     !product.modificationGroup

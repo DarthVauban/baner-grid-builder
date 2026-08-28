@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import dagre from '@dagrejs/dagre';
 import {
   Background,
@@ -744,7 +744,7 @@ function TradeInLogicCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<GraphEdge>(flowEdges);
 
-  const selectOnlyNode = (nodeId: string) => {
+  const selectOnlyNode = useCallback((nodeId: string) => {
     const ids = nodeId ? [nodeId] : [];
     selectedNodeIdsRef.current = ids;
     setSelectedNodeIds(ids);
@@ -753,7 +753,7 @@ function TradeInLogicCanvas({
         ? node
         : { ...node, selected: node.id === nodeId }
     )));
-  };
+  }, [setNodes]);
 
   useEffect(() => {
     setNodes(flowNodes.map((node) => ({
@@ -775,7 +775,7 @@ function TradeInLogicCanvas({
     setSelectedNodeId(fallbackNodeId);
     selectOnlyNode(fallbackNodeId);
     setSelectedFieldId('');
-  }, [graph.nodes, selectedNodeId]);
+  }, [graph.nodes, selectOnlyNode, selectedNodeId]);
 
   const mutateGraph = (change: (nextGraph: TradeInFormGraph, nextConfig: TradeInConfig) => void) => {
     mutate((next) => {
