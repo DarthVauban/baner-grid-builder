@@ -117,14 +117,16 @@ test('cart theme variants keep the ordered items compact and recommendations dom
   assert.match(compact, /--mt-cart-product-row-height: 88px/u);
   assert.match(compact, /--mt-cart-card-image-height: 170px/u);
   assert.match(balanced, /height: min\(820px, calc\(100dvh - 24px\)\)/u);
-  assert.match(balanced, /height: min\(330px, 44dvh\) !important/u);
+  assert.match(balanced, /height: clamp\(240px, 38dvh, 330px\) !important/u);
   assert.match(balanced, /max-height: 330px !important/u);
   assert.match(balanced, /\.cart-items \{[^}]*height: 100% !important;[^}]*overflow-y: auto !important;/su);
   assert.match(balanced, /\.cart-section \{[^}]*max-height: none !important;[^}]*overflow-y: visible !important;/su);
   assert.match(balanced, /\.cart-foot \{[^}]*position: sticky !important;[^}]*bottom: 0 !important;/su);
+  assert.match(balanced, /\.cart-buttons::before,[^}]*\.cart-buttons::after \{[^}]*content: none !important;[^}]*display: none !important;/su);
   assert.match(balanced, /\.productsSlider-wrapper \{[^}]*height: 100% !important;[^}]*min-height: 0 !important;[^}]*max-height: 100% !important;/su);
   assert.match(balanced, /\.productsSlider-i > a \{[^}]*min-height: 0 !important;[^}]*display: flex !important;[^}]*flex-direction: column !important;/su);
-  assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 120px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
+  assert.match(balanced, /\.productsSlider-image \{[^}]*min-height: 72px !important;[^}]*flex: 1 1 var\(--mt-cart-card-image-height\) !important;/su);
+  assert.match(balanced, /\.productsSlider-img \{[^}]*min-height: 0 !important;[^}]*object-fit: contain !important;/su);
   assert.match(balanced, /\[data-mt-cart-overlay="v1"\]\[data-mt-cart-overlay-open="true"\]/u);
 });
 
@@ -205,6 +207,27 @@ test('embed adapter releases the desktop overlay when Horoshop closes and reopen
   root.remove();
   await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
   assert.equal(overlay.getAttribute('data-mt-cart-overlay-open'), 'false');
+
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
+  dom.window.close();
+});
+
+test('embed adapter upgrades undersized Horoshop recommendation thumbnails', async () => {
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    <div class="overlay">
+      <section id="cart" class="popup __cart">
+        <div class="productsSlider-container">
+          <img class="productsSlider-img" src="/content/images/11/104x130l80nn0/42270905754886.webp" alt="Смартфон">
+          <img class="productsSlider-img" src="/content/images/12/313x390l80mc0/123.webp" alt="Чохол">
+        </div>
+      </section>
+    </div>
+  </body></html>`, { runScripts: 'outside-only', url: 'https://mobiletrend.com.ua/' });
+
+  dom.window.eval(cartThemeEmbedScript('accessory-showcase'));
+  const images = dom.window.document.querySelectorAll('.productsSlider-img');
+  assert.equal(images[0].getAttribute('src'), '/content/images/11/312x390l80nn0/42270905754886.webp');
+  assert.equal(images[1].getAttribute('src'), '/content/images/12/313x390l80mc0/123.webp');
 
   await new Promise((resolve) => dom.window.setTimeout(resolve, 60));
   dom.window.close();

@@ -82,7 +82,7 @@ const baseCss = String.raw`
     width: 100% !important;
     min-width: 0 !important;
     min-height: 0 !important;
-    height: min(330px, 44dvh) !important;
+    height: clamp(240px, 38dvh, 330px) !important;
     max-height: 330px !important;
     position: relative !important;
     border: 1px solid var(--mt-cart-line) !important;
@@ -293,6 +293,12 @@ const baseCss = String.raw`
     margin: 0 !important;
   }
 
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-buttons::before,
+  .popup.__cart[data-mt-cart-theme="v1"] .cart-buttons::after {
+    content: none !important;
+    display: none !important;
+  }
+
   .popup.__cart[data-mt-cart-theme="v1"] .cart-btnBack,
   .popup.__cart[data-mt-cart-theme="v1"] .cart-btnOrder {
     width: auto !important;
@@ -385,7 +391,7 @@ const baseCss = String.raw`
     box-sizing: border-box !important;
     width: 100% !important;
     height: auto !important;
-    min-height: 120px !important;
+    min-height: 72px !important;
     max-height: var(--mt-cart-card-image-height) !important;
     flex: 1 1 var(--mt-cart-card-image-height) !important;
     display: grid !important;
@@ -398,9 +404,14 @@ const baseCss = String.raw`
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-img {
     width: 100% !important;
     height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
     max-width: 100% !important;
     max-height: 100% !important;
+    align-self: stretch !important;
+    justify-self: stretch !important;
     object-fit: contain !important;
+    line-height: 1 !important;
   }
 
   .popup.__cart[data-mt-cart-theme="v1"] .productsSlider-title {
@@ -668,6 +679,7 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
   const stylesheetUrl = ${JSON.stringify(stylesheetUrl)};
   const styleId = 'mt-horoshop-cart-theme-v1';
   const enhancedCarousels = new WeakSet();
+  const enhancedImages = new WeakSet();
   let scheduledFrame = 0;
 
   function requestCarouselRefresh() {
@@ -695,6 +707,36 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
     return style;
   }
 
+  function upgradeRecommendationImageUrl(value) {
+    if (!value) return value;
+    return value.replace(
+      /(\\/content\\/images\\/\\d+\\/)(\\d+)x(\\d+)(l\\d+[a-z0-9]+\\/)/i,
+      (match, prefix, widthValue, heightValue, suffix) => {
+        const width = Number(widthValue);
+        const height = Number(heightValue);
+        const longestSide = Math.max(width, height);
+        if (!Number.isFinite(longestSide) || longestSide <= 0 || longestSide >= 360) return match;
+        const scale = Math.min(4, Math.ceil(360 / longestSide));
+        return prefix + (width * scale) + 'x' + (height * scale) + suffix;
+      }
+    );
+  }
+
+  function enhanceRecommendationImages(root) {
+    let changed = false;
+    root.querySelectorAll('.productsSlider-img').forEach((image) => {
+      if (enhancedImages.has(image)) return;
+      enhancedImages.add(image);
+      const source = image.getAttribute('src') || '';
+      const upgradedSource = upgradeRecommendationImageUrl(source);
+      if (upgradedSource !== source) {
+        image.setAttribute('src', upgradedSource);
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   function markRoot(root, surface) {
     let changed = false;
     if (root.getAttribute('data-mt-cart-theme') !== 'v1') {
@@ -710,6 +752,7 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
       changed = true;
     }
     if (surface === 'desktop') {
+      changed = enhanceRecommendationImages(root) || changed;
       const overlay = root.closest('.overlay');
       if (overlay) {
         if (overlay.getAttribute('data-mt-cart-overlay') !== 'v1') {
