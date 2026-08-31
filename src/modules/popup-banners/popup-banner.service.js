@@ -945,14 +945,30 @@ export function popupEmbedScript(origin) {
     return url.origin + (url.pathname.replace(/\\/+$/u, '') || '/') + url.search;
   }
 
-  function nativeBuyDescriptor(button) {
+  const nativeProductAddSelector = [
+    '.product__block--orderBox [data-view-block="orderBox"] .product-card--main[itemprop="offers"] .product-card__buy-button > .j-buy-button-add[id^="j-buy-button-widget-"]',
+    '.product-order__block--buy .j-buy-button-add[id^="j-buy-button-widget-"]',
+    '.product-order .j-buy-button-add[id^="j-buy-button-widget-"]',
+    '.product__section--order .j-buy-button-add[id^="j-buy-button-widget-"]',
+    '[itemtype$="/Product"] [itemprop="offers"] .product-card__buy-button > .j-buy-button-add[id^="j-buy-button-widget-"]'
+  ].join(',');
+  const nativeProductRemoveSelector = [
+    '.product__block--orderBox [data-view-block="orderBox"] .product-card--main[itemprop="offers"] .product-card__buy-button > .j-buy-button-remove[id^="j-buy-button-widget-"]',
+    '.product-order__block--buy .j-buy-button-remove[id^="j-buy-button-widget-"]',
+    '.product-order .j-buy-button-remove[id^="j-buy-button-widget-"]',
+    '.product__section--order .j-buy-button-remove[id^="j-buy-button-widget-"]',
+    '[itemtype$="/Product"] [itemprop="offers"] .product-card__buy-button > .j-buy-button-remove[id^="j-buy-button-widget-"]'
+  ].join(',');
+
+  function nativeBuyDescriptor(button, requireQuantity = true) {
     const match = String(button?.id || '').match(/^j-buy-button-widget-(\\d+)$/u);
     const quantity = Number(button?.dataset.quantity);
-    if (!match || !Number.isFinite(quantity) || quantity <= 0) return null;
+    const hasQuantity = Number.isFinite(quantity) && quantity > 0;
+    if (!match || (requireQuantity && !hasQuantity)) return null;
     return {
       id: match[1],
       skin: String(button.dataset.skin || 'default'),
-      quantity: String(quantity),
+      quantity: hasQuantity ? String(quantity) : '',
       gift: String(button.dataset.gift || '0'),
       productType: String(button.dataset.cartproducttype || 'product')
     };
@@ -964,10 +980,12 @@ export function popupEmbedScript(origin) {
       const linkUrl = storeUrl(link.href);
       if (!linkUrl || productPath(linkUrl) !== targetPath) continue;
       const item = link.closest('.productsSlider-i, .catalogCard-box, .j-product-container, article, li');
-      const button = item?.querySelector('.j-buy-button-add[id^="j-buy-button-widget-"]');
-      const descriptor = nativeBuyDescriptor(button);
+      const addButton = item?.querySelector('.j-buy-button-add[id^="j-buy-button-widget-"]');
+      const removeButton = item?.querySelector('.j-buy-button-remove[id^="j-buy-button-widget-"]');
+      const button = addButton || removeButton;
+      const descriptor = nativeBuyDescriptor(button, Boolean(addButton));
       if (button && descriptor && (!expectedId || descriptor.id === expectedId) && !button.disabled) {
-        return { button, descriptor };
+        return { button, descriptor, already: Boolean(removeButton && !addButton) };
       }
     }
     return null;
@@ -1049,9 +1067,10 @@ export function popupEmbedScript(origin) {
     const rawBuyId = String(recommendation.buyId || '').trim();
     const expectedId = /^\\d+$/u.test(rawBuyId) ? rawBuyId : '';
     const existing = existingNativeBuy(targetUrl, expectedId);
-    if (existing) return clickExistingNativeBuy(existing);
+    if (existing) return existing.already ? 'already' : clickExistingNativeBuy(existing);
 
     let descriptor = null;
+    let already = false;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4500);
     try {
@@ -1063,14 +1082,18 @@ export function popupEmbedScript(origin) {
       const responseUrl = response.url ? storeUrl(response.url) : targetUrl;
       if (response.ok && responseUrl && productPath(responseUrl) === productPath(targetUrl)) {
         const page = new DOMParser().parseFromString(await response.text(), 'text/html');
-        const button = page.querySelector(
-          '.product-order__block--buy .j-buy-button-add, .product-order .j-buy-button-add, .product__section--order .j-buy-button-add'
-        );
-        descriptor = nativeBuyDescriptor(button);
+        const addButton = page.querySelector(nativeProductAddSelector);
+        const removeButton = page.querySelector(nativeProductRemoveSelector);
+        const button = addButton || removeButton;
+        already = Boolean(removeButton && !addButton);
+        descriptor = nativeBuyDescriptor(button, !already);
         const expectedArticle = String(recommendation.article || '').trim().toLocaleLowerCase('uk-UA');
         const actualArticle = pageArticle(page).toLocaleLowerCase('uk-UA');
         if ((expectedId && descriptor?.id !== expectedId)
-          || (expectedArticle && actualArticle && expectedArticle !== actualArticle)) descriptor = null;
+          || (expectedArticle && actualArticle && expectedArticle !== actualArticle)) {
+          descriptor = null;
+          already = false;
+        }
       }
     } catch {
       descriptor = null;
@@ -1078,6 +1101,7 @@ export function popupEmbedScript(origin) {
       clearTimeout(timeout);
     }
     if (!descriptor || !isCurrent()) return '';
+    if (already) return 'already';
     return appendThroughNativeCart(descriptor);
   }
 

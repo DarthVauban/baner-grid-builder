@@ -293,10 +293,13 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   });
   t.after(() => dom.window.close());
   const nativeClicks = [];
+  const nativeAttempts = [];
   const focusCalls = [];
   const fetchedUrls = [];
   let rejectNativeAppend = true;
   let nativeQuantity = '12';
+  let nativeLayout = 'desktop';
+  let nativeInCart = false;
   const payload = {
     campaign: {
       publicId: 'public-out-of-stock',
@@ -364,6 +367,7 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   const cartProducts = new Map();
   const cart = {
     appendProduct(product) {
+      nativeAttempts.push(product);
       if (rejectNativeAppend) throw new Error('Horoshop rejected the cart update');
       nativeClicks.push(product);
       const current = Number(cartProducts.get(product.id)?.quantity || 0);
@@ -390,14 +394,24 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
     }
     if (url.href === 'https://shop.example.com/recommended-product/') {
       assert.equal(init.credentials, 'same-origin');
+      const nativeButtonClass = nativeInCart ? 'j-buy-button-remove' : 'j-buy-button-add';
+      const button = `<button class="btn ${nativeButtonClass}" id="j-buy-button-widget-1963"
+        data-skin="mobile" data-quantity="${nativeQuantity}" data-gift="0"
+        data-cartproducttype="product">${nativeInCart ? 'В кошику' : 'Купити'}</button>`;
+      const orderBox = nativeLayout === 'mobile'
+        ? `<div class="productsSlider-i"><button class="j-buy-button-add" id="j-buy-button-widget-7777"
+             data-skin="small_mobile" data-quantity="1" data-gift="0" data-cartproducttype="product">Купити інший</button></div>
+           <div class="product__block--orderBox"><div data-view-block="orderBox">
+             <div class="product-card product-card--main" itemprop="offers">
+               <div class="product-card__buy-button">${button}</div>
+             </div>
+           </div></div>`
+        : `<div class="product-order__block--buy">${button}</div>`;
       return {
         ok: true,
         url: url.href,
         text: async () => `<meta itemprop="sku" content="REC-1">
-        <div class="product-order__block--buy">
-          <button class="btn __special j-buy-button-add" id="j-buy-button-widget-1963"
-            data-skin="modern" data-quantity="${nativeQuantity}" data-gift="0" data-cartproducttype="product">Купити</button>
-        </div>`
+        ${orderBox}`
       };
     }
     throw new Error(`Unexpected fetch: ${url.href}`);
@@ -447,6 +461,7 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), host);
   assert.equal(buyButton.disabled, false);
   assert.deepEqual(nativeClicks, []);
+  assert.equal(nativeAttempts.at(-1).id, '1963');
 
   cartProducts.set('1963', { id: '1963', type: 'product', quantity: 1 });
   buyButton.click();
@@ -461,6 +476,19 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   buyButton.disabled = false;
   buyButton.textContent = 'Купити';
   buyButton.title = '';
+  nativeLayout = 'mobile';
+  nativeInCart = true;
+  buyButton.click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 30));
+  assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), host);
+  assert.equal(buyButton.disabled, true);
+  assert.equal(buyButton.textContent, 'У кошику');
+  assert.equal(nativeClicks.length, 0);
+
+  buyButton.disabled = false;
+  buyButton.textContent = 'Купити';
+  buyButton.title = '';
+  nativeInCart = false;
   rejectNativeAppend = false;
   buyButton.click();
   await new Promise((resolve) => dom.window.setTimeout(resolve, 80));
