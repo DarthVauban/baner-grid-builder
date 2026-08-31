@@ -7,15 +7,14 @@ vi.mock('../toast/ToastContext', () => ({
 }));
 
 describe('ProductSelectionPage', () => {
-  it('shows readable and minified variants of the safe global price script', () => {
+  it('shows the public asynchronous global price script', () => {
     render(<ProductSelectionPage />);
 
-    expect(screen.getByRole('button', { name: 'Копіювати глобальний код' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Копіювати мініфікований код' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Компактна версія глобального скрипта' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Копіювати async-код' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Стара й акційна ціна на сторінці товару' })).toBeInTheDocument();
 
     const outputs = screen.getAllByRole('textbox') as HTMLTextAreaElement[];
-    const minified = outputs.find((output) => output.value.includes('MT GLOBAL PRODUCT PRICE START') && !output.value.includes('\n'));
-    expect(minified).toBeDefined();
+    const asyncCode = outputs.find((output) => output.value.includes('/api/public/product-price/embed.js'));
+    expect(asyncCode?.value).toMatch(/^<script async src="https?:\/\//u);
   });
 });

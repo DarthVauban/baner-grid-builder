@@ -1,0 +1,104 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { JSDOM, VirtualConsole } from 'jsdom';
+import { productPriceEmbedScript } from '../src/modules/product-price/product-price.embed.js';
+
+function normalizePriceText(value) {
+  return String(value || '').replace(/\s/gu, ' ').replace(/\s+/gu, ' ').trim();
+}
+
+async function render(markup, query = '?mt_old_percent=10&mt_promo_price=1') {
+  const errors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (error) => errors.push(error));
+  const dom = new JSDOM(`<!doctype html><html><head><script>${productPriceEmbedScript()}</script></head><body>${markup}</body></html>`, {
+    runScripts: 'dangerously',
+    url: `https://shop.example.com/product/${query}`,
+    virtualConsole
+  });
+
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 10));
+  return { dom, errors };
+}
+
+test('product price embed is valid JavaScript and stays inactive without promo parameters', async (t) => {
+  const script = productPriceEmbedScript();
+  assert.doesNotThrow(() => new Function(script));
+
+  const { dom, errors } = await render(`
+    <div class="product__block product__block--wide">
+      <div class="product-price"><div class="product-price__item">8 999 грн</div></div>
+    </div>
+  `, '');
+  t.after(() => dom.window.close());
+
+  assert.deepEqual(errors, []);
+  assert.equal(dom.window.document.querySelector('.mt-product-old-price'), null);
+  assert.equal(dom.window.document.getElementById('mt-product-price-styles-v1'), null);
+});
+
+test('product price embed applies one desktop old price without a mutation loop', async (t) => {
+  const { dom, errors } = await render(`
+    <main class="product">
+      <div class="product__block product__block--wide">
+        <div class="product-price"><div class="product-price__box"><div class="product-price__item">8 999 грн</div></div></div>
+      </div>
+    </main>
+  `);
+  t.after(() => dom.window.close());
+
+  const { document } = dom.window;
+  assert.deepEqual(errors, []);
+  assert.equal(document.querySelectorAll('.mt-product-old-price').length, 1);
+  assert.equal(normalizePriceText(document.querySelector('.mt-product-old-price')?.textContent), '9 890 грн');
+  assert.equal(document.querySelector('.product-price__item')?.classList.contains('mt-product-current-price'), true);
+  assert.ok(document.getElementById('mt-product-price-styles-v1'));
+
+  document.querySelector('.product')?.append(document.createElement('div'));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+  assert.equal(document.querySelectorAll('.mt-product-old-price').length, 1);
+});
+
+test('product price embed targets the main mobile product and ignores recommendation prices', async (t) => {
+  const { dom, errors } = await render(`
+    <main class="product">
+      <section class="recommendations"><div class="product-card__price">1 999 грн</div></section>
+      <div class="product__block product__block--orderBox">
+        <div data-view-block="orderBox">
+          <div class="product-card product-card--main" itemprop="offers">
+            <div class="product-card__price-item"><div class="product-card__price">399 грн</div></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  `);
+  t.after(() => dom.window.close());
+
+  const { document } = dom.window;
+  assert.deepEqual(errors, []);
+  assert.equal(document.querySelectorAll('.mt-product-old-price').length, 1);
+  assert.equal(normalizePriceText(document.querySelector('.mt-product-old-price')?.textContent), '430 грн');
+  assert.equal(document.querySelector('.product-card--main .product-card__price')?.classList.contains('mt-product-current-price'), true);
+  assert.equal(document.querySelector('.recommendations .product-card__price')?.classList.contains('mt-product-current-price'), false);
+});
+
+test('product price embed waits for delayed markup and updates an initially changing price', async (t) => {
+  const { dom, errors } = await render('<main class="product"></main>');
+  t.after(() => dom.window.close());
+
+  const { document } = dom.window;
+  document.querySelector('.product').innerHTML = `
+    <div class="product__block product__block--wide">
+      <div class="product-price"><div class="product-price__box"><div class="product-price__item">4 999 грн</div></div></div>
+    </div>
+  `;
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+
+  assert.deepEqual(errors, []);
+  assert.equal(normalizePriceText(document.querySelector('.mt-product-old-price')?.textContent), '5 490 грн');
+
+  document.querySelector('.product-price__item').textContent = '5 999 грн';
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+  assert.equal(normalizePriceText(document.querySelector('.mt-product-old-price')?.textContent), '6 590 грн');
+  assert.equal(document.querySelectorAll('.mt-product-old-price').length, 1);
+});

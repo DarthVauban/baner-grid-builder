@@ -49,6 +49,21 @@ test('standalone storefront hostname exposes public APIs but blocks workspace ro
     .expect(401);
 });
 
+test('public product price endpoint serves the asynchronous Horoshop script', async () => {
+  const response = await request(app)
+    .get('/api/public/product-price/embed.js')
+    .set('Origin', 'https://shop.example.com')
+    .expect(200);
+
+  assert.match(response.headers['content-type'], /javascript/u);
+  assert.match(response.headers['cache-control'], /max-age=300/u);
+  assert.equal(response.headers['access-control-allow-origin'], '*');
+  assert.match(response.text, /mt_promo_price/u);
+  assert.match(response.text, /product__block--orderBox/u);
+  assert.match(response.text, /product__block--wide/u);
+  assert.doesNotThrow(() => new Function(response.text));
+});
+
 async function registerAndVerify(input) {
   const registration = await request(app)
     .post('/api/auth/register')
