@@ -163,11 +163,12 @@ before(async () => {
       source_data, active, last_seen_sync_id
     ) VALUES (
       $1, $2, $3, $4, 'iphone-15-new:black', 'IPHONE-15-NEW-BLACK', $5::JSONB,
-      '33999', '35999', 'UAH', 'В наявності', TRUE, 'https://cdn.example.com/iphone-15-black.webp',
+      '33999', NULL, 'UAH', 'В наявності', TRUE, 'https://cdn.example.com/iphone-15-black.webp',
       'https://shop.example.com/iphone-15-new-black/', $6::JSONB, TRUE, $7
     )
   `, [alternativeModificationId, connectionId, alternativeProductId, generation,
-    JSON.stringify({ uk: 'Смартфон Apple iPhone 15 128GB New Black' }), JSON.stringify({ id: 9002 }), syncId]);
+    JSON.stringify({ uk: 'Смартфон Apple iPhone 15 128GB New Black' }),
+    JSON.stringify({ id: 9002, price_old: '35999' }), syncId]);
 });
 
 after(async () => {
@@ -421,6 +422,7 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   assert.match(css, /@media\(max-width:760px\)\{\.recommendations\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/u);
   assert.match(css, /@media\(max-width:760px\)[\s\S]*?\.card\.is-recommendations \.recommendations\{overflow-x:hidden;overflow-y:auto\}/u);
   assert.doesNotMatch(css, /scroll-snap-type:x mandatory|flex:0 0:min\(74vw/u);
+  assert.match(css, /\.recommendation-image\{background:#fff\}/u);
   assert.equal(recommendations.contains(buyButton), true);
 
   payload.recommendations[0].buyId = '9002';
@@ -582,4 +584,5 @@ test('out-of-stock campaigns return available alternatives from the same categor
   assert.equal(iphone.buyId, '9002');
   assert.equal(iphone.modificationId, alternativeModificationId);
   assert.equal(iphone.pageUrl, 'https://shop.example.com/iphone-15-new-black/');
+  assert.equal(iphone.oldPrice, '35999');
 });
