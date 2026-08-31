@@ -347,11 +347,22 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
       article: 'REC-1',
       title: 'Доступна модель',
       price: '399',
-      oldPrice: '',
+      oldPrice: '599',
       currency: 'UAH',
       imageUrl: 'https://shop.example.com/recommended.jpg',
       pageUrl: 'https://shop.example.com/recommended-product/',
       buyId: 'REC-1'
+    }, {
+      productId: 'regular-product',
+      modificationId: null,
+      article: 'REGULAR-1',
+      title: 'Товар без знижки',
+      price: '499',
+      oldPrice: '',
+      currency: 'UAH',
+      imageUrl: 'https://shop.example.com/regular.jpg',
+      pageUrl: 'https://shop.example.com/regular-product/',
+      buyId: 'REGULAR-1'
     }]
   };
 
@@ -425,6 +436,7 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   const card = shadow.querySelector('.card');
   const recommendations = shadow.querySelector('.recommendations');
   const buyButton = shadow.querySelector('.recommendation-buy');
+  const priceBlocks = [...shadow.querySelectorAll('.recommendation-price')];
   const css = shadow.querySelector('style').textContent;
   assert.equal(card.className, 'card is-recommendations');
   assert.equal(card.tabIndex, -1);
@@ -437,6 +449,12 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   assert.match(css, /@media\(max-width:760px\)[\s\S]*?\.card\.is-recommendations \.recommendations\{overflow-x:hidden;overflow-y:auto\}/u);
   assert.doesNotMatch(css, /scroll-snap-type:x mandatory|flex:0 0:min\(74vw/u);
   assert.match(css, /\.recommendation-image\{background:#fff\}/u);
+  assert.match(css, /\.recommendation-price\.is-discounted strong\{color:#dc2626\}/u);
+  assert.equal(priceBlocks[0].classList.contains('is-discounted'), true);
+  assert.equal(priceBlocks[0].querySelector('strong').textContent, '399 грн');
+  assert.equal(priceBlocks[0].querySelector('del').textContent, '599 грн');
+  assert.equal(priceBlocks[1].classList.contains('is-discounted'), false);
+  assert.equal(priceBlocks[1].querySelector('del'), null);
   assert.equal(recommendations.contains(buyButton), true);
 
   payload.recommendations[0].buyId = '9002';
