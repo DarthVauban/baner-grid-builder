@@ -418,6 +418,9 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   assert.equal(focusCalls.at(-1).options.preventScroll, true);
   assert.match(css, /\.card\.is-recommendations\{[^}]*overflow:hidden/u);
   assert.match(css, /\.card\.is-recommendations \.recommendations\{[^}]*overflow-y:auto/u);
+  assert.match(css, /@media\(max-width:760px\)\{\.recommendations\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/u);
+  assert.match(css, /@media\(max-width:760px\)[\s\S]*?\.card\.is-recommendations \.recommendations\{overflow-x:hidden;overflow-y:auto\}/u);
+  assert.doesNotMatch(css, /scroll-snap-type:x mandatory|flex:0 0:min\(74vw/u);
   assert.equal(recommendations.contains(buyButton), true);
 
   payload.recommendations[0].buyId = '9002';
