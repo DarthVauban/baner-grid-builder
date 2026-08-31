@@ -919,32 +919,150 @@ export function popupEmbedScript(origin) {
     else localStorage.setItem(key, String(Date.now()));
   }
 
-  function nativeBuy(recommendation) {
-    const buyId = String(recommendation.buyId || '').trim();
-    if (!buyId) return false;
-    const container = [...document.querySelectorAll('.j-product-container[data-id]')]
-      .find((node) => String(node.dataset.id || '') === buyId);
-    let button = container?.querySelector('.j-buy-button-add');
-    let proxy = null;
-    if (!button) {
-      proxy = document.createElement('div');
-      proxy.className = 'j-product-container';
-      proxy.dataset.id = buyId;
-      proxy.hidden = true;
-      button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'j-buy-button-add';
-      button.id = 'j-buy-button-widget-' + buyId.replace(/[^a-z0-9_-]/giu, '-');
-      button.dataset.skin = 'default';
-      button.dataset.quantity = '1';
-      button.dataset.gift = '0';
-      button.dataset.cartproducttype = 'product';
-      proxy.append(button);
-      document.body.append(proxy);
+  function storeUrl(value) {
+    try {
+      const url = new URL(String(value || ''), location.href);
+      const host = (hostname) => String(hostname || '').toLowerCase().replace(/^www\\./u, '');
+      if (host(url.hostname) !== host(location.hostname)) return null;
+      url.protocol = location.protocol;
+      url.host = location.host;
+      url.username = '';
+      url.password = '';
+      url.hash = '';
+      return url;
+    } catch {
+      return null;
     }
-    button.click();
-    if (proxy) setTimeout(() => proxy.remove(), 1500);
-    return true;
+  }
+
+  function productPath(url) {
+    return url.origin + (url.pathname.replace(/\\/+$/u, '') || '/') + url.search;
+  }
+
+  function nativeBuyDescriptor(button) {
+    const match = String(button?.id || '').match(/^j-buy-button-widget-(\\d+)$/u);
+    const quantity = Number(button?.dataset.quantity);
+    if (!match || !Number.isFinite(quantity) || quantity <= 0) return null;
+    return {
+      id: match[1],
+      skin: String(button.dataset.skin || 'default'),
+      quantity: String(quantity),
+      gift: String(button.dataset.gift || '0'),
+      productType: String(button.dataset.cartproducttype || 'product')
+    };
+  }
+
+  function existingNativeBuy(targetUrl, expectedId) {
+    const targetPath = productPath(targetUrl);
+    for (const link of document.querySelectorAll('a[href]')) {
+      const linkUrl = storeUrl(link.href);
+      if (!linkUrl || productPath(linkUrl) !== targetPath) continue;
+      const item = link.closest('.productsSlider-i, .catalogCard-box, .j-product-container, article, li');
+      const button = item?.querySelector('.j-buy-button-add[id^="j-buy-button-widget-"]');
+      const descriptor = nativeBuyDescriptor(button);
+      if (button && descriptor && (!expectedId || descriptor.id === expectedId) && !button.disabled) {
+        return { button, descriptor };
+      }
+    }
+    return null;
+  }
+
+  function pageArticle(root) {
+    const node = root.querySelector('[itemprop="sku"], meta[property="product:retailer_item_id"], [data-product-article]');
+    return String(node?.content || node?.dataset?.productArticle || node?.textContent || '').trim();
+  }
+
+  function nativeCart() {
+    try {
+      const instance = window.AjaxCart?.getInstance?.();
+      return [instance, instance?.Cart].find((candidate) => candidate
+        && typeof candidate.appendProduct === 'function'
+        && typeof candidate.getProductById === 'function') || null;
+    } catch {}
+    return null;
+  }
+
+  function cartQuantity(cart, descriptor) {
+    try {
+      return Number(cart.getProductById(descriptor.id, descriptor.productType)?.quantity || 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  function waitForCartChange(cart, descriptor, beforeQuantity) {
+    const deadline = Date.now() + 4500;
+    return new Promise((resolve) => {
+      const check = () => {
+        if (cartQuantity(cart, descriptor) > beforeQuantity) { resolve(true); return; }
+        if (Date.now() >= deadline) { resolve(false); return; }
+        setTimeout(check, 60);
+      };
+      check();
+    });
+  }
+
+  async function clickExistingNativeBuy(entry) {
+    const cart = nativeCart();
+    if (!cart) return false;
+    const beforeQuantity = cartQuantity(cart, entry.descriptor);
+    entry.button.click();
+    return waitForCartChange(cart, entry.descriptor, beforeQuantity);
+  }
+
+  async function appendThroughNativeCart(descriptor) {
+    const cart = nativeCart();
+    if (!cart) return false;
+    const beforeQuantity = cartQuantity(cart, descriptor);
+    try {
+      window.AjaxCart.openCartOnAdd = true;
+      cart.appendProduct({
+        type: descriptor.productType,
+        quantity: Number(descriptor.quantity),
+        id: descriptor.id
+      }, []);
+    } catch {
+      return false;
+    }
+    return waitForCartChange(cart, descriptor, beforeQuantity);
+  }
+
+  async function nativeBuy(recommendation, isCurrent) {
+    const targetUrl = storeUrl(recommendation.pageUrl);
+    if (!targetUrl) return false;
+    const rawBuyId = String(recommendation.buyId || '').trim();
+    const expectedId = /^\\d+$/u.test(rawBuyId) ? rawBuyId : '';
+    const existing = existingNativeBuy(targetUrl, expectedId);
+    if (existing) return clickExistingNativeBuy(existing);
+
+    let descriptor = null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4500);
+    try {
+      const response = await fetch(targetUrl.href, {
+        credentials: 'same-origin',
+        headers: { accept: 'text/html' },
+        signal: controller.signal
+      });
+      const responseUrl = response.url ? storeUrl(response.url) : targetUrl;
+      if (response.ok && responseUrl && productPath(responseUrl) === productPath(targetUrl)) {
+        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const button = page.querySelector(
+          '.product-order__block--buy .j-buy-button-add, .product-order .j-buy-button-add, .product__section--order .j-buy-button-add'
+        );
+        descriptor = nativeBuyDescriptor(button);
+        const expectedArticle = String(recommendation.article || '').trim().toLocaleLowerCase('uk-UA');
+        const actualArticle = pageArticle(page).toLocaleLowerCase('uk-UA');
+        if ((expectedId && descriptor?.id !== expectedId)
+          || (expectedArticle && actualArticle && expectedArticle !== actualArticle)) descriptor = null;
+      }
+    } catch {
+      descriptor = null;
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!descriptor || !isCurrent()) return false;
+    return appendThroughNativeCart(descriptor);
   }
 
   function money(value, currency) {
@@ -964,7 +1082,7 @@ export function popupEmbedScript(origin) {
     host.style.zIndex = '2147482990';
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = \`:host{all:initial}.backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.56);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}.card{position:relative;width:min(var(--width),100%);max-height:calc(100vh - 36px);overflow:auto;border-radius:var(--radius);background:var(--bg);box-shadow:0 28px 90px rgba(15,23,42,.3);animation:enter .2s ease-out}.content{padding:30px}.image{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) - 7px) calc(var(--radius) - 7px) 0 0}.eyebrow{margin:0 0 8px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.title{margin:0;color:var(--text);font-size:clamp(24px,4vw,34px);line-height:1.08}.body{margin:14px 0 0;color:var(--muted);font-size:16px;line-height:1.58;white-space:pre-line}.ack{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;margin:20px 0 0;padding:14px;border-radius:14px;color:var(--checkbox-text);background:color-mix(in srgb,var(--checkbox) 9%,var(--bg));font-size:14px;line-height:1.4}.ack input{display:grid;place-content:center;width:18px;height:18px;margin:0;appearance:none;border:1.5px solid color-mix(in srgb,var(--checkbox) 55%,#fff);border-radius:5px;background:var(--bg);cursor:pointer}.ack input:before{width:8px;height:4px;border-bottom:2px solid #fff;border-left:2px solid #fff;content:'';transform:rotate(-45deg) scale(0);transition:transform .12s ease}.ack input:checked{border-color:var(--checkbox);background:var(--checkbox)}.ack input:checked:before{transform:rotate(-45deg) scale(1)}.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.button{min-height:44px;border:1px solid transparent;border-radius:12px;padding:10px 18px;font:inherit;font-weight:750;cursor:pointer}.primary{border-color:var(--primary-bg);background:var(--primary-bg);color:var(--primary-text)}.primary:disabled{opacity:.45;cursor:not-allowed}.secondary{border-color:color-mix(in srgb,var(--secondary-text) 16%,transparent);background:var(--secondary-bg);color:var(--secondary-text)}.close{position:absolute;z-index:2;top:12px;right:12px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(15,23,42,.72);color:#fff;font-size:24px;line-height:1;cursor:pointer}.recommendations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}.recommendation{display:grid;grid-template-rows:auto minmax(44px,1fr) auto auto;gap:10px;min-width:0;padding:12px;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);border-radius:16px;background:color-mix(in srgb,var(--bg) 94%,var(--text));text-decoration:none}.recommendation-image{display:block;width:100%;aspect-ratio:1.2;object-fit:contain;border-radius:12px;background:#f6f7f9}.recommendation-title{display:-webkit-box;overflow:hidden;margin:0;color:var(--text);font-size:14px;font-weight:650;line-height:1.4;text-decoration:none;-webkit-box-orient:vertical;-webkit-line-clamp:2}.recommendation-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px}.recommendation-price strong{color:var(--text);font-size:18px}.recommendation-price del{color:var(--muted);font-size:12px}.recommendation-buy{width:100%;min-height:42px;border:1px solid var(--primary-bg);border-radius:11px;background:var(--primary-bg);color:var(--primary-text);font:750 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.recommendation-buy:disabled{opacity:.65;cursor:wait}.corner{align-items:flex-end;justify-content:flex-end;background:transparent;pointer-events:none}.corner .card{pointer-events:auto;box-shadow:0 20px 65px rgba(15,23,42,.25)}.bottom-sheet{align-items:flex-end}.bottom-sheet .card{width:min(760px,100%);border-radius:var(--radius) var(--radius) 0 0;margin-bottom:-18px}@keyframes enter{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:760px){.recommendations{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}.recommendation{flex:0 0:min(74vw,260px);scroll-snap-align:start}}@media(max-width:600px){.backdrop{padding:10px;align-items:flex-end}.card{border-radius:20px 20px 0 0;margin-bottom:-10px}.content{padding:24px 20px}.actions{flex-direction:column-reverse}.button{width:100%}.recommendations{margin-right:-20px;padding-right:20px}}\`;
+    style.textContent = \`:host{all:initial}.backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.56);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}.card{position:relative;width:min(var(--width),100%);max-height:calc(100vh - 36px);overflow:auto;border-radius:var(--radius);background:var(--bg);box-shadow:0 28px 90px rgba(15,23,42,.3);animation:enter .2s ease-out}.card:focus{outline:none}.card.is-recommendations{display:flex;flex-direction:column;overflow:hidden}.card.is-recommendations>.image{flex:0 1 auto;max-height:min(220px,24vh)}.card.is-recommendations .content{box-sizing:border-box;display:flex;flex:1 1 auto;flex-direction:column;max-height:none;min-height:0;overflow:hidden}.content{padding:30px}.image{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) - 7px) calc(var(--radius) - 7px) 0 0}.eyebrow{margin:0 0 8px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.title{margin:0;color:var(--text);font-size:clamp(24px,4vw,34px);line-height:1.08}.body{margin:14px 0 0;color:var(--muted);font-size:16px;line-height:1.58;white-space:pre-line}.ack{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;margin:20px 0 0;padding:14px;border-radius:14px;color:var(--checkbox-text);background:color-mix(in srgb,var(--checkbox) 9%,var(--bg));font-size:14px;line-height:1.4}.ack input{display:grid;place-content:center;width:18px;height:18px;margin:0;appearance:none;border:1.5px solid color-mix(in srgb,var(--checkbox) 55%,#fff);border-radius:5px;background:var(--bg);cursor:pointer}.ack input:before{width:8px;height:4px;border-bottom:2px solid #fff;border-left:2px solid #fff;content:'';transform:rotate(-45deg) scale(0);transition:transform .12s ease}.ack input:checked{border-color:var(--checkbox);background:var(--checkbox)}.ack input:checked:before{transform:rotate(-45deg) scale(1)}.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.button{min-height:44px;border:1px solid transparent;border-radius:12px;padding:10px 18px;font:inherit;font-weight:750;cursor:pointer}.primary{border-color:var(--primary-bg);background:var(--primary-bg);color:var(--primary-text)}.primary:disabled{opacity:.45;cursor:not-allowed}.secondary{border-color:color-mix(in srgb,var(--secondary-text) 16%,transparent);background:var(--secondary-bg);color:var(--secondary-text)}.close{position:absolute;z-index:2;top:12px;right:12px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(15,23,42,.72);color:#fff;font-size:24px;line-height:1;cursor:pointer}.recommendations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}.card.is-recommendations .recommendations{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.recommendation{display:grid;grid-template-rows:auto minmax(44px,1fr) auto auto;gap:10px;min-width:0;padding:12px;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);border-radius:16px;background:color-mix(in srgb,var(--bg) 94%,var(--text));text-decoration:none}.recommendation-image{display:block;width:100%;aspect-ratio:1.2;object-fit:contain;border-radius:12px;background:#f6f7f9}.recommendation-title{display:-webkit-box;overflow:hidden;margin:0;color:var(--text);font-size:14px;font-weight:650;line-height:1.4;text-decoration:none;-webkit-box-orient:vertical;-webkit-line-clamp:2}.recommendation-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px}.recommendation-price strong{color:var(--text);font-size:18px}.recommendation-price del{color:var(--muted);font-size:12px}.recommendation-buy{width:100%;min-height:42px;border:1px solid var(--primary-bg);border-radius:11px;background:var(--primary-bg);color:var(--primary-text);font:750 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.recommendation-buy:disabled{opacity:.65;cursor:wait}.corner{align-items:flex-end;justify-content:flex-end;background:transparent;pointer-events:none}.corner .card{pointer-events:auto;box-shadow:0 20px 65px rgba(15,23,42,.25)}.bottom-sheet{align-items:flex-end}.bottom-sheet .card{width:min(760px,100%);border-radius:var(--radius) var(--radius) 0 0;margin-bottom:-18px}@keyframes enter{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:760px){.recommendations{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}.card.is-recommendations .recommendations{overflow-x:auto;overflow-y:auto}.recommendation{flex:0 0:min(74vw,260px);scroll-snap-align:start}}@media(max-width:600px){.backdrop{padding:10px;align-items:flex-end}.card{border-radius:20px 20px 0 0;margin-bottom:-10px}.content{padding:24px 20px}.actions{flex-direction:column-reverse}.button{width:100%}.recommendations{margin-right:-20px;padding-right:20px}}\`;
     style.textContent += \`.eyebrow{font-size:var(--eyebrow-size)}.title{font-size:var(--title-size)}.body{font-size:var(--body-size)}.ack{font-size:var(--ack-size)}.ack input:before{border-bottom-color:var(--checkbox-check);border-left-color:var(--checkbox-check)}.button{font-size:var(--button-size)}.bottom-sheet .card{width:min(var(--width),100%)}\`;
     shadow.append(style);
     const backdrop = document.createElement('div');
@@ -988,7 +1106,16 @@ export function popupEmbedScript(origin) {
     backdrop.style.setProperty('--radius', campaign.styles.borderRadius + 'px');
     backdrop.style.setProperty('--width', campaign.styles.maxWidth + 'px');
     const card = document.createElement('section');
-    card.className = 'card'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true');
+    card.className = campaign.mode === 'out_of_stock' ? 'card is-recommendations' : 'card';
+    card.tabIndex = -1; card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true');
+    card.addEventListener('keydown', (keyEvent) => {
+      if (keyEvent.key !== 'Tab') return;
+      const focusable = [...card.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')];
+      if (!focusable.length) { keyEvent.preventDefault(); return; }
+      const first = focusable[0]; const last = focusable[focusable.length - 1]; const active = shadow.activeElement;
+      if (keyEvent.shiftKey && (active === card || active === first)) { keyEvent.preventDefault(); last.focus(); }
+      else if (!keyEvent.shiftKey && active === last) { keyEvent.preventDefault(); first.focus(); }
+    });
     const close = (kind) => {
       event(campaign.publicId, kind, productArticle);
       host.remove(); currentHost = null;
@@ -1004,7 +1131,8 @@ export function popupEmbedScript(origin) {
     }
     const content = document.createElement('div'); content.className = 'content';
     if (campaign.content.eyebrow) { const node = document.createElement('p'); node.className = 'eyebrow'; node.textContent = campaign.content.eyebrow; content.append(node); }
-    const title = document.createElement('h2'); title.className = 'title'; title.textContent = campaign.content.title; content.append(title);
+    const title = document.createElement('h2'); title.className = 'title'; title.id = 'mt-popup-title-' + campaign.publicId; title.textContent = campaign.content.title; content.append(title);
+    card.setAttribute('aria-labelledby', title.id);
     const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body);
     if (campaign.mode === 'out_of_stock') {
       const recommendations = document.createElement('div'); recommendations.className = 'recommendations';
@@ -1021,17 +1149,23 @@ export function popupEmbedScript(origin) {
         const currentPrice = document.createElement('strong'); currentPrice.textContent = money(recommendation.price, recommendation.currency); price.append(currentPrice);
         if (recommendation.oldPrice && recommendation.oldPrice !== recommendation.price) { const oldPrice = document.createElement('del'); oldPrice.textContent = money(recommendation.oldPrice, recommendation.currency); price.append(oldPrice); }
         const buy = document.createElement('button'); buy.className = 'recommendation-buy'; buy.type = 'button'; buy.textContent = 'Купити';
-        buy.addEventListener('click', () => {
+        buy.addEventListener('click', async () => {
           buy.disabled = true; buy.textContent = 'Додаємо…';
           event(campaign.publicId, 'click', productArticle, { action: 'add_to_cart', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article });
-          if (nativeBuy(recommendation)) setTimeout(() => { host.remove(); currentHost = null; }, 180);
-          else { buy.disabled = false; buy.textContent = 'Купити'; }
+          const isCurrent = () => currentHost === host && host.isConnected;
+          const added = await nativeBuy(recommendation, isCurrent);
+          if (!isCurrent()) return;
+          if (added) setTimeout(() => {
+            if (!isCurrent()) return;
+            host.remove(); currentHost = null;
+          }, 180);
+          else { buy.disabled = false; buy.textContent = 'Спробувати ще'; buy.title = 'Не вдалося додати товар. Повторіть спробу.'; }
         });
         item.append(imageLink, itemTitle, price, buy); recommendations.append(item);
       }
       content.append(recommendations); card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
-      requestAnimationFrame(() => shadow.querySelector('.recommendation-buy')?.focus());
+      requestAnimationFrame(() => card.focus({ preventScroll: true }));
       return;
     }
     let acknowledgement = null;

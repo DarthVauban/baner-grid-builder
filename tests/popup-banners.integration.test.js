@@ -2,6 +2,7 @@ import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
+import { JSDOM } from 'jsdom';
 
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = process.env.POPUP_TEST_DATABASE_URL || 'pg-mem://popup-banners-tests';
@@ -16,6 +17,7 @@ const { default: app } = await import('../src/app.js');
 const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
+const { popupEmbedScript } = await import('../src/modules/popup-banners/popup-banner.service.js');
 
 const admin = request.agent(app);
 const connectionId = randomUUID();
@@ -269,10 +271,190 @@ test('sticker rules and the embeddable widget work without exact product targets
   assert.match(script.text, /behavior\.buttonCount === 2/u);
   assert.match(script.text, /product-header__availability--out-of-stock/u);
   assert.match(script.text, /j-buy-button-add/u);
+  assert.match(script.text, /AjaxCart/u);
+  assert.doesNotMatch(script.text, /_widget\/ajax_cart/u);
+  assert.doesNotMatch(script.text, /BuyButton\.initButtons/u);
   assert.doesNotThrow(() => new Function(script.text));
 
   const code = await admin.get('/api/popup-banners/embed-code').expect(200);
   assert.match(code.body.data.code, /popup-banners\/embed\.js/u);
+});
+
+test('out-of-stock widget keeps focus and scrolling on the dialog while using Horoshop native cart metadata', async (t) => {
+  const dom = new JSDOM(`<!doctype html><html><head>
+    <meta itemprop="sku" content="OUT-OF-STOCK-1">
+  </head><body>
+    <span class="product-header__availability--out-of-stock">Немає в наявності</span>
+  </body></html>`, {
+    pretendToBeVisual: true,
+    runScripts: 'outside-only',
+    url: 'https://shop.example.com/unavailable-product/'
+  });
+  t.after(() => dom.window.close());
+  const nativeClicks = [];
+  const focusCalls = [];
+  const fetchedUrls = [];
+  let rejectNativeAppend = true;
+  let nativeQuantity = '12';
+  const payload = {
+    campaign: {
+      publicId: 'public-out-of-stock',
+      mode: 'out_of_stock',
+      content: {
+        eyebrow: 'Товар тимчасово недоступний',
+        title: 'Цього товару зараз немає в наявності',
+        body: 'Оберіть схожу модель із цієї самої категорії.',
+        imageUrl: ''
+      },
+      styles: {
+        layout: 'modal',
+        accentColor: '#6d5dfc',
+        backgroundColor: '#ffffff',
+        textColor: '#172033',
+        mutedColor: '#667085',
+        primaryButtonBackgroundColor: '#6d5dfc',
+        primaryButtonTextColor: '#ffffff',
+        secondaryButtonBackgroundColor: '#ffffff',
+        secondaryButtonTextColor: '#172033',
+        checkboxAccentColor: '#6d5dfc',
+        checkboxCheckColor: '#ffffff',
+        checkboxTextColor: '#172033',
+        eyebrowFontSize: 12,
+        titleFontSize: 34,
+        bodyFontSize: 16,
+        acknowledgementFontSize: 14,
+        buttonFontSize: 16,
+        borderRadius: 22,
+        maxWidth: 960
+      },
+      behavior: {
+        delayMs: 0,
+        frequency: 'always',
+        cooldownDays: 7,
+        dismissible: true,
+        requireAcknowledgement: false,
+        buttonCount: 1
+      }
+    },
+    product: { article: 'OUT-OF-STOCK-1', title: 'Недоступний товар' },
+    recommendations: [{
+      productId: 'recommended-product',
+      modificationId: 'recommended-modification',
+      article: 'REC-1',
+      title: 'Доступна модель',
+      price: '399',
+      oldPrice: '',
+      currency: 'UAH',
+      imageUrl: 'https://shop.example.com/recommended.jpg',
+      pageUrl: 'https://shop.example.com/recommended-product/',
+      buyId: 'REC-1'
+    }]
+  };
+
+  const nativeFocus = dom.window.HTMLElement.prototype.focus;
+  dom.window.HTMLElement.prototype.focus = function focus(options) {
+    focusCalls.push({ element: this, options });
+    return nativeFocus.call(this, options);
+  };
+  dom.window.MutationObserver = class MutationObserver {
+    observe() {}
+  };
+
+  const cartProducts = new Map();
+  const cart = {
+    appendProduct(product) {
+      if (rejectNativeAppend) throw new Error('Horoshop rejected the cart update');
+      nativeClicks.push(product);
+      const current = Number(cartProducts.get(product.id)?.quantity || 0);
+      dom.window.setTimeout(() => cartProducts.set(product.id, {
+        id: product.id,
+        type: product.type,
+        quantity: current + product.quantity
+      }), 10);
+    },
+    getProductById(id, type) {
+      const product = cartProducts.get(String(id));
+      return product?.type === type ? product : null;
+    }
+  };
+  dom.window.AjaxCart = { openCartOnAdd: false, getInstance: () => cart };
+  dom.window.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    fetchedUrls.push(url.href);
+    if (url.origin === 'https://mt-panel.example.com' && url.pathname.endsWith('/resolve')) {
+      return { ok: true, json: async () => ({ data: payload }) };
+    }
+    if (url.origin === 'https://mt-panel.example.com' && url.pathname.endsWith('/events')) {
+      return { ok: true };
+    }
+    if (url.href === 'https://shop.example.com/recommended-product/') {
+      assert.equal(init.credentials, 'same-origin');
+      return {
+        ok: true,
+        url: url.href,
+        text: async () => `<meta itemprop="sku" content="REC-1">
+        <div class="product-order__block--buy">
+          <button class="btn __special j-buy-button-add" id="j-buy-button-widget-1963"
+            data-skin="modern" data-quantity="${nativeQuantity}" data-gift="0" data-cartproducttype="product">Купити</button>
+        </div>`
+      };
+    }
+    throw new Error(`Unexpected fetch: ${url.href}`);
+  };
+
+  dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 80));
+
+  const host = dom.window.document.querySelector('#mt-popup-banner-root');
+  const shadow = host.shadowRoot;
+  const card = shadow.querySelector('.card');
+  const recommendations = shadow.querySelector('.recommendations');
+  const buyButton = shadow.querySelector('.recommendation-buy');
+  const css = shadow.querySelector('style').textContent;
+  assert.equal(card.className, 'card is-recommendations');
+  assert.equal(card.tabIndex, -1);
+  assert.equal(focusCalls.at(-1).element, card);
+  assert.notEqual(focusCalls.at(-1).element, buyButton);
+  assert.equal(focusCalls.at(-1).options.preventScroll, true);
+  assert.match(css, /\.card\.is-recommendations\{[^}]*overflow:hidden/u);
+  assert.match(css, /\.card\.is-recommendations \.recommendations\{[^}]*overflow-y:auto/u);
+  assert.equal(recommendations.contains(buyButton), true);
+
+  payload.recommendations[0].buyId = '9002';
+  buyButton.click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 30));
+  assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), host);
+  assert.equal(buyButton.disabled, false);
+  assert.equal(buyButton.textContent, 'Спробувати ще');
+  assert.deepEqual(nativeClicks, []);
+
+  payload.recommendations[0].buyId = 'REC-1';
+  nativeQuantity = '';
+  buyButton.click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 30));
+  assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), host);
+  assert.equal(buyButton.disabled, false);
+  assert.deepEqual(nativeClicks, []);
+
+  nativeQuantity = '12';
+  buyButton.click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 30));
+  assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), host);
+  assert.equal(buyButton.disabled, false);
+  assert.deepEqual(nativeClicks, []);
+
+  rejectNativeAppend = false;
+  buyButton.click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 80));
+  assert.equal(nativeClicks.length, 1);
+  assert.equal(nativeClicks[0].id, '1963');
+  assert.equal(nativeClicks[0].quantity, 12);
+  assert.equal(nativeClicks[0].type, 'product');
+  assert.equal(dom.window.AjaxCart.openCartOnAdd, true);
+  assert.equal(fetchedUrls.includes('https://shop.example.com/recommended-product/'), true);
+
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 260));
+  assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), null);
 });
 
 test('target-page campaigns match one exact storefront URL without requiring a product', async () => {
