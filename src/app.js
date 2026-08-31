@@ -41,7 +41,6 @@ import horoshopCatalogMenuRoutes from './modules/horoshop-catalog-menu/catalog-m
 import publicHoroshopCatalogMenuRoutes from './modules/horoshop-catalog-menu/catalog-menu.public.routes.js';
 import horoshopCartThemeRoutes from './modules/horoshop-cart-theme/cart-theme.routes.js';
 import publicHoroshopCartThemeRoutes from './modules/horoshop-cart-theme/cart-theme.public.routes.js';
-import publicProductPriceRoutes from './modules/product-price/product-price.public.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -157,7 +156,6 @@ if (env.APP_ORIGIN) {
     if (req.path.startsWith('/api/public/popup-banners')) return next();
     if (req.path.startsWith('/api/public/horoshop-catalog-menu')) return next();
     if (req.path.startsWith('/api/public/horoshop-cart-theme')) return next();
-    if (req.path.startsWith('/api/public/product-price')) return next();
     if (req.path.startsWith('/api/storefront')) return next();
     return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
   });
@@ -231,7 +229,6 @@ app.use('/api/public/support-chat', publicEmbedCors, publicSupportChatRoutes);
 app.use('/api/public/popup-banners', publicEmbedCors, publicPopupBannerRoutes);
 app.use('/api/public/horoshop-catalog-menu', publicEmbedCors, publicHoroshopCatalogMenuRoutes);
 app.use('/api/public/horoshop-cart-theme', publicEmbedCors, publicHoroshopCartThemeRoutes);
-app.use('/api/public/product-price', publicEmbedCors, publicProductPriceRoutes);
 app.use('/api', notFoundHandler);
 
 app.use('/media/catalog', express.static(catalogMediaDir, {

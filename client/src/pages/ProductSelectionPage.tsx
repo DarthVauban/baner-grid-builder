@@ -43,7 +43,7 @@ export function ProductSelectionPage() {
         <textarea className="code-output code-output--large" value={code} readOnly spellCheck={false} />
       </section>
       <section className="tool-panel code-panel">
-        <header className="tool-panel__header"><div><p className="eyebrow">Асинхронний скрипт</p><h2>Стара й акційна ціна на сторінці товару</h2><p>Спочатку повністю видаліть попередній довгий блок «MT GLOBAL PRODUCT PRICE», а потім встановіть цей короткий код один раз у глобальні шаблони desktop і mobile Хорошопа. Два варіанти скрипта одночасно залишати не можна. Актуальна логіка завантажуватиметься з робочого простору автоматично.</p></div><button className="button button--primary" onClick={() => void copy(globalCode, 'Асинхронний скрипт скопійовано.')}><Icon name="copy" size={17} /> Копіювати async-код</button></header>
+        <header className="tool-panel__header"><div><p className="eyebrow">Глобальний код</p><h2>Стара ціна на сторінці товару</h2><p>Цей фрагмент потрібно встановити один раз у глобальний шаблон.</p></div><button className="button button--primary" onClick={() => void copy(globalCode, 'Глобальний код скопійовано.')}><Icon name="copy" size={17} /> Копіювати глобальний код</button></header>
         <textarea className="code-output" value={globalCode} readOnly spellCheck={false} />
       </section>
     </div>

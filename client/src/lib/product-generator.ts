@@ -593,7 +593,107 @@ export function buildProductsCode(settings: ProductCodeSettings): string {
   return meta ? `${meta}\n${content}` : content;
 }
 
-export function buildGlobalProductCode(origin = window.location.origin): string {
-  const source = new URL('/api/public/product-price/embed.js', origin);
-  return `<script async src="${escapeHtml(source.href)}"></script>`;
+export function buildGlobalProductCode(): string {
+  return `<!-- MT GLOBAL PRODUCT PRICE START -->
+<style type="text/css">
+  .mt-product-price-stack {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  .mt-product-current-price {
+    color: #ff0000 !important;
+  }
+
+  .mt-product-old-price {
+    display: block !important;
+    margin: 0 0 4px !important;
+    color: #8a8f98 !important;
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    text-decoration: line-through !important;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var params = new URLSearchParams(location.search);
+    var enabled = params.get("mt_promo_price") === "1";
+    var percent = Number(params.get("mt_old_percent") || 0);
+    var fixed = Number(params.get("mt_old_fixed") || 0);
+
+    if (!enabled || (!(percent > 0) && !(fixed > 0))) {
+      return;
+    }
+
+    function parsePrice(text) {
+      var match = String(text || "").match(/\\d[\\d\\s\\u00a0]*(?:[.,]\\d{1,2})?/);
+
+      if (!match) {
+        return null;
+      }
+
+      var value = Number(match[0].replace(/[\\s\\u00a0]/g, "").replace(",", "."));
+
+      return Number.isFinite(value) ? value : null;
+    }
+
+    function apply() {
+      var selectors = [
+        ".product-card__price",
+        ".product-price__item",
+        ".product-price__current",
+        ".product-price__value",
+        ".product-price",
+        ".product__price",
+        ".product-info__price",
+        "[itemprop='price']:not(meta)"
+      ];
+
+      for (var i = 0; i < selectors.length; i += 1) {
+        var nodes = document.querySelectorAll(selectors[i]);
+
+        for (var j = 0; j < nodes.length; j += 1) {
+          var price = nodes[j];
+          var value = parsePrice(price.textContent);
+
+          if (value === null || price.querySelector(".mt-product-old-price")) {
+            continue;
+          }
+
+          var oldValue = percent > 0
+            ? Math.floor((value * (1 + percent / 100)) / 10) * 10
+            : Math.round((value + fixed) * 100) / 100;
+          var fractionDigits = Number.isInteger(oldValue) ? 0 : 2;
+          var oldPrice = document.createElement("span");
+
+          oldPrice.className = "mt-product-old-price";
+          oldPrice.textContent = new Intl.NumberFormat("uk-UA", {
+            minimumFractionDigits: fractionDigits,
+            maximumFractionDigits: fractionDigits
+          }).format(oldValue) + " грн";
+
+          price.classList.add("mt-product-current-price");
+          price.parentNode.classList.add("mt-product-price-stack");
+          price.parentNode.insertBefore(oldPrice, price);
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    apply();
+
+    var observer = new MutationObserver(apply);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  })();
+</script>
+<!-- MT GLOBAL PRODUCT PRICE END -->`;
 }

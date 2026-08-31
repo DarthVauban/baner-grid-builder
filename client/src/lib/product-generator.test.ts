@@ -17,9 +17,7 @@ describe('product code generator', () => {
     expect(result).toContain('mt_promo_price');
   });
 
-  it('builds the public asynchronous product price embed code', () => {
-    expect(buildGlobalProductCode('https://workspace.example.com')).toBe(
-      '<script async src="https://workspace.example.com/api/public/product-price/embed.js"></script>'
-    );
+  it('produces one-time global product price code', () => {
+    expect(buildGlobalProductCode()).toContain('MT GLOBAL PRODUCT PRICE START');
   });
 });
