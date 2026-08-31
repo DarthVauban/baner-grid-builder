@@ -44,8 +44,6 @@ import type {
 } from '../types/task';
 import type {
   BannerData,
-  ProductTableInput,
-  ProductTableRecord,
   SavedBanner,
   SavedGrid
 } from '../types/workspace';
@@ -953,12 +951,5 @@ export const api = {
     update: (id: string, input: { name: string; banner: BannerData }) =>
       request<SavedBanner>(`/api/banners/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
     remove: (id: string) => request<void>(`/api/banners/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  },
-  productTables: {
-    list: (search = '') => request<ProductTableRecord[]>(`/api/product-tables${queryString({ search })}`),
-    get: (id: string) => request<ProductTableRecord>(`/api/product-tables/${encodeURIComponent(id)}`),
-    create: (input: ProductTableInput) => request<ProductTableRecord>('/api/product-tables', { method: 'POST', body: jsonBody(input) }),
-    update: (id: string, input: ProductTableInput) => request<ProductTableRecord>(`/api/product-tables/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
-    remove: (id: string) => request<void>(`/api/product-tables/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 };

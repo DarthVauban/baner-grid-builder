@@ -1,14 +1,45 @@
 import type { IconName } from '../components/Icon';
 import type { ToolId } from '../types/tool';
 
+export type ToolCategory = 'marketing' | 'functional' | 'horoshop';
+
+export interface ToolCategoryDefinition {
+  id: ToolCategory;
+  name: string;
+  description: string;
+  icon: IconName;
+}
+
 export interface ToolDefinition {
   id: ToolId;
   name: string;
   description: string;
   path: string;
   icon: IconName;
+  category: ToolCategory;
   showInTools?: boolean;
 }
+
+export const toolCategories: ToolCategoryDefinition[] = [
+  {
+    id: 'marketing',
+    name: 'Маркетингові інструменти',
+    description: 'Банери, контент і публікації',
+    icon: 'publication'
+  },
+  {
+    id: 'functional',
+    name: 'Функціональні інструменти',
+    description: 'Сервіси для щоденної роботи',
+    icon: 'tools'
+  },
+  {
+    id: 'horoshop',
+    name: 'Інструменти Хорошоп',
+    description: 'Налаштування та дані магазину',
+    icon: 'storefront'
+  }
+];
 
 export const tools: ToolDefinition[] = [
   {
@@ -16,42 +47,48 @@ export const tools: ToolDefinition[] = [
     name: 'Кошик Хорошоп',
     description: 'Широкий кошик із компактним замовленням і великими картками рекомендованих товарів. Окремі теми для десктопа та мобільної версії.',
     path: '/tools/horoshop-cart-theme',
-    icon: 'storefront'
+    icon: 'storefront',
+    category: 'horoshop'
   },
   {
     id: 'horoshop_catalog_menu',
     name: 'Меню каталогу Хорошоп',
     description: 'Компактне оформлення чинного меню категорій Хорошоп без зміни дерева, посилань та іконок.',
     path: '/tools/horoshop-catalog-menu',
-    icon: 'catalog'
+    icon: 'catalog',
+    category: 'horoshop'
   },
   {
     id: 'popup_banners',
     name: 'Попап-банери',
     description: 'Конструктор попапів, точні товарні вибірки, правила за стікерами й каталогом, розклад та статистика показів.',
     path: '/tools/popup-banners',
-    icon: 'popup'
+    icon: 'popup',
+    category: 'marketing'
   },
   {
     id: 'online_support',
     name: 'Онлайн-підтримка',
     description: 'Діалоги з покупцями сайту, черга звернень, контакти та налаштування віджета.',
     path: '/tools/online-support',
-    icon: 'chat'
+    icon: 'chat',
+    category: 'functional'
   },
   {
     id: 'chat',
     name: 'Чат',
     description: 'Особисті діалоги з колегами та інтерактивні картки справ і публікацій у повідомленнях.',
     path: '/chat',
-    icon: 'chat'
+    icon: 'chat',
+    category: 'functional'
   },
   {
     id: 'blog_publications',
     name: 'Публікації блогу',
     description: 'Планування статей, передача матеріалів і контроль публікацій команди.',
     path: '/tools/blog-publications',
-    icon: 'blogPublications'
+    icon: 'blogPublications',
+    category: 'marketing'
   },
   {
     id: 'applications',
@@ -59,6 +96,7 @@ export const tools: ToolDefinition[] = [
     description: 'Обробка заявок з форм, статуси, коментарі, товарний snapshot і шерінг у чат.',
     path: '/tools/applications',
     icon: 'tasks',
+    category: 'functional',
     showInTools: false
   },
   {
@@ -66,7 +104,8 @@ export const tools: ToolDefinition[] = [
     name: 'Конструктор форм',
     description: 'Форми, банки, поля, дизайн pop-up і скрипти кнопок для Хорошоп.',
     path: '/tools/forms',
-    icon: 'formBuilder'
+    icon: 'formBuilder',
+    category: 'functional'
   },
   {
     id: 'used_smartphones_catalog',
@@ -74,6 +113,7 @@ export const tools: ToolDefinition[] = [
     description: 'Корпоративний каталог вживаних і відновлених смартфонів із залишками, імпортом, публікацією та заявками з вітрини.',
     path: '/catalog/products',
     icon: 'phone',
+    category: 'functional',
     showInTools: false
   },
   {
@@ -82,6 +122,7 @@ export const tools: ToolDefinition[] = [
     description: 'Окремий простір для сценаріїв попередньої оцінки техніки та майбутньої обробки Trade-in заявок.',
     path: '/trade-in/overview',
     icon: 'tradeIn',
+    category: 'functional',
     showInTools: false
   },
   {
@@ -89,7 +130,8 @@ export const tools: ToolDefinition[] = [
     name: 'Мапа магазинів',
     description: 'Торгові точки, XLSX-імпорт, кастомна SVG-мітка та віджет карти для сайту.',
     path: '/tools/store-map',
-    icon: 'location'
+    icon: 'location',
+    category: 'functional'
   },
   {
     id: 'facebook_group_publications',
@@ -97,6 +139,7 @@ export const tools: ToolDefinition[] = [
     description: 'Підготовка локалізованих промопостів, ручна черга публікацій та історія роботи з міськими Facebook-групами.',
     path: '/tools/facebook-publications',
     icon: 'publication',
+    category: 'marketing',
     showInTools: true
   },
   {
@@ -104,34 +147,31 @@ export const tools: ToolDefinition[] = [
     name: 'Супутні товари Хорошоп',
     description: 'Імпортований каталог Хорошоп, дерево модифікацій і підготовка супутніх товарів.',
     path: '/tools/horoshop-related-products',
-    icon: 'storefront'
+    icon: 'storefront',
+    category: 'horoshop'
   },
   {
     id: 'horoshop_photo_parser',
     name: 'Фото товарів Хорошоп',
     description: 'Вибірки за назвами й артикулами, парсинг фотографій, чернетки модифікацій та публікація у Хорошоп.',
     path: '/tools/horoshop-photo-parser',
-    icon: 'savedBanners'
+    icon: 'savedBanners',
+    category: 'horoshop'
   },
   {
     id: 'banner_grid',
     name: 'Банерна сітка',
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',
     path: '/tools/banner-grid',
-    icon: 'bannerGrid'
+    icon: 'bannerGrid',
+    category: 'marketing'
   },
   {
     id: 'product_selection',
     name: 'Вибірка товарів',
     description: 'Підготовка HTML-блоків із супутніми товарами, банерами та цінами.',
     path: '/tools/product-selection',
-    icon: 'productSelection'
-  },
-  {
-    id: 'product_tables',
-    name: 'Таблиці товарів',
-    description: 'Імпорт XLSX, копіювання характеристик та контроль готовності товарів.',
-    path: '/tools/product-tables',
-    icon: 'productTables'
+    icon: 'productSelection',
+    category: 'marketing'
   }
 ];

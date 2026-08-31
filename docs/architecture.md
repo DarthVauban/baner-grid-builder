@@ -38,7 +38,7 @@ assets, SPA fallbacks і централізований error handler.
 | --- | --- |
 | `access`, `auth`, `users`, `admin` | сесії, 2FA, Passkeys, ролі, tool access, користувачі й адміністрування |
 | `tasks`, `notifications`, `chat` | задачі, нагадування, live-сповіщення й командні чати |
-| `banners`, `grids`, `product-tables` | конструктори й збережені робочі артефакти |
+| `banners`, `grids` | конструктори й збережені робочі артефакти |
 | `publications`, `media`, `facebook-publications` | контент-план, редактор/медіа та ручні Facebook-публікації |
 | `applications` | форми, public embed, заявки, призначення менеджерів і коментарі |
 | `catalog` | локальний каталог смартфонів, імпорт, storefront, themes і photo parser |

@@ -178,12 +178,7 @@ test('approval flow and shared banner storage work through REST API', async () =
   );
 
   const initialPermissions = await admin.get('/api/admin/permissions').expect(200);
-  assert.equal(
-    initialPermissions.body.data.find((item) => (
-      item.role === 'editor' && item.resource === 'product_tables'
-    )).canViewAll,
-    true
-  );
+  assert.equal(initialPermissions.body.data.some((item) => item.resource === 'product_tables'), false);
 
   const directory = await admin.get('/api/admin/directory?page=1&pageSize=10').expect(200);
   assert.equal(directory.body.data.page, 1);
@@ -260,7 +255,7 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(200);
   await admin
     .put(`/api/admin/users/${pendingUser.id}/tool-access`)
-    .send({ tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'] })
+    .send({ tools: ['banner_grid', 'blog_publications', 'product_selection'] })
     .expect(200);
 
   const user = request.agent(app);
@@ -353,18 +348,18 @@ test('approval flow and shared banner storage work through REST API', async () =
   await secondUser.get('/api/grids').expect(403)
     .expect((response) => assert.equal(response.body.error.code, 'TOOL_ACCESS_DENIED'));
   await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({
-    tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'],
+    tools: ['banner_grid', 'blog_publications', 'product_selection'],
     canManageToolAccess: true
   }).expect(200);
   await secondUser.get('/api/admin/directory?page=1&pageSize=10').expect(200);
   await secondUser.get('/api/admin/integrations').expect(403);
   await secondUser.put(`/api/admin/users/${pendingUser.id}/tool-access`).send({
-    tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'],
+    tools: ['banner_grid', 'blog_publications', 'product_selection'],
     requiresTwoFactorTools: ['banner_grid']
   }).expect(403).expect((response) => assert.equal(response.body.error.code, 'PRIMARY_ADMIN_REQUIRED'));
   await secondUser.patch(`/api/admin/users/${pendingUser.id}/role`).send({ role: 'editor' }).expect(403);
   await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({
-    tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'],
+    tools: ['banner_grid', 'blog_publications', 'product_selection'],
     canManageToolAccess: false
   }).expect(200);
 
@@ -457,63 +452,6 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.equal(sharedBanners.body.data[0].isOwner, false);
   assert.equal(sharedBanners.body.data[0].owner.name, 'Test User');
 
-  const tableData = {
-    activeSheet: 'Товари',
-    sheets: [{
-      name: 'Товари',
-      headers: ['Назва товару', 'Колір'],
-      showCompletedStatus: true,
-      showUploadedStatus: true,
-      rows: [
-        { sourceIndex: 1, values: ['Смартфон', 'Чорний'], completed: false, uploaded: false },
-        { sourceIndex: 2, values: ['Навушники', 'Білі'], completed: true, uploaded: true }
-      ]
-    }]
-  };
-  const createdTable = await user
-    .post('/api/product-tables')
-    .send({ name: 'Характеристики товарів', fileName: 'products.xlsx', data: tableData })
-    .expect(201);
-  assert.equal(createdTable.body.data.rowCount, 2);
-  assert.equal(createdTable.body.data.data.sheets[0].rows[1].completed, true);
-  assert.equal(createdTable.body.data.data.sheets[0].rows[1].uploaded, true);
-  assert.equal(createdTable.body.data.data.sheets[0].showCompletedStatus, true);
-  assert.equal(createdTable.body.data.data.sheets[0].showUploadedStatus, true);
-
-  const tableId = createdTable.body.data.id;
-  const tableList = await user.get('/api/product-tables?search=Характеристики').expect(200);
-  assert.equal(tableList.body.data.length, 1);
-  assert.equal(Object.hasOwn(tableList.body.data[0], 'data'), false);
-
-  const updatedTableData = structuredClone(tableData);
-  updatedTableData.sheets[0].rows[0].completed = true;
-  updatedTableData.sheets[0].rows[0].uploaded = true;
-  await user
-    .put(`/api/product-tables/${tableId}`)
-    .send({ name: 'Готові характеристики', fileName: 'products.xlsx', data: updatedTableData })
-    .expect(200)
-    .expect((response) => {
-      assert.equal(response.body.data.name, 'Готові характеристики');
-      assert.equal(response.body.data.data.sheets[0].rows[0].completed, true);
-      assert.equal(response.body.data.data.sheets[0].rows[0].uploaded, true);
-    });
-
-  await secondUser.get(`/api/product-tables/${tableId}`).expect(404);
-  const privateTables = await secondUser.get('/api/product-tables').expect(200);
-  assert.equal(privateTables.body.data.length, 0);
-
-  await admin
-    .patch('/api/admin/permissions')
-    .send({ role: 'content_manager', resource: 'product_tables', canViewAll: true })
-    .expect(200);
-  const sharedTables = await secondUser.get('/api/product-tables').expect(200);
-  assert.equal(sharedTables.body.data.length, 1);
-  assert.equal(sharedTables.body.data[0].isOwner, false);
-  await secondUser
-    .get(`/api/product-tables/${tableId}`)
-    .expect(200)
-    .expect((response) => assert.equal(response.body.data.isOwner, false));
-
   await secondUser.get(`/api/grids/${gridId}`).expect(200);
   await secondUser.get(`/api/banners/${createdBanner.body.data.id}`).expect(200);
   await secondUser
@@ -522,21 +460,13 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(404);
   await secondUser.delete(`/api/grids/${gridId}`).expect(404);
   await secondUser.delete(`/api/banners/${createdBanner.body.data.id}`).expect(404);
-  await secondUser
-    .put(`/api/product-tables/${tableId}`)
-    .send({ name: 'Forbidden table update', fileName: 'products.xlsx', data: updatedTableData })
-    .expect(404);
-  await secondUser.delete(`/api/product-tables/${tableId}`).expect(404);
-
   await request(app).get('/api/grids').expect(401);
+  await user.get('/api/product-tables').expect(404);
   await user.delete(`/api/grids/${gridId}`).expect(204);
   await request(app).get(`/api/public/banner-grids/${gridId}/embed.js`).expect(404);
   await user.delete(`/api/banners/${createdBanner.body.data.id}`).expect(204);
-  await user.delete(`/api/product-tables/${tableId}`).expect(204);
-  await user.get(`/api/product-tables/${tableId}`).expect(404);
-
   const securityUpdate = await admin.put(`/api/admin/users/${pendingUser.id}/tool-access`).send({
-    tools: ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'],
+    tools: ['banner_grid', 'blog_publications', 'product_selection'],
     canManageToolAccess: false,
     requiresTwoFactorTools: ['banner_grid']
   }).expect(200);

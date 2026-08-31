@@ -216,7 +216,7 @@ export interface MobileDeviceFeed {
   items: MobileDevice[];
 }
 
-export type SavedDataResource = 'banner_grids' | 'saved_banners' | 'product_tables';
+export type SavedDataResource = 'banner_grids' | 'saved_banners';
 export type PermissionRole = 'editor' | 'content_manager';
 
 export interface RolePermission {

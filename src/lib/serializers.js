@@ -67,17 +67,3 @@ export function serializeBanner(row, currentUser) {
     updatedAt: row.updated_at
   };
 }
-
-export function serializeProductTable(row, currentUser) {
-  return {
-    id: row.id,
-    name: row.name,
-    fileName: row.file_name,
-    ...(row.data === undefined ? {} : { data: row.data }),
-    sheetCount: row.sheet_count,
-    rowCount: row.row_count,
-    ...serializeOwner(row, currentUser),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}

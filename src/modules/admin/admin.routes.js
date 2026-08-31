@@ -55,7 +55,7 @@ const applicationNotificationSchema = z.object({
 });
 const permissionSchema = z.object({
   role: z.enum(['editor', 'content_manager']),
-  resource: z.enum(['banner_grids', 'saved_banners', 'product_tables']),
+  resource: z.enum(['banner_grids', 'saved_banners']),
   canViewAll: z.boolean()
 });
 const mailtrapIntegrationSchema = z.object({

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
-import { tools } from '../lib/tools';
+import { toolCategories, tools } from '../lib/tools';
 
 export function ToolsPage() {
   const queryClient = useQueryClient();
@@ -41,6 +41,12 @@ export function ToolsPage() {
     .filter((tool) => !['chat', 'form_builder', 'store_map'].includes(tool.id))
     .filter((tool) => tool.showInTools !== false)
     .filter((tool) => accessByTool.get(tool.id)?.granted);
+  const visibleCategories = toolCategories
+    .map((category) => ({
+      ...category,
+      tools: visibleTools.filter((tool) => tool.category === category.id)
+    }))
+    .filter((category) => category.tools.length > 0);
 
   return (
     <div className="tools-page">
@@ -56,22 +62,36 @@ export function ToolsPage() {
 
       {visibleTools.length > 0 && (
         <section className="tools-catalog" aria-label="Доступні інструменти">
-          {visibleTools.map((tool) => {
-            const state = accessByTool.get(tool.id);
-            const content = (
-              <>
-                <span className="tool-catalog-card__icon"><Icon name={tool.icon} size={27} /></span>
-                <span><strong>{tool.name}</strong><small>{state?.blockedByTwoFactor ? 'Потрібно увімкнути 2FA у профілі.' : tool.description}</small></span>
-                <span className="tool-catalog-card__arrow"><Icon name={state?.blockedByTwoFactor ? 'security' : 'arrow'} size={20} /></span>
-              </>
-            );
+          {visibleCategories.map((category) => (
+            <details className="tool-category" key={category.id}>
+              <summary className="tool-category__summary">
+                <span className="tool-category__icon"><Icon name={category.icon} size={21} /></span>
+                <span className="tool-category__copy">
+                  <strong>{category.name}</strong>
+                  <small>{category.description} · {category.tools.length}</small>
+                </span>
+                <span className="tool-category__arrow" aria-hidden="true"><Icon name="arrow" size={18} /></span>
+              </summary>
+              <div className="tool-category__menu">
+                {category.tools.map((tool) => {
+                  const state = accessByTool.get(tool.id);
+                  const content = (
+                    <>
+                      <span className="tool-catalog-card__icon"><Icon name={tool.icon} size={21} /></span>
+                      <span><strong>{tool.name}</strong><small>{state?.blockedByTwoFactor ? 'Потрібно увімкнути 2FA у профілі.' : tool.description}</small></span>
+                      <span className="tool-catalog-card__arrow"><Icon name={state?.blockedByTwoFactor ? 'security' : 'arrow'} size={17} /></span>
+                    </>
+                  );
 
-            if (state?.accessible) {
-              return <Link className="tool-catalog-card" to={tool.path} key={tool.id}>{content}</Link>;
-            }
+                  if (state?.accessible) {
+                    return <Link className="tool-catalog-card" to={tool.path} key={tool.id}>{content}</Link>;
+                  }
 
-            return <article className="tool-catalog-card tool-catalog-card--disabled" aria-disabled="true" key={tool.id}>{content}</article>;
-          })}
+                  return <article className="tool-catalog-card tool-catalog-card--disabled" aria-disabled="true" key={tool.id}>{content}</article>;
+                })}
+              </div>
+            </details>
+          ))}
         </section>
       )}
     </div>

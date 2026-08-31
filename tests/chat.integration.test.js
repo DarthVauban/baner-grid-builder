@@ -56,7 +56,7 @@ after(async () => pool.end());
 
 test('chat access, contacts and interactive task links work through REST API', async () => {
   await planner.get('/api/chat/contacts').expect(403);
-  const defaultTools = ['banner_grid', 'blog_publications', 'product_selection', 'product_tables'];
+  const defaultTools = ['banner_grid', 'blog_publications', 'product_selection'];
   await admin.put(`/api/admin/users/${plannerId}/tool-access`).send({
     tools: [...defaultTools, 'chat'], canManageToolAccess: true
   }).expect(200);

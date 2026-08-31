@@ -18,9 +18,6 @@ import { ToolsPage } from '../pages/ToolsPage';
 import { ToolAccessRoute } from '../components/ToolAccessRoute';
 import { BlogPublicationsPage } from '../pages/BlogPublicationsPage';
 
-const ProductTablesPage = lazy(() => import('../pages/ProductTablesPage').then((module) => ({
-  default: module.ProductTablesPage
-})));
 const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({
   default: module.ChatPage
 })));
@@ -203,9 +200,6 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="product_selection" />}>
             <Route path="tools/product-selection" element={<ProductSelectionPage />} />
-          </Route>
-          <Route element={<ToolAccessRoute tool="product_tables" />}>
-            <Route path="tools/product-tables" element={<Suspense fallback={<LoadingScreen />}><ProductTablesPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="blog_publications" />}>
             <Route path="tools/blog-publications" element={<BlogPublicationsPage />} />
