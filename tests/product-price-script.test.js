@@ -61,6 +61,48 @@ test('product price embed applies one desktop old price without a mutation loop'
   assert.equal(document.querySelectorAll('.mt-product-old-price').length, 1);
 });
 
+test('product price embed does not fight Horoshop price-box reconciliation', async (t) => {
+  const nativePriceMarkup = `
+    <div class="product-price__item">
+      <meta itemprop="price" content="8999">
+      <meta itemprop="priceCurrency" content="UAH">
+      8 999 грн
+    </div>
+    <link itemprop="availability" href="https://schema.org/InStock">
+  `;
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    <main class="product">
+      <div class="product__block product__block--wide">
+        <div class="product-price"><div class="product-price__box">${nativePriceMarkup}</div></div>
+      </div>
+    </main>
+  </body></html>`, {
+    runScripts: 'dangerously',
+    url: 'https://shop.example.com/product/?mt_old_percent=10&mt_promo_price=1'
+  });
+  t.after(() => dom.window.close());
+
+  const { document, MutationObserver } = dom.window;
+  const priceBox = document.querySelector('.product-price__box');
+  let reconciliations = 0;
+  const hostObserver = new MutationObserver(() => {
+    if (!priceBox.querySelector('.mt-product-old-price') || reconciliations >= 5) return;
+    reconciliations += 1;
+    priceBox.innerHTML = nativePriceMarkup;
+  });
+  hostObserver.observe(priceBox, { childList: true, subtree: true });
+  t.after(() => hostObserver.disconnect());
+
+  const script = document.createElement('script');
+  script.textContent = productPriceEmbedScript();
+  document.head.append(script);
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 30));
+
+  assert.equal(reconciliations, 1);
+  assert.equal(document.querySelectorAll('.mt-product-old-price').length, 0);
+  assert.equal(normalizePriceText(document.querySelector('.product-price__item')?.textContent), '8 999 грн');
+});
+
 test('product price embed targets the main mobile product and ignores recommendation prices', async (t) => {
   const { dom, errors } = await render(`
     <main class="product">

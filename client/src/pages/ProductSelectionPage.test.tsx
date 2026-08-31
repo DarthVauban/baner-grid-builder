@@ -12,6 +12,8 @@ describe('ProductSelectionPage', () => {
 
     expect(screen.getByRole('button', { name: 'Копіювати async-код' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Стара й акційна ціна на сторінці товару' })).toBeInTheDocument();
+    expect(screen.getByText(/повністю видаліть попередній довгий блок/u)).toBeInTheDocument();
+    expect(screen.getByText(/Два варіанти скрипта одночасно залишати не можна/u)).toBeInTheDocument();
 
     const outputs = screen.getAllByRole('textbox') as HTMLTextAreaElement[];
     const asyncCode = outputs.find((output) => output.value.includes('/api/public/product-price/embed.js'));

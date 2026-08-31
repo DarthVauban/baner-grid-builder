@@ -63,6 +63,8 @@ export function productPriceEmbedScript() {
   }
 
   function findPriceContext() {
+    // Horoshop owns these subtrees. Only touch the stable native price boxes;
+    // broad price selectors can match skeletons or recommendation cards during hydration.
     var desktopBox = document.querySelector(
       ".product__block--wide .product-price__box"
     );
@@ -172,6 +174,8 @@ export function productPriceEmbedScript() {
       observer = new MutationObserver(function () {
         try {
           if (apply()) {
+            // Keeping a body-wide observer after our own insertion creates a
+            // reconciliation loop with Horoshop and can prevent the page from loading.
             stopObserver();
           }
         } catch (error) {
