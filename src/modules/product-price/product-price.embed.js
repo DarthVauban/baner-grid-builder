@@ -28,15 +28,15 @@ export function productPriceEmbedScript() {
   "use strict";
 
   var params = new URLSearchParams(window.location.search);
-  var enabled = params.get("mt_promo_price") === "1";
+  var promoEnabled = params.get("mt_promo_price") === "1";
   var percent = Number(params.get("mt_old_percent") || 0);
   var fixed = Number(params.get("mt_old_fixed") || 0);
   var observer = null;
   var stopTimer = null;
-  var scheduled = false;
   var styleId = "mt-product-price-styles-v1";
+  var oldPriceEnabled = percent > 0 || fixed > 0;
 
-  if (!enabled || (!(percent > 0) && !(fixed > 0))) {
+  if (!promoEnabled && !oldPriceEnabled) {
     return;
   }
 
@@ -62,30 +62,30 @@ export function productPriceEmbedScript() {
     return Number.isFinite(value) ? value : null;
   }
 
-  function resolvePriceNode(candidate) {
-    return candidate.querySelector(
-      ".product-price__item, " +
-      ".product-price__current, " +
-      ".product-price__value, " +
-      ".product-card__price"
-    ) || candidate;
-  }
+  function findPriceContext() {
+    var desktopBox = document.querySelector(
+      ".product__block--wide .product-price__box"
+    );
 
-  function findMainPrice() {
-    var selectors = [
-      ".product__block--orderBox [data-view-block='orderBox'] .product-card--main[itemprop='offers'] .product-card__price",
-      ".product__block--orderBox .product-card--main .product-card__price",
-      ".product__block--wide .product-price__item",
-      ".product__block--wide .product-price__current",
-      ".product__block--wide .product-price__value",
-      ".product__block--wide .product-price"
-    ];
+    if (desktopBox) {
+      var desktopPrice = desktopBox.querySelector(
+        ".product-price__item, .product-price__current, .product-price__value"
+      );
 
-    for (var index = 0; index < selectors.length; index += 1) {
-      var candidate = document.querySelector(selectors[index]);
+      if (desktopPrice) {
+        return { box: desktopBox, price: desktopPrice };
+      }
+    }
 
-      if (candidate) {
-        return resolvePriceNode(candidate);
+    var mobileBox = document.querySelector(
+      ".product__block--orderBox .product-card--main .product-card__price-box"
+    );
+
+    if (mobileBox) {
+      var mobilePrice = mobileBox.querySelector(".product-card__price");
+
+      if (mobilePrice) {
+        return { box: mobileBox, price: mobilePrice };
       }
     }
 
@@ -105,33 +105,39 @@ export function productPriceEmbedScript() {
   }
 
   function apply() {
-    var price = findMainPrice();
+    var context = findPriceContext();
 
-    if (!price || !price.parentElement) {
+    if (!context) {
       return false;
     }
 
+    var box = context.box;
+    var price = context.price;
     var value = parsePrice(price.textContent);
 
     if (value === null) {
       return false;
     }
 
-    var priceParent = price.parentElement;
-    var oldPrice = priceParent.querySelector(".mt-product-old-price");
-    var oldPriceText = formatOldPrice(value);
-
-    price.classList.add("mt-product-current-price");
-    priceParent.classList.add("mt-product-price-stack");
-
-    if (!oldPrice) {
-      oldPrice = document.createElement("span");
-      oldPrice.className = "mt-product-old-price";
-      priceParent.insertBefore(oldPrice, price);
+    if (promoEnabled) {
+      price.classList.add("mt-product-current-price");
     }
 
-    if (oldPrice.textContent !== oldPriceText) {
-      oldPrice.textContent = oldPriceText;
+    if (oldPriceEnabled) {
+      var oldPrice = box.querySelector(".mt-product-old-price");
+      var oldPriceText = formatOldPrice(value);
+
+      box.classList.add("mt-product-price-stack");
+
+      if (!oldPrice) {
+        oldPrice = document.createElement("span");
+        oldPrice.className = "mt-product-old-price";
+        box.insertBefore(oldPrice, box.firstChild);
+      }
+
+      if (oldPrice.textContent !== oldPriceText) {
+        oldPrice.textContent = oldPriceText;
+      }
     }
 
     return true;
@@ -149,27 +155,13 @@ export function productPriceEmbedScript() {
     }
   }
 
-  function scheduleApply() {
-    if (scheduled) {
-      return;
-    }
-
-    scheduled = true;
-    window.setTimeout(function () {
-      scheduled = false;
-
-      try {
-        apply();
-      } catch (error) {
-        stopObserver();
-      }
-    }, 0);
-  }
-
   function start() {
     try {
       injectStyles();
-      apply();
+
+      if (apply()) {
+        return;
+      }
 
       var target = document.body || document.documentElement;
 
@@ -177,10 +169,17 @@ export function productPriceEmbedScript() {
         return;
       }
 
-      observer = new MutationObserver(scheduleApply);
+      observer = new MutationObserver(function () {
+        try {
+          if (apply()) {
+            stopObserver();
+          }
+        } catch (error) {
+          stopObserver();
+        }
+      });
       observer.observe(target, {
         childList: true,
-        characterData: true,
         subtree: true
       });
       stopTimer = window.setTimeout(stopObserver, 8000);

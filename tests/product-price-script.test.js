@@ -27,7 +27,7 @@ test('product price embed is valid JavaScript and stays inactive without promo p
 
   const { dom, errors } = await render(`
     <div class="product__block product__block--wide">
-      <div class="product-price"><div class="product-price__item">8 999 грн</div></div>
+      <div class="product-price"><div class="product-price__box"><div class="product-price__item">8 999 грн</div></div></div>
     </div>
   `, '');
   t.after(() => dom.window.close());
@@ -52,6 +52,8 @@ test('product price embed applies one desktop old price without a mutation loop'
   assert.equal(document.querySelectorAll('.mt-product-old-price').length, 1);
   assert.equal(normalizePriceText(document.querySelector('.mt-product-old-price')?.textContent), '9 890 грн');
   assert.equal(document.querySelector('.product-price__item')?.classList.contains('mt-product-current-price'), true);
+  assert.equal(document.querySelector('.mt-product-old-price')?.parentElement, document.querySelector('.product-price__box'));
+  assert.equal(document.querySelector('.product-price__box')?.firstElementChild?.className, 'mt-product-old-price');
   assert.ok(document.getElementById('mt-product-price-styles-v1'));
 
   document.querySelector('.product')?.append(document.createElement('div'));
@@ -62,11 +64,15 @@ test('product price embed applies one desktop old price without a mutation loop'
 test('product price embed targets the main mobile product and ignores recommendation prices', async (t) => {
   const { dom, errors } = await render(`
     <main class="product">
-      <section class="recommendations"><div class="product-card__price">1 999 грн</div></section>
+      <section class="recommendations">
+        <div class="product-card__price-box"><div class="product-card__price">1 999 грн</div></div>
+      </section>
       <div class="product__block product__block--orderBox">
         <div data-view-block="orderBox">
           <div class="product-card product-card--main" itemprop="offers">
-            <div class="product-card__price-item"><div class="product-card__price">399 грн</div></div>
+            <div class="product-card__price-box">
+              <div class="product-card__price-item"><div class="product-card__price">399 грн</div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -80,9 +86,14 @@ test('product price embed targets the main mobile product and ignores recommenda
   assert.equal(normalizePriceText(document.querySelector('.mt-product-old-price')?.textContent), '430 грн');
   assert.equal(document.querySelector('.product-card--main .product-card__price')?.classList.contains('mt-product-current-price'), true);
   assert.equal(document.querySelector('.recommendations .product-card__price')?.classList.contains('mt-product-current-price'), false);
+  assert.equal(
+    document.querySelector('.mt-product-old-price')?.parentElement,
+    document.querySelector('.product-card--main .product-card__price-box')
+  );
+  assert.equal(document.querySelector('.product-card__price-item .mt-product-old-price'), null);
 });
 
-test('product price embed waits for delayed markup and updates an initially changing price', async (t) => {
+test('product price embed waits for delayed native price box markup', async (t) => {
   const { dom, errors } = await render('<main class="product"></main>');
   t.after(() => dom.window.close());
 
@@ -96,9 +107,33 @@ test('product price embed waits for delayed markup and updates an initially chan
 
   assert.deepEqual(errors, []);
   assert.equal(normalizePriceText(document.querySelector('.mt-product-old-price')?.textContent), '5 490 грн');
-
-  document.querySelector('.product-price__item').textContent = '5 999 грн';
-  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
-  assert.equal(normalizePriceText(document.querySelector('.mt-product-old-price')?.textContent), '6 590 грн');
+  assert.equal(document.querySelector('.mt-product-old-price')?.parentElement, document.querySelector('.product-price__box'));
   assert.equal(document.querySelectorAll('.mt-product-old-price').length, 1);
+});
+
+test('promo and old-price URL parameters work independently', async (t) => {
+  const promoOnly = await render(`
+    <div class="product__block product__block--orderBox">
+      <div class="product-card product-card--main">
+        <div class="product-card__price-box">
+          <div class="product-card__price-item"><div class="product-card__price">399 грн</div></div>
+        </div>
+      </div>
+    </div>
+  `, '?mt_promo_price=1');
+  const oldPriceOnly = await render(`
+    <div class="product__block product__block--wide">
+      <div class="product-price__box"><div class="product-price__item">8 999 грн</div></div>
+    </div>
+  `, '?mt_old_percent=10');
+  t.after(() => promoOnly.dom.window.close());
+  t.after(() => oldPriceOnly.dom.window.close());
+
+  assert.deepEqual(promoOnly.errors, []);
+  assert.equal(promoOnly.dom.window.document.querySelector('.product-card__price')?.classList.contains('mt-product-current-price'), true);
+  assert.equal(promoOnly.dom.window.document.querySelector('.mt-product-old-price'), null);
+
+  assert.deepEqual(oldPriceOnly.errors, []);
+  assert.equal(normalizePriceText(oldPriceOnly.dom.window.document.querySelector('.mt-product-old-price')?.textContent), '9 890 грн');
+  assert.equal(oldPriceOnly.dom.window.document.querySelector('.product-price__item')?.classList.contains('mt-product-current-price'), false);
 });
