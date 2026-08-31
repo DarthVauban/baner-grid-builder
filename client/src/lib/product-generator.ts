@@ -628,6 +628,8 @@ export function buildGlobalProductCode(): string {
     var enabled = params.get("mt_promo_price") === "1";
     var percent = Number(params.get("mt_old_percent") || 0);
     var fixed = Number(params.get("mt_old_fixed") || 0);
+    var observer = null;
+    var stopTimer = null;
 
     if (!enabled || (!(percent > 0) && !(fixed > 0))) {
       return;
@@ -645,75 +647,151 @@ export function buildGlobalProductCode(): string {
       return Number.isFinite(value) ? value : null;
     }
 
-    function markCurrentPrice(price) {
-      var nestedPrice = price.querySelector(
+    function resolvePriceNode(candidate) {
+      return candidate.querySelector(
         ".product-price__item, " +
         ".product-price__current, " +
         ".product-price__value, " +
         ".product-card__price"
-      );
+      ) || candidate;
+    }
+
+    function findMainPrice() {
+      var selectors = [
+        ".product__block--orderBox [data-view-block='orderBox'] .product-card--main[itemprop='offers'] .product-card__price",
+        ".product__block--orderBox .product-card--main .product-card__price",
+        ".product__block--wide .product-price__item",
+        ".product__block--wide .product-price__current",
+        ".product__block--wide .product-price__value",
+        ".product__block--wide .product-price"
+      ];
+
+      for (var i = 0; i < selectors.length; i += 1) {
+        var candidate = document.querySelector(selectors[i]);
+
+        if (candidate) {
+          return resolvePriceNode(candidate);
+        }
+      }
+
+      return null;
+    }
+
+    function markCurrentPrice(price) {
+      var nestedPrice = resolvePriceNode(price);
 
       price.classList.add("mt-product-current-price");
 
-      if (nestedPrice) {
+      if (nestedPrice !== price) {
         nestedPrice.classList.add("mt-product-current-price");
       }
     }
 
-    function apply() {
-      var selectors = [
-        ".product-card--main .product-card__price",
-        ".product-price__item",
-        ".product-price__current",
-        ".product-price__value",
-        ".product-card__price",
-        ".product-price",
-        ".product__price",
-        ".product-info__price",
-        "[itemprop='price']:not(meta)"
-      ];
+    function formatOldPrice(value) {
+      var oldValue = percent > 0
+        ? Math.floor((value * (1 + percent / 100)) / 10) * 10
+        : Math.round((value + fixed) * 100) / 100;
+      var fractionDigits = Number.isInteger(oldValue) ? 0 : 2;
 
-      for (var i = 0; i < selectors.length; i += 1) {
-        var nodes = document.querySelectorAll(selectors[i]);
-
-        for (var j = 0; j < nodes.length; j += 1) {
-          var price = nodes[j];
-          var value = parsePrice(price.textContent);
-
-          if (value === null || price.querySelector(".mt-product-old-price")) {
-            continue;
-          }
-
-          var oldValue = percent > 0
-            ? Math.floor((value * (1 + percent / 100)) / 10) * 10
-            : Math.round((value + fixed) * 100) / 100;
-          var fractionDigits = Number.isInteger(oldValue) ? 0 : 2;
-          var oldPrice = document.createElement("span");
-
-          oldPrice.className = "mt-product-old-price";
-          oldPrice.textContent = new Intl.NumberFormat("uk-UA", {
-            minimumFractionDigits: fractionDigits,
-            maximumFractionDigits: fractionDigits
-          }).format(oldValue) + " грн";
-
-          markCurrentPrice(price);
-          price.parentNode.classList.add("mt-product-price-stack");
-          price.parentNode.insertBefore(oldPrice, price);
-          return true;
-        }
-      }
-
-      return false;
+      return new Intl.NumberFormat("uk-UA", {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits
+      }).format(oldValue) + " грн";
     }
 
-    apply();
+    function apply() {
+      var price = findMainPrice();
 
-    var observer = new MutationObserver(apply);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+      if (!price || !price.parentElement) {
+        return false;
+      }
+
+      var value = parsePrice(price.textContent);
+
+      if (value === null) {
+        return false;
+      }
+
+      var priceParent = price.parentElement;
+      var oldPrice = priceParent.querySelector(".mt-product-old-price");
+      var oldPriceText = formatOldPrice(value);
+
+      price.setAttribute("data-mt-product-price-applied", "true");
+      markCurrentPrice(price);
+      priceParent.classList.add("mt-product-price-stack");
+
+      if (!oldPrice) {
+        oldPrice = document.createElement("span");
+        oldPrice.className = "mt-product-old-price";
+        priceParent.insertBefore(oldPrice, price);
+      }
+
+      if (oldPrice.textContent !== oldPriceText) {
+        oldPrice.textContent = oldPriceText;
+      }
+
+      return true;
+    }
+
+    function stopObserver() {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+
+      if (stopTimer !== null) {
+        window.clearTimeout(stopTimer);
+        stopTimer = null;
+      }
+    }
+
+    function start() {
+      try {
+        if (apply()) {
+          return;
+        }
+
+        var target = document.body || document.documentElement;
+
+        if (!target) {
+          return;
+        }
+
+        observer = new MutationObserver(function () {
+          try {
+            if (apply()) {
+              stopObserver();
+            }
+          } catch (error) {
+            stopObserver();
+          }
+        });
+
+        observer.observe(target, {
+          childList: true,
+          subtree: true
+        });
+
+        stopTimer = window.setTimeout(stopObserver, 8000);
+      } catch (error) {
+        stopObserver();
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start, { once: true });
+    } else {
+      start();
+    }
   })();
 </script>
 <!-- MT GLOBAL PRODUCT PRICE END -->`;
+}
+
+export function buildMinifiedGlobalProductCode(): string {
+  return buildGlobalProductCode()
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('');
 }

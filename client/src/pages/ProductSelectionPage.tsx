@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { copyToClipboard } from '../lib/banner-generator';
-import { buildGlobalProductCode, buildProductsCode } from '../lib/product-generator';
+import { buildGlobalProductCode, buildMinifiedGlobalProductCode, buildProductsCode } from '../lib/product-generator';
 import { useToast } from '../toast/ToastContext';
 
 export function ProductSelectionPage() {
@@ -14,6 +14,7 @@ export function ProductSelectionPage() {
   const { showToast } = useToast();
   const code = useMemo(() => buildProductsCode({ imageUrl, linkUrl, alt, oldPricePercent: percent, oldPriceFixed: fixed, shareDescription: description }), [imageUrl, linkUrl, alt, percent, fixed, description]);
   const globalCode = useMemo(buildGlobalProductCode, []);
+  const minifiedGlobalCode = useMemo(buildMinifiedGlobalProductCode, []);
 
   async function copy(text: string, success: string) {
     try { await copyToClipboard(text); showToast(success); }
@@ -45,6 +46,10 @@ export function ProductSelectionPage() {
       <section className="tool-panel code-panel">
         <header className="tool-panel__header"><div><p className="eyebrow">Глобальний код</p><h2>Стара ціна на сторінці товару</h2><p>Цей фрагмент потрібно встановити один раз у глобальний шаблон.</p></div><button className="button button--primary" onClick={() => void copy(globalCode, 'Глобальний код скопійовано.')}><Icon name="copy" size={17} /> Копіювати глобальний код</button></header>
         <textarea className="code-output" value={globalCode} readOnly spellCheck={false} />
+      </section>
+      <section className="tool-panel code-panel">
+        <header className="tool-panel__header"><div><p className="eyebrow">Мініфікований код</p><h2>Компактна версія глобального скрипта</h2><p>Той самий безпечний скрипт без зайвих відступів і переносів рядків.</p></div><button className="button button--primary" onClick={() => void copy(minifiedGlobalCode, 'Мініфікований глобальний код скопійовано.')}><Icon name="copy" size={17} /> Копіювати мініфікований код</button></header>
+        <textarea className="code-output" value={minifiedGlobalCode} readOnly spellCheck={false} />
       </section>
     </div>
   );
