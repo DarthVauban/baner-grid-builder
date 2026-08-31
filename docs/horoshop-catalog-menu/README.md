@@ -56,6 +56,11 @@ data-mt-catalog-theme="compact-columns"
 
 ## DOM-контракт Хорошопа
 
+Загальні правила розділення desktop/mobile зафіксовані в
+[DOM-контракті вітрини Хорошопа](../horoshop-storefront-dom-contract.md). Цей адаптер є
+`desktop-only`: його правила обмежені `@media (min-width: 1024px)` і не повинні змінювати mobile чи
+tablet DOM.
+
 Контракт перевірено 2026-08-23 на `mobiletrend.com.ua` при viewport `1366×768`:
 
 - корінь: `.j-products-menu`;

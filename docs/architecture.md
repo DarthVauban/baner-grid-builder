@@ -166,6 +166,11 @@ OpenSearch query runtime, widget, search analytics і versioned linguistic rules
 Codex не є runtime dependency. Для accessories він може лише створити reviewable proposals; імпорт
 не публікує їх у Хорошоп. Для майбутньої лінгвістики він також буде proposal-only.
 
+Публічна desktop- і mobile-вітрини Хорошопа мають окремі DOM- та interaction-контракти. Embed-код
+визначає surface за DOM-коренем, а не лише viewport, і підтримує окремі selector maps та fixtures.
+Канонічні правила, поточні cart/product selectors і матриця перевірки описані в
+[DOM-контракті вітрини Хорошопа](horoshop-storefront-dom-contract.md).
+
 ## Workers і відмовостійкість
 
 - reminders і publication checks блокують рядки через `FOR UPDATE SKIP LOCKED`;

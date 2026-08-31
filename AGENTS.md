@@ -9,6 +9,7 @@
 - Never edit `.env`, generated `dist/`, `storage/`, `test-results/`, or user-owned runtime data.
 - Never edit an already-applied migration. Add a new numbered migration and keep it transactional and compatible with the repository migration runner.
 - Preserve unrelated user changes. Do not rewrite or delete existing catalog, storefront, deployment, or backup behavior while adding search functionality.
+- Treat Horoshop desktop and mobile storefronts as separate DOM and interaction contracts. Never reuse a selector or flow across surfaces without independent evidence; every Horoshop embed change must test both surfaces or document an explicit `desktop-only`/`mobile-only` boundary. A mobile browser check requires both a mobile User-Agent and a mobile viewport.
 - After completing and verifying each requested change, stage only the files owned by that change, create a descriptive commit, and push it to the `dev` branch without waiting for a separate instruction.
 - Do not monitor CI or deployment results after a successful push. Report the pushed commit; the user will report deployment failures separately.
 
