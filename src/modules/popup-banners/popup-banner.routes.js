@@ -65,14 +65,15 @@ const targetPageUrlSchema = z.string().trim().max(2000).default('').refine((valu
   }
 }, 'Вкажіть повне посилання сторінки з http:// або https://.');
 const targetingSchema = z.object({
-  mode: z.enum(['all_pages', 'all_products', 'products', 'rules', 'target_page']),
+  mode: z.enum(['all_pages', 'all_products', 'products', 'rules', 'target_page', 'out_of_stock']),
   match: z.enum(['all', 'any']).default('all'),
   stickers: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   brands: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   categoryIds: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   conditions: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   targetPageUrl: targetPageUrlSchema,
-  urlContains: z.array(z.string().trim().min(1).max(500)).max(30).default([])
+  urlContains: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
+  recommendationLimit: z.number().int().min(3).max(8).default(6)
 }).superRefine((value, context) => {
   if (value.mode === 'target_page' && !value.targetPageUrl) {
     context.addIssue({

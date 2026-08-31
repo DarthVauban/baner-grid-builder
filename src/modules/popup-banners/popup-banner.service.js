@@ -45,7 +45,8 @@ const defaultTargeting = {
   categoryIds: [],
   conditions: [],
   targetPageUrl: '',
-  urlContains: []
+  urlContains: [],
+  recommendationLimit: 6
 };
 
 const defaultBehavior = {
@@ -139,7 +140,7 @@ function normalizeStyles(value) {
 function normalizeTargeting(value) {
   const source = object(value);
   return {
-    mode: ['all_pages', 'all_products', 'products', 'rules', 'target_page'].includes(source.mode)
+    mode: ['all_pages', 'all_products', 'products', 'rules', 'target_page', 'out_of_stock'].includes(source.mode)
       ? source.mode : defaultTargeting.mode,
     match: source.match === 'any' ? 'any' : 'all',
     stickers: stringList(source.stickers),
@@ -147,7 +148,8 @@ function normalizeTargeting(value) {
     categoryIds: stringList(source.categoryIds),
     conditions: stringList(source.conditions),
     targetPageUrl: normalizeTargetPageUrl(source.targetPageUrl),
-    urlContains: stringList(source.urlContains, 30).map((item) => item.toLocaleLowerCase('uk-UA'))
+    urlContains: stringList(source.urlContains, 30).map((item) => item.toLocaleLowerCase('uk-UA')),
+    recommendationLimit: Math.min(8, Math.max(3, Number(source.recommendationLimit) || defaultTargeting.recommendationLimit))
   };
 }
 
@@ -595,11 +597,12 @@ function templateText(value, product) {
   return Object.entries(replacements).reduce((text, [token, replacement]) => text.replaceAll(token, replacement), String(value || ''));
 }
 
-function matchesTargeting(campaign, product, pageUrl, targets) {
+function matchesTargeting(campaign, product, pageUrl, targets, stockState) {
   const targeting = normalizeTargeting(campaign.targeting);
   if (targeting.mode === 'target_page') return matchesTargetPage(targeting.targetPageUrl, pageUrl);
   if (targeting.mode === 'all_pages') return true;
   if (!product) return false;
+  if (targeting.mode === 'out_of_stock') return stockState === 'out_of_stock';
   if (targeting.mode === 'all_products') return true;
   if (targeting.mode === 'products') {
     return targets.some((target) => target.product_id === product.id
@@ -659,12 +662,117 @@ async function resolveProduct(connection, article, pageUrl) {
     brand: String(row.brand || ''),
     categoryId: String(row.category_external_id || ''),
     price: [price, currency].filter(Boolean).join(' '),
+    priceValue: price,
     condition: String(row.modification_condition || row.condition_label || ''),
     stickers: [...stickers.values()]
   };
 }
 
-export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', requestOrigin = '' }) {
+function isAvailable(value) {
+  const availability = String(value || '').trim().toLocaleLowerCase('uk-UA');
+  if (!availability) return false;
+  return !/(немає\s+(?:в\s+)?наявност|нет\s+(?:в\s+)?наличи|out[\s-]*of[\s-]*stock|not[\s-]*available|закінчив|отсутств)/iu.test(availability);
+}
+
+function sourceIdentifier(value, fallback = '') {
+  const source = object(value);
+  return String(source.id ?? source.external_id ?? source.product_id ?? fallback ?? '').trim();
+}
+
+function numericValue(value) {
+  const normalized = String(value || '').replace(/[\s\u00a0]/gu, '').replace(',', '.');
+  const match = normalized.match(/-?\d+(?:\.\d+)?/u);
+  return match ? Number(match[0]) : null;
+}
+
+async function resolveOutOfStockRecommendations(connection, product, limit) {
+  if (!product?.categoryId) return [];
+  const candidates = await query(
+    `SELECT product.id, product.external_id, product.sku, product.titles,
+            product.price, product.old_price, product.currency, product.availability,
+            product.visible, product.primary_image_url, product.canonical_url,
+            product.popularity, product.source_data,
+            modification.id AS modification_id, modification.external_id AS modification_external_id,
+            modification.sku AS modification_sku, modification.titles AS modification_titles,
+            modification.price AS modification_price, modification.old_price AS modification_old_price,
+            modification.currency AS modification_currency, modification.availability AS modification_availability,
+            modification.visible AS modification_visible, modification.image_url AS modification_image_url,
+            modification.page_url AS modification_page_url, modification.source_data AS modification_source_data
+     FROM search_horoshop_products AS product
+     LEFT JOIN search_horoshop_modifications AS modification
+       ON modification.product_id = product.id
+      AND modification.connection_id = $1 AND modification.generation = $2
+      AND modification.active = TRUE
+     WHERE product.connection_id = $1 AND product.generation = $2
+       AND product.active = TRUE AND product.visible = TRUE
+       AND product.category_external_id = $3 AND product.id <> $4
+     ORDER BY product.updated_at DESC, modification.updated_at DESC`,
+    [connection.id, connection.generation, product.categoryId, product.id]
+  );
+  const grouped = new Map();
+  for (const row of candidates.rows) {
+    let candidate = grouped.get(row.id);
+    if (!candidate) {
+      candidate = { row, offers: [] };
+      grouped.set(row.id, candidate);
+    }
+    if (row.modification_id && row.modification_visible !== false && isAvailable(row.modification_availability)) {
+      candidate.offers.push({
+        modificationId: row.modification_id,
+        article: row.modification_sku || row.sku,
+        title: localizedTitle(row.modification_titles) || localizedTitle(row.titles),
+        price: row.modification_price || row.price || '',
+        oldPrice: row.modification_old_price || row.old_price || '',
+        currency: row.modification_currency || row.currency || '',
+        imageUrl: row.modification_image_url || row.primary_image_url || '',
+        pageUrl: row.modification_page_url || row.canonical_url || '',
+        buyId: sourceIdentifier(row.modification_source_data, sourceIdentifier(row.source_data, row.external_id))
+      });
+    }
+  }
+  const currentPrice = numericValue(product.priceValue);
+  const recommendations = [];
+  for (const { row, offers } of grouped.values()) {
+    if (isAvailable(row.availability)) {
+      offers.push({
+        modificationId: null,
+        article: row.sku,
+        title: localizedTitle(row.titles),
+        price: row.price || '',
+        oldPrice: row.old_price || '',
+        currency: row.currency || '',
+        imageUrl: row.primary_image_url || '',
+        pageUrl: row.canonical_url || '',
+        buyId: sourceIdentifier(row.source_data, row.external_id)
+      });
+    }
+    const validOffers = offers.filter((offer) => offer.title && offer.imageUrl && offer.pageUrl && offer.buyId);
+    if (!validOffers.length) continue;
+    validOffers.sort((left, right) => {
+      const leftPrice = numericValue(left.price);
+      const rightPrice = numericValue(right.price);
+      if (currentPrice !== null && leftPrice !== null && rightPrice !== null) {
+        return Math.abs(leftPrice - currentPrice) - Math.abs(rightPrice - currentPrice);
+      }
+      return (leftPrice ?? Number.MAX_SAFE_INTEGER) - (rightPrice ?? Number.MAX_SAFE_INTEGER);
+    });
+    recommendations.push({
+      productId: row.id,
+      ...validOffers[0],
+      popularity: numericValue(row.popularity) || 0,
+      priceDistance: currentPrice === null || numericValue(validOffers[0].price) === null
+        ? Number.MAX_SAFE_INTEGER : Math.abs(numericValue(validOffers[0].price) - currentPrice)
+    });
+  }
+  recommendations.sort((left, right) => left.priceDistance - right.priceDistance || right.popularity - left.popularity);
+  return recommendations.slice(0, limit).map(({
+    popularity: _popularity,
+    priceDistance: _priceDistance,
+    ...recommendation
+  }) => recommendation);
+}
+
+export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', stockState = 'unknown', requestOrigin = '' }) {
   const pageUrl = normalizedPageUrl(rawPageUrl);
   if (!pageUrl) throw new AppError(422, 'POPUP_PAGE_URL_INVALID', 'Не вдалося визначити сторінку для попапа.');
   const connectionResult = await query(
@@ -688,16 +796,23 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
     const targets = campaign.targeting?.mode === 'products'
       ? (await query('SELECT product_id, modification_id FROM popup_banner_product_targets WHERE campaign_id = $1', [campaign.id])).rows
       : [];
-    if (!matchesTargeting(campaign, product, pageUrl, targets)) continue;
+    if (!matchesTargeting(campaign, product, pageUrl, targets, stockState)) continue;
     const content = normalizeContent(campaign.content);
+    const targeting = normalizeTargeting(campaign.targeting);
+    const recommendations = targeting.mode === 'out_of_stock'
+      ? await resolveOutOfStockRecommendations(connection, product, targeting.recommendationLimit)
+      : [];
+    if (targeting.mode === 'out_of_stock' && recommendations.length === 0) continue;
     return {
       campaign: {
         publicId: campaign.public_id,
+        mode: targeting.mode,
         content: Object.fromEntries(Object.entries(content).map(([key, value]) => [key, templateText(value, product)])),
         styles: normalizeStyles(campaign.styles),
         behavior: normalizeBehavior(campaign.behavior)
       },
-      product: product ? { article: product.sku, title: product.title } : null
+      product: product ? { article: product.sku, title: product.title } : null,
+      recommendations
     };
   }
   return null;
@@ -757,6 +872,19 @@ export function popupEmbedScript(origin) {
     return '';
   }
 
+  function stockState() {
+    if (document.querySelector('.product-header__availability--out-of-stock, [data-availability="out-of-stock"]')) return 'out_of_stock';
+    const availability = document.querySelector(
+      '.product-header__availability, [itemprop="availability"], [data-product-availability], [data-availability]'
+    );
+    if (!availability) return 'unknown';
+    const value = [availability.getAttribute('content'), availability.getAttribute('href'), availability.dataset?.availability, availability.textContent]
+      .filter(Boolean).join(' ').toLocaleLowerCase('uk-UA');
+    if (/(немає\\s+(?:в\\s+)?наявност|нет\\s+(?:в\\s+)?наличи|out[\\s-]*of[\\s-]*stock|not[\\s-]*available|schema\\.org\\/outofstock)/iu.test(value)) return 'out_of_stock';
+    if (/(в\\s+наявност|в\\s+наличи|in[\\s-]*stock|schema\\.org\\/instock|на\\s+складі)/iu.test(value)) return 'in_stock';
+    return 'unknown';
+  }
+
   function event(publicId, eventType, productArticle, metadata = {}) {
     fetch(new URL('/api/public/popup-banners/events', apiOrigin), {
       method: 'POST',
@@ -791,6 +919,41 @@ export function popupEmbedScript(origin) {
     else localStorage.setItem(key, String(Date.now()));
   }
 
+  function nativeBuy(recommendation) {
+    const buyId = String(recommendation.buyId || '').trim();
+    if (!buyId) return false;
+    const container = [...document.querySelectorAll('.j-product-container[data-id]')]
+      .find((node) => String(node.dataset.id || '') === buyId);
+    let button = container?.querySelector('.j-buy-button-add');
+    let proxy = null;
+    if (!button) {
+      proxy = document.createElement('div');
+      proxy.className = 'j-product-container';
+      proxy.dataset.id = buyId;
+      proxy.hidden = true;
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'j-buy-button-add';
+      button.id = 'j-buy-button-widget-' + buyId.replace(/[^a-z0-9_-]/giu, '-');
+      button.dataset.skin = 'default';
+      button.dataset.quantity = '1';
+      button.dataset.gift = '0';
+      button.dataset.cartproducttype = 'product';
+      proxy.append(button);
+      document.body.append(proxy);
+    }
+    button.click();
+    if (proxy) setTimeout(() => proxy.remove(), 1500);
+    return true;
+  }
+
+  function money(value, currency) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const currencyText = String(currency || '').trim().toUpperCase() === 'UAH' ? 'грн' : String(currency || '').trim();
+    return [raw, currencyText].filter(Boolean).join(' ');
+  }
+
   function render(payload, productArticle) {
     if (currentHost || isSuppressed(payload)) return;
     const { campaign } = payload;
@@ -801,7 +964,7 @@ export function popupEmbedScript(origin) {
     host.style.zIndex = '2147482990';
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = \`:host{all:initial}.backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.56);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}.card{position:relative;width:min(var(--width),100%);max-height:calc(100vh - 36px);overflow:auto;border-radius:var(--radius);background:var(--bg);box-shadow:0 28px 90px rgba(15,23,42,.3);animation:enter .2s ease-out}.content{padding:30px}.image{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) - 7px) calc(var(--radius) - 7px) 0 0}.eyebrow{margin:0 0 8px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.title{margin:0;color:var(--text);font-size:clamp(24px,4vw,34px);line-height:1.08}.body{margin:14px 0 0;color:var(--muted);font-size:16px;line-height:1.58;white-space:pre-line}.ack{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;margin:20px 0 0;padding:14px;border-radius:14px;color:var(--checkbox-text);background:color-mix(in srgb,var(--checkbox) 9%,var(--bg));font-size:14px;line-height:1.4}.ack input{display:grid;place-content:center;width:18px;height:18px;margin:0;appearance:none;border:1.5px solid color-mix(in srgb,var(--checkbox) 55%,#fff);border-radius:5px;background:var(--bg);cursor:pointer}.ack input:before{width:8px;height:4px;border-bottom:2px solid #fff;border-left:2px solid #fff;content:'';transform:rotate(-45deg) scale(0);transition:transform .12s ease}.ack input:checked{border-color:var(--checkbox);background:var(--checkbox)}.ack input:checked:before{transform:rotate(-45deg) scale(1)}.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.button{min-height:44px;border:1px solid transparent;border-radius:12px;padding:10px 18px;font:inherit;font-weight:750;cursor:pointer}.primary{border-color:var(--primary-bg);background:var(--primary-bg);color:var(--primary-text)}.primary:disabled{opacity:.45;cursor:not-allowed}.secondary{border-color:color-mix(in srgb,var(--secondary-text) 16%,transparent);background:var(--secondary-bg);color:var(--secondary-text)}.close{position:absolute;z-index:2;top:12px;right:12px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(15,23,42,.72);color:#fff;font-size:24px;line-height:1;cursor:pointer}.corner{align-items:flex-end;justify-content:flex-end;background:transparent;pointer-events:none}.corner .card{pointer-events:auto;box-shadow:0 20px 65px rgba(15,23,42,.25)}.bottom-sheet{align-items:flex-end}.bottom-sheet .card{width:min(760px,100%);border-radius:var(--radius) var(--radius) 0 0;margin-bottom:-18px}@keyframes enter{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:600px){.backdrop{padding:10px;align-items:flex-end}.card{border-radius:20px 20px 0 0;margin-bottom:-10px}.content{padding:24px 20px}.actions{flex-direction:column-reverse}.button{width:100%}}\`;
+    style.textContent = \`:host{all:initial}.backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.56);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}.card{position:relative;width:min(var(--width),100%);max-height:calc(100vh - 36px);overflow:auto;border-radius:var(--radius);background:var(--bg);box-shadow:0 28px 90px rgba(15,23,42,.3);animation:enter .2s ease-out}.content{padding:30px}.image{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) - 7px) calc(var(--radius) - 7px) 0 0}.eyebrow{margin:0 0 8px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.title{margin:0;color:var(--text);font-size:clamp(24px,4vw,34px);line-height:1.08}.body{margin:14px 0 0;color:var(--muted);font-size:16px;line-height:1.58;white-space:pre-line}.ack{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;margin:20px 0 0;padding:14px;border-radius:14px;color:var(--checkbox-text);background:color-mix(in srgb,var(--checkbox) 9%,var(--bg));font-size:14px;line-height:1.4}.ack input{display:grid;place-content:center;width:18px;height:18px;margin:0;appearance:none;border:1.5px solid color-mix(in srgb,var(--checkbox) 55%,#fff);border-radius:5px;background:var(--bg);cursor:pointer}.ack input:before{width:8px;height:4px;border-bottom:2px solid #fff;border-left:2px solid #fff;content:'';transform:rotate(-45deg) scale(0);transition:transform .12s ease}.ack input:checked{border-color:var(--checkbox);background:var(--checkbox)}.ack input:checked:before{transform:rotate(-45deg) scale(1)}.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.button{min-height:44px;border:1px solid transparent;border-radius:12px;padding:10px 18px;font:inherit;font-weight:750;cursor:pointer}.primary{border-color:var(--primary-bg);background:var(--primary-bg);color:var(--primary-text)}.primary:disabled{opacity:.45;cursor:not-allowed}.secondary{border-color:color-mix(in srgb,var(--secondary-text) 16%,transparent);background:var(--secondary-bg);color:var(--secondary-text)}.close{position:absolute;z-index:2;top:12px;right:12px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(15,23,42,.72);color:#fff;font-size:24px;line-height:1;cursor:pointer}.recommendations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}.recommendation{display:grid;grid-template-rows:auto minmax(44px,1fr) auto auto;gap:10px;min-width:0;padding:12px;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);border-radius:16px;background:color-mix(in srgb,var(--bg) 94%,var(--text));text-decoration:none}.recommendation-image{display:block;width:100%;aspect-ratio:1.2;object-fit:contain;border-radius:12px;background:#f6f7f9}.recommendation-title{display:-webkit-box;overflow:hidden;margin:0;color:var(--text);font-size:14px;font-weight:650;line-height:1.4;text-decoration:none;-webkit-box-orient:vertical;-webkit-line-clamp:2}.recommendation-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px}.recommendation-price strong{color:var(--text);font-size:18px}.recommendation-price del{color:var(--muted);font-size:12px}.recommendation-buy{width:100%;min-height:42px;border:1px solid var(--primary-bg);border-radius:11px;background:var(--primary-bg);color:var(--primary-text);font:750 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.recommendation-buy:disabled{opacity:.65;cursor:wait}.corner{align-items:flex-end;justify-content:flex-end;background:transparent;pointer-events:none}.corner .card{pointer-events:auto;box-shadow:0 20px 65px rgba(15,23,42,.25)}.bottom-sheet{align-items:flex-end}.bottom-sheet .card{width:min(760px,100%);border-radius:var(--radius) var(--radius) 0 0;margin-bottom:-18px}@keyframes enter{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:760px){.recommendations{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}.recommendation{flex:0 0:min(74vw,260px);scroll-snap-align:start}}@media(max-width:600px){.backdrop{padding:10px;align-items:flex-end}.card{border-radius:20px 20px 0 0;margin-bottom:-10px}.content{padding:24px 20px}.actions{flex-direction:column-reverse}.button{width:100%}.recommendations{margin-right:-20px;padding-right:20px}}\`;
     style.textContent += \`.eyebrow{font-size:var(--eyebrow-size)}.title{font-size:var(--title-size)}.body{font-size:var(--body-size)}.ack{font-size:var(--ack-size)}.ack input:before{border-bottom-color:var(--checkbox-check);border-left-color:var(--checkbox-check)}.button{font-size:var(--button-size)}.bottom-sheet .card{width:min(var(--width),100%)}\`;
     shadow.append(style);
     const backdrop = document.createElement('div');
@@ -843,6 +1006,34 @@ export function popupEmbedScript(origin) {
     if (campaign.content.eyebrow) { const node = document.createElement('p'); node.className = 'eyebrow'; node.textContent = campaign.content.eyebrow; content.append(node); }
     const title = document.createElement('h2'); title.className = 'title'; title.textContent = campaign.content.title; content.append(title);
     const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body);
+    if (campaign.mode === 'out_of_stock') {
+      const recommendations = document.createElement('div'); recommendations.className = 'recommendations';
+      for (const recommendation of payload.recommendations || []) {
+        const item = document.createElement('article'); item.className = 'recommendation';
+        const imageLink = document.createElement('a'); imageLink.href = recommendation.pageUrl;
+        imageLink.addEventListener('click', () => event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article }));
+        if (recommendation.imageUrl) {
+          const image = document.createElement('img'); image.className = 'recommendation-image'; image.src = recommendation.imageUrl; image.alt = recommendation.title; image.loading = 'lazy'; imageLink.append(image);
+        }
+        const itemTitle = document.createElement('a'); itemTitle.className = 'recommendation-title'; itemTitle.href = recommendation.pageUrl; itemTitle.textContent = recommendation.title;
+        itemTitle.addEventListener('click', () => event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article }));
+        const price = document.createElement('div'); price.className = 'recommendation-price';
+        const currentPrice = document.createElement('strong'); currentPrice.textContent = money(recommendation.price, recommendation.currency); price.append(currentPrice);
+        if (recommendation.oldPrice && recommendation.oldPrice !== recommendation.price) { const oldPrice = document.createElement('del'); oldPrice.textContent = money(recommendation.oldPrice, recommendation.currency); price.append(oldPrice); }
+        const buy = document.createElement('button'); buy.className = 'recommendation-buy'; buy.type = 'button'; buy.textContent = 'Купити';
+        buy.addEventListener('click', () => {
+          buy.disabled = true; buy.textContent = 'Додаємо…';
+          event(campaign.publicId, 'click', productArticle, { action: 'add_to_cart', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article });
+          if (nativeBuy(recommendation)) setTimeout(() => { host.remove(); currentHost = null; }, 180);
+          else { buy.disabled = false; buy.textContent = 'Купити'; }
+        });
+        item.append(imageLink, itemTitle, price, buy); recommendations.append(item);
+      }
+      content.append(recommendations); card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
+      currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
+      requestAnimationFrame(() => shadow.querySelector('.recommendation-buy')?.focus());
+      return;
+    }
     let acknowledgement = null;
     if (campaign.behavior.requireAcknowledgement) {
       const label = document.createElement('label'); label.className = 'ack';
@@ -876,9 +1067,11 @@ export function popupEmbedScript(origin) {
     pendingTimer = null;
     currentHost?.remove(); currentHost = null;
     const productArticle = article();
+    const productStockState = stockState();
     const url = new URL('/api/public/popup-banners/resolve', apiOrigin);
     url.searchParams.set('pageUrl', location.href);
     if (productArticle) url.searchParams.set('article', productArticle);
+    url.searchParams.set('stockState', productStockState);
     try {
       const response = await fetch(url, { headers: { accept: 'application/json' } });
       if (!response.ok) return;
@@ -893,6 +1086,13 @@ export function popupEmbedScript(origin) {
 
   evaluate();
   setInterval(() => { if (location.href !== currentUrl) evaluate(); }, 1000);
+  let observedStockState = stockState();
+  new MutationObserver(() => {
+    const nextStockState = stockState();
+    if (nextStockState === observedStockState) return;
+    observedStockState = nextStockState;
+    evaluate();
+  }).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'content', 'href', 'data-availability'] });
 })();`;
 }
 

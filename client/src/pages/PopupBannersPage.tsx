@@ -33,6 +33,7 @@ const layoutLabels: Record<PopupLayout, string> = {
 };
 
 const targetModeLabels: Record<PopupTargetMode, string> = {
+  out_of_stock: 'Товар відсутній',
   products: 'Вказані товари',
   rules: 'Умови каталогу',
   target_page: 'Цільова сторінка',
@@ -83,7 +84,8 @@ function emptyCampaign(): PopupCampaignInput {
       categoryIds: [],
       conditions: [],
       targetPageUrl: '',
-      urlContains: []
+      urlContains: [],
+      recommendationLimit: 6
     },
     behavior: {
       delayMs: 300,
@@ -201,6 +203,7 @@ function LayoutPicker({ value, onChange }: { value: PopupLayout; onChange: (valu
 
 function TargetModePicker({ value, onChange }: { value: PopupTargetMode; onChange: (value: PopupTargetMode) => void }) {
   const modes: Array<{ value: PopupTargetMode; icon: Parameters<typeof Icon>[0]['name']; description: string }> = [
+    { value: 'out_of_stock', icon: 'visibility', description: 'Автоматично запропонувати доступні альтернативи' },
     { value: 'products', icon: 'productSelection', description: 'Назви, артикули або модифікації' },
     { value: 'rules', icon: 'characteristics', description: 'Стікери, бренди, категорії та стан' },
     { value: 'target_page', icon: 'link', description: 'Точне посилання окремої сторінки' },
@@ -238,6 +241,11 @@ function Preview({ draft }: { draft: PopupCampaignInput }) {
   const [viewport, setViewport] = useState<PreviewViewport>('desktop');
   const content = draft.content;
   const styles = draft.styles;
+  const recommendations = [
+    { title: 'Смартфон із цієї самої категорії', price: '12 999 грн' },
+    { title: 'Схожа модель у наявності', price: '14 499 грн' },
+    { title: 'Популярна альтернатива', price: '15 999 грн' }
+  ].slice(0, Math.min(3, draft.targeting.recommendationLimit));
   return <div className="popup-live-preview">
     <header>
       <div><strong>Живий перегляд</strong><small>Так попап виглядатиме на сайті</small></div>
@@ -282,14 +290,22 @@ function Preview({ draft }: { draft: PopupCampaignInput }) {
             {content.eyebrow && <p>{content.eyebrow}</p>}
             <h3>{content.title || 'Заголовок попапа'}</h3>
             <div>{content.body || 'Текст попапа'}</div>
-            {draft.behavior.requireAcknowledgement && <label>
+            {draft.targeting.mode === 'out_of_stock' && <div className="popup-preview__recommendations">
+              {recommendations.map((item) => <article key={item.title}>
+                <span className="popup-preview__recommendation-image"><Icon name="productCard" size={28} /></span>
+                <strong>{item.title}</strong>
+                <b>{item.price}</b>
+                <button type="button">Купити</button>
+              </article>)}
+            </div>}
+            {draft.targeting.mode !== 'out_of_stock' && draft.behavior.requireAcknowledgement && <label>
               <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
               <span>{content.acknowledgementLabel}</span>
             </label>}
-            <footer>
+            {draft.targeting.mode !== 'out_of_stock' && <footer>
               {draft.behavior.buttonCount === 2 && <button type="button">{content.secondaryLabel || 'Закрити'}</button>}
               <button type="button" className="is-primary" disabled={draft.behavior.requireAcknowledgement && !acknowledged}>{content.primaryLabel || 'Продовжити'}</button>
-            </footer>
+            </footer>}
           </div>
         </article>
       </div>
@@ -349,6 +365,7 @@ export function PopupBannersPage() {
 
   const targetSummary = useMemo(() => {
     const target = draft.targeting;
+    if (target.mode === 'out_of_stock') return `${target.recommendationLimit} альтернатив із тієї самої категорії`;
     if (target.mode === 'target_page') return target.targetPageUrl ? 'Одна цільова сторінка' : 'Вкажіть посилання';
     if (target.mode === 'all_pages') return 'Усі сторінки сайту';
     if (target.mode === 'all_products') return 'Усі сторінки товарів';
@@ -391,6 +408,37 @@ export function PopupBannersPage() {
 
   function updateTargeting(patch: Partial<PopupTargeting>) {
     setDraft((current) => ({ ...current, targeting: { ...current.targeting, ...patch } }));
+  }
+
+  function changeTargetMode(mode: PopupTargetMode) {
+    setDraft((current) => {
+      const isFirstOutOfStockSetup = mode === 'out_of_stock' && current.targeting.mode !== 'out_of_stock';
+      const hasDefaultCopy = current.content.title === 'Зверніть увагу'
+        && current.content.body === 'Перед оформленням замовлення ознайомтеся з важливою інформацією про товар.';
+      return {
+        ...current,
+        name: isFirstOutOfStockSetup && current.name === 'Попередження про товар'
+          ? 'Альтернативи для відсутнього товару' : current.name,
+        content: isFirstOutOfStockSetup && hasDefaultCopy ? {
+          ...current.content,
+          eyebrow: 'Товар тимчасово недоступний',
+          title: 'Цього товару зараз немає в наявності',
+          body: 'Оберіть схожу модель із цієї самої категорії — усі запропоновані товари доступні для замовлення.'
+        } : current.content,
+        styles: isFirstOutOfStockSetup ? {
+          ...current.styles,
+          layout: 'modal',
+          maxWidth: Math.max(960, current.styles.maxWidth)
+        } : current.styles,
+        behavior: isFirstOutOfStockSetup ? {
+          ...current.behavior,
+          frequency: 'always',
+          requireAcknowledgement: false,
+          buttonCount: 1
+        } : current.behavior,
+        targeting: { ...current.targeting, mode }
+      };
+    });
   }
 
   function toggleRule(key: 'stickers' | 'brands' | 'categoryIds' | 'conditions', value: string) {
@@ -570,7 +618,7 @@ export function PopupBannersPage() {
                 </div>
               </div>
 
-              <div className="popup-form-section">
+              {draft.targeting.mode !== 'out_of_stock' ? <div className="popup-form-section">
                 <SectionHeading icon="link" title="Кнопки й дія" description="Назвіть дію зрозуміло та вкажіть сторінку, куди вона веде." />
                 <div className="popup-form-grid">
                   <label><span>Кількість кнопок</span><StyledSelect value={String(draft.behavior.buttonCount)} options={[{ value: '1', label: 'Одна кнопка' }, { value: '2', label: 'Дві кнопки' }]} onChange={(value) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, buttonCount: Number(value) as 1 | 2 } }))} ariaLabel="Кількість кнопок" /></label>
@@ -588,7 +636,13 @@ export function PopupBannersPage() {
                     <ColorField label="Колір тексту" value={draft.styles.secondaryButtonTextColor} onChange={(secondaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, secondaryButtonTextColor } }))} />
                   </div></div>}
                 </div>
-              </div>
+              </div> : <div className="popup-form-section">
+                <SectionHeading icon="productCard" title="Кнопки товарів" description="Кнопка «Купити» на кожній картці одразу відкриє нативний кошик Хорошоп." />
+                <div className="popup-color-grid is-pair">
+                  <ColorField label="Колір кнопки" value={draft.styles.primaryButtonBackgroundColor} onChange={(primaryButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonBackgroundColor } }))} />
+                  <ColorField label="Колір тексту" value={draft.styles.primaryButtonTextColor} onChange={(primaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonTextColor } }))} />
+                </div>
+              </div>}
 
               <div className="popup-form-section">
                 <SectionHeading icon="productCard" title="Вигляд попапа" description="Оберіть розташування, кольори та комфортний розмір повідомлення." />
@@ -628,8 +682,13 @@ export function PopupBannersPage() {
             {tab === 'targeting' && <>
               <div className="popup-form-section">
                 <SectionHeading icon="productSelection" title="Де показувати" description="Оберіть найпростіший спосіб сформувати аудиторію цієї кампанії." aside={targetSummary} />
-                <TargetModePicker value={draft.targeting.mode} onChange={(mode) => updateTargeting({ mode })} />
+                <TargetModePicker value={draft.targeting.mode} onChange={changeTargetMode} />
               </div>
+              {draft.targeting.mode === 'out_of_stock' && <div className="popup-form-section">
+                <SectionHeading icon="productCard" title="Доступні альтернативи" description="Система визначить категорію відкритого товару й покаже доступні позиції з актуального каталогу Хорошоп." aside="Автоматично" />
+                <div className="popup-wide-target-note"><span><Icon name="visibility" size={20} /></span><div><strong>Лише для товарів, яких немає в наявності</strong><p>Наявність визначається на сторінці товару. Поточний товар виключається, а кнопка «Купити» використовує штатний кошик магазину.</p></div></div>
+                <label><span>Кількість рекомендованих товарів</span><input type="number" min={3} max={8} aria-label="Кількість рекомендованих товарів" value={draft.targeting.recommendationLimit} onChange={(event) => updateTargeting({ recommendationLimit: Number(event.target.value) })} /><small>Від 3 до 8 карток. На мобільних їх можна гортати горизонтально.</small></label>
+              </div>}
               {draft.targeting.mode === 'target_page' && <div className="popup-form-section">
                 <SectionHeading icon="link" title="Цільова сторінка" description="Попап з’явиться лише тоді, коли покупець відкриє саме цю сторінку." aside="Точний збіг" />
                 <label><span>Цільова сторінка</span><input type="url" required aria-label="Цільова сторінка" placeholder="https://mobiletrend.com.ua/potribna-storinka/" value={draft.targeting.targetPageUrl} onChange={(event) => updateTargeting({ targetPageUrl: event.target.value })} /><small>Вставте повне посилання з підключеного магазину. Параметри після «?» і фрагмент після «#» не впливають на збіг.</small></label>
@@ -663,9 +722,9 @@ export function PopupBannersPage() {
                 </div>
                 <div className="popup-toggle-list">
                   <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description="Показувати хрестик і дозволити закриття кліком по затемненому фону." onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
-                  <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />
+                  {draft.targeting.mode !== 'out_of_stock' && <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />}
                 </div>
-                {draft.behavior.requireAcknowledgement && <>
+                {draft.targeting.mode !== 'out_of_stock' && draft.behavior.requireAcknowledgement && <>
                   <label><span>Текст підтвердження</span><textarea rows={3} value={draft.content.acknowledgementLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, acknowledgementLabel: event.target.value } }))} /></label>
                 </>}
               </div>

@@ -20,7 +20,8 @@ router.use(rateLimit({
 
 const resolveSchema = z.object({
   pageUrl: z.string().trim().min(1).max(4000),
-  article: z.string().trim().max(300).optional().default('')
+  article: z.string().trim().max(300).optional().default(''),
+  stockState: z.enum(['unknown', 'in_stock', 'out_of_stock']).optional().default('unknown')
 });
 const eventSchema = z.object({
   publicId: z.string().uuid(),

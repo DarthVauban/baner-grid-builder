@@ -53,7 +53,8 @@ const baseCampaign: PopupCampaign = {
     categoryIds: [],
     conditions: [],
     targetPageUrl: '',
-    urlContains: []
+    urlContains: [],
+    recommendationLimit: 6
   },
   behavior: {
     delayMs: 300,
@@ -186,6 +187,39 @@ describe('PopupBannersPage', () => {
       baseCampaign.id,
       expect.objectContaining({
         targeting: expect.objectContaining({ mode: 'target_page', targetPageUrl })
+      })
+    ));
+  });
+
+  it('configures automatic alternatives for an unavailable product', async () => {
+    const update = vi.spyOn(api.popupBanners, 'update').mockImplementation(async (_id, campaign) => ({
+      ...structuredClone(baseCampaign),
+      ...campaign,
+      status: 'active',
+      publishedAt: baseCampaign.publishedAt,
+      productTargets: [],
+      stats: baseCampaign.stats,
+      connection: baseCampaign.connection,
+      createdAt: baseCampaign.createdAt,
+      updatedAt: baseCampaign.updatedAt
+    }));
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
+    fireEvent.click(screen.getByRole('radio', { name: /Товар відсутній/u }));
+
+    expect(screen.getByText('Доступні альтернативи')).toBeInTheDocument();
+    const limit = screen.getByRole('spinbutton', { name: 'Кількість рекомендованих товарів' });
+    expect(limit).toHaveValue(6);
+    fireEvent.change(limit, { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith(
+      baseCampaign.id,
+      expect.objectContaining({
+        targeting: expect.objectContaining({ mode: 'out_of_stock', recommendationLimit: 5 }),
+        behavior: expect.objectContaining({ frequency: 'always', requireAcknowledgement: false })
       })
     ));
   });

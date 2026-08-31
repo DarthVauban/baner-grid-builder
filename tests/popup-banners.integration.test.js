@@ -22,6 +22,11 @@ const connectionId = randomUUID();
 const generation = randomUUID();
 const productId = randomUUID();
 const modificationId = randomUUID();
+const alternativeProductId = randomUUID();
+const alternativeModificationId = randomUUID();
+const secondAlternativeProductId = randomUUID();
+const unavailableAlternativeProductId = randomUUID();
+const differentCategoryProductId = randomUUID();
 const syncId = randomUUID();
 
 function input(overrides = {}) {
@@ -126,6 +131,41 @@ before(async () => {
   `, [modificationId, connectionId, productId, generation,
     JSON.stringify({ uk: 'Смартфон Apple iPhone 15 128GB Black' }),
     JSON.stringify([{ id: '14', title: 'Вживаний' }]), syncId]);
+  await pool.query(`
+    INSERT INTO search_horoshop_products (
+      id, connection_id, generation, external_id, sku, titles, brand,
+      category_external_id, price, old_price, currency, availability, visible,
+      primary_image_url, canonical_url, popularity, source_data, active, last_seen_sync_id
+    ) VALUES
+      ($1, $4, $5, 'iphone-15-new', 'IPHONE-15-NEW', $6::JSONB, 'Apple', 'used-phones',
+       '33999', '35999', 'UAH', 'В наявності', TRUE, 'https://cdn.example.com/iphone-15.webp',
+       'https://shop.example.com/iphone-15-new/', '98', $7::JSONB, TRUE, $8),
+      ($2, $4, $5, 'samsung-s24', 'SAMSUNG-S24', $9::JSONB, 'Samsung', 'used-phones',
+       '29999', NULL, 'UAH', 'В наявності', TRUE, 'https://cdn.example.com/s24.webp',
+       'https://shop.example.com/samsung-s24/', '87', $10::JSONB, TRUE, $8),
+      ($3, $4, $5, 'pixel-unavailable', 'PIXEL-OOS', $11::JSONB, 'Google', 'used-phones',
+       '31999', NULL, 'UAH', 'Немає в наявності', TRUE, 'https://cdn.example.com/pixel.webp',
+       'https://shop.example.com/pixel-unavailable/', '100', $12::JSONB, TRUE, $8),
+      ($13, $4, $5, 'macbook-available', 'MACBOOK-AVAILABLE', $14::JSONB, 'Apple', 'laptops',
+       '33999', NULL, 'UAH', 'В наявності', TRUE, 'https://cdn.example.com/macbook.webp',
+       'https://shop.example.com/macbook-available/', '120', $15::JSONB, TRUE, $8)
+  `, [alternativeProductId, secondAlternativeProductId, unavailableAlternativeProductId,
+    connectionId, generation, JSON.stringify({ uk: 'Смартфон Apple iPhone 15 128GB New' }),
+    JSON.stringify({ id: 9001 }), syncId, JSON.stringify({ uk: 'Смартфон Samsung Galaxy S24' }),
+    JSON.stringify({ id: 9003 }), JSON.stringify({ uk: 'Смартфон Google Pixel' }), JSON.stringify({ id: 9004 }),
+    differentCategoryProductId, JSON.stringify({ uk: 'Ноутбук Apple MacBook' }), JSON.stringify({ id: 9005 })]);
+  await pool.query(`
+    INSERT INTO search_horoshop_modifications (
+      id, connection_id, product_id, generation, external_id, sku, titles,
+      price, old_price, currency, availability, visible, image_url, page_url,
+      source_data, active, last_seen_sync_id
+    ) VALUES (
+      $1, $2, $3, $4, 'iphone-15-new:black', 'IPHONE-15-NEW-BLACK', $5::JSONB,
+      '33999', '35999', 'UAH', 'В наявності', TRUE, 'https://cdn.example.com/iphone-15-black.webp',
+      'https://shop.example.com/iphone-15-new-black/', $6::JSONB, TRUE, $7
+    )
+  `, [alternativeModificationId, connectionId, alternativeProductId, generation,
+    JSON.stringify({ uk: 'Смартфон Apple iPhone 15 128GB New Black' }), JSON.stringify({ id: 9002 }), syncId]);
 });
 
 after(async () => {
@@ -227,6 +267,9 @@ test('sticker rules and the embeddable widget work without exact product targets
   assert.match(script.text, /--checkbox-check/u);
   assert.match(script.text, /--title-size/u);
   assert.match(script.text, /behavior\.buttonCount === 2/u);
+  assert.match(script.text, /product-header__availability--out-of-stock/u);
+  assert.match(script.text, /j-buy-button-add/u);
+  assert.doesNotThrow(() => new Function(script.text));
 
   const code = await admin.get('/api/popup-banners/embed-code').expect(200);
   assert.match(code.body.data.code, /popup-banners\/embed\.js/u);
@@ -280,4 +323,65 @@ test('target-page campaigns match one exact storefront URL without requiring a p
     .query({ pageUrl: 'https://shop.example.com/returns/?source=popup' })
     .expect(200);
   assert.equal(differentPage.body.data, null);
+});
+
+test('out-of-stock campaigns return available alternatives from the same category with native buy ids', async () => {
+  const campaigns = (await admin.get('/api/popup-banners').expect(200)).body.data;
+  for (const campaign of campaigns.filter((item) => item.status === 'active')) {
+    await admin.patch(`/api/popup-banners/${campaign.id}/status`).send({ status: 'paused' }).expect(200);
+  }
+
+  const created = await admin.post('/api/popup-banners').send(input({
+    name: 'Альтернативи для відсутнього товару',
+    priority: 800,
+    targeting: {
+      mode: 'out_of_stock',
+      match: 'all',
+      stickers: [],
+      brands: [],
+      categoryIds: [],
+      conditions: [],
+      targetPageUrl: '',
+      urlContains: [],
+      recommendationLimit: 4
+    },
+    behavior: {
+      delayMs: 0,
+      frequency: 'always',
+      cooldownDays: 7,
+      dismissible: true,
+      requireAcknowledgement: false,
+      buttonCount: 1
+    },
+    productEntries: []
+  })).expect(201);
+  assert.equal(created.body.data.targeting.mode, 'out_of_stock');
+  assert.equal(created.body.data.targeting.recommendationLimit, 4);
+  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+
+  const availablePage = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/used-iphone-15/', article: 'USED-IPHONE-128', stockState: 'in_stock' })
+    .expect(200);
+  assert.equal(availablePage.body.data, null);
+
+  const resolved = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/used-iphone-15/', article: 'USED-IPHONE-128', stockState: 'out_of_stock' })
+    .expect(200);
+  assert.equal(resolved.body.data.campaign.mode, 'out_of_stock');
+  assert.equal(resolved.body.data.recommendations.length, 2);
+  assert.deepEqual(new Set(resolved.body.data.recommendations.map((item) => item.productId)), new Set([
+    alternativeProductId,
+    secondAlternativeProductId
+  ]));
+  assert.equal(resolved.body.data.recommendations.some((item) => item.productId === productId), false);
+  assert.equal(resolved.body.data.recommendations.some((item) => item.productId === unavailableAlternativeProductId), false);
+  assert.equal(resolved.body.data.recommendations.some((item) => item.productId === differentCategoryProductId), false);
+  const iphone = resolved.body.data.recommendations.find((item) => item.productId === alternativeProductId);
+  assert.equal(iphone.buyId, '9002');
+  assert.equal(iphone.modificationId, alternativeModificationId);
+  assert.equal(iphone.pageUrl, 'https://shop.example.com/iphone-15-new-black/');
 });

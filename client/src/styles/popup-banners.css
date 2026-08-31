@@ -419,6 +419,15 @@
 .popup-preview__content footer button.is-primary { border-color: var(--preview-primary-bg); color: var(--preview-primary-text); background: var(--preview-primary-bg); }
 .popup-preview__content footer button:disabled { opacity: .45; }
 
+.popup-preview__recommendations { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 2px !important; color: var(--preview-text) !important; font-size: inherit !important; }
+.popup-preview__recommendations article { display: grid; grid-template-rows: auto minmax(30px, 1fr) auto auto; gap: 5px; min-width: 0; padding: 7px; border: 1px solid color-mix(in srgb, var(--preview-text) 12%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--preview-bg) 94%, var(--preview-text)); }
+.popup-preview__recommendation-image { display: grid; place-items: center; width: 100%; aspect-ratio: 1.2; border-radius: 8px; color: var(--preview-muted); background: #f2f4f7; }
+.popup-preview__recommendations strong { overflow: hidden; color: var(--preview-text); font-size: 8px; font-weight: 650; line-height: 1.35; }
+.popup-preview__recommendations b { color: var(--preview-text); font-size: 10px; }
+.popup-preview__recommendations button { min-height: 27px; padding: 4px; border: 0; border-radius: 7px; color: var(--preview-primary-text); background: var(--preview-primary-bg); font-size: 8px; font-weight: 800; }
+.popup-preview.is-mobile .popup-preview__recommendations { display: flex !important; overflow: hidden; }
+.popup-preview.is-mobile .popup-preview__recommendations article { flex: 0 0 76%; }
+
 .popup-preview-summary { display: grid; gap: 7px; }
 .popup-preview-summary > span { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
 .popup-preview-summary > span > i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--brand); background: var(--brand-soft); }
