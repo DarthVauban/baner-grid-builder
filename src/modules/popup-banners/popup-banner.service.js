@@ -982,19 +982,27 @@ export function popupEmbedScript(origin) {
     return null;
   }
 
-  function cartQuantity(cart, descriptor) {
+  function cartProduct(cart, descriptor) {
     try {
-      return Number(cart.getProductById(descriptor.id, descriptor.productType)?.quantity || 0);
+      return cart.getProductById(descriptor.id, descriptor.productType) || null;
     } catch {
-      return 0;
+      return null;
     }
   }
 
-  function waitForCartChange(cart, descriptor, beforeQuantity) {
+  function cartQuantity(product) {
+    const raw = product?.quantity ?? product?.Quantity ?? product?.qty ?? product?.count ?? 0;
+    const quantity = Number(raw);
+    return Number.isFinite(quantity) ? quantity : 0;
+  }
+
+  function waitForCartChange(cart, descriptor, beforeProduct) {
+    const beforeQuantity = cartQuantity(beforeProduct);
     const deadline = Date.now() + 4500;
     return new Promise((resolve) => {
       const check = () => {
-        if (cartQuantity(cart, descriptor) > beforeQuantity) { resolve(true); return; }
+        const product = cartProduct(cart, descriptor);
+        if (product && (!beforeProduct || cartQuantity(product) > beforeQuantity)) { resolve(true); return; }
         if (Date.now() >= deadline) { resolve(false); return; }
         setTimeout(check, 60);
       };
@@ -1004,16 +1012,18 @@ export function popupEmbedScript(origin) {
 
   async function clickExistingNativeBuy(entry) {
     const cart = nativeCart();
-    if (!cart) return false;
-    const beforeQuantity = cartQuantity(cart, entry.descriptor);
+    if (!cart) return '';
+    const beforeProduct = cartProduct(cart, entry.descriptor);
+    if (beforeProduct) return 'already';
     entry.button.click();
-    return waitForCartChange(cart, entry.descriptor, beforeQuantity);
+    return await waitForCartChange(cart, entry.descriptor, beforeProduct) ? 'added' : '';
   }
 
   async function appendThroughNativeCart(descriptor) {
     const cart = nativeCart();
-    if (!cart) return false;
-    const beforeQuantity = cartQuantity(cart, descriptor);
+    if (!cart) return '';
+    const beforeProduct = cartProduct(cart, descriptor);
+    if (beforeProduct) return 'already';
     try {
       window.AjaxCart.openCartOnAdd = true;
       cart.appendProduct({
@@ -1022,9 +1032,9 @@ export function popupEmbedScript(origin) {
         id: descriptor.id
       }, []);
     } catch {
-      return false;
+      return '';
     }
-    return waitForCartChange(cart, descriptor, beforeQuantity);
+    return await waitForCartChange(cart, descriptor, beforeProduct) ? 'added' : '';
   }
 
   async function nativeBuy(recommendation, isCurrent) {
@@ -1061,7 +1071,7 @@ export function popupEmbedScript(origin) {
     } finally {
       clearTimeout(timeout);
     }
-    if (!descriptor || !isCurrent()) return false;
+    if (!descriptor || !isCurrent()) return '';
     return appendThroughNativeCart(descriptor);
   }
 
@@ -1153,12 +1163,13 @@ export function popupEmbedScript(origin) {
           buy.disabled = true; buy.textContent = 'Додаємо…';
           event(campaign.publicId, 'click', productArticle, { action: 'add_to_cart', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article });
           const isCurrent = () => currentHost === host && host.isConnected;
-          const added = await nativeBuy(recommendation, isCurrent);
+          const result = await nativeBuy(recommendation, isCurrent);
           if (!isCurrent()) return;
-          if (added) setTimeout(() => {
+          if (result === 'added') setTimeout(() => {
             if (!isCurrent()) return;
             host.remove(); currentHost = null;
           }, 180);
+          else if (result === 'already') { buy.textContent = 'У кошику'; buy.title = 'Товар уже додано до кошика.'; }
           else { buy.disabled = false; buy.textContent = 'Спробувати ще'; buy.title = 'Не вдалося додати товар. Повторіть спробу.'; }
         });
         item.append(imageLink, itemTitle, price, buy); recommendations.append(item);

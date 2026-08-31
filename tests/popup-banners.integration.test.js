@@ -446,6 +446,19 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   assert.equal(buyButton.disabled, false);
   assert.deepEqual(nativeClicks, []);
 
+  cartProducts.set('1963', { id: '1963', type: 'product', quantity: 1 });
+  buyButton.click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 30));
+  assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), host);
+  assert.equal(buyButton.disabled, true);
+  assert.equal(buyButton.textContent, 'У кошику');
+  assert.equal(buyButton.title, 'Товар уже додано до кошика.');
+  assert.deepEqual(nativeClicks, []);
+
+  cartProducts.delete('1963');
+  buyButton.disabled = false;
+  buyButton.textContent = 'Купити';
+  buyButton.title = '';
   rejectNativeAppend = false;
   buyButton.click();
   await new Promise((resolve) => dom.window.setTimeout(resolve, 80));
