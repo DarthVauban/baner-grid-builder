@@ -602,7 +602,11 @@ export function buildGlobalProductCode(): string {
     align-items: flex-start !important;
   }
 
-  .mt-product-current-price {
+  .mt-product-current-price,
+  .mt-product-current-price .product-price__item,
+  .mt-product-current-price .product-price__current,
+  .mt-product-current-price .product-price__value,
+  .mt-product-current-price .product-card__price {
     color: #ff0000 !important;
   }
 
@@ -641,12 +645,28 @@ export function buildGlobalProductCode(): string {
       return Number.isFinite(value) ? value : null;
     }
 
+    function markCurrentPrice(price) {
+      var nestedPrice = price.querySelector(
+        ".product-price__item, " +
+        ".product-price__current, " +
+        ".product-price__value, " +
+        ".product-card__price"
+      );
+
+      price.classList.add("mt-product-current-price");
+
+      if (nestedPrice) {
+        nestedPrice.classList.add("mt-product-current-price");
+      }
+    }
+
     function apply() {
       var selectors = [
-        ".product-card__price",
+        ".product-card--main .product-card__price",
         ".product-price__item",
         ".product-price__current",
         ".product-price__value",
+        ".product-card__price",
         ".product-price",
         ".product__price",
         ".product-info__price",
@@ -676,7 +696,7 @@ export function buildGlobalProductCode(): string {
             maximumFractionDigits: fractionDigits
           }).format(oldValue) + " грн";
 
-          price.classList.add("mt-product-current-price");
+          markCurrentPrice(price);
           price.parentNode.classList.add("mt-product-price-stack");
           price.parentNode.insertBefore(oldPrice, price);
           return true;

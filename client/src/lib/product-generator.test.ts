@@ -17,7 +17,13 @@ describe('product code generator', () => {
     expect(result).toContain('mt_promo_price');
   });
 
-  it('produces one-time global product price code', () => {
-    expect(buildGlobalProductCode()).toContain('MT GLOBAL PRODUCT PRICE START');
+  it('produces one-time global product price code for desktop and mobile Horoshop markup', () => {
+    const result = buildGlobalProductCode();
+
+    expect(result).toContain('MT GLOBAL PRODUCT PRICE START');
+    expect(result).toContain('.mt-product-current-price .product-price__item');
+    expect(result).toContain('.mt-product-current-price .product-card__price');
+    expect(result).toContain('".product-card--main .product-card__price"');
+    expect(result).toContain('nestedPrice.classList.add("mt-product-current-price")');
   });
 });
