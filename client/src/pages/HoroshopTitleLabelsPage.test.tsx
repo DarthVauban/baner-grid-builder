@@ -54,7 +54,7 @@ describe('HoroshopTitleLabelsPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Лейбли товарів' })).toBeInTheDocument();
     expect(screen.getByText(/сторінці товару, у картках вітрини та в кошику/u)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Текст і стиль' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Текст і стиль' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Стікери Хорошопа' })).toBeInTheDocument();
     expect(screen.getByText(/84 товарів/u)).toBeInTheDocument();
     expect(screen.getByText('Сторінка товару')).toBeInTheDocument();
@@ -64,9 +64,9 @@ describe('HoroshopTitleLabelsPage', () => {
 
   it('binds one label to several stickers and publishes the ordered rules', async () => {
     renderPage();
-    await screen.findByRole('heading', { name: 'Лейбли товарів' });
+    const saleSticker = await screen.findByRole('checkbox', { name: /Акція/u });
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /Акція/u }));
+    fireEvent.click(saleSticker);
     expect(screen.getByText('2 вибрано')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст лейбла' }), { target: { value: 'Перевірений' } });
 
