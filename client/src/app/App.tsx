@@ -108,6 +108,9 @@ const HoroshopCatalogMenuPage = lazy(() => import('../pages/HoroshopCatalogMenuP
 const HoroshopCartThemePage = lazy(() => import('../pages/HoroshopCartThemePage').then((module) => ({
   default: module.HoroshopCartThemePage
 })));
+const AnalyticsPage = lazy(() => import('../pages/AnalyticsPage').then((module) => ({
+  default: module.AnalyticsPage
+})));
 
 function ProtectedRoute() {
   const { status } = useAuth();
@@ -191,6 +194,8 @@ export function App() {
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="profile" element={<Suspense fallback={<LoadingScreen />}><ProfilePage /></Suspense>} />
+          <Route path="analytics" element={<Suspense fallback={<LoadingScreen />}><AnalyticsPage /></Suspense>} />
+          <Route path="analytics/:tool" element={<Suspense fallback={<LoadingScreen />}><AnalyticsPage /></Suspense>} />
           <Route path="tools" element={<ToolsPage />} />
           <Route path="tools/chat" element={<Navigate to="/chat" replace />} />
           <Route element={<ToolAccessRoute tool="banner_grid" />}>

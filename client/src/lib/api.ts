@@ -129,6 +129,7 @@ import type {
 } from '../types/popup-banner';
 import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
 import type { ProductSelection, ProductSelectionInput } from '../types/product-selection';
+import type { PopupBannerAnalytics, ProductSelectionAnalytics } from '../types/analytics';
 import type {
   HoroshopCatalogMenuSettings,
   HoroshopCatalogMenuSettingsEnvelope,
@@ -188,6 +189,10 @@ export const api = {
       `/api/product-selections/catalog${queryString(params)}`,
       { signal }
     ),
+    analytics: (params: { days?: number; selectionId?: string } = {}, signal?: AbortSignal) => request<ProductSelectionAnalytics>(
+      `/api/product-selections/analytics/overview${queryString(params)}`,
+      { signal }
+    ),
     get: (id: string) => request<ProductSelection>(`/api/product-selections/${encodeURIComponent(id)}`),
     create: (input: ProductSelectionInput) => request<ProductSelection>('/api/product-selections', {
       method: 'POST', body: jsonBody(input)
@@ -232,6 +237,10 @@ export const api = {
     list: () => request<PopupCampaign[]>('/api/popup-banners'),
     options: () => request<PopupCampaignOptions>('/api/popup-banners/options'),
     embedCode: () => request<{ code: string }>('/api/popup-banners/embed-code'),
+    analytics: (params: { days?: number; campaignId?: string } = {}, signal?: AbortSignal) => request<PopupBannerAnalytics>(
+      `/api/popup-banners/analytics/overview${queryString(params)}`,
+      { signal }
+    ),
     get: (id: string) => request<PopupCampaign>(`/api/popup-banners/${encodeURIComponent(id)}`),
     create: (input: PopupCampaignInput) => request<PopupCampaign>('/api/popup-banners', {
       method: 'POST', body: jsonBody(input), timeoutMs: 60_000

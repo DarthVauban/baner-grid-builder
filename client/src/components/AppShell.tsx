@@ -37,6 +37,8 @@ export function AppShell() {
   const hasTradeInAccess = toolAccess.data?.includes('trade_in') === true;
   const hasStoreMapAccess = toolAccess.data?.includes('store_map') === true;
   const hasOnlineSupportAccess = toolAccess.data?.includes('online_support') === true;
+  const hasAnalyticsAccess = toolAccess.data?.includes('product_selection') === true
+    || toolAccess.data?.includes('popup_banners') === true;
   const chatUnread = useQuery({
     queryKey: ['chat-unread-count'],
     queryFn: api.chat.unreadCount,
@@ -277,6 +279,13 @@ export function AppShell() {
               )}
             </>
           )}
+
+          {hasAnalyticsAccess && <>
+            <p className="sidebar__label sidebar__label--spaced">Аналітика</p>
+            <NavLink aria-label="Аналітика" title="Аналітика" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/analytics" onClick={closeSidebar}>
+              <Icon name="analytics" size={18} /><span>Аналітика</span>
+            </NavLink>
+          </>}
 
           <p className="sidebar__label sidebar__label--spaced">Інструменти</p>
           <NavLink aria-label="Інструменти" title="Інструменти" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools" onClick={closeSidebar}>

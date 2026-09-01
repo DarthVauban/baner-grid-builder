@@ -230,6 +230,11 @@ test('popup banner tool resolves exact product campaigns and records public even
 
   const campaigns = await admin.get('/api/popup-banners').expect(200);
   assert.equal(campaigns.body.data[0].stats.impressions, 1);
+  const analytics = await admin.get('/api/popup-banners/analytics/overview').query({ days: 30 }).expect(200);
+  assert.equal(analytics.body.data.totals.impressions, 1);
+  assert.equal(analytics.body.data.totals.uniqueVisitors, 1);
+  assert.equal(analytics.body.data.campaigns[0].name, created.body.data.name);
+  assert.equal(analytics.body.data.pages[0].pageUrl, 'https://shop.example.com/used-iphone-15/');
 });
 
 test('sticker rules and the embeddable widget work without exact product targets', async () => {

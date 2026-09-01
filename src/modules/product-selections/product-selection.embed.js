@@ -166,13 +166,60 @@ const PROMO_STYLES = `.mt-product-promo-old-price {
   color: #dc2626 !important;
 }`;
 
-export function productSelectionEmbedScript(selection) {
+export function productSelectionEmbedScript(selection, origin = '') {
   return `(function () {
   "use strict";
   var sourceScript = document.currentScript;
   if (!sourceScript) return;
   var payload = ${JSON.stringify(selection)};
+  var apiOrigin = ${JSON.stringify(origin)};
   var styleId = "mt-product-selection-styles-v2";
+  var eventQueue = [];
+  var eventTimer = 0;
+  var visitorKey = "";
+  try {
+    visitorKey = localStorage.getItem("mt-product-selection-visitor") || "";
+    if (!visitorKey) {
+      visitorKey = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
+      localStorage.setItem("mt-product-selection-visitor", visitorKey);
+    }
+  } catch (_) { visitorKey = Math.random().toString(36).slice(2) + Date.now(); }
+
+  function surface() {
+    return window.matchMedia && window.matchMedia("(max-width: 720px)").matches ? "mobile" : "desktop";
+  }
+
+  function flushEvents() {
+    clearTimeout(eventTimer);
+    eventTimer = 0;
+    if (!eventQueue.length || !apiOrigin) return;
+    var events = eventQueue.splice(0, 50);
+    fetch(new URL("/api/public/product-selections/events", apiOrigin), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ publicId: payload.id, events: events }),
+      keepalive: true
+    }).catch(function () {});
+    if (eventQueue.length) eventTimer = setTimeout(flushEvents, 350);
+  }
+
+  function track(eventType, product, metadata) {
+    eventQueue.push({
+      eventType: eventType,
+      productExternalId: product && product.productExternalId || "",
+      modificationExternalId: product && product.modificationExternalId || "",
+      visitorKey: visitorKey,
+      pageUrl: location.href,
+      surface: surface(),
+      metadata: metadata || {}
+    });
+    if (eventQueue.length >= 10) flushEvents();
+    else if (!eventTimer) eventTimer = setTimeout(flushEvents, 350);
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushEvents();
+  });
 
   function installStyles() {
     if (document.getElementById(styleId)) return;
@@ -382,6 +429,8 @@ export function productSelectionEmbedScript(selection) {
     title.className = "mt-product-selection__title";
     title.href = product.pageUrl;
     title.textContent = product.title;
+    media.addEventListener("click", function () { track("product_click", product, { target: "image" }); });
+    title.addEventListener("click", function () { track("product_click", product, { target: "title" }); });
     var price = document.createElement("div");
     price.className = "mt-product-selection__price" + (product.highlightPrice ? " is-promo" : "");
     var current = document.createElement("strong");
@@ -397,13 +446,16 @@ export function productSelectionEmbedScript(selection) {
     buy.type = "button";
     buy.textContent = payload.buttonLabel || "Купити";
     buy.addEventListener("click", async function () {
+      track("buy_click", product);
       buy.disabled = true;
       buy.textContent = "Додаємо…";
       var result = await nativeBuy(product);
       if (result === "added" || result === "already") {
+        track(result === "added" ? "add_to_cart" : "already_in_cart", product);
         buy.textContent = "У кошику";
         buy.title = "Товар уже в кошику.";
       } else {
+        track("add_to_cart_error", product);
         buy.disabled = false;
         buy.textContent = "Спробувати ще";
         buy.title = "Не вдалося додати товар. Повторіть спробу.";
@@ -413,6 +465,7 @@ export function productSelectionEmbedScript(selection) {
     card.appendChild(title);
     card.appendChild(price);
     card.appendChild(buy);
+    card.__mtSelectionProduct = product;
     return card;
   }
 
@@ -439,6 +492,32 @@ export function productSelectionEmbedScript(selection) {
     if (container) container.appendChild(section);
     else if (sourceScript.parentNode && sourceScript.parentNode !== document.head) sourceScript.parentNode.insertBefore(section, sourceScript.nextSibling);
     else (document.body || document.documentElement).appendChild(section);
+    var selectionTracked = false;
+    var visibleProducts = new WeakSet();
+    if (typeof IntersectionObserver === "function") {
+      var sectionObserver = new IntersectionObserver(function (entries) {
+        if (!selectionTracked && entries.some(function (entry) { return entry.isIntersecting && entry.intersectionRatio >= 0.45; })) {
+          selectionTracked = true;
+          track("impression", null);
+          sectionObserver.disconnect();
+        }
+      }, { threshold: [0.45] });
+      sectionObserver.observe(section);
+      var productObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting || entry.intersectionRatio < 0.6 || visibleProducts.has(entry.target)) return;
+          visibleProducts.add(entry.target);
+          track("product_impression", entry.target.__mtSelectionProduct);
+          productObserver.unobserve(entry.target);
+        });
+      }, { threshold: [0.6] });
+      grid.querySelectorAll(".mt-product-selection__card").forEach(function (card) { productObserver.observe(card); });
+    } else {
+      track("impression", null);
+      grid.querySelectorAll(".mt-product-selection__card").forEach(function (card) {
+        track("product_impression", card.__mtSelectionProduct);
+      });
+    }
   }
 
   if (document.readyState === "loading" && sourceScript.parentNode === document.head) document.addEventListener("DOMContentLoaded", mount, { once: true });

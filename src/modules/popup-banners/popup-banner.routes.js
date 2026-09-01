@@ -9,6 +9,7 @@ import {
   deletePopupCampaign,
   getPopupCampaign,
   listPopupCampaigns,
+  popupBannerAnalytics,
   popupBannerToolId,
   popupCampaignOptions,
   popupEmbedCode,
@@ -106,6 +107,10 @@ const campaignSchema = z.object({
   path: ['endsAt']
 });
 const statusSchema = z.object({ status: z.enum(['draft', 'active', 'paused']) });
+const analyticsSchema = z.object({
+  days: z.coerce.number().int().min(7).max(90).optional().default(30),
+  campaignId: z.union([z.string().uuid(), z.literal('')]).optional().default('').transform((value) => value || null)
+});
 
 function requestOrigin(req) {
   const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
@@ -125,6 +130,10 @@ router.get('/options', asyncHandler(async (req, res) => {
 router.get('/embed-code', (req, res) => {
   res.json({ data: { code: popupEmbedCode(requestOrigin(req)) } });
 });
+
+router.get('/analytics/overview', asyncHandler(async (req, res) => {
+  res.json({ data: await popupBannerAnalytics(parseInput(analyticsSchema, req.query)) });
+}));
 
 router.get('/:id', asyncHandler(async (req, res) => {
   res.json({ data: await getPopupCampaign(parseInput(idSchema, req.params.id)) });

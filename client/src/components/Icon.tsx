@@ -78,12 +78,14 @@ import MonitorHeartRounded from '@mui/icons-material/MonitorHeartRounded';
 import RefreshRounded from '@mui/icons-material/RefreshRounded';
 import StorageRounded from '@mui/icons-material/StorageRounded';
 import CurrencyExchangeRounded from '@mui/icons-material/CurrencyExchangeRounded';
+import BarChartRounded from '@mui/icons-material/BarChartRounded';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type IconName =
   | 'add'
   | 'alarm'
   | 'android'
+  | 'analytics'
   | 'apple'
   | 'arrow'
   | 'arrowLeft'
@@ -174,6 +176,7 @@ const icons: Record<IconName, SvgIconComponent> = {
   add: AddRounded,
   alarm: AlarmRounded,
   android: AndroidRounded,
+  analytics: BarChartRounded,
   apple: Apple,
   arrow: ChevronRightRounded,
   arrowLeft: ArrowBackRounded,

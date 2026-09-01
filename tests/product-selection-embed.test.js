@@ -40,12 +40,13 @@ test('selection embed renders its own responsive cards without rewriting native 
     desktopColumns: 4,
     mobileColumns: 2,
     products: [{
+      productExternalId: 'tecno-spark-50', modificationExternalId: null,
       title: 'Смартфон TECNO Spark 50', article: 'TECNO-50',
       imageUrl: 'https://cdn.example.com/tecno.webp',
       pageUrl: `https://shop.example.com/tecno/?mt_promo=${token}`,
       price: '8999', oldPrice: '9890', currency: 'UAH', buyId: '9001', highlightPrice: true
     }]
-  });
+  }, 'https://workspace.example.com');
   assert.doesNotThrow(() => new Script(code));
   assert.match(code, /document\.createElement\("article"\)/u);
   assert.match(code, /--mt-selection-mobile-columns/u);
@@ -53,6 +54,10 @@ test('selection embed renders its own responsive cards without rewriting native 
   assert.match(code, /object-fit: contain !important/u);
   assert.match(code, /translateY\(-4px\)/u);
   assert.match(code, /surfaceSelectors/u);
+  assert.match(code, /product_selection.*events|product-selections\/events/u);
+  assert.match(code, /product_impression/u);
+  assert.match(code, /add_to_cart_error/u);
+  assert.match(code, /IntersectionObserver/u);
   assert.doesNotMatch(code, /innerHTML/u);
 });
 

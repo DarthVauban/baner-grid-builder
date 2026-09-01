@@ -95,6 +95,24 @@ test('product selections are saved from the Horoshop catalog and expose tokenize
   const firstToken = firstEmbed.text.match(/mt_promo=([0-9a-f-]{36})/iu)?.[1];
   assert.ok(firstToken);
 
+  await request(app).post('/api/public/product-selections/events').send({
+    publicId,
+    events: [
+      { eventType: 'impression', visitorKey: 'selection-visitor', pageUrl: 'https://shop.example.com/article/' },
+      { eventType: 'product_impression', productExternalId: 'tecno-spark-50', visitorKey: 'selection-visitor', pageUrl: 'https://shop.example.com/article/', surface: 'mobile' },
+      { eventType: 'product_click', productExternalId: 'tecno-spark-50', visitorKey: 'selection-visitor', pageUrl: 'https://shop.example.com/article/', surface: 'mobile' },
+      { eventType: 'buy_click', productExternalId: 'tecno-spark-50', visitorKey: 'selection-visitor', pageUrl: 'https://shop.example.com/article/', surface: 'mobile' },
+      { eventType: 'add_to_cart', productExternalId: 'tecno-spark-50', visitorKey: 'selection-visitor', pageUrl: 'https://shop.example.com/article/', surface: 'mobile' }
+    ]
+  }).expect(204);
+  const analytics = await admin.get('/api/product-selections/analytics/overview').query({ days: 30 }).expect(200);
+  assert.equal(analytics.body.data.totals.impressions, 1);
+  assert.equal(analytics.body.data.totals.productClicks, 1);
+  assert.equal(analytics.body.data.totals.addToCart, 1);
+  assert.equal(analytics.body.data.totals.uniqueVisitors, 1);
+  assert.equal(analytics.body.data.products[0].title, 'Смартфон TECNO Spark 50 4/128GB');
+  assert.equal(analytics.body.data.surfaces.find((item) => item.surface === 'mobile').count, 4);
+
   const promo = await request(app)
     .get(`/api/public/product-selections/promo/${firstToken}`)
     .query({ page: `https://shop.example.com/tecno-spark-50/?mt_promo=${firstToken}` })

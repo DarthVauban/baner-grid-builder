@@ -10,6 +10,7 @@ import {
   deleteProductSelection,
   getProductSelection,
   listProductSelections,
+  productSelectionAnalytics,
   updateProductSelection
 } from './product-selection.service.js';
 
@@ -24,6 +25,10 @@ const catalogSchema = z.object({
   availability: z.string().trim().max(200).optional().default(''),
   page: z.coerce.number().int().min(1).optional().default(1),
   pageSize: z.coerce.number().int().min(10).max(100).optional().default(50)
+});
+const analyticsSchema = z.object({
+  days: z.coerce.number().int().min(7).max(90).optional().default(30),
+  selectionId: z.union([z.string().uuid(), z.literal('')]).optional().default('').transform((value) => value || null)
 });
 const selectionItemSchema = z.object({
   productExternalId: z.string().trim().min(1).max(300),
@@ -84,6 +89,11 @@ router.get('/catalog', asyncHandler(async (req, res) => {
 router.get('/', asyncHandler(async (req, res) => {
   const input = parseInput(listSchema, req.query);
   res.json({ data: await listProductSelections(req.user.id, input.search) });
+}));
+
+router.get('/analytics/overview', asyncHandler(async (req, res) => {
+  const input = parseInput(analyticsSchema, req.query);
+  res.json({ data: await productSelectionAnalytics(req.user.id, input) });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {

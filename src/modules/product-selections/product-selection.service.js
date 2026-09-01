@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { pool } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 
@@ -74,6 +74,45 @@ function sameProductLocation(left, right) {
   const first = normalizedProductLocation(left);
   const second = normalizedProductLocation(right);
   return Boolean(first && second && first.host === second.host && first.path === second.path);
+}
+
+function analyticsPageUrl(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    return `${parsed.origin}${parsed.pathname}`.slice(0, 2000);
+  } catch {
+    return null;
+  }
+}
+
+function analyticsDateRange(days) {
+  const until = new Date();
+  const from = new Date(until);
+  from.setUTCDate(from.getUTCDate() - Math.max(0, Number(days) - 1));
+  from.setUTCHours(0, 0, 0, 0);
+  return { from, until };
+}
+
+function analyticsSeries(days, rows, eventTypes) {
+  const { from } = analyticsDateRange(days);
+  const byDate = new Map();
+  for (const row of rows) {
+    const date = String(row.day instanceof Date ? row.day.toISOString().slice(0, 10) : row.day).slice(0, 10);
+    const current = byDate.get(date) || {};
+    current[row.event_type] = Number(current[row.event_type] || 0) + Number(row.count || 1);
+    byDate.set(date, current);
+  }
+  return Array.from({ length: days }, (_, index) => {
+    const current = new Date(from);
+    current.setUTCDate(from.getUTCDate() + index);
+    const date = current.toISOString().slice(0, 10);
+    const values = byDate.get(date) || {};
+    return Object.fromEntries([
+      ['date', date],
+      ...eventTypes.map((type) => [type, Number(values[type] || 0)])
+    ]);
+  });
 }
 
 function syntheticOldPrice(current, mode, value) {
@@ -428,6 +467,175 @@ export async function loadPublicProductSelection(publicId) {
     desktopColumns: Number(row.desktop_columns),
     mobileColumns: Number(row.mobile_columns),
     products
+  };
+}
+
+export async function recordProductSelectionEvents(publicId, events) {
+  const selectionResult = await pool.query(
+    'SELECT id FROM product_selections WHERE public_id = $1',
+    [publicId]
+  );
+  const selection = selectionResult.rows[0];
+  if (!selection) throw new AppError(404, 'PRODUCT_SELECTION_NOT_FOUND', 'Вибірку товарів не знайдено.');
+  const visitorHashes = new Map();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const event of events) {
+      const visitorKey = String(event.visitorKey || '').slice(0, 200);
+      if (!visitorHashes.has(visitorKey)) {
+        visitorHashes.set(visitorKey, visitorKey
+          ? createHash('sha256').update(visitorKey).digest('hex') : null);
+      }
+      await client.query(`
+        INSERT INTO product_selection_events (
+          selection_id, product_external_id, modification_external_id, event_type,
+          visitor_key_hash, page_url, surface, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB)
+      `, [selection.id, event.productExternalId || null, event.modificationExternalId || null,
+        event.eventType, visitorHashes.get(visitorKey), analyticsPageUrl(event.pageUrl),
+        event.surface || 'desktop', JSON.stringify(object(event.metadata))]);
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function productSelectionAnalytics(userId, { days = 30, selectionId = null } = {}) {
+  const periodDays = Math.min(90, Math.max(7, Number(days) || 30));
+  const { from } = analyticsDateRange(periodDays);
+  const values = [userId, from.toISOString()];
+  const selectionClause = selectionId ? 'AND selection.id = $3' : '';
+  if (selectionId) values.push(selectionId);
+  const selectionMetadataClause = selectionId ? 'AND selection.id = $2' : '';
+  const selectionMetadataValues = selectionId ? [userId, selectionId] : [userId];
+
+  if (selectionId) {
+    const owned = await pool.query(
+      'SELECT id FROM product_selections WHERE id = $1 AND user_id = $2',
+      [selectionId, userId]
+    );
+    if (!owned.rows[0]) throw new AppError(404, 'PRODUCT_SELECTION_NOT_FOUND', 'Вибірку товарів не знайдено.');
+  }
+
+  const scope = `
+    FROM product_selection_events AS event
+    JOIN product_selections AS selection ON selection.id = event.selection_id
+    WHERE selection.user_id = $1 AND event.created_at >= $2 ${selectionClause}
+  `;
+  const [totalsResult, seriesResult, selectionResult, selectionStatsResult, productResult, surfaceResult, pageResult] = await Promise.all([
+    pool.query(`SELECT event.event_type, COUNT(*) AS count ${scope} GROUP BY event.event_type`, values),
+    pool.query(`SELECT event.created_at AS day, event.event_type ${scope} ORDER BY event.created_at`, values),
+    pool.query(`SELECT selection.id, selection.public_id, selection.name, COUNT(item.id) AS item_count
+                FROM product_selections AS selection
+                LEFT JOIN product_selection_items AS item ON item.selection_id = selection.id
+                WHERE selection.user_id = $1 ${selectionMetadataClause}
+                GROUP BY selection.id, selection.public_id, selection.name, selection.updated_at
+                ORDER BY selection.updated_at DESC`, selectionMetadataValues),
+    pool.query(`SELECT event.selection_id, event.event_type, COUNT(*) AS count ${scope}
+                GROUP BY event.selection_id, event.event_type`, values),
+    pool.query(`SELECT event.product_external_id, event.modification_external_id,
+                       product.sku AS product_sku, product.titles AS product_titles,
+                       product.primary_image_url, modification.sku AS modification_sku,
+                       modification.titles AS modification_titles, modification.image_url,
+                       event.event_type, COUNT(*) AS count
+                FROM product_selection_events AS event
+                JOIN product_selections AS selection ON selection.id = event.selection_id
+                LEFT JOIN search_horoshop_connections AS connection ON connection.id = selection.connection_id
+                LEFT JOIN search_horoshop_products AS product
+                  ON product.connection_id = connection.id AND product.generation = connection.generation
+                 AND product.external_id = event.product_external_id AND product.active = TRUE
+                LEFT JOIN search_horoshop_modifications AS modification
+                  ON modification.connection_id = connection.id AND modification.generation = connection.generation
+                 AND modification.product_id = product.id
+                 AND modification.external_id = event.modification_external_id AND modification.active = TRUE
+                WHERE selection.user_id = $1 AND event.created_at >= $2 ${selectionClause}
+                  AND event.product_external_id IS NOT NULL
+                GROUP BY event.product_external_id, event.modification_external_id,
+                         product.sku, product.titles, product.primary_image_url,
+                         modification.sku, modification.titles, modification.image_url,
+                         event.event_type`, values),
+    pool.query(`SELECT COALESCE(event.surface, 'desktop') AS surface, COUNT(*) AS count ${scope}
+                GROUP BY COALESCE(event.surface, 'desktop')`, values),
+    pool.query(`SELECT event.page_url, event.event_type, COUNT(*) AS count ${scope}
+                AND event.page_url IS NOT NULL GROUP BY event.page_url, event.event_type
+                ORDER BY count DESC`, values)
+  ]);
+
+  const eventCounts = Object.fromEntries(totalsResult.rows.map((row) => [row.event_type, Number(row.count)]));
+  const uniqueResult = await pool.query(`SELECT COUNT(DISTINCT event.visitor_key_hash) AS count ${scope}
+                                         AND event.visitor_key_hash IS NOT NULL`, values);
+  const totals = {
+    impressions: Number(eventCounts.impression || 0),
+    productImpressions: Number(eventCounts.product_impression || 0),
+    productClicks: Number(eventCounts.product_click || 0),
+    buyClicks: Number(eventCounts.buy_click || 0),
+    addToCart: Number(eventCounts.add_to_cart || 0),
+    alreadyInCart: Number(eventCounts.already_in_cart || 0),
+    errors: Number(eventCounts.add_to_cart_error || 0),
+    uniqueVisitors: Number(uniqueResult.rows[0]?.count || 0)
+  };
+
+  function groupedRows(rows, keyFn, baseFn) {
+    const grouped = new Map();
+    for (const row of rows) {
+      const key = keyFn(row);
+      const item = grouped.get(key) || { ...baseFn(row), counts: {} };
+      item.counts[row.event_type] = Number(row.count || 0);
+      grouped.set(key, item);
+    }
+    return [...grouped.values()];
+  }
+
+  const selectionStats = new Map();
+  for (const row of selectionStatsResult.rows) {
+    const counts = selectionStats.get(row.selection_id) || {};
+    counts[row.event_type] = Number(row.count || 0);
+    selectionStats.set(row.selection_id, counts);
+  }
+  const selections = selectionResult.rows.map((row) => ({
+    id: row.id,
+    publicId: row.public_id,
+    name: row.name,
+    itemCount: Number(row.item_count || 0),
+    ...(selectionStats.get(row.id) || {})
+  }));
+  const itemDetails = new Map();
+  const loadedSelections = await Promise.all(selectionResult.rows.map((row) => loadSelection(pool, row.id, userId)));
+  for (const selection of loadedSelections) {
+    for (const item of selection?.items || []) itemDetails.set(itemKey(item), item);
+  }
+  const products = groupedRows(productResult.rows,
+    (row) => `${row.product_external_id}\0${row.modification_external_id || ''}`,
+    (row) => {
+      const details = itemDetails.get(`${row.product_external_id}\0${row.modification_external_id || ''}`);
+      return ({
+      productExternalId: row.product_external_id,
+      modificationExternalId: row.modification_external_id || null,
+      sku: details?.sku || row.modification_sku || row.product_sku || '',
+      title: details?.title || localizedTitle(row.modification_titles) || localizedTitle(row.product_titles) || row.product_external_id,
+      imageUrl: details?.imageUrl || row.image_url || row.primary_image_url || ''
+    }); }).map((item) => ({ ...item, ...item.counts, counts: undefined }));
+  const pages = groupedRows(pageResult.rows, (row) => row.page_url, (row) => ({ pageUrl: row.page_url }))
+    .map((item) => ({ ...item, ...item.counts, counts: undefined })).slice(0, 12);
+
+  return {
+    periodDays,
+    totals: {
+      ...totals,
+      clickThroughRate: totals.productImpressions ? totals.productClicks / totals.productImpressions : 0,
+      cartRate: totals.buyClicks ? (totals.addToCart + totals.alreadyInCart) / totals.buyClicks : 0
+    },
+    series: analyticsSeries(periodDays, seriesResult.rows,
+      ['impression', 'product_click', 'add_to_cart', 'add_to_cart_error']),
+    selections,
+    products,
+    surfaces: surfaceResult.rows.map((row) => ({ surface: row.surface, count: Number(row.count || 0) })),
+    pages
   };
 }
 

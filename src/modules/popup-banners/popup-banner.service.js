@@ -842,6 +842,93 @@ export async function recordPopupEvent({ publicId, eventType, pageUrl, article, 
   );
 }
 
+export async function popupBannerAnalytics({ days = 30, campaignId = null } = {}) {
+  const periodDays = Math.min(90, Math.max(7, Number(days) || 30));
+  const from = new Date();
+  from.setUTCDate(from.getUTCDate() - periodDays + 1);
+  from.setUTCHours(0, 0, 0, 0);
+  const values = [from.toISOString()];
+  const campaignClause = campaignId ? 'AND campaign.id = $2' : '';
+  if (campaignId) values.push(campaignId);
+  if (campaignId) {
+    const exists = await query('SELECT id FROM popup_banner_campaigns WHERE id = $1', [campaignId]);
+    if (!exists.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
+  }
+  const scope = `
+    FROM popup_banner_events AS event
+    JOIN popup_banner_campaigns AS campaign ON campaign.id = event.campaign_id
+    WHERE event.created_at >= $1 ${campaignClause}
+  `;
+  const [totalsResult, seriesResult, campaignsResult, pagesResult, uniqueResult] = await Promise.all([
+    query(`SELECT event.event_type, COUNT(*) AS count ${scope} GROUP BY event.event_type`, values),
+    query(`SELECT event.created_at AS day, event.event_type ${scope} ORDER BY event.created_at`, values),
+    query(`SELECT campaign.id, campaign.public_id, campaign.name, campaign.status,
+                  event.event_type, COUNT(event.id) AS count
+           FROM popup_banner_campaigns AS campaign
+           LEFT JOIN popup_banner_events AS event
+             ON event.campaign_id = campaign.id AND event.created_at >= $1
+           WHERE TRUE ${campaignClause}
+           GROUP BY campaign.id, campaign.public_id, campaign.name, campaign.status, event.event_type
+           ORDER BY campaign.updated_at DESC`, values),
+    query(`SELECT event.page_url, event.event_type, COUNT(*) AS count ${scope}
+           AND event.page_url IS NOT NULL GROUP BY event.page_url, event.event_type ORDER BY count DESC`, values),
+    query(`SELECT COUNT(DISTINCT event.visitor_key_hash) AS count ${scope}
+           AND event.visitor_key_hash IS NOT NULL`, values)
+  ]);
+
+  const counts = Object.fromEntries(totalsResult.rows.map((row) => [row.event_type, Number(row.count || 0)]));
+  const totals = {
+    impressions: Number(counts.impression || 0),
+    clicks: Number(counts.click || 0),
+    dismissals: Number(counts.dismiss || 0),
+    acknowledgements: Number(counts.acknowledge || 0),
+    uniqueVisitors: Number(uniqueResult.rows[0]?.count || 0)
+  };
+  const dayRows = new Map();
+  for (const row of seriesResult.rows) {
+    const day = String(row.day instanceof Date ? row.day.toISOString().slice(0, 10) : row.day).slice(0, 10);
+    const current = dayRows.get(day) || {};
+    current[row.event_type] = Number(current[row.event_type] || 0) + Number(row.count || 1);
+    dayRows.set(day, current);
+  }
+  const series = Array.from({ length: periodDays }, (_, index) => {
+    const day = new Date(from);
+    day.setUTCDate(from.getUTCDate() + index);
+    const date = day.toISOString().slice(0, 10);
+    const current = dayRows.get(date) || {};
+    return {
+      date,
+      impression: Number(current.impression || 0),
+      click: Number(current.click || 0),
+      dismiss: Number(current.dismiss || 0),
+      acknowledge: Number(current.acknowledge || 0)
+    };
+  });
+  function group(rows, keyName, base) {
+    const grouped = new Map();
+    for (const row of rows) {
+      const key = row[keyName];
+      const item = grouped.get(key) || { ...base(row), counts: {} };
+      item.counts[row.event_type] = Number(row.count || 0);
+      grouped.set(key, item);
+    }
+    return [...grouped.values()].map((item) => ({ ...item, ...item.counts, counts: undefined }));
+  }
+  return {
+    periodDays,
+    totals: {
+      ...totals,
+      engagementRate: totals.impressions ? (totals.clicks + totals.acknowledgements) / totals.impressions : 0,
+      dismissRate: totals.impressions ? totals.dismissals / totals.impressions : 0
+    },
+    series,
+    campaigns: group(campaignsResult.rows, 'id', (row) => ({
+      id: row.id, publicId: row.public_id, name: row.name, status: row.status
+    })),
+    pages: group(pagesResult.rows, 'page_url', (row) => ({ pageUrl: row.page_url })).slice(0, 12)
+  };
+}
+
 export function popupEmbedScript(origin) {
   return `(() => {
   if (window.__mtPopupBannersLoaded) return;
