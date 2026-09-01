@@ -127,6 +127,8 @@ import type {
   PopupCampaignOptions,
   PopupCampaignStatus
 } from '../types/popup-banner';
+import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
+import type { ProductSelection, ProductSelectionInput } from '../types/product-selection';
 import type {
   HoroshopCatalogMenuSettings,
   HoroshopCatalogMenuSettingsEnvelope,
@@ -180,6 +182,22 @@ import { horoshopApi } from './api-horoshop';
 export { ApiError } from './api-client';
 
 export const api = {
+  productSelections: {
+    list: (search = '') => request<ProductSelection[]>(`/api/product-selections${queryString({ search })}`),
+    catalog: (params: { search?: string; category?: string; availability?: string; page?: number; pageSize?: number } = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
+      `/api/product-selections/catalog${queryString(params)}`,
+      { signal }
+    ),
+    get: (id: string) => request<ProductSelection>(`/api/product-selections/${encodeURIComponent(id)}`),
+    create: (input: ProductSelectionInput) => request<ProductSelection>('/api/product-selections', {
+      method: 'POST', body: jsonBody(input)
+    }),
+    update: (id: string, input: ProductSelectionInput) => request<ProductSelection>(
+      `/api/product-selections/${encodeURIComponent(id)}`,
+      { method: 'PUT', body: jsonBody(input) }
+    ),
+    remove: (id: string) => request<void>(`/api/product-selections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
   horoshopCartTheme: {
     settings: () => request<HoroshopCartThemeSettingsEnvelope>('/api/horoshop-cart-theme/settings'),
     saveDraft: (input: { themeId: HoroshopCartThemeId }) => request<HoroshopCartThemeSettings>(

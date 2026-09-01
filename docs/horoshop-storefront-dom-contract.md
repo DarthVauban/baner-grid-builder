@@ -1,8 +1,8 @@
 # DOM-контракт вітрини Хорошоп: desktop і mobile
 
-Актуально станом на 2026-08-31. Це канонічний cross-cutting контракт для всіх скриптів, які
+Актуально станом на 2026-09-01. Це канонічний cross-cutting контракт для всіх скриптів, які
 вбудовуються у публічну вітрину Хорошопа: `popup-banners`, `horoshop-cart-theme`,
-`horoshop-catalog-menu` та майбутніх storefront-адаптерів.
+`horoshop-catalog-menu`, `product-selections` та майбутніх storefront-адаптерів.
 
 Класи й структура DOM Хорошопа не є нашим публічним API та можуть змінитися після оновлення
 платформи або теми. Фактичний код і перевірена розмітка мають пріоритет, але будь-яка розбіжність
@@ -41,6 +41,7 @@ CSS media queries дозволено використовувати для ві�
 | Рекомендації кошика | `.j-cart-additional`, `.cart-recommended`, `.productsSlider*` | `.cart__related-goods`, `.carousel*`, `.catalog-card--small` | Desktop carousel controller не підключати до mobile carousel |
 | Оформлення замовлення | `.cart-btnOrder .btn` у `.cart-foot` | `.cart__order` | Не переносити desktop footer DOM у mobile drawer |
 | Головний buy box товару | `.product-order__block--buy`, compatibility fallback-и `.product-order` і `.product__section--order` | `.product__block--orderBox [data-view-block="orderBox"] .product-card--main[itemprop="offers"] .product-card__buy-button` | Кнопка має бути scoped до головного товару |
+| Ціна на сторінці товару | box `.product-price__box`, поточна ціна `.product-price__item` | box `.product-card__price-box`, поточна ціна `.product-card__price` | Числове значення читається з `meta[itemprop="price"]`; desktop/mobile адаптери незалежні |
 | Меню каталогу | `.j-products-menu` і `.productsMenu-*` | не модифікується | Поточний catalog-menu adapter є `desktop-only` і обмежений `min-width: 1024px` |
 
 `horoshop-cart-theme` позначає знайдені roots атрибутом `data-mt-cart-surface="desktop|mobile"`.
@@ -126,6 +127,30 @@ cart.appendProduct({ type, quantity: Number(quantity), id }, []);
 - створювати приховану proxy-кнопку замість перевіреного native descriptor;
 - вважати cart operation успішною лише тому, що клік або метод не кинув exception;
 - повторно додавати товар, якщо native cart або `.j-buy-button-remove` уже показує його в кошику.
+
+## Вибірки товарів і косметична стара ціна
+
+`product-selections` не переробляє нативний слайдер рекомендацій Хорошопа. Збережена вибірка
+містить стабільні зовнішні ID товарів/модифікацій і порядок, а публічний `embed.js` на кожен запит
+читає актуальну синхронізовану проєкцію `search_horoshop_*`. Недоступні, приховані або видалені
+позиції пропускаються без блокування сторінки.
+
+Посилання картки отримує лише непрозорий `mt_promo=<uuid>`. Відсоток/сума надбавки не передаються
+у відкритих URL-параметрах. Один глобальний `promo-loader.js`, встановлений **окремо** у desktop-
+і mobile-шаблоні, за токеном перевіряє цільовий host/path і лише після цього застосовує оформлення.
+Без токена loader завершується без DOM-змін і без мережевого запиту.
+
+Правила price adapter:
+
+- значення поточної ціни читається з `meta[itemprop="price"]`, а не парситься з довільного тексту;
+- стара ціна додається новим sibling-вузлом у відповідний price box; нативний price node не
+  переміщується й не переписується через `innerHTML`;
+- поточна ціна отримує службовий клас для червоного кольору тільки коли це ввімкнено у вибірці;
+- desktop `.product-price__box` і mobile `.product-card__price-box` обробляються різними adapter
+  descriptors; breakpoint або `innerWidth` не визначає surface;
+- дозволений лише observer конкретного знайденого price box. Body-wide `MutationObserver` для
+  косметичної ціни заборонений;
+- візуальна стара ціна ніколи не змінює ціну, яку Хорошоп/1С передає до кошика або замовлення.
 
 ## Discovery та fallback
 

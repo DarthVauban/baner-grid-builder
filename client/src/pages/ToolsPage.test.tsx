@@ -166,6 +166,26 @@ describe('ToolsPage catalog', () => {
     expect(tile).toHaveAttribute('href', '/tools/horoshop-cart-theme');
   });
 
+  it('groups the product selection builder under Horoshop tools', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
+      tools: [{
+        toolId: 'product_selection',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    });
+
+    renderPage();
+
+    await expandCategory('Інструменти Хорошоп');
+    const tile = await screen.findByRole('link', { name: /Вибірка товарів/u });
+    expect(tile).toHaveAttribute('href', '/tools/product-selection');
+    expect(screen.queryByText('Маркетингові інструменти')).not.toBeInTheDocument();
+  });
+
   it('groups available tools into compact collapsed categories', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
       tools: [

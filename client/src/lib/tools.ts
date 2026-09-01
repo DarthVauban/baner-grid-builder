@@ -169,9 +169,9 @@ export const tools: ToolDefinition[] = [
   {
     id: 'product_selection',
     name: 'Вибірка товарів',
-    description: 'Підготовка HTML-блоків із супутніми товарами, банерами та цінами.',
+    description: 'Вибірки із синхронізованого каталогу Хорошоп, async-картки, кнопки купівлі та косметична стара ціна на сторінці товару.',
     path: '/tools/product-selection',
     icon: 'productSelection',
-    category: 'marketing'
+    category: 'horoshop'
   }
 ];
