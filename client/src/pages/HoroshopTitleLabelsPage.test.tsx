@@ -66,6 +66,14 @@ describe('HoroshopTitleLabelsPage', () => {
     expect(screen.getByRole('spinbutton', { name: 'Розмір шрифту на сторінці товару' })).toHaveValue(18);
     expect(screen.getByRole('spinbutton', { name: 'Розмір шрифту у картці товару' })).toHaveValue(12);
     expect(screen.getByRole('spinbutton', { name: 'Розмір шрифту у кошику' })).toHaveValue(13);
+
+    const productPageFontSize = screen.getByRole('spinbutton', { name: 'Розмір шрифту на сторінці товару' });
+    fireEvent.change(productPageFontSize, { target: { value: '1' } });
+    expect(productPageFontSize).toHaveValue(1);
+    fireEvent.change(productPageFontSize, { target: { value: '14' } });
+    expect(productPageFontSize).toHaveValue(14);
+    fireEvent.blur(productPageFontSize);
+    expect(productPageFontSize).toHaveValue(14);
   });
 
   it('binds one label to several stickers and publishes the ordered rules', async () => {

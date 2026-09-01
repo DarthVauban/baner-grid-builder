@@ -39,6 +39,40 @@ function clampFontSize(value: number) {
   return Math.max(8, Math.min(32, Math.round(value)));
 }
 
+interface FontSizeInputProps {
+  ariaLabel: string;
+  value: number;
+  onChange: (value: number) => void;
+}
+
+function FontSizeInput({ ariaLabel, value, onChange }: FontSizeInputProps) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => setDraft(String(value)), [value]);
+
+  function commit() {
+    const numeric = Number(draft);
+    const normalized = clampFontSize(Number.isFinite(numeric) && draft.trim() ? numeric : value);
+    setDraft(String(normalized));
+    onChange(normalized);
+  }
+
+  return <input
+    aria-label={ariaLabel}
+    type="number"
+    min={8}
+    max={32}
+    value={draft}
+    onChange={(event) => {
+      const next = event.target.value;
+      setDraft(next);
+      const numeric = Number(next);
+      if (next.trim() && Number.isFinite(numeric)) onChange(numeric);
+    }}
+    onBlur={commit}
+  />;
+}
+
 function previewStyle(rule: HoroshopTitleLabelRule) {
   return {
     '--label-background': rule.backgroundColor,
@@ -233,9 +267,9 @@ export function HoroshopTitleLabelsPage() {
             <div className="title-label-font-settings">
               <div className="title-label-font-settings__heading"><strong>Розмір тексту лейбла</strong><span>Налаштовується окремо для кожного місця показу · 8–32 px</span></div>
               <div className="title-label-font-settings__grid">
-                <label><span><Icon name="productPage" size={16} /><span><strong>Сторінка товару</strong><small>У заголовку товару</small></span></span><span className="title-label-font-settings__input"><input aria-label="Розмір шрифту на сторінці товару" type="number" min={8} max={32} value={selected.productPageFontSize} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && updateSelected({ productPageFontSize: clampFontSize(event.target.valueAsNumber) })} /><em>px</em></span></label>
-                <label><span><Icon name="productCard" size={16} /><span><strong>Картка товару</strong><small>Каталог і слайдери</small></span></span><span className="title-label-font-settings__input"><input aria-label="Розмір шрифту у картці товару" type="number" min={8} max={32} value={selected.productCardFontSize} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && updateSelected({ productCardFontSize: clampFontSize(event.target.valueAsNumber) })} /><em>px</em></span></label>
-                <label><span><Icon name="storefront" size={16} /><span><strong>Кошик</strong><small>Рядок товару в кошику</small></span></span><span className="title-label-font-settings__input"><input aria-label="Розмір шрифту у кошику" type="number" min={8} max={32} value={selected.cartFontSize} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && updateSelected({ cartFontSize: clampFontSize(event.target.valueAsNumber) })} /><em>px</em></span></label>
+                <label><span><Icon name="productPage" size={16} /><span><strong>Сторінка товару</strong><small>У заголовку товару</small></span></span><span className="title-label-font-settings__input"><FontSizeInput ariaLabel="Розмір шрифту на сторінці товару" value={selected.productPageFontSize} onChange={(value) => updateSelected({ productPageFontSize: value })} /><em>px</em></span></label>
+                <label><span><Icon name="productCard" size={16} /><span><strong>Картка товару</strong><small>Каталог і слайдери</small></span></span><span className="title-label-font-settings__input"><FontSizeInput ariaLabel="Розмір шрифту у картці товару" value={selected.productCardFontSize} onChange={(value) => updateSelected({ productCardFontSize: value })} /><em>px</em></span></label>
+                <label><span><Icon name="storefront" size={16} /><span><strong>Кошик</strong><small>Рядок товару в кошику</small></span></span><span className="title-label-font-settings__input"><FontSizeInput ariaLabel="Розмір шрифту у кошику" value={selected.cartFontSize} onChange={(value) => updateSelected({ cartFontSize: value })} /><em>px</em></span></label>
               </div>
             </div>
           </div>
