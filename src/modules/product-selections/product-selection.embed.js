@@ -13,6 +13,9 @@ const SELECTION_STYLES = `.mt-product-selection {
 .mt-product-selection *, .mt-product-selection *::before, .mt-product-selection *::after {
   box-sizing: border-box !important;
 }
+.p-review-add {
+  display: none !important;
+}
 .mt-product-selection__heading {
   margin: 0 0 18px !important;
   color: var(--mt-selection-text) !important;
@@ -37,7 +40,9 @@ const SELECTION_STYLES = `.mt-product-selection {
   border: 1px solid var(--mt-selection-border) !important;
   border-radius: 16px !important;
   background: #fff !important;
-  box-shadow: 0 1px 2px rgba(17, 24, 39, .04) !important;
+  box-shadow: 0 6px 18px rgba(17, 24, 39, .08) !important;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease !important;
+  will-change: transform !important;
 }
 .mt-product-selection__media {
   display: flex !important;
@@ -45,6 +50,7 @@ const SELECTION_STYLES = `.mt-product-selection {
   justify-content: center !important;
   width: 100% !important;
   aspect-ratio: 1 / 1 !important;
+  padding: 10px !important;
   overflow: hidden !important;
   border-radius: 12px !important;
   background: #fff !important;
@@ -53,9 +59,12 @@ const SELECTION_STYLES = `.mt-product-selection {
   display: block !important;
   width: 100% !important;
   height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
   border: 0 !important;
   object-fit: contain !important;
   object-position: center !important;
+  transform: none !important;
 }
 .mt-product-selection__title {
   display: -webkit-box !important;
@@ -104,6 +113,13 @@ const SELECTION_STYLES = `.mt-product-selection {
   cursor: pointer !important;
 }
 .mt-product-selection__buy:disabled { cursor: wait !important; opacity: .68 !important; }
+@media (hover: hover) and (pointer: fine) {
+  .mt-product-selection__card:hover {
+    border-color: #d2d7e0 !important;
+    box-shadow: 0 16px 34px rgba(17, 24, 39, .15) !important;
+    transform: translateY(-4px) !important;
+  }
+}
 @media (max-width: 1080px) {
   .mt-product-selection__grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
 }
@@ -114,7 +130,7 @@ const SELECTION_STYLES = `.mt-product-selection {
     gap: 10px !important;
   }
   .mt-product-selection__card { gap: 9px !important; padding: 9px !important; border-radius: 13px !important; }
-  .mt-product-selection__media { border-radius: 10px !important; }
+  .mt-product-selection__media { padding: 6px !important; border-radius: 10px !important; }
   .mt-product-selection__title { min-height: 38px !important; font-size: 13px !important; line-height: 1.4 !important; }
   .mt-product-selection__price { gap: 5px !important; min-height: 22px !important; }
   .mt-product-selection__price strong { font-size: 16px !important; }
@@ -125,11 +141,25 @@ const SELECTION_STYLES = `.mt-product-selection {
 const PROMO_STYLES = `.mt-product-promo-old-price {
   display: block !important;
   width: max-content !important;
-  margin: 0 0 3px !important;
+  margin: 0 0 7px !important;
   color: #7b8493 !important;
-  font: 400 .62em/1.25 Arial, sans-serif !important;
+  font: 500 15px/1.3 Arial, sans-serif !important;
   text-decoration: line-through !important;
   text-decoration-thickness: 1px !important;
+  white-space: nowrap !important;
+}
+.mt-product-promo-old-price[data-mt-promo-surface="desktop"] {
+  margin: 0 12px 0 0 !important;
+  font-size: 16px !important;
+}
+.mt-product-promo-old-price[data-mt-promo-surface="mobile"] {
+  margin-bottom: 6px !important;
+  font-size: 14px !important;
+}
+.product-price__box[data-mt-product-promo="v2"],
+.product-card__price-box[data-mt-product-promo="v2"] {
+  column-gap: 12px !important;
+  row-gap: 6px !important;
 }
 .product-price__item.mt-product-promo-current-price,
 .product-card__price.mt-product-promo-current-price {
@@ -474,7 +504,7 @@ export function productPromoLoaderScript(apiOrigin) {
       old = document.createElement("div");
       old.className = "mt-product-promo-old-price";
       old.setAttribute("aria-label", "Стара ціна");
-      box.insertBefore(old, priceNode);
+      priceNode.parentNode.insertBefore(old, priceNode);
     }
     if (old.textContent !== text) old.textContent = text;
     old.setAttribute("data-mt-promo-surface", adapter.surface);

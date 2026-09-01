@@ -49,6 +49,9 @@ test('selection embed renders its own responsive cards without rewriting native 
   assert.doesNotThrow(() => new Script(code));
   assert.match(code, /document\.createElement\("article"\)/u);
   assert.match(code, /--mt-selection-mobile-columns/u);
+  assert.match(code, /\.p-review-add/u);
+  assert.match(code, /object-fit: contain !important/u);
+  assert.match(code, /translateY\(-4px\)/u);
   assert.match(code, /surfaceSelectors/u);
   assert.doesNotMatch(code, /innerHTML/u);
 });
@@ -69,12 +72,15 @@ test('promo loader uses the verified desktop price contract', async () => {
 test('promo loader uses the independent mobile price contract', async () => {
   const { dom, box, calls } = await evaluatePromo(`
     <div class="product-card__price-box">
-      <div class="product-card__price"><meta itemprop="price" content="1399"><meta itemprop="priceCurrency" content="UAH">1 399 грн</div>
+      <div class="product-card__price-item">
+        <div class="product-card__price"><meta itemprop="price" content="1399"><meta itemprop="priceCurrency" content="UAH">1 399 грн</div>
+      </div>
     </div>
   `, '.product-card__price-box');
   assert.equal(calls, 1);
   assert.equal(box.querySelector('.mt-product-promo-old-price').textContent, '1\u00a0530 грн');
   assert.equal(box.querySelector('.mt-product-promo-old-price').getAttribute('data-mt-promo-surface'), 'mobile');
+  assert.equal(box.querySelector('.mt-product-promo-old-price').parentElement.className, 'product-card__price-item');
   assert.equal(box.querySelector('.product-card__price').classList.contains('mt-product-promo-current-price'), true);
   dom.window.close();
 });
