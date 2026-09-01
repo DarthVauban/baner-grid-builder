@@ -43,6 +43,14 @@ export const toolCategories: ToolCategoryDefinition[] = [
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'horoshop_title_labels',
+    name: 'Лейбли товарів',
+    description: 'Конструктор лейблів у назвах товарів за одним або кількома стікерами: сторінка товару, картки вітрини й кошик.',
+    path: '/tools/horoshop-title-labels',
+    icon: 'productCard',
+    category: 'horoshop'
+  },
+  {
     id: 'horoshop_cart_theme',
     name: 'Кошик Хорошоп',
     description: 'Широкий кошик із компактним замовленням і великими картками рекомендованих товарів. Окремі теми для десктопа та мобільної версії.',

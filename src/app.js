@@ -43,6 +43,8 @@ import horoshopCatalogMenuRoutes from './modules/horoshop-catalog-menu/catalog-m
 import publicHoroshopCatalogMenuRoutes from './modules/horoshop-catalog-menu/catalog-menu.public.routes.js';
 import horoshopCartThemeRoutes from './modules/horoshop-cart-theme/cart-theme.routes.js';
 import publicHoroshopCartThemeRoutes from './modules/horoshop-cart-theme/cart-theme.public.routes.js';
+import horoshopTitleLabelsRoutes from './modules/horoshop-title-labels/title-labels.routes.js';
+import publicHoroshopTitleLabelsRoutes from './modules/horoshop-title-labels/title-labels.public.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -214,6 +216,7 @@ app.use('/api/popup-banners', popupBannerRoutes);
 app.use('/api/product-selections', productSelectionRoutes);
 app.use('/api/horoshop-catalog-menu', horoshopCatalogMenuRoutes);
 app.use('/api/horoshop-cart-theme', horoshopCartThemeRoutes);
+app.use('/api/horoshop-title-labels', horoshopTitleLabelsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/applications', applicationRoutes);
@@ -234,6 +237,7 @@ app.use('/api/public/popup-banners', publicEmbedCors, publicPopupBannerRoutes);
 app.use('/api/public/product-selections', publicEmbedCors, publicProductSelectionRoutes);
 app.use('/api/public/horoshop-catalog-menu', publicEmbedCors, publicHoroshopCatalogMenuRoutes);
 app.use('/api/public/horoshop-cart-theme', publicEmbedCors, publicHoroshopCartThemeRoutes);
+app.use('/api/public/horoshop-title-labels', publicEmbedCors, publicHoroshopTitleLabelsRoutes);
 app.use('/api', notFoundHandler);
 
 app.use('/media/catalog', express.static(catalogMediaDir, {

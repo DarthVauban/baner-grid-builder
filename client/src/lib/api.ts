@@ -140,6 +140,7 @@ import type {
   HoroshopCartThemeSettings,
   HoroshopCartThemeSettingsEnvelope
 } from '../types/horoshop-cart-theme';
+import type { HoroshopTitleLabelRule, HoroshopTitleLabelSettings } from '../types/horoshop-title-labels';
 import type {
   PublicTradeInSettings,
   TradeInAnswers,
@@ -215,6 +216,21 @@ export const api = {
     ),
     setEnabled: (enabled: boolean) => request<HoroshopCartThemeSettings>(
       '/api/horoshop-cart-theme/settings/enabled',
+      { method: 'PATCH', body: jsonBody({ enabled }) }
+    )
+  },
+  horoshopTitleLabels: {
+    settings: () => request<HoroshopTitleLabelSettings>('/api/horoshop-title-labels/settings'),
+    saveDraft: (rules: HoroshopTitleLabelRule[]) => request<HoroshopTitleLabelSettings>(
+      '/api/horoshop-title-labels/settings/draft',
+      { method: 'PUT', body: jsonBody({ rules }) }
+    ),
+    publish: (rules: HoroshopTitleLabelRule[]) => request<HoroshopTitleLabelSettings>(
+      '/api/horoshop-title-labels/settings/publish',
+      { method: 'POST', body: jsonBody({ rules }) }
+    ),
+    setEnabled: (enabled: boolean) => request<HoroshopTitleLabelSettings>(
+      '/api/horoshop-title-labels/settings/enabled',
       { method: 'PATCH', body: jsonBody({ enabled }) }
     )
   },

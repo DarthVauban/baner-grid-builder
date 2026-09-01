@@ -3,6 +3,7 @@
 Актуально станом на 2026-09-01. Це канонічний cross-cutting контракт для всіх скриптів, які
 вбудовуються у публічну вітрину Хорошопа: `popup-banners`, `horoshop-cart-theme`,
 `horoshop-catalog-menu`, `product-selections` та майбутніх storefront-адаптерів.
+`horoshop-title-labels` також підпорядковується цьому контракту.
 
 Класи й структура DOM Хорошопа не є нашим публічним API та можуть змінитися після оновлення
 платформи або теми. Фактичний код і перевірена розмітка мають пріоритет, але будь-яка розбіжність
@@ -42,6 +43,9 @@ CSS media queries дозволено використовувати для ві�
 | Оформлення замовлення | `.cart-btnOrder .btn` у `.cart-foot` | `.cart__order` | Не переносити desktop footer DOM у mobile drawer |
 | Головний buy box товару | `.product-order__block--buy`, compatibility fallback-и `.product-order` і `.product__section--order` | `.product__block--orderBox [data-view-block="orderBox"] .product-card--main[itemprop="offers"] .product-card__buy-button` | Кнопка має бути scoped до головного товару |
 | Ціна на сторінці товару | box `.product-price__box`, поточна ціна `.product-price__item` | box `.product-card__price-box`, поточна ціна `.product-card__price` | Числове значення читається з `meta[itemprop="price"]`; desktop/mobile адаптери незалежні |
+| Назва сторінки товару | `h1.product-title[itemprop="name"]` | `h1.heading.heading--xl[itemprop="name"]` | Лейбл додається окремим першим дочірнім вузлом; текст заголовка не переписується |
+| Назва картки товару | `.productsSlider-title`, `.catalogCard-title`, `.productsList-title` | `.catalog-card__title`; URL береться з `.catalog-card__link[href]` | Визначення лейбла робиться через опубліковану URL-мапу, а не через viewport |
+| Назва товару в кошику | `.popup.__cart .cart-title[href]` | `#cart-drawer .cart-item__link[href]` | У кошику стікери відсутні, тому джерелом є синхронізований каталог і URL товару |
 | Меню каталогу | `.j-products-menu` і `.productsMenu-*` | не модифікується | Поточний catalog-menu adapter є `desktop-only` і обмежений `min-width: 1024px` |
 
 `horoshop-cart-theme` позначає знайдені roots атрибутом `data-mt-cart-surface="desktop|mobile"`.
@@ -151,6 +155,40 @@ cart.appendProduct({ type, quantity: Number(quantity), id }, []);
 - дозволений лише observer конкретного знайденого price box. Body-wide `MutationObserver` для
   косметичної ціни заборонений;
 - візуальна стара ціна ніколи не змінює ціну, яку Хорошоп/1С передає до кошика або замовлення.
+
+## Лейбли назв товарів за стікерами
+
+`horoshop-title-labels` зберігає впорядкований набір правил. Кожне правило містить текст і стиль
+лейбла та один або кілька стабільних ключів стікерів. Якщо товар відповідає кільком активним
+правилам, усі відповідні лейбли додаються до назви у порядку правил. Вони є звичайними inline-
+вузлами, тому переносяться разом із назвою й не накладаються один на одного як графічні стікери.
+
+Публічний embed не читає стікери з випадкової ділянки HTML. На момент запиту скрипта сервер:
+
+1. читає опубліковані правила;
+2. бере поточне покоління `search_horoshop_products` і `search_horoshop_modifications`;
+3. об'єднує стікери товару й модифікації;
+4. будує same-store URL-мапу `path → label`;
+5. вбудовує мапу та перевірені стилі у відповідь `embed.js`.
+
+Завдяки цьому кошик підтримується навіть тоді, коли його DOM не містить жодного стікера. Після
+синхронізації каталогу нові товари автоматично потрапляють під уже опубліковані правила без
+повторного збереження конструктора.
+
+Окремі adapter families:
+
+- desktop product: `h1.product-title[itemprop="name"]`;
+- desktop cards: `.productsSlider-i`, `.catalogCard`, `.productsList-item`;
+- desktop cart: `.popup.__cart .cart-item.j-cart-product` і `.cart-title[href]`;
+- mobile product: `h1.heading.heading--xl[itemprop="name"]`;
+- mobile cards: `.catalog-card`, `.catalog-card__title`, `.catalog-card__link[href]`;
+- mobile cart: `#cart-drawer .cart__item.j-cart-product` і `.cart-item__link[href]`.
+
+Embed додає лише власний `span[data-mt-title-label="v1"]`, є idempotent, спостерігає AJAX-заміни
+карток/кошика через `MutationObserver` та ніколи не замінює нативний title/link через `innerHTML`.
+Текст записується через `textContent`, кольори проходять серверну валідацію `#RRGGBB`, а URL
+приймаються лише для домену підключеного магазину. Помилка або відсутній URL-мапінг означає
+fail-open: нативна назва залишається без змін.
 
 ## Discovery та fallback
 

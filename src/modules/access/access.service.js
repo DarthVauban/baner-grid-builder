@@ -4,7 +4,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 
 export const savedDataResources = ['banner_grids', 'saved_banners'];
 export const assignableRoles = ['admin', 'editor', 'content_manager', 'manager'];
-export const toolIds = ['banner_grid', 'product_selection', 'blog_publications', 'chat', 'applications', 'form_builder', 'used_smartphones_catalog', 'trade_in', 'store_map', 'facebook_group_publications', 'horoshop_related_products', 'horoshop_photo_parser', 'online_support', 'popup_banners', 'horoshop_catalog_menu', 'horoshop_cart_theme'];
+export const toolIds = ['banner_grid', 'product_selection', 'blog_publications', 'chat', 'applications', 'form_builder', 'used_smartphones_catalog', 'trade_in', 'store_map', 'facebook_group_publications', 'horoshop_related_products', 'horoshop_photo_parser', 'online_support', 'popup_banners', 'horoshop_catalog_menu', 'horoshop_cart_theme', 'horoshop_title_labels'];
 const defaultToolIds = ['banner_grid', 'product_selection', 'blog_publications'];
 
 export async function getToolSecurityRequirements(db = { query }) {
