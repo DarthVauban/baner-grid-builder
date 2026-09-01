@@ -45,7 +45,7 @@ CSS media queries дозволено використовувати для ві�
 | Ціна на сторінці товару | box `.product-price__box`, поточна ціна `.product-price__item` | box `.product-card__price-box`, поточна ціна `.product-card__price` | Числове значення читається з `meta[itemprop="price"]`; desktop/mobile адаптери незалежні |
 | Назва сторінки товару | `h1.product-title[itemprop="name"]` | `h1.heading.heading--xl[itemprop="name"]` | Лейбл додається окремим першим дочірнім вузлом; текст заголовка не переписується |
 | Назва картки товару | `.productsSlider-title`, `.catalogCard-title`, `.productsList-title` | `.catalog-card__title`; URL береться з `.catalog-card__link[href]` | Визначення лейбла робиться через опубліковану URL-мапу, а не через viewport |
-| Назва товару в кошику | `.popup.__cart .cart-title[href]` | `#cart-drawer .cart-item__link[href]` | У кошику стікери відсутні, тому джерелом є синхронізований каталог і URL товару |
+| Назва товару в кошику | контейнер `.popup.__cart .cart-title`, URL із вкладеного `.cart-title a[href]` (fallback `.cart-image a[href]`) | `#cart-drawer .cart-item__link[href]` | У кошику стікери відсутні, тому джерелом є синхронізований каталог і URL товару |
 | Меню каталогу | `.j-products-menu` і `.productsMenu-*` | не модифікується | Поточний catalog-menu adapter є `desktop-only` і обмежений `min-width: 1024px` |
 
 `horoshop-cart-theme` позначає знайдені roots атрибутом `data-mt-cart-surface="desktop|mobile"`.
@@ -179,7 +179,7 @@ cart.appendProduct({ type, quantity: Number(quantity), id }, []);
 
 - desktop product: `h1.product-title[itemprop="name"]`;
 - desktop cards: `.productsSlider-i`, `.catalogCard`, `.productsList-item`;
-- desktop cart: `.popup.__cart .cart-item.j-cart-product` і `.cart-title[href]`;
+- desktop cart: `.popup.__cart .cart-item.j-cart-product`, контейнер назви `.cart-title` і вкладене посилання `.cart-title a[href]` (fallback `.cart-image a[href]`);
 - mobile product: `h1.heading.heading--xl[itemprop="name"]`;
 - mobile cards: `.catalog-card`, `.catalog-card__title`, `.catalog-card__link[href]`;
 - mobile cart: `#cart-drawer .cart__item.j-cart-product` і `.cart-item__link[href]`.

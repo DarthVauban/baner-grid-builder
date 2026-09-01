@@ -128,11 +128,11 @@ test('desktop adapter decorates product page, storefront card and cart without r
       <a href="/sale-phone/"><span class="productsSlider-title"><span class="a-link">Акційний смартфон</span></span></a>
     </article>
     <section class="popup __cart"><table><tbody><tr class="cart-item j-cart-product">
-      <td><a class="cart-image" href="/used-phone/">Фото</a></td>
-      <td><a class="cart-title" href="/used-phone/">Вживаний смартфон</a></td>
+      <td><div class="cart-image"><a href="/used-phone/">Фото</a></div></td>
+      <td><div class="cart-title"><a href="/used-phone/">Вживаний смартфон</a></div></td>
     </tr></tbody></table></section>
   </body></html>`, { runScripts: 'outside-only', url: 'https://shop.example.com/used-phone/' });
-  const cartLink = dom.window.document.querySelector('.cart-title');
+  const cartLink = dom.window.document.querySelector('.cart-title a');
   let clicks = 0;
   cartLink.addEventListener('click', (event) => { event.preventDefault(); clicks += 1; });
 

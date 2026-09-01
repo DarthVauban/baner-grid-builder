@@ -76,7 +76,7 @@ export function titleLabelsEmbedScript(config) {
   const collectionAdapters = [
     { surface: 'desktop-card', root: '.productsSlider-i', title: '.productsSlider-title .a-link, .productsSlider-title a', fallback: '.productsSlider-title', link: 'a[href]' },
     { surface: 'desktop-card', root: '.catalogCard, .productsList-item', title: '.catalogCard-title a, .productsList-title a', fallback: '.catalogCard-title, .productsList-title', link: 'a[href]' },
-    { surface: 'desktop-cart', root: '.popup.__cart .cart-item.j-cart-product', title: '.cart-title', link: '.cart-title[href], .cart-image[href]' },
+    { surface: 'desktop-cart', root: '.popup.__cart .cart-item.j-cart-product', title: '.cart-title', link: '.cart-title a[href], .cart-image a[href]' },
     { surface: 'mobile-card', root: '.catalog-card', title: '.catalog-card__title .link', fallback: '.catalog-card__title', link: '.catalog-card__link[href], a[href]' },
     { surface: 'mobile-cart', root: '#cart-drawer .cart__item.j-cart-product', title: '.cart-item__link', fallback: '.cart-item__title', link: '.cart-item__link[href], .cart-item__image a[href]' }
   ];
