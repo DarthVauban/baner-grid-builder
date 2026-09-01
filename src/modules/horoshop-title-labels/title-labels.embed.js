@@ -39,7 +39,7 @@ export function titleLabelsEmbedScript(config) {
   if (!document.getElementById(styleId)) {
     const style = document.createElement('style');
     style.id = styleId;
-    style.textContent = '[data-mt-title-label="v1"]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;max-width:100%;margin:0 .42em .12em 0;padding:.2em .48em;border:1px solid var(--mt-label-border,var(--mt-label-bg));border-radius:var(--mt-label-radius,4px);background:var(--mt-label-bg,#202020);color:var(--mt-label-color,#ffe101);font:inherit;font-size:.72em;font-weight:800;line-height:1.15;letter-spacing:.01em;vertical-align:.12em;white-space:nowrap;text-decoration:none!important}[data-mt-label-surface="mobile-card"],[data-mt-label-surface="desktop-card"]{font-size:.68em}[data-mt-label-surface$="cart"]{font-size:.72em}';
+    style.textContent = '[data-mt-title-label="v1"]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;max-width:100%;margin:0 .42em .12em 0;padding:.2em .48em;border:1px solid var(--mt-label-border,var(--mt-label-bg));border-radius:var(--mt-label-radius,4px);background:var(--mt-label-bg,#202020);color:var(--mt-label-color,#ffe101);font-family:inherit;font-size:var(--mt-label-font-size,14px);font-weight:800;line-height:1.15;letter-spacing:.01em;vertical-align:.12em;white-space:nowrap;text-decoration:none!important}';
     document.head.appendChild(style);
   }
   const makeLabel = (label, surface) => {
@@ -52,6 +52,12 @@ export function titleLabelsEmbedScript(config) {
     node.style.setProperty('--mt-label-color', label.textColor);
     node.style.setProperty('--mt-label-border', label.borderColor);
     node.style.setProperty('--mt-label-radius', String(label.borderRadius) + 'px');
+    const fontSize = surface.endsWith('-product')
+      ? label.productPageFontSize
+      : surface.endsWith('-card')
+        ? label.productCardFontSize
+        : label.cartFontSize;
+    node.style.setProperty('--mt-label-font-size', String(fontSize) + 'px');
     node.textContent = label.text;
     return node;
   };

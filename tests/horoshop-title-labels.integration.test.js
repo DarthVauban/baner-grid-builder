@@ -29,6 +29,9 @@ const usedRule = {
   textColor: '#ffe101',
   borderColor: '#202020',
   borderRadius: 4,
+  productPageFontSize: 18,
+  productCardFontSize: 12,
+  cartFontSize: 13,
   enabled: true
 };
 const promoRule = {
@@ -40,6 +43,9 @@ const promoRule = {
   textColor: '#ffffff',
   borderColor: '#d92d20',
   borderRadius: 6,
+  productPageFontSize: 20,
+  productCardFontSize: 14,
+  cartFontSize: 15,
   enabled: true
 };
 
@@ -101,6 +107,9 @@ test('constructor publishes ordered sticker rules and a current catalog URL map'
     .expect(200);
   assert.equal(published.body.data.enabled, true);
   assert.equal(published.body.data.publishedVersion, 1);
+  assert.equal(published.body.data.publishedRules[0].productPageFontSize, 18);
+  assert.equal(published.body.data.publishedRules[0].productCardFontSize, 12);
+  assert.equal(published.body.data.publishedRules[0].cartFontSize, 13);
 
   const script = await request(app)
     .get('/api/public/horoshop-title-labels/embed.js')
@@ -119,6 +128,9 @@ test('constructor publishes ordered sticker rules and a current catalog URL map'
   const config = await loadPublishedTitleLabels(publicId);
   assert.ok(config.assignments.find((group) => group.labelId === usedRule.id).paths.includes('/used-phone'));
   assert.ok(config.assignments.find((group) => group.labelId === promoRule.id).paths.includes('/used-phone'));
+  assert.equal(config.labels.find((label) => label.id === promoRule.id).productPageFontSize, 20);
+  assert.equal(config.labels.find((label) => label.id === promoRule.id).productCardFontSize, 14);
+  assert.equal(config.labels.find((label) => label.id === promoRule.id).cartFontSize, 15);
 });
 
 test('desktop adapter decorates product page, storefront card and cart without replacing native nodes', async () => {
@@ -152,6 +164,9 @@ test('desktop adapter decorates product page, storefront card and cart without r
   );
   assert.equal(dom.window.document.querySelector('.productsSlider-title [data-mt-title-label]')?.textContent, 'Акція');
   assert.equal(dom.window.document.querySelector('.cart-title [data-mt-title-label]')?.textContent, 'Вживаний');
+  assert.equal(dom.window.document.querySelector('h1.product-title [data-mt-label-id="11111111-1111-4111-8111-111111111111"]')?.style.getPropertyValue('--mt-label-font-size'), '18px');
+  assert.equal(dom.window.document.querySelector('.productsSlider-title [data-mt-title-label]')?.style.getPropertyValue('--mt-label-font-size'), '14px');
+  assert.equal(dom.window.document.querySelector('.cart-title [data-mt-title-label]')?.style.getPropertyValue('--mt-label-font-size'), '13px');
   cartLink.click();
   assert.equal(clicks, 1);
 
@@ -190,6 +205,9 @@ test('mobile adapter decorates its independent product, card and drawer contract
   );
   assert.equal(dom.window.document.querySelector('.catalog-card__title [data-mt-title-label]')?.textContent, 'Акція');
   assert.equal(dom.window.document.querySelector('.cart-item__link [data-mt-title-label]')?.textContent, 'Вживаний');
+  assert.equal(dom.window.document.querySelector('h1.heading--xl [data-mt-label-id="11111111-1111-4111-8111-111111111111"]')?.style.getPropertyValue('--mt-label-font-size'), '18px');
+  assert.equal(dom.window.document.querySelector('.catalog-card__title [data-mt-title-label]')?.style.getPropertyValue('--mt-label-font-size'), '14px');
+  assert.equal(dom.window.document.querySelector('.cart-item__link [data-mt-title-label]')?.style.getPropertyValue('--mt-label-font-size'), '13px');
 
   const ajaxCard = dom.window.document.createElement('div');
   ajaxCard.className = 'catalog-card';

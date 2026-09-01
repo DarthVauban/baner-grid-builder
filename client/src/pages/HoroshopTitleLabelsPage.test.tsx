@@ -19,6 +19,9 @@ const settings: HoroshopTitleLabelSettings = {
     textColor: '#ffe101',
     borderColor: '#202020',
     borderRadius: 4,
+    productPageFontSize: 18,
+    productCardFontSize: 12,
+    cartFontSize: 13,
     enabled: true
   }],
   publishedRules: [],
@@ -57,9 +60,12 @@ describe('HoroshopTitleLabelsPage', () => {
     expect(await screen.findByRole('heading', { name: 'Текст і стиль' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Стікери Хорошопа' })).toBeInTheDocument();
     expect(screen.getByText(/84 товарів/u)).toBeInTheDocument();
-    expect(screen.getByText('Сторінка товару')).toBeInTheDocument();
-    expect(screen.getByText('Картки вітрини')).toBeInTheDocument();
-    expect(screen.getByText('Кошик')).toBeInTheDocument();
+    expect(screen.getByText(/Сторінка товару · 18px/u)).toBeInTheDocument();
+    expect(screen.getByText(/Картка товару · 12px/u)).toBeInTheDocument();
+    expect(screen.getByText(/Кошик · 13px/u)).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'Розмір шрифту на сторінці товару' })).toHaveValue(18);
+    expect(screen.getByRole('spinbutton', { name: 'Розмір шрифту у картці товару' })).toHaveValue(12);
+    expect(screen.getByRole('spinbutton', { name: 'Розмір шрифту у кошику' })).toHaveValue(13);
   });
 
   it('binds one label to several stickers and publishes the ordered rules', async () => {
@@ -69,12 +75,18 @@ describe('HoroshopTitleLabelsPage', () => {
     fireEvent.click(saleSticker);
     expect(screen.getByText('2 вибрано')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст лейбла' }), { target: { value: 'Перевірений' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту на сторінці товару' }), { target: { value: '21' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту у картці товару' }), { target: { value: '15' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту у кошику' }), { target: { value: '16' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Зберегти/u }));
     await waitFor(() => expect(api.horoshopTitleLabels.saveDraft).toHaveBeenCalled());
     const savedRules = vi.mocked(api.horoshopTitleLabels.saveDraft).mock.calls[0][0];
     expect(savedRules[0].stickerKeys).toEqual(['id:used', 'id:sale']);
     expect(savedRules[0].text).toBe('Перевірений');
+    expect(savedRules[0].productPageFontSize).toBe(21);
+    expect(savedRules[0].productCardFontSize).toBe(15);
+    expect(savedRules[0].cartFontSize).toBe(16);
 
     fireEvent.click(screen.getByRole('button', { name: /Опублікувати/u }));
     await waitFor(() => expect(api.horoshopTitleLabels.publish).toHaveBeenCalled());

@@ -34,6 +34,12 @@ function normalizePath(value, storeDomain) {
   } catch { return ''; }
 }
 
+function normalizeFontSize(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(8, Math.min(32, Math.round(numeric)));
+}
+
 function normalizeRule(rule) {
   return {
     id: String(rule.id),
@@ -44,6 +50,9 @@ function normalizeRule(rule) {
     textColor: String(rule.textColor).toLowerCase(),
     borderColor: String(rule.borderColor).toLowerCase(),
     borderRadius: Number(rule.borderRadius),
+    productPageFontSize: normalizeFontSize(rule.productPageFontSize, 18),
+    productCardFontSize: normalizeFontSize(rule.productCardFontSize, 12),
+    cartFontSize: normalizeFontSize(rule.cartFontSize, 13),
     enabled: rule.enabled !== false
   };
 }
@@ -136,8 +145,8 @@ function serializeSettings(row, options, origin = '') {
   return {
     publicId: row.public_id,
     enabled: row.enabled === true,
-    draftRules: jsonArray(row.draft_rules),
-    publishedRules: jsonArray(row.published_rules),
+    draftRules: jsonArray(row.draft_rules).map(normalizeRule),
+    publishedRules: jsonArray(row.published_rules).map(normalizeRule),
     publishedVersion: Number(row.published_version || 0),
     storeDomain: row.store_domain || '',
     lastCatalogSyncAt: row.last_sync_at || null,
@@ -230,7 +239,10 @@ export async function loadPublishedTitleLabels(publicId) {
       backgroundColor: rule.backgroundColor,
       textColor: rule.textColor,
       borderColor: rule.borderColor,
-      borderRadius: rule.borderRadius
+      borderRadius: rule.borderRadius,
+      productPageFontSize: rule.productPageFontSize,
+      productCardFontSize: rule.productCardFontSize,
+      cartFontSize: rule.cartFontSize
     })),
     assignments: assignmentsForRules(index, rules)
   };

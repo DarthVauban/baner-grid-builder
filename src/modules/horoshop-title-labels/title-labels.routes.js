@@ -25,6 +25,9 @@ const ruleSchema = z.object({
   textColor: colorSchema,
   borderColor: colorSchema,
   borderRadius: z.number().int().min(0).max(20),
+  productPageFontSize: z.number().int().min(8).max(32).default(18),
+  productCardFontSize: z.number().int().min(8).max(32).default(12),
+  cartFontSize: z.number().int().min(8).max(32).default(13),
   enabled: z.boolean()
 });
 const rulesSchema = z.object({ rules: z.array(ruleSchema).max(50) });

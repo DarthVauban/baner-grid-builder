@@ -7,6 +7,9 @@ export interface HoroshopTitleLabelRule {
   textColor: string;
   borderColor: string;
   borderRadius: number;
+  productPageFontSize: number;
+  productCardFontSize: number;
+  cartFontSize: number;
   enabled: boolean;
 }
 

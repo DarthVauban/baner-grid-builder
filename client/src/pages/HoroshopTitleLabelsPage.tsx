@@ -28,8 +28,15 @@ function emptyRule(): HoroshopTitleLabelRule {
     textColor: '#ffe101',
     borderColor: '#202020',
     borderRadius: 4,
+    productPageFontSize: 18,
+    productCardFontSize: 12,
+    cartFontSize: 13,
     enabled: true
   };
+}
+
+function clampFontSize(value: number) {
+  return Math.max(8, Math.min(32, Math.round(value)));
 }
 
 function previewStyle(rule: HoroshopTitleLabelRule) {
@@ -206,8 +213,11 @@ export function HoroshopTitleLabelsPage() {
 
           <div className="title-label-preview" style={previewStyle(selected)}>
             <p className="eyebrow">Попередній перегляд</p>
-            <div className="title-label-preview__product"><span>{selected.text || 'Лейбл'}</span><strong>Смартфон Apple iPhone 13 128Gb Midnight</strong></div>
-            <div className="title-label-preview__surfaces"><span><Icon name="productPage" size={15} /> Сторінка товару</span><span><Icon name="productCard" size={15} /> Картки вітрини</span><span><Icon name="storefront" size={15} /> Кошик</span></div>
+            <div className="title-label-preview__examples">
+              <div><small><Icon name="productPage" size={14} /> Сторінка товару · {selected.productPageFontSize}px</small><p className="title-label-preview__product"><span style={{ fontSize: `${selected.productPageFontSize}px` }}>{selected.text || 'Лейбл'}</span><strong>Смартфон Apple iPhone 13 128Gb Midnight</strong></p></div>
+              <div><small><Icon name="productCard" size={14} /> Картка товару · {selected.productCardFontSize}px</small><p className="title-label-preview__card"><span style={{ fontSize: `${selected.productCardFontSize}px` }}>{selected.text || 'Лейбл'}</span><strong>Смартфон Apple iPhone 13</strong></p></div>
+              <div><small><Icon name="storefront" size={14} /> Кошик · {selected.cartFontSize}px</small><p className="title-label-preview__cart"><span style={{ fontSize: `${selected.cartFontSize}px` }}>{selected.text || 'Лейбл'}</span><strong>Смартфон Apple iPhone 13 128Gb</strong></p></div>
+            </div>
           </div>
 
           <div className="title-label-form-section">
@@ -219,6 +229,14 @@ export function HoroshopTitleLabelsPage() {
               <label className="title-label-color-field">Текст<span><input aria-label="Колір тексту" type="color" value={selected.textColor} onChange={(event) => updateSelected({ textColor: event.target.value })} /><code>{selected.textColor}</code></span></label>
               <label className="title-label-color-field">Обводка<span><input aria-label="Колір обводки" type="color" value={selected.borderColor} onChange={(event) => updateSelected({ borderColor: event.target.value })} /><code>{selected.borderColor}</code></span></label>
               <label>Заокруглення, px<input aria-label="Заокруглення" type="number" min={0} max={20} value={selected.borderRadius} onChange={(event) => updateSelected({ borderRadius: Math.max(0, Math.min(20, Number(event.target.value) || 0)) })} /></label>
+            </div>
+            <div className="title-label-font-settings">
+              <div className="title-label-font-settings__heading"><strong>Розмір тексту лейбла</strong><span>Налаштовується окремо для кожного місця показу · 8–32 px</span></div>
+              <div className="title-label-font-settings__grid">
+                <label><span><Icon name="productPage" size={16} /><span><strong>Сторінка товару</strong><small>У заголовку товару</small></span></span><span className="title-label-font-settings__input"><input aria-label="Розмір шрифту на сторінці товару" type="number" min={8} max={32} value={selected.productPageFontSize} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && updateSelected({ productPageFontSize: clampFontSize(event.target.valueAsNumber) })} /><em>px</em></span></label>
+                <label><span><Icon name="productCard" size={16} /><span><strong>Картка товару</strong><small>Каталог і слайдери</small></span></span><span className="title-label-font-settings__input"><input aria-label="Розмір шрифту у картці товару" type="number" min={8} max={32} value={selected.productCardFontSize} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && updateSelected({ productCardFontSize: clampFontSize(event.target.valueAsNumber) })} /><em>px</em></span></label>
+                <label><span><Icon name="storefront" size={16} /><span><strong>Кошик</strong><small>Рядок товару в кошику</small></span></span><span className="title-label-font-settings__input"><input aria-label="Розмір шрифту у кошику" type="number" min={8} max={32} value={selected.cartFontSize} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && updateSelected({ cartFontSize: clampFontSize(event.target.valueAsNumber) })} /><em>px</em></span></label>
+              </div>
             </div>
           </div>
 
