@@ -14,6 +14,8 @@
 
 ## Хорошоп
 
+- [Практичний handoff-гайд з розмітки та embed-скриптів](HOROSHOP_MARKUP_HANDOFF.md) —
+  самодостатній документ для передачі контексту в інший чат або новому розробнику.
 - [DOM-контракт desktop/mobile вітрини](horoshop-storefront-dom-contract.md) — обов'язкові правила
   окремих DOM-поверхонь, native cart, selector maps і regression-перевірок.
 - [Меню каталогу Хорошоп](horoshop-catalog-menu/README.md) — CSS-only оформлення штатного дерева,
