@@ -65,6 +65,12 @@ const eventStatsKey = {
   acknowledge: 'acknowledgements'
 };
 
+function normalizeCampaignType(value, targeting = {}) {
+  if (object(targeting).mode === 'out_of_stock' && value !== 'product_promo') return 'out_of_stock_recommendations';
+  if (['message', 'out_of_stock_recommendations', 'product_promo'].includes(value)) return value;
+  return 'message';
+}
+
 function object(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -166,8 +172,9 @@ function normalizeBehavior(value) {
   };
 }
 
-function campaignSnapshot(row, targets = []) {
+function campaignSnapshot(row, targets = [], promoProducts = []) {
   return {
+    campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
     name: row.name,
     status: row.status,
     priority: Number(row.priority),
@@ -177,7 +184,8 @@ function campaignSnapshot(row, targets = []) {
     behavior: normalizeBehavior(row.behavior),
     startsAt: row.starts_at,
     endsAt: row.ends_at,
-    targets
+    targets,
+    promoProducts
   };
 }
 
@@ -193,10 +201,43 @@ function serializeTarget(row) {
   };
 }
 
-function serializeCampaign(row, targets = []) {
+function serializePromoProduct(row) {
+  const hasModification = Boolean(row.modification_id);
+  const sourceData = hasModification ? row.modification_source_data : row.product_source_data;
+  const productSourceData = row.product_source_data;
+  const price = hasModification ? row.modification_price : row.product_price;
+  const oldPrice = hasModification
+    ? row.modification_old_price || sourceOldPrice(sourceData) || row.product_old_price || sourceOldPrice(productSourceData)
+    : row.product_old_price || sourceOldPrice(productSourceData);
+  const availability = hasModification ? row.modification_availability : row.product_availability;
+  return {
+    id: row.id,
+    productId: row.product_id,
+    modificationId: row.modification_id || null,
+    productExternalId: row.product_external_id,
+    modificationExternalId: row.modification_external_id || null,
+    position: Number(row.position),
+    sku: (hasModification ? row.modification_sku : row.product_sku) || '',
+    article: (hasModification ? row.modification_sku : row.product_sku) || '',
+    title: localizedTitle(hasModification ? row.modification_titles : row.product_titles)
+      || localizedTitle(row.product_titles),
+    imageUrl: (hasModification ? row.modification_image_url : row.product_image_url) || row.product_image_url || '',
+    pageUrl: (hasModification ? row.modification_page_url : row.product_page_url) || row.product_page_url || '',
+    price: price || '',
+    oldPrice: oldPrice || '',
+    currency: (hasModification ? row.modification_currency : row.product_currency) || row.product_currency || '',
+    availability: availability || '',
+    visible: (hasModification ? row.modification_visible : row.product_visible) !== false,
+    available: isAvailable(availability),
+    buyId: sourceIdentifier(sourceData, sourceIdentifier(productSourceData, row.modification_external_id || row.product_external_id))
+  };
+}
+
+function serializeCampaign(row, targets = [], promoProducts = []) {
   return {
     id: row.id,
     publicId: row.public_id,
+    campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
     name: row.name,
     status: row.status,
     priority: Number(row.priority),
@@ -208,6 +249,7 @@ function serializeCampaign(row, targets = []) {
     endsAt: row.ends_at,
     publishedAt: row.published_at,
     productTargets: targets.map(serializeTarget),
+    promoProducts: promoProducts.map(serializePromoProduct),
     stats: {
       impressions: Number(row.impressions || 0),
       dismissals: Number(row.dismissals || 0),
@@ -288,15 +330,17 @@ export async function listPopupCampaigns() {
     items.push(target);
     grouped.set(target.campaign_id, items);
   }
-  return result.rows.map((row) => serializeCampaign(
+  return Promise.all(result.rows.map(async (row) => serializeCampaign(
     { ...row, ...(stats.get(row.id) || {}) },
-    grouped.get(row.id) || []
-  ));
+    grouped.get(row.id) || [],
+    await loadPromoProducts(row.id)
+  )));
 }
 
 export async function getPopupCampaign(id) {
   const row = await loadCampaignRow(id);
-  return serializeCampaign(row, await loadTargets(id));
+  const [targets, promoProducts] = await Promise.all([loadTargets(id), loadPromoProducts(id)]);
+  return serializeCampaign(row, targets, promoProducts);
 }
 
 export async function popupCampaignOptions() {
@@ -392,14 +436,58 @@ async function resolveProductEntries(entries, connectionId, db) {
   return { targets: [...resolved.values()], unmatched };
 }
 
+async function resolvePromoItems(items, connectionId, generation, db) {
+  const resolved = [];
+  const unmatched = [];
+  const seen = new Set();
+  for (const [position, reference] of array(items).entries()) {
+    const productExternalId = String(reference?.productExternalId || '').trim();
+    const modificationExternalId = String(reference?.modificationExternalId || '').trim() || null;
+    const itemKey = JSON.stringify([productExternalId, modificationExternalId]);
+    if (!productExternalId || seen.has(itemKey)) continue;
+    seen.add(itemKey);
+    const match = await db.query(
+      `SELECT product.id AS product_id, modification.id AS modification_id
+       FROM search_horoshop_products AS product
+       LEFT JOIN search_horoshop_modifications AS modification
+         ON modification.product_id = product.id
+        AND modification.connection_id = $1 AND modification.generation = $2
+        AND modification.active = TRUE AND modification.external_id = $4
+       WHERE product.connection_id = $1 AND product.generation = $2
+         AND product.active = TRUE AND product.external_id = $3
+         AND ($4::TEXT IS NULL OR modification.id IS NOT NULL)
+       LIMIT 1`,
+      [connectionId, generation, productExternalId, modificationExternalId]
+    );
+    if (!match.rows[0]) {
+      unmatched.push({ productExternalId, modificationExternalId });
+      continue;
+    }
+    resolved.push({
+      productId: match.rows[0].product_id,
+      modificationId: modificationExternalId ? match.rows[0].modification_id : null,
+      itemKey,
+      position
+    });
+  }
+  return { items: resolved, unmatched };
+}
+
 async function recordVersion(client, campaignId, actorUserId) {
   const row = await loadCampaignRow(campaignId, client);
-  const targets = await loadTargets(campaignId, client);
+  const [targets, promoProducts] = await Promise.all([
+    loadTargets(campaignId, client),
+    loadPromoProducts(campaignId, client)
+  ]);
   await client.query(
     `INSERT INTO popup_banner_versions (campaign_id, version_number, snapshot, created_by)
      SELECT $1, COALESCE(MAX(version_number), 0) + 1, $2::JSONB, $3
      FROM popup_banner_versions WHERE campaign_id = $1`,
-    [campaignId, JSON.stringify(campaignSnapshot(row, targets.map(serializeTarget))), actorUserId]
+    [campaignId, JSON.stringify(campaignSnapshot(
+      row,
+      targets.map(serializeTarget),
+      promoProducts.map(serializePromoProduct)
+    )), actorUserId]
   );
 }
 
@@ -413,6 +501,7 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     );
     const connection = connectionResult.rows[0] || null;
     if (!connection) throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед створенням попап-кампанії.');
+    const campaignType = normalizeCampaignType(input.campaignType, input.targeting);
     const content = normalizeContent(input.content);
     const styles = normalizeStyles(input.styles);
     const targeting = normalizeTargeting(input.targeting);
@@ -424,12 +513,12 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     if (id) {
       const updated = await client.query(
         `UPDATE popup_banner_campaigns
-         SET connection_id = $2, connection_generation = $3, name = $4, priority = $5,
-             content = $6::JSONB, styles = $7::JSONB, targeting = $8::JSONB,
-             behavior = $9::JSONB, starts_at = $10, ends_at = $11,
-             updated_by = $12, updated_at = NOW()
+         SET connection_id = $2, connection_generation = $3, campaign_type = $4,
+             name = $5, priority = $6, content = $7::JSONB, styles = $8::JSONB,
+             targeting = $9::JSONB, behavior = $10::JSONB, starts_at = $11, ends_at = $12,
+             updated_by = $13, updated_at = NOW()
          WHERE id = $1 RETURNING id`,
-        [id, connection.id, connection.generation, input.name, input.priority,
+        [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, actorUserId]
       );
@@ -438,10 +527,10 @@ async function savePopupCampaign(existingId, input, actorUserId) {
       id = randomUUID();
       await client.query(
         `INSERT INTO popup_banner_campaigns (
-           id, connection_id, connection_generation, name, priority, content, styles,
+           id, connection_id, connection_generation, campaign_type, name, priority, content, styles,
            targeting, behavior, starts_at, ends_at, created_by, updated_by
-         ) VALUES ($1, $2, $3, $4, $5, $6::JSONB, $7::JSONB, $8::JSONB, $9::JSONB, $10, $11, $12, $12)`,
-        [id, connection.id, connection.generation, input.name, input.priority,
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $13)`,
+        [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, actorUserId]
       );
@@ -467,10 +556,32 @@ async function savePopupCampaign(existingId, input, actorUserId) {
         || targeting.conditions.length || targeting.urlContains.length;
       if (!hasRule) throw new AppError(422, 'POPUP_RULES_EMPTY', 'Додайте хоча б одну умову показу.');
     }
+
+    await client.query('DELETE FROM popup_banner_promo_products WHERE campaign_id = $1', [id]);
+    const promoResolution = await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, client);
+    for (const item of promoResolution.items) {
+      await client.query(
+        `INSERT INTO popup_banner_promo_products (
+           campaign_id, product_id, modification_id, item_key, position
+         ) VALUES ($1, $2, $3, $4, $5)`,
+        [id, item.productId, item.modificationId, item.itemKey, item.position]
+      );
+    }
+    if (campaignType === 'product_promo' && promoResolution.items.length === 0) {
+      throw new AppError(422, 'POPUP_PROMO_PRODUCTS_EMPTY', 'Додайте хоча б один товар до промобанера.', {
+        unmatched: promoResolution.unmatched
+      });
+    }
     await recordVersion(client, id, actorUserId);
     await client.query('COMMIT');
     const campaign = await getPopupCampaign(id);
-    return { ...campaign, resolution: { unmatched: resolution.unmatched } };
+    return {
+      ...campaign,
+      resolution: {
+        unmatched: resolution.unmatched,
+        unmatchedPromoProducts: promoResolution.unmatched
+      }
+    };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -515,6 +626,10 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
       if (targeting.mode === 'products') {
         const targets = await client.query('SELECT 1 FROM popup_banner_product_targets WHERE campaign_id = $1 LIMIT 1', [id]);
         if (!targets.rows[0]) throw new AppError(422, 'POPUP_TARGETS_EMPTY', 'Додайте хоча б один товар до кампанії.');
+      }
+      if (normalizeCampaignType(current.campaign_type, current.targeting) === 'product_promo') {
+        const products = await client.query('SELECT 1 FROM popup_banner_promo_products WHERE campaign_id = $1 LIMIT 1', [id]);
+        if (!products.rows[0]) throw new AppError(422, 'POPUP_PROMO_PRODUCTS_EMPTY', 'Додайте хоча б один товар до промобанера.');
       }
     }
     await client.query(
@@ -668,6 +783,30 @@ async function resolveProduct(connection, article, pageUrl) {
   };
 }
 
+async function loadPromoProducts(campaignId, db = { query }) {
+  const result = await db.query(
+    `SELECT item.*, product.external_id AS product_external_id,
+            product.sku AS product_sku, product.titles AS product_titles,
+            product.price AS product_price, product.old_price AS product_old_price,
+            product.currency AS product_currency, product.availability AS product_availability,
+            product.visible AS product_visible, product.primary_image_url AS product_image_url,
+            product.canonical_url AS product_page_url, product.source_data AS product_source_data,
+            modification.external_id AS modification_external_id,
+            modification.sku AS modification_sku, modification.titles AS modification_titles,
+            modification.price AS modification_price, modification.old_price AS modification_old_price,
+            modification.currency AS modification_currency, modification.availability AS modification_availability,
+            modification.visible AS modification_visible, modification.image_url AS modification_image_url,
+            modification.page_url AS modification_page_url, modification.source_data AS modification_source_data
+     FROM popup_banner_promo_products AS item
+     JOIN search_horoshop_products AS product ON product.id = item.product_id
+     LEFT JOIN search_horoshop_modifications AS modification ON modification.id = item.modification_id
+     WHERE item.campaign_id = $1
+     ORDER BY item.position, item.id`,
+    [campaignId]
+  );
+  return result.rows;
+}
+
 function isAvailable(value) {
   const availability = String(value || '').trim().toLocaleLowerCase('uk-UA');
   if (!availability) return false;
@@ -799,6 +938,7 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
     [connection.id, connection.generation]
   );
   for (const campaign of campaigns.rows) {
+    const campaignType = normalizeCampaignType(campaign.campaign_type, campaign.targeting);
     const targets = campaign.targeting?.mode === 'products'
       ? (await query('SELECT product_id, modification_id FROM popup_banner_product_targets WHERE campaign_id = $1', [campaign.id])).rows
       : [];
@@ -809,16 +949,24 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       ? await resolveOutOfStockRecommendations(connection, product, targeting.recommendationLimit)
       : [];
     if (targeting.mode === 'out_of_stock' && recommendations.length === 0) continue;
+    const promoProducts = campaignType === 'product_promo'
+      ? (await loadPromoProducts(campaign.id)).map(serializePromoProduct).filter((item) => (
+        item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
+      ))
+      : [];
+    if (campaignType === 'product_promo' && promoProducts.length === 0) continue;
     return {
       campaign: {
         publicId: campaign.public_id,
+        type: campaignType,
         mode: targeting.mode,
         content: Object.fromEntries(Object.entries(content).map(([key, value]) => [key, templateText(value, product)])),
         styles: normalizeStyles(campaign.styles),
         behavior: normalizeBehavior(campaign.behavior)
       },
       product: product ? { article: product.sku, title: product.title } : null,
-      recommendations
+      recommendations,
+      products: promoProducts
     };
   }
   return null;
@@ -1202,20 +1350,29 @@ export function popupEmbedScript(origin) {
   function render(payload, productArticle) {
     if (currentHost || isSuppressed(payload)) return;
     const { campaign } = payload;
+    const isProductPromo = campaign.type === 'product_promo';
     const host = document.createElement('div');
     host.id = 'mt-popup-banner-root';
     host.style.position = 'fixed';
-    host.style.inset = '0';
     host.style.zIndex = '2147482990';
+    if (isProductPromo) {
+      host.style.right = 'clamp(10px, 2vw, 24px)';
+      host.style.bottom = 'clamp(10px, 2vw, 24px)';
+      host.style.width = 'min(calc(100vw - 20px), ' + campaign.styles.maxWidth + 'px)';
+      host.style.pointerEvents = 'none';
+    } else {
+      host.style.inset = '0';
+    }
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
     style.textContent = \`:host{all:initial}.backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.56);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}.card{position:relative;width:min(var(--width),100%);max-height:calc(100vh - 36px);overflow:auto;border-radius:var(--radius);background:var(--bg);box-shadow:0 28px 90px rgba(15,23,42,.3);animation:enter .2s ease-out}.card:focus{outline:none}.card.is-recommendations{display:flex;flex-direction:column;overflow:hidden}.card.is-recommendations>.image{flex:0 1 auto;max-height:min(220px,24vh)}.card.is-recommendations .content{box-sizing:border-box;display:flex;flex:1 1 auto;flex-direction:column;max-height:none;min-height:0;overflow:hidden}.content{padding:30px}.image{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) - 7px) calc(var(--radius) - 7px) 0 0}.eyebrow{margin:0 0 8px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.title{margin:0;color:var(--text);font-size:clamp(24px,4vw,34px);line-height:1.08}.body{margin:14px 0 0;color:var(--muted);font-size:16px;line-height:1.58;white-space:pre-line}.ack{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;margin:20px 0 0;padding:14px;border-radius:14px;color:var(--checkbox-text);background:color-mix(in srgb,var(--checkbox) 9%,var(--bg));font-size:14px;line-height:1.4}.ack input{display:grid;place-content:center;width:18px;height:18px;margin:0;appearance:none;border:1.5px solid color-mix(in srgb,var(--checkbox) 55%,#fff);border-radius:5px;background:var(--bg);cursor:pointer}.ack input:before{width:8px;height:4px;border-bottom:2px solid #fff;border-left:2px solid #fff;content:'';transform:rotate(-45deg) scale(0);transition:transform .12s ease}.ack input:checked{border-color:var(--checkbox);background:var(--checkbox)}.ack input:checked:before{transform:rotate(-45deg) scale(1)}.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.button{min-height:44px;border:1px solid transparent;border-radius:12px;padding:10px 18px;font:inherit;font-weight:750;cursor:pointer}.primary{border-color:var(--primary-bg);background:var(--primary-bg);color:var(--primary-text)}.primary:disabled{opacity:.45;cursor:not-allowed}.secondary{border-color:color-mix(in srgb,var(--secondary-text) 16%,transparent);background:var(--secondary-bg);color:var(--secondary-text)}.close{position:absolute;z-index:2;top:12px;right:12px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(15,23,42,.72);color:#fff;font-size:24px;line-height:1;cursor:pointer}.recommendations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}.card.is-recommendations .recommendations{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.recommendation{display:grid;grid-template-rows:auto minmax(44px,1fr) auto auto;gap:10px;min-width:0;padding:12px;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);border-radius:16px;background:color-mix(in srgb,var(--bg) 94%,var(--text));text-decoration:none}.recommendation-image{display:block;width:100%;aspect-ratio:1.2;object-fit:contain;border-radius:12px;background:#f6f7f9}.recommendation-title{display:-webkit-box;overflow:hidden;margin:0;color:var(--text);font-size:14px;font-weight:650;line-height:1.4;text-decoration:none;-webkit-box-orient:vertical;-webkit-line-clamp:2}.recommendation-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px}.recommendation-price strong{color:var(--text);font-size:18px}.recommendation-price del{color:var(--muted);font-size:12px}.recommendation-buy{width:100%;min-height:42px;border:1px solid var(--primary-bg);border-radius:11px;background:var(--primary-bg);color:var(--primary-text);font:750 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.recommendation-buy:disabled{opacity:.65;cursor:wait}.corner{align-items:flex-end;justify-content:flex-end;background:transparent;pointer-events:none}.corner .card{pointer-events:auto;box-shadow:0 20px 65px rgba(15,23,42,.25)}.bottom-sheet{align-items:flex-end}.bottom-sheet .card{width:min(760px,100%);border-radius:var(--radius) var(--radius) 0 0;margin-bottom:-18px}@keyframes enter{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:760px){.recommendations{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card.is-recommendations .recommendations{overflow-x:hidden;overflow-y:auto}.recommendation{gap:8px;padding:9px;border-radius:14px}.recommendation-image{aspect-ratio:1}.recommendation-title{font-size:13px;line-height:1.35}.recommendation-price{gap:5px}.recommendation-price strong{font-size:16px}.recommendation-price del{font-size:11px}.recommendation-buy{min-height:40px;border-radius:10px;font-size:clamp(13px,var(--button-size),15px)}}@media(max-width:600px){.backdrop{padding:10px;align-items:flex-end}.card{border-radius:20px 20px 0 0;margin-bottom:-10px}.content{padding:24px 20px}.actions{flex-direction:column-reverse}.button{width:100%}.recommendations{margin-right:0;padding-right:0}}\`;
     style.textContent += \`.eyebrow{font-size:var(--eyebrow-size)}.title{font-size:var(--title-size)}.body{font-size:var(--body-size)}.ack{font-size:var(--ack-size)}.ack input:before{border-bottom-color:var(--checkbox-check);border-left-color:var(--checkbox-check)}.button{font-size:var(--button-size)}.bottom-sheet .card{width:min(var(--width),100%)}\`;
     style.textContent += '.recommendation-image{background:#fff}';
     style.textContent += '.recommendation-price.is-discounted strong{color:#dc2626}';
+    style.textContent += '.product-promo-host{width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);pointer-events:none}.product-promo-host .card{width:100%;max-height:min(560px,calc(100vh - 20px));pointer-events:auto;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);box-shadow:0 20px 64px rgba(15,23,42,.24)}.card.is-product-promo{display:flex;flex-direction:column;overflow:hidden}.card.is-product-promo .content{box-sizing:border-box;display:flex;min-height:0;flex-direction:column;padding:20px}.card.is-product-promo .title{padding-right:38px;font-size:clamp(20px,var(--title-size),30px)}.card.is-product-promo .body{margin-top:7px;font-size:clamp(13px,var(--body-size),16px)}.card.is-product-promo .recommendations{display:flex;min-height:0;margin-top:16px;padding:2px 2px 6px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:thin}.card.is-product-promo .recommendation{flex:0 0 min(218px,42%);scroll-snap-align:start}.card.is-product-promo .recommendation-image{aspect-ratio:1.25}.card.is-product-promo .close{pointer-events:auto}@media(max-width:600px){.product-promo-host .card{max-height:min(62vh,540px);border-radius:var(--radius)}.card.is-product-promo .content{padding:16px}.card.is-product-promo .eyebrow{margin-bottom:5px}.card.is-product-promo .title{font-size:clamp(19px,var(--title-size),25px)}.card.is-product-promo .body{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}.card.is-product-promo .recommendations{margin-top:12px}.card.is-product-promo .recommendation{flex-basis:min(210px,78vw)}}';
     shadow.append(style);
     const backdrop = document.createElement('div');
-    backdrop.className = 'backdrop ' + campaign.styles.layout;
+    backdrop.className = isProductPromo ? 'product-promo-host' : 'backdrop ' + campaign.styles.layout;
     backdrop.style.setProperty('--accent', campaign.styles.accentColor);
     backdrop.style.setProperty('--bg', campaign.styles.backgroundColor);
     backdrop.style.setProperty('--text', campaign.styles.textColor);
@@ -1235,9 +1392,11 @@ export function popupEmbedScript(origin) {
     backdrop.style.setProperty('--radius', campaign.styles.borderRadius + 'px');
     backdrop.style.setProperty('--width', campaign.styles.maxWidth + 'px');
     const card = document.createElement('section');
-    card.className = campaign.mode === 'out_of_stock' ? 'card is-recommendations' : 'card';
-    card.tabIndex = -1; card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true');
-    card.addEventListener('keydown', (keyEvent) => {
+    card.className = isProductPromo ? 'card is-product-promo' : campaign.mode === 'out_of_stock' ? 'card is-recommendations' : 'card';
+    card.tabIndex = -1;
+    card.setAttribute('role', isProductPromo ? 'complementary' : 'dialog');
+    card.setAttribute('aria-modal', isProductPromo ? 'false' : 'true');
+    if (!isProductPromo) card.addEventListener('keydown', (keyEvent) => {
       if (keyEvent.key !== 'Tab') return;
       const focusable = [...card.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')];
       if (!focusable.length) { keyEvent.preventDefault(); return; }
@@ -1253,7 +1412,7 @@ export function popupEmbedScript(origin) {
       const closeButton = document.createElement('button');
       closeButton.className = 'close'; closeButton.type = 'button'; closeButton.setAttribute('aria-label', 'Закрити'); closeButton.textContent = '×';
       closeButton.addEventListener('click', () => close('dismiss')); card.append(closeButton);
-      backdrop.addEventListener('click', (clickEvent) => { if (clickEvent.target === backdrop) close('dismiss'); });
+      if (!isProductPromo) backdrop.addEventListener('click', (clickEvent) => { if (clickEvent.target === backdrop) close('dismiss'); });
     }
     if (campaign.content.imageUrl) {
       const image = document.createElement('img'); image.className = 'image'; image.src = campaign.content.imageUrl; image.alt = ''; card.append(image);
@@ -1263,9 +1422,9 @@ export function popupEmbedScript(origin) {
     const title = document.createElement('h2'); title.className = 'title'; title.id = 'mt-popup-title-' + campaign.publicId; title.textContent = campaign.content.title; content.append(title);
     card.setAttribute('aria-labelledby', title.id);
     const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body);
-    if (campaign.mode === 'out_of_stock') {
+    if (campaign.mode === 'out_of_stock' || isProductPromo) {
       const recommendations = document.createElement('div'); recommendations.className = 'recommendations';
-      for (const recommendation of payload.recommendations || []) {
+      for (const recommendation of (isProductPromo ? payload.products : payload.recommendations) || []) {
         const item = document.createElement('article'); item.className = 'recommendation';
         const imageLink = document.createElement('a'); imageLink.href = recommendation.pageUrl;
         imageLink.addEventListener('click', () => event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article }));
@@ -1277,17 +1436,18 @@ export function popupEmbedScript(origin) {
         const price = document.createElement('div'); price.className = 'recommendation-price';
         const currentPrice = document.createElement('strong'); currentPrice.textContent = money(recommendation.price, recommendation.currency); price.append(currentPrice);
         if (recommendation.oldPrice && recommendation.oldPrice !== recommendation.price) { price.classList.add('is-discounted'); const oldPrice = document.createElement('del'); oldPrice.textContent = money(recommendation.oldPrice, recommendation.currency); price.append(oldPrice); }
-        const buy = document.createElement('button'); buy.className = 'recommendation-buy'; buy.type = 'button'; buy.textContent = 'Купити';
+        const buy = document.createElement('button'); buy.className = 'recommendation-buy'; buy.type = 'button'; buy.textContent = campaign.content.primaryLabel || 'Купити';
         buy.addEventListener('click', async () => {
           buy.disabled = true; buy.textContent = 'Додаємо…';
           event(campaign.publicId, 'click', productArticle, { action: 'add_to_cart', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article });
           const isCurrent = () => currentHost === host && host.isConnected;
           const result = await nativeBuy(recommendation, isCurrent);
           if (!isCurrent()) return;
-          if (result === 'added') setTimeout(() => {
+          if (result === 'added' && !isProductPromo) setTimeout(() => {
             if (!isCurrent()) return;
             host.remove(); currentHost = null;
           }, 180);
+          else if (result === 'added') { buy.textContent = 'У кошику'; buy.title = 'Товар додано до кошика.'; }
           else if (result === 'already') { buy.textContent = 'У кошику'; buy.title = 'Товар уже додано до кошика.'; }
           else { buy.disabled = false; buy.textContent = 'Спробувати ще'; buy.title = 'Не вдалося додати товар. Повторіть спробу.'; }
         });
@@ -1295,7 +1455,7 @@ export function popupEmbedScript(origin) {
       }
       content.append(recommendations); card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
-      requestAnimationFrame(() => card.focus({ preventScroll: true }));
+      if (!isProductPromo) requestAnimationFrame(() => card.focus({ preventScroll: true }));
       return;
     }
     let acknowledgement = null;

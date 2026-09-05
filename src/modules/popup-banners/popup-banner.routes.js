@@ -4,6 +4,7 @@ import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
+import { horoshopCatalogService } from '../search/horoshop/catalog.service.js';
 import {
   createPopupCampaign,
   deletePopupCampaign,
@@ -21,6 +22,12 @@ const router = Router();
 router.use(requireAuth, requireToolAccess(popupBannerToolId));
 
 const idSchema = z.string().uuid();
+const catalogSchema = z.object({
+  search: z.string().trim().max(160).optional().default(''),
+  category: z.string().trim().max(255).optional().default(''),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  pageSize: z.coerce.number().int().min(10).max(100).optional().default(50)
+});
 const nullableDateSchema = z.union([
   z.string().datetime({ offset: true }),
   z.literal(''),
@@ -93,6 +100,7 @@ const behaviorSchema = z.object({
   buttonCount: z.union([z.literal(1), z.literal(2)]).optional()
 });
 const campaignSchema = z.object({
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo']).default('message'),
   name: z.string().trim().min(1).max(160),
   priority: z.number().int().min(0).max(1000),
   content: contentSchema,
@@ -101,7 +109,11 @@ const campaignSchema = z.object({
   behavior: behaviorSchema,
   startsAt: nullableDateSchema,
   endsAt: nullableDateSchema,
-  productEntries: z.array(z.string().trim().min(1).max(500)).max(500).default([])
+  productEntries: z.array(z.string().trim().min(1).max(500)).max(500).default([]),
+  promoItems: z.array(z.object({
+    productExternalId: z.string().trim().min(1).max(300),
+    modificationExternalId: z.string().trim().max(300).nullable().optional().default(null)
+  })).max(12).default([])
 }).refine((value) => !value.startsAt || !value.endsAt || new Date(value.endsAt) > new Date(value.startsAt), {
   message: 'Дата завершення має бути пізніше дати початку.',
   path: ['endsAt']
@@ -125,6 +137,21 @@ router.get('/', asyncHandler(async (req, res) => {
 
 router.get('/options', asyncHandler(async (req, res) => {
   res.json({ data: await popupCampaignOptions() });
+}));
+
+router.get('/catalog', asyncHandler(async (req, res) => {
+  const input = parseInput(catalogSchema, req.query);
+  res.json({
+    data: await horoshopCatalogService.catalog({
+      ...input,
+      availability: '',
+      visibility: 'visible',
+      photoStatus: 'all',
+      createdFrom: '',
+      createdTo: '',
+      state: 'active'
+    })
+  });
 }));
 
 router.get('/embed-code', (req, res) => {

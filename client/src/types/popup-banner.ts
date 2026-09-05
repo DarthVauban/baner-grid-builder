@@ -1,4 +1,5 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo';
 export type PopupLayout = 'modal' | 'bottom-sheet' | 'corner';
 export type PopupTargetMode = 'all_pages' | 'all_products' | 'products' | 'rules' | 'target_page' | 'out_of_stock';
 export type PopupFrequency = 'always' | 'session' | 'product' | 'days';
@@ -67,9 +68,33 @@ export interface PopupProductTarget {
   matchedBy: string;
 }
 
+export interface PopupPromoProductReference {
+  productExternalId: string;
+  modificationExternalId: string | null;
+}
+
+export interface PopupPromoProduct extends PopupPromoProductReference {
+  id: string;
+  productId: string;
+  modificationId: string | null;
+  position: number;
+  sku: string;
+  title: string;
+  imageUrl: string;
+  pageUrl: string;
+  price: string;
+  oldPrice: string;
+  currency: string;
+  availability: string;
+  visible: boolean;
+  available: boolean;
+  buyId: string;
+}
+
 export interface PopupCampaign {
   id: string;
   publicId: string;
+  campaignType: PopupCampaignType;
   name: string;
   status: PopupCampaignStatus;
   priority: number;
@@ -81,6 +106,7 @@ export interface PopupCampaign {
   endsAt: string | null;
   publishedAt: string | null;
   productTargets: PopupProductTarget[];
+  promoProducts: PopupPromoProduct[];
   stats: {
     impressions: number;
     dismissals: number;
@@ -88,12 +114,16 @@ export interface PopupCampaign {
     acknowledgements: number;
   };
   connection: { id: string; generation: string; storeDomain: string } | null;
-  resolution?: { unmatched: string[] };
+  resolution?: {
+    unmatched: string[];
+    unmatchedPromoProducts?: PopupPromoProductReference[];
+  };
   createdAt: string;
   updatedAt: string;
 }
 
 export interface PopupCampaignInput {
+  campaignType: PopupCampaignType;
   name: string;
   priority: number;
   content: PopupContent;
@@ -103,6 +133,7 @@ export interface PopupCampaignInput {
   startsAt: string | null;
   endsAt: string | null;
   productEntries: string[];
+  promoItems: PopupPromoProductReference[];
 }
 
 export interface PopupCampaignOptions {

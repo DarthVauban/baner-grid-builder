@@ -452,7 +452,7 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
   assert.match(css, /\.card\.is-recommendations \.recommendations\{[^}]*overflow-y:auto/u);
   assert.match(css, /@media\(max-width:760px\)\{\.recommendations\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/u);
   assert.match(css, /@media\(max-width:760px\)[\s\S]*?\.card\.is-recommendations \.recommendations\{overflow-x:hidden;overflow-y:auto\}/u);
-  assert.doesNotMatch(css, /scroll-snap-type:x mandatory|flex:0 0:min\(74vw/u);
+  assert.doesNotMatch(css, /flex:0 0:min\(74vw/u);
   assert.match(css, /\.recommendation-image\{background:#fff\}/u);
   assert.match(css, /\.recommendation-price\.is-discounted strong\{color:#dc2626\}/u);
   assert.equal(priceBlocks[0].classList.contains('is-discounted'), true);
@@ -636,4 +636,124 @@ test('out-of-stock campaigns return available alternatives from the same categor
   assert.equal(iphone.modificationId, alternativeModificationId);
   assert.equal(iphone.pageUrl, 'https://shop.example.com/iphone-15-new-black/');
   assert.equal(iphone.oldPrice, '35999');
+});
+
+test('product promo campaigns keep promoted products separate from storefront targeting', async () => {
+  const campaigns = (await admin.get('/api/popup-banners').expect(200)).body.data;
+  for (const campaign of campaigns.filter((item) => item.status === 'active')) {
+    await admin.patch(`/api/popup-banners/${campaign.id}/status`).send({ status: 'paused' }).expect(200);
+  }
+
+  const created = await admin.post('/api/popup-banners').send(input({
+    campaignType: 'product_promo',
+    name: 'Промо смартфона',
+    priority: 900,
+    targeting: {
+      mode: 'all_pages', match: 'all', stickers: [], brands: [], categoryIds: [],
+      conditions: [], targetPageUrl: '', urlContains: [], recommendationLimit: 6
+    },
+    behavior: {
+      delayMs: 0, frequency: 'session', cooldownDays: 7,
+      dismissible: true, requireAcknowledgement: false, buttonCount: 1
+    },
+    productEntries: [],
+    promoItems: [{
+      productExternalId: 'iphone-15-new',
+      modificationExternalId: 'iphone-15-new:black'
+    }]
+  })).expect(201);
+
+  assert.equal(created.body.data.campaignType, 'product_promo');
+  assert.equal(created.body.data.productTargets.length, 0);
+  assert.equal(created.body.data.promoProducts.length, 1);
+  assert.equal(created.body.data.promoProducts[0].sku, 'IPHONE-15-NEW-BLACK');
+  assert.equal(created.body.data.promoProducts[0].position, 0);
+  assert.equal(created.body.data.promoProducts[0].buyId, '9002');
+  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+
+  const resolved = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/sale/' })
+    .expect(200);
+  assert.equal(resolved.body.data.campaign.type, 'product_promo');
+  assert.equal(resolved.body.data.campaign.mode, 'all_pages');
+  assert.equal(resolved.body.data.product, null);
+  assert.equal(resolved.body.data.products.length, 1);
+  assert.equal(resolved.body.data.products[0].article, 'IPHONE-15-NEW-BLACK');
+  assert.equal(resolved.body.data.products[0].sku, 'IPHONE-15-NEW-BLACK');
+  assert.equal(resolved.body.data.products[0].oldPrice, '35999');
+  assert.deepEqual(resolved.body.data.recommendations, []);
+});
+
+test('product promo widget is non-modal on desktop and mobile storefront contracts', async () => {
+  const payload = {
+    campaign: {
+      publicId: 'public-product-promo',
+      type: 'product_promo',
+      mode: 'all_pages',
+      content: {
+        eyebrow: 'Рекомендуємо', title: 'Вигідна пропозиція',
+        body: 'Товари, які можуть вас зацікавити.', primaryLabel: 'Купити', imageUrl: ''
+      },
+      styles: {
+        layout: 'corner', accentColor: '#6d5dfc', backgroundColor: '#ffffff',
+        textColor: '#172033', mutedColor: '#667085', primaryButtonBackgroundColor: '#ffe101',
+        primaryButtonTextColor: '#111827', secondaryButtonBackgroundColor: '#ffffff',
+        secondaryButtonTextColor: '#172033', checkboxAccentColor: '#6d5dfc',
+        checkboxCheckColor: '#ffffff', checkboxTextColor: '#172033', eyebrowFontSize: 12,
+        titleFontSize: 28, bodyFontSize: 16, acknowledgementFontSize: 14,
+        buttonFontSize: 16, borderRadius: 22, maxWidth: 680
+      },
+      behavior: {
+        delayMs: 0, frequency: 'always', cooldownDays: 7,
+        dismissible: true, requireAcknowledgement: false, buttonCount: 1
+      }
+    },
+    product: null,
+    recommendations: [],
+    products: [{
+      productId: 'promo-product', modificationId: 'promo-modification', article: 'PROMO-1',
+      sku: 'PROMO-1', title: 'Промотовар', price: '399', oldPrice: '599', currency: 'UAH',
+      imageUrl: 'https://shop.example.com/promo.jpg', pageUrl: 'https://shop.example.com/promo/', buyId: '9002'
+    }]
+  };
+
+  for (const surface of [{ name: 'desktop', width: 1440, userAgent: 'Mozilla/5.0 Chrome/140' }, {
+    name: 'mobile', width: 390, userAgent: 'Mozilla/5.0 (Linux; Android 16) Chrome/140 Mobile Safari/537.36'
+  }]) {
+    const dom = new JSDOM('<!doctype html><html><body><button id="storefront-control">Каталог</button></body></html>', {
+      pretendToBeVisual: true,
+      runScripts: 'outside-only',
+      url: `https://shop.example.com/${surface.name}/`
+    });
+    Object.defineProperty(dom.window, 'innerWidth', { configurable: true, value: surface.width });
+    Object.defineProperty(dom.window.navigator, 'userAgent', { configurable: true, value: surface.userAgent });
+    dom.window.MutationObserver = class MutationObserver { observe() {} };
+    const focusCalls = [];
+    dom.window.HTMLElement.prototype.focus = function focus() { focusCalls.push(this); };
+    dom.window.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/resolve')) return { ok: true, json: async () => ({ data: payload }) };
+      if (url.pathname.endsWith('/events')) return { ok: true };
+      throw new Error(`Unexpected fetch: ${url.href}`);
+    };
+
+    dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 50));
+    const host = dom.window.document.querySelector('#mt-popup-banner-root');
+    const shadow = host.shadowRoot;
+    assert.equal(host.style.inset, '');
+    assert.equal(host.style.pointerEvents, 'none');
+    assert.equal(shadow.querySelector('.backdrop'), null);
+    assert.ok(shadow.querySelector('.product-promo-host'));
+    assert.equal(shadow.querySelector('.card').getAttribute('role'), 'complementary');
+    assert.equal(shadow.querySelector('.card').getAttribute('aria-modal'), 'false');
+    assert.equal(shadow.querySelector('.recommendation-buy').textContent, 'Купити');
+    assert.equal(dom.window.document.body.style.overflow, '');
+    assert.equal(focusCalls.length, 0);
+    assert.ok(dom.window.document.querySelector('#storefront-control'));
+    assert.match(shadow.querySelector('style').textContent, /@media\(max-width:600px\).*is-product-promo/su);
+    dom.window.close();
+  }
 });

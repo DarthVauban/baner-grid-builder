@@ -252,6 +252,10 @@ export const api = {
   popupBanners: {
     list: () => request<PopupCampaign[]>('/api/popup-banners'),
     options: () => request<PopupCampaignOptions>('/api/popup-banners/options'),
+    catalog: (params: { search?: string; category?: string; page?: number; pageSize?: number } = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
+      `/api/popup-banners/catalog${queryString(params)}`,
+      { signal }
+    ),
     embedCode: () => request<{ code: string }>('/api/popup-banners/embed-code'),
     analytics: (params: { days?: number; campaignId?: string } = {}, signal?: AbortSignal) => request<PopupBannerAnalytics>(
       `/api/popup-banners/analytics/overview${queryString(params)}`,

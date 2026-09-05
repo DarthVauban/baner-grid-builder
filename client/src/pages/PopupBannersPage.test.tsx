@@ -11,6 +11,7 @@ import { PopupBannersPage } from './PopupBannersPage';
 const baseCampaign: PopupCampaign = {
   id: 'campaign-used',
   publicId: 'public-used',
+  campaignType: 'message',
   name: 'Попередження про вживаний товар',
   status: 'active',
   priority: 100,
@@ -76,6 +77,7 @@ const baseCampaign: PopupCampaign = {
     inputValue: 'USED-PHONE-1',
     matchedBy: 'sku'
   }],
+  promoProducts: [],
   stats: { impressions: 1280, dismissals: 32, clicks: 14, acknowledgements: 115 },
   connection: { id: 'connection-1', generation: 'generation-1', storeDomain: 'mobiletrend.com.ua' },
   createdAt: '2026-08-20T08:00:00.000Z',
@@ -124,6 +126,24 @@ beforeEach(() => {
   vi.spyOn(api.popupBanners, 'list').mockResolvedValue([baseCampaign, secondCampaign]);
   vi.spyOn(api.popupBanners, 'options').mockResolvedValue(options);
   vi.spyOn(api.popupBanners, 'embedCode').mockResolvedValue({ code: '<script src="/widget.js"></script>' });
+  vi.spyOn(api.popupBanners, 'catalog').mockResolvedValue({
+    integration: {
+      configured: true, status: 'connected', storeDomain: 'mobiletrend.com.ua',
+      pollingIntervalMinutes: 30, lastSyncAt: '2026-08-21T08:30:00.000Z', lastError: null,
+      counts: { categories: 1, products: 1, modifications: 0 }, latestRun: null
+    },
+    items: [{
+      id: 'product-db-1', externalId: 'promo-product-1', parentExternalId: null,
+      sku: 'PROMO-1', titles: { uk: 'Промотовар' }, brand: 'Mobile Trend',
+      categoryExternalId: 'phones', price: '399', oldPrice: '599', currency: 'UAH',
+      availability: 'В наявності', visible: true, active: true,
+      primaryImageUrl: 'https://cdn.example.com/promo.webp', canonicalUrl: 'https://mobiletrend.com.ua/promo/',
+      popularity: '10', horoshopCreatedAt: null, hasPhotos: true,
+      updatedAt: '2026-08-21T08:30:00.000Z', modifications: []
+    }],
+    categories: [{ externalId: 'phones', parentExternalId: null, titles: { uk: 'Смартфони' }, productCount: 1 }],
+    availabilityOptions: ['В наявності'], total: 1, page: 1, pageSize: 60, pageCount: 1
+  });
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -259,5 +279,44 @@ describe('PopupBannersPage', () => {
 
     expect(screen.getByRole('textbox', { name: 'Текст підтвердження' })).toHaveValue('Я прочитав(-ла) цю інформацію.');
     expect(screen.queryByText('Стиль чекбокса підтвердження')).not.toBeInTheDocument();
+  });
+
+  it('creates a non-blocking product promo campaign from the catalog', async () => {
+    const create = vi.spyOn(api.popupBanners, 'create').mockImplementation(async (campaign) => ({
+      ...structuredClone(baseCampaign),
+      ...campaign,
+      id: 'product-promo-campaign',
+      publicId: 'product-promo-public',
+      status: 'draft',
+      promoProducts: [{
+        id: 'promo-item-1', productId: 'product-db-1', modificationId: null,
+        productExternalId: 'promo-product-1', modificationExternalId: null, position: 0,
+        sku: 'PROMO-1', title: 'Промотовар', imageUrl: 'https://cdn.example.com/promo.webp',
+        pageUrl: 'https://mobiletrend.com.ua/promo/', price: '399', oldPrice: '599',
+        currency: 'UAH', availability: 'В наявності', visible: true, available: true, buyId: '9001'
+      }],
+      productTargets: [], stats: baseCampaign.stats, connection: baseCampaign.connection,
+      createdAt: baseCampaign.createdAt, updatedAt: baseCampaign.updatedAt, publishedAt: null
+    }));
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
+    expect(screen.getByRole('heading', { name: 'Оберіть тип банера' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Товарний промобанер/u }));
+
+    expect(screen.getByText('Неблокуюча плаваюча панель')).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Розташування попапа' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Товари банера/u }));
+    const add = await screen.findByRole('button', { name: /Додати/u });
+    fireEvent.click(add);
+    expect(screen.getByText('Товари у банері')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      campaignType: 'product_promo',
+      targeting: expect.objectContaining({ mode: 'all_pages' }),
+      promoItems: [{ productExternalId: 'promo-product-1', modificationExternalId: null }]
+    }), expect.anything()));
   });
 });
