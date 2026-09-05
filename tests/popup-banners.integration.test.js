@@ -874,6 +874,19 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     assert.equal(shadow.querySelector('.recommendation-image').src, 'https://shop.example.com/promo.jpg');
     assert.equal(shadow.querySelector('.promo-card-link').href, 'https://shop.example.com/promo/');
     assert.ok(shadow.querySelector('.promo-timeline'));
+    const card = shadow.querySelector('.card');
+    const navigation = shadow.querySelector('.promo-navigation');
+    assert.equal(navigation.querySelector('.promo-navigation-status').textContent, '1 / 2');
+    navigation.querySelector('[aria-label="Наступний товар"]').click();
+    assert.equal(navigation.querySelector('.promo-navigation-status').textContent, '2 / 2');
+    assert.equal(shadow.querySelector('.recommendation.is-visible .recommendation-title').textContent, 'Другий промотовар');
+    assert.equal(shadow.querySelector('.promo-card-link').href, 'https://shop.example.com/promo-2/');
+    navigation.querySelector('[aria-label="Попередній товар"]').click();
+    assert.equal(navigation.querySelector('.promo-navigation-status').textContent, '1 / 2');
+    card.dispatchEvent(new dom.window.MouseEvent('mouseenter'));
+    assert.equal(card.classList.contains('is-rotation-paused'), true);
+    card.dispatchEvent(new dom.window.MouseEvent('mouseleave'));
+    assert.equal(card.classList.contains('is-rotation-paused'), false);
     assert.equal(dom.window.document.body.style.overflow, '');
     assert.equal(focusCalls.length, 0);
     assert.ok(dom.window.document.querySelector('#storefront-control'));
@@ -882,6 +895,7 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     assert.match(runtimeCss, /recommendation-media\{grid-column:1;grid-row:1\/4/u);
     assert.match(runtimeCss, /format-compact:not\(\.has-promo-title\) \.title\{display:none\}/u);
     assert.match(runtimeCss, /\.card\.is-product-promo\.format-notification \.recommendation\{grid-template-areas:"media product-title buy" "media price buy"/u);
+    assert.match(runtimeCss, /\.card\.is-product-promo\.is-rotation-paused \.promo-timeline span\{animation-play-state:paused\}/u);
     assert.doesNotMatch(runtimeCss, /\.card\.is-product-promo \.recommendations\{[^}]*overflow-[xy]:auto/u);
     } finally {
       dom.window.close();

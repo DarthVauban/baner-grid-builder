@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
@@ -486,18 +486,38 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
   const [acknowledged, setAcknowledged] = useState(false);
   const [viewport, setViewport] = useState<PreviewViewport>('desktop');
   const [previewProductIndex, setPreviewProductIndex] = useState(0);
+  const [previewPointerPaused, setPreviewPointerPaused] = useState(false);
+  const [previewFocusPaused, setPreviewFocusPaused] = useState(false);
+  const previewRotationRemaining = useRef(0);
   const content = draft.content;
   const styles = draft.styles;
   const isPromoNotification = draft.campaignType === 'product_promo' && styles.promoFormat === 'notification';
   const promoProductKey = promoProducts.map(promoKey).join('|');
+  const rotationDuration = Math.max(2, draft.behavior.rotationSeconds) * 1000;
+  const previewRotationPaused = previewPointerPaused || previewFocusPaused;
   useEffect(() => {
+    previewRotationRemaining.current = rotationDuration;
     setPreviewProductIndex(0);
-    if (draft.campaignType !== 'product_promo' || promoProducts.length < 2) return undefined;
-    const timer = window.setInterval(() => {
+  }, [draft.campaignType, promoProductKey, promoProducts.length, rotationDuration]);
+  useEffect(() => {
+    if (draft.campaignType !== 'product_promo' || promoProducts.length < 2 || previewRotationPaused) return undefined;
+    const startedAt = Date.now();
+    let completed = false;
+    const timer = window.setTimeout(() => {
+      completed = true;
+      previewRotationRemaining.current = rotationDuration;
       setPreviewProductIndex((current) => (current + 1) % promoProducts.length);
-    }, Math.max(2, draft.behavior.rotationSeconds) * 1000);
-    return () => window.clearInterval(timer);
-  }, [draft.behavior.rotationSeconds, draft.campaignType, promoProductKey, promoProducts.length]);
+    }, Math.max(1, previewRotationRemaining.current || rotationDuration));
+    return () => {
+      window.clearTimeout(timer);
+      if (!completed) {
+        previewRotationRemaining.current = Math.max(
+          1,
+          previewRotationRemaining.current - (Date.now() - startedAt)
+        );
+      }
+    };
+  }, [draft.campaignType, previewProductIndex, previewRotationPaused, promoProductKey, promoProducts.length, rotationDuration]);
   const recommendations = [
     { id: 'one', title: 'Смартфон із цієї самої категорії', price: '12 999 грн', imageUrl: '' },
     { id: 'two', title: 'Схожа модель у наявності', price: '14 499 грн', imageUrl: '' },
@@ -511,6 +531,11 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
   const visibleProductCards = draft.campaignType === 'product_promo' && productCards.length
     ? [productCards[previewProductIndex % productCards.length]]
     : productCards;
+  function movePreviewProduct(direction: -1 | 1) {
+    if (productCards.length < 2) return;
+    previewRotationRemaining.current = rotationDuration;
+    setPreviewProductIndex((current) => (current + direction + productCards.length) % productCards.length);
+  }
   return <div className="popup-live-preview">
     <header>
       <div><strong>Живий перегляд</strong><small>Так попап виглядатиме на сайті</small></div>
@@ -552,7 +577,15 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
           <div className="popup-preview__storefront-header"><b /><span /><span /><span /></div>
           <div className="popup-preview__storefront-product"><i /><div><b /><span /><span /><button /></div></div>
         </div>
-        <article className="popup-preview__card">
+        <article
+          className={`popup-preview__card${previewRotationPaused ? ' is-rotation-paused' : ''}`}
+          onMouseEnter={() => setPreviewPointerPaused(true)}
+          onMouseLeave={() => setPreviewPointerPaused(false)}
+          onFocusCapture={() => setPreviewFocusPaused(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPreviewFocusPaused(false);
+          }}
+        >
           {draft.behavior.dismissible && <span className="popup-preview__close">×</span>}
           {content.imageUrl && !isPromoNotification && <img src={content.imageUrl} alt="" />}
           <div className="popup-preview__content">
@@ -576,6 +609,11 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
               <button type="button" className="is-primary" disabled={draft.behavior.requireAcknowledgement && !acknowledged}>{content.primaryLabel || 'Продовжити'}</button>
             </footer>}
           </div>
+          {draft.campaignType === 'product_promo' && productCards.length > 1 && <nav className="popup-preview__promo-navigation" aria-label="Навігація між товарами">
+            <button type="button" aria-label="Попередній товар" onClick={() => movePreviewProduct(-1)}>‹</button>
+            <span aria-live="polite">{previewProductIndex + 1} / {productCards.length}</span>
+            <button type="button" aria-label="Наступний товар" onClick={() => movePreviewProduct(1)}>›</button>
+          </nav>}
           {draft.campaignType === 'product_promo' && productCards.length > 1 && <div className="popup-preview__timeline" aria-hidden="true"><span key={previewProductIndex} /></div>}
         </article>
       </div>

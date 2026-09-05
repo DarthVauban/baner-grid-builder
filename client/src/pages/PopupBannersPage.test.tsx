@@ -357,6 +357,18 @@ describe('PopupBannersPage', () => {
     expect(screen.getByText('Товари у банері')).toBeInTheDocument();
     expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(1);
     expect(container.querySelector('.popup-preview__timeline')).toBeInTheDocument();
+    const previewCard = container.querySelector('.popup-preview__card');
+    const previewNavigation = container.querySelector('.popup-preview__promo-navigation');
+    expect(previewNavigation).toHaveTextContent('1 / 2');
+    fireEvent.mouseEnter(previewCard!);
+    expect(previewCard).toHaveClass('is-rotation-paused');
+    fireEvent.click(screen.getByRole('button', { name: 'Наступний товар' }));
+    expect(previewNavigation).toHaveTextContent('2 / 2');
+    expect(container.querySelector('.popup-preview__recommendations article strong')).toHaveTextContent('Другий промотовар');
+    fireEvent.click(screen.getByRole('button', { name: 'Попередній товар' }));
+    expect(previewNavigation).toHaveTextContent('1 / 2');
+    fireEvent.mouseLeave(previewCard!);
+    expect(previewCard).not.toHaveClass('is-rotation-paused');
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
 
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({

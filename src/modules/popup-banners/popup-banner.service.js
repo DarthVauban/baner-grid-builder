@@ -1484,7 +1484,7 @@ export function popupEmbedScript(origin) {
 .card.is-product-promo{display:flex;flex-direction:column;cursor:pointer}
 .promo-card-link{position:absolute;z-index:0;inset:0;border-radius:inherit}
 .promo-card-link:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 60%,#fff);outline-offset:2px}
-.card.is-product-promo .content,.promo-timeline{position:relative;z-index:1}
+.card.is-product-promo .content,.promo-navigation,.promo-timeline{position:relative;z-index:1}
 .card.is-product-promo .close{z-index:2;pointer-events:auto}
 .card.is-product-promo .content{box-sizing:border-box;display:flex;min-height:0;flex-direction:column;padding:18px;pointer-events:none}
 .card.is-product-promo .content a,.card.is-product-promo .content button{pointer-events:auto}
@@ -1519,9 +1519,18 @@ export function popupEmbedScript(origin) {
 .card.is-product-promo.format-notification .recommendation-price del{font-size:10px}
 .card.is-product-promo.format-notification .recommendation-buy{grid-area:buy;align-self:center;min-height:30px;width:auto;margin-right:30px;padding:5px 10px;font-size:11px}
 .card.is-product-promo.format-notification .close{top:5px;right:5px;width:26px;height:26px;font-size:17px}
+.promo-navigation{display:grid;grid-template-columns:28px minmax(0,1fr) 28px;align-items:center;gap:8px;min-height:34px;padding:3px 12px 7px;color:var(--muted);background:color-mix(in srgb,var(--text) 4%,var(--bg));pointer-events:auto}
+.promo-navigation button{display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid color-mix(in srgb,var(--text) 14%,transparent);border-radius:50%;color:var(--text);background:var(--bg);box-shadow:0 3px 10px color-mix(in srgb,var(--text) 15%,transparent);font:800 20px/1 Inter,system-ui,sans-serif;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+.promo-navigation button:hover{transform:translateY(-1px);box-shadow:0 5px 14px color-mix(in srgb,var(--text) 22%,transparent)}
+.promo-navigation button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.promo-navigation-status{min-width:0;font-size:11px;font-weight:750;letter-spacing:.05em;text-align:center}
+.card.is-product-promo.format-notification .promo-navigation{grid-template-columns:24px minmax(0,1fr) 24px;min-height:28px;padding:2px 9px 4px}
+.card.is-product-promo.format-notification .promo-navigation button{width:24px;height:24px;font-size:17px}
+.card.is-product-promo.format-notification .promo-navigation-status{font-size:10px}
 .promo-timeline{height:4px;overflow:hidden;background:var(--timeline-track);pointer-events:none}
 .promo-timeline span{display:block;width:100%;height:100%;background:var(--timeline);transform:scaleX(0);transform-origin:left}
 .promo-timeline span.is-running{animation:promoCountdown var(--rotation-seconds) linear forwards}
+.card.is-product-promo.is-rotation-paused .promo-timeline span{animation-play-state:paused}
 @keyframes promoSwap{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 @keyframes promoCountdown{to{transform:scaleX(1)}}
 @media(max-width:600px){.product-promo-host .card{max-height:none;border-radius:var(--radius)}.card.is-product-promo .content{padding:12px}.card.is-product-promo .eyebrow{margin-bottom:4px}.card.is-product-promo .title{font-size:clamp(18px,var(--title-size),22px)}.card.is-product-promo .body{font-size:clamp(12px,var(--body-size),14px)}.card.is-product-promo .recommendations{margin-top:9px}.card.is-product-promo .recommendation{grid-template-columns:112px minmax(0,1fr);gap:7px 10px;padding:9px}.card.is-product-promo .recommendation-image{height:112px}.card.is-product-promo .recommendation-title{font-size:12px;line-height:1.3}.card.is-product-promo .recommendation-price strong{font-size:16px}.card.is-product-promo .recommendation-buy{min-height:38px;font-size:clamp(12px,var(--button-size),14px)}.card.is-product-promo.format-notification .content{padding:8px}.card.is-product-promo.format-notification .title{font-size:min(var(--title-size),17px)}.card.is-product-promo.format-notification .body{font-size:min(var(--body-size),12px)}.card.is-product-promo.format-notification .recommendations{margin:0}.card.is-product-promo.format-notification .recommendation{grid-template-columns:54px minmax(0,1fr) auto;grid-template-rows:minmax(19px,auto) minmax(19px,auto);gap:2px 8px;padding:0}.card.is-product-promo.format-notification .recommendation-media{width:54px;height:54px}.card.is-product-promo.format-notification .recommendation-image{width:54px;height:54px}.card.is-product-promo.format-notification .recommendation-buy{min-height:30px;width:auto;margin-right:28px;padding:5px 8px}.card.is-product-promo.format-notification .close{top:4px;right:4px}}
@@ -1644,30 +1653,92 @@ export function popupEmbedScript(origin) {
       card.append(content);
       if (isProductPromo && recommendationEntries.length) {
         let visibleIndex = 0;
+        let navigationStatus = null;
         const showProduct = (index) => {
+          visibleIndex = (index + recommendationEntries.length) % recommendationEntries.length;
           for (const entry of recommendationEntries) entry.node.classList.remove('is-visible');
-          const entry = recommendationEntries[index];
+          const entry = recommendationEntries[visibleIndex];
           entry.node.classList.add('is-visible');
           activePromoProduct = entry.product;
           promoCardLink.href = entry.product.pageUrl;
           promoCardLink.setAttribute('aria-label', 'Перейти до товару: ' + entry.product.title);
+          if (navigationStatus) navigationStatus.textContent = (visibleIndex + 1) + ' / ' + recommendationEntries.length;
         };
-        showProduct(0);
         if (recommendationEntries.length > 1) {
+          const navigation = document.createElement('nav'); navigation.className = 'promo-navigation'; navigation.setAttribute('aria-label', 'Навігація між товарами');
+          const previous = document.createElement('button'); previous.type = 'button'; previous.setAttribute('aria-label', 'Попередній товар'); previous.textContent = '‹';
+          navigationStatus = document.createElement('span'); navigationStatus.className = 'promo-navigation-status'; navigationStatus.setAttribute('aria-live', 'polite');
+          const next = document.createElement('button'); next.type = 'button'; next.setAttribute('aria-label', 'Наступний товар'); next.textContent = '›';
+          navigation.append(previous, navigationStatus, next); card.append(navigation);
           const timeline = document.createElement('div'); timeline.className = 'promo-timeline'; timeline.setAttribute('aria-hidden', 'true');
           const timelineFill = document.createElement('span'); timelineFill.className = 'is-running'; timeline.append(timelineFill); card.append(timeline);
+          const rotationDuration = Math.max(2, Number(campaign.behavior.rotationSeconds) || 6) * 1000;
+          let remainingRotation = rotationDuration;
+          let rotationStartedAt = 0;
+          let rotationTimer = null;
+          let pointerPaused = false;
+          let focusPaused = false;
           const restartTimeline = () => {
             timelineFill.classList.remove('is-running');
             void timelineFill.offsetWidth;
             timelineFill.classList.add('is-running');
           };
-          const rotationTimer = setInterval(() => {
-            visibleIndex = (visibleIndex + 1) % recommendationEntries.length;
-            showProduct(visibleIndex);
+          const clearRotationTimer = () => {
+            if (rotationTimer === null) return;
+            clearTimeout(rotationTimer);
+            rotationTimer = null;
+          };
+          const scheduleRotation = () => {
+            if (pointerPaused || focusPaused || rotationTimer !== null) return;
+            rotationStartedAt = Date.now();
+            rotationTimer = setTimeout(() => {
+              rotationTimer = null;
+              remainingRotation = rotationDuration;
+              showProduct(visibleIndex + 1);
+              restartTimeline();
+              scheduleRotation();
+            }, Math.max(1, remainingRotation));
+          };
+          const syncRotationPause = () => {
+            const paused = pointerPaused || focusPaused;
+            card.classList.toggle('is-rotation-paused', paused);
+            if (paused) {
+              if (rotationTimer !== null) {
+                remainingRotation = Math.max(1, remainingRotation - (Date.now() - rotationStartedAt));
+                clearRotationTimer();
+              }
+            } else scheduleRotation();
+          };
+          const moveProduct = (direction) => {
+            clearRotationTimer();
+            remainingRotation = rotationDuration;
+            showProduct(visibleIndex + direction);
             restartTimeline();
-          }, campaign.behavior.rotationSeconds * 1000);
-          cleanupTasks.push(() => clearInterval(rotationTimer));
-        }
+            scheduleRotation();
+          };
+          const onMouseEnter = () => { pointerPaused = true; syncRotationPause(); };
+          const onMouseLeave = () => { pointerPaused = false; syncRotationPause(); };
+          const onFocusIn = () => { focusPaused = true; syncRotationPause(); };
+          const onFocusOut = (focusEvent) => {
+            if (focusEvent.relatedTarget && card.contains(focusEvent.relatedTarget)) return;
+            focusPaused = false; syncRotationPause();
+          };
+          previous.addEventListener('click', () => moveProduct(-1));
+          next.addEventListener('click', () => moveProduct(1));
+          card.addEventListener('mouseenter', onMouseEnter);
+          card.addEventListener('mouseleave', onMouseLeave);
+          card.addEventListener('focusin', onFocusIn);
+          card.addEventListener('focusout', onFocusOut);
+          showProduct(0);
+          scheduleRotation();
+          cleanupTasks.push(() => {
+            clearRotationTimer();
+            card.removeEventListener('mouseenter', onMouseEnter);
+            card.removeEventListener('mouseleave', onMouseLeave);
+            card.removeEventListener('focusin', onFocusIn);
+            card.removeEventListener('focusout', onFocusOut);
+          });
+        } else showProduct(0);
       }
       backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
