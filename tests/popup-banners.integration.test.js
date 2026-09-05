@@ -877,8 +877,11 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     const card = shadow.querySelector('.card');
     const navigation = shadow.querySelector('.promo-navigation');
     assert.equal(navigation.querySelector('.promo-navigation-status').textContent, '1 / 2');
+    card.dispatchEvent(new dom.window.FocusEvent('focusin', { bubbles: true }));
     navigation.querySelector('[aria-label="Наступний товар"]').click();
     assert.equal(navigation.querySelector('.promo-navigation-status').textContent, '2 / 2');
+    assert.equal(card.classList.contains('is-rotation-paused'), false);
+    assert.equal(shadow.querySelector('.promo-timeline span').classList.contains('is-running'), true);
     assert.equal(shadow.querySelector('.recommendation.is-visible .recommendation-title').textContent, 'Другий промотовар');
     assert.equal(shadow.querySelector('.promo-card-link').href, 'https://shop.example.com/promo-2/');
     navigation.querySelector('[aria-label="Попередній товар"]').click();

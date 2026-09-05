@@ -1677,7 +1677,6 @@ export function popupEmbedScript(origin) {
           let rotationStartedAt = 0;
           let rotationTimer = null;
           let pointerPaused = false;
-          let focusPaused = false;
           const restartTimeline = () => {
             timelineFill.classList.remove('is-running');
             void timelineFill.offsetWidth;
@@ -1689,7 +1688,7 @@ export function popupEmbedScript(origin) {
             rotationTimer = null;
           };
           const scheduleRotation = () => {
-            if (pointerPaused || focusPaused || rotationTimer !== null) return;
+            if (pointerPaused || rotationTimer !== null) return;
             rotationStartedAt = Date.now();
             rotationTimer = setTimeout(() => {
               rotationTimer = null;
@@ -1700,9 +1699,8 @@ export function popupEmbedScript(origin) {
             }, Math.max(1, remainingRotation));
           };
           const syncRotationPause = () => {
-            const paused = pointerPaused || focusPaused;
-            card.classList.toggle('is-rotation-paused', paused);
-            if (paused) {
+            card.classList.toggle('is-rotation-paused', pointerPaused);
+            if (pointerPaused) {
               if (rotationTimer !== null) {
                 remainingRotation = Math.max(1, remainingRotation - (Date.now() - rotationStartedAt));
                 clearRotationTimer();
@@ -1718,25 +1716,16 @@ export function popupEmbedScript(origin) {
           };
           const onMouseEnter = () => { pointerPaused = true; syncRotationPause(); };
           const onMouseLeave = () => { pointerPaused = false; syncRotationPause(); };
-          const onFocusIn = () => { focusPaused = true; syncRotationPause(); };
-          const onFocusOut = (focusEvent) => {
-            if (focusEvent.relatedTarget && card.contains(focusEvent.relatedTarget)) return;
-            focusPaused = false; syncRotationPause();
-          };
           previous.addEventListener('click', () => moveProduct(-1));
           next.addEventListener('click', () => moveProduct(1));
           card.addEventListener('mouseenter', onMouseEnter);
           card.addEventListener('mouseleave', onMouseLeave);
-          card.addEventListener('focusin', onFocusIn);
-          card.addEventListener('focusout', onFocusOut);
           showProduct(0);
           scheduleRotation();
           cleanupTasks.push(() => {
             clearRotationTimer();
             card.removeEventListener('mouseenter', onMouseEnter);
             card.removeEventListener('mouseleave', onMouseLeave);
-            card.removeEventListener('focusin', onFocusIn);
-            card.removeEventListener('focusout', onFocusOut);
           });
         } else showProduct(0);
       }

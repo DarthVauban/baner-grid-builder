@@ -487,14 +487,13 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
   const [viewport, setViewport] = useState<PreviewViewport>('desktop');
   const [previewProductIndex, setPreviewProductIndex] = useState(0);
   const [previewPointerPaused, setPreviewPointerPaused] = useState(false);
-  const [previewFocusPaused, setPreviewFocusPaused] = useState(false);
   const previewRotationRemaining = useRef(0);
   const content = draft.content;
   const styles = draft.styles;
   const isPromoNotification = draft.campaignType === 'product_promo' && styles.promoFormat === 'notification';
   const promoProductKey = promoProducts.map(promoKey).join('|');
   const rotationDuration = Math.max(2, draft.behavior.rotationSeconds) * 1000;
-  const previewRotationPaused = previewPointerPaused || previewFocusPaused;
+  const previewRotationPaused = previewPointerPaused;
   useEffect(() => {
     previewRotationRemaining.current = rotationDuration;
     setPreviewProductIndex(0);
@@ -581,10 +580,6 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
           className={`popup-preview__card${previewRotationPaused ? ' is-rotation-paused' : ''}`}
           onMouseEnter={() => setPreviewPointerPaused(true)}
           onMouseLeave={() => setPreviewPointerPaused(false)}
-          onFocusCapture={() => setPreviewFocusPaused(true)}
-          onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPreviewFocusPaused(false);
-          }}
         >
           {draft.behavior.dismissible && <span className="popup-preview__close">×</span>}
           {content.imageUrl && !isPromoNotification && <img src={content.imageUrl} alt="" />}

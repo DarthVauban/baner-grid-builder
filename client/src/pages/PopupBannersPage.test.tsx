@@ -362,7 +362,9 @@ describe('PopupBannersPage', () => {
     expect(previewNavigation).toHaveTextContent('1 / 2');
     fireEvent.mouseEnter(previewCard!);
     expect(previewCard).toHaveClass('is-rotation-paused');
-    fireEvent.click(screen.getByRole('button', { name: 'Наступний товар' }));
+    const nextPreviewProduct = screen.getByRole('button', { name: 'Наступний товар' });
+    fireEvent.focus(nextPreviewProduct);
+    fireEvent.click(nextPreviewProduct);
     expect(previewNavigation).toHaveTextContent('2 / 2');
     expect(container.querySelector('.popup-preview__recommendations article strong')).toHaveTextContent('Другий промотовар');
     fireEvent.click(screen.getByRole('button', { name: 'Попередній товар' }));
