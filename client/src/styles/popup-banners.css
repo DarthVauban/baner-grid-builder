@@ -571,21 +571,17 @@
 .popup-preview.is-product-promo .popup-preview__recommendations strong { display: -webkit-box; align-self: end; overflow: hidden; font-size: 9px; line-height: 1.3; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .popup-preview.is-product-promo .popup-preview__recommendations b { font-size: 11px; }
 .popup-preview.is-product-promo .popup-preview__recommendations button { align-self: end; min-height: 27px; border-radius: var(--preview-button-radius); font-size: 8px; }
-.popup-preview.is-product-promo.is-format-compact .popup-preview__content > p,
-.popup-preview.is-product-promo.is-format-compact .popup-preview__content > div:not(.popup-preview__recommendations),
 .popup-preview.is-product-promo.is-format-compact:not(.has-promo-title) .popup-preview__content > h3 { display: none; }
 .popup-preview.is-product-promo.is-format-compact .popup-preview__content h3 { font-size: min(var(--preview-title-size), 18px); }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__content { display: block; padding: 7px; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__content > p,
-.popup-preview.is-product-promo.is-format-notification .popup-preview__content > div:not(.popup-preview__recommendations),
-.popup-preview.is-product-promo.is-format-notification:not(.has-promo-title) .popup-preview__content > h3 { display: none; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__content > h3 { margin-bottom: 7px; padding-right: 24px; font-size: min(var(--preview-title-size), 15px); }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__content > h3 { display: -webkit-box; overflow: hidden; margin-bottom: 3px; padding-right: 24px; font-size: min(var(--preview-title-size), 15px); line-height: 1.15; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__content > div:not(.popup-preview__recommendations) { display: -webkit-box; overflow: hidden; margin-bottom: 5px; font-size: min(var(--preview-body-size), 9px); line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations { margin: 0 !important; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations article { grid-template-columns: 52px minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 2px 7px; padding: 0; border: 0; background: transparent; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendation-image { grid-row: 1 / 3; width: 52px; height: 52px; aspect-ratio: auto; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations strong { align-self: end; font-size: 8px; -webkit-line-clamp: 2; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations b { align-self: start; font-size: 9px; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations button { grid-column: 3; grid-row: 2; min-height: 22px; padding: 3px 8px; border-radius: var(--preview-button-radius); }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations article { grid-template-areas: 'media product-title buy' 'media price buy'; grid-template-columns: 52px minmax(0, 1fr) auto; grid-template-rows: minmax(18px, auto) minmax(18px, auto); align-items: center; gap: 2px 7px; padding: 0; border: 0; background: transparent; }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendation-image { grid-area: media; width: 52px; height: 52px; aspect-ratio: auto; }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations strong { grid-area: product-title; align-self: end; font-size: 8px; -webkit-line-clamp: 2; }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations b { grid-area: price; align-self: start; font-size: 9px; }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations button { grid-area: buy; align-self: center; min-height: 22px; margin-right: 22px; padding: 3px 8px; border-radius: var(--preview-button-radius); }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__close { top: 4px; right: 4px; width: 21px; height: 21px; font-size: 13px; }
 .popup-preview__timeline { position: relative; z-index: 3; height: 4px; overflow: hidden; background: var(--preview-timeline-track); }
 .popup-preview__timeline span { display: block; width: 100%; height: 100%; background: var(--preview-timeline); transform: scaleX(0); transform-origin: left; animation: popup-preview-progress var(--preview-rotation-duration) linear forwards; }
@@ -594,9 +590,8 @@
 .popup-preview.is-product-promo.is-mobile .popup-preview__content h3 { font-size: min(var(--preview-title-size), 17px); }
 .popup-preview.is-product-promo.is-mobile .popup-preview__content > div:not(.popup-preview__recommendations) { font-size: min(var(--preview-body-size), 10px); }
 .popup-preview.is-product-promo.is-mobile .popup-preview__recommendations article { grid-template-columns: 88px minmax(0, 1fr); gap: 5px 8px; padding: 7px; }
-.popup-preview.is-product-promo.is-mobile.is-format-notification .popup-preview__recommendations article { grid-template-columns: 48px minmax(0, 1fr); grid-template-rows: auto auto auto; }
+.popup-preview.is-product-promo.is-mobile.is-format-notification .popup-preview__recommendations article { grid-template-columns: 48px minmax(0, 1fr) auto; grid-template-rows: minmax(17px, auto) minmax(17px, auto); }
 .popup-preview.is-product-promo.is-mobile.is-format-notification .popup-preview__recommendation-image { width: 48px; height: 48px; }
-.popup-preview.is-product-promo.is-mobile.is-format-notification .popup-preview__recommendations button { grid-column: 1 / 3; grid-row: 3; width: 100%; margin-top: 4px; }
 .popup-preview__recommendation-image img { width: 100%; height: 100%; object-fit: contain; }
 .popup-preview__product-empty { grid-column: 1 / -1; padding: 20px !important; border: 1px dashed color-mix(in srgb, var(--preview-text) 18%, transparent); border-radius: 10px; color: var(--preview-muted) !important; text-align: center; font-size: 9px !important; }
 

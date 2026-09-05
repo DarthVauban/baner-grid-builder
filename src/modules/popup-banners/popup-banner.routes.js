@@ -35,8 +35,8 @@ const nullableDateSchema = z.union([
 ]).optional().transform((value) => value || null);
 const contentSchema = z.object({
   eyebrow: z.string().max(120).optional(),
-  title: z.string().trim().min(1).max(240),
-  body: z.string().trim().min(1).max(3000),
+  title: z.string().trim().max(240).optional().default(''),
+  body: z.string().trim().max(3000).optional().default(''),
   primaryLabel: z.string().trim().min(1).max(120),
   primaryUrl: z.string().max(2000).optional().default(''),
   secondaryLabel: z.string().max(120).optional().default(''),
@@ -144,6 +144,16 @@ const campaignSchema = z.object({
 }).refine((value) => !value.startsAt || !value.endsAt || new Date(value.endsAt) > new Date(value.startsAt), {
   message: 'Дата завершення має бути пізніше дати початку.',
   path: ['endsAt']
+}).superRefine((value, context) => {
+  const optionalNotificationCopy = value.campaignType === 'product_promo'
+    && value.styles.promoFormat === 'notification';
+  if (optionalNotificationCopy) return;
+  if (!value.content.title) context.addIssue({
+    code: 'custom', path: ['content', 'title'], message: 'Вкажіть заголовок банера.'
+  });
+  if (!value.content.body) context.addIssue({
+    code: 'custom', path: ['content', 'body'], message: 'Вкажіть основний текст банера.'
+  });
 });
 const statusSchema = z.object({ status: z.enum(['draft', 'active', 'paused']) });
 const analyticsSchema = z.object({

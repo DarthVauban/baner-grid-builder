@@ -339,10 +339,14 @@ describe('PopupBannersPage', () => {
     expect(screen.getByRole('radio', { name: /Сповіщення/u })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /Знизу ліворуч/u })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /^Знизу$/u })).toHaveAttribute('aria-checked', 'true');
-    const showTitle = screen.getByRole('checkbox', { name: /Показувати заголовок кампанії/u });
-    expect(showTitle).not.toBeChecked();
-    fireEvent.click(showTitle);
-    expect(container.querySelector('.popup-preview.has-promo-title')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Надзаголовок')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Зображення')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: /Заголовок необов’язково/u }), { target: { value: '' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Основний текст необов’язково/u }), { target: { value: '' } });
+    expect(screen.queryByRole('checkbox', { name: /Показувати заголовок кампанії/u })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /Компактний/u }));
+    expect(screen.getByRole('checkbox', { name: /Показувати заголовок кампанії/u })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: /Сповіщення/u }));
     expect(screen.getByLabelText('Колір прогресу: HEX')).toHaveValue('#6d5dfc');
     expect(screen.getByLabelText('Колір підкладки: HEX')).toHaveValue('#ede9fe');
     expect(screen.getByRole('spinbutton', { name: /Заокруглення кнопки/u })).toHaveValue(12);
@@ -359,8 +363,9 @@ describe('PopupBannersPage', () => {
       campaignType: 'product_promo',
       styles: expect.objectContaining({
         promoFormat: 'notification', desktopPosition: 'bottom_left', mobilePosition: 'bottom', maxWidth: 380,
-        timelineColor: '#6d5dfc', timelineTrackColor: '#ede9fe', showPromoTitle: true, buttonBorderRadius: 12
+        timelineColor: '#6d5dfc', timelineTrackColor: '#ede9fe', showPromoTitle: false, buttonBorderRadius: 12
       }),
+      content: expect.objectContaining({ title: '', body: '' }),
       targeting: expect.objectContaining({ mode: 'all_pages' }),
       promoItems: [
         { productExternalId: 'promo-product-1', modificationExternalId: null },

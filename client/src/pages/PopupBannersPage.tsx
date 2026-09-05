@@ -488,6 +488,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
   const [previewProductIndex, setPreviewProductIndex] = useState(0);
   const content = draft.content;
   const styles = draft.styles;
+  const isPromoNotification = draft.campaignType === 'product_promo' && styles.promoFormat === 'notification';
   const promoProductKey = promoProducts.map(promoKey).join('|');
   useEffect(() => {
     setPreviewProductIndex(0);
@@ -518,7 +519,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
         <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон"><Icon name="phone" size={16} /></button>
       </div>
     </header>
-    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}${styles.showPromoTitle ? ' has-promo-title' : ''}` : ''}`} style={{
+    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}${styles.promoFormat === 'compact' && styles.showPromoTitle ? ' has-promo-title' : ''}` : ''}`} style={{
       '--preview-accent': styles.accentColor,
       '--preview-bg': styles.backgroundColor,
       '--preview-text': styles.textColor,
@@ -553,11 +554,11 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
         </div>
         <article className="popup-preview__card">
           {draft.behavior.dismissible && <span className="popup-preview__close">×</span>}
-          {content.imageUrl && <img src={content.imageUrl} alt="" />}
+          {content.imageUrl && !isPromoNotification && <img src={content.imageUrl} alt="" />}
           <div className="popup-preview__content">
-            {content.eyebrow && <p>{content.eyebrow}</p>}
-            <h3>{content.title || 'Заголовок попапа'}</h3>
-            <div>{content.body || 'Текст попапа'}</div>
+            {content.eyebrow && !isPromoNotification && <p>{content.eyebrow}</p>}
+            {(!isPromoNotification || content.title) && <h3>{content.title || 'Заголовок попапа'}</h3>}
+            {(!isPromoNotification || content.body) && <div>{content.body || 'Текст попапа'}</div>}
             {(draft.targeting.mode === 'out_of_stock' || draft.campaignType === 'product_promo') && <div className="popup-preview__recommendations">
               {visibleProductCards.length ? visibleProductCards.map((item) => <article className="is-visible" key={item.id}>
                 <span className="popup-preview__recommendation-image">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : <Icon name="productCard" size={28} />}</span>
@@ -612,6 +613,8 @@ export function PopupBannersPage() {
   const removeCampaign = useMutation({ mutationFn: api.popupBanners.remove });
   const selectedCampaign = campaigns.data?.find((item) => item.id === selectedId) || null;
   const saving = createCampaign.isPending || updateCampaign.isPending;
+  const isPromoNotification = draft.campaignType === 'product_promo'
+    && draft.styles.promoFormat === 'notification';
 
   const campaignOverview = useMemo(() => {
     const items = campaigns.data || [];
@@ -944,14 +947,23 @@ export function PopupBannersPage() {
           <section className="popup-editor__form">
             {tab === 'content' && <>
               <div className="popup-form-section">
-                <SectionHeading icon="edit" title="Текст повідомлення" description="Сформулюйте коротке повідомлення, яке покупець зрозуміє з першого погляду." />
-                <div className="popup-template-variables"><span>Змінні товару</span><code>{'{{product.title}}'}</code><code>{'{{product.article}}'}</code><code>{'{{product.condition}}'}</code></div>
-                <div className="popup-form-grid">
+                <SectionHeading
+                  icon="edit"
+                  title={isPromoNotification ? 'Текст сповіщення' : 'Текст повідомлення'}
+                  description={isPromoNotification
+                    ? 'Заголовок і основний текст необов’язкові. Залиште обидва поля порожніми для суто товарного віджета.'
+                    : 'Сформулюйте коротке повідомлення, яке покупець зрозуміє з першого погляду.'}
+                />
+                {!isPromoNotification && <div className="popup-template-variables"><span>Змінні товару</span><code>{'{{product.title}}'}</code><code>{'{{product.article}}'}</code><code>{'{{product.condition}}'}</code></div>}
+                {isPromoNotification ? <div className="popup-form-grid">
+                  <label><span>Заголовок <i>необов’язково</i></span><input value={draft.content.title} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, title: event.target.value } }))} placeholder="Наприклад, Вигідна пропозиція" /></label>
+                  <label className="is-full"><span>Основний текст <i>необов’язково</i></span><textarea rows={3} value={draft.content.body} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, body: event.target.value } }))} /><small>{draft.content.body.length} символів</small></label>
+                </div> : <div className="popup-form-grid">
                   <label><span>Надзаголовок</span><input value={draft.content.eyebrow} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, eyebrow: event.target.value } }))} placeholder="Наприклад, Важлива інформація" /></label>
                   <label><span>Заголовок</span><input value={draft.content.title} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, title: event.target.value } }))} placeholder="Зверніть увагу" /></label>
                   <label className="is-full"><span>Основний текст</span><textarea rows={6} value={draft.content.body} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, body: event.target.value } }))} /><small>{draft.content.body.length} символів</small></label>
                   <label className="is-full"><span>Зображення</span><input type="url" placeholder="https://..." value={draft.content.imageUrl} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, imageUrl: event.target.value } }))} /><small>Необов’язково. Використовуйте пряме HTTPS-посилання.</small></label>
-                </div>
+                </div>}
               </div>
 
               {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' ? <div className="popup-form-section">
@@ -995,10 +1007,10 @@ export function PopupBannersPage() {
                       ...current,
                       styles: { ...current.styles, promoFormat: preset.value, maxWidth: preset.width }
                     }))} />
-                    {(['notification', 'compact'] as PopupPromoFormat[]).includes(draft.styles.promoFormat) && <Toggle
+                    {draft.styles.promoFormat === 'compact' && <Toggle
                       checked={draft.styles.showPromoTitle}
                       label="Показувати заголовок кампанії"
-                      description="У компактному форматі надзаголовок і опис приховані. За потреби залиште лише короткий заголовок."
+                      description="Перемикач керує лише заголовком кампанії. Основний текст і назва товару не змінюються."
                       onChange={(showPromoTitle) => setDraft((current) => ({ ...current, styles: { ...current.styles, showPromoTitle } }))}
                     />}
                   </div>

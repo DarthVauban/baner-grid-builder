@@ -675,6 +675,14 @@ test('product promo campaigns keep promoted products separate from storefront ta
     campaignType: 'product_promo',
     name: 'Промо смартфона',
     priority: 900,
+    content: {
+      ...input().content,
+      eyebrow: '',
+      title: '',
+      body: '',
+      imageUrl: '',
+      primaryLabel: 'Купити'
+    },
     styles: {
       ...input().styles,
       desktopPosition: 'bottom_left',
@@ -699,11 +707,18 @@ test('product promo campaigns keep promoted products separate from storefront ta
   })).expect(201);
 
   assert.equal(created.body.data.campaignType, 'product_promo');
+  assert.equal(created.body.data.content.title, '');
+  assert.equal(created.body.data.content.body, '');
   assert.equal(created.body.data.productTargets.length, 0);
   assert.equal(created.body.data.promoProducts.length, 1);
   assert.equal(created.body.data.promoProducts[0].sku, 'IPHONE-15-NEW-BLACK');
   assert.equal(created.body.data.promoProducts[0].position, 0);
   assert.equal(created.body.data.promoProducts[0].buyId, '9002');
+  await admin.post('/api/popup-banners').send(input({
+    campaignType: 'product_promo',
+    content: { ...input().content, title: '', body: '' },
+    styles: { ...input().styles, promoFormat: 'compact' }
+  })).expect(422);
   await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
 
   const resolved = await request(app)
@@ -850,7 +865,7 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     assert.equal(promoHost.style.getPropertyValue('--timeline-track'), '#dcfce7');
     assert.equal(promoHost.style.getPropertyValue('--button-radius'), '18px');
     assert.ok(shadow.querySelector(`.format-${format}`));
-    assert.ok(shadow.querySelector('.has-promo-title'));
+    assert.equal(shadow.querySelector('.card').classList.contains('has-promo-title'), format === 'compact');
     assert.equal(shadow.querySelector('.card').getAttribute('role'), 'complementary');
     assert.equal(shadow.querySelector('.card').getAttribute('aria-modal'), 'false');
     assert.equal(shadow.querySelectorAll('.recommendation').length, 2);
@@ -866,6 +881,7 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     assert.match(runtimeCss, /@media\(max-width:600px\).*is-product-promo/su);
     assert.match(runtimeCss, /recommendation-media\{grid-column:1;grid-row:1\/4/u);
     assert.match(runtimeCss, /format-compact:not\(\.has-promo-title\) \.title\{display:none\}/u);
+    assert.match(runtimeCss, /\.card\.is-product-promo\.format-notification \.recommendation\{grid-template-areas:"media product-title buy" "media price buy"/u);
     assert.doesNotMatch(runtimeCss, /\.card\.is-product-promo \.recommendations\{[^}]*overflow-[xy]:auto/u);
     } finally {
       dom.window.close();

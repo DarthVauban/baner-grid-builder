@@ -1499,34 +1499,33 @@ export function popupEmbedScript(origin) {
 .card.is-product-promo .recommendation-title{align-self:end;-webkit-line-clamp:3}
 .card.is-product-promo .recommendation-price{align-self:start}
 .card.is-product-promo .recommendation-buy{align-self:end}
-.format-compact .eyebrow,.format-compact .body{display:none}
-.format-compact:not(.has-promo-title) .title{display:none}
-.format-compact .recommendation{grid-template-columns:128px minmax(0,1fr)}
-.format-compact .recommendation-image{height:128px}
-.format-standard .recommendation-image{height:176px}
-.format-wide .recommendation-image{height:210px}
-.format-notification.card{border-radius:min(var(--radius),16px)}
-.format-notification .content{padding:9px}
-.format-notification .eyebrow,.format-notification .body{display:none}
-.format-notification:not(.has-promo-title) .title{display:none}
-.format-notification .title{margin-bottom:8px;padding-right:30px;font-size:min(var(--title-size),17px)}
-.format-notification .recommendations{margin:0;padding:0}
-.format-notification .recommendation{grid-template-columns:64px minmax(0,1fr) auto;grid-template-rows:minmax(20px,auto) minmax(20px,auto);align-items:center;gap:2px 10px;padding:0;border:0;background:transparent}
-.format-notification .recommendation-media{grid-row:1/3;width:64px;height:64px}
-.format-notification .recommendation-image{width:64px;height:64px;border-radius:10px}
-.format-notification .recommendation-title{grid-column:2;grid-row:1;align-self:end;font-size:13px;line-height:1.25;-webkit-line-clamp:2}
-.format-notification .recommendation-price{grid-column:2;grid-row:2;align-self:start}
-.format-notification .recommendation-price strong{font-size:14px}
-.format-notification .recommendation-price del{font-size:10px}
-.format-notification .recommendation-buy{grid-column:3;grid-row:2;min-height:30px;width:auto;margin-right:30px;padding:5px 10px;font-size:11px}
-.format-notification .close{top:5px;right:5px;width:26px;height:26px;font-size:17px}
+.card.is-product-promo.format-compact:not(.has-promo-title) .title{display:none}
+.card.is-product-promo.format-compact .recommendation{grid-template-columns:128px minmax(0,1fr)}
+.card.is-product-promo.format-compact .recommendation-image{height:128px}
+.card.is-product-promo.format-standard .recommendation-image{height:176px}
+.card.is-product-promo.format-wide .recommendation-image{height:210px}
+.card.is-product-promo.format-notification{border-radius:min(var(--radius),16px)}
+.card.is-product-promo.format-notification .content{padding:9px}
+.card.is-product-promo.format-notification .eyebrow{display:none}
+.card.is-product-promo.format-notification .title{display:-webkit-box;overflow:hidden;margin-bottom:4px;padding-right:30px;font-size:min(var(--title-size),17px);line-height:1.15;-webkit-box-orient:vertical;-webkit-line-clamp:1}
+.card.is-product-promo.format-notification .body{display:-webkit-box;overflow:hidden;margin:0 0 7px;font-size:min(var(--body-size),12px);line-height:1.3;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.card.is-product-promo.format-notification .recommendations{margin:0;padding:0}
+.card.is-product-promo.format-notification .recommendation{grid-template-areas:"media product-title buy" "media price buy";grid-template-columns:64px minmax(0,1fr) auto;grid-template-rows:minmax(20px,auto) minmax(20px,auto);align-items:center;gap:2px 10px;padding:0;border:0;background:transparent}
+.card.is-product-promo.format-notification .recommendation-media{grid-area:media;width:64px;height:64px}
+.card.is-product-promo.format-notification .recommendation-image{width:64px;height:64px;border-radius:10px}
+.card.is-product-promo.format-notification .recommendation-title{grid-area:product-title;align-self:end;font-size:13px;line-height:1.25;-webkit-line-clamp:2}
+.card.is-product-promo.format-notification .recommendation-price{grid-area:price;align-self:start}
+.card.is-product-promo.format-notification .recommendation-price strong{font-size:14px}
+.card.is-product-promo.format-notification .recommendation-price del{font-size:10px}
+.card.is-product-promo.format-notification .recommendation-buy{grid-area:buy;align-self:center;min-height:30px;width:auto;margin-right:30px;padding:5px 10px;font-size:11px}
+.card.is-product-promo.format-notification .close{top:5px;right:5px;width:26px;height:26px;font-size:17px}
 .promo-timeline{height:4px;overflow:hidden;background:var(--timeline-track);pointer-events:none}
 .promo-timeline span{display:block;width:100%;height:100%;background:var(--timeline);transform:scaleX(0);transform-origin:left}
 .promo-timeline span.is-running{animation:promoCountdown var(--rotation-seconds) linear forwards}
 @keyframes promoSwap{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 @keyframes promoCountdown{to{transform:scaleX(1)}}
-@media(max-width:600px){.product-promo-host .card{max-height:none;border-radius:var(--radius)}.card.is-product-promo .content{padding:12px}.card.is-product-promo .eyebrow{margin-bottom:4px}.card.is-product-promo .title{font-size:clamp(18px,var(--title-size),22px)}.card.is-product-promo .body{font-size:clamp(12px,var(--body-size),14px)}.card.is-product-promo .recommendations{margin-top:9px}.card.is-product-promo .recommendation{grid-template-columns:112px minmax(0,1fr);gap:7px 10px;padding:9px}.card.is-product-promo .recommendation-image,.format-compact .recommendation-image,.format-standard .recommendation-image,.format-wide .recommendation-image{height:112px}.card.is-product-promo .recommendation-title{font-size:12px;line-height:1.3}.card.is-product-promo .recommendation-price strong{font-size:16px}.card.is-product-promo .recommendation-buy{min-height:38px;font-size:clamp(12px,var(--button-size),14px)}.format-notification .content{padding:8px}.format-notification .recommendations{margin:0}.format-notification .recommendation{grid-template-columns:58px minmax(0,1fr);grid-template-rows:auto auto auto}.format-notification .recommendation-media{grid-row:1/3;width:58px;height:58px}.format-notification .recommendation-image{width:58px;height:58px}.format-notification .recommendation-buy{grid-column:1/3;grid-row:3;width:100%;margin:6px 0 0;min-height:34px}.format-notification .close{top:4px;right:4px}}
-@media(max-width:360px),(max-height:560px){.card.is-product-promo .body{display:none}.card.is-product-promo .recommendation{grid-template-columns:96px minmax(0,1fr)}.card.is-product-promo .recommendation-image,.format-compact .recommendation-image,.format-standard .recommendation-image,.format-wide .recommendation-image{height:96px}}\`;
+@media(max-width:600px){.product-promo-host .card{max-height:none;border-radius:var(--radius)}.card.is-product-promo .content{padding:12px}.card.is-product-promo .eyebrow{margin-bottom:4px}.card.is-product-promo .title{font-size:clamp(18px,var(--title-size),22px)}.card.is-product-promo .body{font-size:clamp(12px,var(--body-size),14px)}.card.is-product-promo .recommendations{margin-top:9px}.card.is-product-promo .recommendation{grid-template-columns:112px minmax(0,1fr);gap:7px 10px;padding:9px}.card.is-product-promo .recommendation-image{height:112px}.card.is-product-promo .recommendation-title{font-size:12px;line-height:1.3}.card.is-product-promo .recommendation-price strong{font-size:16px}.card.is-product-promo .recommendation-buy{min-height:38px;font-size:clamp(12px,var(--button-size),14px)}.card.is-product-promo.format-notification .content{padding:8px}.card.is-product-promo.format-notification .title{font-size:min(var(--title-size),17px)}.card.is-product-promo.format-notification .body{font-size:min(var(--body-size),12px)}.card.is-product-promo.format-notification .recommendations{margin:0}.card.is-product-promo.format-notification .recommendation{grid-template-columns:54px minmax(0,1fr) auto;grid-template-rows:minmax(19px,auto) minmax(19px,auto);gap:2px 8px;padding:0}.card.is-product-promo.format-notification .recommendation-media{width:54px;height:54px}.card.is-product-promo.format-notification .recommendation-image{width:54px;height:54px}.card.is-product-promo.format-notification .recommendation-buy{min-height:30px;width:auto;margin-right:28px;padding:5px 8px}.card.is-product-promo.format-notification .close{top:4px;right:4px}}
+@media(max-width:360px),(max-height:560px){.card.is-product-promo:not(.format-notification) .body{display:none}.card.is-product-promo:not(.format-notification) .recommendation{grid-template-columns:96px minmax(0,1fr)}.card.is-product-promo:not(.format-notification) .recommendation-image{height:96px}.card.is-product-promo.format-notification .recommendation{grid-template-columns:48px minmax(0,1fr) auto}.card.is-product-promo.format-notification .recommendation-media,.card.is-product-promo.format-notification .recommendation-image{width:48px;height:48px}}\`;
     shadow.append(style);
     const backdrop = document.createElement('div');
     backdrop.className = isProductPromo ? 'product-promo-host' : 'backdrop ' + campaign.styles.layout;
@@ -1554,7 +1553,8 @@ export function popupEmbedScript(origin) {
     backdrop.style.setProperty('--rotation-seconds', Math.max(2, Number(campaign.behavior.rotationSeconds) || 6) + 's');
     const card = document.createElement('section');
     card.className = isProductPromo
-      ? 'card is-product-promo format-' + promoFormat + (campaign.styles.showPromoTitle ? ' has-promo-title' : '')
+      ? 'card is-product-promo format-' + promoFormat
+        + (promoFormat === 'compact' && campaign.styles.showPromoTitle ? ' has-promo-title' : '')
       : campaign.mode === 'out_of_stock' ? 'card is-recommendations' : 'card';
     card.tabIndex = -1;
     card.setAttribute('role', isProductPromo ? 'complementary' : 'dialog');
@@ -1596,14 +1596,16 @@ export function popupEmbedScript(origin) {
       closeButton.addEventListener('click', () => close('dismiss')); card.append(closeButton);
       if (!isProductPromo) backdrop.addEventListener('click', (clickEvent) => { if (clickEvent.target === backdrop) close('dismiss'); });
     }
-    if (campaign.content.imageUrl) {
+    if (campaign.content.imageUrl && !(isProductPromo && promoFormat === 'notification')) {
       const image = document.createElement('img'); image.className = 'image'; image.src = imageUrl(campaign.content.imageUrl); image.alt = ''; card.append(image);
     }
     const content = document.createElement('div'); content.className = 'content';
-    if (campaign.content.eyebrow) { const node = document.createElement('p'); node.className = 'eyebrow'; node.textContent = campaign.content.eyebrow; content.append(node); }
-    const title = document.createElement('h2'); title.className = 'title'; title.id = 'mt-popup-title-' + campaign.publicId; title.textContent = campaign.content.title; content.append(title);
-    card.setAttribute('aria-labelledby', title.id);
-    const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body);
+    if (campaign.content.eyebrow && !(isProductPromo && promoFormat === 'notification')) { const node = document.createElement('p'); node.className = 'eyebrow'; node.textContent = campaign.content.eyebrow; content.append(node); }
+    if (campaign.content.title) {
+      const title = document.createElement('h2'); title.className = 'title'; title.id = 'mt-popup-title-' + campaign.publicId; title.textContent = campaign.content.title; content.append(title);
+      card.setAttribute('aria-labelledby', title.id);
+    } else card.setAttribute('aria-label', isProductPromo ? 'Товарний промобанер' : 'Інформаційний попап');
+    if (campaign.content.body) { const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body); }
     if (campaign.mode === 'out_of_stock' || isProductPromo) {
       const recommendations = document.createElement('div'); recommendations.className = 'recommendations';
       const recommendationEntries = [];
