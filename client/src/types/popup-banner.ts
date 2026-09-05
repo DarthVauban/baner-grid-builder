@@ -36,11 +36,15 @@ export interface PopupStyles {
   checkboxAccentColor: string;
   checkboxCheckColor: string;
   checkboxTextColor: string;
+  timelineColor: string;
+  timelineTrackColor: string;
+  showPromoTitle: boolean;
   eyebrowFontSize: number;
   titleFontSize: number;
   bodyFontSize: number;
   acknowledgementFontSize: number;
   buttonFontSize: number;
+  buttonBorderRadius: number;
   borderRadius: number;
   maxWidth: number;
 }

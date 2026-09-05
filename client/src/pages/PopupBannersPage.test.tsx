@@ -41,11 +41,15 @@ const baseCampaign: PopupCampaign = {
     checkboxAccentColor: '#6d5dfc',
     checkboxCheckColor: '#ffffff',
     checkboxTextColor: '#172033',
+    timelineColor: '#6d5dfc',
+    timelineTrackColor: '#ede9fe',
+    showPromoTitle: false,
     eyebrowFontSize: 12,
     titleFontSize: 34,
     bodyFontSize: 16,
     acknowledgementFontSize: 14,
     buttonFontSize: 16,
+    buttonBorderRadius: 12,
     borderRadius: 24,
     maxWidth: 520
   },
@@ -335,6 +339,13 @@ describe('PopupBannersPage', () => {
     expect(screen.getByRole('radio', { name: /Сповіщення/u })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /Знизу ліворуч/u })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /^Знизу$/u })).toHaveAttribute('aria-checked', 'true');
+    const showTitle = screen.getByRole('checkbox', { name: /Показувати заголовок кампанії/u });
+    expect(showTitle).not.toBeChecked();
+    fireEvent.click(showTitle);
+    expect(container.querySelector('.popup-preview.has-promo-title')).toBeInTheDocument();
+    expect(screen.getByLabelText('Колір прогресу: HEX')).toHaveValue('#6d5dfc');
+    expect(screen.getByLabelText('Колір підкладки: HEX')).toHaveValue('#ede9fe');
+    expect(screen.getByRole('spinbutton', { name: /Заокруглення кнопки/u })).toHaveValue(12);
     fireEvent.click(screen.getByRole('button', { name: /Товари банера/u }));
     const add = await screen.findAllByRole('button', { name: /Додати/u });
     fireEvent.click(add[0]);
@@ -346,7 +357,10 @@ describe('PopupBannersPage', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
       campaignType: 'product_promo',
-      styles: expect.objectContaining({ promoFormat: 'notification', desktopPosition: 'bottom_left', mobilePosition: 'bottom', maxWidth: 380 }),
+      styles: expect.objectContaining({
+        promoFormat: 'notification', desktopPosition: 'bottom_left', mobilePosition: 'bottom', maxWidth: 380,
+        timelineColor: '#6d5dfc', timelineTrackColor: '#ede9fe', showPromoTitle: true, buttonBorderRadius: 12
+      }),
       targeting: expect.objectContaining({ mode: 'all_pages' }),
       promoItems: [
         { productExternalId: 'promo-product-1', modificationExternalId: null },

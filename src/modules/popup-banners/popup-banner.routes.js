@@ -59,11 +59,15 @@ const stylesSchema = z.object({
   checkboxAccentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   checkboxCheckColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   checkboxTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  timelineColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  timelineTrackColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  showPromoTitle: z.boolean().optional(),
   eyebrowFontSize: z.number().min(8).max(32).optional(),
   titleFontSize: z.number().min(18).max(72).optional(),
   bodyFontSize: z.number().min(10).max(36).optional(),
   acknowledgementFontSize: z.number().min(10).max(28).optional(),
   buttonFontSize: z.number().min(10).max(28).optional(),
+  buttonBorderRadius: z.number().min(0).max(40).optional(),
   borderRadius: z.number().min(0).max(40),
   maxWidth: z.number().min(320).max(1400)
 });

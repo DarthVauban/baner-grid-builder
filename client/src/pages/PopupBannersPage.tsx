@@ -115,11 +115,15 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       checkboxAccentColor: '#6d5dfc',
       checkboxCheckColor: '#ffffff',
       checkboxTextColor: '#172033',
+      timelineColor: '#6d5dfc',
+      timelineTrackColor: '#ede9fe',
+      showPromoTitle: false,
       eyebrowFontSize: 12,
       titleFontSize: 34,
       bodyFontSize: 16,
       acknowledgementFontSize: 14,
       buttonFontSize: 16,
+      buttonBorderRadius: 12,
       borderRadius: 24,
       maxWidth: 520
     },
@@ -514,7 +518,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
         <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон"><Icon name="phone" size={16} /></button>
       </div>
     </header>
-    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}` : ''}`} style={{
+    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}${styles.showPromoTitle ? ' has-promo-title' : ''}` : ''}`} style={{
       '--preview-accent': styles.accentColor,
       '--preview-bg': styles.backgroundColor,
       '--preview-text': styles.textColor,
@@ -526,11 +530,14 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
       '--preview-checkbox': styles.checkboxAccentColor,
       '--preview-checkbox-check': styles.checkboxCheckColor,
       '--preview-checkbox-text': styles.checkboxTextColor,
+      '--preview-timeline': styles.timelineColor,
+      '--preview-timeline-track': styles.timelineTrackColor,
       '--preview-eyebrow-size': `${styles.eyebrowFontSize}px`,
       '--preview-title-size': `${styles.titleFontSize}px`,
       '--preview-body-size': `${styles.bodyFontSize}px`,
       '--preview-ack-size': `${styles.acknowledgementFontSize}px`,
       '--preview-button-size': `${styles.buttonFontSize}px`,
+      '--preview-button-radius': `${styles.buttonBorderRadius}px`,
       '--preview-radius': `${styles.borderRadius}px`,
       '--preview-width': `${styles.maxWidth}px`,
       '--preview-rotation-duration': `${Math.max(2, draft.behavior.rotationSeconds)}s`
@@ -967,7 +974,10 @@ export function PopupBannersPage() {
                 </div>
               </div> : <div className="popup-form-section">
                 <SectionHeading icon="productCard" title="Кнопки товарів" description="Кнопка «Купити» на кожній картці одразу відкриє нативний кошик Хорошоп." />
-                {draft.campaignType === 'product_promo' && <label><span>Текст кнопки</span><input value={draft.content.primaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryLabel: event.target.value } }))} /></label>}
+                {draft.campaignType === 'product_promo' && <div className="popup-form-grid">
+                  <label><span>Текст кнопки</span><input value={draft.content.primaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryLabel: event.target.value } }))} /></label>
+                  <label><span>Заокруглення кнопки, px</span><input type="number" min={0} max={40} value={draft.styles.buttonBorderRadius} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, buttonBorderRadius: Number(event.target.value) } }))} /></label>
+                </div>}
                 <div className="popup-color-grid is-pair">
                   <ColorField label="Колір кнопки" value={draft.styles.primaryButtonBackgroundColor} onChange={(primaryButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonBackgroundColor } }))} />
                   <ColorField label="Колір тексту" value={draft.styles.primaryButtonTextColor} onChange={(primaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonTextColor } }))} />
@@ -985,6 +995,12 @@ export function PopupBannersPage() {
                       ...current,
                       styles: { ...current.styles, promoFormat: preset.value, maxWidth: preset.width }
                     }))} />
+                    {(['notification', 'compact'] as PopupPromoFormat[]).includes(draft.styles.promoFormat) && <Toggle
+                      checked={draft.styles.showPromoTitle}
+                      label="Показувати заголовок кампанії"
+                      description="У компактному форматі надзаголовок і опис приховані. За потреби залиште лише короткий заголовок."
+                      onChange={(showPromoTitle) => setDraft((current) => ({ ...current, styles: { ...current.styles, showPromoTitle } }))}
+                    />}
                   </div>
                   <div className="popup-settings-group">
                     <strong>Положення банера</strong>
@@ -1003,6 +1019,14 @@ export function PopupBannersPage() {
                   <ColorField label="Заголовок" value={draft.styles.textColor} onChange={(textColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, textColor } }))} />
                   <ColorField label="Основний текст" value={draft.styles.mutedColor} onChange={(mutedColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, mutedColor } }))} />
                 </div>
+                {draft.campaignType === 'product_promo' && <div className="popup-settings-group">
+                  <strong>Часова лінія ротації</strong>
+                  <small>Лінія з’являється, якщо у банері вибрано щонайменше два товари.</small>
+                  <div className="popup-color-grid is-pair">
+                    <ColorField label="Колір прогресу" value={draft.styles.timelineColor} onChange={(timelineColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, timelineColor } }))} />
+                    <ColorField label="Колір підкладки" value={draft.styles.timelineTrackColor} onChange={(timelineTrackColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, timelineTrackColor } }))} />
+                  </div>
+                </div>}
                 <div className="popup-settings-group">
                   <strong>Розміри шрифту</strong>
                   <div className="popup-form-grid popup-font-grid">

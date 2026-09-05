@@ -61,11 +61,15 @@ function input(overrides = {}) {
       checkboxAccentColor: '#f04438',
       checkboxCheckColor: '#101828',
       checkboxTextColor: '#344054',
+      timelineColor: '#6d5dfc',
+      timelineTrackColor: '#ede9fe',
+      showPromoTitle: false,
       eyebrowFontSize: 14,
       titleFontSize: 42,
       bodyFontSize: 18,
       acknowledgementFontSize: 15,
       buttonFontSize: 17,
+      buttonBorderRadius: 12,
       borderRadius: 24,
       maxWidth: 1200
     },
@@ -205,6 +209,10 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(created.body.data.styles.primaryButtonBackgroundColor, '#ffe101');
   assert.equal(created.body.data.styles.checkboxAccentColor, '#f04438');
   assert.equal(created.body.data.styles.checkboxCheckColor, '#101828');
+  assert.equal(created.body.data.styles.timelineColor, '#6d5dfc');
+  assert.equal(created.body.data.styles.timelineTrackColor, '#ede9fe');
+  assert.equal(created.body.data.styles.showPromoTitle, false);
+  assert.equal(created.body.data.styles.buttonBorderRadius, 12);
   assert.equal(created.body.data.styles.titleFontSize, 42);
   assert.equal(created.body.data.styles.maxWidth, 1200);
   assert.equal(created.body.data.behavior.buttonCount, 2);
@@ -343,11 +351,15 @@ test('out-of-stock widget keeps focus and scrolling on the dialog while using Ho
         checkboxAccentColor: '#6d5dfc',
         checkboxCheckColor: '#ffffff',
         checkboxTextColor: '#172033',
+        timelineColor: '#6d5dfc',
+        timelineTrackColor: '#ede9fe',
+        showPromoTitle: false,
         eyebrowFontSize: 12,
         titleFontSize: 34,
         bodyFontSize: 16,
         acknowledgementFontSize: 14,
         buttonFontSize: 16,
+        buttonBorderRadius: 12,
         borderRadius: 22,
         maxWidth: 960
       },
@@ -765,9 +777,10 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
         textColor: '#172033', mutedColor: '#667085', primaryButtonBackgroundColor: '#ffe101',
         primaryButtonTextColor: '#111827', secondaryButtonBackgroundColor: '#ffffff',
         secondaryButtonTextColor: '#172033', checkboxAccentColor: '#6d5dfc',
-        checkboxCheckColor: '#ffffff', checkboxTextColor: '#172033', eyebrowFontSize: 12,
+        checkboxCheckColor: '#ffffff', checkboxTextColor: '#172033',
+        timelineColor: '#22c55e', timelineTrackColor: '#dcfce7', showPromoTitle: true, eyebrowFontSize: 12,
         titleFontSize: 28, bodyFontSize: 16, acknowledgementFontSize: 14,
-        buttonFontSize: 16, borderRadius: 22, maxWidth: 680
+        buttonFontSize: 16, buttonBorderRadius: 18, borderRadius: 22, maxWidth: 680
       },
       behavior: {
         trigger: 'delay', delayMs: 0, scrollPercent: 35, inactivitySeconds: 8,
@@ -831,8 +844,13 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
       assert.equal(host.style.left, '50%');
     }
     assert.equal(shadow.querySelector('.backdrop'), null);
-    assert.ok(shadow.querySelector('.product-promo-host'));
+    const promoHost = shadow.querySelector('.product-promo-host');
+    assert.ok(promoHost);
+    assert.equal(promoHost.style.getPropertyValue('--timeline'), '#22c55e');
+    assert.equal(promoHost.style.getPropertyValue('--timeline-track'), '#dcfce7');
+    assert.equal(promoHost.style.getPropertyValue('--button-radius'), '18px');
     assert.ok(shadow.querySelector(`.format-${format}`));
+    assert.ok(shadow.querySelector('.has-promo-title'));
     assert.equal(shadow.querySelector('.card').getAttribute('role'), 'complementary');
     assert.equal(shadow.querySelector('.card').getAttribute('aria-modal'), 'false');
     assert.equal(shadow.querySelectorAll('.recommendation').length, 2);
@@ -844,8 +862,11 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     assert.equal(dom.window.document.body.style.overflow, '');
     assert.equal(focusCalls.length, 0);
     assert.ok(dom.window.document.querySelector('#storefront-control'));
-    assert.match(shadow.querySelector('style').textContent, /@media\(max-width:600px\).*is-product-promo/su);
-    assert.doesNotMatch(shadow.querySelector('style').textContent, /\.card\.is-product-promo \.recommendations\{[^}]*overflow-[xy]:auto/u);
+    const runtimeCss = shadow.querySelector('style').textContent;
+    assert.match(runtimeCss, /@media\(max-width:600px\).*is-product-promo/su);
+    assert.match(runtimeCss, /recommendation-media\{grid-column:1;grid-row:1\/4/u);
+    assert.match(runtimeCss, /format-compact:not\(\.has-promo-title\) \.title\{display:none\}/u);
+    assert.doesNotMatch(runtimeCss, /\.card\.is-product-promo \.recommendations\{[^}]*overflow-[xy]:auto/u);
     } finally {
       dom.window.close();
     }
