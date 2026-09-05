@@ -825,7 +825,17 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     for (const format of formats) {
     const runtimePayload = structuredClone(payload);
     runtimePayload.campaign.styles.promoFormat = format;
-    const dom = new JSDOM('<!doctype html><html><body><button id="storefront-control">Каталог</button></body></html>', {
+    const cartMarkup = surface.name === 'desktop'
+      ? '<section id="cart" class="popup __cart" style="display:block"></section>'
+      : '<div id="cart-drawer" class="cart mm-opened"><div id="cart"></div></div>';
+    const dom = new JSDOM(`<!doctype html><html><body>
+      <button id="storefront-control">Каталог</button>
+      ${cartMarkup}
+      <div class="productsSlider-i">
+        <a href="https://shop.example.com/promo/">Промотовар</a>
+        <button class="j-buy-button-add" id="j-buy-button-widget-9002" data-quantity="1" data-cartproducttype="product">Купити</button>
+      </div>
+    </body></html>`, {
       pretendToBeVisual: true,
       runScripts: 'outside-only',
       url: `https://shop.example.com/${surface.name}/`
@@ -834,6 +844,22 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     Object.defineProperty(dom.window.navigator, 'userAgent', { configurable: true, value: surface.userAgent });
     dom.window.MutationObserver = class MutationObserver { observe() {} };
     const focusCalls = [];
+    const nativeProducts = new Map();
+    let cartReloads = 0;
+    const nativeCart = {
+      appendProduct(product) {
+        dom.window.setTimeout(() => nativeProducts.set(String(product.id), product), 10);
+      },
+      getProductById(id, type) {
+        const product = nativeProducts.get(String(id));
+        return product?.type === type ? product : null;
+      },
+      reloadHtml() { cartReloads += 1; }
+    };
+    dom.window.AjaxCart = { openCartOnAdd: false, getInstance: () => nativeCart };
+    dom.window.document.querySelector('#j-buy-button-widget-9002').addEventListener('click', () => {
+      nativeCart.appendProduct({ id: '9002', type: 'product', quantity: 1 });
+    });
     dom.window.HTMLElement.prototype.focus = function focus() { focusCalls.push(this); };
     dom.window.fetch = async (input) => {
       const url = new URL(String(input));
@@ -894,6 +920,10 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     assert.equal(card.classList.contains('is-rotation-paused'), false);
     assert.equal(dom.window.document.body.style.overflow, '');
     assert.equal(focusCalls.length, 0);
+    shadow.querySelector('.recommendation-buy').click();
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 80));
+    assert.equal(cartReloads, 1);
+    assert.equal(shadow.querySelector('.recommendation-buy').textContent, 'У кошику');
     assert.ok(dom.window.document.querySelector('#storefront-control'));
     const runtimeCss = shadow.querySelector('style').textContent;
     assert.match(runtimeCss, /@media\(max-width:600px\).*is-product-promo/su);

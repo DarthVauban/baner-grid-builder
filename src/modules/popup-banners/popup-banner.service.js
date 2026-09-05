@@ -1328,14 +1328,39 @@ export function popupEmbedScript(origin) {
     return String(node?.content || node?.dataset?.productArticle || node?.textContent || '').trim();
   }
 
-  function nativeCart() {
+  function nativeCartController() {
     try {
-      const instance = window.AjaxCart?.getInstance?.();
-      return [instance, instance?.Cart].find((candidate) => candidate
-        && typeof candidate.appendProduct === 'function'
-        && typeof candidate.getProductById === 'function') || null;
+      return window.AjaxCart?.getInstance?.() || null;
     } catch {}
     return null;
+  }
+
+  function nativeCart(controller = nativeCartController()) {
+    return [controller, controller?.Cart].find((candidate) => candidate
+      && typeof candidate.appendProduct === 'function'
+      && typeof candidate.getProductById === 'function') || null;
+  }
+
+  function desktopCartIsOpen() {
+    return [...document.querySelectorAll('.popup.__cart, #cart.popup')].some((root) => {
+      if (root.hidden || root.getAttribute('aria-hidden') === 'true') return false;
+      const styles = window.getComputedStyle?.(root);
+      return root.style.display !== 'none' && styles?.display !== 'none' && styles?.visibility !== 'hidden';
+    });
+  }
+
+  function openNativeCartSurface() {
+    if (desktopCartIsOpen()) return 'desktop';
+    return document.querySelector('#cart-drawer.mm-opened') ? 'mobile' : '';
+  }
+
+  function refreshOpenNativeCart(controller, surface) {
+    if (!surface || typeof controller?.reloadHtml !== 'function') return;
+    const stillOpen = surface === 'desktop'
+      ? desktopCartIsOpen()
+      : Boolean(document.querySelector('#cart-drawer.mm-opened'));
+    if (!stillOpen) return;
+    try { controller.reloadHtml(); } catch {}
   }
 
   function cartProduct(cart, descriptor) {
@@ -1367,19 +1392,25 @@ export function popupEmbedScript(origin) {
   }
 
   async function clickExistingNativeBuy(entry) {
-    const cart = nativeCart();
+    const controller = nativeCartController();
+    const cart = nativeCart(controller);
     if (!cart) return '';
     const beforeProduct = cartProduct(cart, entry.descriptor);
     if (beforeProduct) return 'already';
+    const openSurface = openNativeCartSurface();
     entry.button.click();
-    return await waitForCartChange(cart, entry.descriptor, beforeProduct) ? 'added' : '';
+    const added = await waitForCartChange(cart, entry.descriptor, beforeProduct);
+    if (added) refreshOpenNativeCart(controller, openSurface);
+    return added ? 'added' : '';
   }
 
   async function appendThroughNativeCart(descriptor) {
-    const cart = nativeCart();
+    const controller = nativeCartController();
+    const cart = nativeCart(controller);
     if (!cart) return '';
     const beforeProduct = cartProduct(cart, descriptor);
     if (beforeProduct) return 'already';
+    const openSurface = openNativeCartSurface();
     try {
       window.AjaxCart.openCartOnAdd = true;
       cart.appendProduct({
@@ -1390,7 +1421,9 @@ export function popupEmbedScript(origin) {
     } catch {
       return '';
     }
-    return await waitForCartChange(cart, descriptor, beforeProduct) ? 'added' : '';
+    const added = await waitForCartChange(cart, descriptor, beforeProduct);
+    if (added) refreshOpenNativeCart(controller, openSurface);
+    return added ? 'added' : '';
   }
 
   async function nativeBuy(recommendation, isCurrent) {
