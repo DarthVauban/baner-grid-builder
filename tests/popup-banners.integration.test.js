@@ -877,6 +877,8 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     const card = shadow.querySelector('.card');
     const navigation = shadow.querySelector('.promo-navigation');
     assert.equal(navigation.querySelector('.promo-navigation-status').textContent, '1 / 2');
+    assert.equal(navigation.querySelector('[aria-label="Попередній товар"] svg path').getAttribute('d'), 'M15 18 9 12l6-6');
+    assert.equal(navigation.querySelector('[aria-label="Наступний товар"] svg path').getAttribute('d'), 'm9 6 6 6-6 6');
     card.dispatchEvent(new dom.window.FocusEvent('focusin', { bubbles: true }));
     navigation.querySelector('[aria-label="Наступний товар"]').click();
     assert.equal(navigation.querySelector('.promo-navigation-status').textContent, '2 / 2');

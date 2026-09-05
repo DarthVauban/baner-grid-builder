@@ -1520,12 +1520,14 @@ export function popupEmbedScript(origin) {
 .card.is-product-promo.format-notification .recommendation-buy{grid-area:buy;align-self:center;min-height:30px;width:auto;margin-right:30px;padding:5px 10px;font-size:11px}
 .card.is-product-promo.format-notification .close{top:5px;right:5px;width:26px;height:26px;font-size:17px}
 .promo-navigation{display:grid;grid-template-columns:28px minmax(0,1fr) 28px;align-items:center;gap:8px;min-height:34px;padding:3px 12px 7px;color:var(--muted);background:color-mix(in srgb,var(--text) 4%,var(--bg));pointer-events:auto}
-.promo-navigation button{display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid color-mix(in srgb,var(--text) 14%,transparent);border-radius:50%;color:var(--text);background:var(--bg);box-shadow:0 3px 10px color-mix(in srgb,var(--text) 15%,transparent);font:800 20px/1 Inter,system-ui,sans-serif;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+.promo-navigation button{display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid color-mix(in srgb,var(--text) 14%,transparent);border-radius:50%;color:var(--text);background:var(--bg);box-shadow:0 3px 10px color-mix(in srgb,var(--text) 15%,transparent);line-height:0;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+.promo-navigation button svg{display:block;width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .promo-navigation button:hover{transform:translateY(-1px);box-shadow:0 5px 14px color-mix(in srgb,var(--text) 22%,transparent)}
 .promo-navigation button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .promo-navigation-status{min-width:0;font-size:11px;font-weight:750;letter-spacing:.05em;text-align:center}
 .card.is-product-promo.format-notification .promo-navigation{grid-template-columns:24px minmax(0,1fr) 24px;min-height:28px;padding:2px 9px 4px}
-.card.is-product-promo.format-notification .promo-navigation button{width:24px;height:24px;font-size:17px}
+.card.is-product-promo.format-notification .promo-navigation button{width:24px;height:24px}
+.card.is-product-promo.format-notification .promo-navigation button svg{width:13px;height:13px}
 .card.is-product-promo.format-notification .promo-navigation-status{font-size:10px}
 .promo-timeline{height:4px;overflow:hidden;background:var(--timeline-track);pointer-events:none}
 .promo-timeline span{display:block;width:100%;height:100%;background:var(--timeline);transform:scaleX(0);transform-origin:left}
@@ -1665,10 +1667,17 @@ export function popupEmbedScript(origin) {
           if (navigationStatus) navigationStatus.textContent = (visibleIndex + 1) + ' / ' + recommendationEntries.length;
         };
         if (recommendationEntries.length > 1) {
+          const createNavigationIcon = (pathData) => {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', pathData);
+            svg.append(path);
+            return svg;
+          };
           const navigation = document.createElement('nav'); navigation.className = 'promo-navigation'; navigation.setAttribute('aria-label', 'Навігація між товарами');
-          const previous = document.createElement('button'); previous.type = 'button'; previous.setAttribute('aria-label', 'Попередній товар'); previous.textContent = '‹';
+          const previous = document.createElement('button'); previous.type = 'button'; previous.setAttribute('aria-label', 'Попередній товар'); previous.append(createNavigationIcon('M15 18 9 12l6-6'));
           navigationStatus = document.createElement('span'); navigationStatus.className = 'promo-navigation-status'; navigationStatus.setAttribute('aria-live', 'polite');
-          const next = document.createElement('button'); next.type = 'button'; next.setAttribute('aria-label', 'Наступний товар'); next.textContent = '›';
+          const next = document.createElement('button'); next.type = 'button'; next.setAttribute('aria-label', 'Наступний товар'); next.append(createNavigationIcon('m9 6 6 6-6 6'));
           navigation.append(previous, navigationStatus, next); card.append(navigation);
           const timeline = document.createElement('div'); timeline.className = 'promo-timeline'; timeline.setAttribute('aria-hidden', 'true');
           const timelineFill = document.createElement('span'); timelineFill.className = 'is-running'; timeline.append(timelineFill); card.append(timeline);

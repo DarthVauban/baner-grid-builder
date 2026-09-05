@@ -363,6 +363,8 @@ describe('PopupBannersPage', () => {
     fireEvent.mouseEnter(previewCard!);
     expect(previewCard).toHaveClass('is-rotation-paused');
     const nextPreviewProduct = screen.getByRole('button', { name: 'Наступний товар' });
+    expect(nextPreviewProduct.querySelector('svg path')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Попередній товар' }).querySelector('svg path')).toBeInTheDocument();
     fireEvent.focus(nextPreviewProduct);
     fireEvent.click(nextPreviewProduct);
     expect(previewNavigation).toHaveTextContent('2 / 2');

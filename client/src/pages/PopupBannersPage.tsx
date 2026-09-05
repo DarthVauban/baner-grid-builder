@@ -26,6 +26,12 @@ type EditorTab = 'content' | 'products' | 'targeting' | 'behavior';
 type CampaignFilter = 'all' | PopupCampaignStatus;
 type PreviewViewport = 'desktop' | 'mobile';
 
+function PromoNavigationIcon({ direction }: { direction: 'previous' | 'next' }) {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d={direction === 'previous' ? 'M15 18 9 12l6-6' : 'm9 6 6 6-6 6'} />
+  </svg>;
+}
+
 const statusLabels: Record<PopupCampaignStatus, string> = {
   draft: 'Чернетка',
   active: 'Активна',
@@ -605,9 +611,9 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
             </footer>}
           </div>
           {draft.campaignType === 'product_promo' && productCards.length > 1 && <nav className="popup-preview__promo-navigation" aria-label="Навігація між товарами">
-            <button type="button" aria-label="Попередній товар" onClick={() => movePreviewProduct(-1)}>‹</button>
+            <button type="button" aria-label="Попередній товар" onClick={() => movePreviewProduct(-1)}><PromoNavigationIcon direction="previous" /></button>
             <span aria-live="polite">{previewProductIndex + 1} / {productCards.length}</span>
-            <button type="button" aria-label="Наступний товар" onClick={() => movePreviewProduct(1)}>›</button>
+            <button type="button" aria-label="Наступний товар" onClick={() => movePreviewProduct(1)}><PromoNavigationIcon direction="next" /></button>
           </nav>}
           {draft.campaignType === 'product_promo' && productCards.length > 1 && <div className="popup-preview__timeline" aria-hidden="true"><span key={previewProductIndex} /></div>}
         </article>
