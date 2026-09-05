@@ -52,10 +52,10 @@ const promoFormatPresets: Array<{
   products: string;
 }> = [
   { value: 'notification', title: 'Сповіщення', description: 'Як у Elfsight: компактний горизонтальний віджет', width: 380, products: '1 товар із ротацією' },
-  { value: 'compact', title: 'Компактний', description: 'Невелика картка для одного акцентного товару', width: 460, products: '1 товар у кадрі' },
-  { value: 'standard', title: 'Стандартний', description: 'Збалансована добірка без зайвої висоти', width: 640, products: '2 товари у кадрі' },
-  { value: 'wide', title: 'Широкий', description: 'Промосмуга для ширшої товарної добірки', width: 860, products: '3 товари у кадрі' },
-  { value: 'custom', title: 'Власний', description: 'Ручне налаштування максимальної ширини', width: 680, products: 'Адаптивна сітка' }
+  { value: 'compact', title: 'Компактний', description: 'Коротка горизонтальна картка з усіма деталями', width: 460, products: '1 товар із ротацією' },
+  { value: 'standard', title: 'Стандартний', description: 'Збалансований банер із більшим фото товару', width: 640, products: '1 товар із ротацією' },
+  { value: 'wide', title: 'Широкий', description: 'Широка промопанель з акцентом на товарі', width: 860, products: '1 товар із ротацією' },
+  { value: 'custom', title: 'Власний', description: 'Ручне налаштування максимальної ширини', width: 680, products: '1 товар із ротацією' }
 ];
 
 const desktopPositions: Array<{ value: PopupDesktopPosition; label: string }> = [
@@ -481,8 +481,18 @@ function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) 
 function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoProducts: PopupPromoProduct[] }) {
   const [acknowledged, setAcknowledged] = useState(false);
   const [viewport, setViewport] = useState<PreviewViewport>('desktop');
+  const [previewProductIndex, setPreviewProductIndex] = useState(0);
   const content = draft.content;
   const styles = draft.styles;
+  const promoProductKey = promoProducts.map(promoKey).join('|');
+  useEffect(() => {
+    setPreviewProductIndex(0);
+    if (draft.campaignType !== 'product_promo' || promoProducts.length < 2) return undefined;
+    const timer = window.setInterval(() => {
+      setPreviewProductIndex((current) => (current + 1) % promoProducts.length);
+    }, Math.max(2, draft.behavior.rotationSeconds) * 1000);
+    return () => window.clearInterval(timer);
+  }, [draft.behavior.rotationSeconds, draft.campaignType, promoProductKey, promoProducts.length]);
   const recommendations = [
     { id: 'one', title: 'Смартфон із цієї самої категорії', price: '12 999 грн', imageUrl: '' },
     { id: 'two', title: 'Схожа модель у наявності', price: '14 499 грн', imageUrl: '' },
@@ -493,6 +503,9 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
       id: promoKey(item), title: item.title, price: money(item.price, item.currency), imageUrl: item.imageUrl
     }))
     : recommendations;
+  const visibleProductCards = draft.campaignType === 'product_promo' && productCards.length
+    ? [productCards[previewProductIndex % productCards.length]]
+    : productCards;
   return <div className="popup-live-preview">
     <header>
       <div><strong>Живий перегляд</strong><small>Так попап виглядатиме на сайті</small></div>
@@ -519,7 +532,8 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
       '--preview-ack-size': `${styles.acknowledgementFontSize}px`,
       '--preview-button-size': `${styles.buttonFontSize}px`,
       '--preview-radius': `${styles.borderRadius}px`,
-      '--preview-width': `${styles.maxWidth}px`
+      '--preview-width': `${styles.maxWidth}px`,
+      '--preview-rotation-duration': `${Math.max(2, draft.behavior.rotationSeconds)}s`
     } as CSSProperties}>
       <div className="popup-preview__browser">
         <span /><span /><span />
@@ -538,7 +552,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
             <h3>{content.title || 'Заголовок попапа'}</h3>
             <div>{content.body || 'Текст попапа'}</div>
             {(draft.targeting.mode === 'out_of_stock' || draft.campaignType === 'product_promo') && <div className="popup-preview__recommendations">
-              {productCards.length ? productCards.map((item) => <article key={item.id}>
+              {visibleProductCards.length ? visibleProductCards.map((item) => <article className="is-visible" key={item.id}>
                 <span className="popup-preview__recommendation-image">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : <Icon name="productCard" size={28} />}</span>
                 <strong>{item.title}</strong>
                 <b>{item.price}</b>
@@ -554,6 +568,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
               <button type="button" className="is-primary" disabled={draft.behavior.requireAcknowledgement && !acknowledged}>{content.primaryLabel || 'Продовжити'}</button>
             </footer>}
           </div>
+          {draft.campaignType === 'product_promo' && productCards.length > 1 && <div className="popup-preview__timeline" aria-hidden="true"><span key={previewProductIndex} /></div>}
         </article>
       </div>
     </div>

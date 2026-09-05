@@ -553,37 +553,48 @@
 .popup-preview.is-product-promo.is-mobile.is-position-top .popup-preview__stage { align-items: flex-start; justify-content: center; }
 .popup-preview.is-product-promo.is-mobile.is-position-bottom .popup-preview__stage { align-items: flex-end; justify-content: center; }
 .popup-preview.is-product-promo .popup-preview__stage::after { display: none; }
-.popup-preview.is-product-promo .popup-preview__card { width: min(100%, var(--preview-width)); max-width: 100%; border: 1px solid color-mix(in srgb, var(--preview-text) 12%, transparent); }
+.popup-preview.is-product-promo .popup-preview__card { width: min(100%, var(--preview-width)); max-width: 460px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--preview-text) 12%, transparent); }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__card { width: min(100%, 300px); border-radius: min(var(--preview-radius), 14px); }
-.popup-preview.is-product-promo.is-format-compact .popup-preview__card { width: min(100%, 330px); }
+.popup-preview.is-product-promo.is-format-compact .popup-preview__card { width: min(100%, 340px); }
 .popup-preview.is-product-promo.is-format-standard .popup-preview__card { width: min(100%, 410px); }
-.popup-preview.is-product-promo .popup-preview__content { gap: 7px; padding: 16px; }
-.popup-preview.is-product-promo .popup-preview__content h3 { font-size: min(var(--preview-title-size), 25px); }
-.popup-preview.is-product-promo .popup-preview__content > div:not(.popup-preview__recommendations) { font-size: min(var(--preview-body-size), 13px); }
-.popup-preview.is-product-promo .popup-preview__recommendations { display: flex !important; overflow: hidden; }
-.popup-preview.is-product-promo .popup-preview__recommendations article { flex: 0 0 100%; }
-.popup-preview.is-product-promo.is-format-standard .popup-preview__recommendations article { flex-basis: calc(50% - 4px); }
-.popup-preview.is-product-promo.is-format-wide .popup-preview__recommendations article { flex-basis: calc(33.333% - 5px); }
-.popup-preview.is-product-promo.is-format-custom .popup-preview__recommendations article { flex-basis: 46%; }
+.popup-preview.is-product-promo.is-format-wide .popup-preview__card,
+.popup-preview.is-product-promo.is-format-custom .popup-preview__card { width: min(100%, 460px); }
+.popup-preview.is-product-promo .popup-preview__content { gap: 7px; padding: 14px; }
+.popup-preview.is-product-promo .popup-preview__content h3 { font-size: min(var(--preview-title-size), 22px); line-height: 1.08; }
+.popup-preview.is-product-promo .popup-preview__content > div:not(.popup-preview__recommendations) { font-size: min(var(--preview-body-size), 12px); line-height: 1.35; }
+.popup-preview.is-product-promo .popup-preview__recommendations { display: block !important; margin-top: 3px !important; overflow: visible; }
+.popup-preview.is-product-promo .popup-preview__recommendations article { display: grid; grid-template-columns: minmax(92px, 38%) minmax(0, 1fr); grid-template-rows: auto auto auto; align-items: start; gap: 7px 10px; padding: 8px; }
+.popup-preview.is-product-promo .popup-preview__recommendation-image { grid-row: 1 / 4; width: 100%; min-width: 0; aspect-ratio: 1; background: #fff; }
+.popup-preview.is-product-promo .popup-preview__recommendations strong { display: -webkit-box; align-self: end; overflow: hidden; font-size: 9px; line-height: 1.3; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.popup-preview.is-product-promo .popup-preview__recommendations b { font-size: 11px; }
+.popup-preview.is-product-promo .popup-preview__recommendations button { align-self: end; min-height: 27px; font-size: 8px; }
+.popup-preview.is-product-promo.is-format-compact .popup-preview__content > div:not(.popup-preview__recommendations) { display: none; }
+.popup-preview.is-product-promo.is-format-compact .popup-preview__content h3 { font-size: min(var(--preview-title-size), 18px); }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__content { display: block; padding: 7px; }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__content > p,
 .popup-preview.is-product-promo.is-format-notification .popup-preview__content > h3,
 .popup-preview.is-product-promo.is-format-notification .popup-preview__content > div:not(.popup-preview__recommendations) { display: none; }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations { margin: 0 !important; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations article { display: none; grid-template-columns: 52px minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 2px 7px; padding: 0; border: 0; background: transparent; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations article:first-child { display: grid; }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations article { grid-template-columns: 52px minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 2px 7px; padding: 0; border: 0; background: transparent; }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__recommendation-image { grid-row: 1 / 3; width: 52px; height: 52px; aspect-ratio: auto; }
-.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations strong { align-self: end; font-size: 8px; }
+.popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations strong { align-self: end; font-size: 8px; -webkit-line-clamp: 2; }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations b { align-self: start; font-size: 9px; }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__recommendations button { grid-column: 3; grid-row: 2; min-height: 22px; padding: 3px 8px; border-radius: 999px; }
 .popup-preview.is-product-promo.is-format-notification .popup-preview__close { top: 4px; right: 4px; width: 21px; height: 21px; font-size: 13px; }
+.popup-preview__timeline { position: relative; z-index: 3; height: 4px; overflow: hidden; background: color-mix(in srgb, var(--preview-accent) 18%, transparent); }
+.popup-preview__timeline span { display: block; width: 100%; height: 100%; background: var(--preview-accent); transform: scaleX(0); transform-origin: left; animation: popup-preview-progress var(--preview-rotation-duration) linear forwards; }
 .popup-preview.is-product-promo.is-mobile .popup-preview__card { max-width: 282px; }
-.popup-preview.is-product-promo.is-mobile .popup-preview__recommendations article { flex-basis: 88%; }
+.popup-preview.is-product-promo.is-mobile .popup-preview__content { gap: 5px; padding: 11px; }
+.popup-preview.is-product-promo.is-mobile .popup-preview__content h3 { font-size: min(var(--preview-title-size), 17px); }
+.popup-preview.is-product-promo.is-mobile .popup-preview__content > div:not(.popup-preview__recommendations) { font-size: min(var(--preview-body-size), 10px); }
+.popup-preview.is-product-promo.is-mobile .popup-preview__recommendations article { grid-template-columns: 88px minmax(0, 1fr); gap: 5px 8px; padding: 7px; }
 .popup-preview.is-product-promo.is-mobile.is-format-notification .popup-preview__recommendations article { grid-template-columns: 48px minmax(0, 1fr); grid-template-rows: auto auto auto; }
 .popup-preview.is-product-promo.is-mobile.is-format-notification .popup-preview__recommendation-image { width: 48px; height: 48px; }
 .popup-preview.is-product-promo.is-mobile.is-format-notification .popup-preview__recommendations button { grid-column: 1 / 3; grid-row: 3; width: 100%; margin-top: 4px; }
 .popup-preview__recommendation-image img { width: 100%; height: 100%; object-fit: contain; }
 .popup-preview__product-empty { grid-column: 1 / -1; padding: 20px !important; border: 1px dashed color-mix(in srgb, var(--preview-text) 18%, transparent); border-radius: 10px; color: var(--preview-muted) !important; text-align: center; font-size: 9px !important; }
+
+@keyframes popup-preview-progress { to { transform: scaleX(1); } }
 
 @media (max-width: 1380px) {
   .popup-editor__body { grid-template-columns: 1fr; }

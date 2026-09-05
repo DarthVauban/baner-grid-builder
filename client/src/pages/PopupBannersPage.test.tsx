@@ -145,7 +145,7 @@ beforeEach(() => {
     integration: {
       configured: true, status: 'connected', storeDomain: 'mobiletrend.com.ua',
       pollingIntervalMinutes: 30, lastSyncAt: '2026-08-21T08:30:00.000Z', lastError: null,
-      counts: { categories: 1, products: 1, modifications: 0 }, latestRun: null
+      counts: { categories: 1, products: 2, modifications: 0 }, latestRun: null
     },
     items: [{
       id: 'product-db-1', externalId: 'promo-product-1', parentExternalId: null,
@@ -155,9 +155,17 @@ beforeEach(() => {
       primaryImageUrl: 'https://cdn.example.com/promo.webp', canonicalUrl: 'https://mobiletrend.com.ua/promo/',
       popularity: '10', horoshopCreatedAt: null, hasPhotos: true,
       updatedAt: '2026-08-21T08:30:00.000Z', modifications: []
+    }, {
+      id: 'product-db-2', externalId: 'promo-product-2', parentExternalId: null,
+      sku: 'PROMO-2', titles: { uk: 'Другий промотовар' }, brand: 'Mobile Trend',
+      categoryExternalId: 'phones', price: '499', oldPrice: '', currency: 'UAH',
+      availability: 'В наявності', visible: true, active: true,
+      primaryImageUrl: 'https://cdn.example.com/promo-2.webp', canonicalUrl: 'https://mobiletrend.com.ua/promo-2/',
+      popularity: '8', horoshopCreatedAt: null, hasPhotos: true,
+      updatedAt: '2026-08-21T08:30:00.000Z', modifications: []
     }],
     categories: [{ externalId: 'phones', parentExternalId: null, titles: { uk: 'Смартфони' }, productCount: 1 }],
-    availabilityOptions: ['В наявності'], total: 1, page: 1, pageSize: 60, pageCount: 1
+    availabilityOptions: ['В наявності'], total: 2, page: 1, pageSize: 60, pageCount: 1
   });
 });
 
@@ -313,7 +321,7 @@ describe('PopupBannersPage', () => {
       productTargets: [], stats: baseCampaign.stats, connection: baseCampaign.connection,
       createdAt: baseCampaign.createdAt, updatedAt: baseCampaign.updatedAt, publishedAt: null
     }));
-    renderPage();
+    const { container } = renderPage();
     await screen.findByDisplayValue(baseCampaign.name);
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
@@ -328,16 +336,22 @@ describe('PopupBannersPage', () => {
     expect(screen.getByRole('radio', { name: /Знизу ліворуч/u })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /^Знизу$/u })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('button', { name: /Товари банера/u }));
-    const add = await screen.findByRole('button', { name: /Додати/u });
-    fireEvent.click(add);
+    const add = await screen.findAllByRole('button', { name: /Додати/u });
+    fireEvent.click(add[0]);
+    fireEvent.click(add[1]);
     expect(screen.getByText('Товари у банері')).toBeInTheDocument();
+    expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(1);
+    expect(container.querySelector('.popup-preview__timeline')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
 
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
       campaignType: 'product_promo',
       styles: expect.objectContaining({ promoFormat: 'notification', desktopPosition: 'bottom_left', mobilePosition: 'bottom', maxWidth: 380 }),
       targeting: expect.objectContaining({ mode: 'all_pages' }),
-      promoItems: [{ productExternalId: 'promo-product-1', modificationExternalId: null }]
+      promoItems: [
+        { productExternalId: 'promo-product-1', modificationExternalId: null },
+        { productExternalId: 'promo-product-2', modificationExternalId: null }
+      ]
     }), expect.anything()));
   });
 });

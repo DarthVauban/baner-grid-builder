@@ -783,12 +783,20 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
       productId: 'promo-product', modificationId: 'promo-modification', article: 'PROMO-1',
       sku: 'PROMO-1', title: 'Промотовар', price: '399', oldPrice: '599', currency: 'UAH',
       imageUrl: 'https://shop.example.com/promo_+a1b2c3d4.jpg', pageUrl: 'https://shop.example.com/promo/', buyId: '9002'
+    }, {
+      productId: 'promo-product-2', modificationId: null, article: 'PROMO-2',
+      sku: 'PROMO-2', title: 'Другий промотовар', price: '499', oldPrice: '', currency: 'UAH',
+      imageUrl: 'https://shop.example.com/promo-2.jpg', pageUrl: 'https://shop.example.com/promo-2/', buyId: '9003'
     }]
   };
 
+  const formats = ['notification', 'compact', 'standard', 'wide', 'custom'];
   for (const surface of [{ name: 'desktop', width: 1440, userAgent: 'Mozilla/5.0 Chrome/140' }, {
     name: 'mobile', width: 390, userAgent: 'Mozilla/5.0 (Linux; Android 16) Chrome/140 Mobile Safari/537.36'
   }]) {
+    for (const format of formats) {
+    const runtimePayload = structuredClone(payload);
+    runtimePayload.campaign.styles.promoFormat = format;
     const dom = new JSDOM('<!doctype html><html><body><button id="storefront-control">Каталог</button></body></html>', {
       pretendToBeVisual: true,
       runScripts: 'outside-only',
@@ -801,7 +809,7 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     dom.window.HTMLElement.prototype.focus = function focus() { focusCalls.push(this); };
     dom.window.fetch = async (input) => {
       const url = new URL(String(input));
-      if (url.pathname.endsWith('/resolve')) return { ok: true, json: async () => ({ data: payload }) };
+      if (url.pathname.endsWith('/resolve')) return { ok: true, json: async () => ({ data: runtimePayload }) };
       if (url.pathname.endsWith('/events')) return { ok: true };
       throw new Error(`Unexpected fetch: ${url.href}`);
     };
@@ -824,17 +832,23 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     }
     assert.equal(shadow.querySelector('.backdrop'), null);
     assert.ok(shadow.querySelector('.product-promo-host'));
-    assert.ok(shadow.querySelector('.format-notification'));
+    assert.ok(shadow.querySelector(`.format-${format}`));
     assert.equal(shadow.querySelector('.card').getAttribute('role'), 'complementary');
     assert.equal(shadow.querySelector('.card').getAttribute('aria-modal'), 'false');
+    assert.equal(shadow.querySelectorAll('.recommendation').length, 2);
+    assert.equal(shadow.querySelectorAll('.recommendation.is-visible').length, 1);
     assert.equal(shadow.querySelector('.recommendation-buy').textContent, 'Купити');
     assert.equal(shadow.querySelector('.recommendation-image').src, 'https://shop.example.com/promo.jpg');
+    assert.equal(shadow.querySelector('.promo-card-link').href, 'https://shop.example.com/promo/');
+    assert.ok(shadow.querySelector('.promo-timeline'));
     assert.equal(dom.window.document.body.style.overflow, '');
     assert.equal(focusCalls.length, 0);
     assert.ok(dom.window.document.querySelector('#storefront-control'));
     assert.match(shadow.querySelector('style').textContent, /@media\(max-width:600px\).*is-product-promo/su);
+    assert.doesNotMatch(shadow.querySelector('style').textContent, /\.card\.is-product-promo \.recommendations\{[^}]*overflow-[xy]:auto/u);
     } finally {
       dom.window.close();
+    }
     }
   }
 });

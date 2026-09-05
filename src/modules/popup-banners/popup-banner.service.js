@@ -1470,7 +1470,50 @@ export function popupEmbedScript(origin) {
     style.textContent += \`.eyebrow{font-size:var(--eyebrow-size)}.title{font-size:var(--title-size)}.body{font-size:var(--body-size)}.ack{font-size:var(--ack-size)}.ack input:before{border-bottom-color:var(--checkbox-check);border-left-color:var(--checkbox-check)}.button{font-size:var(--button-size)}.bottom-sheet .card{width:min(var(--width),100%)}\`;
     style.textContent += '.recommendation-image{background:#fff}';
     style.textContent += '.recommendation-price.is-discounted strong{color:#dc2626}';
-    style.textContent += '.product-promo-host{width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);pointer-events:none}.product-promo-host .card{width:100%;max-height:min(560px,calc(100vh - 20px));pointer-events:auto;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);box-shadow:0 18px 52px rgba(15,23,42,.22)}.card.is-product-promo{display:flex;flex-direction:column;overflow:hidden}.card.is-product-promo .content{box-sizing:border-box;display:flex;min-height:0;flex-direction:column;padding:18px}.card.is-product-promo .title{padding-right:38px;font-size:clamp(20px,var(--title-size),28px)}.card.is-product-promo .body{margin-top:6px;font-size:clamp(13px,var(--body-size),15px)}.card.is-product-promo .recommendations{display:flex;gap:12px;min-height:0;margin-top:14px;padding:2px 2px 6px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:thin}.card.is-product-promo .recommendation{flex:0 0 100%;scroll-snap-align:start}.format-standard .recommendation{flex-basis:calc(50% - 6px)}.format-wide .recommendation{flex-basis:calc(33.333% - 8px)}.format-custom .recommendation{flex-basis:min(218px,42%)}.card.is-product-promo .recommendation-image{aspect-ratio:1.25}.card.is-product-promo .close{pointer-events:auto}.format-notification.card{overflow:visible;border-radius:min(var(--radius),16px)}.format-notification .content{padding:9px}.format-notification .eyebrow,.format-notification .title,.format-notification .body{display:none}.format-notification .recommendations{margin:0;padding:0;overflow:hidden}.format-notification .recommendation{display:none;grid-template-columns:64px minmax(0,1fr) auto;grid-template-rows:minmax(20px,auto) minmax(20px,auto);align-items:center;gap:2px 10px;padding:0;border:0;background:transparent}.format-notification .recommendation.is-visible{display:grid;animation:promoSwap .22s ease-out}.format-notification .recommendation-media{grid-row:1/3;width:64px;height:64px}.format-notification .recommendation-image{width:64px;height:64px;aspect-ratio:auto;border-radius:10px}.format-notification .recommendation-title{grid-column:2;grid-row:1;align-self:end;font-size:13px;line-height:1.25;-webkit-line-clamp:2}.format-notification .recommendation-price{grid-column:2;grid-row:2;align-self:start}.format-notification .recommendation-price strong{font-size:14px}.format-notification .recommendation-buy{grid-column:3;grid-row:2;min-height:30px;width:auto;margin-right:30px;padding:5px 10px;border-radius:999px;font-size:11px}.format-notification .close{top:5px;right:5px;width:26px;height:26px;font-size:17px}.format-notification .recommendation-price del{font-size:10px}@keyframes promoSwap{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}@media(max-width:600px){.product-promo-host .card{max-height:min(62vh,540px);border-radius:var(--radius)}.card.is-product-promo .content{padding:14px}.card.is-product-promo .eyebrow{margin-bottom:5px}.card.is-product-promo .title{font-size:clamp(19px,var(--title-size),25px)}.card.is-product-promo .body{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}.card.is-product-promo .recommendations{margin-top:10px}.card.is-product-promo .recommendation{flex-basis:min(210px,78vw)}.format-notification .content{padding:8px}.format-notification .recommendations{margin:0}.format-notification .recommendation{grid-template-columns:58px minmax(0,1fr);grid-template-rows:auto auto auto}.format-notification .recommendation-media{grid-row:1/3;width:58px;height:58px}.format-notification .recommendation-image{width:58px;height:58px}.format-notification .recommendation-buy{grid-column:1/3;grid-row:3;width:100%;margin:6px 0 0;min-height:34px}.format-notification .close{top:-8px;right:-4px}}';
+    style.textContent += \`.product-promo-host{width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);pointer-events:none}
+.product-promo-host .card{width:100%;max-height:none;overflow:hidden;pointer-events:auto;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);box-shadow:0 18px 52px rgba(15,23,42,.22)}
+.card.is-product-promo{display:flex;flex-direction:column;cursor:pointer}
+.promo-card-link{position:absolute;z-index:0;inset:0;border-radius:inherit}
+.promo-card-link:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 60%,#fff);outline-offset:2px}
+.card.is-product-promo .content,.promo-timeline{position:relative;z-index:1}
+.card.is-product-promo .close{z-index:2;pointer-events:auto}
+.card.is-product-promo .content{box-sizing:border-box;display:flex;min-height:0;flex-direction:column;padding:18px;pointer-events:none}
+.card.is-product-promo .content a,.card.is-product-promo .content button{pointer-events:auto}
+.card.is-product-promo .title{padding-right:38px;font-size:clamp(20px,var(--title-size),28px);line-height:1.08}
+.card.is-product-promo .body{display:-webkit-box;overflow:hidden;margin-top:6px;font-size:clamp(13px,var(--body-size),15px);line-height:1.4;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.card.is-product-promo .recommendations{display:block;min-height:0;margin-top:14px;padding:0;overflow:hidden}
+.card.is-product-promo .recommendation{display:none;grid-template-columns:minmax(136px,40%) minmax(0,1fr);grid-template-rows:auto auto auto;align-items:start;gap:10px 16px;min-width:0;padding:12px;cursor:pointer}
+.card.is-product-promo .recommendation.is-visible{display:grid;animation:promoSwap .22s ease-out}
+.card.is-product-promo .recommendation-media{grid-row:1/4;display:block;min-width:0}
+.card.is-product-promo .recommendation-image{width:100%;height:clamp(136px,24vh,220px);aspect-ratio:1;object-fit:contain;background:#fff}
+.card.is-product-promo .recommendation-title{align-self:end;-webkit-line-clamp:3}
+.card.is-product-promo .recommendation-price{align-self:start}
+.card.is-product-promo .recommendation-buy{align-self:end}
+.format-compact .body{display:none}
+.format-compact .recommendation{grid-template-columns:128px minmax(0,1fr)}
+.format-compact .recommendation-image{height:128px}
+.format-standard .recommendation-image{height:176px}
+.format-wide .recommendation-image{height:210px}
+.format-notification.card{border-radius:min(var(--radius),16px)}
+.format-notification .content{padding:9px}
+.format-notification .eyebrow,.format-notification .title,.format-notification .body{display:none}
+.format-notification .recommendations{margin:0;padding:0}
+.format-notification .recommendation{grid-template-columns:64px minmax(0,1fr) auto;grid-template-rows:minmax(20px,auto) minmax(20px,auto);align-items:center;gap:2px 10px;padding:0;border:0;background:transparent}
+.format-notification .recommendation-media{grid-row:1/3;width:64px;height:64px}
+.format-notification .recommendation-image{width:64px;height:64px;border-radius:10px}
+.format-notification .recommendation-title{grid-column:2;grid-row:1;align-self:end;font-size:13px;line-height:1.25;-webkit-line-clamp:2}
+.format-notification .recommendation-price{grid-column:2;grid-row:2;align-self:start}
+.format-notification .recommendation-price strong{font-size:14px}
+.format-notification .recommendation-price del{font-size:10px}
+.format-notification .recommendation-buy{grid-column:3;grid-row:2;min-height:30px;width:auto;margin-right:30px;padding:5px 10px;border-radius:999px;font-size:11px}
+.format-notification .close{top:5px;right:5px;width:26px;height:26px;font-size:17px}
+.promo-timeline{height:4px;overflow:hidden;background:color-mix(in srgb,var(--accent) 18%,transparent);pointer-events:none}
+.promo-timeline span{display:block;width:100%;height:100%;background:var(--accent);transform:scaleX(0);transform-origin:left}
+.promo-timeline span.is-running{animation:promoCountdown var(--rotation-seconds) linear forwards}
+@keyframes promoSwap{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes promoCountdown{to{transform:scaleX(1)}}
+@media(max-width:600px){.product-promo-host .card{max-height:none;border-radius:var(--radius)}.card.is-product-promo .content{padding:12px}.card.is-product-promo .eyebrow{margin-bottom:4px}.card.is-product-promo .title{font-size:clamp(18px,var(--title-size),22px)}.card.is-product-promo .body{font-size:clamp(12px,var(--body-size),14px)}.card.is-product-promo .recommendations{margin-top:9px}.card.is-product-promo .recommendation{grid-template-columns:112px minmax(0,1fr);gap:7px 10px;padding:9px}.card.is-product-promo .recommendation-image,.format-compact .recommendation-image,.format-standard .recommendation-image,.format-wide .recommendation-image{height:112px}.card.is-product-promo .recommendation-title{font-size:12px;line-height:1.3}.card.is-product-promo .recommendation-price strong{font-size:16px}.card.is-product-promo .recommendation-buy{min-height:38px;font-size:clamp(12px,var(--button-size),14px)}.format-notification .content{padding:8px}.format-notification .recommendations{margin:0}.format-notification .recommendation{grid-template-columns:58px minmax(0,1fr);grid-template-rows:auto auto auto}.format-notification .recommendation-media{grid-row:1/3;width:58px;height:58px}.format-notification .recommendation-image{width:58px;height:58px}.format-notification .recommendation-buy{grid-column:1/3;grid-row:3;width:100%;margin:6px 0 0;min-height:34px}.format-notification .close{top:4px;right:4px}}
+@media(max-width:360px),(max-height:560px){.card.is-product-promo .body{display:none}.card.is-product-promo .recommendation{grid-template-columns:96px minmax(0,1fr)}.card.is-product-promo .recommendation-image,.format-compact .recommendation-image,.format-standard .recommendation-image,.format-wide .recommendation-image{height:96px}}\`;
     shadow.append(style);
     const backdrop = document.createElement('div');
     backdrop.className = isProductPromo ? 'product-promo-host' : 'backdrop ' + campaign.styles.layout;
@@ -1492,11 +1535,29 @@ export function popupEmbedScript(origin) {
     backdrop.style.setProperty('--button-size', campaign.styles.buttonFontSize + 'px');
     backdrop.style.setProperty('--radius', campaign.styles.borderRadius + 'px');
     backdrop.style.setProperty('--width', campaign.styles.maxWidth + 'px');
+    backdrop.style.setProperty('--rotation-seconds', Math.max(2, Number(campaign.behavior.rotationSeconds) || 6) + 's');
     const card = document.createElement('section');
     card.className = isProductPromo ? 'card is-product-promo format-' + promoFormat : campaign.mode === 'out_of_stock' ? 'card is-recommendations' : 'card';
     card.tabIndex = -1;
     card.setAttribute('role', isProductPromo ? 'complementary' : 'dialog');
     card.setAttribute('aria-modal', isProductPromo ? 'false' : 'true');
+    let activePromoProduct = null;
+    let promoCardLink = null;
+    if (isProductPromo) {
+      promoCardLink = document.createElement('a');
+      promoCardLink.className = 'promo-card-link';
+      promoCardLink.href = '#';
+      promoCardLink.addEventListener('click', () => {
+        if (!activePromoProduct) return;
+        event(campaign.publicId, 'click', productArticle, {
+          action: 'open_recommendation',
+          recommendationProductId: activePromoProduct.productId,
+          modificationId: activePromoProduct.modificationId,
+          article: activePromoProduct.article
+        });
+      });
+      card.append(promoCardLink);
+    }
     if (!isProductPromo) card.addEventListener('keydown', (keyEvent) => {
       if (keyEvent.key !== 'Tab') return;
       const focusable = [...card.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')];
@@ -1527,7 +1588,7 @@ export function popupEmbedScript(origin) {
     const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body);
     if (campaign.mode === 'out_of_stock' || isProductPromo) {
       const recommendations = document.createElement('div'); recommendations.className = 'recommendations';
-      const recommendationNodes = [];
+      const recommendationEntries = [];
       for (const recommendation of (isProductPromo ? payload.products : payload.recommendations) || []) {
         const item = document.createElement('article'); item.className = 'recommendation';
         const imageLink = document.createElement('a'); imageLink.className = 'recommendation-media'; imageLink.href = recommendation.pageUrl;
@@ -1555,21 +1616,40 @@ export function popupEmbedScript(origin) {
           else if (result === 'already') { buy.textContent = 'У кошику'; buy.title = 'Товар уже додано до кошика.'; }
           else { buy.disabled = false; buy.textContent = 'Спробувати ще'; buy.title = 'Не вдалося додати товар. Повторіть спробу.'; }
         });
-        item.append(imageLink, itemTitle, price, buy); recommendations.append(item); recommendationNodes.push(item);
+        item.append(imageLink, itemTitle, price, buy);
+        recommendations.append(item);
+        recommendationEntries.push({ node: item, product: recommendation });
       }
-      if (isProductPromo && promoFormat === 'notification' && recommendationNodes.length) {
+      content.append(recommendations);
+      card.append(content);
+      if (isProductPromo && recommendationEntries.length) {
         let visibleIndex = 0;
-        recommendationNodes[0].classList.add('is-visible');
-        if (recommendationNodes.length > 1) {
+        const showProduct = (index) => {
+          for (const entry of recommendationEntries) entry.node.classList.remove('is-visible');
+          const entry = recommendationEntries[index];
+          entry.node.classList.add('is-visible');
+          activePromoProduct = entry.product;
+          promoCardLink.href = entry.product.pageUrl;
+          promoCardLink.setAttribute('aria-label', 'Перейти до товару: ' + entry.product.title);
+        };
+        showProduct(0);
+        if (recommendationEntries.length > 1) {
+          const timeline = document.createElement('div'); timeline.className = 'promo-timeline'; timeline.setAttribute('aria-hidden', 'true');
+          const timelineFill = document.createElement('span'); timelineFill.className = 'is-running'; timeline.append(timelineFill); card.append(timeline);
+          const restartTimeline = () => {
+            timelineFill.classList.remove('is-running');
+            void timelineFill.offsetWidth;
+            timelineFill.classList.add('is-running');
+          };
           const rotationTimer = setInterval(() => {
-            recommendationNodes[visibleIndex].classList.remove('is-visible');
-            visibleIndex = (visibleIndex + 1) % recommendationNodes.length;
-            recommendationNodes[visibleIndex].classList.add('is-visible');
+            visibleIndex = (visibleIndex + 1) % recommendationEntries.length;
+            showProduct(visibleIndex);
+            restartTimeline();
           }, campaign.behavior.rotationSeconds * 1000);
           cleanupTasks.push(() => clearInterval(rotationTimer));
         }
       }
-      content.append(recommendations); card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
+      backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
       if (campaign.behavior.autoCloseSeconds > 0) {
         const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
