@@ -27,6 +27,9 @@ const baseCampaign: PopupCampaign = {
   },
   styles: {
     layout: 'modal',
+    promoFormat: 'notification',
+    desktopPosition: 'bottom_right',
+    mobilePosition: 'bottom',
     accentColor: '#6d5dfc',
     backgroundColor: '#ffffff',
     textColor: '#172033',
@@ -58,9 +61,21 @@ const baseCampaign: PopupCampaign = {
     recommendationLimit: 6
   },
   behavior: {
+    trigger: 'delay',
     delayMs: 300,
+    scrollPercent: 35,
+    inactivitySeconds: 8,
     frequency: 'product',
+    cooldownHours: 24,
     cooldownDays: 7,
+    maxShowsPerSession: 0,
+    device: 'all',
+    autoCloseSeconds: 0,
+    rotationSeconds: 6,
+    activeWeekdays: [1, 2, 3, 4, 5, 6, 7],
+    dailyStartTime: '',
+    dailyEndTime: '',
+    scheduleTimezone: 'Europe/Kyiv',
     dismissible: true,
     requireAcknowledgement: false,
     buttonCount: 2
@@ -303,10 +318,15 @@ describe('PopupBannersPage', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     expect(screen.getByRole('heading', { name: 'Оберіть тип банера' })).toBeInTheDocument();
+    expect(screen.getByText('Промобанери')).toBeInTheDocument();
+    expect(screen.getByText('Сценарні банери')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Товарний промобанер/u }));
 
     expect(screen.getByText('Неблокуюча плаваюча панель')).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup', { name: 'Розташування попапа' })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Сповіщення/u })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Знизу ліворуч/u })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /^Знизу$/u })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('button', { name: /Товари банера/u }));
     const add = await screen.findByRole('button', { name: /Додати/u });
     fireEvent.click(add);
@@ -315,6 +335,7 @@ describe('PopupBannersPage', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
       campaignType: 'product_promo',
+      styles: expect.objectContaining({ promoFormat: 'notification', desktopPosition: 'bottom_left', mobilePosition: 'bottom', maxWidth: 380 }),
       targeting: expect.objectContaining({ mode: 'all_pages' }),
       promoItems: [{ productExternalId: 'promo-product-1', modificationExternalId: null }]
     }), expect.anything()));

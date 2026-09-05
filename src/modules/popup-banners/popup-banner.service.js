@@ -17,6 +17,9 @@ const defaultContent = {
 
 const defaultStyles = {
   layout: 'modal',
+  promoFormat: 'notification',
+  desktopPosition: 'bottom_left',
+  mobilePosition: 'bottom',
   accentColor: '#6d5dfc',
   backgroundColor: '#ffffff',
   textColor: '#172033',
@@ -50,9 +53,21 @@ const defaultTargeting = {
 };
 
 const defaultBehavior = {
+  trigger: 'delay',
   delayMs: 300,
+  scrollPercent: 35,
+  inactivitySeconds: 8,
   frequency: 'product',
+  cooldownHours: 24,
   cooldownDays: 7,
+  maxShowsPerSession: 0,
+  device: 'all',
+  autoCloseSeconds: 0,
+  rotationSeconds: 6,
+  activeWeekdays: [1, 2, 3, 4, 5, 6, 7],
+  dailyStartTime: '',
+  dailyEndTime: '',
+  scheduleTimezone: 'Europe/Kyiv',
   dismissible: true,
   requireAcknowledgement: false,
   buttonCount: 2
@@ -122,6 +137,12 @@ function normalizeStyles(value) {
   const textColor = color(source.textColor, defaultStyles.textColor);
   return {
     layout: ['modal', 'bottom-sheet', 'corner'].includes(source.layout) ? source.layout : defaultStyles.layout,
+    promoFormat: ['notification', 'compact', 'standard', 'wide', 'custom'].includes(source.promoFormat)
+      ? source.promoFormat : defaultStyles.promoFormat,
+    desktopPosition: ['top_left', 'top_right', 'bottom_left', 'bottom_right'].includes(source.desktopPosition)
+      ? source.desktopPosition : defaultStyles.desktopPosition,
+    mobilePosition: ['top', 'bottom'].includes(source.mobilePosition)
+      ? source.mobilePosition : defaultStyles.mobilePosition,
     accentColor,
     backgroundColor,
     textColor,
@@ -161,11 +182,28 @@ function normalizeTargeting(value) {
 
 function normalizeBehavior(value) {
   const source = object(value);
+  const activeWeekdays = [...new Set(array(source.activeWeekdays)
+    .map(Number).filter((day) => Number.isInteger(day) && day >= 1 && day <= 7))].sort();
   return {
+    trigger: ['delay', 'scroll', 'inactivity'].includes(source.trigger) ? source.trigger : defaultBehavior.trigger,
     delayMs: Math.min(60_000, Math.max(0, Number(source.delayMs) || 0)),
-    frequency: ['always', 'session', 'product', 'days'].includes(source.frequency)
+    scrollPercent: Math.min(100, Math.max(5, Number(source.scrollPercent) || defaultBehavior.scrollPercent)),
+    inactivitySeconds: Math.min(300, Math.max(1, Number(source.inactivitySeconds) || defaultBehavior.inactivitySeconds)),
+    frequency: ['always', 'session', 'product', 'hours', 'days'].includes(source.frequency)
       ? source.frequency : defaultBehavior.frequency,
+    cooldownHours: Math.min(8760, Math.max(1, Number(source.cooldownHours) || defaultBehavior.cooldownHours)),
     cooldownDays: Math.min(365, Math.max(1, Number(source.cooldownDays) || defaultBehavior.cooldownDays)),
+    maxShowsPerSession: Math.min(20, Math.max(0, Number(source.maxShowsPerSession) || 0)),
+    device: ['all', 'desktop', 'mobile'].includes(source.device) ? source.device : defaultBehavior.device,
+    autoCloseSeconds: Math.min(300, Math.max(0, Number(source.autoCloseSeconds) || 0)),
+    rotationSeconds: Math.min(60, Math.max(2, Number(source.rotationSeconds) || defaultBehavior.rotationSeconds)),
+    activeWeekdays: activeWeekdays.length ? activeWeekdays : defaultBehavior.activeWeekdays,
+    dailyStartTime: /^([01]\d|2[0-3]):[0-5]\d$/u.test(String(source.dailyStartTime || ''))
+      ? String(source.dailyStartTime) : '',
+    dailyEndTime: /^([01]\d|2[0-3]):[0-5]\d$/u.test(String(source.dailyEndTime || ''))
+      ? String(source.dailyEndTime) : '',
+    scheduleTimezone: ['Europe/Kyiv', 'Europe/Warsaw', 'Europe/Berlin', 'UTC'].includes(source.scheduleTimezone)
+      ? source.scheduleTimezone : defaultBehavior.scheduleTimezone,
     dismissible: source.dismissible !== false,
     requireAcknowledgement: source.requireAcknowledgement === true,
     buttonCount: Number(source.buttonCount) === 1 ? 1 : defaultBehavior.buttonCount
@@ -187,6 +225,33 @@ function campaignSnapshot(row, targets = [], promoProducts = []) {
     targets,
     promoProducts
   };
+}
+
+function storefrontImageUrl(value) {
+  const candidate = String(value || '').trim();
+  if (!candidate) return '';
+  try {
+    const url = new URL(candidate);
+    url.pathname = url.pathname.replace(/_\+[0-9a-f]{6,}(?=\.[a-z0-9]+$)/iu, '');
+    return url.toString();
+  } catch {
+    return candidate.replace(/_\+[0-9a-f]{6,}(?=\.[a-z0-9]+(?:[?#]|$))/iu, '');
+  }
+}
+
+function isWithinBehaviorSchedule(value, now = new Date()) {
+  const behavior = normalizeBehavior(value);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: behavior.scheduleTimezone,
+    weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(now).map((part) => [part.type, part.value]));
+  const weekday = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[parts.weekday];
+  if (!behavior.activeWeekdays.includes(weekday)) return false;
+  if (!behavior.dailyStartTime || !behavior.dailyEndTime) return true;
+  const current = `${parts.hour}:${parts.minute}`;
+  return behavior.dailyStartTime <= behavior.dailyEndTime
+    ? current >= behavior.dailyStartTime && current < behavior.dailyEndTime
+    : current >= behavior.dailyStartTime || current < behavior.dailyEndTime;
 }
 
 function serializeTarget(row) {
@@ -221,7 +286,9 @@ function serializePromoProduct(row) {
     article: (hasModification ? row.modification_sku : row.product_sku) || '',
     title: localizedTitle(hasModification ? row.modification_titles : row.product_titles)
       || localizedTitle(row.product_titles),
-    imageUrl: (hasModification ? row.modification_image_url : row.product_image_url) || row.product_image_url || '',
+    imageUrl: storefrontImageUrl(
+      (hasModification ? row.modification_image_url : row.product_image_url) || row.product_image_url || ''
+    ),
     pageUrl: (hasModification ? row.modification_page_url : row.product_page_url) || row.product_page_url || '',
     price: price || '',
     oldPrice: oldPrice || '',
@@ -869,7 +936,7 @@ async function resolveOutOfStockRecommendations(connection, product, limit) {
         oldPrice: row.modification_old_price || sourceOldPrice(row.modification_source_data)
           || row.old_price || sourceOldPrice(row.source_data) || '',
         currency: row.modification_currency || row.currency || '',
-        imageUrl: row.modification_image_url || row.primary_image_url || '',
+        imageUrl: storefrontImageUrl(row.modification_image_url || row.primary_image_url || ''),
         pageUrl: row.modification_page_url || row.canonical_url || '',
         buyId: sourceIdentifier(row.modification_source_data, sourceIdentifier(row.source_data, row.external_id))
       });
@@ -886,7 +953,7 @@ async function resolveOutOfStockRecommendations(connection, product, limit) {
         price: row.price || '',
         oldPrice: row.old_price || sourceOldPrice(row.source_data) || '',
         currency: row.currency || '',
-        imageUrl: row.primary_image_url || '',
+        imageUrl: storefrontImageUrl(row.primary_image_url || ''),
         pageUrl: row.canonical_url || '',
         buyId: sourceIdentifier(row.source_data, row.external_id)
       });
@@ -939,6 +1006,7 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
   );
   for (const campaign of campaigns.rows) {
     const campaignType = normalizeCampaignType(campaign.campaign_type, campaign.targeting);
+    if (!isWithinBehaviorSchedule(campaign.behavior)) continue;
     const targets = campaign.targeting?.mode === 'products'
       ? (await query('SELECT product_id, modification_id FROM popup_banner_product_targets WHERE campaign_id = $1', [campaign.id])).rows
       : [];
@@ -1087,6 +1155,8 @@ export function popupEmbedScript(origin) {
   let currentHost = null;
   let currentUrl = '';
   let pendingTimer = null;
+  let pendingCleanup = null;
+  let activeCleanup = null;
   const visitorStorageKey = 'mt-popup-visitor';
   let visitorKey = localStorage.getItem(visitorStorageKey);
   if (!visitorKey) {
@@ -1141,23 +1211,41 @@ export function popupEmbedScript(origin) {
     return 'mt-popup:' + payload.campaign.publicId + ':' + suffix;
   }
 
+  function sessionCountKey(payload) {
+    return 'mt-popup-count:' + payload.campaign.publicId;
+  }
+
+  function deviceAllowed(behavior) {
+    const mobile = innerWidth <= 600;
+    return behavior.device === 'all' || (behavior.device === 'mobile' ? mobile : !mobile);
+  }
+
   function isSuppressed(payload) {
     const behavior = payload.campaign.behavior;
+    const sessionCount = Number(sessionStorage.getItem(sessionCountKey(payload)) || 0);
+    if (behavior.maxShowsPerSession > 0 && sessionCount >= behavior.maxShowsPerSession) return true;
     if (behavior.frequency === 'always') return false;
     const key = frequencyKey(payload);
     if (behavior.frequency === 'session') return sessionStorage.getItem(key) === '1';
     const stored = Number(localStorage.getItem(key) || 0);
     if (!stored) return false;
+    if (behavior.frequency === 'hours') return Date.now() - stored < behavior.cooldownHours * 3600000;
     if (behavior.frequency === 'days') return Date.now() - stored < behavior.cooldownDays * 86400000;
     return true;
   }
 
   function remember(payload) {
     const behavior = payload.campaign.behavior;
+    const countKey = sessionCountKey(payload);
+    sessionStorage.setItem(countKey, String(Number(sessionStorage.getItem(countKey) || 0) + 1));
     if (behavior.frequency === 'always') return;
     const key = frequencyKey(payload);
     if (behavior.frequency === 'session') sessionStorage.setItem(key, '1');
     else localStorage.setItem(key, String(Date.now()));
+  }
+
+  function imageUrl(value) {
+    return String(value || '').replace(/_\\+[0-9a-f]{6,}(?=\\.[a-z0-9]+(?:[?#]|$))/iu, '');
   }
 
   function storeUrl(value) {
@@ -1351,14 +1439,27 @@ export function popupEmbedScript(origin) {
     if (currentHost || isSuppressed(payload)) return;
     const { campaign } = payload;
     const isProductPromo = campaign.type === 'product_promo';
+    const promoFormat = campaign.styles.promoFormat || 'notification';
+    const cleanupTasks = [];
     const host = document.createElement('div');
     host.id = 'mt-popup-banner-root';
     host.style.position = 'fixed';
     host.style.zIndex = '2147482990';
     if (isProductPromo) {
-      host.style.right = 'clamp(10px, 2vw, 24px)';
-      host.style.bottom = 'clamp(10px, 2vw, 24px)';
-      host.style.width = 'min(calc(100vw - 20px), ' + campaign.styles.maxWidth + 'px)';
+      const presetWidths = { notification: 380, compact: 460, standard: 640, wide: 860 };
+      const promoWidth = promoFormat === 'custom' ? campaign.styles.maxWidth : (presetWidths[promoFormat] || 380);
+      const mobile = innerWidth <= 600;
+      const position = mobile ? campaign.styles.mobilePosition : campaign.styles.desktopPosition;
+      const edge = mobile ? '10px' : '18px';
+      if (mobile) {
+        host.style.left = '50%';
+        host.style.transform = 'translateX(-50%)';
+        host.style[position === 'top' ? 'top' : 'bottom'] = edge;
+      } else {
+        host.style[position?.startsWith('top') ? 'top' : 'bottom'] = edge;
+        host.style[position?.endsWith('left') ? 'left' : 'right'] = edge;
+      }
+      host.style.width = 'min(calc(100vw - 20px), ' + promoWidth + 'px)';
       host.style.pointerEvents = 'none';
     } else {
       host.style.inset = '0';
@@ -1369,7 +1470,7 @@ export function popupEmbedScript(origin) {
     style.textContent += \`.eyebrow{font-size:var(--eyebrow-size)}.title{font-size:var(--title-size)}.body{font-size:var(--body-size)}.ack{font-size:var(--ack-size)}.ack input:before{border-bottom-color:var(--checkbox-check);border-left-color:var(--checkbox-check)}.button{font-size:var(--button-size)}.bottom-sheet .card{width:min(var(--width),100%)}\`;
     style.textContent += '.recommendation-image{background:#fff}';
     style.textContent += '.recommendation-price.is-discounted strong{color:#dc2626}';
-    style.textContent += '.product-promo-host{width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);pointer-events:none}.product-promo-host .card{width:100%;max-height:min(560px,calc(100vh - 20px));pointer-events:auto;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);box-shadow:0 20px 64px rgba(15,23,42,.24)}.card.is-product-promo{display:flex;flex-direction:column;overflow:hidden}.card.is-product-promo .content{box-sizing:border-box;display:flex;min-height:0;flex-direction:column;padding:20px}.card.is-product-promo .title{padding-right:38px;font-size:clamp(20px,var(--title-size),30px)}.card.is-product-promo .body{margin-top:7px;font-size:clamp(13px,var(--body-size),16px)}.card.is-product-promo .recommendations{display:flex;min-height:0;margin-top:16px;padding:2px 2px 6px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:thin}.card.is-product-promo .recommendation{flex:0 0 min(218px,42%);scroll-snap-align:start}.card.is-product-promo .recommendation-image{aspect-ratio:1.25}.card.is-product-promo .close{pointer-events:auto}@media(max-width:600px){.product-promo-host .card{max-height:min(62vh,540px);border-radius:var(--radius)}.card.is-product-promo .content{padding:16px}.card.is-product-promo .eyebrow{margin-bottom:5px}.card.is-product-promo .title{font-size:clamp(19px,var(--title-size),25px)}.card.is-product-promo .body{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}.card.is-product-promo .recommendations{margin-top:12px}.card.is-product-promo .recommendation{flex-basis:min(210px,78vw)}}';
+    style.textContent += '.product-promo-host{width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);pointer-events:none}.product-promo-host .card{width:100%;max-height:min(560px,calc(100vh - 20px));pointer-events:auto;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);box-shadow:0 18px 52px rgba(15,23,42,.22)}.card.is-product-promo{display:flex;flex-direction:column;overflow:hidden}.card.is-product-promo .content{box-sizing:border-box;display:flex;min-height:0;flex-direction:column;padding:18px}.card.is-product-promo .title{padding-right:38px;font-size:clamp(20px,var(--title-size),28px)}.card.is-product-promo .body{margin-top:6px;font-size:clamp(13px,var(--body-size),15px)}.card.is-product-promo .recommendations{display:flex;gap:12px;min-height:0;margin-top:14px;padding:2px 2px 6px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:thin}.card.is-product-promo .recommendation{flex:0 0 100%;scroll-snap-align:start}.format-standard .recommendation{flex-basis:calc(50% - 6px)}.format-wide .recommendation{flex-basis:calc(33.333% - 8px)}.format-custom .recommendation{flex-basis:min(218px,42%)}.card.is-product-promo .recommendation-image{aspect-ratio:1.25}.card.is-product-promo .close{pointer-events:auto}.format-notification.card{overflow:visible;border-radius:min(var(--radius),16px)}.format-notification .content{padding:9px}.format-notification .eyebrow,.format-notification .title,.format-notification .body{display:none}.format-notification .recommendations{margin:0;padding:0;overflow:hidden}.format-notification .recommendation{display:none;grid-template-columns:64px minmax(0,1fr) auto;grid-template-rows:minmax(20px,auto) minmax(20px,auto);align-items:center;gap:2px 10px;padding:0;border:0;background:transparent}.format-notification .recommendation.is-visible{display:grid;animation:promoSwap .22s ease-out}.format-notification .recommendation-media{grid-row:1/3;width:64px;height:64px}.format-notification .recommendation-image{width:64px;height:64px;aspect-ratio:auto;border-radius:10px}.format-notification .recommendation-title{grid-column:2;grid-row:1;align-self:end;font-size:13px;line-height:1.25;-webkit-line-clamp:2}.format-notification .recommendation-price{grid-column:2;grid-row:2;align-self:start}.format-notification .recommendation-price strong{font-size:14px}.format-notification .recommendation-buy{grid-column:3;grid-row:2;min-height:30px;width:auto;margin-right:30px;padding:5px 10px;border-radius:999px;font-size:11px}.format-notification .close{top:5px;right:5px;width:26px;height:26px;font-size:17px}.format-notification .recommendation-price del{font-size:10px}@keyframes promoSwap{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}@media(max-width:600px){.product-promo-host .card{max-height:min(62vh,540px);border-radius:var(--radius)}.card.is-product-promo .content{padding:14px}.card.is-product-promo .eyebrow{margin-bottom:5px}.card.is-product-promo .title{font-size:clamp(19px,var(--title-size),25px)}.card.is-product-promo .body{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}.card.is-product-promo .recommendations{margin-top:10px}.card.is-product-promo .recommendation{flex-basis:min(210px,78vw)}.format-notification .content{padding:8px}.format-notification .recommendations{margin:0}.format-notification .recommendation{grid-template-columns:58px minmax(0,1fr);grid-template-rows:auto auto auto}.format-notification .recommendation-media{grid-row:1/3;width:58px;height:58px}.format-notification .recommendation-image{width:58px;height:58px}.format-notification .recommendation-buy{grid-column:1/3;grid-row:3;width:100%;margin:6px 0 0;min-height:34px}.format-notification .close{top:-8px;right:-4px}}';
     shadow.append(style);
     const backdrop = document.createElement('div');
     backdrop.className = isProductPromo ? 'product-promo-host' : 'backdrop ' + campaign.styles.layout;
@@ -1392,7 +1493,7 @@ export function popupEmbedScript(origin) {
     backdrop.style.setProperty('--radius', campaign.styles.borderRadius + 'px');
     backdrop.style.setProperty('--width', campaign.styles.maxWidth + 'px');
     const card = document.createElement('section');
-    card.className = isProductPromo ? 'card is-product-promo' : campaign.mode === 'out_of_stock' ? 'card is-recommendations' : 'card';
+    card.className = isProductPromo ? 'card is-product-promo format-' + promoFormat : campaign.mode === 'out_of_stock' ? 'card is-recommendations' : 'card';
     card.tabIndex = -1;
     card.setAttribute('role', isProductPromo ? 'complementary' : 'dialog');
     card.setAttribute('aria-modal', isProductPromo ? 'false' : 'true');
@@ -1406,6 +1507,8 @@ export function popupEmbedScript(origin) {
     });
     const close = (kind) => {
       event(campaign.publicId, kind, productArticle);
+      for (const cleanup of cleanupTasks) cleanup();
+      activeCleanup = null;
       host.remove(); currentHost = null;
     };
     if (campaign.behavior.dismissible) {
@@ -1415,7 +1518,7 @@ export function popupEmbedScript(origin) {
       if (!isProductPromo) backdrop.addEventListener('click', (clickEvent) => { if (clickEvent.target === backdrop) close('dismiss'); });
     }
     if (campaign.content.imageUrl) {
-      const image = document.createElement('img'); image.className = 'image'; image.src = campaign.content.imageUrl; image.alt = ''; card.append(image);
+      const image = document.createElement('img'); image.className = 'image'; image.src = imageUrl(campaign.content.imageUrl); image.alt = ''; card.append(image);
     }
     const content = document.createElement('div'); content.className = 'content';
     if (campaign.content.eyebrow) { const node = document.createElement('p'); node.className = 'eyebrow'; node.textContent = campaign.content.eyebrow; content.append(node); }
@@ -1424,12 +1527,13 @@ export function popupEmbedScript(origin) {
     const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body);
     if (campaign.mode === 'out_of_stock' || isProductPromo) {
       const recommendations = document.createElement('div'); recommendations.className = 'recommendations';
+      const recommendationNodes = [];
       for (const recommendation of (isProductPromo ? payload.products : payload.recommendations) || []) {
         const item = document.createElement('article'); item.className = 'recommendation';
-        const imageLink = document.createElement('a'); imageLink.href = recommendation.pageUrl;
+        const imageLink = document.createElement('a'); imageLink.className = 'recommendation-media'; imageLink.href = recommendation.pageUrl;
         imageLink.addEventListener('click', () => event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article }));
         if (recommendation.imageUrl) {
-          const image = document.createElement('img'); image.className = 'recommendation-image'; image.src = recommendation.imageUrl; image.alt = recommendation.title; image.loading = 'lazy'; imageLink.append(image);
+          const image = document.createElement('img'); image.className = 'recommendation-image'; image.src = imageUrl(recommendation.imageUrl); image.alt = recommendation.title; image.loading = 'lazy'; imageLink.append(image);
         }
         const itemTitle = document.createElement('a'); itemTitle.className = 'recommendation-title'; itemTitle.href = recommendation.pageUrl; itemTitle.textContent = recommendation.title;
         itemTitle.addEventListener('click', () => event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article }));
@@ -1451,10 +1555,27 @@ export function popupEmbedScript(origin) {
           else if (result === 'already') { buy.textContent = 'У кошику'; buy.title = 'Товар уже додано до кошика.'; }
           else { buy.disabled = false; buy.textContent = 'Спробувати ще'; buy.title = 'Не вдалося додати товар. Повторіть спробу.'; }
         });
-        item.append(imageLink, itemTitle, price, buy); recommendations.append(item);
+        item.append(imageLink, itemTitle, price, buy); recommendations.append(item); recommendationNodes.push(item);
+      }
+      if (isProductPromo && promoFormat === 'notification' && recommendationNodes.length) {
+        let visibleIndex = 0;
+        recommendationNodes[0].classList.add('is-visible');
+        if (recommendationNodes.length > 1) {
+          const rotationTimer = setInterval(() => {
+            recommendationNodes[visibleIndex].classList.remove('is-visible');
+            visibleIndex = (visibleIndex + 1) % recommendationNodes.length;
+            recommendationNodes[visibleIndex].classList.add('is-visible');
+          }, campaign.behavior.rotationSeconds * 1000);
+          cleanupTasks.push(() => clearInterval(rotationTimer));
+        }
       }
       content.append(recommendations); card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
+      if (campaign.behavior.autoCloseSeconds > 0) {
+        const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
+        cleanupTasks.push(() => clearTimeout(autoCloseTimer));
+      }
+      activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
       if (!isProductPromo) requestAnimationFrame(() => card.focus({ preventScroll: true }));
       return;
     }
@@ -1481,14 +1602,57 @@ export function popupEmbedScript(origin) {
     });
     actions.append(primary); content.append(actions); card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
     currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
+    if (campaign.behavior.autoCloseSeconds > 0) {
+      const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
+      cleanupTasks.push(() => clearTimeout(autoCloseTimer));
+    }
+    activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
     requestAnimationFrame(() => primary.focus());
+  }
+
+  function clearPendingRender() {
+    if (pendingTimer) clearTimeout(pendingTimer);
+    pendingTimer = null;
+    if (pendingCleanup) pendingCleanup();
+    pendingCleanup = null;
+  }
+
+  function scheduleRender(payload, productArticle, evaluatedUrl) {
+    const behavior = payload.campaign.behavior;
+    const show = () => {
+      clearPendingRender();
+      if (location.href === evaluatedUrl) render(payload, productArticle);
+    };
+    if (behavior.trigger === 'scroll') {
+      const onScroll = () => {
+        const scrollable = Math.max(document.documentElement.scrollHeight - innerHeight, 1);
+        if ((scrollY / scrollable) * 100 >= behavior.scrollPercent) show();
+      };
+      addEventListener('scroll', onScroll, { passive: true });
+      pendingCleanup = () => removeEventListener('scroll', onScroll);
+      onScroll();
+      return;
+    }
+    if (behavior.trigger === 'inactivity') {
+      const activityEvents = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+      const reset = () => {
+        if (pendingTimer) clearTimeout(pendingTimer);
+        pendingTimer = setTimeout(show, behavior.inactivitySeconds * 1000);
+      };
+      for (const name of activityEvents) addEventListener(name, reset, { passive: true });
+      pendingCleanup = () => { for (const name of activityEvents) removeEventListener(name, reset); };
+      reset();
+      return;
+    }
+    pendingTimer = setTimeout(show, behavior.delayMs);
   }
 
   async function evaluate() {
     const evaluatedUrl = location.href;
     currentUrl = evaluatedUrl;
-    if (pendingTimer) clearTimeout(pendingTimer);
-    pendingTimer = null;
+    clearPendingRender();
+    if (activeCleanup) activeCleanup();
+    activeCleanup = null;
     currentHost?.remove(); currentHost = null;
     const productArticle = article();
     const productStockState = stockState();
@@ -1501,10 +1665,8 @@ export function popupEmbedScript(origin) {
       if (!response.ok) return;
       const envelope = await response.json();
       if (!envelope.data || location.href !== evaluatedUrl) return;
-      pendingTimer = setTimeout(() => {
-        pendingTimer = null;
-        if (location.href === evaluatedUrl) render(envelope.data, productArticle);
-      }, envelope.data.campaign.behavior.delayMs);
+      if (!deviceAllowed(envelope.data.campaign.behavior)) return;
+      scheduleRender(envelope.data, productArticle, evaluatedUrl);
     } catch {}
   }
 

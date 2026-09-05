@@ -1,8 +1,13 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
 export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo';
 export type PopupLayout = 'modal' | 'bottom-sheet' | 'corner';
+export type PopupPromoFormat = 'notification' | 'compact' | 'standard' | 'wide' | 'custom';
+export type PopupDesktopPosition = 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
+export type PopupMobilePosition = 'top' | 'bottom';
 export type PopupTargetMode = 'all_pages' | 'all_products' | 'products' | 'rules' | 'target_page' | 'out_of_stock';
-export type PopupFrequency = 'always' | 'session' | 'product' | 'days';
+export type PopupFrequency = 'always' | 'session' | 'product' | 'hours' | 'days';
+export type PopupTrigger = 'delay' | 'scroll' | 'inactivity';
+export type PopupDevice = 'all' | 'desktop' | 'mobile';
 
 export interface PopupContent {
   eyebrow: string;
@@ -17,6 +22,9 @@ export interface PopupContent {
 
 export interface PopupStyles {
   layout: PopupLayout;
+  promoFormat: PopupPromoFormat;
+  desktopPosition: PopupDesktopPosition;
+  mobilePosition: PopupMobilePosition;
   accentColor: string;
   backgroundColor: string;
   textColor: string;
@@ -50,9 +58,21 @@ export interface PopupTargeting {
 }
 
 export interface PopupBehavior {
+  trigger: PopupTrigger;
   delayMs: number;
+  scrollPercent: number;
+  inactivitySeconds: number;
   frequency: PopupFrequency;
+  cooldownHours: number;
   cooldownDays: number;
+  maxShowsPerSession: number;
+  device: PopupDevice;
+  autoCloseSeconds: number;
+  rotationSeconds: number;
+  activeWeekdays: number[];
+  dailyStartTime: string;
+  dailyEndTime: string;
+  scheduleTimezone: string;
   dismissible: boolean;
   requireAcknowledgement: boolean;
   buttonCount: 1 | 2;

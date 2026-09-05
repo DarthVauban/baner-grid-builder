@@ -47,6 +47,9 @@ function input(overrides = {}) {
     },
     styles: {
       layout: 'modal',
+      promoFormat: 'notification',
+      desktopPosition: 'bottom_right',
+      mobilePosition: 'bottom',
       accentColor: '#6d5dfc',
       backgroundColor: '#ffffff',
       textColor: '#172033',
@@ -77,9 +80,21 @@ function input(overrides = {}) {
       urlContains: []
     },
     behavior: {
+      trigger: 'delay',
       delayMs: 0,
+      scrollPercent: 35,
+      inactivitySeconds: 8,
       frequency: 'product',
+      cooldownHours: 24,
       cooldownDays: 7,
+      maxShowsPerSession: 0,
+      device: 'all',
+      autoCloseSeconds: 0,
+      rotationSeconds: 6,
+      activeWeekdays: [1, 2, 3, 4, 5, 6, 7],
+      dailyStartTime: '',
+      dailyEndTime: '',
+      scheduleTimezone: 'Europe/Kyiv',
       dismissible: true,
       requireAcknowledgement: true,
       buttonCount: 2
@@ -163,7 +178,7 @@ before(async () => {
       source_data, active, last_seen_sync_id
     ) VALUES (
       $1, $2, $3, $4, 'iphone-15-new:black', 'IPHONE-15-NEW-BLACK', $5::JSONB,
-      '33999', NULL, 'UAH', 'В наявності', TRUE, 'https://cdn.example.com/iphone-15-black.webp',
+       '33999', NULL, 'UAH', 'В наявності', TRUE, 'https://cdn.example.com/iphone-15-black_+a1b2c3d4.webp',
       'https://shop.example.com/iphone-15-new-black/', $6::JSONB, TRUE, $7
     )
   `, [alternativeModificationId, connectionId, alternativeProductId, generation,
@@ -648,12 +663,20 @@ test('product promo campaigns keep promoted products separate from storefront ta
     campaignType: 'product_promo',
     name: 'Промо смартфона',
     priority: 900,
+    styles: {
+      ...input().styles,
+      desktopPosition: 'bottom_left',
+      maxWidth: 380
+    },
     targeting: {
       mode: 'all_pages', match: 'all', stickers: [], brands: [], categoryIds: [],
       conditions: [], targetPageUrl: '', urlContains: [], recommendationLimit: 6
     },
     behavior: {
-      delayMs: 0, frequency: 'session', cooldownDays: 7,
+      trigger: 'delay', delayMs: 0, scrollPercent: 35, inactivitySeconds: 8,
+      frequency: 'session', cooldownHours: 24, cooldownDays: 7, maxShowsPerSession: 1,
+      device: 'all', autoCloseSeconds: 0, rotationSeconds: 6,
+      activeWeekdays: [1, 2, 3, 4, 5, 6, 7], dailyStartTime: '', dailyEndTime: '', scheduleTimezone: 'Europe/Kyiv',
       dismissible: true, requireAcknowledgement: false, buttonCount: 1
     },
     productEntries: [],
@@ -683,7 +706,47 @@ test('product promo campaigns keep promoted products separate from storefront ta
   assert.equal(resolved.body.data.products[0].article, 'IPHONE-15-NEW-BLACK');
   assert.equal(resolved.body.data.products[0].sku, 'IPHONE-15-NEW-BLACK');
   assert.equal(resolved.body.data.products[0].oldPrice, '35999');
+  assert.equal(resolved.body.data.products[0].imageUrl, 'https://cdn.example.com/iphone-15-black.webp');
+  assert.equal(resolved.body.data.campaign.styles.promoFormat, 'notification');
+  assert.equal(resolved.body.data.campaign.styles.desktopPosition, 'bottom_left');
+  assert.equal(resolved.body.data.campaign.behavior.maxShowsPerSession, 1);
+  assert.equal(resolved.body.data.campaign.behavior.scheduleTimezone, 'Europe/Kyiv');
   assert.deepEqual(resolved.body.data.recommendations, []);
+});
+
+test('campaign weekday schedule is enforced in its configured timezone', async () => {
+  const campaigns = (await admin.get('/api/popup-banners').expect(200)).body.data;
+  for (const campaign of campaigns.filter((item) => item.status === 'active')) {
+    await admin.patch(`/api/popup-banners/${campaign.id}/status`).send({ status: 'paused' }).expect(200);
+  }
+
+  const weekdayName = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Kyiv',
+    weekday: 'short'
+  }).format(new Date());
+  const today = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[weekdayName];
+  const inactiveWeekday = ((today + 2) % 7) + 1;
+  const created = await admin.post('/api/popup-banners').send(input({
+    name: 'Кампанія поза розкладом',
+    priority: 1000,
+    targeting: {
+      mode: 'target_page', match: 'all', stickers: [], brands: [], categoryIds: [],
+      conditions: [], targetPageUrl: 'https://shop.example.com/scheduled/', urlContains: [], recommendationLimit: 6
+    },
+    behavior: {
+      ...input().behavior,
+      activeWeekdays: [inactiveWeekday],
+      scheduleTimezone: 'Europe/Kyiv'
+    }
+  })).expect(201);
+  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+
+  const resolved = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/scheduled/' })
+    .expect(200);
+  assert.equal(resolved.body.data, null);
 });
 
 test('product promo widget is non-modal on desktop and mobile storefront contracts', async () => {
@@ -698,6 +761,7 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
       },
       styles: {
         layout: 'corner', accentColor: '#6d5dfc', backgroundColor: '#ffffff',
+        promoFormat: 'notification', desktopPosition: 'bottom_left', mobilePosition: 'top',
         textColor: '#172033', mutedColor: '#667085', primaryButtonBackgroundColor: '#ffe101',
         primaryButtonTextColor: '#111827', secondaryButtonBackgroundColor: '#ffffff',
         secondaryButtonTextColor: '#172033', checkboxAccentColor: '#6d5dfc',
@@ -706,7 +770,10 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
         buttonFontSize: 16, borderRadius: 22, maxWidth: 680
       },
       behavior: {
-        delayMs: 0, frequency: 'always', cooldownDays: 7,
+        trigger: 'delay', delayMs: 0, scrollPercent: 35, inactivitySeconds: 8,
+        frequency: 'always', cooldownHours: 24, cooldownDays: 7, maxShowsPerSession: 0,
+        device: 'all', autoCloseSeconds: 0, rotationSeconds: 6,
+        activeWeekdays: [1, 2, 3, 4, 5, 6, 7], dailyStartTime: '', dailyEndTime: '', scheduleTimezone: 'Europe/Kyiv',
         dismissible: true, requireAcknowledgement: false, buttonCount: 1
       }
     },
@@ -715,7 +782,7 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     products: [{
       productId: 'promo-product', modificationId: 'promo-modification', article: 'PROMO-1',
       sku: 'PROMO-1', title: 'Промотовар', price: '399', oldPrice: '599', currency: 'UAH',
-      imageUrl: 'https://shop.example.com/promo.jpg', pageUrl: 'https://shop.example.com/promo/', buyId: '9002'
+      imageUrl: 'https://shop.example.com/promo_+a1b2c3d4.jpg', pageUrl: 'https://shop.example.com/promo/', buyId: '9002'
     }]
   };
 
@@ -741,19 +808,33 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
 
     dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
     await new Promise((resolve) => dom.window.setTimeout(resolve, 50));
+    try {
     const host = dom.window.document.querySelector('#mt-popup-banner-root');
     const shadow = host.shadowRoot;
     assert.equal(host.style.inset, '');
     assert.equal(host.style.pointerEvents, 'none');
+    if (surface.name === 'desktop') {
+      assert.notEqual(host.style.left, '');
+      assert.notEqual(host.style.bottom, '');
+      assert.equal(host.style.right, '');
+    } else {
+      assert.notEqual(host.style.top, '');
+      assert.equal(host.style.bottom, '');
+      assert.equal(host.style.left, '50%');
+    }
     assert.equal(shadow.querySelector('.backdrop'), null);
     assert.ok(shadow.querySelector('.product-promo-host'));
+    assert.ok(shadow.querySelector('.format-notification'));
     assert.equal(shadow.querySelector('.card').getAttribute('role'), 'complementary');
     assert.equal(shadow.querySelector('.card').getAttribute('aria-modal'), 'false');
     assert.equal(shadow.querySelector('.recommendation-buy').textContent, 'Купити');
+    assert.equal(shadow.querySelector('.recommendation-image').src, 'https://shop.example.com/promo.jpg');
     assert.equal(dom.window.document.body.style.overflow, '');
     assert.equal(focusCalls.length, 0);
     assert.ok(dom.window.document.querySelector('#storefront-control'));
     assert.match(shadow.querySelector('style').textContent, /@media\(max-width:600px\).*is-product-promo/su);
-    dom.window.close();
+    } finally {
+      dom.window.close();
+    }
   }
 });

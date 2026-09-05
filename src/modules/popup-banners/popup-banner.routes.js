@@ -45,6 +45,9 @@ const contentSchema = z.object({
 });
 const stylesSchema = z.object({
   layout: z.enum(['modal', 'bottom-sheet', 'corner']),
+  promoFormat: z.enum(['notification', 'compact', 'standard', 'wide', 'custom']).optional(),
+  desktopPosition: z.enum(['top_left', 'top_right', 'bottom_left', 'bottom_right']).optional(),
+  mobilePosition: z.enum(['top', 'bottom']).optional(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u),
   backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u),
@@ -92,12 +95,32 @@ const targetingSchema = z.object({
   }
 });
 const behaviorSchema = z.object({
+  trigger: z.enum(['delay', 'scroll', 'inactivity']).optional(),
   delayMs: z.number().int().min(0).max(60_000),
-  frequency: z.enum(['always', 'session', 'product', 'days']),
+  scrollPercent: z.number().int().min(5).max(100).optional(),
+  inactivitySeconds: z.number().int().min(1).max(300).optional(),
+  frequency: z.enum(['always', 'session', 'product', 'hours', 'days']),
+  cooldownHours: z.number().int().min(1).max(8760).optional(),
   cooldownDays: z.number().int().min(1).max(365),
+  maxShowsPerSession: z.number().int().min(0).max(20).optional(),
+  device: z.enum(['all', 'desktop', 'mobile']).optional(),
+  autoCloseSeconds: z.number().int().min(0).max(300).optional(),
+  rotationSeconds: z.number().int().min(2).max(60).optional(),
+  activeWeekdays: z.array(z.number().int().min(1).max(7)).max(7).optional(),
+  dailyStartTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u).or(z.literal('')).optional(),
+  dailyEndTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u).or(z.literal('')).optional(),
+  scheduleTimezone: z.enum(['Europe/Kyiv', 'Europe/Warsaw', 'Europe/Berlin', 'UTC']).optional(),
   dismissible: z.boolean(),
   requireAcknowledgement: z.boolean(),
   buttonCount: z.union([z.literal(1), z.literal(2)]).optional()
+}).superRefine((value, context) => {
+  if (Boolean(value.dailyStartTime) !== Boolean(value.dailyEndTime)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['dailyEndTime'],
+      message: 'Вкажіть обидві межі щоденного інтервалу або залиште обидва поля порожніми.'
+    });
+  }
 });
 const campaignSchema = z.object({
   campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo']).default('message'),

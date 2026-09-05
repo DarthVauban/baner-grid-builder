@@ -12,7 +12,10 @@ import type {
   PopupCampaignInput,
   PopupCampaignStatus,
   PopupCampaignType,
+  PopupDesktopPosition,
   PopupLayout,
+  PopupMobilePosition,
+  PopupPromoFormat,
   PopupPromoProduct,
   PopupTargetMode,
   PopupTargeting
@@ -41,6 +44,37 @@ const layoutLabels: Record<PopupLayout, string> = {
   corner: 'У кутку'
 };
 
+const promoFormatPresets: Array<{
+  value: PopupPromoFormat;
+  title: string;
+  description: string;
+  width: number;
+  products: string;
+}> = [
+  { value: 'notification', title: 'Сповіщення', description: 'Як у Elfsight: компактний горизонтальний віджет', width: 380, products: '1 товар із ротацією' },
+  { value: 'compact', title: 'Компактний', description: 'Невелика картка для одного акцентного товару', width: 460, products: '1 товар у кадрі' },
+  { value: 'standard', title: 'Стандартний', description: 'Збалансована добірка без зайвої висоти', width: 640, products: '2 товари у кадрі' },
+  { value: 'wide', title: 'Широкий', description: 'Промосмуга для ширшої товарної добірки', width: 860, products: '3 товари у кадрі' },
+  { value: 'custom', title: 'Власний', description: 'Ручне налаштування максимальної ширини', width: 680, products: 'Адаптивна сітка' }
+];
+
+const desktopPositions: Array<{ value: PopupDesktopPosition; label: string }> = [
+  { value: 'top_left', label: 'Зверху ліворуч' },
+  { value: 'top_right', label: 'Зверху праворуч' },
+  { value: 'bottom_left', label: 'Знизу ліворуч' },
+  { value: 'bottom_right', label: 'Знизу праворуч' }
+];
+
+const mobilePositions: Array<{ value: PopupMobilePosition; label: string }> = [
+  { value: 'top', label: 'Зверху' },
+  { value: 'bottom', label: 'Знизу' }
+];
+
+const weekdays = [
+  { value: 1, label: 'Пн' }, { value: 2, label: 'Вт' }, { value: 3, label: 'Ср' },
+  { value: 4, label: 'Чт' }, { value: 5, label: 'Пт' }, { value: 6, label: 'Сб' }, { value: 7, label: 'Нд' }
+];
+
 const targetModeLabels: Record<PopupTargetMode, string> = {
   out_of_stock: 'Товар відсутній',
   products: 'Вказані товари',
@@ -67,6 +101,9 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
     },
     styles: {
       layout: 'modal',
+      promoFormat: 'notification',
+      desktopPosition: 'bottom_right',
+      mobilePosition: 'bottom',
       accentColor: '#6d5dfc',
       backgroundColor: '#ffffff',
       textColor: '#172033',
@@ -98,9 +135,21 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       recommendationLimit: 6
     },
     behavior: {
+      trigger: 'delay',
       delayMs: 300,
+      scrollPercent: 35,
+      inactivitySeconds: 8,
       frequency: 'product',
+      cooldownHours: 24,
       cooldownDays: 7,
+      maxShowsPerSession: 0,
+      device: 'all',
+      autoCloseSeconds: 0,
+      rotationSeconds: 6,
+      activeWeekdays: [1, 2, 3, 4, 5, 6, 7],
+      dailyStartTime: '',
+      dailyEndTime: '',
+      scheduleTimezone: 'Europe/Kyiv',
       dismissible: true,
       requireAcknowledgement: false,
       buttonCount: 2
@@ -126,17 +175,22 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       styles: {
         ...draft.styles,
         layout: 'corner',
+        promoFormat: 'notification',
+        desktopPosition: 'bottom_left',
+        mobilePosition: 'bottom',
         accentColor: '#6d5dfc',
         primaryButtonBackgroundColor: '#ffe101',
         primaryButtonTextColor: '#111827',
         titleFontSize: 28,
-        maxWidth: 680
+        maxWidth: 380
       },
       targeting: { ...draft.targeting, mode: 'all_pages' },
       behavior: {
         ...draft.behavior,
         delayMs: 700,
         frequency: 'session',
+        maxShowsPerSession: 1,
+        rotationSeconds: 6,
         requireAcknowledgement: false,
         buttonCount: 1
       }
@@ -162,12 +216,16 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
 }
 
 function campaignInput(campaign: PopupCampaign): PopupCampaignInput {
+  const styles = { ...campaign.styles };
+  if (campaign.campaignType === 'product_promo' && styles.promoFormat !== 'custom') {
+    styles.maxWidth = promoFormatPresets.find((preset) => preset.value === styles.promoFormat)?.width || 380;
+  }
   return {
     campaignType: campaign.campaignType,
     name: campaign.name,
     priority: campaign.priority,
     content: { ...campaign.content },
-    styles: { ...campaign.styles },
+    styles,
     targeting: { ...campaign.targeting },
     behavior: { ...campaign.behavior },
     startsAt: campaign.startsAt,
@@ -218,7 +276,7 @@ function promoOffer(product: HoroshopCatalogProduct, modification?: HoroshopCata
     position: 0,
     sku: modification?.sku || product.sku,
     title: localizedTitle(modification?.titles || product.titles) || localizedTitle(product.titles),
-    imageUrl: modification?.imageUrl || product.primaryImageUrl || '',
+    imageUrl: storefrontImageUrl(modification?.imageUrl || product.primaryImageUrl || ''),
     pageUrl: modification?.pageUrl || product.canonicalUrl || '',
     price: modification?.price || product.price || '',
     oldPrice: modification?.oldPrice || product.oldPrice || '',
@@ -228,6 +286,10 @@ function promoOffer(product: HoroshopCatalogProduct, modification?: HoroshopCata
     available: isAvailable(modification?.availability || product.availability),
     buyId: ''
   };
+}
+
+function storefrontImageUrl(value: string) {
+  return value.replace(/_\+[0-9a-f]{6,}(?=\.[a-z0-9]+(?:[?#]|$))/iu, '');
 }
 
 function money(value: string, currency: string) {
@@ -342,6 +404,47 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   </label>;
 }
 
+function PromoFormatPicker({ value, onChange }: { value: PopupPromoFormat; onChange: (preset: typeof promoFormatPresets[number]) => void }) {
+  return <div className="popup-promo-format" role="radiogroup" aria-label="Формат товарного банера">
+    {promoFormatPresets.map((preset) => <button
+      type="button"
+      role="radio"
+      aria-checked={value === preset.value}
+      className={value === preset.value ? 'is-active' : ''}
+      onClick={() => onChange(preset)}
+      key={preset.value}
+    >
+      <span className={`popup-promo-format__scheme is-${preset.value}`}><i /><b /><em /></span>
+      <span><strong>{preset.title}</strong><small>{preset.description}</small><i>{preset.products} · {preset.value === 'custom' ? 'до 1400 px' : `${preset.width} px`}</i></span>
+    </button>)}
+  </div>;
+}
+
+function PromoPositionPicker({
+  desktop,
+  mobile,
+  onDesktop,
+  onMobile
+}: {
+  desktop: PopupDesktopPosition;
+  mobile: PopupMobilePosition;
+  onDesktop: (value: PopupDesktopPosition) => void;
+  onMobile: (value: PopupMobilePosition) => void;
+}) {
+  return <div className="popup-position-settings">
+    <div><strong>Положення на desktop</strong><div className="popup-position-grid" role="radiogroup" aria-label="Положення на desktop">
+      {desktopPositions.map((item) => <button type="button" role="radio" aria-checked={desktop === item.value} className={desktop === item.value ? 'is-active' : ''} onClick={() => onDesktop(item.value)} key={item.value}>
+        <span className={`is-${item.value}`}><i /></span><small>{item.label}</small>
+      </button>)}
+    </div></div>
+    <div><strong>Положення на mobile</strong><div className="popup-position-grid is-mobile" role="radiogroup" aria-label="Положення на mobile">
+      {mobilePositions.map((item) => <button type="button" role="radio" aria-checked={mobile === item.value} className={mobile === item.value ? 'is-active' : ''} onClick={() => onMobile(item.value)} key={item.value}>
+        <span className={`is-${item.value}`}><i /></span><small>{item.label}</small>
+      </button>)}
+    </div></div>
+  </div>;
+}
+
 function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) => void }) {
   const planned = [
     { title: 'Банер із таймером', description: 'Акція з візуальним зворотним відліком.', icon: 'schedule' as const },
@@ -350,22 +453,27 @@ function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) 
   ];
   return <section className="popup-type-picker">
     <header><p className="eyebrow">Нова кампанія</p><h2>Оберіть тип банера</h2><p>Тип визначає структуру конструктора, поведінку на сайті та набір доступних налаштувань.</p></header>
-    <div className="popup-type-picker__primary">
-      <button type="button" onClick={() => onSelect('product_promo')}>
-        <span><Icon name="productCard" size={25} /></span><i>НОВИЙ</i>
-        <strong>Товарний промобанер</strong>
-        <small>Компактна плаваюча панель із товарами та кнопкою «Купити». Без оверлею — сайт залишається доступним.</small>
-        <b>Створити банер <Icon name="arrow" size={16} /></b>
-      </button>
-      {planned.map((item, index) => <article key={item.title}>
-        <span><Icon name={item.icon} size={23} /></span><i>ЕТАП {index + 2}</i>
-        <strong>{item.title}</strong><small>{item.description}</small><b>Незабаром</b>
-      </article>)}
+    <div className="popup-type-picker__group">
+      <div className="popup-type-picker__group-heading"><span><Icon name="bannerGrid" size={19} /></span><div><strong>Промобанери</strong><small>Маркетингові формати для просування товарів і пропозицій.</small></div></div>
+      <div className="popup-type-picker__primary">
+        <button type="button" onClick={() => onSelect('product_promo')}>
+          <span><Icon name="productCard" size={25} /></span><i>НОВИЙ</i>
+          <strong>Товарний промобанер</strong>
+          <small>Від компактного Elfsight-подібного сповіщення до широкої добірки. Без оверлею — сайт залишається доступним.</small>
+          <b>Створити банер <Icon name="arrow" size={16} /></b>
+        </button>
+        {planned.map((item, index) => <article key={item.title}>
+          <span><Icon name={item.icon} size={23} /></span><i>ЕТАП {index + 2}</i>
+          <strong>{item.title}</strong><small>{item.description}</small><b>Незабаром</b>
+        </article>)}
+      </div>
     </div>
-    <div className="popup-type-picker__existing">
-      <div><strong>Наявні сценарії</strong><small>Продовжують працювати без змін.</small></div>
-      <button type="button" onClick={() => onSelect('message')}><Icon name="popup" size={19} /><span><strong>Інформаційний попап</strong><small>Повідомлення, підтвердження або перехід</small></span><Icon name="arrow" size={16} /></button>
-      <button type="button" onClick={() => onSelect('out_of_stock_recommendations')}><Icon name="productSelection" size={19} /><span><strong>Альтернативи відсутнього товару</strong><small>Автоматична добірка з тієї самої категорії</small></span><Icon name="arrow" size={16} /></button>
+    <div className="popup-type-picker__group is-scenarios">
+      <div className="popup-type-picker__group-heading"><span><Icon name="tools" size={19} /></span><div><strong>Сценарні банери</strong><small>Сервісні повідомлення, що запускаються за контекстом сторінки або станом товару.</small></div></div>
+      <div className="popup-type-picker__scenario-grid">
+        <button type="button" onClick={() => onSelect('message')}><span><Icon name="popup" size={23} /></span><strong>Інформаційний попап</strong><small>Повідомлення, явне підтвердження або перехід за посиланням.</small><b>Створити сценарій <Icon name="arrow" size={16} /></b></button>
+        <button type="button" onClick={() => onSelect('out_of_stock_recommendations')}><span><Icon name="productSelection" size={23} /></span><strong>Альтернативи відсутнього товару</strong><small>Автоматична добірка доступних моделей із тієї самої категорії.</small><b>Створити сценарій <Icon name="arrow" size={16} /></b></button>
+      </div>
     </div>
   </section>;
 }
@@ -393,7 +501,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
         <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон"><Icon name="phone" size={16} /></button>
       </div>
     </header>
-    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ' is-product-promo' : ''}`} style={{
+    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}` : ''}`} style={{
       '--preview-accent': styles.accentColor,
       '--preview-bg': styles.backgroundColor,
       '--preview-text': styles.textColor,
@@ -550,6 +658,8 @@ export function PopupBannersPage() {
     ? 'Раз для кожного товару'
     : draft.behavior.frequency === 'session'
       ? 'Раз за сесію'
+      : draft.behavior.frequency === 'hours'
+        ? `Раз на ${draft.behavior.cooldownHours} год.`
       : draft.behavior.frequency === 'days'
         ? `Раз на ${draft.behavior.cooldownDays} дн.`
         : 'Кожен перегляд';
@@ -851,9 +961,27 @@ export function PopupBannersPage() {
 
               <div className="popup-form-section">
                 <SectionHeading icon="productCard" title="Вигляд попапа" description="Оберіть розташування, кольори та комфортний розмір повідомлення." />
-                {draft.campaignType === 'product_promo'
-                  ? <div className="popup-nonblocking-note"><Icon name="check" size={18} /><span><strong>Неблокуюча плаваюча панель</strong><small>На desktop банер закріплений у нижньому кутку, на mobile — акуратно прилягає до нижнього краю. Затемнення та блокування сторінки не використовуються.</small></span></div>
-                  : <LayoutPicker value={draft.styles.layout} onChange={(layout) => setDraft((current) => ({ ...current, styles: { ...current.styles, layout } }))} />}
+                {draft.campaignType === 'product_promo' ? <>
+                  <div className="popup-nonblocking-note"><Icon name="check" size={18} /><span><strong>Неблокуюча плаваюча панель</strong><small>Затемнення, блокування сторінки та перехоплення кліків поза банером не використовуються.</small></span></div>
+                  <div className="popup-settings-group">
+                    <strong>Формат банера</strong>
+                    <small>«Сповіщення» повторює компактну логіку Elfsight: у кадрі один товар, а добірка змінюється автоматично.</small>
+                    <PromoFormatPicker value={draft.styles.promoFormat} onChange={(preset) => setDraft((current) => ({
+                      ...current,
+                      styles: { ...current.styles, promoFormat: preset.value, maxWidth: preset.width }
+                    }))} />
+                  </div>
+                  <div className="popup-settings-group">
+                    <strong>Положення банера</strong>
+                    <small>Desktop і mobile налаштовуються окремо, оскільки це різні вітрини Хорошопа.</small>
+                    <PromoPositionPicker
+                      desktop={draft.styles.desktopPosition}
+                      mobile={draft.styles.mobilePosition}
+                      onDesktop={(desktopPosition) => setDraft((current) => ({ ...current, styles: { ...current.styles, desktopPosition } }))}
+                      onMobile={(mobilePosition) => setDraft((current) => ({ ...current, styles: { ...current.styles, mobilePosition } }))}
+                    />
+                  </div>
+                </> : <LayoutPicker value={draft.styles.layout} onChange={(layout) => setDraft((current) => ({ ...current, styles: { ...current.styles, layout } }))} />}
                 <div className="popup-color-grid is-base">
                   <ColorField label="Акцент" value={draft.styles.accentColor} onChange={(accentColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, accentColor } }))} />
                   <ColorField label="Фон" value={draft.styles.backgroundColor} onChange={(backgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, backgroundColor } }))} />
@@ -866,11 +994,11 @@ export function PopupBannersPage() {
                     <label><span>Надзаголовок, px</span><input type="number" min={8} max={32} value={draft.styles.eyebrowFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, eyebrowFontSize: Number(event.target.value) } }))} /></label>
                     <label><span>Заголовок, px</span><input type="number" min={18} max={72} value={draft.styles.titleFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, titleFontSize: Number(event.target.value) } }))} /></label>
                     <label><span>Основний текст, px</span><input type="number" min={10} max={36} value={draft.styles.bodyFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, bodyFontSize: Number(event.target.value) } }))} /></label>
-                    <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>
+                    {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>}
                     <label><span>Кнопки, px</span><input type="number" min={10} max={28} value={draft.styles.buttonFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, buttonFontSize: Number(event.target.value) } }))} /></label>
                   </div>
                 </div>
-                <div className="popup-settings-group">
+                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && <div className="popup-settings-group">
                   <strong>Стиль чекбокса підтвердження</strong>
                   <small>Ці кольори застосуються, коли в розділі поведінки увімкнено явне підтвердження.</small>
                   <div className="popup-color-grid">
@@ -878,9 +1006,9 @@ export function PopupBannersPage() {
                     <ColorField label="Колір галочки" value={draft.styles.checkboxCheckColor} onChange={(checkboxCheckColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, checkboxCheckColor } }))} />
                     <ColorField label="Колір тексту чекбокса" value={draft.styles.checkboxTextColor} onChange={(checkboxTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, checkboxTextColor } }))} />
                   </div>
-                </div>
+                </div>}
                 <div className="popup-form-grid popup-dimensions-grid">
-                  <label><span>Максимальна ширина, px</span><input type="number" min={320} max={1400} step={10} value={draft.styles.maxWidth} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, maxWidth: Number(event.target.value) } }))} /><small>До 1400 px; на вузьких екранах попап автоматично вміститься у viewport.</small></label>
+                  <label><span>Максимальна ширина, px</span><input type="number" min={320} max={1400} step={10} value={draft.styles.maxWidth} disabled={draft.campaignType === 'product_promo' && draft.styles.promoFormat !== 'custom'} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, maxWidth: Number(event.target.value) } }))} /><small>{draft.campaignType === 'product_promo' && draft.styles.promoFormat !== 'custom' ? 'Ширина визначається вибраним пресетом.' : 'До 1400 px; на вузьких екранах попап автоматично вміститься у viewport.'}</small></label>
                   <label><span>Заокруглення, px</span><input type="number" min={0} max={40} value={draft.styles.borderRadius} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, borderRadius: Number(event.target.value) } }))} /></label>
                 </div>
               </div>
@@ -957,11 +1085,24 @@ export function PopupBannersPage() {
 
             {tab === 'behavior' && <>
               <div className="popup-form-section">
-                <SectionHeading icon="schedule" title="Частота й взаємодія" description="Керуйте моментом появи та повторними показами для одного покупця." aside={behaviorSummary} />
+                <SectionHeading icon="schedule" title="Тригер показу" description="Визначте, в який момент банер має з’явитися після відкриття сторінки." />
                 <div className="popup-form-grid">
-                  <label><span>Затримка перед показом, мс</span><input type="number" min={0} max={60000} step={100} value={draft.behavior.delayMs} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, delayMs: Number(event.target.value) } }))} /><small>300–800 мс зазвичай сприймаються природно.</small></label>
-                  <label><span>Частота показу</span><StyledSelect value={draft.behavior.frequency} options={[{ value: 'always', label: 'Під час кожного перегляду' }, { value: 'session', label: 'Один раз за сесію' }, { value: 'product', label: 'Один раз для кожного товару' }, { value: 'days', label: 'Повторити через кілька днів' }]} onChange={(frequency) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, frequency } }))} ariaLabel="Частота показу" /></label>
+                  <label><span>Умова появи</span><StyledSelect value={draft.behavior.trigger} options={[{ value: 'delay', label: 'Через задану затримку' }, { value: 'scroll', label: 'Після прокручування сторінки' }, { value: 'inactivity', label: 'Після періоду бездіяльності' }]} onChange={(trigger) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, trigger } }))} ariaLabel="Умова появи" /></label>
+                  {draft.behavior.trigger === 'delay' && <label><span>Затримка перед показом, мс</span><input type="number" min={0} max={60000} step={100} value={draft.behavior.delayMs} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, delayMs: Number(event.target.value) } }))} /><small>300–800 мс зазвичай сприймаються природно.</small></label>}
+                  {draft.behavior.trigger === 'scroll' && <label><span>Показати після прокрутки, %</span><input type="number" min={5} max={100} value={draft.behavior.scrollPercent} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, scrollPercent: Number(event.target.value) } }))} /><small>Відсоток довжини сторінки, який має пройти покупець.</small></label>}
+                  {draft.behavior.trigger === 'inactivity' && <label><span>Бездіяльність, секунд</span><input type="number" min={1} max={300} value={draft.behavior.inactivitySeconds} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, inactivitySeconds: Number(event.target.value) } }))} /><small>Таймер перезапускається після кліку, дотику, скролу або натискання клавіші.</small></label>}
+                </div>
+              </div>
+              <div className="popup-form-section">
+                <SectionHeading icon="visibility" title="Повторні покази й пристрої" description="Обмежте частоту для одного покупця та потрібний тип вітрини." aside={behaviorSummary} />
+                <div className="popup-form-grid">
+                  <label><span>Частота показу</span><StyledSelect value={draft.behavior.frequency} options={[{ value: 'always', label: 'Під час кожного перегляду' }, { value: 'session', label: 'Один раз за сесію' }, { value: 'product', label: 'Один раз для кожного товару/сторінки' }, { value: 'hours', label: 'Повторити через кілька годин' }, { value: 'days', label: 'Повторити через кілька днів' }]} onChange={(frequency) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, frequency } }))} ariaLabel="Частота показу" /></label>
+                  <label><span>Пристрої</span><StyledSelect value={draft.behavior.device} options={[{ value: 'all', label: 'Desktop і mobile' }, { value: 'desktop', label: 'Лише desktop' }, { value: 'mobile', label: 'Лише mobile' }]} onChange={(device) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, device } }))} ariaLabel="Пристрої" /></label>
+                  {draft.behavior.frequency === 'hours' && <label><span>Повторити через, годин</span><input type="number" min={1} max={8760} value={draft.behavior.cooldownHours} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, cooldownHours: Number(event.target.value) } }))} /></label>}
                   {draft.behavior.frequency === 'days' && <label><span>Повторити через, днів</span><input type="number" min={1} max={365} value={draft.behavior.cooldownDays} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, cooldownDays: Number(event.target.value) } }))} /></label>}
+                  <label><span>Ліміт показів за сесію</span><input type="number" min={0} max={20} value={draft.behavior.maxShowsPerSession} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, maxShowsPerSession: Number(event.target.value) } }))} /><small>0 — без окремого ліміту. Частота вище все одно застосовується.</small></label>
+                  <label><span>Автозакриття, секунд</span><input type="number" min={0} max={300} value={draft.behavior.autoCloseSeconds} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, autoCloseSeconds: Number(event.target.value) } }))} /><small>0 — не закривати автоматично.</small></label>
+                  {draft.campaignType === 'product_promo' && promoProducts.length > 1 && <label><span>Зміна товару, секунд</span><input type="number" min={2} max={60} value={draft.behavior.rotationSeconds} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, rotationSeconds: Number(event.target.value) } }))} /><small>Для пресета «Сповіщення» товари показуються по черзі.</small></label>}
                 </div>
                 <div className="popup-toggle-list">
                   <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description={draft.campaignType === 'product_promo' ? 'Показувати хрестик у самій панелі. Банер не перехоплює кліки поза нею.' : 'Показувати хрестик і дозволити закриття кліком по затемненому фону.'} onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
@@ -972,12 +1113,23 @@ export function PopupBannersPage() {
                 </>}
               </div>
               <div className="popup-form-section">
-                <SectionHeading icon="calendar" title="Розклад кампанії" description="Залиште поля порожніми, якщо кампанія не має часових обмежень." />
+                <SectionHeading icon="calendar" title="Розклад кампанії" description="Налаштуйте загальний період, дні тижня та щоденні години показу." />
                 <div className="popup-form-grid">
                   <label><span>Початок</span><input type="datetime-local" value={localDateTime(draft.startsAt)} onChange={(event) => setDraft((current) => ({ ...current, startsAt: isoDateTime(event.target.value) }))} /></label>
                   <label><span>Завершення</span><input type="datetime-local" value={localDateTime(draft.endsAt)} onChange={(event) => setDraft((current) => ({ ...current, endsAt: isoDateTime(event.target.value) }))} /></label>
+                  <label><span>Часовий пояс</span><StyledSelect value={draft.behavior.scheduleTimezone} options={[{ value: 'Europe/Kyiv', label: 'Київ' }, { value: 'Europe/Warsaw', label: 'Варшава' }, { value: 'Europe/Berlin', label: 'Берлін' }, { value: 'UTC', label: 'UTC' }]} onChange={(scheduleTimezone) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, scheduleTimezone } }))} ariaLabel="Часовий пояс розкладу" /></label>
                   <label><span>Пріоритет</span><input type="number" min={0} max={1000} value={draft.priority} onChange={(event) => setDraft((current) => ({ ...current, priority: Number(event.target.value) }))} /><small>Якщо підходять кілька кампаній, перемагає більший пріоритет.</small></label>
+                  <label><span>Щодня з</span><input type="time" value={draft.behavior.dailyStartTime} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dailyStartTime: event.target.value } }))} /><small>Залиште обидва поля порожніми для цілодобового показу.</small></label>
+                  <label><span>Щодня до</span><input type="time" value={draft.behavior.dailyEndTime} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dailyEndTime: event.target.value } }))} /></label>
                 </div>
+                <div className="popup-weekdays"><strong>Активні дні</strong><div role="group" aria-label="Активні дні тижня">{weekdays.map((day) => {
+                  const active = draft.behavior.activeWeekdays.includes(day.value);
+                  return <button type="button" className={active ? 'is-active' : ''} aria-pressed={active} onClick={() => setDraft((current) => {
+                    const currentDays = current.behavior.activeWeekdays;
+                    const activeWeekdays = active ? currentDays.filter((value) => value !== day.value) : [...currentDays, day.value].sort();
+                    return activeWeekdays.length ? { ...current, behavior: { ...current.behavior, activeWeekdays } } : current;
+                  })} key={day.value}>{day.label}</button>;
+                })}</div><small>Принаймні один день має залишатися активним.</small></div>
               </div>
             </>}
           </section>
