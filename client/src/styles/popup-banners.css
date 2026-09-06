@@ -398,6 +398,9 @@
 
 .popup-preview__card { position: relative; z-index: 2; width: min(100%, var(--preview-width)); overflow: hidden; border-radius: var(--preview-radius); color: var(--preview-text); background: var(--preview-bg); box-shadow: 0 20px 58px rgba(11, 18, 34, .28); }
 .popup-preview.is-exit-offer .popup-preview__card::before { position: absolute; z-index: 1; top: 0; right: 0; left: 0; height: 4px; background: var(--preview-accent); content: ''; }
+.popup-preview.is-exit-offer .popup-preview__recommendations { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.popup-preview.is-exit-offer .popup-preview__recommendation-image { aspect-ratio: 1; background: #fff; }
+.popup-preview.is-exit-offer.is-mobile .popup-preview__recommendations { display: grid !important; grid-template-columns: 1fr; }
 .popup-preview.is-bottom-sheet .popup-preview__card { width: 100%; border-radius: var(--preview-radius) var(--preview-radius) 0 0; }
 .popup-preview.is-corner .popup-preview__card { max-width: 292px; }
 .popup-preview.is-mobile .popup-preview__card { max-width: 282px; }

@@ -317,8 +317,18 @@ describe('PopupBannersPage', () => {
 
     expect(screen.getByDisplayValue('Exit offer')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Не поспішайте йти')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Купити')).toBeInTheDocument();
     expect(container.querySelector('.popup-preview.is-exit-offer')).toBeInTheDocument();
     expect(screen.getByText('Exit intent')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Товари пропозиції/u }));
+    const add = await screen.findAllByRole('button', { name: /Додати/u });
+    fireEvent.click(add[0]);
+    expect(screen.getByText('Товари Exit offer')).toBeInTheDocument();
+    expect(screen.getAllByText('Промотовар').length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
     expect(screen.getByText('Desktop')).toBeInTheDocument();

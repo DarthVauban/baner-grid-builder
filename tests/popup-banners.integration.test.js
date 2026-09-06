@@ -337,13 +337,19 @@ test('exit offer persists its dedicated type and forces the exit-intent trigger'
       maxShowsPerSession: 1,
       requireAcknowledgement: true
     },
-    productEntries: []
+    productEntries: [],
+    promoItems: [{
+      productExternalId: 'iphone-15-new',
+      modificationExternalId: 'iphone-15-new:black'
+    }]
   })).expect(201);
 
   assert.equal(created.body.data.campaignType, 'exit_offer');
   assert.equal(created.body.data.behavior.trigger, 'exit_intent');
   assert.equal(created.body.data.behavior.delayMs, 5000);
   assert.equal(created.body.data.behavior.requireAcknowledgement, false);
+  assert.equal(created.body.data.promoProducts.length, 1);
+  assert.equal(created.body.data.promoProducts[0].sku, 'IPHONE-15-NEW-BLACK');
 
   await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
   const resolved = await request(app)
@@ -354,6 +360,8 @@ test('exit offer persists its dedicated type and forces the exit-intent trigger'
   assert.equal(resolved.body.data.campaign.publicId, created.body.data.publicId);
   assert.equal(resolved.body.data.campaign.type, 'exit_offer');
   assert.equal(resolved.body.data.campaign.behavior.trigger, 'exit_intent');
+  assert.equal(resolved.body.data.products.length, 1);
+  assert.equal(resolved.body.data.products[0].buyId, '9002');
 
   await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'paused' }).expect(200);
 });
@@ -390,7 +398,18 @@ test('exit offer waits for independent desktop and mobile exit signals', async (
     },
     product: null,
     recommendations: [],
-    products: []
+    products: [{
+      productId: 'exit-product',
+      modificationId: null,
+      article: 'EXIT-1',
+      title: 'Спеціальна пропозиція',
+      price: '999',
+      oldPrice: '1199',
+      currency: 'UAH',
+      imageUrl: 'https://shop.example.com/exit-product.jpg',
+      pageUrl: 'https://shop.example.com/exit-product/',
+      buyId: '9003'
+    }]
   };
   const surfaces = [
     { name: 'desktop', width: 1366, userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -447,6 +466,8 @@ test('exit offer waits for independent desktop and mobile exit signals', async (
     assert.ok(host, `${surface.name} exit signal should render the offer`);
     assert.ok(host.shadowRoot.querySelector('.card.is-exit-offer'));
     assert.equal(host.shadowRoot.querySelector('.card').getAttribute('aria-modal'), 'true');
+    assert.equal(host.shadowRoot.querySelector('.recommendation-title')?.textContent, 'Спеціальна пропозиція');
+    assert.equal(host.shadowRoot.querySelector('.recommendation-buy')?.textContent, 'Переглянути');
   }
 });
 
