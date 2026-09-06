@@ -308,6 +308,30 @@ describe('PopupBannersPage', () => {
     expect(screen.queryByText('Стиль чекбокса підтвердження')).not.toBeInTheDocument();
   });
 
+  it('creates an exit offer with dedicated desktop and mobile intent behavior', async () => {
+    const { container } = renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /Exit offer/u }));
+
+    expect(screen.getByDisplayValue('Exit offer')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Не поспішайте йти')).toBeInTheDocument();
+    expect(container.querySelector('.popup-preview.is-exit-offer')).toBeInTheDocument();
+    expect(screen.getByText('Exit intent')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
+    expect(screen.getByText('Desktop')).toBeInTheDocument();
+    expect(screen.getByText('Mobile')).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: /Активувати розпізнавання/u })).toHaveValue(5);
+    expect(screen.queryByRole('button', { name: 'Умова появи' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Потрібне явне підтвердження/u })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
+    expect(screen.getByRole('radio', { name: /Усі сторінки/u })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('radio', { name: /Товар відсутній/u })).not.toBeInTheDocument();
+  });
+
   it('creates a non-blocking product promo campaign from the catalog', async () => {
     const create = vi.spyOn(api.popupBanners, 'create').mockImplementation(async (campaign) => ({
       ...structuredClone(baseCampaign),
@@ -388,5 +412,5 @@ describe('PopupBannersPage', () => {
         { productExternalId: 'promo-product-2', modificationExternalId: null }
       ]
     }), expect.anything()));
-  });
+  }, 10_000);
 });

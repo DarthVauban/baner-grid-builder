@@ -1,12 +1,12 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'exit_offer';
 export type PopupLayout = 'modal' | 'bottom-sheet' | 'corner';
 export type PopupPromoFormat = 'notification' | 'compact' | 'standard' | 'wide' | 'custom';
 export type PopupDesktopPosition = 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
 export type PopupMobilePosition = 'top' | 'bottom';
 export type PopupTargetMode = 'all_pages' | 'all_products' | 'products' | 'rules' | 'target_page' | 'out_of_stock';
 export type PopupFrequency = 'always' | 'session' | 'product' | 'hours' | 'days';
-export type PopupTrigger = 'delay' | 'scroll' | 'inactivity';
+export type PopupTrigger = 'delay' | 'scroll' | 'inactivity' | 'exit_intent';
 export type PopupDevice = 'all' | 'desktop' | 'mobile';
 
 export interface PopupContent {

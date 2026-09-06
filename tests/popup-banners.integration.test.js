@@ -309,6 +309,147 @@ test('sticker rules and the embeddable widget work without exact product targets
   assert.match(code.body.data.code, /popup-banners\/embed\.js/u);
 });
 
+test('exit offer persists its dedicated type and forces the exit-intent trigger', async () => {
+  const exitPageUrl = 'https://shop.example.com/exit-offer-test/';
+  const created = await admin.post('/api/popup-banners').send(input({
+    campaignType: 'exit_offer',
+    name: 'Exit offer для тесту',
+    content: {
+      ...input().content,
+      eyebrow: 'Зачекайте',
+      title: 'Не поспішайте йти',
+      body: 'Для вас є спеціальна пропозиція.',
+      primaryLabel: 'Переглянути пропозицію',
+      primaryUrl: '/special-offer/',
+      secondaryLabel: 'Ні, дякую',
+      acknowledgementLabel: ''
+    },
+    targeting: {
+      ...input().targeting,
+      mode: 'target_page',
+      targetPageUrl: exitPageUrl
+    },
+    behavior: {
+      ...input().behavior,
+      trigger: 'delay',
+      delayMs: 5000,
+      frequency: 'session',
+      maxShowsPerSession: 1,
+      requireAcknowledgement: true
+    },
+    productEntries: []
+  })).expect(201);
+
+  assert.equal(created.body.data.campaignType, 'exit_offer');
+  assert.equal(created.body.data.behavior.trigger, 'exit_intent');
+  assert.equal(created.body.data.behavior.delayMs, 5000);
+  assert.equal(created.body.data.behavior.requireAcknowledgement, false);
+
+  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+  const resolved = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: exitPageUrl })
+    .expect(200);
+  assert.equal(resolved.body.data.campaign.publicId, created.body.data.publicId);
+  assert.equal(resolved.body.data.campaign.type, 'exit_offer');
+  assert.equal(resolved.body.data.campaign.behavior.trigger, 'exit_intent');
+
+  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'paused' }).expect(200);
+});
+
+test('exit offer waits for independent desktop and mobile exit signals', async (t) => {
+  const script = popupEmbedScript('https://mt-panel.example.com');
+  const payload = {
+    campaign: {
+      publicId: 'exit-offer-runtime',
+      type: 'exit_offer',
+      mode: 'all_pages',
+      content: {
+        eyebrow: 'Зачекайте', title: 'Не поспішайте йти', body: 'Для вас є спеціальна пропозиція.',
+        primaryLabel: 'Переглянути', primaryUrl: '/offer/', secondaryLabel: 'Ні, дякую',
+        imageUrl: '', acknowledgementLabel: ''
+      },
+      styles: {
+        layout: 'modal', promoFormat: 'notification', desktopPosition: 'bottom_right', mobilePosition: 'bottom',
+        accentColor: '#6d5dfc', backgroundColor: '#ffffff', textColor: '#172033', mutedColor: '#667085',
+        primaryButtonBackgroundColor: '#ffe101', primaryButtonTextColor: '#111827',
+        secondaryButtonBackgroundColor: '#ffffff', secondaryButtonTextColor: '#172033',
+        checkboxAccentColor: '#6d5dfc', checkboxCheckColor: '#ffffff', checkboxTextColor: '#172033',
+        timelineColor: '#6d5dfc', timelineTrackColor: '#ede9fe', showPromoTitle: false,
+        eyebrowFontSize: 12, titleFontSize: 34, bodyFontSize: 16, acknowledgementFontSize: 14,
+        buttonFontSize: 16, buttonBorderRadius: 12, borderRadius: 24, maxWidth: 560
+      },
+      behavior: {
+        trigger: 'exit_intent', delayMs: 0, scrollPercent: 35, inactivitySeconds: 8,
+        frequency: 'always', cooldownHours: 24, cooldownDays: 7, maxShowsPerSession: 0,
+        device: 'all', autoCloseSeconds: 0, rotationSeconds: 6,
+        activeWeekdays: [1, 2, 3, 4, 5, 6, 7], dailyStartTime: '', dailyEndTime: '',
+        scheduleTimezone: 'Europe/Kyiv', dismissible: true, requireAcknowledgement: false, buttonCount: 2
+      }
+    },
+    product: null,
+    recommendations: [],
+    products: []
+  };
+  const surfaces = [
+    { name: 'desktop', width: 1366, userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    { name: 'mobile', width: 390, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Mobile Safari/537.36' }
+  ];
+
+  for (const surface of surfaces) {
+    const dom = new JSDOM('<!doctype html><html><body><main>Storefront</main></body></html>', {
+      pretendToBeVisual: true,
+      runScripts: 'outside-only',
+      url: `https://shop.example.com/${surface.name}/`
+    });
+    t.after(() => dom.window.close());
+    Object.defineProperty(dom.window, 'innerWidth', { configurable: true, value: surface.width });
+    Object.defineProperty(dom.window.navigator, 'userAgent', { configurable: true, value: surface.userAgent });
+    Object.defineProperty(dom.window, 'scrollY', { configurable: true, value: 0 });
+    dom.window.MutationObserver = class MutationObserver { observe() {} disconnect() {} };
+    dom.window.fetch = async (input) => {
+      const url = new URL(String(input));
+      return url.pathname.endsWith('/resolve')
+        ? { ok: true, json: async () => ({ data: structuredClone(payload) }) }
+        : { ok: true, json: async () => ({}) };
+    };
+    dom.window.eval(script);
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 30));
+    assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), null);
+
+    if (surface.name === 'desktop') {
+      dom.window.document.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true, clientY: 120 }));
+      assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), null);
+      dom.window.document.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true, clientY: 0 }));
+    } else {
+      const shallowStart = new dom.window.Event('touchstart', { bubbles: true });
+      Object.defineProperty(shallowStart, 'touches', { value: [{ clientY: 80 }] });
+      dom.window.document.dispatchEvent(shallowStart);
+      const shallowEnd = new dom.window.Event('touchend', { bubbles: true });
+      Object.defineProperty(shallowEnd, 'changedTouches', { value: [{ clientY: 170 }] });
+      dom.window.document.dispatchEvent(shallowEnd);
+      assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), null);
+
+      Object.defineProperty(dom.window, 'scrollY', { configurable: true, value: 220 });
+      dom.window.dispatchEvent(new dom.window.Event('scroll'));
+      const touchStart = new dom.window.Event('touchstart', { bubbles: true });
+      Object.defineProperty(touchStart, 'touches', { value: [{ clientY: 80 }] });
+      dom.window.document.dispatchEvent(touchStart);
+      Object.defineProperty(dom.window, 'scrollY', { configurable: true, value: 20 });
+      const touchEnd = new dom.window.Event('touchend', { bubbles: true });
+      Object.defineProperty(touchEnd, 'changedTouches', { value: [{ clientY: 170 }] });
+      dom.window.document.dispatchEvent(touchEnd);
+    }
+
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+    const host = dom.window.document.querySelector('#mt-popup-banner-root');
+    assert.ok(host, `${surface.name} exit signal should render the offer`);
+    assert.ok(host.shadowRoot.querySelector('.card.is-exit-offer'));
+    assert.equal(host.shadowRoot.querySelector('.card').getAttribute('aria-modal'), 'true');
+  }
+});
+
 test('out-of-stock widget keeps focus and scrolling on the dialog while using Horoshop native cart metadata', async (t) => {
   const dom = new JSDOM(`<!doctype html><html><head>
     <meta itemprop="sku" content="OUT-OF-STOCK-1">

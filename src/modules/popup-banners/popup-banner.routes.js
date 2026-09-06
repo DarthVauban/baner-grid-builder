@@ -99,7 +99,7 @@ const targetingSchema = z.object({
   }
 });
 const behaviorSchema = z.object({
-  trigger: z.enum(['delay', 'scroll', 'inactivity']).optional(),
+  trigger: z.enum(['delay', 'scroll', 'inactivity', 'exit_intent']).optional(),
   delayMs: z.number().int().min(0).max(60_000),
   scrollPercent: z.number().int().min(5).max(100).optional(),
   inactivitySeconds: z.number().int().min(1).max(300).optional(),
@@ -127,7 +127,7 @@ const behaviorSchema = z.object({
   }
 });
 const campaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'exit_offer']).default('message'),
   name: z.string().trim().min(1).max(160),
   priority: z.number().int().min(0).max(1000),
   content: contentSchema,
@@ -145,6 +145,11 @@ const campaignSchema = z.object({
   message: 'Дата завершення має бути пізніше дати початку.',
   path: ['endsAt']
 }).superRefine((value, context) => {
+  if (['product_promo', 'exit_offer'].includes(value.campaignType) && value.targeting.mode === 'out_of_stock') {
+    context.addIssue({
+      code: 'custom', path: ['targeting', 'mode'], message: 'Цей тип банера не підтримує сценарій відсутнього товару.'
+    });
+  }
   const optionalNotificationCopy = value.campaignType === 'product_promo'
     && value.styles.promoFormat === 'notification';
   if (optionalNotificationCopy) return;
