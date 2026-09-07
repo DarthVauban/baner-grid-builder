@@ -668,6 +668,7 @@ async function recordVersion(client, campaignId, actorUserId) {
       promoProducts.map(serializePromoProduct)
     )), actorUserId]
   );
+  return serializeCampaign(row, targets, promoProducts);
 }
 
 async function savePopupCampaign(existingId, input, actorUserId) {
@@ -774,9 +775,8 @@ async function savePopupCampaign(existingId, input, actorUserId) {
         unmatched: promoResolution.unmatched
       });
     }
-    await recordVersion(client, id, actorUserId);
+    const campaign = await recordVersion(client, id, actorUserId);
     await client.query('COMMIT');
-    const campaign = await getPopupCampaign(id);
     return {
       ...campaign,
       resolution: {

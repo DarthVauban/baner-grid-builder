@@ -1431,7 +1431,7 @@ test('lead-form campaign stores a deduplicated contact and exports campaign list
     successTitle: 'Готово',
     successBody: 'Ваш персональний код нижче.'
   };
-  const created = await admin.post('/api/popup-banners').send(input({
+  const leadCampaignInput = input({
     campaignType: 'lead_form',
     name: 'Контакти за промокод',
     promoCodeId: createdCode.body.data.id,
@@ -1448,12 +1448,102 @@ test('lead-form campaign stores a deduplicated contact and exports campaign list
     targeting: { ...input().targeting, mode: 'all_pages' },
     behavior: { ...input().behavior, frequency: 'session', requireAcknowledgement: false, buttonCount: 1 },
     productEntries: []
-  })).expect(201);
+  });
+  const created = await admin.post('/api/popup-banners').send(leadCampaignInput).expect(201);
   assert.equal(created.body.data.formConfig.fields.length, 4);
   assert.equal(created.body.data.formConfig.fields[0].label, '');
   assert.equal(created.body.data.formConfig.blocks[0].layout, 'row');
   assert.equal(created.body.data.publishedFormConfig, null);
   await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+  const originalPoolQuery = pool.query;
+  const updateRequest = admin.put(`/api/popup-banners/${created.body.data.id}`).send({
+    ...leadCampaignInput,
+    name: 'Форма за промокод',
+    priority: 100,
+    content: {
+      eyebrow: 'Подарунок за контакт',
+      title: 'Отримайте промокод',
+      body: 'Залиште контактні дані — промокод з’явиться одразу після відправлення форми.',
+      primaryLabel: '',
+      primaryUrl: '',
+      secondaryLabel: '',
+      imageUrl: '',
+      acknowledgementLabel: ''
+    },
+    styles: {
+      layout: 'modal',
+      promoFormat: 'notification',
+      desktopPosition: 'bottom_right',
+      mobilePosition: 'bottom',
+      accentColor: '#6d5dfc',
+      backgroundColor: '#ffffff',
+      textColor: '#172033',
+      mutedColor: '#667085',
+      primaryButtonBackgroundColor: '#6d5dfc',
+      primaryButtonTextColor: '#ffffff',
+      secondaryButtonBackgroundColor: '#ffffff',
+      secondaryButtonTextColor: '#172033',
+      checkboxAccentColor: '#6d5dfc',
+      checkboxCheckColor: '#ffffff',
+      checkboxTextColor: '#172033',
+      timelineColor: '#6d5dfc',
+      timelineTrackColor: '#ede9fe',
+      showPromoTitle: false,
+      eyebrowFontSize: 12,
+      titleFontSize: 34,
+      bodyFontSize: 16,
+      acknowledgementFontSize: 14,
+      buttonFontSize: 16,
+      buttonBorderRadius: 12,
+      borderRadius: 24,
+      maxWidth: 600
+    },
+    targeting: {
+      mode: 'all_pages', match: 'all', stickers: [], brands: [], categoryIds: [], conditions: [],
+      targetPageUrl: '', urlContains: [], recommendationLimit: 6
+    },
+    behavior: {
+      trigger: 'scroll', delayMs: 300, scrollPercent: 35, inactivitySeconds: 8,
+      frequency: 'session', cooldownHours: 24, cooldownDays: 7, maxShowsPerSession: 1,
+      device: 'all', autoCloseSeconds: 0, rotationSeconds: 6,
+      activeWeekdays: [1, 2, 3, 4, 5, 6, 7], dailyStartTime: '', dailyEndTime: '',
+      scheduleTimezone: 'Europe/Kyiv', dismissible: true, requireAcknowledgement: false, buttonCount: 1
+    },
+    formConfig: {
+      fields: [
+        { id: 'name', type: 'text', label: "Ім'я", placeholder: 'Ваше імʼя', required: true, options: [] },
+        { id: 'field_mtrt6oee_nz07cg_2', type: 'text', label: 'Нове поле', placeholder: '', required: false, options: [] },
+        { id: 'field_mtrt6qvs_3tkigo_3', type: 'text', label: 'Нове поле', placeholder: '', required: false, options: [] }
+      ],
+      blocks: [
+        { id: 'legacy_1', layout: 'column', fieldIds: ['name'] },
+        { id: 'block_mtrt6oee_lv2dxa_2', layout: 'row', fieldIds: ['field_mtrt6oee_nz07cg_2', 'field_mtrt6qvs_3tkigo_3'] }
+      ],
+      submitLabel: 'Отримати промокод',
+      successTitle: 'Ваш промокод готовий',
+      successBody: 'Скопіюйте код і використайте його під час оформлення замовлення.'
+    },
+    productEntries: [],
+    promoItems: []
+  });
+  let updated;
+  let campaignTransactionCommitted = false;
+  try {
+    pool.query = function guardedPoolQuery(sql, params, callback) {
+      const statement = String(sql);
+      if (campaignTransactionCommitted && statement.includes('FROM popup_banner_campaigns AS campaign') && statement.includes('WHERE campaign.id = $1')) {
+        throw new Error('Campaign save must not reacquire a pool connection to build its response.');
+      }
+      const result = originalPoolQuery.call(this, sql, params, callback);
+      if (statement === 'COMMIT') campaignTransactionCommitted = true;
+      return result;
+    };
+    updated = await updateRequest.expect(200);
+  } finally {
+    pool.query = originalPoolQuery;
+  }
+  assert.equal(updated.body.data.formConfig.fields.length, 3);
+  assert.equal(updated.body.data.formConfig.blocks[1].fieldIds[1], 'field_mtrt6qvs_3tkigo_3');
 
   const resolved = await request(app)
     .get('/api/public/popup-banners/resolve')
