@@ -680,14 +680,24 @@
 
 .popup-campaign-list__header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .popup-campaign-list__header-actions .button { white-space: nowrap; }
-.popup-lead-fields { display: grid; gap: 10px; margin-bottom: 12px; }
-.popup-lead-field { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 12px; border: 1px solid var(--line); border-radius: 16px; padding: 14px; background: var(--surface-soft); }
-.popup-lead-field__position { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; color: var(--brand); background: var(--brand-soft); font-size: 10px; font-weight: 850; }
+.popup-lead-blocks { display: grid; gap: 14px; margin-bottom: 12px; }
+.popup-lead-block { overflow: hidden; border: 1px solid color-mix(in srgb,var(--brand) 14%,var(--line)); border-radius: 18px; background: var(--surface); box-shadow: 0 8px 24px rgba(15,23,42,.04); }
+.popup-lead-block__header { display: grid; grid-template-columns: auto minmax(110px,1fr) minmax(112px,.45fr) minmax(132px,.55fr) auto; align-items: end; gap: 10px; border-bottom: 1px solid var(--line); padding: 12px 14px; background: color-mix(in srgb,var(--brand-soft) 30%,var(--surface)); }
+.popup-lead-block__header > div { align-self: center; display: grid; gap: 2px; }
+.popup-lead-block__header > div strong { color: var(--ink); font-size: 12px; }
+.popup-lead-block__header > div small { color: var(--muted); font-size: 9px; }
+.popup-lead-block__position { align-self: center; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; color: var(--brand); background: var(--brand-soft); font-size: 10px; font-weight: 850; }
+.popup-lead-block__fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; padding: 14px; }
+.popup-lead-block__fields.is-column,.popup-lead-block__fields.is-single { grid-template-columns: 1fr; }
+.popup-lead-block__actions { display: flex; align-items: center; gap: 5px; }
+.popup-lead-field { min-width: 0; border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: var(--surface-soft); }
+.popup-lead-field__heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.popup-lead-field__heading strong { color: var(--ink); font-size: 10px; }
+.popup-lead-field__heading small { color: var(--muted); font-size: 8px; }
 .popup-lead-field__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .popup-lead-field__grid .is-full { grid-column: 1 / -1; }
 .popup-lead-field__required { align-self: end; display: flex !important; min-height: 38px; flex-direction: row !important; align-items: center; gap: 8px !important; }
 .popup-lead-field__required input { width: 16px; height: 16px; }
-.popup-lead-field__actions { display: flex; gap: 5px; }
 .popup-lead-result-settings { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
 .popup-contacts-section { min-width: 0; }
 .popup-contacts-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid color-mix(in srgb,var(--brand) 18%,var(--line)); border-radius: 14px; padding: 12px 14px; background: color-mix(in srgb,var(--brand-soft) 35%,var(--surface)); }
@@ -785,8 +795,10 @@
   .popup-position-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .popup-selected-code { grid-template-columns: minmax(0,1fr) auto; }
   .popup-campaign-list__header-actions,.popup-contacts-toolbar { align-items: stretch; flex-direction: column; }
-  .popup-lead-field { grid-template-columns: auto minmax(0, 1fr); }
-  .popup-lead-field__actions { grid-column: 2; justify-content: flex-end; }
+  .popup-lead-block__header { grid-template-columns: auto minmax(0,1fr) auto; align-items: end; }
+  .popup-lead-block__header > label { grid-column: span 1; }
+  .popup-lead-block__actions { grid-column: 3; grid-row: 1; }
+  .popup-lead-block__fields { grid-template-columns: 1fr; }
   .popup-lead-field__grid { grid-template-columns: 1fr; }
   .popup-lead-field__grid .is-full { grid-column: auto; }
   .popup-campaign-list--tab .popup-campaign-list__tools,

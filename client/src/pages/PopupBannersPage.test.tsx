@@ -103,6 +103,7 @@ const baseCampaign: PopupCampaign = {
   publishedPromoCode: null,
   formConfig: {
     fields: [{ id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }],
+    blocks: [{ id: 'contact', layout: 'column', fieldIds: ['phone'] }],
     submitLabel: 'Отримати промокод', successTitle: 'Ваш промокод готовий', successBody: 'Скопіюйте код.'
   },
   publishedFormConfig: null,
@@ -594,11 +595,19 @@ describe('PopupBannersPage', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Форма за промокод/u }));
 
-    expect(screen.getByText('Поля контактної форми')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Назва поля')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /Додати поле/u }));
-    expect(screen.getAllByLabelText('Назва поля')).toHaveLength(3);
-    fireEvent.change(screen.getAllByLabelText('Назва поля')[2], { target: { value: 'Місто' } });
+    expect(screen.getByText('Блоки контактної форми')).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/^Назва поля/u)).toHaveLength(2);
+    const firstLabel = screen.getAllByLabelText(/^Назва поля/u)[0];
+    firstLabel.focus();
+    fireEvent.change(firstLabel, { target: { value: '' } });
+    expect(firstLabel).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: /Додати блок/u }));
+    expect(screen.getAllByLabelText(/^Назва поля/u)).toHaveLength(3);
+    expect(screen.getByText('Поле займає 100% ширини')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Кількість полів у блоці 2' }));
+    fireEvent.click(await screen.findByRole('option', { name: '2' }));
+    expect(screen.getAllByLabelText(/^Назва поля/u)).toHaveLength(4);
+    fireEvent.change(screen.getAllByLabelText(/^Назва поля/u)[2], { target: { value: 'Місто' } });
     fireEvent.click(screen.getByRole('button', { name: 'Тип поля Місто' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Список варіантів' }));
     fireEvent.change(screen.getByText('Варіанти — по одному з рядка').closest('label')!.querySelector('textarea')!, {
@@ -613,7 +622,11 @@ describe('PopupBannersPage', () => {
         campaignType: 'lead_form',
         promoCodeId: promoCode.id,
         formConfig: expect.objectContaining({
-          fields: expect.arrayContaining([expect.objectContaining({ label: 'Місто', type: 'select', options: ['Київ', 'Львів'] })])
+          blocks: expect.arrayContaining([expect.objectContaining({ layout: 'column', fieldIds: expect.arrayContaining([expect.any(String), expect.any(String)]) })]),
+          fields: expect.arrayContaining([
+            expect.objectContaining({ label: '' }),
+            expect.objectContaining({ label: 'Місто', type: 'select', options: ['Київ', 'Львів'] })
+          ])
         })
       }),
       expect.any(AbortSignal)
@@ -625,7 +638,11 @@ describe('PopupBannersPage', () => {
       campaignType: 'lead_form',
       promoCodeId: promoCode.id,
       formConfig: expect.objectContaining({
-        fields: expect.arrayContaining([expect.objectContaining({ label: 'Місто', type: 'select', options: ['Київ', 'Львів'] })])
+        blocks: expect.arrayContaining([expect.objectContaining({ layout: 'column', fieldIds: expect.any(Array) })]),
+        fields: expect.arrayContaining([
+          expect.objectContaining({ label: '' }),
+          expect.objectContaining({ label: 'Місто', type: 'select', options: ['Київ', 'Львів'] })
+        ])
       })
     }), expect.anything()));
   }, 10_000);

@@ -96,13 +96,19 @@ const targetingBaseSchema = z.object({
 const leadFieldSchema = z.object({
   id: z.string().trim().regex(/^[a-z][a-z0-9_-]{0,63}$/iu),
   type: z.enum(['text', 'email', 'phone', 'textarea', 'select', 'checkbox']),
-  label: z.string().trim().min(1).max(120),
+  label: z.string().trim().max(120).optional().default(''),
   placeholder: z.string().trim().max(200).optional().default(''),
   required: z.boolean().optional().default(false),
   options: z.array(z.string().trim().min(1).max(80)).max(20).optional().default([])
 });
+const leadBlockSchema = z.object({
+  id: z.string().trim().regex(/^[a-z][a-z0-9_-]{0,63}$/iu),
+  layout: z.enum(['row', 'column']),
+  fieldIds: z.array(z.string().trim().regex(/^[a-z][a-z0-9_-]{0,63}$/iu)).min(1).max(4)
+});
 const formConfigSchema = z.object({
   fields: z.array(leadFieldSchema).min(1).max(12),
+  blocks: z.array(leadBlockSchema).max(12).optional().default([]),
   submitLabel: z.string().trim().min(1).max(120),
   successTitle: z.string().trim().max(240).optional().default(''),
   successBody: z.string().trim().max(1000).optional().default('')
@@ -115,12 +121,29 @@ const formConfigSchema = z.object({
       context.addIssue({ code: 'custom', path: ['fields', index, 'options'], message: 'Додайте хоча б один варіант для списку.' });
     }
   });
+  if (value.blocks.length) {
+    const blockIds = new Set();
+    const assignedFields = new Set();
+    value.blocks.forEach((block, blockIndex) => {
+      if (blockIds.has(block.id)) context.addIssue({ code: 'custom', path: ['blocks', blockIndex, 'id'], message: 'Ідентифікатори блоків мають бути унікальними.' });
+      blockIds.add(block.id);
+      block.fieldIds.forEach((fieldId, fieldIndex) => {
+        if (!ids.has(fieldId)) context.addIssue({ code: 'custom', path: ['blocks', blockIndex, 'fieldIds', fieldIndex], message: 'Блок містить невідоме поле.' });
+        if (assignedFields.has(fieldId)) context.addIssue({ code: 'custom', path: ['blocks', blockIndex, 'fieldIds', fieldIndex], message: 'Поле може належати лише одному блоку.' });
+        assignedFields.add(fieldId);
+      });
+    });
+    value.fields.forEach((field, fieldIndex) => {
+      if (!assignedFields.has(field.id)) context.addIssue({ code: 'custom', path: ['fields', fieldIndex, 'id'], message: 'Кожне поле має належати блоку.' });
+    });
+  }
 });
 const defaultFormConfigInput = {
   fields: [
     { id: 'name', type: 'text', label: 'Імʼя', placeholder: 'Ваше імʼя', required: true, options: [] },
     { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }
   ],
+  blocks: [{ id: 'contact', layout: 'row', fieldIds: ['name', 'phone'] }],
   submitLabel: 'Отримати промокод',
   successTitle: 'Ваш промокод готовий',
   successBody: 'Скопіюйте код і використайте його під час оформлення замовлення.'

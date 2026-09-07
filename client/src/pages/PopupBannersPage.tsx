@@ -16,6 +16,8 @@ import type {
   PopupCampaignType,
   PopupDesktopPosition,
   PopupLayout,
+  PopupLeadBlock,
+  PopupLeadBlockLayout,
   PopupLeadField,
   PopupLeadFieldType,
   PopupMobilePosition,
@@ -183,6 +185,7 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
         { id: 'name', type: 'text', label: 'Імʼя', placeholder: 'Ваше імʼя', required: true, options: [] },
         { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }
       ],
+      blocks: [{ id: 'contact', layout: 'row', fieldIds: ['name', 'phone'] }],
       submitLabel: 'Отримати промокод',
       successTitle: 'Ваш промокод готовий',
       successBody: 'Скопіюйте код і використайте його під час оформлення замовлення.'
@@ -299,6 +302,13 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
 function campaignInput(campaign: PopupCampaign): PopupCampaignInput {
   const styles = { ...campaign.styles };
   const formConfig = campaign.formConfig || emptyCampaign(campaign.campaignType).formConfig;
+  const blocks = formConfig.blocks?.length
+    ? formConfig.blocks
+    : formConfig.fields.map((field, index) => ({
+      id: `legacy_${index + 1}`,
+      layout: 'column' as const,
+      fieldIds: [field.id]
+    }));
   if (campaign.campaignType === 'product_promo' && styles.promoFormat !== 'custom') {
     styles.maxWidth = promoFormatPresets.find((preset) => preset.value === styles.promoFormat)?.width || 380;
   }
@@ -315,7 +325,8 @@ function campaignInput(campaign: PopupCampaign): PopupCampaignInput {
     promoCodeId: campaign.promoCodeId,
     formConfig: {
       ...formConfig,
-      fields: formConfig.fields.map((field) => ({ ...field, options: [...field.options] }))
+      fields: formConfig.fields.map((field) => ({ ...field, options: [...field.options] })),
+      blocks: blocks.map((block) => ({ ...block, fieldIds: [...block.fieldIds] }))
     },
     productEntries: campaign.productTargets.map((item) => item.sku),
     promoItems: campaign.promoProducts.map((item) => ({
@@ -408,6 +419,18 @@ function newLeadField(index: number): PopupLeadField {
     placeholder: '',
     required: false,
     options: []
+  };
+}
+
+function newLeadBlock(index: number): { block: PopupLeadBlock; field: PopupLeadField } {
+  const field = newLeadField(index);
+  return {
+    field,
+    block: {
+      id: `block_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}_${index}`,
+      layout: 'column',
+      fieldIds: [field.id]
+    }
   };
 }
 
@@ -901,23 +924,99 @@ export function PopupBannersPage() {
     updateTargeting({ [key]: current.includes(value) ? current.filter((item) => item !== value) : [...current, value] });
   }
 
-  function updateLeadField(index: number, patch: Partial<PopupLeadField>) {
+  function updateLeadField(fieldId: string, patch: Partial<PopupLeadField>) {
     setDraft((current) => ({
       ...current,
       formConfig: {
         ...current.formConfig,
-        fields: current.formConfig.fields.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...patch } : field)
+        fields: current.formConfig.fields.map((field) => field.id === fieldId ? { ...field, ...patch } : field)
       }
     }));
   }
 
-  function moveLeadField(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= draft.formConfig.fields.length) return;
+  function updateLeadBlock(blockId: string, patch: Partial<PopupLeadBlock>) {
+    setDraft((current) => ({
+      ...current,
+      formConfig: {
+        ...current.formConfig,
+        blocks: current.formConfig.blocks.map((block) => block.id === blockId ? { ...block, ...patch } : block)
+      }
+    }));
+  }
+
+  function resizeLeadBlock(blockId: string, requestedCount: number) {
     setDraft((current) => {
-      const fields = [...current.formConfig.fields];
-      [fields[index], fields[target]] = [fields[target], fields[index]];
-      return { ...current, formConfig: { ...current.formConfig, fields } };
+      const block = current.formConfig.blocks.find((candidate) => candidate.id === blockId);
+      if (!block) return current;
+      const count = Math.min(4, Math.max(1, requestedCount));
+      if (count === block.fieldIds.length) return current;
+      if (count < block.fieldIds.length) {
+        const removedIds = new Set(block.fieldIds.slice(count));
+        return {
+          ...current,
+          formConfig: {
+            ...current.formConfig,
+            fields: current.formConfig.fields.filter((field) => !removedIds.has(field.id)),
+            blocks: current.formConfig.blocks.map((candidate) => candidate.id === blockId
+              ? { ...candidate, fieldIds: candidate.fieldIds.slice(0, count) } : candidate)
+          }
+        };
+      }
+      const available = 12 - current.formConfig.fields.length;
+      const additions = Array.from({ length: Math.min(count - block.fieldIds.length, available) }, (_, index) => (
+        newLeadField(current.formConfig.fields.length + index + 1)
+      ));
+      return {
+        ...current,
+        formConfig: {
+          ...current.formConfig,
+          fields: [...current.formConfig.fields, ...additions],
+          blocks: current.formConfig.blocks.map((candidate) => candidate.id === blockId
+            ? { ...candidate, fieldIds: [...candidate.fieldIds, ...additions.map((field) => field.id)] } : candidate)
+        }
+      };
+    });
+  }
+
+  function moveLeadBlock(index: number, direction: -1 | 1) {
+    setDraft((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.formConfig.blocks.length) return current;
+      const blocks = [...current.formConfig.blocks];
+      [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
+      return { ...current, formConfig: { ...current.formConfig, blocks } };
+    });
+  }
+
+  function removeLeadBlock(blockId: string) {
+    setDraft((current) => {
+      if (current.formConfig.blocks.length <= 1) return current;
+      const removed = current.formConfig.blocks.find((block) => block.id === blockId);
+      if (!removed) return current;
+      const removedIds = new Set(removed.fieldIds);
+      return {
+        ...current,
+        formConfig: {
+          ...current.formConfig,
+          fields: current.formConfig.fields.filter((field) => !removedIds.has(field.id)),
+          blocks: current.formConfig.blocks.filter((block) => block.id !== blockId)
+        }
+      };
+    });
+  }
+
+  function addLeadBlock() {
+    setDraft((current) => {
+      if (current.formConfig.fields.length >= 12) return current;
+      const addition = newLeadBlock(current.formConfig.blocks.length + 1);
+      return {
+        ...current,
+        formConfig: {
+          ...current.formConfig,
+          fields: [...current.formConfig.fields, addition.field],
+          blocks: [...current.formConfig.blocks, addition.block]
+        }
+      };
     });
   }
 
@@ -1127,25 +1226,39 @@ export function PopupBannersPage() {
               </div>}
 
               {draft.campaignType === 'lead_form' && <div className="popup-form-section">
-                <SectionHeading icon="formBuilder" title="Поля контактної форми" description="Налаштуйте порядок, тип та обов’язковість полів. Кожен банер формує власний список контактів." aside={`${draft.formConfig.fields.length} із 12`} />
-                <div className="popup-lead-fields">
-                  {draft.formConfig.fields.map((field, index) => <article className="popup-lead-field" key={field.id}>
-                    <span className="popup-lead-field__position">{index + 1}</span>
-                    <div className="popup-lead-field__grid">
-                      <label><span>Назва поля</span><input value={field.label} maxLength={120} onChange={(event) => updateLeadField(index, { label: event.target.value })} /></label>
-                      <label><span>Тип</span><StyledSelect value={field.type} options={leadFieldTypeOptions} onChange={(type) => updateLeadField(index, { type, options: type === 'select' ? field.options : [] })} ariaLabel={`Тип поля ${field.label}`} /></label>
-                      {field.type !== 'checkbox' && <label><span>Підказка <i>необов’язково</i></span><input value={field.placeholder} maxLength={200} onChange={(event) => updateLeadField(index, { placeholder: event.target.value })} /></label>}
-                      {field.type === 'select' && <label className="is-full"><span>Варіанти — по одному з рядка</span><textarea rows={3} value={field.options.join('\n')} onChange={(event) => updateLeadField(index, { options: inputLines(event.target.value).slice(0, 20) })} /></label>}
-                      <label className="popup-lead-field__required"><input type="checkbox" checked={field.required} onChange={(event) => updateLeadField(index, { required: event.target.checked })} /><span>{field.type === 'checkbox' ? 'Потрібна згода' : 'Обов’язкове поле'}</span></label>
-                    </div>
-                    <span className="popup-lead-field__actions">
-                      <button className="icon-button" type="button" disabled={index === 0} onClick={() => moveLeadField(index, -1)} aria-label="Перемістити поле вище"><Icon name="arrowUp" size={16} /></button>
-                      <button className="icon-button" type="button" disabled={index === draft.formConfig.fields.length - 1} onClick={() => moveLeadField(index, 1)} aria-label="Перемістити поле нижче"><Icon name="arrowDown" size={16} /></button>
-                      <button className="icon-button icon-button--danger" type="button" disabled={draft.formConfig.fields.length === 1} onClick={() => setDraft((current) => ({ ...current, formConfig: { ...current.formConfig, fields: current.formConfig.fields.filter((_, fieldIndex) => fieldIndex !== index) } }))} aria-label="Видалити поле"><Icon name="delete" size={16} /></button>
-                    </span>
-                  </article>)}
+                <SectionHeading icon="formBuilder" title="Блоки контактної форми" description="Задайте кількість полів і розміщення для кожного блоку. Один елемент завжди займає всю ширину." aside={`${draft.formConfig.blocks.length} блоків · ${draft.formConfig.fields.length} із 12 полів`} />
+                <div className="popup-lead-blocks">
+                  {draft.formConfig.blocks.map((block, blockIndex) => {
+                    const blockFields = block.fieldIds.map((fieldId) => draft.formConfig.fields.find((field) => field.id === fieldId)).filter((field): field is PopupLeadField => Boolean(field));
+                    const maximumCount = Math.min(4, blockFields.length + 12 - draft.formConfig.fields.length);
+                    return <article className="popup-lead-block" key={block.id}>
+                      <header className="popup-lead-block__header">
+                        <span className="popup-lead-block__position">{blockIndex + 1}</span>
+                        <div><strong>Блок {blockIndex + 1}</strong><small>{blockFields.length === 1 ? 'Поле займає 100% ширини' : block.layout === 'row' ? 'Поля в одному рядку' : 'Поля одне під одним'}</small></div>
+                        <label><span>Кількість полів</span><StyledSelect value={String(blockFields.length)} options={Array.from({ length: maximumCount }, (_, index) => ({ value: String(index + 1), label: String(index + 1) }))} onChange={(value) => resizeLeadBlock(block.id, Number(value))} ariaLabel={`Кількість полів у блоці ${blockIndex + 1}`} /></label>
+                        <label><span>Розміщення</span><StyledSelect value={block.layout} options={[{ value: 'row', label: 'Рядок' }, { value: 'column', label: 'Колонка' }]} onChange={(layout) => updateLeadBlock(block.id, { layout: layout as PopupLeadBlockLayout })} ariaLabel={`Розміщення блоку ${blockIndex + 1}`} /></label>
+                        <span className="popup-lead-block__actions">
+                          <button className="icon-button" type="button" disabled={blockIndex === 0} onClick={() => moveLeadBlock(blockIndex, -1)} aria-label="Перемістити блок вище"><Icon name="arrowUp" size={16} /></button>
+                          <button className="icon-button" type="button" disabled={blockIndex === draft.formConfig.blocks.length - 1} onClick={() => moveLeadBlock(blockIndex, 1)} aria-label="Перемістити блок нижче"><Icon name="arrowDown" size={16} /></button>
+                          <button className="icon-button icon-button--danger" type="button" disabled={draft.formConfig.blocks.length === 1} onClick={() => removeLeadBlock(block.id)} aria-label="Видалити блок"><Icon name="delete" size={16} /></button>
+                        </span>
+                      </header>
+                      <div className={`popup-lead-block__fields is-${block.layout}${blockFields.length === 1 ? ' is-single' : ''}`}>
+                        {blockFields.map((field, fieldIndex) => <section className="popup-lead-field" key={field.id}>
+                          <div className="popup-lead-field__heading"><strong>Поле {blockIndex + 1}.{fieldIndex + 1}</strong><small>{leadFieldTypeOptions.find((option) => option.value === field.type)?.label}</small></div>
+                          <div className="popup-lead-field__grid">
+                            <label><span>Назва поля <i>необов’язково</i></span><input value={field.label} maxLength={120} onChange={(event) => updateLeadField(field.id, { label: event.target.value })} /></label>
+                            <label><span>Тип</span><StyledSelect value={field.type} options={leadFieldTypeOptions} onChange={(type) => updateLeadField(field.id, { type, options: type === 'select' ? field.options : [] })} ariaLabel={`Тип поля ${field.label || `${blockIndex + 1}.${fieldIndex + 1}`}`} /></label>
+                            {field.type !== 'checkbox' && <label><span>Підказка <i>необов’язково</i></span><input value={field.placeholder} maxLength={200} onChange={(event) => updateLeadField(field.id, { placeholder: event.target.value })} /></label>}
+                            {field.type === 'select' && <label className="is-full"><span>Варіанти — по одному з рядка</span><textarea rows={3} value={field.options.join('\n')} onChange={(event) => updateLeadField(field.id, { options: inputLines(event.target.value).slice(0, 20) })} /></label>}
+                            <label className="popup-lead-field__required"><input type="checkbox" checked={field.required} onChange={(event) => updateLeadField(field.id, { required: event.target.checked })} /><span>{field.type === 'checkbox' ? 'Потрібна згода' : 'Обов’язкове поле'}</span></label>
+                          </div>
+                        </section>)}
+                      </div>
+                    </article>;
+                  })}
                 </div>
-                <button className="button button--secondary" type="button" disabled={draft.formConfig.fields.length >= 12} onClick={() => setDraft((current) => ({ ...current, formConfig: { ...current.formConfig, fields: [...current.formConfig.fields, newLeadField(current.formConfig.fields.length + 1)] } }))}><Icon name="add" size={17} /> Додати поле</button>
+                <button className="button button--secondary" type="button" disabled={draft.formConfig.fields.length >= 12} onClick={addLeadBlock}><Icon name="add" size={17} /> Додати блок</button>
                 <div className="popup-form-grid popup-lead-result-settings">
                   <label><span>Кнопка відправлення</span><input value={draft.formConfig.submitLabel} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, formConfig: { ...current.formConfig, submitLabel: event.target.value } }))} /></label>
                   <label><span>Заголовок після відправлення</span><input value={draft.formConfig.successTitle} maxLength={240} onChange={(event) => setDraft((current) => ({ ...current, formConfig: { ...current.formConfig, successTitle: event.target.value } }))} /></label>
@@ -1309,7 +1422,7 @@ export function PopupBannersPage() {
               {selectedId && contacts.isError && <div className="popup-list-state is-error">Не вдалося завантажити контакти.</div>}
               {selectedId && !contacts.isLoading && !contacts.data?.items.length && <div className="popup-list-state"><span><Icon name="users" size={25} /></span><strong>Контактів ще немає</strong><small>Записи з’являться після успішного заповнення форми на сайті.</small></div>}
               {Boolean(contacts.data?.items.length) && <div className="popup-contacts-table-wrap"><table className="popup-contacts-table">
-                <thead><tr><th>Дата</th>{contacts.data!.campaign.formConfig.fields.map((field) => <th key={field.id}>{field.label}</th>)}<th>Сторінка</th></tr></thead>
+                <thead><tr><th>Дата</th>{contacts.data!.campaign.formConfig.fields.map((field, index) => <th key={field.id}>{field.label || field.placeholder || `Поле ${index + 1}`}</th>)}<th>Сторінка</th></tr></thead>
                 <tbody>{contacts.data!.items.map((contact) => <tr key={contact.id}>
                   <td>{formatDate(contact.createdAt)}</td>
                   {contacts.data!.campaign.formConfig.fields.map((field) => <td key={field.id}>{contact.values[field.id] === true ? 'Так' : contact.values[field.id] === false ? 'Ні' : String(contact.values[field.id] || '—')}</td>)}

@@ -1418,10 +1418,14 @@ test('lead-form campaign stores a deduplicated contact and exports campaign list
   }).expect(201);
   const formConfig = {
     fields: [
-      { id: 'email', type: 'email', label: 'Email', placeholder: 'name@example.com', required: true, options: [] },
+      { id: 'email', type: 'email', label: '', placeholder: 'name@example.com', required: true, options: [] },
       { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] },
       { id: 'interest', type: 'select', label: 'Цікавить', placeholder: 'Оберіть категорію', required: false, options: ['Смартфони', 'Аксесуари'] },
       { id: 'consent', type: 'checkbox', label: 'Погоджуюся на обробку даних', placeholder: '', required: true, options: [] }
+    ],
+    blocks: [
+      { id: 'contacts', layout: 'row', fieldIds: ['email', 'phone'] },
+      { id: 'details', layout: 'column', fieldIds: ['interest', 'consent'] }
     ],
     submitLabel: 'Отримати промокод',
     successTitle: 'Готово',
@@ -1446,6 +1450,8 @@ test('lead-form campaign stores a deduplicated contact and exports campaign list
     productEntries: []
   })).expect(201);
   assert.equal(created.body.data.formConfig.fields.length, 4);
+  assert.equal(created.body.data.formConfig.fields[0].label, '');
+  assert.equal(created.body.data.formConfig.blocks[0].layout, 'row');
   assert.equal(created.body.data.publishedFormConfig, null);
   await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
 
@@ -1505,9 +1511,10 @@ test('lead-form widget renders and reveals its promo code after submission on de
       behavior: { ...input().behavior, frequency: 'always', requireAcknowledgement: false, buttonCount: 1 },
       formConfig: {
         fields: [
-          { id: 'email', type: 'email', label: 'Email', placeholder: 'name@example.com', required: true, options: [] },
+          { id: 'email', type: 'email', label: '', placeholder: 'name@example.com', required: true, options: [] },
           { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }
         ],
+        blocks: [{ id: 'contacts', layout: 'row', fieldIds: ['email', 'phone'] }],
         submitLabel: 'Отримати код', successTitle: 'Готово', successBody: 'Скопіюйте промокод.'
       },
       promoCode: null
@@ -1536,6 +1543,9 @@ test('lead-form widget renders and reveals its promo code after submission on de
     await new Promise((resolve) => dom.window.setTimeout(resolve, 35));
     const shadow = dom.window.document.querySelector('#mt-popup-banner-root').shadowRoot;
     assert.equal(shadow.querySelector('.promo-code'), null);
+    assert.equal(shadow.querySelector('.lead-form-block.is-row').children.length, 2);
+    assert.equal(shadow.querySelector('[name="email"]').getAttribute('aria-label'), 'name@example.com');
+    assert.equal(shadow.querySelector('.lead-field-email > span'), null);
     shadow.querySelector('[name="email"]').value = 'buyer@example.com';
     shadow.querySelector('[name="phone"]').value = '+380501112233';
     shadow.querySelector('.lead-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
@@ -1546,4 +1556,31 @@ test('lead-form widget renders and reveals its promo code after submission on de
     assert.match(shadow.querySelector('style').textContent, /@media\(max-width:600px\)\{\.lead-form/u);
     dom.window.close();
   }
+});
+
+test('popup live preview never steals focus from the workspace editor', async () => {
+  const dom = new JSDOM('<!doctype html><html><body><input id="workspace-field"></body></html>', {
+    pretendToBeVisual: true, runScripts: 'outside-only', url: 'https://mt-panel.example.com/tools/popup-banners'
+  });
+  const workspaceField = dom.window.document.querySelector('#workspace-field');
+  workspaceField.focus();
+  dom.window.__MT_POPUP_PREVIEW__ = {
+    campaign: {
+      publicId: 'preview', revision: 'focus-regression', type: 'lead_form', mode: 'all_pages',
+      content: { eyebrow: '', title: 'Форма', body: '', primaryLabel: '', primaryUrl: '', secondaryLabel: '', imageUrl: '', acknowledgementLabel: '' },
+      styles: input().styles,
+      behavior: { ...input().behavior, frequency: 'always', requireAcknowledgement: false, buttonCount: 1 },
+      formConfig: {
+        fields: [{ id: 'email', type: 'email', label: '', placeholder: 'name@example.com', required: true, options: [] }],
+        blocks: [{ id: 'contact', layout: 'column', fieldIds: ['email'] }],
+        submitLabel: 'Отримати код', successTitle: '', successBody: ''
+      },
+      promoCode: { code: 'CONTACT15', type: 'percent_coupon', discountValue: 15, currency: '', scopeNote: '' }
+    },
+    product: null, recommendations: [], products: []
+  };
+  dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 35));
+  assert.equal(dom.window.document.activeElement, workspaceField);
+  dom.window.close();
 });

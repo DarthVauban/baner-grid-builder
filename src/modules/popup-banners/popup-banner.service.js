@@ -84,6 +84,7 @@ const defaultFormConfig = {
     { id: 'name', type: 'text', label: 'Імʼя', placeholder: 'Ваше імʼя', required: true, options: [] },
     { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }
   ],
+  blocks: [{ id: 'contact', layout: 'row', fieldIds: ['name', 'phone'] }],
   submitLabel: 'Отримати промокод',
   successTitle: 'Ваш промокод готовий',
   successBody: 'Скопіюйте код і використайте його під час оформлення замовлення.'
@@ -267,7 +268,7 @@ function normalizeFormConfig(value) {
     const type = ['text', 'email', 'phone', 'textarea', 'select', 'checkbox'].includes(field.type)
       ? field.type : 'text';
     const label = String(field.label || '').trim().slice(0, 120);
-    if (!/^[a-z][a-z0-9_-]{0,63}$/iu.test(id) || usedIds.has(id) || !label) return [];
+    if (!/^[a-z][a-z0-9_-]{0,63}$/iu.test(id) || usedIds.has(id)) return [];
     usedIds.add(id);
     return [{
       id,
@@ -278,8 +279,37 @@ function normalizeFormConfig(value) {
       options: type === 'select' ? stringList(field.options, 20).map((item) => item.slice(0, 80)) : []
     }];
   }).slice(0, 12);
+  const fieldIds = new Set(fields.map((field) => field.id));
+  const assignedIds = new Set();
+  const usedBlockIds = new Set();
+  const blocks = array(source.blocks).flatMap((candidate) => {
+    const block = object(candidate);
+    const id = String(block.id || '').trim().slice(0, 64);
+    if (!/^[a-z][a-z0-9_-]{0,63}$/iu.test(id) || usedBlockIds.has(id)) return [];
+    const validIds = array(block.fieldIds)
+      .map((fieldId) => String(fieldId || '').trim())
+      .filter((fieldId) => fieldIds.has(fieldId) && !assignedIds.has(fieldId))
+      .slice(0, 4);
+    if (!validIds.length) return [];
+    usedBlockIds.add(id);
+    validIds.forEach((fieldId) => assignedIds.add(fieldId));
+    return [{ id, layout: block.layout === 'row' ? 'row' : 'column', fieldIds: validIds }];
+  }).slice(0, 12);
+  const unassigned = fields.filter((field) => !assignedIds.has(field.id));
+  for (let index = 0; index < unassigned.length; index += 4) {
+    let id = `legacy_${Math.floor(index / 4) + 1}`;
+    let suffix = 2;
+    while (usedBlockIds.has(id)) id = `legacy_${Math.floor(index / 4) + 1}_${suffix++}`;
+    const ids = unassigned.slice(index, index + 4).map((field) => field.id);
+    usedBlockIds.add(id);
+    ids.forEach((fieldId) => assignedIds.add(fieldId));
+    blocks.push({ id, layout: 'column', fieldIds: ids });
+  }
+  const fieldById = new Map(fields.map((field) => [field.id, field]));
+  const orderedFields = blocks.flatMap((block) => block.fieldIds.map((fieldId) => fieldById.get(fieldId)).filter(Boolean));
   return {
-    fields,
+    fields: orderedFields,
+    blocks,
     submitLabel: String(source.submitLabel ?? defaultFormConfig.submitLabel).trim().slice(0, 120)
       || defaultFormConfig.submitLabel,
     successTitle: String(source.successTitle ?? defaultFormConfig.successTitle).trim().slice(0, 240),
@@ -1340,15 +1370,20 @@ function contactValue(field, rawValue) {
   return String(rawValue ?? '').trim().slice(0, maximum);
 }
 
+function contactFieldName(field, index) {
+  return field.label || field.placeholder || `Поле ${index + 1}`;
+}
+
 function validatedContactValues(formConfig, suppliedValues) {
   const source = object(suppliedValues);
   const values = {};
   const details = [];
-  for (const field of formConfig.fields) {
+  for (const [index, field] of formConfig.fields.entries()) {
+    const fieldName = contactFieldName(field, index);
     const value = contactValue(field, source[field.id]);
     const empty = field.type === 'checkbox' ? value !== true : !value;
     if (field.required && empty) {
-      details.push({ field: field.id, message: `Заповніть поле «${field.label}».` });
+      details.push({ field: field.id, message: `Заповніть поле «${fieldName}».` });
       continue;
     }
     if (empty) {
@@ -1356,16 +1391,16 @@ function validatedContactValues(formConfig, suppliedValues) {
       continue;
     }
     if (field.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value)) {
-      details.push({ field: field.id, message: `Перевірте email у полі «${field.label}».` });
+      details.push({ field: field.id, message: `Перевірте email у полі «${fieldName}».` });
     }
     if (field.type === 'phone') {
       const digits = value.replace(/\D/gu, '');
       if (digits.length < 7 || digits.length > 15) {
-        details.push({ field: field.id, message: `Перевірте номер у полі «${field.label}».` });
+        details.push({ field: field.id, message: `Перевірте номер у полі «${fieldName}».` });
       }
     }
     if (field.type === 'select' && !field.options.includes(value)) {
-      details.push({ field: field.id, message: `Оберіть доступне значення у полі «${field.label}».` });
+      details.push({ field: field.id, message: `Оберіть доступне значення у полі «${fieldName}».` });
     }
     values[field.id] = field.type === 'email' ? value.toLocaleLowerCase('uk-UA') : value;
   }
@@ -1514,7 +1549,7 @@ export async function exportPopupContactsWorkbook(campaignId = null) {
        WHERE campaign_id = $1 ORDER BY created_at DESC, id DESC`,
       [campaign.id]
     );
-    const headers = ['Дата отримання', ...formConfig.fields.map((field) => field.label), 'Сторінка'];
+    const headers = ['Дата отримання', ...formConfig.fields.map(contactFieldName), 'Сторінка'];
     const rows = contacts.rows.map((contact) => [
       contact.created_at instanceof Date ? contact.created_at.toISOString() : String(contact.created_at || ''),
       ...formConfig.fields.map((field) => safeSpreadsheetValue(object(contact.values)[field.id])),
@@ -2046,7 +2081,7 @@ export function popupEmbedScript(origin) {
     style.textContent += '.recommendation-image{background:#fff}';
     style.textContent += '.recommendation-price.is-discounted strong{color:#dc2626}';
     style.textContent += \`.promo-code-offer{display:grid;gap:14px;margin-top:22px;padding:18px;border:1px solid color-mix(in srgb,var(--accent) 24%,transparent);border-radius:calc(var(--radius) * .55);background:color-mix(in srgb,var(--accent) 7%,var(--bg))}.promo-code-value{margin:0;color:var(--text);font-size:15px;font-weight:800}.promo-code-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px}.promo-code{display:flex;align-items:center;min-width:0;min-height:52px;overflow:hidden;border:1px dashed color-mix(in srgb,var(--accent) 55%,var(--text));border-radius:var(--button-radius);padding:9px 14px;color:var(--text);background:var(--bg);font:850 20px/1.1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.08em;overflow-wrap:anywhere}.promo-code-copy{display:inline-flex;align-items:center;justify-content:center;min-width:112px;min-height:52px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:9px 16px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.promo-code-copy.is-copied{filter:saturate(.75);opacity:.82}.promo-code-note{margin:0;color:var(--muted);font-size:13px;line-height:1.45}.promo-code-cta{display:flex;align-items:center;justify-content:center;min-height:44px;margin-top:14px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:10px 18px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;text-decoration:none;cursor:pointer}@media(max-width:600px){.promo-code-offer{gap:11px;margin-top:17px;padding:14px}.promo-code-row{grid-template-columns:1fr}.promo-code-copy{width:100%}.promo-code{font-size:18px}}\`;
-    style.textContent += \`.lead-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:22px}.lead-field{display:grid;align-content:start;gap:6px;min-width:0;color:var(--text);font:700 13px/1.35 Inter,system-ui,sans-serif}.lead-field-textarea,.lead-field-select,.lead-field-checkbox,.lead-form-error,.lead-form-submit{grid-column:1/-1}.lead-field input:not([type=checkbox]),.lead-field textarea,.lead-field select{box-sizing:border-box;width:100%;min-height:46px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:var(--button-radius);padding:10px 12px;color:var(--text);background:var(--bg);font:500 15px/1.35 Inter,system-ui,sans-serif;outline:none}.lead-field textarea{min-height:92px;resize:vertical}.lead-field input:focus,.lead-field textarea:focus,.lead-field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}.lead-field input[aria-invalid=true],.lead-field textarea[aria-invalid=true],.lead-field select[aria-invalid=true]{border-color:#dc2626}.lead-field-checkbox{display:flex;align-items:flex-start;gap:9px;padding:4px 0;font-weight:550}.lead-field-checkbox input{flex:0 0 auto;width:18px;height:18px;margin:0;accent-color:var(--accent)}.lead-form-error{min-height:18px;margin:0;color:#b42318;font-size:13px;line-height:1.4}.lead-form-submit{min-height:48px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:10px 18px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.lead-form-submit:disabled{opacity:.6;cursor:wait}.lead-form-success{display:grid;gap:2px;margin-top:20px}.lead-form-success h3{margin:0;color:var(--text);font-size:22px;line-height:1.2}.lead-form-success>p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.45}.lead-form-success .promo-code-offer{margin-top:14px}@media(max-width:600px){.lead-form{grid-template-columns:1fr;gap:11px;margin-top:17px}.lead-field-textarea,.lead-field-select,.lead-field-checkbox,.lead-form-error,.lead-form-submit{grid-column:auto}.lead-form-success h3{font-size:19px}}\`;
+    style.textContent += \`.lead-form{display:grid;gap:13px;margin-top:22px}.lead-form-block{display:grid;gap:13px;min-width:0}.lead-form-block.is-row{grid-template-columns:repeat(var(--lead-columns,1),minmax(0,1fr))}.lead-form-block.is-column{grid-template-columns:1fr}.lead-field{display:grid;align-content:start;gap:6px;min-width:0;color:var(--text);font:700 13px/1.35 Inter,system-ui,sans-serif}.lead-field input:not([type=checkbox]),.lead-field textarea,.lead-field select{box-sizing:border-box;width:100%;min-width:0;min-height:46px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:var(--button-radius);padding:10px 12px;color:var(--text);background:var(--bg);font:500 15px/1.35 Inter,system-ui,sans-serif;outline:none}.lead-field textarea{min-height:92px;resize:vertical}.lead-field input:focus,.lead-field textarea:focus,.lead-field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}.lead-field input[aria-invalid=true],.lead-field textarea[aria-invalid=true],.lead-field select[aria-invalid=true]{border-color:#dc2626}.lead-field-checkbox{display:flex;align-items:flex-start;gap:9px;padding:4px 0;font-weight:550}.lead-field-checkbox input{flex:0 0 auto;width:18px;height:18px;margin:0;accent-color:var(--accent)}.lead-form-error{min-height:18px;margin:0;color:#b42318;font-size:13px;line-height:1.4}.lead-form-submit{min-height:48px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:10px 18px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.lead-form-submit:disabled{opacity:.6;cursor:wait}.lead-form-success{display:grid;gap:2px;margin-top:20px}.lead-form-success h3{margin:0;color:var(--text);font-size:22px;line-height:1.2}.lead-form-success>p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.45}.lead-form-success .promo-code-offer{margin-top:14px}@media(max-width:600px){.lead-form{gap:11px;margin-top:17px}.lead-form-block.is-row{grid-template-columns:1fr}.lead-form-success h3{font-size:19px}}\`;
     style.textContent += \`.product-promo-host{width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);pointer-events:none}
 .product-promo-host .card{width:100%;max-height:none;overflow:hidden;pointer-events:auto;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);box-shadow:0 18px 52px rgba(15,23,42,.22)}
 .card.is-product-promo{display:flex;flex-direction:column;cursor:pointer}
@@ -2187,33 +2222,44 @@ export function popupEmbedScript(origin) {
     } else card.setAttribute('aria-label', isProductPromo ? 'Товарний промобанер' : isPromoCode ? 'Банер із промокодом' : isLeadForm ? 'Форма за промокод' : 'Інформаційний попап');
     if (campaign.content.body) { const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body); }
     if (isLeadForm) {
-      const formConfig = campaign.formConfig || { fields: [], submitLabel: 'Отримати промокод', successTitle: '', successBody: '' };
+      const formConfig = campaign.formConfig || { fields: [], blocks: [], submitLabel: 'Отримати промокод', successTitle: '', successBody: '' };
       const form = document.createElement('form'); form.className = 'lead-form'; form.noValidate = true;
       const bindings = [];
-      for (const field of formConfig.fields || []) {
-        const label = document.createElement('label'); label.className = 'lead-field lead-field-' + field.type;
-        let control;
-        if (field.type === 'checkbox') {
-          control = document.createElement('input'); control.type = 'checkbox';
-          const text = document.createElement('span'); text.textContent = field.label;
-          label.append(control, text);
-        } else {
-          const text = document.createElement('span'); text.textContent = field.label + (field.required ? ' *' : '');
-          if (field.type === 'textarea') control = document.createElement('textarea');
-          else if (field.type === 'select') {
-            control = document.createElement('select');
-            const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = field.placeholder || 'Оберіть значення'; control.append(placeholder);
-            for (const option of field.options || []) { const node = document.createElement('option'); node.value = option; node.textContent = option; control.append(node); }
+      const formFields = formConfig.fields || [];
+      const fieldMap = new Map(formFields.map((field) => [field.id, field]));
+      const configuredBlocks = formConfig.blocks?.length ? formConfig.blocks : [{ id: 'legacy', layout: 'column', fieldIds: formFields.map((field) => field.id) }];
+      for (const block of configuredBlocks) {
+        const blockFields = (block.fieldIds || []).map((fieldId) => fieldMap.get(fieldId)).filter(Boolean);
+        if (!blockFields.length) continue;
+        const blockNode = document.createElement('div'); blockNode.className = 'lead-form-block is-' + (block.layout === 'row' ? 'row' : 'column');
+        blockNode.style.setProperty('--lead-columns', String(blockFields.length));
+        for (const field of blockFields) {
+          const label = document.createElement('label'); label.className = 'lead-field lead-field-' + field.type;
+          let control;
+          if (field.type === 'checkbox') {
+            control = document.createElement('input'); control.type = 'checkbox';
+            label.append(control);
+            if (field.label) { const text = document.createElement('span'); text.textContent = field.label; label.append(text); }
           } else {
-            control = document.createElement('input');
-            control.type = field.type === 'phone' ? 'tel' : field.type === 'email' ? 'email' : 'text';
+            if (field.label) { const text = document.createElement('span'); text.textContent = field.label + (field.required ? ' *' : ''); label.append(text); }
+            if (field.type === 'textarea') control = document.createElement('textarea');
+            else if (field.type === 'select') {
+              control = document.createElement('select');
+              const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = field.placeholder || 'Оберіть значення'; control.append(placeholder);
+              for (const option of field.options || []) { const node = document.createElement('option'); node.value = option; node.textContent = option; control.append(node); }
+            } else {
+              control = document.createElement('input');
+              control.type = field.type === 'phone' ? 'tel' : field.type === 'email' ? 'email' : 'text';
+            }
+            if (field.placeholder && field.type !== 'select') control.placeholder = field.placeholder;
+            label.append(control);
           }
-          if (field.placeholder && field.type !== 'select') control.placeholder = field.placeholder;
-          label.append(text, control);
+          control.name = field.id; control.required = Boolean(field.required);
+          control.setAttribute('aria-label', field.label || field.placeholder || 'Поле ' + (bindings.length + 1));
+          control.autocomplete = field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : field.id === 'name' ? 'name' : 'off';
+          blockNode.append(label); bindings.push({ field, control });
         }
-        control.name = field.id; control.required = Boolean(field.required);
-        control.autocomplete = field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : field.id === 'name' ? 'name' : 'off';
-        form.append(label); bindings.push({ field, control });
+        form.append(blockNode);
       }
       const formError = document.createElement('p'); formError.className = 'lead-form-error'; formError.setAttribute('role', 'alert');
       const submit = document.createElement('button'); submit.className = 'lead-form-submit'; submit.type = 'submit'; submit.textContent = formConfig.submitLabel || 'Отримати промокод';
@@ -2272,7 +2318,7 @@ export function popupEmbedScript(origin) {
         cleanupTasks.push(() => clearTimeout(autoCloseTimer));
       }
       activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
-      requestAnimationFrame(() => bindings[0]?.control.focus());
+      if (!previewMode) requestAnimationFrame(() => bindings[0]?.control.focus());
       return;
     }
     if (isPromoCode) {
@@ -2285,7 +2331,7 @@ export function popupEmbedScript(origin) {
         cleanupTasks.push(() => clearTimeout(autoCloseTimer));
       }
       activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
-      requestAnimationFrame(() => copy.focus());
+      if (!previewMode) requestAnimationFrame(() => copy.focus());
       return;
     }
     if (campaign.mode === 'out_of_stock' || isProductPromo) {
@@ -2423,7 +2469,7 @@ export function popupEmbedScript(origin) {
         cleanupTasks.push(() => clearTimeout(autoCloseTimer));
       }
       activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
-      if (!isProductPromo) requestAnimationFrame(() => card.focus({ preventScroll: true }));
+      if (!previewMode && !isProductPromo) requestAnimationFrame(() => card.focus({ preventScroll: true }));
       return;
     }
     let acknowledgement = null;
@@ -2455,7 +2501,7 @@ export function popupEmbedScript(origin) {
       cleanupTasks.push(() => clearTimeout(autoCloseTimer));
     }
     activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
-    requestAnimationFrame(() => primary.focus());
+    if (!previewMode) requestAnimationFrame(() => primary.focus());
   }
 
   function clearPendingRender() {

@@ -95,6 +95,7 @@ export interface PopupProductTarget {
 }
 
 export type PopupLeadFieldType = 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'checkbox';
+export type PopupLeadBlockLayout = 'row' | 'column';
 
 export interface PopupLeadField {
   id: string;
@@ -105,8 +106,15 @@ export interface PopupLeadField {
   options: string[];
 }
 
+export interface PopupLeadBlock {
+  id: string;
+  layout: PopupLeadBlockLayout;
+  fieldIds: string[];
+}
+
 export interface PopupLeadFormConfig {
   fields: PopupLeadField[];
+  blocks: PopupLeadBlock[];
   submitLabel: string;
   successTitle: string;
   successBody: string;
