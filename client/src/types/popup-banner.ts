@@ -1,5 +1,7 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo';
+import type { PromoCodeSnapshot } from './promo-code';
+
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code';
 export type PopupLayout = 'modal' | 'bottom-sheet' | 'corner';
 export type PopupPromoFormat = 'notification' | 'compact' | 'standard' | 'wide' | 'custom';
 export type PopupDesktopPosition = 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
@@ -131,11 +133,16 @@ export interface PopupCampaign {
   publishedAt: string | null;
   productTargets: PopupProductTarget[];
   promoProducts: PopupPromoProduct[];
+  promoCodeId: string | null;
+  promoCode: PromoCodeSnapshot | null;
+  publishedPromoCode: PromoCodeSnapshot | null;
   stats: {
     impressions: number;
     dismissals: number;
     clicks: number;
     acknowledgements: number;
+    copies: number;
+    promoCtaClicks: number;
   };
   connection: { id: string; generation: string; storeDomain: string } | null;
   resolution?: {
@@ -158,6 +165,7 @@ export interface PopupCampaignInput {
   endsAt: string | null;
   productEntries: string[];
   promoItems: PopupPromoProductReference[];
+  promoCodeId: string | null;
 }
 
 export interface PopupCampaignOptions {

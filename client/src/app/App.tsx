@@ -102,6 +102,9 @@ const OnlineSupportPage = lazy(() => import('../pages/OnlineSupportPage').then((
 const PopupBannersPage = lazy(() => import('../pages/PopupBannersPage').then((module) => ({
   default: module.PopupBannersPage
 })));
+const PromoCodesPage = lazy(() => import('../pages/PromoCodesPage').then((module) => ({
+  default: module.PromoCodesPage
+})));
 const HoroshopCatalogMenuPage = lazy(() => import('../pages/HoroshopCatalogMenuPage').then((module) => ({
   default: module.HoroshopCatalogMenuPage
 })));
@@ -240,6 +243,7 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="popup_banners" />}>
             <Route path="tools/popup-banners" element={<Suspense fallback={<LoadingScreen />}><PopupBannersPage /></Suspense>} />
+            <Route path="tools/promo-codes" element={<Suspense fallback={<LoadingScreen />}><PromoCodesPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="horoshop_catalog_menu" />}>
             <Route path="tools/horoshop-catalog-menu" element={<Suspense fallback={<LoadingScreen />}><HoroshopCatalogMenuPage /></Suspense>} />

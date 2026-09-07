@@ -6,6 +6,7 @@ import { ConfirmDialogProvider } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
 import type { PopupCampaign, PopupCampaignOptions } from '../types/popup-banner';
+import type { PromoCode } from '../types/promo-code';
 import { PopupBannersPage } from './PopupBannersPage';
 
 const baseCampaign: PopupCampaign = {
@@ -97,7 +98,10 @@ const baseCampaign: PopupCampaign = {
     matchedBy: 'sku'
   }],
   promoProducts: [],
-  stats: { impressions: 1280, dismissals: 32, clicks: 14, acknowledgements: 115 },
+  promoCodeId: null,
+  promoCode: null,
+  publishedPromoCode: null,
+  stats: { impressions: 1280, dismissals: 32, clicks: 14, acknowledgements: 115, copies: 0, promoCtaClicks: 0 },
   connection: { id: 'connection-1', generation: 'generation-1', storeDomain: 'mobiletrend.com.ua' },
   createdAt: '2026-08-20T08:00:00.000Z',
   updatedAt: '2026-08-21T09:00:00.000Z'
@@ -111,7 +115,7 @@ const secondCampaign: PopupCampaign = {
   status: 'draft',
   targeting: { ...baseCampaign.targeting, mode: 'all_products' },
   productTargets: [],
-  stats: { impressions: 0, dismissals: 0, clicks: 0, acknowledgements: 0 }
+  stats: { impressions: 0, dismissals: 0, clicks: 0, acknowledgements: 0, copies: 0, promoCtaClicks: 0 }
 };
 
 const options: PopupCampaignOptions = {
@@ -126,6 +130,27 @@ const options: PopupCampaignOptions = {
   brands: ['Apple', 'Samsung'],
   conditions: ['Вживаний', 'Новий'],
   categories: [{ id: 'phones', title: 'Смартфони' }]
+};
+
+const promoCode: PromoCode = {
+  id: '9a70136d-6538-47b8-9645-d6897a8ab854',
+  connectionId: 'connection-1',
+  storeDomain: 'mobiletrend.com.ua',
+  internalName: 'Осіння знижка',
+  code: 'AUTUMN10',
+  type: 'percent_coupon',
+  discountValue: 10,
+  currency: '',
+  startsAt: null,
+  endsAt: null,
+  usageLimit: 200,
+  scopeNote: 'Лише аксесуари',
+  status: 'active',
+  enabled: true,
+  horoshopConfirmed: true,
+  campaigns: [],
+  createdAt: '2026-09-07T08:00:00.000Z',
+  updatedAt: '2026-09-07T08:00:00.000Z'
 };
 
 function renderPage() {
@@ -171,6 +196,7 @@ beforeEach(() => {
     categories: [{ externalId: 'phones', parentExternalId: null, titles: { uk: 'Смартфони' }, productCount: 1 }],
     availabilityOptions: ['В наявності'], total: 2, page: 1, pageSize: 60, pageCount: 1
   });
+  vi.spyOn(api.promoCodes, 'list').mockResolvedValue([promoCode]);
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -405,4 +431,65 @@ describe('PopupBannersPage', () => {
       ]
     }), expect.anything()));
   }, 10_000);
+
+  it('creates a promo code banner from the reusable library', async () => {
+    const create = vi.spyOn(api.popupBanners, 'create').mockImplementation(async (campaign) => ({
+      ...structuredClone(baseCampaign),
+      ...campaign,
+      id: 'promo-code-campaign',
+      publicId: 'promo-code-public',
+      status: 'draft',
+      productTargets: [],
+      promoProducts: [],
+      promoCodeId: promoCode.id,
+      promoCode: {
+        libraryId: promoCode.id,
+        internalName: promoCode.internalName,
+        code: promoCode.code,
+        type: promoCode.type,
+        discountValue: promoCode.discountValue,
+        currency: promoCode.currency,
+        startsAt: promoCode.startsAt,
+        endsAt: promoCode.endsAt,
+        usageLimit: promoCode.usageLimit,
+        scopeNote: promoCode.scopeNote,
+        status: promoCode.status,
+        horoshopConfirmed: promoCode.horoshopConfirmed,
+        capturedAt: '2026-09-07T09:00:00.000Z'
+      },
+      publishedPromoCode: null,
+      stats: baseCampaign.stats,
+      connection: baseCampaign.connection,
+      createdAt: baseCampaign.createdAt,
+      updatedAt: baseCampaign.updatedAt,
+      publishedAt: null
+    }));
+    const { container } = renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /Банер із промокодом/u }));
+    expect(screen.getByText('Опублікована версія не змінюється непомітно')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Обрати промокод/u }));
+    const codeOption = (await screen.findByText('AUTUMN10')).closest('button');
+    expect(codeOption).not.toBeNull();
+    fireEvent.click(codeOption!);
+
+    expect(container.querySelector('.popup-preview__promo-code')).toHaveTextContent('AUTUMN10');
+    expect(screen.getAllByText('−10%')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
+    fireEvent.click(screen.getByRole('button', { name: 'Умова появи' }));
+    expect(await screen.findByRole('option', { name: 'Коли покупець збирається вийти' })).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement || document.body, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /Контент і дизайн/u }));
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      campaignType: 'promo_code',
+      promoCodeId: promoCode.id,
+      targeting: expect.objectContaining({ mode: 'all_pages' }),
+      content: expect.objectContaining({ primaryLabel: 'Перейти до акції', primaryUrl: '' })
+    }), expect.anything()));
+  });
 });

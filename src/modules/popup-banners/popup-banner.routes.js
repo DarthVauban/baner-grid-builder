@@ -37,7 +37,7 @@ const contentSchema = z.object({
   eyebrow: z.string().max(120).optional(),
   title: z.string().trim().max(240).optional().default(''),
   body: z.string().trim().max(3000).optional().default(''),
-  primaryLabel: z.string().trim().min(1).max(120),
+  primaryLabel: z.string().trim().max(120),
   primaryUrl: z.string().max(2000).optional().default(''),
   secondaryLabel: z.string().max(120).optional().default(''),
   imageUrl: z.string().max(2000).optional().default(''),
@@ -127,7 +127,7 @@ const behaviorSchema = z.object({
   }
 });
 const campaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code']).default('message'),
   name: z.string().trim().min(1).max(160),
   priority: z.number().int().min(0).max(1000),
   content: contentSchema,
@@ -136,6 +136,8 @@ const campaignSchema = z.object({
   behavior: behaviorSchema,
   startsAt: nullableDateSchema,
   endsAt: nullableDateSchema,
+  promoCodeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional().default(null)
+    .transform((value) => value || null),
   productEntries: z.array(z.string().trim().min(1).max(500)).max(500).default([]),
   promoItems: z.array(z.object({
     productExternalId: z.string().trim().min(1).max(300),
@@ -149,6 +151,14 @@ const campaignSchema = z.object({
     context.addIssue({
       code: 'custom', path: ['targeting', 'mode'], message: 'Цей тип банера не підтримує сценарій відсутнього товару.'
     });
+  }
+  if (value.campaignType === 'promo_code' && value.targeting.mode === 'out_of_stock') {
+    context.addIssue({
+      code: 'custom', path: ['targeting', 'mode'], message: 'Банер із промокодом не підтримує сценарій відсутнього товару.'
+    });
+  }
+  if (value.campaignType === 'promo_code' && !value.promoCodeId) {
+    context.addIssue({ code: 'custom', path: ['promoCodeId'], message: 'Оберіть промокод із бібліотеки.' });
   }
   if (
     value.behavior.trigger === 'exit_intent'
@@ -170,6 +180,9 @@ const campaignSchema = z.object({
   });
   if (!value.content.body) context.addIssue({
     code: 'custom', path: ['content', 'body'], message: 'Вкажіть основний текст банера.'
+  });
+  if (value.campaignType !== 'promo_code' && !value.content.primaryLabel) context.addIssue({
+    code: 'custom', path: ['content', 'primaryLabel'], message: 'Вкажіть текст основної кнопки.'
   });
 });
 const statusSchema = z.object({ status: z.enum(['draft', 'active', 'paused']) });

@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { PromoCodePickerModal } from '../components/promo-codes/PromoCodePickerModal';
 import { StyledSelect } from '../components/StyledSelect';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
 import type { HoroshopCatalogModification, HoroshopCatalogProduct } from '../types/horoshop-catalog';
+import type { PromoCode, PromoCodeSnapshot } from '../types/promo-code';
 import type {
   PopupCampaign,
   PopupCampaignInput,
@@ -42,7 +45,8 @@ const statusLabels: Record<PopupCampaignStatus, string> = {
 const campaignTypeLabels: Record<PopupCampaignType, string> = {
   message: 'Інформаційний попап',
   out_of_stock_recommendations: 'Альтернативи товару',
-  product_promo: 'Товарний промобанер'
+  product_promo: 'Товарний промобанер',
+  promo_code: 'Банер із промокодом'
 };
 
 const layoutLabels: Record<PopupLayout, string> = {
@@ -167,6 +171,7 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
     },
     startsAt: null,
     endsAt: null,
+    promoCodeId: null,
     productEntries: [],
     promoItems: []
   };
@@ -223,6 +228,31 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       behavior: { ...draft.behavior, frequency: 'always', buttonCount: 1 }
     };
   }
+  if (campaignType === 'promo_code') {
+    return {
+      ...draft,
+      name: 'Банер із промокодом',
+      content: {
+        ...draft.content,
+        eyebrow: 'Промокод',
+        title: 'Знижка для вас',
+        body: 'Скопіюйте код і використайте його під час оформлення замовлення.',
+        primaryLabel: 'Перейти до акції',
+        primaryUrl: '',
+        secondaryLabel: '',
+        acknowledgementLabel: ''
+      },
+      styles: { ...draft.styles, maxWidth: 560 },
+      targeting: { ...draft.targeting, mode: 'all_pages' },
+      behavior: {
+        ...draft.behavior,
+        frequency: 'session',
+        maxShowsPerSession: 1,
+        requireAcknowledgement: false,
+        buttonCount: 1
+      }
+    };
+  }
   return draft;
 }
 
@@ -241,6 +271,7 @@ function campaignInput(campaign: PopupCampaign): PopupCampaignInput {
     behavior: { ...campaign.behavior },
     startsAt: campaign.startsAt,
     endsAt: campaign.endsAt,
+    promoCodeId: campaign.promoCodeId,
     productEntries: campaign.productTargets.map((item) => item.sku),
     promoItems: campaign.promoProducts.map((item) => ({
       productExternalId: item.productExternalId,
@@ -306,6 +337,12 @@ function storefrontImageUrl(value: string) {
 function money(value: string, currency: string) {
   if (!value) return 'Ціна не вказана';
   return `${value}${currency.toUpperCase() === 'UAH' ? ' грн' : currency ? ` ${currency}` : ''}`;
+}
+
+function promoCodeValue(value: PromoCode | PromoCodeSnapshot) {
+  return value.type === 'percent_coupon'
+    ? `−${value.discountValue}%`
+    : `${value.discountValue.toLocaleString('uk-UA')} ${value.currency}`;
 }
 
 function campaignUsesAttachedProducts(campaignType: PopupCampaignType) {
@@ -398,7 +435,7 @@ function TargetModePicker({ value, campaignType, onChange }: { value: PopupTarge
     { value: 'all_products', icon: 'storefront', description: 'Будь-яка сторінка товару' },
     { value: 'all_pages', icon: 'productPage', description: 'Увесь сайт без обмежень' }
   ];
-  const visibleModes = campaignType === 'product_promo'
+  const visibleModes = campaignType === 'product_promo' || campaignType === 'promo_code'
     ? modes.filter((mode) => mode.value !== 'out_of_stock')
     : modes;
   return <div className="popup-target-mode" role="radiogroup" aria-label="Тип вибірки">
@@ -470,8 +507,7 @@ function PromoPositionPicker({
 
 function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) => void }) {
   const planned = [
-    { stage: 2, title: 'Банер із таймером', description: 'Акція з візуальним зворотним відліком.', icon: 'schedule' as const },
-    { stage: 3, title: 'Банер із промокодом', description: 'Промокод із швидким копіюванням.', icon: 'copy' as const }
+    { stage: 2, title: 'Банер із таймером', description: 'Акція з візуальним зворотним відліком.', icon: 'schedule' as const }
   ];
   return <section className="popup-type-picker">
     <header><p className="eyebrow">Нова кампанія</p><h2>Оберіть тип банера</h2><p>Тип визначає структуру конструктора, поведінку на сайті та набір доступних налаштувань.</p></header>
@@ -482,6 +518,12 @@ function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) 
           <span><Icon name="productCard" size={25} /></span><i>НОВИЙ</i>
           <strong>Товарний промобанер</strong>
           <small>Від компактного Elfsight-подібного сповіщення до широкої добірки. Без оверлею — сайт залишається доступним.</small>
+          <b>Створити банер <Icon name="arrow" size={16} /></b>
+        </button>
+        <button type="button" onClick={() => onSelect('promo_code')}>
+          <span><Icon name="copy" size={25} /></span><i>НОВИЙ</i>
+          <strong>Банер із промокодом</strong>
+          <small>Код із локальної бібліотеки, швидке копіювання та опційний CTA. Промокод не застосовується автоматично.</small>
           <b>Створити банер <Icon name="arrow" size={16} /></b>
         </button>
         {planned.map((item) => <article key={item.title}>
@@ -500,7 +542,11 @@ function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) 
   </section>;
 }
 
-function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoProducts: PopupPromoProduct[] }) {
+function Preview({ draft, promoProducts, promoCode }: {
+  draft: PopupCampaignInput;
+  promoProducts: PopupPromoProduct[];
+  promoCode: PromoCode | PromoCodeSnapshot | null;
+}) {
   const [acknowledged, setAcknowledged] = useState(false);
   const [viewport, setViewport] = useState<PreviewViewport>('desktop');
   const [previewProductIndex, setPreviewProductIndex] = useState(0);
@@ -564,7 +610,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
         <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон"><Icon name="phone" size={16} /></button>
       </div>
     </header>
-    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}${styles.promoFormat === 'compact' && styles.showPromoTitle ? ' has-promo-title' : ''}` : ''}`} style={{
+    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}${styles.promoFormat === 'compact' && styles.showPromoTitle ? ' has-promo-title' : ''}` : ''}${draft.campaignType === 'promo_code' ? ' is-promo-code' : ''}`} style={{
       '--preview-accent': styles.accentColor,
       '--preview-bg': styles.backgroundColor,
       '--preview-text': styles.textColor,
@@ -609,6 +655,12 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
             {content.eyebrow && !isPromoNotification && <p>{content.eyebrow}</p>}
             {(!isPromoNotification || content.title) && <h3>{content.title || 'Заголовок попапа'}</h3>}
             {(!isPromoNotification || content.body) && <div>{content.body || 'Текст попапа'}</div>}
+            {draft.campaignType === 'promo_code' && <div className="popup-preview__promo-code">
+              {promoCode ? <>
+                <span><small>{promoCode.type === 'percent_coupon' ? 'Знижка' : 'Сертифікат'}</small><strong>{promoCodeValue(promoCode)}</strong></span>
+                <button type="button"><code>{promoCode.code}</code><span><Icon name="copy" size={16} /> Скопіювати</span></button>
+              </> : <div className="popup-preview__promo-code-empty"><Icon name="copy" size={22} /> Оберіть промокод</div>}
+            </div>}
             {(draft.targeting.mode === 'out_of_stock' || hasAttachedProducts) && <div className="popup-preview__recommendations">
               {visibleProductCards.length ? visibleProductCards.map((item) => <article className="is-visible" key={item.id}>
                 <span className="popup-preview__recommendation-image">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : <Icon name="productCard" size={28} />}</span>
@@ -617,13 +669,16 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
                 <button type="button">{content.primaryLabel || 'Купити'}</button>
               </article>) : <div className="popup-preview__product-empty">Додайте товари у наступному розділі</div>}
             </div>}
-            {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.behavior.requireAcknowledgement && <label>
+            {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.campaignType !== 'promo_code' && draft.behavior.requireAcknowledgement && <label>
               <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
               <span>{content.acknowledgementLabel}</span>
             </label>}
-            {draft.targeting.mode !== 'out_of_stock' && !hasAttachedProducts && <footer>
+            {draft.targeting.mode !== 'out_of_stock' && !hasAttachedProducts && draft.campaignType !== 'promo_code' && <footer>
               {draft.behavior.buttonCount === 2 && <button type="button">{content.secondaryLabel || 'Закрити'}</button>}
               <button type="button" className="is-primary" disabled={draft.behavior.requireAcknowledgement && !acknowledged}>{content.primaryLabel || 'Продовжити'}</button>
+            </footer>}
+            {draft.campaignType === 'promo_code' && content.primaryLabel && content.primaryUrl && <footer className="popup-preview__promo-cta">
+              <button type="button" className="is-primary">{content.primaryLabel}</button>
             </footer>}
           </div>
           {draft.campaignType === 'product_promo' && productCards.length > 1 && <nav className="popup-preview__promo-navigation" aria-label="Навігація між товарами">
@@ -647,6 +702,8 @@ export function PopupBannersPage() {
   const [tab, setTab] = useState<EditorTab>('content');
   const [productText, setProductText] = useState('');
   const [promoProducts, setPromoProducts] = useState<PopupPromoProduct[]>([]);
+  const [selectedPromoCode, setSelectedPromoCode] = useState<PromoCode | PromoCodeSnapshot | null>(null);
+  const [promoCodePickerOpen, setPromoCodePickerOpen] = useState(false);
   const [promoCatalogSearch, setPromoCatalogSearch] = useState('');
   const [promoCategory, setPromoCategory] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -684,7 +741,7 @@ export function PopupBannersPage() {
     return {
       active: items.filter((item) => item.status === 'active').length,
       impressions: items.reduce((sum, item) => sum + item.stats.impressions, 0),
-      actions: items.reduce((sum, item) => sum + item.stats.acknowledgements + item.stats.clicks, 0)
+      actions: items.reduce((sum, item) => sum + item.stats.acknowledgements + item.stats.clicks + item.stats.copies + item.stats.promoCtaClicks, 0)
     };
   }, [campaigns.data]);
 
@@ -708,6 +765,7 @@ export function PopupBannersPage() {
     setDraft(campaignInput(campaign));
     setProductText(campaign.productTargets.map((item) => item.sku).join('\n'));
     setPromoProducts(campaign.promoProducts);
+    setSelectedPromoCode(campaign.promoCode);
   }, [campaigns.data, isCreating, selectedId]);
 
   const promoCatalogOffers = useMemo(() => (promoCatalog.data?.items || []).flatMap((product) => {
@@ -759,6 +817,7 @@ export function PopupBannersPage() {
     setDraft(campaignInput(campaign));
     setProductText(campaign.productTargets.map((item) => item.sku).join('\n'));
     setPromoProducts(campaign.promoProducts);
+    setSelectedPromoCode(campaign.promoCode);
     setTab('content');
   }
 
@@ -769,6 +828,7 @@ export function PopupBannersPage() {
     setDraft(emptyCampaign());
     setProductText('');
     setPromoProducts([]);
+    setSelectedPromoCode(null);
     setTab('content');
   }
 
@@ -776,6 +836,7 @@ export function PopupBannersPage() {
     setDraft(emptyCampaign(campaignType));
     setProductText('');
     setPromoProducts([]);
+    setSelectedPromoCode(null);
     setChoosingType(false);
     setTab('content');
   }
@@ -806,7 +867,7 @@ export function PopupBannersPage() {
         && current.content.body === 'Перед оформленням замовлення ознайомтеся з важливою інформацією про товар.';
       return {
         ...current,
-        campaignType: current.campaignType === 'product_promo'
+        campaignType: current.campaignType === 'product_promo' || current.campaignType === 'promo_code'
           ? current.campaignType
           : mode === 'out_of_stock' ? 'out_of_stock_recommendations' : 'message',
         name: isFirstOutOfStockSetup && current.name === 'Попередження про товар'
@@ -859,6 +920,7 @@ export function PopupBannersPage() {
       setDraft(campaignInput(saved));
       setProductText(saved.productTargets.map((item) => item.sku).join('\n'));
       setPromoProducts(saved.promoProducts);
+      setSelectedPromoCode(saved.promoCode);
       const missed = saved.resolution?.unmatched || [];
       showToast(missed.length ? `Кампанію збережено. Не знайдено позицій: ${missed.length}.` : 'Попап-кампанію збережено.', missed.length ? 'error' : 'success');
     } catch (error) {
@@ -927,6 +989,7 @@ export function PopupBannersPage() {
         <p>Створюйте охайні повідомлення та показуйте їх потрібним покупцям у потрібний момент.</p>
       </div>
       <div className="popup-banners-header__actions">
+        <Link className="button button--secondary" to="/tools/promo-codes"><Icon name="copy" size={17} /> Промокоди</Link>
         <button className="button button--secondary" type="button" onClick={() => void copyEmbed()} disabled={!embed.data?.code}><Icon name="copy" size={17} /> Код для сайту</button>
         <button className="button button--primary" type="button" onClick={createNew}><Icon name="add" size={18} /> Нова кампанія</button>
       </div>
@@ -974,7 +1037,7 @@ export function PopupBannersPage() {
             <span className="popup-campaign-list__row"><span className={`popup-status is-${campaign.status}`}><i />{statusLabels[campaign.status]}</span><small>{formatDate(campaign.updatedAt)}</small></span>
             <strong>{campaign.name}</strong>
             <small>{campaignTypeLabels[campaign.campaignType]} · {campaignUsesAttachedProducts(campaign.campaignType) ? `${campaign.promoProducts.length} товарів` : campaign.targeting.mode === 'products' ? `${campaign.productTargets.length} позицій` : targetModeLabels[campaign.targeting.mode]}</small>
-            <span className="popup-campaign-list__stats"><span><b>{campaign.stats.impressions}</b> показів</span><span><b>{campaign.stats.acknowledgements + campaign.stats.clicks}</b> дій</span></span>
+            <span className="popup-campaign-list__stats"><span><b>{campaign.stats.impressions}</b> показів</span><span><b>{campaign.stats.acknowledgements + campaign.stats.clicks + campaign.stats.copies + campaign.stats.promoCtaClicks}</b> дій</span></span>
           </button>)}
         </div>
 
@@ -993,7 +1056,7 @@ export function PopupBannersPage() {
             {!isCreating && selectedCampaign?.status !== 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('active')} disabled={changeStatus.isPending || isDirty}><Icon name="publication" size={16} /> Опублікувати</button>}
             {!isCreating && selectedCampaign?.status === 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('paused')} disabled={changeStatus.isPending}><Icon name="deadline" size={16} /> Призупинити</button>}
             {!isCreating && <button className="icon-button icon-button--danger" type="button" onClick={() => void remove()} aria-label="Видалити кампанію"><Icon name="delete" size={18} /></button>}
-            <button className="button button--primary button--small" type="button" onClick={() => void save()} disabled={saving || !options.data?.integration || !draft.name.trim() || targetPageMissing || (hasAttachedProducts && !promoProducts.length) || !isDirty}><Icon name="save" size={16} /> {saving ? 'Зберігаємо…' : 'Зберегти'}</button>
+            <button className="button button--primary button--small" type="button" onClick={() => void save()} disabled={saving || !options.data?.integration || !draft.name.trim() || targetPageMissing || (hasAttachedProducts && !promoProducts.length) || (draft.campaignType === 'promo_code' && !draft.promoCodeId) || !isDirty}><Icon name="save" size={16} /> {saving ? 'Зберігаємо…' : 'Зберегти'}</button>
           </div>
         </header>
 
@@ -1034,7 +1097,29 @@ export function PopupBannersPage() {
                 </div>}
               </div>
 
-              {draft.targeting.mode !== 'out_of_stock' && !hasAttachedProducts ? <div className="popup-form-section">
+              {draft.campaignType === 'promo_code' && <div className="popup-form-section">
+                <SectionHeading icon="copy" title="Промокод" description="Оберіть код із бібліотеки поточного магазину. Хорошоп залишається джерелом істини, а банер отримає snapshot під час публікації." />
+                {selectedPromoCode ? <div className="popup-selected-code">
+                  <div className="popup-selected-code__identity"><small>Обраний код</small><strong>{selectedPromoCode.internalName}</strong><code>{selectedPromoCode.code}</code></div>
+                  <strong className="popup-selected-code__value">{promoCodeValue(selectedPromoCode)}</strong>
+                  <span className={`promo-code-status is-${selectedPromoCode.status}`}><i />{selectedPromoCode.status === 'active' ? 'Активний' : selectedPromoCode.status === 'scheduled' ? 'Запланований' : selectedPromoCode.status === 'ended' ? 'Завершений' : 'Вимкнений'}</span>
+                  <button className="button button--secondary button--small" type="button" onClick={() => setPromoCodePickerOpen(true)}>Змінити</button>
+                  {(!selectedPromoCode.horoshopConfirmed || selectedPromoCode.status === 'ended' || selectedPromoCode.status === 'disabled') && <p className="popup-selected-code__warning"><Icon name="deadline" size={15} />{!selectedPromoCode.horoshopConfirmed ? 'Код не підтверджено в Хорошоп. Перевірте його перед публікацією.' : selectedPromoCode.status === 'ended' ? 'Термін дії коду завершився.' : 'Запис вимкнено в бібліотеці.'}</p>}
+                </div> : <button className="popup-select-code" type="button" onClick={() => setPromoCodePickerOpen(true)}><span><Icon name="copy" size={22} /></span><div><strong>Обрати промокод</strong><small>Пошук, фільтри статусу та створення нового запису</small></div><Icon name="arrow" size={18} /></button>}
+                <div className="popup-snapshot-note"><Icon name="save" size={16} /><span><strong>Опублікована версія не змінюється непомітно</strong><small>Редагування чи архівація коду в бібліотеці потребує повторної публікації кампанії.</small></span></div>
+              </div>}
+
+              {draft.campaignType === 'promo_code' ? <div className="popup-form-section">
+                <SectionHeading icon="link" title="CTA банера" description="Кнопка переходу необов’язкова. Кнопка копіювання коду відображається завжди." />
+                <div className="popup-form-grid">
+                  <label><span>Текст CTA <i>необов’язково</i></span><input value={draft.content.primaryLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryLabel: event.target.value } }))} placeholder="Перейти до акції" /></label>
+                  <label><span>Посилання CTA <i>необов’язково</i></span><input type="url" value={draft.content.primaryUrl} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, primaryUrl: event.target.value } }))} placeholder="https://... або /шлях/" /></label>
+                </div>
+                <div className="popup-color-grid is-pair">
+                  <ColorField label="Колір CTA" value={draft.styles.primaryButtonBackgroundColor} onChange={(primaryButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonBackgroundColor } }))} />
+                  <ColorField label="Колір тексту" value={draft.styles.primaryButtonTextColor} onChange={(primaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonTextColor } }))} />
+                </div>
+              </div> : draft.targeting.mode !== 'out_of_stock' && !hasAttachedProducts ? <div className="popup-form-section">
                 <SectionHeading icon="link" title="Кнопки й дія" description="Назвіть дію зрозуміло та вкажіть сторінку, куди вона веде." />
                 <div className="popup-form-grid">
                   <label><span>Кількість кнопок</span><StyledSelect value={String(draft.behavior.buttonCount)} options={[{ value: '1', label: 'Одна кнопка' }, { value: '2', label: 'Дві кнопки' }]} onChange={(value) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, buttonCount: Number(value) as 1 | 2 } }))} ariaLabel="Кількість кнопок" /></label>
@@ -1113,11 +1198,11 @@ export function PopupBannersPage() {
                     <label><span>Надзаголовок, px</span><input type="number" min={8} max={32} value={draft.styles.eyebrowFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, eyebrowFontSize: Number(event.target.value) } }))} /></label>
                     <label><span>Заголовок, px</span><input type="number" min={18} max={72} value={draft.styles.titleFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, titleFontSize: Number(event.target.value) } }))} /></label>
                     <label><span>Основний текст, px</span><input type="number" min={10} max={36} value={draft.styles.bodyFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, bodyFontSize: Number(event.target.value) } }))} /></label>
-                    {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>}
+                  {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.campaignType !== 'promo_code' && <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>}
                     <label><span>Кнопки, px</span><input type="number" min={10} max={28} value={draft.styles.buttonFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, buttonFontSize: Number(event.target.value) } }))} /></label>
                   </div>
                 </div>
-                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && <div className="popup-settings-group">
+                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.campaignType !== 'promo_code' && <div className="popup-settings-group">
                   <strong>Стиль чекбокса підтвердження</strong>
                   <small>Ці кольори застосуються, коли в розділі поведінки увімкнено явне підтвердження.</small>
                   <div className="popup-color-grid">
@@ -1238,9 +1323,9 @@ export function PopupBannersPage() {
                 </div>
                 <div className="popup-toggle-list">
                   <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description={draft.campaignType === 'product_promo' ? 'Показувати хрестик у самій панелі. Банер не перехоплює кліки поза нею.' : 'Показувати хрестик і дозволити закриття кліком по затемненому фону.'} onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
-                  {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />}
+                  {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.campaignType !== 'promo_code' && <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />}
                 </div>
-                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.behavior.requireAcknowledgement && <>
+                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.campaignType !== 'promo_code' && draft.behavior.requireAcknowledgement && <>
                   <label><span>Текст підтвердження</span><textarea rows={3} value={draft.content.acknowledgementLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, acknowledgementLabel: event.target.value } }))} /></label>
                 </>}
               </div>
@@ -1266,7 +1351,7 @@ export function PopupBannersPage() {
             </>}
           </section>
           <aside className="popup-editor__preview">
-            <Preview draft={draft} promoProducts={promoProducts} />
+            <Preview draft={draft} promoProducts={promoProducts} promoCode={selectedPromoCode} />
             <div className="popup-preview-summary">
               <span><i><Icon name="productSelection" size={16} /></i><span><strong>Аудиторія</strong><small>{targetSummary}</small></span></span>
               <span><i><Icon name="schedule" size={16} /></i><span><strong>Частота</strong><small>{behaviorSummary}</small></span></span>
@@ -1276,6 +1361,15 @@ export function PopupBannersPage() {
         </div>
         </>}
       </main>
+      {promoCodePickerOpen && <PromoCodePickerModal
+        selectedId={draft.promoCodeId}
+        onClose={() => setPromoCodePickerOpen(false)}
+        onSelect={(promoCode) => {
+          setSelectedPromoCode(promoCode);
+          setDraft((current) => ({ ...current, promoCodeId: promoCode.id }));
+          setPromoCodePickerOpen(false);
+        }}
+      />}
     </div>
   </div>;
 }

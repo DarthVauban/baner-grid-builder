@@ -141,6 +141,7 @@ import type {
   HoroshopCartThemeSettingsEnvelope
 } from '../types/horoshop-cart-theme';
 import type { HoroshopTitleLabelRule, HoroshopTitleLabelSettings } from '../types/horoshop-title-labels';
+import type { PromoCode, PromoCodeInput, PromoCodeStatus } from '../types/promo-code';
 import type {
   PublicTradeInSettings,
   TradeInAnswers,
@@ -274,6 +275,21 @@ export const api = {
       { method: 'PATCH', body: jsonBody({ status }) }
     ),
     remove: (id: string) => request<void>(`/api/popup-banners/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  promoCodes: {
+    list: (params: { search?: string; status?: PromoCodeStatus | '' } = {}, signal?: AbortSignal) => request<PromoCode[]>(
+      `/api/promo-codes${queryString(params)}`,
+      { signal }
+    ),
+    get: (id: string) => request<PromoCode>(`/api/promo-codes/${encodeURIComponent(id)}`),
+    create: (input: PromoCodeInput) => request<PromoCode>('/api/promo-codes', {
+      method: 'POST', body: jsonBody(input)
+    }),
+    update: (id: string, input: PromoCodeInput) => request<PromoCode>(
+      `/api/promo-codes/${encodeURIComponent(id)}`,
+      { method: 'PUT', body: jsonBody(input) }
+    ),
+    remove: (id: string) => request<void>(`/api/promo-codes/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   ...horoshopApi,
   auth: {

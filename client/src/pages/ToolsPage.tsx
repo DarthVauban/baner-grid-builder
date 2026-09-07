@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
-import { toolCategories, tools } from '../lib/tools';
+import { toolCategories, tools, workspaceSections } from '../lib/tools';
 
 export function ToolsPage() {
   const queryClient = useQueryClient();
@@ -37,10 +37,13 @@ export function ToolsPage() {
     await catalog.refetch({ cancelRefetch: true });
   };
   const accessByTool = new Map(catalog.data?.tools.map((item) => [item.toolId, item]));
-  const visibleTools = tools
+  const visibleTools = [
+    ...tools.map((tool) => ({ ...tool, accessToolId: tool.id, key: tool.id })),
+    ...workspaceSections.map((tool) => ({ ...tool, key: tool.id }))
+  ]
     .filter((tool) => !['chat', 'form_builder', 'store_map'].includes(tool.id))
     .filter((tool) => tool.showInTools !== false)
-    .filter((tool) => accessByTool.get(tool.id)?.granted);
+    .filter((tool) => accessByTool.get(tool.accessToolId)?.granted);
   const visibleCategories = toolCategories
     .map((category) => ({
       ...category,
@@ -74,7 +77,7 @@ export function ToolsPage() {
               </summary>
               <div className="tool-category__menu">
                 {category.tools.map((tool) => {
-                  const state = accessByTool.get(tool.id);
+                  const state = accessByTool.get(tool.accessToolId);
                   const content = (
                     <>
                       <span className="tool-catalog-card__icon"><Icon name={tool.icon} size={21} /></span>
@@ -84,10 +87,10 @@ export function ToolsPage() {
                   );
 
                   if (state?.accessible) {
-                    return <Link className="tool-catalog-card" to={tool.path} key={tool.id}>{content}</Link>;
+                    return <Link className="tool-catalog-card" to={tool.path} key={tool.key}>{content}</Link>;
                   }
 
-                  return <article className="tool-catalog-card tool-catalog-card--disabled" aria-disabled="true" key={tool.id}>{content}</article>;
+                  return <article className="tool-catalog-card tool-catalog-card--disabled" aria-disabled="true" key={tool.key}>{content}</article>;
                 })}
               </div>
             </details>

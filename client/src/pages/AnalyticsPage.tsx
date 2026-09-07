@@ -194,11 +194,13 @@ function ProductSelectionDashboard({ data }: { data: ProductSelectionAnalytics }
 function PopupDashboard({ data }: { data: PopupBannerAnalytics }) {
   const hasData = Object.values(data.totals).some((value) => Number(value) > 0);
   return <>
-    <div className="analytics-metrics">
+    <div className="analytics-metrics analytics-metrics--popup">
       <MetricCard label="Покази попапів" value={numberFormat.format(data.totals.impressions)} note={`${numberFormat.format(data.totals.uniqueVisitors)} унікальних відвідувачів`} />
-      <MetricCard label="Взаємодія" value={percent(data.totals.engagementRate)} note={`${numberFormat.format(data.totals.clicks + data.totals.acknowledgements)} цільових дій`} tone="blue" />
+      <MetricCard label="Взаємодія" value={percent(data.totals.engagementRate)} note={`${numberFormat.format(data.totals.clicks + data.totals.acknowledgements + data.totals.copies + data.totals.promoCtaClicks)} цільових дій`} tone="blue" />
       <MetricCard label="Переходи" value={numberFormat.format(data.totals.clicks)} note="Кліки по кнопках і товарах" tone="green" />
-      <MetricCard label="Закриття" value={percent(data.totals.dismissRate)} note={`${numberFormat.format(data.totals.dismissals)} закриттів`} tone="amber" />
+      <MetricCard label="Копіювання коду" value={numberFormat.format(data.totals.copies)} note="Успішні копіювання" tone="green" />
+      <MetricCard label="CTA промокоду" value={numberFormat.format(data.totals.promoCtaClicks)} note="Переходи з банера" tone="amber" />
+      <MetricCard label="Copy rate" value={percent(data.totals.copyRate)} note="Копіювання до показів" tone="blue" />
     </div>
     {!hasData ? <EmptyData /> : <>
       <div className="analytics-grid analytics-grid--hero">
@@ -207,6 +209,8 @@ function PopupDashboard({ data }: { data: PopupBannerAnalytics }) {
             { key: 'impression', label: 'Покази', color: '#7765f5' },
             { key: 'click', label: 'Переходи', color: '#3182f6' },
             { key: 'acknowledge', label: 'Підтвердження', color: '#16a36a' },
+            { key: 'copy', label: 'Копіювання коду', color: '#9b51e0' },
+            { key: 'promo_cta', label: 'CTA промокоду', color: '#d94f70' },
             { key: 'dismiss', label: 'Закриття', color: '#ec8f39' }
           ]} />
         </Panel>
@@ -214,18 +218,20 @@ function PopupDashboard({ data }: { data: PopupBannerAnalytics }) {
           <DonutChart centerLabel="дій" items={[
             { label: 'Переходи', value: data.totals.clicks, color: '#3182f6' },
             { label: 'Підтвердження', value: data.totals.acknowledgements, color: '#16a36a' },
+            { label: 'Копіювання коду', value: data.totals.copies, color: '#9b51e0' },
+            { label: 'CTA промокоду', value: data.totals.promoCtaClicks, color: '#d94f70' },
             { label: 'Закриття', value: data.totals.dismissals, color: '#ec8f39' }
           ]} />
         </Panel>
       </div>
       <div className="analytics-grid analytics-grid--tables">
         <Panel title="Кампанії" description="Порівняння ефективності попапів">
-          <div className="analytics-table-wrap"><table className="analytics-table"><thead><tr><th>Кампанія</th><th>Покази</th><th>Переходи</th><th>Закриття</th><th>Взаємодія</th></tr></thead><tbody>
-            {data.campaigns.map((item) => { const views = item.impression || 0; const actions = (item.click || 0) + (item.acknowledge || 0); return <tr key={item.id}><td><span className="analytics-campaign"><i className={`is-${item.status}`} /><span><strong>{item.name}</strong><small>{item.status === 'active' ? 'Активна' : item.status === 'paused' ? 'Призупинена' : 'Чернетка'}</small></span></span></td><td>{numberFormat.format(views)}</td><td>{numberFormat.format(item.click || 0)}</td><td>{numberFormat.format(item.dismiss || 0)}</td><td>{percent(views ? actions / views : 0)}</td></tr>; })}
+          <div className="analytics-table-wrap"><table className="analytics-table"><thead><tr><th>Кампанія</th><th>Покази</th><th>Переходи</th><th>Копії коду</th><th>CTA коду</th><th>Взаємодія</th></tr></thead><tbody>
+            {data.campaigns.map((item) => { const views = item.impression || 0; const actions = (item.click || 0) + (item.acknowledge || 0) + (item.copy || 0) + (item.promo_cta || 0); return <tr key={item.id}><td><span className="analytics-campaign"><i className={`is-${item.status}`} /><span><strong>{item.name}</strong><small>{item.status === 'active' ? 'Активна' : item.status === 'paused' ? 'Призупинена' : 'Чернетка'}</small></span></span></td><td>{numberFormat.format(views)}</td><td>{numberFormat.format(item.click || 0)}</td><td>{numberFormat.format(item.copy || 0)}</td><td>{numberFormat.format(item.promo_cta || 0)}</td><td>{percent(views ? actions / views : 0)}</td></tr>; })}
           </tbody></table></div>
         </Panel>
         <Panel title="Сторінки показу" description="Де кампанії отримують реакції">
-          <div className="analytics-page-list">{data.pages.map((item) => <article key={item.pageUrl}><span><strong title={item.pageUrl}>{pageLabel(item.pageUrl)}</strong><small>{numberFormat.format(item.impression || 0)} показів</small></span><b>{numberFormat.format((item.click || 0) + (item.acknowledge || 0))} <small>дій</small></b></article>)}{!data.pages.length && <p className="analytics-table-empty">Сторінки ще не зафіксовані.</p>}</div>
+          <div className="analytics-page-list">{data.pages.map((item) => <article key={item.pageUrl}><span><strong title={item.pageUrl}>{pageLabel(item.pageUrl)}</strong><small>{numberFormat.format(item.impression || 0)} показів</small></span><b>{numberFormat.format((item.click || 0) + (item.acknowledge || 0) + (item.copy || 0) + (item.promo_cta || 0))} <small>дій</small></b></article>)}{!data.pages.length && <p className="analytics-table-empty">Сторінки ще не зафіксовані.</p>}</div>
         </Panel>
       </div>
     </>}

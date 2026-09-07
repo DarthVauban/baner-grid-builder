@@ -64,9 +64,12 @@ export interface PopupBannerAnalytics {
     clicks: number;
     dismissals: number;
     acknowledgements: number;
+    copies: number;
+    promoCtaClicks: number;
     uniqueVisitors: number;
     engagementRate: number;
     dismissRate: number;
+    copyRate: number;
   };
   series: Array<{
     date: string;
@@ -74,6 +77,8 @@ export interface PopupBannerAnalytics {
     click: number;
     dismiss: number;
     acknowledge: number;
+    copy: number;
+    promo_cta: number;
   }>;
   campaigns: Array<{
     id: string;
@@ -84,6 +89,8 @@ export interface PopupBannerAnalytics {
     click?: number;
     dismiss?: number;
     acknowledge?: number;
+    copy?: number;
+    promo_cta?: number;
   }>;
   pages: Array<{
     pageUrl: string;
@@ -91,5 +98,7 @@ export interface PopupBannerAnalytics {
     click?: number;
     dismiss?: number;
     acknowledge?: number;
+    copy?: number;
+    promo_cta?: number;
   }>;
 }

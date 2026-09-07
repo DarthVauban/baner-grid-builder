@@ -20,6 +20,11 @@ export interface ToolDefinition {
   showInTools?: boolean;
 }
 
+export interface WorkspaceSectionDefinition extends Omit<ToolDefinition, 'id'> {
+  id: string;
+  accessToolId: ToolId;
+}
+
 export const toolCategories: ToolCategoryDefinition[] = [
   {
     id: 'marketing',
@@ -181,5 +186,17 @@ export const tools: ToolDefinition[] = [
     path: '/tools/product-selection',
     icon: 'productSelection',
     category: 'horoshop'
+  }
+];
+
+export const workspaceSections: WorkspaceSectionDefinition[] = [
+  {
+    id: 'promo_codes',
+    accessToolId: 'popup_banners',
+    name: 'Промокоди',
+    description: 'Бібліотека створених у Хорошоп промокодів, строки дії, статуси та кампанії, у яких вони використовуються.',
+    path: '/tools/promo-codes',
+    icon: 'copy',
+    category: 'marketing'
   }
 ];

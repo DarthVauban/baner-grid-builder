@@ -25,7 +25,7 @@ const resolveSchema = z.object({
 });
 const eventSchema = z.object({
   publicId: z.string().uuid(),
-  eventType: z.enum(['impression', 'dismiss', 'click', 'acknowledge']),
+  eventType: z.enum(['impression', 'dismiss', 'click', 'acknowledge', 'copy', 'promo_cta']),
   pageUrl: z.string().trim().max(4000).default(''),
   article: z.string().trim().max(300).default(''),
   visitorKey: z.string().trim().max(200).default(''),

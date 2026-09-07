@@ -24,7 +24,7 @@ function renderPage(path = '/analytics/product-selections') {
   });
   vi.spyOn(api.popupBanners, 'analytics').mockResolvedValue({
     periodDays: 30,
-    totals: { impressions: 600, clicks: 45, dismissals: 80, acknowledgements: 20, uniqueVisitors: 420, engagementRate: 0.108, dismissRate: 0.133 },
+    totals: { impressions: 600, clicks: 45, dismissals: 80, acknowledgements: 20, copies: 12, promoCtaClicks: 5, uniqueVisitors: 420, engagementRate: 0.137, dismissRate: 0.133, copyRate: 0.02 },
     series: [], campaigns: [], pages: []
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

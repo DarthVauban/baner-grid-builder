@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { loadPromoCodeRow, promoCodeSnapshot } from '../promo-codes/promo-code.service.js';
 
 export const popupBannerToolId = 'popup_banners';
 
@@ -81,13 +82,17 @@ const eventStatsKey = {
   impression: 'impressions',
   dismiss: 'dismissals',
   click: 'clicks',
-  acknowledge: 'acknowledgements'
+  acknowledge: 'acknowledgements',
+  copy: 'copies',
+  promo_cta: 'promoCtaClicks'
 };
 
 function normalizeCampaignType(value, targeting = {}) {
   if (value === 'exit_offer') return 'message';
-  if (object(targeting).mode === 'out_of_stock' && value !== 'product_promo') return 'out_of_stock_recommendations';
-  if (['message', 'out_of_stock_recommendations', 'product_promo'].includes(value)) return value;
+  if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code'].includes(value)) {
+    return 'out_of_stock_recommendations';
+  }
+  if (['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code'].includes(value)) return value;
   return 'message';
 }
 
@@ -233,7 +238,10 @@ function campaignSnapshot(row, targets = [], promoProducts = []) {
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     targets,
-    promoProducts
+    promoProducts,
+    promoCodeId: row.promo_code_id || null,
+    promoCode: object(row.promo_code_draft_snapshot),
+    publishedPromoCode: object(row.promo_code_published_snapshot)
   };
 }
 
@@ -327,11 +335,16 @@ function serializeCampaign(row, targets = [], promoProducts = []) {
     publishedAt: row.published_at,
     productTargets: targets.map(serializeTarget),
     promoProducts: promoProducts.map(serializePromoProduct),
+    promoCodeId: row.promo_code_id || null,
+    promoCode: Object.keys(object(row.promo_code_draft_snapshot)).length ? object(row.promo_code_draft_snapshot) : null,
+    publishedPromoCode: Object.keys(object(row.promo_code_published_snapshot)).length ? object(row.promo_code_published_snapshot) : null,
     stats: {
       impressions: Number(row.impressions || 0),
       dismissals: Number(row.dismissals || 0),
       clicks: Number(row.clicks || 0),
-      acknowledgements: Number(row.acknowledgements || 0)
+      acknowledgements: Number(row.acknowledgements || 0),
+      copies: Number(row.copies || 0),
+      promoCtaClicks: Number(row.promoCtaClicks || 0)
     },
     connection: row.connection_id ? {
       id: row.connection_id,
@@ -584,7 +597,14 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     const targeting = normalizeTargeting(input.targeting);
     validateTargetPage(targeting, connection.store_domain);
     const behavior = normalizeBehavior(input.behavior);
-    if (campaignType !== 'message' && behavior.trigger === 'exit_intent') behavior.trigger = 'delay';
+    if (['product_promo', 'out_of_stock_recommendations'].includes(campaignType) && behavior.trigger === 'exit_intent') {
+      behavior.trigger = 'delay';
+    }
+    let selectedPromoCode = null;
+    if (campaignType === 'promo_code') {
+      selectedPromoCode = await loadPromoCodeRow(input.promoCodeId, connection.id, client, true);
+    }
+    const draftPromoCodeSnapshot = selectedPromoCode ? promoCodeSnapshot(selectedPromoCode) : null;
     const startsAt = input.startsAt || null;
     const endsAt = input.endsAt || null;
     let id = existingId;
@@ -594,11 +614,14 @@ async function savePopupCampaign(existingId, input, actorUserId) {
          SET connection_id = $2, connection_generation = $3, campaign_type = $4,
              name = $5, priority = $6, content = $7::JSONB, styles = $8::JSONB,
              targeting = $9::JSONB, behavior = $10::JSONB, starts_at = $11, ends_at = $12,
-             updated_by = $13, updated_at = NOW()
+             promo_code_id = $13, promo_code_draft_snapshot = $14::JSONB,
+             promo_code_published_snapshot = CASE WHEN $4 = 'promo_code' THEN promo_code_published_snapshot ELSE NULL END,
+             updated_by = $15, updated_at = NOW()
          WHERE id = $1 RETURNING id`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
-          JSON.stringify(behavior), startsAt, endsAt, actorUserId]
+          JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
+          draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null, actorUserId]
       );
       if (!updated.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
     } else {
@@ -606,11 +629,13 @@ async function savePopupCampaign(existingId, input, actorUserId) {
       await client.query(
         `INSERT INTO popup_banner_campaigns (
            id, connection_id, connection_generation, campaign_type, name, priority, content, styles,
-           targeting, behavior, starts_at, ends_at, created_by, updated_by
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $13)`,
+           targeting, behavior, starts_at, ends_at, promo_code_id, promo_code_draft_snapshot,
+           created_by, updated_by
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15, $15)`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
-          JSON.stringify(behavior), startsAt, endsAt, actorUserId]
+          JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
+          draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null, actorUserId]
       );
     }
 
@@ -711,15 +736,28 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
         const products = await client.query('SELECT 1 FROM popup_banner_promo_products WHERE campaign_id = $1 LIMIT 1', [id]);
         if (!products.rows[0]) throw new AppError(422, 'POPUP_PROMO_PRODUCTS_EMPTY', 'Додайте хоча б один товар до промобанера.');
       }
+      if (normalizeCampaignType(current.campaign_type, current.targeting) === 'promo_code') {
+        if (!current.promo_code_id) {
+          throw new AppError(422, 'POPUP_PROMO_CODE_EMPTY', 'Оберіть промокод для кампанії.');
+        }
+        const code = await loadPromoCodeRow(current.promo_code_id, current.current_connection_id, client, true);
+        current.promo_code_published_snapshot = promoCodeSnapshot(code);
+      }
     }
     await client.query(
       `UPDATE popup_banner_campaigns
        SET status = $2::VARCHAR,
            published_at = CASE WHEN $2::VARCHAR = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
+           promo_code_published_snapshot = CASE
+             WHEN $2::VARCHAR = 'active' AND campaign_type = 'promo_code' THEN $4::JSONB
+             ELSE promo_code_published_snapshot
+           END,
            updated_by = $3, updated_at = NOW()
        WHERE id = $1`,
-      [id, status, actorUserId]
+      [id, status, actorUserId, current.promo_code_published_snapshot
+        ? JSON.stringify(current.promo_code_published_snapshot) : null]
     );
+    if (status === 'active') await recordVersion(client, id, actorUserId);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1036,6 +1074,10 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       ))
       : [];
     if (campaignType === 'product_promo' && promoProducts.length === 0) continue;
+    const publishedPromoCode = campaignType === 'promo_code'
+      ? object(campaign.promo_code_published_snapshot)
+      : null;
+    if (campaignType === 'promo_code' && !publishedPromoCode?.code) continue;
     return {
       campaign: {
         publicId: campaign.public_id,
@@ -1046,7 +1088,8 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
         mode: targeting.mode,
         content: Object.fromEntries(Object.entries(content).map(([key, value]) => [key, templateText(value, product)])),
         styles: normalizeStyles(campaign.styles),
-        behavior: normalizeBehavior(campaign.behavior)
+        behavior: normalizeBehavior(campaign.behavior),
+        promoCode: publishedPromoCode
       },
       product: product ? { article: product.sku, title: product.title } : null,
       recommendations,
@@ -1114,6 +1157,8 @@ export async function popupBannerAnalytics({ days = 30, campaignId = null } = {}
     clicks: Number(counts.click || 0),
     dismissals: Number(counts.dismiss || 0),
     acknowledgements: Number(counts.acknowledge || 0),
+    copies: Number(counts.copy || 0),
+    promoCtaClicks: Number(counts.promo_cta || 0),
     uniqueVisitors: Number(uniqueResult.rows[0]?.count || 0)
   };
   const dayRows = new Map();
@@ -1133,7 +1178,9 @@ export async function popupBannerAnalytics({ days = 30, campaignId = null } = {}
       impression: Number(current.impression || 0),
       click: Number(current.click || 0),
       dismiss: Number(current.dismiss || 0),
-      acknowledge: Number(current.acknowledge || 0)
+      acknowledge: Number(current.acknowledge || 0),
+      copy: Number(current.copy || 0),
+      promo_cta: Number(current.promo_cta || 0)
     };
   });
   function group(rows, keyName, base) {
@@ -1150,8 +1197,10 @@ export async function popupBannerAnalytics({ days = 30, campaignId = null } = {}
     periodDays,
     totals: {
       ...totals,
-      engagementRate: totals.impressions ? (totals.clicks + totals.acknowledgements) / totals.impressions : 0,
-      dismissRate: totals.impressions ? totals.dismissals / totals.impressions : 0
+      engagementRate: totals.impressions
+        ? (totals.clicks + totals.acknowledgements + totals.copies + totals.promoCtaClicks) / totals.impressions : 0,
+      dismissRate: totals.impressions ? totals.dismissals / totals.impressions : 0,
+      copyRate: totals.impressions ? totals.copies / totals.impressions : 0
     },
     series,
     campaigns: group(campaignsResult.rows, 'id', (row) => ({
@@ -1495,6 +1544,7 @@ export function popupEmbedScript(origin) {
     if (currentHost || isSuppressed(payload)) return;
     const { campaign } = payload;
     const isProductPromo = campaign.type === 'product_promo';
+    const isPromoCode = campaign.type === 'promo_code';
     const promoFormat = campaign.styles.promoFormat || 'notification';
     const cleanupTasks = [];
     const host = document.createElement('div');
@@ -1526,6 +1576,7 @@ export function popupEmbedScript(origin) {
     style.textContent += \`.eyebrow{font-size:var(--eyebrow-size)}.title{font-size:var(--title-size)}.body{font-size:var(--body-size)}.ack{font-size:var(--ack-size)}.ack input:before{border-bottom-color:var(--checkbox-check);border-left-color:var(--checkbox-check)}.button{font-size:var(--button-size)}.bottom-sheet .card{width:min(var(--width),100%)}\`;
     style.textContent += '.recommendation-image{background:#fff}';
     style.textContent += '.recommendation-price.is-discounted strong{color:#dc2626}';
+    style.textContent += \`.promo-code-offer{display:grid;gap:14px;margin-top:22px;padding:18px;border:1px solid color-mix(in srgb,var(--accent) 24%,transparent);border-radius:calc(var(--radius) * .55);background:color-mix(in srgb,var(--accent) 7%,var(--bg))}.promo-code-value{margin:0;color:var(--text);font-size:15px;font-weight:800}.promo-code-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px}.promo-code{display:flex;align-items:center;min-width:0;min-height:52px;overflow:hidden;border:1px dashed color-mix(in srgb,var(--accent) 55%,var(--text));border-radius:var(--button-radius);padding:9px 14px;color:var(--text);background:var(--bg);font:850 20px/1.1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.08em;overflow-wrap:anywhere}.promo-code-copy{display:inline-flex;align-items:center;justify-content:center;min-width:112px;min-height:52px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:9px 16px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.promo-code-copy.is-copied{filter:saturate(.75);opacity:.82}.promo-code-note{margin:0;color:var(--muted);font-size:13px;line-height:1.45}.promo-code-cta{display:flex;align-items:center;justify-content:center;min-height:44px;margin-top:14px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:10px 18px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;text-decoration:none;cursor:pointer}@media(max-width:600px){.promo-code-offer{gap:11px;margin-top:17px;padding:14px}.promo-code-row{grid-template-columns:1fr}.promo-code-copy{width:100%}.promo-code{font-size:18px}}\`;
     style.textContent += \`.product-promo-host{width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);pointer-events:none}
 .product-promo-host .card{width:100%;max-height:none;overflow:hidden;pointer-events:auto;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);box-shadow:0 18px 52px rgba(15,23,42,.22)}
 .card.is-product-promo{display:flex;flex-direction:column;cursor:pointer}
@@ -1662,8 +1713,57 @@ export function popupEmbedScript(origin) {
     if (campaign.content.title) {
       const title = document.createElement('h2'); title.className = 'title'; title.id = 'mt-popup-title-' + campaign.publicId; title.textContent = campaign.content.title; content.append(title);
       card.setAttribute('aria-labelledby', title.id);
-    } else card.setAttribute('aria-label', isProductPromo ? 'Товарний промобанер' : 'Інформаційний попап');
+    } else card.setAttribute('aria-label', isProductPromo ? 'Товарний промобанер' : isPromoCode ? 'Банер із промокодом' : 'Інформаційний попап');
     if (campaign.content.body) { const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body); }
+    if (isPromoCode) {
+      const promo = campaign.promoCode || {};
+      const offer = document.createElement('div'); offer.className = 'promo-code-offer';
+      const value = document.createElement('p'); value.className = 'promo-code-value';
+      value.textContent = promo.type === 'percent_coupon'
+        ? 'Знижка ' + String(promo.discountValue || '') + '%'
+        : 'Сертифікат на ' + money(promo.discountValue, promo.currency);
+      const row = document.createElement('div'); row.className = 'promo-code-row';
+      const code = document.createElement('code'); code.className = 'promo-code'; code.textContent = promo.code || '';
+      const copy = document.createElement('button'); copy.className = 'promo-code-copy'; copy.type = 'button'; copy.textContent = 'Скопіювати';
+      copy.addEventListener('click', async () => {
+        let copied = false;
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(String(promo.code || ''));
+            copied = true;
+          }
+        } catch {}
+        if (!copied) {
+          const field = document.createElement('textarea');
+          field.value = String(promo.code || ''); field.setAttribute('readonly', '');
+          field.style.position = 'fixed'; field.style.opacity = '0'; document.body.append(field); field.select();
+          try { copied = document.execCommand('copy'); } catch {}
+          field.remove();
+        }
+        if (!copied) return;
+        event(campaign.publicId, 'copy', productArticle, { action: 'copy_promo_code' });
+        copy.textContent = 'Скопійовано'; copy.classList.add('is-copied');
+        setTimeout(() => { if (copy.isConnected) { copy.textContent = 'Скопіювати'; copy.classList.remove('is-copied'); } }, 1800);
+      });
+      row.append(code, copy); offer.append(value, row);
+      if (promo.scopeNote) { const note = document.createElement('p'); note.className = 'promo-code-note'; note.textContent = promo.scopeNote; offer.append(note); }
+      content.append(offer);
+      if (campaign.content.primaryUrl && campaign.content.primaryLabel) {
+        const cta = document.createElement('a'); cta.className = 'promo-code-cta';
+        cta.href = campaign.content.primaryUrl; cta.textContent = campaign.content.primaryLabel;
+        cta.addEventListener('click', () => event(campaign.publicId, 'promo_cta', productArticle, { action: 'promo_cta' }));
+        content.append(cta);
+      }
+      card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
+      currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
+      if (campaign.behavior.autoCloseSeconds > 0) {
+        const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
+        cleanupTasks.push(() => clearTimeout(autoCloseTimer));
+      }
+      activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
+      requestAnimationFrame(() => copy.focus());
+      return;
+    }
     if (campaign.mode === 'out_of_stock' || isProductPromo) {
       const recommendations = document.createElement('div'); recommendations.className = 'recommendations';
       const recommendationEntries = [];

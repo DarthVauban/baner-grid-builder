@@ -26,6 +26,7 @@
 .analytics-filter-field > span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .analytics-filter-field .custom-select { width: 100%; }
 .analytics-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
+.analytics-metrics--popup { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .analytics-metric { --metric-color: #7765f5; min-width: 0; overflow: hidden; position: relative; display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 17px; padding: 17px 18px; background: var(--surface); box-shadow: 0 9px 28px rgba(26,35,54,.04); }
 .analytics-metric::before { content: ''; width: 4px; position: absolute; inset: 14px auto 14px 0; border-radius: 0 6px 6px 0; background: var(--metric-color); }
 .analytics-metric.is-blue { --metric-color: #3182f6; }

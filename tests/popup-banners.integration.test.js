@@ -1175,3 +1175,157 @@ test('product promo widget is non-modal on desktop and mobile storefront contrac
     }
   }
 });
+
+test('promo code library publishes immutable snapshots and records copy analytics', async () => {
+  await pool.query("UPDATE popup_banner_campaigns SET status = 'paused'");
+  const promoInput = {
+    internalName: 'Осіння знижка',
+    code: 'AUTUMN10',
+    type: 'percent_coupon',
+    discountValue: 10,
+    currency: '',
+    startsAt: null,
+    endsAt: null,
+    usageLimit: 250,
+    scopeNote: 'Аксесуари Joyroom',
+    enabled: true,
+    horoshopConfirmed: true
+  };
+  const createdCode = await admin.post('/api/promo-codes').send(promoInput).expect(201);
+  const promoCodeId = createdCode.body.data.id;
+  assert.equal(createdCode.body.data.status, 'active');
+  assert.equal(createdCode.body.data.code, 'AUTUMN10');
+  await admin.post('/api/promo-codes').send({ ...promoInput, code: 'autumn10' }).expect(409);
+
+  const campaignInput = input({
+    campaignType: 'promo_code',
+    name: 'Промокод для осінньої акції',
+    promoCodeId,
+    content: {
+      ...input().content,
+      eyebrow: 'Промокод',
+      title: 'Знижка для вас',
+      body: 'Скопіюйте код перед покупкою.',
+      primaryLabel: 'До акції',
+      primaryUrl: '/sale/',
+      secondaryLabel: '',
+      acknowledgementLabel: ''
+    },
+    targeting: { ...input().targeting, mode: 'all_pages' },
+    behavior: {
+      ...input().behavior,
+      trigger: 'exit_intent',
+      frequency: 'session',
+      requireAcknowledgement: false,
+      buttonCount: 1
+    },
+    productEntries: []
+  });
+  const createdCampaign = await admin.post('/api/popup-banners').send(campaignInput).expect(201);
+  assert.equal(createdCampaign.body.data.promoCode.code, 'AUTUMN10');
+  assert.equal(createdCampaign.body.data.publishedPromoCode, null);
+  const campaignId = createdCampaign.body.data.id;
+  const publicId = createdCampaign.body.data.publicId;
+  await admin.patch(`/api/popup-banners/${campaignId}/status`).send({ status: 'active' }).expect(200);
+
+  await admin.put(`/api/promo-codes/${promoCodeId}`).send({
+    ...promoInput,
+    internalName: 'Осіння знижка 15',
+    code: 'AUTUMN15',
+    discountValue: 15
+  }).expect(200);
+  const firstResolve = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/sale/' })
+    .expect(200);
+  assert.equal(firstResolve.body.data.campaign.type, 'promo_code');
+  assert.equal(firstResolve.body.data.campaign.behavior.trigger, 'exit_intent');
+  assert.equal(firstResolve.body.data.campaign.promoCode.code, 'AUTUMN10');
+  assert.equal(firstResolve.body.data.campaign.promoCode.discountValue, 10);
+
+  await admin.patch(`/api/popup-banners/${campaignId}/status`).send({ status: 'paused' }).expect(200);
+  const republished = await admin.patch(`/api/popup-banners/${campaignId}/status`).send({ status: 'active' }).expect(200);
+  assert.equal(republished.body.data.publishedPromoCode.code, 'AUTUMN15');
+  const secondResolve = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/sale/' })
+    .expect(200);
+  assert.equal(secondResolve.body.data.campaign.promoCode.code, 'AUTUMN15');
+
+  for (const eventType of ['impression', 'copy', 'promo_cta']) {
+    await request(app).post('/api/public/popup-banners/events').send({
+      publicId,
+      eventType,
+      pageUrl: 'https://shop.example.com/sale/',
+      visitorKey: 'promo-visitor',
+      metadata: { source: 'promo-test' }
+    }).expect(204);
+  }
+  const analytics = await admin.get('/api/popup-banners/analytics/overview').query({ days: 30 }).expect(200);
+  assert.ok(analytics.body.data.totals.impressions >= 1);
+  assert.equal(analytics.body.data.totals.copies, 1);
+  assert.equal(analytics.body.data.totals.promoCtaClicks, 1);
+  assert.ok(analytics.body.data.totals.copyRate > 0);
+  const promoCampaignAnalytics = analytics.body.data.campaigns.find((item) => item.id === campaignId);
+  assert.equal(promoCampaignAnalytics.copy, 1);
+  assert.equal(promoCampaignAnalytics.promo_cta, 1);
+  const library = await admin.get('/api/promo-codes').expect(200);
+  assert.equal(library.body.data[0].campaigns[0].id, campaignId);
+  await admin.delete(`/api/promo-codes/${promoCodeId}`).expect(409);
+});
+
+test('promo code widget is responsive on desktop and mobile and never auto-applies the code', async () => {
+  const payload = {
+    campaign: {
+      publicId: 'public-promo-code', revision: 'promo-code-revision', type: 'promo_code', mode: 'all_pages',
+      content: { eyebrow: 'Промокод', title: 'Знижка для вас', body: 'Скопіюйте код.', primaryLabel: 'До акції', primaryUrl: '/sale/' },
+      styles: {
+        layout: 'modal', accentColor: '#6d5dfc', backgroundColor: '#ffffff', textColor: '#172033', mutedColor: '#667085',
+        primaryButtonBackgroundColor: '#ffe101', primaryButtonTextColor: '#111827', secondaryButtonBackgroundColor: '#fff',
+        secondaryButtonTextColor: '#172033', checkboxAccentColor: '#6d5dfc', checkboxCheckColor: '#fff', checkboxTextColor: '#172033',
+        timelineColor: '#6d5dfc', timelineTrackColor: '#ede9fe', eyebrowFontSize: 12, titleFontSize: 34, bodyFontSize: 16,
+        acknowledgementFontSize: 14, buttonFontSize: 16, buttonBorderRadius: 12, borderRadius: 24, maxWidth: 560
+      },
+      behavior: { trigger: 'delay', delayMs: 0, frequency: 'always', cooldownHours: 24, cooldownDays: 7, maxShowsPerSession: 0, device: 'all', autoCloseSeconds: 0, dismissible: true, requireAcknowledgement: false, buttonCount: 1 },
+      promoCode: { code: 'AUTUMN15', type: 'percent_coupon', discountValue: 15, currency: '', scopeNote: 'Лише аксесуари' }
+    },
+    product: null, recommendations: [], products: []
+  };
+  for (const surface of [{ width: 1440, userAgent: 'Mozilla/5.0 Chrome/140' }, { width: 390, userAgent: 'Mozilla/5.0 (Linux; Android 16) Chrome/140 Mobile Safari/537.36' }]) {
+    const dom = new JSDOM('<!doctype html><html><body><input name="coupon"><button class="apply-coupon">Apply</button></body></html>', {
+      pretendToBeVisual: true, runScripts: 'outside-only', url: 'https://shop.example.com/sale/'
+    });
+    Object.defineProperty(dom.window, 'innerWidth', { configurable: true, value: surface.width });
+    Object.defineProperty(dom.window.navigator, 'userAgent', { configurable: true, value: surface.userAgent });
+    Object.defineProperty(dom.window.navigator, 'clipboard', { configurable: true, value: { writeText: async () => {} } });
+    dom.window.MutationObserver = class MutationObserver { observe() {} disconnect() {} };
+    const events = [];
+    let applyClicks = 0;
+    dom.window.document.querySelector('.apply-coupon').addEventListener('click', () => { applyClicks += 1; });
+    dom.window.fetch = async (input, options = {}) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/resolve')) return { ok: true, json: async () => ({ data: payload }) };
+      if (url.pathname.endsWith('/events')) { events.push(JSON.parse(options.body)); return { ok: true }; }
+      throw new Error(`Unexpected fetch: ${url.href}`);
+    };
+    dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 35));
+    const host = dom.window.document.querySelector('#mt-popup-banner-root');
+    const shadow = host.shadowRoot;
+    assert.equal(shadow.querySelector('.promo-code').textContent, 'AUTUMN15');
+    assert.equal(shadow.querySelector('.promo-code-value').textContent, 'Знижка 15%');
+    assert.equal(shadow.querySelector('.promo-code-cta').href, 'https://shop.example.com/sale/');
+    assert.equal(dom.window.document.querySelector('[name="coupon"]').value, '');
+    assert.equal(applyClicks, 0);
+    shadow.querySelector('.promo-code-copy').click();
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+    assert.ok(events.some((event) => event.eventType === 'copy'));
+    shadow.querySelector('.promo-code-cta').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.ok(events.some((event) => event.eventType === 'promo_cta'));
+    const runtimeCss = shadow.querySelector('style').textContent;
+    assert.match(runtimeCss, /@media\(max-width:600px\)\{\.promo-code-offer/u);
+    dom.window.close();
+  }
+});

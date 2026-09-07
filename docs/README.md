@@ -18,6 +18,8 @@
   самодостатній документ для передачі контексту в інший чат або новому розробнику.
 - [DOM-контракт desktop/mobile вітрини](horoshop-storefront-dom-contract.md) — обов'язкові правила
   окремих DOM-поверхонь, native cart, selector maps і regression-перевірок.
+- [Промокоди Хорошоп у KramKit](horoshop-promo-codes.md) — локальна бібліотека, банери,
+  незмінні snapshot-и публікацій та аналітика копіювань/CTA.
 - [Меню каталогу Хорошоп](horoshop-catalog-menu/README.md) — CSS-only оформлення штатного дерева,
   три теми, install-код і fail-open контракт.
 - [Імпорт каталогу й супутні товари](search/HOROSHOP_CATALOG_IMPORT.md) — реалізований контракт.
