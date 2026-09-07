@@ -309,11 +309,11 @@ test('sticker rules and the embeddable widget work without exact product targets
   assert.match(code.body.data.code, /popup-banners\/embed\.js/u);
 });
 
-test('exit offer persists its dedicated type and forces the exit-intent trigger', async () => {
+test('information popup persists exit intent as a display condition', async () => {
   const exitPageUrl = 'https://shop.example.com/exit-offer-test/';
   const created = await admin.post('/api/popup-banners').send(input({
-    campaignType: 'exit_offer',
-    name: 'Exit offer для тесту',
+    campaignType: 'message',
+    name: 'Попап за наміром вийти',
     content: {
       ...input().content,
       eyebrow: 'Зачекайте',
@@ -331,25 +331,21 @@ test('exit offer persists its dedicated type and forces the exit-intent trigger'
     },
     behavior: {
       ...input().behavior,
-      trigger: 'delay',
+      trigger: 'exit_intent',
       delayMs: 5000,
       frequency: 'session',
       maxShowsPerSession: 1,
       requireAcknowledgement: true
     },
     productEntries: [],
-    promoItems: [{
-      productExternalId: 'iphone-15-new',
-      modificationExternalId: 'iphone-15-new:black'
-    }]
+    promoItems: []
   })).expect(201);
 
-  assert.equal(created.body.data.campaignType, 'exit_offer');
+  assert.equal(created.body.data.campaignType, 'message');
   assert.equal(created.body.data.behavior.trigger, 'exit_intent');
   assert.equal(created.body.data.behavior.delayMs, 5000);
-  assert.equal(created.body.data.behavior.requireAcknowledgement, false);
-  assert.equal(created.body.data.promoProducts.length, 1);
-  assert.equal(created.body.data.promoProducts[0].sku, 'IPHONE-15-NEW-BLACK');
+  assert.equal(created.body.data.behavior.requireAcknowledgement, true);
+  assert.equal(created.body.data.promoProducts.length, 0);
 
   const activated = await admin.patch(`/api/popup-banners/${created.body.data.id}/status`)
     .send({ status: 'active' }).expect(200);
@@ -359,21 +355,37 @@ test('exit offer persists its dedicated type and forces the exit-intent trigger'
     .query({ pageUrl: exitPageUrl })
     .expect(200);
   assert.equal(resolved.body.data.campaign.publicId, created.body.data.publicId);
-  assert.equal(resolved.body.data.campaign.type, 'exit_offer');
+  assert.equal(resolved.body.data.campaign.type, 'message');
   assert.equal(resolved.body.data.campaign.revision, activated.body.data.updatedAt);
   assert.equal(resolved.body.data.campaign.behavior.trigger, 'exit_intent');
-  assert.equal(resolved.body.data.products.length, 1);
-  assert.equal(resolved.body.data.products[0].buyId, '9002');
+  assert.equal(resolved.body.data.products.length, 0);
 
   await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'paused' }).expect(200);
 });
 
-test('exit offer waits for independent desktop and mobile exit signals', async (t) => {
+test('exit intent is rejected for product promo and out-of-stock campaigns', async () => {
+  await admin.post('/api/popup-banners').send(input({
+    campaignType: 'product_promo',
+    name: 'Невалідний товарний банер',
+    behavior: { ...input().behavior, trigger: 'exit_intent' },
+    targeting: { ...input().targeting, mode: 'all_pages' },
+    promoItems: [{ productExternalId: 'iphone-15-new', modificationExternalId: null }]
+  })).expect(422);
+
+  await admin.post('/api/popup-banners').send(input({
+    campaignType: 'out_of_stock_recommendations',
+    name: 'Невалідні альтернативи',
+    behavior: { ...input().behavior, trigger: 'exit_intent' },
+    targeting: { ...input().targeting, mode: 'out_of_stock' }
+  })).expect(422);
+});
+
+test('exit-intent condition waits for independent desktop and mobile exit signals', async (t) => {
   const script = popupEmbedScript('https://mt-panel.example.com');
   const payload = {
     campaign: {
       publicId: 'exit-offer-runtime',
-      type: 'exit_offer',
+      type: 'message',
       mode: 'all_pages',
       content: {
         eyebrow: 'Зачекайте', title: 'Не поспішайте йти', body: 'Для вас є спеціальна пропозиція.',
@@ -400,18 +412,7 @@ test('exit offer waits for independent desktop and mobile exit signals', async (
     },
     product: null,
     recommendations: [],
-    products: [{
-      productId: 'exit-product',
-      modificationId: null,
-      article: 'EXIT-1',
-      title: 'Спеціальна пропозиція',
-      price: '999',
-      oldPrice: '1199',
-      currency: 'UAH',
-      imageUrl: 'https://shop.example.com/exit-product.jpg',
-      pageUrl: 'https://shop.example.com/exit-product/',
-      buyId: '9003'
-    }]
+    products: []
   };
   const surfaces = [
     { name: 'desktop', width: 1366, userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -465,21 +466,22 @@ test('exit offer waits for independent desktop and mobile exit signals', async (
 
     await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
     const host = dom.window.document.querySelector('#mt-popup-banner-root');
-    assert.ok(host, `${surface.name} exit signal should render the offer`);
-    assert.ok(host.shadowRoot.querySelector('.card.is-exit-offer'));
+    assert.ok(host, `${surface.name} exit signal should render the popup`);
+    assert.ok(host.shadowRoot.querySelector('.card'));
+    assert.equal(host.shadowRoot.querySelector('.card.is-recommendations'), null);
     assert.equal(host.shadowRoot.querySelector('.card').getAttribute('aria-modal'), 'true');
-    assert.equal(host.shadowRoot.querySelector('.recommendation-title')?.textContent, 'Спеціальна пропозиція');
-    assert.equal(host.shadowRoot.querySelector('.recommendation-buy')?.textContent, 'Переглянути');
+    assert.equal(host.shadowRoot.querySelector('.title')?.textContent, 'Не поспішайте йти');
+    assert.equal(host.shadowRoot.querySelector('.body')?.textContent, 'Для вас є спеціальна пропозиція.');
   }
 });
 
-test('exit offer keeps an early desktop exit signal until its activation delay elapses', async (t) => {
+test('exit-intent condition keeps an early desktop signal until its activation delay elapses', async (t) => {
   const script = popupEmbedScript('https://mt-panel.example.com');
   const payload = {
     campaign: {
       publicId: 'exit-offer-delayed-runtime',
       revision: '2026-09-07T12:00:00.000Z',
-      type: 'exit_offer',
+      type: 'message',
       mode: 'all_pages',
       content: {
         eyebrow: 'Зачекайте', title: 'Не поспішайте йти', body: 'Для вас є спеціальна пропозиція.',
@@ -506,11 +508,7 @@ test('exit offer keeps an early desktop exit signal until its activation delay e
     },
     product: null,
     recommendations: [],
-    products: [{
-      productId: 'exit-product', modificationId: null, article: 'EXIT-1', title: 'Спеціальна пропозиція',
-      price: '999', oldPrice: '1199', currency: 'UAH', imageUrl: 'https://shop.example.com/exit.jpg',
-      pageUrl: 'https://shop.example.com/exit/', buyId: '9003'
-    }]
+    products: []
   };
   const dom = new JSDOM('<!doctype html><html><body><main>Storefront</main></body></html>', {
     pretendToBeVisual: true,

@@ -127,7 +127,7 @@ const behaviorSchema = z.object({
   }
 });
 const campaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'exit_offer']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo']).default('message'),
   name: z.string().trim().min(1).max(160),
   priority: z.number().int().min(0).max(1000),
   content: contentSchema,
@@ -145,9 +145,21 @@ const campaignSchema = z.object({
   message: 'Дата завершення має бути пізніше дати початку.',
   path: ['endsAt']
 }).superRefine((value, context) => {
-  if (['product_promo', 'exit_offer'].includes(value.campaignType) && value.targeting.mode === 'out_of_stock') {
+  if (value.campaignType === 'product_promo' && value.targeting.mode === 'out_of_stock') {
     context.addIssue({
       code: 'custom', path: ['targeting', 'mode'], message: 'Цей тип банера не підтримує сценарій відсутнього товару.'
+    });
+  }
+  if (
+    value.behavior.trigger === 'exit_intent'
+    && (value.campaignType === 'product_promo'
+      || value.campaignType === 'out_of_stock_recommendations'
+      || value.targeting.mode === 'out_of_stock')
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['behavior', 'trigger'],
+      message: 'Умова «Намір вийти» недоступна для товарного промобанера та альтернатив відсутнього товару.'
     });
   }
   const optionalNotificationCopy = value.campaignType === 'product_promo'

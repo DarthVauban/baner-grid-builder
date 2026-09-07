@@ -1,5 +1,5 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'exit_offer';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo';
 export type PopupLayout = 'modal' | 'bottom-sheet' | 'corner';
 export type PopupPromoFormat = 'notification' | 'compact' | 'standard' | 'wide' | 'custom';
 export type PopupDesktopPosition = 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';

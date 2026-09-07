@@ -17,6 +17,7 @@ import type {
   PopupMobilePosition,
   PopupPromoFormat,
   PopupPromoProduct,
+  PopupTrigger,
   PopupTargetMode,
   PopupTargeting
 } from '../types/popup-banner';
@@ -41,8 +42,7 @@ const statusLabels: Record<PopupCampaignStatus, string> = {
 const campaignTypeLabels: Record<PopupCampaignType, string> = {
   message: 'Інформаційний попап',
   out_of_stock_recommendations: 'Альтернативи товару',
-  product_promo: 'Товарний промобанер',
-  exit_offer: 'Exit offer'
+  product_promo: 'Товарний промобанер'
 };
 
 const layoutLabels: Record<PopupLayout, string> = {
@@ -207,38 +207,6 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       }
     };
   }
-  if (campaignType === 'exit_offer') {
-    return {
-      ...draft,
-      name: 'Exit offer',
-      content: {
-        ...draft.content,
-        eyebrow: 'Зачекайте',
-        title: 'Не поспішайте йти',
-        body: 'Перегляньте спеціальну пропозицію, перш ніж залишити сайт.',
-        primaryLabel: 'Купити',
-        secondaryLabel: 'Ні, дякую',
-        acknowledgementLabel: ''
-      },
-      styles: {
-        ...draft.styles,
-        layout: 'modal',
-        primaryButtonBackgroundColor: '#ffe101',
-        primaryButtonTextColor: '#111827',
-        maxWidth: 560
-      },
-      targeting: { ...draft.targeting, mode: 'all_pages' },
-      behavior: {
-        ...draft.behavior,
-        trigger: 'exit_intent',
-        delayMs: 5000,
-        frequency: 'session',
-        maxShowsPerSession: 1,
-        requireAcknowledgement: false,
-        buttonCount: 1
-      }
-    };
-  }
   if (campaignType === 'out_of_stock_recommendations') {
     return {
       ...draft,
@@ -341,7 +309,13 @@ function money(value: string, currency: string) {
 }
 
 function campaignUsesAttachedProducts(campaignType: PopupCampaignType) {
-  return campaignType === 'product_promo' || campaignType === 'exit_offer';
+  return campaignType === 'product_promo';
+}
+
+function campaignSupportsExitIntent(campaignType: PopupCampaignType, targetMode: PopupTargetMode) {
+  return campaignType !== 'product_promo'
+    && campaignType !== 'out_of_stock_recommendations'
+    && targetMode !== 'out_of_stock';
 }
 
 function formatDate(value: string | null) {
@@ -424,7 +398,7 @@ function TargetModePicker({ value, campaignType, onChange }: { value: PopupTarge
     { value: 'all_products', icon: 'storefront', description: 'Будь-яка сторінка товару' },
     { value: 'all_pages', icon: 'productPage', description: 'Увесь сайт без обмежень' }
   ];
-  const visibleModes = ['product_promo', 'exit_offer'].includes(campaignType)
+  const visibleModes = campaignType === 'product_promo'
     ? modes.filter((mode) => mode.value !== 'out_of_stock')
     : modes;
   return <div className="popup-target-mode" role="radiogroup" aria-label="Тип вибірки">
@@ -497,7 +471,7 @@ function PromoPositionPicker({
 function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) => void }) {
   const planned = [
     { stage: 2, title: 'Банер із таймером', description: 'Акція з візуальним зворотним відліком.', icon: 'schedule' as const },
-    { stage: 4, title: 'Банер із промокодом', description: 'Промокод із швидким копіюванням.', icon: 'copy' as const }
+    { stage: 3, title: 'Банер із промокодом', description: 'Промокод із швидким копіюванням.', icon: 'copy' as const }
   ];
   return <section className="popup-type-picker">
     <header><p className="eyebrow">Нова кампанія</p><h2>Оберіть тип банера</h2><p>Тип визначає структуру конструктора, поведінку на сайті та набір доступних налаштувань.</p></header>
@@ -508,12 +482,6 @@ function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) 
           <span><Icon name="productCard" size={25} /></span><i>НОВИЙ</i>
           <strong>Товарний промобанер</strong>
           <small>Від компактного Elfsight-подібного сповіщення до широкої добірки. Без оверлею — сайт залишається доступним.</small>
-          <b>Створити банер <Icon name="arrow" size={16} /></b>
-        </button>
-        <button type="button" onClick={() => onSelect('exit_offer')}>
-          <span><Icon name="logout" size={25} /></span><i>НОВИЙ</i>
-          <strong>Exit offer</strong>
-          <small>Показує спеціальну пропозицію саме в момент, коли покупець збирається залишити сайт.</small>
           <b>Створити банер <Icon name="arrow" size={16} /></b>
         </button>
         {planned.map((item) => <article key={item.title}>
@@ -541,7 +509,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
   const content = draft.content;
   const styles = draft.styles;
   const isPromoNotification = draft.campaignType === 'product_promo' && styles.promoFormat === 'notification';
-  const isExitOffer = draft.campaignType === 'exit_offer';
+  const isExitIntent = draft.behavior.trigger === 'exit_intent';
   const hasAttachedProducts = campaignUsesAttachedProducts(draft.campaignType);
   const promoProductKey = promoProducts.map(promoKey).join('|');
   const rotationDuration = Math.max(2, draft.behavior.rotationSeconds) * 1000;
@@ -579,12 +547,10 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
     }));
   const productCards = draft.campaignType === 'product_promo'
     ? attachedProductCards.slice(0, 4)
-    : isExitOffer ? attachedProductCards : recommendations;
-  const exitPreviewLimit = viewport === 'mobile' ? 2 : 4;
-  const hiddenExitProductCount = isExitOffer ? Math.max(0, productCards.length - exitPreviewLimit) : 0;
+    : recommendations;
   const visibleProductCards = draft.campaignType === 'product_promo' && productCards.length
     ? [productCards[previewProductIndex % productCards.length]]
-    : isExitOffer ? productCards.slice(0, exitPreviewLimit) : productCards;
+    : productCards;
   function movePreviewProduct(direction: -1 | 1) {
     if (productCards.length < 2) return;
     previewRotationRemaining.current = rotationDuration;
@@ -598,7 +564,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
         <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон"><Icon name="phone" size={16} /></button>
       </div>
     </header>
-    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}${styles.promoFormat === 'compact' && styles.showPromoTitle ? ' has-promo-title' : ''}` : ''}${isExitOffer ? ' is-exit-offer' : ''}`} style={{
+    <div className={`popup-preview is-${styles.layout} is-${viewport}${draft.campaignType === 'product_promo' ? ` is-product-promo is-format-${styles.promoFormat} is-position-${viewport === 'desktop' ? styles.desktopPosition : styles.mobilePosition}${styles.promoFormat === 'compact' && styles.showPromoTitle ? ' has-promo-title' : ''}` : ''}`} style={{
       '--preview-accent': styles.accentColor,
       '--preview-bg': styles.backgroundColor,
       '--preview-text': styles.textColor,
@@ -631,7 +597,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
           <div className="popup-preview__storefront-header"><b /><span /><span /><span /></div>
           <div className="popup-preview__storefront-product"><i /><div><b /><span /><span /><button /></div></div>
         </div>
-        {isExitOffer && <span className="popup-preview__exit-signal"><Icon name="logout" size={13} /> Exit intent</span>}
+        {isExitIntent && <span className="popup-preview__exit-signal"><Icon name="logout" size={13} /> Намір вийти</span>}
         <article
           className={`popup-preview__card${previewRotationPaused ? ' is-rotation-paused' : ''}`}
           onMouseEnter={() => setPreviewPointerPaused(true)}
@@ -650,9 +616,8 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
                 <b>{item.price}</b>
                 <button type="button">{content.primaryLabel || 'Купити'}</button>
               </article>) : <div className="popup-preview__product-empty">Додайте товари у наступному розділі</div>}
-              {hiddenExitProductCount > 0 && <span className="popup-preview__more-products">Ще товарів у банері: {hiddenExitProductCount}</span>}
             </div>}
-            {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && !isExitOffer && draft.behavior.requireAcknowledgement && <label>
+            {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.behavior.requireAcknowledgement && <label>
               <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
               <span>{content.acknowledgementLabel}</span>
             </label>}
@@ -705,8 +670,14 @@ export function PopupBannersPage() {
   const saving = createCampaign.isPending || updateCampaign.isPending;
   const isPromoNotification = draft.campaignType === 'product_promo'
     && draft.styles.promoFormat === 'notification';
-  const isExitOffer = draft.campaignType === 'exit_offer';
   const hasAttachedProducts = campaignUsesAttachedProducts(draft.campaignType);
+  const supportsExitIntent = campaignSupportsExitIntent(draft.campaignType, draft.targeting.mode);
+  const triggerOptions: Array<{ value: PopupTrigger; label: string }> = [
+    { value: 'delay', label: 'Через задану затримку' },
+    { value: 'scroll', label: 'Після прокручування сторінки' },
+    { value: 'inactivity', label: 'Після періоду бездіяльності' },
+    ...(supportsExitIntent ? [{ value: 'exit_intent' as const, label: 'Коли покупець збирається вийти' }] : [])
+  ];
 
   const campaignOverview = useMemo(() => {
     const items = campaigns.data || [];
@@ -835,7 +806,7 @@ export function PopupBannersPage() {
         && current.content.body === 'Перед оформленням замовлення ознайомтеся з важливою інформацією про товар.';
       return {
         ...current,
-        campaignType: ['product_promo', 'exit_offer'].includes(current.campaignType)
+        campaignType: current.campaignType === 'product_promo'
           ? current.campaignType
           : mode === 'out_of_stock' ? 'out_of_stock_recommendations' : 'message',
         name: isFirstOutOfStockSetup && current.name === 'Попередження про товар'
@@ -851,12 +822,17 @@ export function PopupBannersPage() {
           layout: 'modal',
           maxWidth: Math.max(960, current.styles.maxWidth)
         } : current.styles,
-        behavior: isFirstOutOfStockSetup ? {
+        behavior: {
           ...current.behavior,
-          frequency: 'always',
-          requireAcknowledgement: false,
-          buttonCount: 1
-        } : current.behavior,
+          ...(isFirstOutOfStockSetup ? {
+            frequency: 'always' as const,
+            requireAcknowledgement: false,
+            buttonCount: 1 as const
+          } : {}),
+          ...(mode === 'out_of_stock' && current.behavior.trigger === 'exit_intent'
+            ? { trigger: 'delay' as const }
+            : {})
+        },
         targeting: { ...current.targeting, mode }
       };
     });
@@ -1023,8 +999,8 @@ export function PopupBannersPage() {
 
         <nav className="popup-editor-tabs" aria-label="Розділи конструктора">
           {([
-            ['content', 'popup', 'Контент і дизайн', draft.campaignType === 'product_promo' ? 'Плаваюча панель · без оверлею' : isExitOffer ? `Exit intent · ${layoutLabels[draft.styles.layout]}` : `${layoutLabels[draft.styles.layout]} · ${draft.styles.maxWidth}px`],
-            ...(hasAttachedProducts ? [['products', 'catalog', isExitOffer ? 'Товари пропозиції' : 'Товари банера', `${promoProducts.length} із 12`]] : []),
+            ['content', 'popup', 'Контент і дизайн', draft.campaignType === 'product_promo' ? 'Плаваюча панель · без оверлею' : `${layoutLabels[draft.styles.layout]} · ${draft.styles.maxWidth}px`],
+            ...(hasAttachedProducts ? [['products', 'catalog', 'Товари банера', `${promoProducts.length} із 12`]] : []),
             ['targeting', 'productSelection', 'Умови показу', targetSummary],
             ['behavior', 'schedule', 'Поведінка й розклад', behaviorSummary]
           ] as Array<[EditorTab, Parameters<typeof Icon>[0]['name'], string, string]>).map(([value, icon, label, summary], index) => <button type="button" className={tab === value ? 'is-active' : ''} onClick={() => setTab(value)} key={value}>
@@ -1137,11 +1113,11 @@ export function PopupBannersPage() {
                     <label><span>Надзаголовок, px</span><input type="number" min={8} max={32} value={draft.styles.eyebrowFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, eyebrowFontSize: Number(event.target.value) } }))} /></label>
                     <label><span>Заголовок, px</span><input type="number" min={18} max={72} value={draft.styles.titleFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, titleFontSize: Number(event.target.value) } }))} /></label>
                     <label><span>Основний текст, px</span><input type="number" min={10} max={36} value={draft.styles.bodyFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, bodyFontSize: Number(event.target.value) } }))} /></label>
-                    {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && !isExitOffer && <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>}
+                    {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>}
                     <label><span>Кнопки, px</span><input type="number" min={10} max={28} value={draft.styles.buttonFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, buttonFontSize: Number(event.target.value) } }))} /></label>
                   </div>
                 </div>
-                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && !isExitOffer && <div className="popup-settings-group">
+                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && <div className="popup-settings-group">
                   <strong>Стиль чекбокса підтвердження</strong>
                   <small>Ці кольори застосуються, коли в розділі поведінки увімкнено явне підтвердження.</small>
                   <div className="popup-color-grid">
@@ -1159,7 +1135,7 @@ export function PopupBannersPage() {
 
             {tab === 'products' && hasAttachedProducts && <div className="popup-promo-products">
               <div className="popup-form-section">
-                <SectionHeading icon="catalog" title="Каталог Хорошопа" description={`Знайдіть товар або конкретну модифікацію. У ${isExitOffer ? 'пропозицію' : 'банер'} потрапляють лише видимі позиції в наявності.`} aside={`${promoProducts.length} із 12`} />
+                <SectionHeading icon="catalog" title="Каталог Хорошопа" description="Знайдіть товар або конкретну модифікацію. У банер потрапляють лише видимі позиції в наявності." aside={`${promoProducts.length} із 12`} />
                 <div className="popup-promo-catalog-tools">
                   <label><span>Пошук</span><input value={promoCatalogSearch} onChange={(event) => setPromoCatalogSearch(event.target.value)} placeholder="Назва або артикул" /></label>
                   <label><span>Категорія</span><StyledSelect value={promoCategory} options={promoCategoryOptions} onChange={setPromoCategory} ariaLabel="Категорія промотоварів" /></label>
@@ -1178,8 +1154,8 @@ export function PopupBannersPage() {
                 })}</div>
               </div>
               <div className="popup-form-section">
-                <SectionHeading icon="productSelection" title={isExitOffer ? 'Товари Exit offer' : 'Товари у банері'} description={`Порядок у цьому списку відповідає порядку карток у ${isExitOffer ? 'Exit offer' : 'промобанері'}.`} aside={`${promoProducts.length} товарів`} />
-                {!promoProducts.length && <div className="popup-promo-empty"><Icon name="productCard" size={28} /><strong>{isExitOffer ? 'Пропозиція поки порожня' : 'Банер поки порожній'}</strong><small>Додайте хоча б один товар із каталогу вище.</small></div>}
+                <SectionHeading icon="productSelection" title="Товари у банері" description="Порядок у цьому списку відповідає порядку карток у промобанері." aside={`${promoProducts.length} товарів`} />
+                {!promoProducts.length && <div className="popup-promo-empty"><Icon name="productCard" size={28} /><strong>Банер поки порожній</strong><small>Додайте хоча б один товар із каталогу вище.</small></div>}
                 <div className="popup-promo-selected-list">{promoProducts.map((item, index) => <article key={promoKey(item)}>
                   <span className="popup-promo-position">{index + 1}</span>
                   <span className="popup-promo-thumb">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : <Icon name="productCard" size={24} />}</span>
@@ -1229,26 +1205,25 @@ export function PopupBannersPage() {
             {tab === 'behavior' && <>
               <div className="popup-form-section">
                 <SectionHeading
-                  icon={isExitOffer ? 'logout' : 'schedule'}
-                  title={isExitOffer ? 'Exit intent' : 'Тригер показу'}
-                  description={isExitOffer ? 'Банер з’явиться лише після сигналу, що покупець збирається залишити сторінку.' : 'Визначте, в який момент банер має з’явитися після відкриття сторінки.'}
+                  icon="schedule"
+                  title="Умова показу"
+                  description="Визначте, в який момент банер має з’явитися після відкриття сторінки."
                 />
-                {isExitOffer ? <>
+                <div className="popup-form-grid">
+                  <label><span>Умова появи</span><StyledSelect value={draft.behavior.trigger} options={triggerOptions} onChange={(trigger) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, trigger } }))} ariaLabel="Умова появи" /></label>
+                  {draft.behavior.trigger === 'delay' && <label><span>Затримка перед показом, мс</span><input type="number" min={0} max={60000} step={100} value={draft.behavior.delayMs} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, delayMs: Number(event.target.value) } }))} /><small>300–800 мс зазвичай сприймаються природно.</small></label>}
+                  {draft.behavior.trigger === 'scroll' && <label><span>Показати після прокрутки, %</span><input type="number" min={5} max={100} value={draft.behavior.scrollPercent} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, scrollPercent: Number(event.target.value) } }))} /><small>Відсоток довжини сторінки, який має пройти покупець.</small></label>}
+                  {draft.behavior.trigger === 'inactivity' && <label><span>Бездіяльність, секунд</span><input type="number" min={1} max={300} value={draft.behavior.inactivitySeconds} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, inactivitySeconds: Number(event.target.value) } }))} /><small>Таймер перезапускається після кліку, дотику, скролу або натискання клавіші.</small></label>}
+                  {draft.behavior.trigger === 'exit_intent' && <label><span>Активувати розпізнавання через, секунд</span><input type="number" min={0} max={60} step={1} value={draft.behavior.delayMs / 1000} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, delayMs: Math.round(Number(event.target.value) * 1000) } }))} /><small>Захищає від випадкового показу одразу після завантаження. Рекомендовано 5–10 секунд.</small></label>}
+                </div>
+                {draft.behavior.trigger === 'exit_intent' && <>
                   <div className="popup-exit-intent-note">
                     <span><Icon name="monitor" size={19} /></span>
                     <div><strong>Desktop</strong><small>Вихід курсора через верхню межу вікна після періоду активації.</small></div>
                     <span><Icon name="phone" size={19} /></span>
                     <div><strong>Mobile</strong><small>Швидке повернення до початку сторінки або повернення на вкладку після її згортання.</small></div>
                   </div>
-                  <div className="popup-form-grid">
-                    <label><span>Активувати розпізнавання через, секунд</span><input type="number" min={0} max={60} step={1} value={draft.behavior.delayMs / 1000} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, trigger: 'exit_intent', delayMs: Math.round(Number(event.target.value) * 1000) } }))} /><small>Захищає від випадкового показу одразу після завантаження. Рекомендовано 5–10 секунд.</small></label>
-                  </div>
-                </> : <div className="popup-form-grid">
-                  <label><span>Умова появи</span><StyledSelect value={draft.behavior.trigger} options={[{ value: 'delay', label: 'Через задану затримку' }, { value: 'scroll', label: 'Після прокручування сторінки' }, { value: 'inactivity', label: 'Після періоду бездіяльності' }]} onChange={(trigger) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, trigger } }))} ariaLabel="Умова появи" /></label>
-                  {draft.behavior.trigger === 'delay' && <label><span>Затримка перед показом, мс</span><input type="number" min={0} max={60000} step={100} value={draft.behavior.delayMs} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, delayMs: Number(event.target.value) } }))} /><small>300–800 мс зазвичай сприймаються природно.</small></label>}
-                  {draft.behavior.trigger === 'scroll' && <label><span>Показати після прокрутки, %</span><input type="number" min={5} max={100} value={draft.behavior.scrollPercent} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, scrollPercent: Number(event.target.value) } }))} /><small>Відсоток довжини сторінки, який має пройти покупець.</small></label>}
-                  {draft.behavior.trigger === 'inactivity' && <label><span>Бездіяльність, секунд</span><input type="number" min={1} max={300} value={draft.behavior.inactivitySeconds} onChange={(event) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, inactivitySeconds: Number(event.target.value) } }))} /><small>Таймер перезапускається після кліку, дотику, скролу або натискання клавіші.</small></label>}
-                </div>}
+                </>}
               </div>
               <div className="popup-form-section">
                 <SectionHeading icon="visibility" title="Повторні покази й пристрої" description="Обмежте частоту для одного покупця та потрібний тип вітрини." aside={behaviorSummary} />
@@ -1263,9 +1238,9 @@ export function PopupBannersPage() {
                 </div>
                 <div className="popup-toggle-list">
                   <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description={draft.campaignType === 'product_promo' ? 'Показувати хрестик у самій панелі. Банер не перехоплює кліки поза нею.' : 'Показувати хрестик і дозволити закриття кліком по затемненому фону.'} onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
-                  {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && !isExitOffer && <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />}
+                  {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />}
                 </div>
-                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && !isExitOffer && draft.behavior.requireAcknowledgement && <>
+                {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && draft.behavior.requireAcknowledgement && <>
                   <label><span>Текст підтвердження</span><textarea rows={3} value={draft.content.acknowledgementLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, acknowledgementLabel: event.target.value } }))} /></label>
                 </>}
               </div>

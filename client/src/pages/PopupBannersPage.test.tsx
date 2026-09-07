@@ -308,81 +308,20 @@ describe('PopupBannersPage', () => {
     expect(screen.queryByText('Стиль чекбокса підтвердження')).not.toBeInTheDocument();
   });
 
-  it('creates an exit offer with dedicated desktop and mobile intent behavior', async () => {
+  it('configures exit intent as a display condition for an information popup', async () => {
     const { container } = renderPage();
     await screen.findByDisplayValue(baseCampaign.name);
 
-    fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
-    fireEvent.click(screen.getByRole('button', { name: /Exit offer/u }));
-
-    expect(screen.getByDisplayValue('Exit offer')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Не поспішайте йти')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Купити')).toBeInTheDocument();
-    expect(container.querySelector('.popup-preview.is-exit-offer')).toBeInTheDocument();
-    expect(screen.getByText('Exit intent')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: /Товари пропозиції/u }));
-    const add = await screen.findAllByRole('button', { name: /Додати/u });
-    fireEvent.click(add[0]);
-    expect(screen.getByText('Товари Exit offer')).toBeInTheDocument();
-    expect(screen.getAllByText('Промотовар').length).toBeGreaterThan(0);
-    expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled();
-
     fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
+    fireEvent.click(screen.getByRole('button', { name: 'Умова появи' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Коли покупець збирається вийти' }));
+
     expect(screen.getByText('Desktop')).toBeInTheDocument();
     expect(screen.getByText('Mobile')).toBeInTheDocument();
-    expect(screen.getByRole('spinbutton', { name: /Активувати розпізнавання/u })).toHaveValue(5);
-    expect(screen.queryByRole('button', { name: 'Умова появи' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: /Потрібне явне підтвердження/u })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
-    expect(screen.getByRole('radio', { name: /Усі сторінки/u })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.queryByRole('radio', { name: /Товар відсутній/u })).not.toBeInTheDocument();
-  });
-
-  it('keeps the exit offer preview compact when five products are attached', async () => {
-    const exitProducts = Array.from({ length: 5 }, (_, index) => ({
-      id: `exit-item-${index + 1}`,
-      productId: `exit-product-${index + 1}`,
-      modificationId: null,
-      productExternalId: `exit-external-${index + 1}`,
-      modificationExternalId: null,
-      position: index,
-      sku: `EXIT-${index + 1}`,
-      title: `Товар Exit offer ${index + 1}`,
-      imageUrl: `https://cdn.example.com/exit-${index + 1}.webp`,
-      pageUrl: `https://mobiletrend.com.ua/exit-${index + 1}/`,
-      price: String(999 + index * 100),
-      oldPrice: '',
-      currency: 'UAH',
-      availability: 'В наявності',
-      visible: true,
-      available: true,
-      buyId: `exit-buy-${index + 1}`
-    }));
-    vi.mocked(api.popupBanners.list).mockResolvedValue([{
-      ...structuredClone(baseCampaign),
-      id: 'exit-preview-campaign',
-      publicId: 'exit-preview-public',
-      campaignType: 'exit_offer',
-      name: 'Exit offer із п’ятьма товарами',
-      status: 'draft',
-      targeting: { ...baseCampaign.targeting, mode: 'all_pages' },
-      behavior: { ...baseCampaign.behavior, trigger: 'exit_intent', frequency: 'session' },
-      productTargets: [],
-      promoProducts: exitProducts
-    }]);
-    const { container } = renderPage();
-
-    await screen.findByDisplayValue('Exit offer із п’ятьма товарами');
-    expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(4);
-    expect(screen.getByText('Ще товарів у банері: 1')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Телефон' }));
-    expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(2);
-    expect(screen.getByText('Ще товарів у банері: 3')).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: /Активувати розпізнавання/u })).toHaveValue(0.3);
+    expect(screen.getByRole('checkbox', { name: /Потрібне явне підтвердження/u })).toBeInTheDocument();
+    expect(screen.getByText('Намір вийти')).toBeInTheDocument();
+    expect(container.querySelector('.popup-preview__recommendations')).not.toBeInTheDocument();
   });
 
   it('creates a non-blocking product promo campaign from the catalog', async () => {
