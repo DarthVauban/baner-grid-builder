@@ -598,11 +598,12 @@ function Preview({ input }: { input: PopupCampaignInput }) {
       <div><strong>Живий перегляд</strong><small>Реальний storefront-runtime банера</small></div>
       <div className="popup-preview-toolbar">
         <div className="popup-preview-device" role="group" aria-label="Розмір попереднього перегляду">
-          <button type="button" className={viewport === 'desktop' ? 'is-active' : ''} onClick={() => setViewport('desktop')} aria-label="Комп’ютер"><Icon name="monitor" size={16} /></button>
-          <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон"><Icon name="phone" size={16} /></button>
+          <button type="button" className={viewport === 'desktop' ? 'is-active' : ''} onClick={() => setViewport('desktop')} aria-label="Комп’ютер" aria-pressed={viewport === 'desktop'}><Icon name="monitor" size={16} /><span>Десктоп</span></button>
+          <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон" aria-pressed={viewport === 'mobile'}><Icon name="phone" size={16} /><span>Мобільний</span></button>
         </div>
         <button className="popup-preview-fullscreen" type="button" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? 'Закрити повноекранний перегляд' : 'Відкрити прев’ю на весь екран'}>
           <Icon name={fullscreen ? 'fullscreenExit' : 'fullscreen'} size={18} />
+          <span>{fullscreen ? 'Вийти' : 'На весь екран'}</span>
         </button>
       </div>
     </header>

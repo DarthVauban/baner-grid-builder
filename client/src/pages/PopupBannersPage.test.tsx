@@ -270,8 +270,12 @@ describe('PopupBannersPage', () => {
     expect(iframe).toHaveAttribute('srcdoc', expect.stringContaining('/api/public/popup-banners/embed.js'));
     fireEvent.click(screen.getByRole('button', { name: 'Відкрити прев’ю на весь екран' }));
     expect(iframe.closest('.popup-live-preview')).toHaveClass('is-fullscreen');
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(iframe.closest('.popup-live-preview')).not.toHaveClass('is-fullscreen');
+    expect(screen.getByRole('button', { name: 'Закрити повноекранний перегляд' })).toHaveTextContent('Вийти');
+    fireEvent.click(screen.getByRole('button', { name: 'Телефон' }));
+    expect(screen.getByTitle('Живий перегляд банера').parentElement).toHaveClass('is-mobile');
+    expect(screen.getByTitle('Живий перегляд банера').getAttribute('srcdoc')).toContain('data-preview-device="mobile"');
+    fireEvent.click(screen.getByRole('button', { name: 'Закрити повноекранний перегляд' }));
+    expect(screen.getByTitle('Живий перегляд банера').closest('.popup-live-preview')).not.toHaveClass('is-fullscreen');
   });
 
   it('filters the campaign library by search and status', async () => {
