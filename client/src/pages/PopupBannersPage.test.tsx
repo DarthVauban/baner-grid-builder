@@ -342,6 +342,49 @@ describe('PopupBannersPage', () => {
     expect(screen.queryByRole('radio', { name: /Товар відсутній/u })).not.toBeInTheDocument();
   });
 
+  it('keeps the exit offer preview compact when five products are attached', async () => {
+    const exitProducts = Array.from({ length: 5 }, (_, index) => ({
+      id: `exit-item-${index + 1}`,
+      productId: `exit-product-${index + 1}`,
+      modificationId: null,
+      productExternalId: `exit-external-${index + 1}`,
+      modificationExternalId: null,
+      position: index,
+      sku: `EXIT-${index + 1}`,
+      title: `Товар Exit offer ${index + 1}`,
+      imageUrl: `https://cdn.example.com/exit-${index + 1}.webp`,
+      pageUrl: `https://mobiletrend.com.ua/exit-${index + 1}/`,
+      price: String(999 + index * 100),
+      oldPrice: '',
+      currency: 'UAH',
+      availability: 'В наявності',
+      visible: true,
+      available: true,
+      buyId: `exit-buy-${index + 1}`
+    }));
+    vi.mocked(api.popupBanners.list).mockResolvedValue([{
+      ...structuredClone(baseCampaign),
+      id: 'exit-preview-campaign',
+      publicId: 'exit-preview-public',
+      campaignType: 'exit_offer',
+      name: 'Exit offer із п’ятьма товарами',
+      status: 'draft',
+      targeting: { ...baseCampaign.targeting, mode: 'all_pages' },
+      behavior: { ...baseCampaign.behavior, trigger: 'exit_intent', frequency: 'session' },
+      productTargets: [],
+      promoProducts: exitProducts
+    }]);
+    const { container } = renderPage();
+
+    await screen.findByDisplayValue('Exit offer із п’ятьма товарами');
+    expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(4);
+    expect(screen.getByText('Ще товарів у банері: 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Телефон' }));
+    expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(2);
+    expect(screen.getByText('Ще товарів у банері: 3')).toBeInTheDocument();
+  });
+
   it('creates a non-blocking product promo campaign from the catalog', async () => {
     const create = vi.spyOn(api.popupBanners, 'create').mockImplementation(async (campaign) => ({
       ...structuredClone(baseCampaign),

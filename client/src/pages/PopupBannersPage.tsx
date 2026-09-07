@@ -574,14 +574,17 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
     { id: 'two', title: 'Схожа модель у наявності', price: '14 499 грн', imageUrl: '' },
     { id: 'three', title: 'Популярна альтернатива', price: '15 999 грн', imageUrl: '' }
   ].slice(0, Math.min(3, draft.targeting.recommendationLimit));
-  const productCards = hasAttachedProducts
-    ? promoProducts.slice(0, 4).map((item) => ({
+  const attachedProductCards = promoProducts.map((item) => ({
       id: promoKey(item), title: item.title, price: money(item.price, item.currency), imageUrl: item.imageUrl
-    }))
-    : recommendations;
+    }));
+  const productCards = draft.campaignType === 'product_promo'
+    ? attachedProductCards.slice(0, 4)
+    : isExitOffer ? attachedProductCards : recommendations;
+  const exitPreviewLimit = viewport === 'mobile' ? 2 : 4;
+  const hiddenExitProductCount = isExitOffer ? Math.max(0, productCards.length - exitPreviewLimit) : 0;
   const visibleProductCards = draft.campaignType === 'product_promo' && productCards.length
     ? [productCards[previewProductIndex % productCards.length]]
-    : productCards;
+    : isExitOffer ? productCards.slice(0, exitPreviewLimit) : productCards;
   function movePreviewProduct(direction: -1 | 1) {
     if (productCards.length < 2) return;
     previewRotationRemaining.current = rotationDuration;
@@ -647,6 +650,7 @@ function Preview({ draft, promoProducts }: { draft: PopupCampaignInput; promoPro
                 <b>{item.price}</b>
                 <button type="button">{content.primaryLabel || 'Купити'}</button>
               </article>) : <div className="popup-preview__product-empty">Додайте товари у наступному розділі</div>}
+              {hiddenExitProductCount > 0 && <span className="popup-preview__more-products">Ще товарів у банері: {hiddenExitProductCount}</span>}
             </div>}
             {draft.targeting.mode !== 'out_of_stock' && draft.campaignType !== 'product_promo' && !isExitOffer && draft.behavior.requireAcknowledgement && <label>
               <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
