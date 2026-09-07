@@ -925,6 +925,61 @@ async function loadPromoProducts(campaignId, db = { query }) {
   return result.rows;
 }
 
+async function loadPreviewProductsByResolvedItems(items, db = { query }) {
+  const rows = [];
+  for (const item of items) {
+    const result = await db.query(
+      `SELECT $3::TEXT AS id, $4::INTEGER AS position,
+              product.id AS product_id, product.external_id AS product_external_id,
+              product.sku AS product_sku, product.titles AS product_titles,
+              product.price AS product_price, product.old_price AS product_old_price,
+              product.currency AS product_currency, product.availability AS product_availability,
+              product.visible AS product_visible, product.primary_image_url AS product_image_url,
+              product.canonical_url AS product_page_url, product.source_data AS product_source_data,
+              modification.id AS modification_id, modification.external_id AS modification_external_id,
+              modification.sku AS modification_sku, modification.titles AS modification_titles,
+              modification.price AS modification_price, modification.old_price AS modification_old_price,
+              modification.currency AS modification_currency, modification.availability AS modification_availability,
+              modification.visible AS modification_visible, modification.image_url AS modification_image_url,
+              modification.page_url AS modification_page_url, modification.source_data AS modification_source_data
+       FROM search_horoshop_products AS product
+       LEFT JOIN search_horoshop_modifications AS modification ON modification.id = $2
+       WHERE product.id = $1
+       LIMIT 1`,
+      [item.productId, item.modificationId || null, item.itemKey || item.targetKey || String(item.productId), item.position || 0]
+    );
+    if (result.rows[0]) rows.push(result.rows[0]);
+  }
+  return rows.map(serializePromoProduct);
+}
+
+async function loadPreviewRecommendations(connection, limit, db = { query }) {
+  const result = await db.query(
+    `SELECT product.id AS id, 0 AS position,
+            product.id AS product_id, product.external_id AS product_external_id,
+            product.sku AS product_sku, product.titles AS product_titles,
+            product.price AS product_price, product.old_price AS product_old_price,
+            product.currency AS product_currency, product.availability AS product_availability,
+            product.visible AS product_visible, product.primary_image_url AS product_image_url,
+            product.canonical_url AS product_page_url, product.source_data AS product_source_data,
+            NULL AS modification_id, NULL AS modification_external_id,
+            NULL AS modification_sku, NULL AS modification_titles,
+            NULL AS modification_price, NULL AS modification_old_price,
+            NULL AS modification_currency, NULL AS modification_availability,
+            NULL AS modification_visible, NULL AS modification_image_url,
+            NULL AS modification_page_url, NULL AS modification_source_data
+     FROM search_horoshop_products AS product
+     WHERE product.connection_id = $1 AND product.generation = $2
+       AND product.active = TRUE AND product.visible = TRUE
+     ORDER BY product.updated_at DESC
+     LIMIT 50`,
+    [connection.id, connection.generation]
+  );
+  return result.rows.map(serializePromoProduct).filter((item) => (
+    item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
+  )).slice(0, limit);
+}
+
 function isAvailable(value) {
   const availability = String(value || '').trim().toLocaleLowerCase('uk-UA');
   if (!availability) return false;
@@ -1033,6 +1088,80 @@ async function resolveOutOfStockRecommendations(connection, product, limit) {
     priceDistance: _priceDistance,
     ...recommendation
   }) => recommendation);
+}
+
+export async function previewPopupCampaign(input) {
+  const connectionResult = await query(
+    `SELECT id, generation, store_domain FROM search_horoshop_connections
+     WHERE singleton = TRUE LIMIT 1`
+  );
+  const connection = connectionResult.rows[0];
+  if (!connection) {
+    throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед переглядом банера.');
+  }
+
+  const db = { query };
+  const campaignType = normalizeCampaignType(input.campaignType, input.targeting);
+  const content = normalizeContent(input.content);
+  const styles = normalizeStyles(input.styles);
+  const targeting = normalizeTargeting(input.targeting);
+  const behavior = normalizeBehavior(input.behavior);
+
+  let products = [];
+  if (campaignType === 'product_promo') {
+    const resolution = await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, db);
+    products = (await loadPreviewProductsByResolvedItems(resolution.items, db)).filter((item) => (
+      item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
+    ));
+  }
+
+  let templateProduct = null;
+  if (input.productEntries?.length) {
+    const targetResolution = await resolveProductEntries(input.productEntries, connection.id, db);
+    const targetProducts = await loadPreviewProductsByResolvedItems(targetResolution.targets.slice(0, 1), db);
+    const target = targetProducts[0];
+    if (target) {
+      templateProduct = {
+        title: target.title,
+        sku: target.sku,
+        price: [target.price, target.currency].filter(Boolean).join(' '),
+        condition: '',
+        stickers: []
+      };
+    }
+  }
+
+  const recommendations = targeting.mode === 'out_of_stock'
+    ? await loadPreviewRecommendations(connection, targeting.recommendationLimit, db)
+    : [];
+  const selectedPromoCode = campaignType === 'promo_code' && input.promoCodeId
+    ? await loadPromoCodeRow(input.promoCodeId, connection.id, db)
+    : null;
+  const normalizedSnapshot = {
+    type: campaignType,
+    content,
+    styles,
+    targeting,
+    behavior,
+    promoCodeId: input.promoCodeId || null,
+    products: products.map((item) => [item.productExternalId, item.modificationExternalId])
+  };
+
+  return {
+    campaign: {
+      publicId: 'preview',
+      revision: `preview-${createHash('sha256').update(JSON.stringify(normalizedSnapshot)).digest('hex').slice(0, 16)}`,
+      type: campaignType,
+      mode: targeting.mode,
+      content: Object.fromEntries(Object.entries(content).map(([key, value]) => [key, templateText(value, templateProduct)])),
+      styles,
+      behavior,
+      promoCode: selectedPromoCode ? promoCodeSnapshot(selectedPromoCode) : null
+    },
+    product: templateProduct ? { article: templateProduct.sku, title: templateProduct.title } : null,
+    recommendations,
+    products
+  };
 }
 
 export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', stockState = 'unknown', requestOrigin = '' }) {
@@ -1216,6 +1345,12 @@ export function popupEmbedScript(origin) {
   window.__mtPopupBannersLoaded = true;
   const script = document.currentScript;
   const apiOrigin = ${JSON.stringify(origin)};
+  let previewPayload = window.__MT_POPUP_PREVIEW__ || null;
+  if (!previewPayload && script?.dataset.previewPayload) {
+    try { previewPayload = JSON.parse(script.dataset.previewPayload); } catch {}
+  }
+  const previewMode = Boolean(previewPayload);
+  const previewDevice = (script?.dataset.previewDevice || window.__MT_POPUP_PREVIEW_DEVICE__) === 'mobile' ? 'mobile' : 'desktop';
   const articleSelector = script?.dataset.articleSelector || '';
   let currentHost = null;
   let currentUrl = '';
@@ -1223,8 +1358,8 @@ export function popupEmbedScript(origin) {
   let pendingCleanup = null;
   let activeCleanup = null;
   const visitorStorageKey = 'mt-popup-visitor';
-  let visitorKey = localStorage.getItem(visitorStorageKey);
-  if (!visitorKey) {
+  let visitorKey = previewMode ? 'preview' : localStorage.getItem(visitorStorageKey);
+  if (!previewMode && !visitorKey) {
     visitorKey = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now());
     localStorage.setItem(visitorStorageKey, visitorKey);
   }
@@ -1262,6 +1397,7 @@ export function popupEmbedScript(origin) {
   }
 
   function event(publicId, eventType, productArticle, metadata = {}) {
+    if (previewMode) return;
     fetch(new URL('/api/public/popup-banners/events', apiOrigin), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1281,6 +1417,7 @@ export function popupEmbedScript(origin) {
   }
 
   function isMobileInteractionSurface() {
+    if (previewMode) return previewDevice === 'mobile';
     const userAgent = String(navigator.userAgent || '');
     const mobileUserAgent = /Android|iPhone|iPod|IEMobile|Opera Mini|Mobile/iu.test(userAgent)
       || (/Macintosh/iu.test(userAgent) && Number(navigator.maxTouchPoints) > 1);
@@ -1293,6 +1430,7 @@ export function popupEmbedScript(origin) {
   }
 
   function isSuppressed(payload) {
+    if (previewMode) return false;
     const behavior = payload.campaign.behavior;
     const sessionCount = Number(sessionStorage.getItem(sessionCountKey(payload)) || 0);
     if (behavior.maxShowsPerSession > 0 && sessionCount >= behavior.maxShowsPerSession) return true;
@@ -1307,6 +1445,7 @@ export function popupEmbedScript(origin) {
   }
 
   function remember(payload) {
+    if (previewMode) return;
     const behavior = payload.campaign.behavior;
     const countKey = sessionCountKey(payload);
     sessionStorage.setItem(countKey, String(Number(sessionStorage.getItem(countKey) || 0) + 1));
@@ -1541,7 +1680,7 @@ export function popupEmbedScript(origin) {
   }
 
   function render(payload, productArticle) {
-    if (currentHost || isSuppressed(payload)) return;
+    if (currentHost || (!previewMode && isSuppressed(payload))) return;
     const { campaign } = payload;
     const isProductPromo = campaign.type === 'product_promo';
     const isPromoCode = campaign.type === 'promo_code';
@@ -1554,7 +1693,7 @@ export function popupEmbedScript(origin) {
     if (isProductPromo) {
       const presetWidths = { notification: 380, compact: 460, standard: 640, wide: 860 };
       const promoWidth = promoFormat === 'custom' ? campaign.styles.maxWidth : (presetWidths[promoFormat] || 380);
-      const mobile = innerWidth <= 600;
+      const mobile = isMobileInteractionSurface();
       const position = mobile ? campaign.styles.mobilePosition : campaign.styles.desktopPosition;
       const edge = mobile ? '10px' : '18px';
       if (mobile) {
@@ -1674,7 +1813,8 @@ export function popupEmbedScript(origin) {
       promoCardLink = document.createElement('a');
       promoCardLink.className = 'promo-card-link';
       promoCardLink.href = '#';
-      promoCardLink.addEventListener('click', () => {
+      promoCardLink.addEventListener('click', (clickEvent) => {
+        if (previewMode) { clickEvent.preventDefault(); return; }
         if (!activePromoProduct) return;
         event(campaign.publicId, 'click', productArticle, {
           action: 'open_recommendation',
@@ -1702,8 +1842,8 @@ export function popupEmbedScript(origin) {
     if (campaign.behavior.dismissible) {
       const closeButton = document.createElement('button');
       closeButton.className = 'close'; closeButton.type = 'button'; closeButton.setAttribute('aria-label', 'Закрити'); closeButton.textContent = '×';
-      closeButton.addEventListener('click', () => close('dismiss')); card.append(closeButton);
-      if (!isProductPromo) backdrop.addEventListener('click', (clickEvent) => { if (clickEvent.target === backdrop) close('dismiss'); });
+      closeButton.addEventListener('click', () => { if (!previewMode) close('dismiss'); }); card.append(closeButton);
+      if (!isProductPromo) backdrop.addEventListener('click', (clickEvent) => { if (!previewMode && clickEvent.target === backdrop) close('dismiss'); });
     }
     if (campaign.content.imageUrl && !(isProductPromo && promoFormat === 'notification')) {
       const image = document.createElement('img'); image.className = 'image'; image.src = imageUrl(campaign.content.imageUrl); image.alt = ''; card.append(image);
@@ -1751,12 +1891,15 @@ export function popupEmbedScript(origin) {
       if (campaign.content.primaryUrl && campaign.content.primaryLabel) {
         const cta = document.createElement('a'); cta.className = 'promo-code-cta';
         cta.href = campaign.content.primaryUrl; cta.textContent = campaign.content.primaryLabel;
-        cta.addEventListener('click', () => event(campaign.publicId, 'promo_cta', productArticle, { action: 'promo_cta' }));
+        cta.addEventListener('click', (clickEvent) => {
+          if (previewMode) { clickEvent.preventDefault(); return; }
+          event(campaign.publicId, 'promo_cta', productArticle, { action: 'promo_cta' });
+        });
         content.append(cta);
       }
       card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
-      if (campaign.behavior.autoCloseSeconds > 0) {
+      if (!previewMode && campaign.behavior.autoCloseSeconds > 0) {
         const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
         cleanupTasks.push(() => clearTimeout(autoCloseTimer));
       }
@@ -1770,17 +1913,24 @@ export function popupEmbedScript(origin) {
       for (const recommendation of (isProductPromo ? payload.products : payload.recommendations) || []) {
         const item = document.createElement('article'); item.className = 'recommendation';
         const imageLink = document.createElement('a'); imageLink.className = 'recommendation-media'; imageLink.href = recommendation.pageUrl;
-        imageLink.addEventListener('click', () => event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article }));
+        imageLink.addEventListener('click', (clickEvent) => {
+          if (previewMode) { clickEvent.preventDefault(); return; }
+          event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article });
+        });
         if (recommendation.imageUrl) {
           const image = document.createElement('img'); image.className = 'recommendation-image'; image.src = imageUrl(recommendation.imageUrl); image.alt = recommendation.title; image.loading = 'lazy'; imageLink.append(image);
         }
         const itemTitle = document.createElement('a'); itemTitle.className = 'recommendation-title'; itemTitle.href = recommendation.pageUrl; itemTitle.textContent = recommendation.title;
-        itemTitle.addEventListener('click', () => event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article }));
+        itemTitle.addEventListener('click', (clickEvent) => {
+          if (previewMode) { clickEvent.preventDefault(); return; }
+          event(campaign.publicId, 'click', productArticle, { action: 'open_recommendation', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article });
+        });
         const price = document.createElement('div'); price.className = 'recommendation-price';
         const currentPrice = document.createElement('strong'); currentPrice.textContent = money(recommendation.price, recommendation.currency); price.append(currentPrice);
         if (recommendation.oldPrice && recommendation.oldPrice !== recommendation.price) { price.classList.add('is-discounted'); const oldPrice = document.createElement('del'); oldPrice.textContent = money(recommendation.oldPrice, recommendation.currency); price.append(oldPrice); }
         const buy = document.createElement('button'); buy.className = 'recommendation-buy'; buy.type = 'button'; buy.textContent = campaign.content.primaryLabel || 'Купити';
         buy.addEventListener('click', async () => {
+          if (previewMode) return;
           buy.disabled = true; buy.textContent = 'Додаємо…';
           event(campaign.publicId, 'click', productArticle, { action: 'add_to_cart', recommendationProductId: recommendation.productId, modificationId: recommendation.modificationId, article: recommendation.article });
           const isCurrent = () => currentHost === host && host.isConnected;
@@ -1887,7 +2037,7 @@ export function popupEmbedScript(origin) {
       }
       backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
-      if (campaign.behavior.autoCloseSeconds > 0) {
+      if (!previewMode && campaign.behavior.autoCloseSeconds > 0) {
         const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
         cleanupTasks.push(() => clearTimeout(autoCloseTimer));
       }
@@ -1905,12 +2055,13 @@ export function popupEmbedScript(origin) {
     const actions = document.createElement('div'); actions.className = 'actions';
     if (campaign.behavior.buttonCount === 2) {
       const secondary = document.createElement('button'); secondary.className = 'button secondary'; secondary.type = 'button'; secondary.textContent = campaign.content.secondaryLabel || 'Закрити';
-      secondary.addEventListener('click', () => close('dismiss')); actions.append(secondary);
+      secondary.addEventListener('click', () => { if (!previewMode) close('dismiss'); }); actions.append(secondary);
     }
     const primary = document.createElement('button'); primary.className = 'button primary'; primary.type = 'button'; primary.textContent = campaign.content.primaryLabel;
     primary.disabled = Boolean(acknowledgement && !acknowledgement.checked);
     acknowledgement?.addEventListener('change', () => { primary.disabled = !acknowledgement.checked; });
     primary.addEventListener('click', () => {
+      if (previewMode) return;
       event(campaign.publicId, campaign.behavior.requireAcknowledgement ? 'acknowledge' : 'click', productArticle);
       const target = campaign.content.primaryUrl;
       host.remove(); currentHost = null;
@@ -1918,7 +2069,7 @@ export function popupEmbedScript(origin) {
     });
     actions.append(primary); content.append(actions); card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
     currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
-    if (campaign.behavior.autoCloseSeconds > 0) {
+    if (!previewMode && campaign.behavior.autoCloseSeconds > 0) {
       const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
       cleanupTasks.push(() => clearTimeout(autoCloseTimer));
     }
@@ -2053,6 +2204,10 @@ export function popupEmbedScript(origin) {
     } catch {}
   }
 
+  if (previewMode) {
+    render(previewPayload, previewPayload.product?.article || '');
+    return;
+  }
   evaluate();
   setInterval(() => { if (location.href !== currentUrl) evaluate(); }, 1000);
   let observedStockState = stockState();

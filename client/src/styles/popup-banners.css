@@ -90,10 +90,7 @@
 .popup-connection.is-warning .popup-connection__icon { color: #a15c0b; background: #fff0d4; }
 
 .popup-banners-workspace {
-  display: grid;
-  grid-template-columns: minmax(270px, 304px) minmax(0, 1fr);
-  align-items: start;
-  gap: 16px;
+  display: block;
   min-width: 0;
 }
 
@@ -114,6 +111,38 @@
   flex-direction: column;
   max-height: calc(100vh - 120px);
   min-height: 690px;
+}
+
+.popup-campaign-list--tab {
+  position: static;
+  max-height: none;
+  min-height: 560px;
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.popup-campaign-list--tab .popup-campaign-list__tools {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(380px, auto);
+  align-items: center;
+  gap: 14px;
+  padding: 4px 16px 14px;
+}
+
+.popup-campaign-list--tab .popup-campaign-search,
+.popup-campaign-list--tab .popup-campaign-filters { margin: 0; }
+.popup-campaign-list--tab .popup-campaign-list__items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: 10px;
+  overflow: visible;
+  padding: 4px 16px 18px;
+}
+.popup-campaign-list--tab .popup-campaign-list__items > button {
+  min-height: 128px;
+  border-color: var(--line);
+  background: var(--surface);
 }
 
 .popup-campaign-list__header {
@@ -242,7 +271,7 @@
 .popup-editor__identity input::placeholder { color: color-mix(in srgb, var(--muted) 55%, transparent); }
 .popup-editor__identity p { overflow: hidden; margin: 0; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 
-.popup-editor-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface-soft) 72%, var(--surface)); }
+.popup-editor-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 7px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface-soft) 72%, var(--surface)); }
 .popup-editor-tabs > button { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid transparent; border-radius: 12px; color: var(--muted); text-align: left; background: transparent; }
 .popup-editor-tabs > button:hover { background: var(--surface); opacity: 1; }
 .popup-editor-tabs > button.is-active { border-color: color-mix(in srgb, var(--brand) 26%, var(--line)); color: var(--brand); background: var(--surface); box-shadow: 0 5px 16px rgba(22, 30, 50, .05); }
@@ -259,7 +288,8 @@
 .popup-editor-tabs strong { color: var(--ink); font-size: 10px; }
 .popup-editor-tabs small { color: var(--muted); font-size: 8px; }
 
-.popup-editor__body { display: grid; grid-template-columns: minmax(440px, 1.08fr) minmax(380px, .92fr); align-items: start; min-width: 0; }
+.popup-editor__body { display: grid; grid-template-columns: minmax(0, 11fr) minmax(430px, 9fr); align-items: start; min-width: 0; }
+.popup-editor__body.is-library { display: block; padding: 16px; background: color-mix(in srgb, var(--surface-soft) 38%, var(--surface)); }
 .popup-editor__form { display: grid; gap: 14px; min-width: 0; padding: 16px; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--surface-soft) 38%, var(--surface)); }
 .popup-form-section { display: grid; gap: 16px; min-width: 0; padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
 
@@ -369,6 +399,19 @@
 .popup-preview-device { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
 .popup-preview-device button { display: grid; place-items: center; width: 30px; height: 28px; padding: 0; border: 0; border-radius: 7px; color: var(--muted); background: transparent; }
 .popup-preview-device button.is-active { color: var(--brand); background: var(--surface); box-shadow: 0 2px 7px rgba(22, 30, 50, .08); }
+
+.popup-preview-toolbar { display: flex; align-items: center; gap: 7px; }
+.popup-preview-fullscreen { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--surface-soft); }
+.popup-preview-fullscreen:hover { color: var(--brand); background: var(--brand-soft); }
+.popup-runtime-preview { position: relative; display: flex; width: 100%; height: clamp(540px, 62vh, 720px); justify-content: center; overflow: hidden; background: #e8ebf2; }
+.popup-runtime-preview iframe { display: block; width: 100%; height: 100%; border: 0; background: #f5f7fb; }
+.popup-runtime-preview.is-mobile iframe { width: min(390px, 100%); border-right: 1px solid #d8dde7; border-left: 1px solid #d8dde7; box-shadow: 0 0 30px rgba(15, 23, 42, .1); }
+.popup-runtime-preview__state { display: grid; place-items: center; align-content: center; gap: 8px; width: 100%; min-height: 100%; padding: 24px; color: var(--muted); text-align: center; font-size: 11px; }
+.popup-runtime-preview__state.is-error { color: var(--danger); }
+.popup-runtime-preview__refresh { position: absolute; z-index: 2; top: 10px; left: 50%; padding: 6px 10px; border: 1px solid rgba(255,255,255,.5); border-radius: 999px; color: #fff; background: rgba(15,23,42,.72); box-shadow: 0 6px 18px rgba(15,23,42,.18); font-size: 8px; font-weight: 800; transform: translateX(-50%); }
+.popup-live-preview.is-fullscreen { position: fixed; z-index: 2147482000; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border-radius: 0; box-shadow: 0 36px 120px rgba(15, 23, 42, .42); }
+.popup-live-preview.is-fullscreen .popup-runtime-preview { height: 100%; min-height: 0; }
+.popup-live-preview.is-fullscreen .popup-runtime-preview.is-mobile iframe { width: min(430px, 100%); }
 
 .popup-preview { width: 100%; min-height: 505px; margin: 0 auto; overflow: hidden; background: #f6f7fb; transition: width 180ms ease, border-radius 180ms ease; }
 .popup-preview.is-mobile { width: min(330px, 100%); border-right: 1px solid #dfe3ea; border-left: 1px solid #dfe3ea; }
@@ -640,7 +683,7 @@
 
 @keyframes popup-preview-progress { to { transform: scaleX(1); } }
 
-@media (max-width: 1380px) {
+@media (max-width: 1180px) {
   .popup-editor__body { grid-template-columns: 1fr; }
   .popup-editor__form { border-right: 0; }
   .popup-editor__preview { position: static; grid-template-columns: minmax(0, 1fr) 230px; align-items: start; border-top: 1px solid var(--line); }
@@ -648,10 +691,10 @@
 }
 
 @media (max-width: 1100px) {
-  .popup-banners-workspace { grid-template-columns: 248px minmax(0, 1fr); }
-  .popup-editor-tabs { grid-template-columns: 1fr; }
+  .popup-editor-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .popup-editor__preview { grid-template-columns: 1fr; }
   .popup-preview-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .popup-campaign-list--tab .popup-campaign-list__items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 860px) {
@@ -659,8 +702,7 @@
   .popup-editor__header { align-items: stretch; flex-direction: column; }
   .popup-banners-header__actions,
   .popup-editor__actions { justify-content: flex-start; }
-  .popup-banners-workspace { grid-template-columns: 1fr; }
-  .popup-campaign-list { position: static; max-height: 480px; min-height: 0; }
+  .popup-campaign-list:not(.popup-campaign-list--tab) { position: static; max-height: 480px; min-height: 0; }
   .popup-campaign-list__items { min-height: 180px; }
   .popup-editor-tabs { display: flex; overflow-x: auto; }
   .popup-editor-tabs > button { flex: 0 0 260px; }
@@ -708,6 +750,9 @@
   .popup-promo-order { grid-column: 2 / -1; justify-content: flex-end; }
   .popup-position-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .popup-selected-code { grid-template-columns: minmax(0,1fr) auto; }
+  .popup-campaign-list--tab .popup-campaign-list__tools,
+  .popup-campaign-list--tab .popup-campaign-list__items { grid-template-columns: 1fr; }
+  .popup-runtime-preview { height: 520px; }
   .popup-selected-code__value { grid-column: 1; }
   .popup-preview__promo-code { grid-template-columns: 1fr; }
 }

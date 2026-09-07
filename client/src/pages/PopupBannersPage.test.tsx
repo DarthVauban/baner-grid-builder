@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmDialogProvider } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
-import type { PopupCampaign, PopupCampaignOptions } from '../types/popup-banner';
+import type { PopupCampaign, PopupCampaignInput, PopupCampaignOptions, PopupPreviewPayload } from '../types/popup-banner';
 import type { PromoCode } from '../types/promo-code';
 import { PopupBannersPage } from './PopupBannersPage';
 
@@ -153,6 +153,58 @@ const promoCode: PromoCode = {
   updatedAt: '2026-09-07T08:00:00.000Z'
 };
 
+function previewPayload(campaign: PopupCampaignInput): PopupPreviewPayload {
+  const products = campaign.promoItems.map((item, position) => ({
+    id: `preview-${position}`,
+    productId: `product-db-${position + 1}`,
+    modificationId: null,
+    productExternalId: item.productExternalId,
+    modificationExternalId: item.modificationExternalId,
+    position,
+    sku: `PROMO-${position + 1}`,
+    article: `PROMO-${position + 1}`,
+    title: position === 0 ? 'Промотовар' : 'Другий промотовар',
+    imageUrl: `https://cdn.example.com/promo-${position + 1}.webp`,
+    pageUrl: `https://mobiletrend.com.ua/promo-${position + 1}/`,
+    price: position === 0 ? '399' : '499',
+    oldPrice: position === 0 ? '599' : '',
+    currency: 'UAH',
+    availability: 'В наявності',
+    visible: true,
+    available: true,
+    buyId: `900${position + 1}`
+  }));
+  return {
+    campaign: {
+      publicId: 'preview',
+      revision: `preview-${JSON.stringify(campaign).length}`,
+      type: campaign.campaignType,
+      mode: campaign.targeting.mode,
+      content: campaign.content,
+      styles: campaign.styles,
+      behavior: campaign.behavior,
+      promoCode: campaign.promoCodeId ? {
+        libraryId: promoCode.id,
+        internalName: promoCode.internalName,
+        code: promoCode.code,
+        type: promoCode.type,
+        discountValue: promoCode.discountValue,
+        currency: promoCode.currency,
+        startsAt: promoCode.startsAt,
+        endsAt: promoCode.endsAt,
+        usageLimit: promoCode.usageLimit,
+        scopeNote: promoCode.scopeNote,
+        status: promoCode.status,
+        horoshopConfirmed: promoCode.horoshopConfirmed,
+        capturedAt: promoCode.updatedAt
+      } : null
+    },
+    product: null,
+    recommendations: [],
+    products
+  };
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
@@ -170,6 +222,7 @@ beforeEach(() => {
   vi.spyOn(api.popupBanners, 'list').mockResolvedValue([baseCampaign, secondCampaign]);
   vi.spyOn(api.popupBanners, 'options').mockResolvedValue(options);
   vi.spyOn(api.popupBanners, 'embedCode').mockResolvedValue({ code: '<script src="/widget.js"></script>' });
+  vi.spyOn(api.popupBanners, 'preview').mockImplementation(async (campaign) => previewPayload(campaign));
   vi.spyOn(api.popupBanners, 'catalog').mockResolvedValue({
     integration: {
       configured: true, status: 'connected', storeDomain: 'mobiletrend.com.ua',
@@ -207,15 +260,25 @@ describe('PopupBannersPage', () => {
 
     expect(await screen.findByDisplayValue(baseCampaign.name)).toBeInTheDocument();
     expect(screen.getByText('Живий перегляд')).toBeInTheDocument();
-    expect(screen.getAllByText('mobiletrend.com.ua')).toHaveLength(2);
+    expect(screen.getAllByText('mobiletrend.com.ua')).toHaveLength(1);
     expect(screen.getByRole('button', { name: /Контент і дизайн/u })).toHaveClass('is-active');
     expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByTitle('Живий перегляд банера')).toHaveAttribute(
+      'srcdoc', expect.stringContaining(baseCampaign.content.title)
+    ));
+    const iframe = screen.getByTitle('Живий перегляд банера');
+    expect(iframe).toHaveAttribute('srcdoc', expect.stringContaining('/api/public/popup-banners/embed.js'));
+    fireEvent.click(screen.getByRole('button', { name: 'Відкрити прев’ю на весь екран' }));
+    expect(iframe.closest('.popup-live-preview')).toHaveClass('is-fullscreen');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(iframe.closest('.popup-live-preview')).not.toHaveClass('is-fullscreen');
   });
 
   it('filters the campaign library by search and status', async () => {
     renderPage();
     await screen.findByDisplayValue(baseCampaign.name);
 
+    fireEvent.click(screen.getByRole('button', { name: /Бібліотека/u }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Пошук кампаній' }), { target: { value: 'доставки' } });
     expect(screen.getByRole('button', { name: /Умови доставки великої техніки/u })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Попередження про вживаний товар/u })).not.toBeInTheDocument();
@@ -346,8 +409,11 @@ describe('PopupBannersPage', () => {
     expect(screen.getByText('Mobile')).toBeInTheDocument();
     expect(screen.getByRole('spinbutton', { name: /Активувати розпізнавання/u })).toHaveValue(0.3);
     expect(screen.getByRole('checkbox', { name: /Потрібне явне підтвердження/u })).toBeInTheDocument();
-    expect(screen.getByText('Намір вийти')).toBeInTheDocument();
-    expect(container.querySelector('.popup-preview__recommendations')).not.toBeInTheDocument();
+    await waitFor(() => expect(api.popupBanners.preview).toHaveBeenLastCalledWith(
+      expect.objectContaining({ behavior: expect.objectContaining({ trigger: 'exit_intent' }) }),
+      expect.any(AbortSignal)
+    ));
+    expect(container.querySelector('.popup-runtime-preview iframe')).toBeInTheDocument();
   });
 
   it('creates a non-blocking product promo campaign from the catalog', async () => {
@@ -367,7 +433,7 @@ describe('PopupBannersPage', () => {
       productTargets: [], stats: baseCampaign.stats, connection: baseCampaign.connection,
       createdAt: baseCampaign.createdAt, updatedAt: baseCampaign.updatedAt, publishedAt: null
     }));
-    const { container } = renderPage();
+    renderPage();
     await screen.findByDisplayValue(baseCampaign.name);
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
@@ -397,24 +463,20 @@ describe('PopupBannersPage', () => {
     fireEvent.click(add[0]);
     fireEvent.click(add[1]);
     expect(screen.getByText('Товари у банері')).toBeInTheDocument();
-    expect(container.querySelectorAll('.popup-preview__recommendations article')).toHaveLength(1);
-    expect(container.querySelector('.popup-preview__timeline')).toBeInTheDocument();
-    const previewCard = container.querySelector('.popup-preview__card');
-    const previewNavigation = container.querySelector('.popup-preview__promo-navigation');
-    expect(previewNavigation).toHaveTextContent('1 / 2');
-    fireEvent.mouseEnter(previewCard!);
-    expect(previewCard).toHaveClass('is-rotation-paused');
-    const nextPreviewProduct = screen.getByRole('button', { name: 'Наступний товар' });
-    expect(nextPreviewProduct.querySelector('svg path')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Попередній товар' }).querySelector('svg path')).toBeInTheDocument();
-    fireEvent.focus(nextPreviewProduct);
-    fireEvent.click(nextPreviewProduct);
-    expect(previewNavigation).toHaveTextContent('2 / 2');
-    expect(container.querySelector('.popup-preview__recommendations article strong')).toHaveTextContent('Другий промотовар');
-    fireEvent.click(screen.getByRole('button', { name: 'Попередній товар' }));
-    expect(previewNavigation).toHaveTextContent('1 / 2');
-    fireEvent.mouseLeave(previewCard!);
-    expect(previewCard).not.toHaveClass('is-rotation-paused');
+    await waitFor(() => expect(api.popupBanners.preview).toHaveBeenLastCalledWith(
+      expect.objectContaining({ promoItems: [
+        { productExternalId: 'promo-product-1', modificationExternalId: null },
+        { productExternalId: 'promo-product-2', modificationExternalId: null }
+      ] }),
+      expect.any(AbortSignal)
+    ));
+    const iframe = screen.getByTitle('Живий перегляд банера');
+    expect(iframe.getAttribute('srcdoc')).toContain('Промотовар');
+    expect(iframe.getAttribute('srcdoc')).toContain('Другий промотовар');
+    fireEvent.click(screen.getByRole('button', { name: 'Телефон' }));
+    const mobileIframe = screen.getByTitle('Живий перегляд банера');
+    expect(mobileIframe.parentElement).toHaveClass('is-mobile');
+    expect(mobileIframe.getAttribute('srcdoc')).toContain('data-preview-device="mobile"');
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
 
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
@@ -464,7 +526,7 @@ describe('PopupBannersPage', () => {
       updatedAt: baseCampaign.updatedAt,
       publishedAt: null
     }));
-    const { container } = renderPage();
+    renderPage();
     await screen.findByDisplayValue(baseCampaign.name);
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
@@ -476,8 +538,12 @@ describe('PopupBannersPage', () => {
     expect(codeOption).not.toBeNull();
     fireEvent.click(codeOption!);
 
-    expect(container.querySelector('.popup-preview__promo-code')).toHaveTextContent('AUTUMN10');
-    expect(screen.getAllByText('−10%')).toHaveLength(2);
+    await waitFor(() => expect(api.popupBanners.preview).toHaveBeenLastCalledWith(
+      expect.objectContaining({ campaignType: 'promo_code', promoCodeId: promoCode.id }),
+      expect.any(AbortSignal)
+    ));
+    expect(screen.getByTitle('Живий перегляд банера').getAttribute('srcdoc')).toContain('AUTUMN10');
+    expect(screen.getByText('−10%')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
     fireEvent.click(screen.getByRole('button', { name: 'Умова появи' }));
     expect(await screen.findByRole('option', { name: 'Коли покупець збирається вийти' })).toBeInTheDocument();

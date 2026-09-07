@@ -14,6 +14,7 @@ import {
   popupBannerToolId,
   popupCampaignOptions,
   popupEmbedCode,
+  previewPopupCampaign,
   setPopupCampaignStatus,
   updatePopupCampaign
 } from './popup-banner.service.js';
@@ -79,7 +80,7 @@ const targetPageUrlSchema = z.string().trim().max(2000).default('').refine((valu
     return false;
   }
 }, 'Вкажіть повне посилання сторінки з http:// або https://.');
-const targetingSchema = z.object({
+const targetingBaseSchema = z.object({
   mode: z.enum(['all_pages', 'all_products', 'products', 'rules', 'target_page', 'out_of_stock']),
   match: z.enum(['all', 'any']).default('all'),
   stickers: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
@@ -89,7 +90,8 @@ const targetingSchema = z.object({
   targetPageUrl: targetPageUrlSchema,
   urlContains: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
   recommendationLimit: z.number().int().min(3).max(8).default(6)
-}).superRefine((value, context) => {
+});
+const targetingSchema = targetingBaseSchema.superRefine((value, context) => {
   if (value.mode === 'target_page' && !value.targetPageUrl) {
     context.addIssue({
       code: 'custom',
@@ -98,7 +100,7 @@ const targetingSchema = z.object({
     });
   }
 });
-const behaviorSchema = z.object({
+const behaviorBaseSchema = z.object({
   trigger: z.enum(['delay', 'scroll', 'inactivity', 'exit_intent']).optional(),
   delayMs: z.number().int().min(0).max(60_000),
   scrollPercent: z.number().int().min(5).max(100).optional(),
@@ -117,7 +119,8 @@ const behaviorSchema = z.object({
   dismissible: z.boolean(),
   requireAcknowledgement: z.boolean(),
   buttonCount: z.union([z.literal(1), z.literal(2)]).optional()
-}).superRefine((value, context) => {
+});
+const behaviorSchema = behaviorBaseSchema.superRefine((value, context) => {
   if (Boolean(value.dailyStartTime) !== Boolean(value.dailyEndTime)) {
     context.addIssue({
       code: 'custom',
@@ -185,6 +188,24 @@ const campaignSchema = z.object({
     code: 'custom', path: ['content', 'primaryLabel'], message: 'Вкажіть текст основної кнопки.'
   });
 });
+const previewCampaignSchema = z.object({
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code']).default('message'),
+  name: z.string().trim().max(160).optional().default(''),
+  priority: z.number().int().min(0).max(1000).optional().default(0),
+  content: contentSchema,
+  styles: stylesSchema,
+  targeting: targetingBaseSchema.extend({ targetPageUrl: z.string().trim().max(2000).default('') }),
+  behavior: behaviorBaseSchema,
+  startsAt: nullableDateSchema,
+  endsAt: nullableDateSchema,
+  promoCodeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional().default(null)
+    .transform((value) => value || null),
+  productEntries: z.array(z.string().trim().min(1).max(500)).max(500).default([]),
+  promoItems: z.array(z.object({
+    productExternalId: z.string().trim().min(1).max(300),
+    modificationExternalId: z.string().trim().max(300).nullable().optional().default(null)
+  })).max(12).default([])
+});
 const statusSchema = z.object({ status: z.enum(['draft', 'active', 'paused']) });
 const analyticsSchema = z.object({
   days: z.coerce.number().int().min(7).max(90).optional().default(30),
@@ -227,6 +248,10 @@ router.get('/embed-code', (req, res) => {
 
 router.get('/analytics/overview', asyncHandler(async (req, res) => {
   res.json({ data: await popupBannerAnalytics(parseInput(analyticsSchema, req.query)) });
+}));
+
+router.post('/preview', asyncHandler(async (req, res) => {
+  res.json({ data: await previewPopupCampaign(parseInput(previewCampaignSchema, req.body)) });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {

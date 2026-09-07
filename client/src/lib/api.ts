@@ -125,6 +125,7 @@ import type {
   PopupCampaign,
   PopupCampaignInput,
   PopupCampaignOptions,
+  PopupPreviewPayload,
   PopupCampaignStatus
 } from '../types/popup-banner';
 import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
@@ -262,6 +263,9 @@ export const api = {
       `/api/popup-banners/analytics/overview${queryString(params)}`,
       { signal }
     ),
+    preview: (input: PopupCampaignInput, signal?: AbortSignal) => request<PopupPreviewPayload>('/api/popup-banners/preview', {
+      method: 'POST', body: jsonBody(input), signal
+    }),
     get: (id: string) => request<PopupCampaign>(`/api/popup-banners/${encodeURIComponent(id)}`),
     create: (input: PopupCampaignInput) => request<PopupCampaign>('/api/popup-banners', {
       method: 'POST', body: jsonBody(input), timeoutMs: 60_000

@@ -194,6 +194,71 @@ after(async () => {
   await pool.end();
 });
 
+test('authenticated preview API returns the storefront runtime payload for an unsaved campaign', async () => {
+  await request(app).post('/api/popup-banners/preview').send(input()).expect(401);
+  const preview = await admin.post('/api/popup-banners/preview').send(input({
+    campaignType: 'product_promo',
+    content: {
+      ...input().content,
+      eyebrow: '',
+      title: '',
+      body: '',
+      primaryLabel: 'Купити'
+    },
+    targeting: { ...input().targeting, mode: 'all_pages' },
+    behavior: { ...input().behavior, requireAcknowledgement: false },
+    productEntries: [],
+    promoItems: [{
+      productExternalId: 'iphone-15-new',
+      modificationExternalId: 'iphone-15-new:black'
+    }]
+  })).expect(200);
+
+  assert.equal(preview.body.data.campaign.publicId, 'preview');
+  assert.equal(preview.body.data.campaign.type, 'product_promo');
+  assert.equal(preview.body.data.campaign.mode, 'all_pages');
+  assert.equal(preview.body.data.products.length, 1);
+  assert.equal(preview.body.data.products[0].title, 'Смартфон Apple iPhone 15 128GB New Black');
+  assert.equal(preview.body.data.products[0].imageUrl, 'https://cdn.example.com/iphone-15-black.webp');
+  assert.equal(preview.body.data.products[0].buyId, '9002');
+});
+
+test('embed runtime renders a supplied preview payload without resolving, tracking, or persisting it', async () => {
+  const payload = {
+    campaign: {
+      publicId: 'preview', revision: 'preview-1', type: 'message', mode: 'all_pages',
+      content: { eyebrow: 'Прев’ю', title: 'Точний runtime', body: 'Той самий embed-скрипт.', primaryLabel: 'Добре', primaryUrl: '', secondaryLabel: '', imageUrl: '', acknowledgementLabel: '' },
+      styles: input().styles,
+      behavior: { ...input().behavior, frequency: 'session', device: 'mobile', requireAcknowledgement: false, buttonCount: 1 },
+      promoCode: null
+    },
+    product: null,
+    recommendations: [],
+    products: []
+  };
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    pretendToBeVisual: true, runScripts: 'outside-only', url: 'https://mt-panel.example.com/preview'
+  });
+  Object.defineProperty(dom.window, 'innerWidth', { configurable: true, value: 1440 });
+  const embed = dom.window.document.createElement('script');
+  embed.dataset.previewPayload = JSON.stringify(payload);
+  embed.dataset.previewDevice = 'mobile';
+  Object.defineProperty(dom.window.document, 'currentScript', { configurable: true, value: embed });
+  dom.window.MutationObserver = class MutationObserver { observe() {} disconnect() {} };
+  let fetches = 0;
+  dom.window.fetch = async () => { fetches += 1; throw new Error('Preview must not use public resolve or analytics.'); };
+  dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
+
+  const host = dom.window.document.querySelector('#mt-popup-banner-root');
+  assert.ok(host);
+  assert.equal(host.shadowRoot.querySelector('.title').textContent, 'Точний runtime');
+  assert.equal(fetches, 0);
+  assert.equal(dom.window.localStorage.getItem('mt-popup-visitor'), null);
+  assert.equal(dom.window.sessionStorage.length, 0);
+  dom.window.close();
+});
+
 test('popup banner tool resolves exact product campaigns and records public events', async () => {
   await request(app).get('/api/popup-banners').expect(401);
 

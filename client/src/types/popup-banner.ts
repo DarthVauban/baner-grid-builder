@@ -168,6 +168,35 @@ export interface PopupCampaignInput {
   promoCodeId: string | null;
 }
 
+export interface PopupRuntimeProduct {
+  productId: string;
+  modificationId: string | null;
+  article: string;
+  title: string;
+  imageUrl: string;
+  pageUrl: string;
+  price: string;
+  oldPrice: string;
+  currency: string;
+  buyId: string;
+}
+
+export interface PopupPreviewPayload {
+  campaign: {
+    publicId: string;
+    revision: string;
+    type: PopupCampaignType;
+    mode: PopupTargetMode;
+    content: PopupContent;
+    styles: PopupStyles;
+    behavior: PopupBehavior;
+    promoCode: PromoCodeSnapshot | null;
+  };
+  product: { article: string; title: string } | null;
+  recommendations: PopupRuntimeProduct[];
+  products: PopupPromoProduct[];
+}
+
 export interface PopupCampaignOptions {
   integration: {
     id: string;
