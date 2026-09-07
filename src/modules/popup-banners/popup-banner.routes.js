@@ -8,7 +8,9 @@ import { horoshopCatalogService } from '../search/horoshop/catalog.service.js';
 import {
   createPopupCampaign,
   deletePopupCampaign,
+  exportPopupContactsWorkbook,
   getPopupCampaign,
+  listPopupContacts,
   listPopupCampaigns,
   popupBannerAnalytics,
   popupBannerToolId,
@@ -91,6 +93,38 @@ const targetingBaseSchema = z.object({
   urlContains: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
   recommendationLimit: z.number().int().min(3).max(8).default(6)
 });
+const leadFieldSchema = z.object({
+  id: z.string().trim().regex(/^[a-z][a-z0-9_-]{0,63}$/iu),
+  type: z.enum(['text', 'email', 'phone', 'textarea', 'select', 'checkbox']),
+  label: z.string().trim().min(1).max(120),
+  placeholder: z.string().trim().max(200).optional().default(''),
+  required: z.boolean().optional().default(false),
+  options: z.array(z.string().trim().min(1).max(80)).max(20).optional().default([])
+});
+const formConfigSchema = z.object({
+  fields: z.array(leadFieldSchema).min(1).max(12),
+  submitLabel: z.string().trim().min(1).max(120),
+  successTitle: z.string().trim().max(240).optional().default(''),
+  successBody: z.string().trim().max(1000).optional().default('')
+}).superRefine((value, context) => {
+  const ids = new Set();
+  value.fields.forEach((field, index) => {
+    if (ids.has(field.id)) context.addIssue({ code: 'custom', path: ['fields', index, 'id'], message: 'Ідентифікатори полів мають бути унікальними.' });
+    ids.add(field.id);
+    if (field.type === 'select' && field.options.length === 0) {
+      context.addIssue({ code: 'custom', path: ['fields', index, 'options'], message: 'Додайте хоча б один варіант для списку.' });
+    }
+  });
+});
+const defaultFormConfigInput = {
+  fields: [
+    { id: 'name', type: 'text', label: 'Імʼя', placeholder: 'Ваше імʼя', required: true, options: [] },
+    { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }
+  ],
+  submitLabel: 'Отримати промокод',
+  successTitle: 'Ваш промокод готовий',
+  successBody: 'Скопіюйте код і використайте його під час оформлення замовлення.'
+};
 const targetingSchema = targetingBaseSchema.superRefine((value, context) => {
   if (value.mode === 'target_page' && !value.targetPageUrl) {
     context.addIssue({
@@ -130,7 +164,7 @@ const behaviorSchema = behaviorBaseSchema.superRefine((value, context) => {
   }
 });
 const campaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form']).default('message'),
   name: z.string().trim().min(1).max(160),
   priority: z.number().int().min(0).max(1000),
   content: contentSchema,
@@ -139,6 +173,7 @@ const campaignSchema = z.object({
   behavior: behaviorSchema,
   startsAt: nullableDateSchema,
   endsAt: nullableDateSchema,
+  formConfig: formConfigSchema.optional().default(defaultFormConfigInput),
   promoCodeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional().default(null)
     .transform((value) => value || null),
   productEntries: z.array(z.string().trim().min(1).max(500)).max(500).default([]),
@@ -160,7 +195,12 @@ const campaignSchema = z.object({
       code: 'custom', path: ['targeting', 'mode'], message: 'Банер із промокодом не підтримує сценарій відсутнього товару.'
     });
   }
-  if (value.campaignType === 'promo_code' && !value.promoCodeId) {
+  if (value.campaignType === 'lead_form' && value.targeting.mode === 'out_of_stock') {
+    context.addIssue({
+      code: 'custom', path: ['targeting', 'mode'], message: 'Форма за промокод не підтримує сценарій відсутнього товару.'
+    });
+  }
+  if (['promo_code', 'lead_form'].includes(value.campaignType) && !value.promoCodeId) {
     context.addIssue({ code: 'custom', path: ['promoCodeId'], message: 'Оберіть промокод із бібліотеки.' });
   }
   if (
@@ -184,12 +224,12 @@ const campaignSchema = z.object({
   if (!value.content.body) context.addIssue({
     code: 'custom', path: ['content', 'body'], message: 'Вкажіть основний текст банера.'
   });
-  if (value.campaignType !== 'promo_code' && !value.content.primaryLabel) context.addIssue({
+  if (!['promo_code', 'lead_form'].includes(value.campaignType) && !value.content.primaryLabel) context.addIssue({
     code: 'custom', path: ['content', 'primaryLabel'], message: 'Вкажіть текст основної кнопки.'
   });
 });
 const previewCampaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form']).default('message'),
   name: z.string().trim().max(160).optional().default(''),
   priority: z.number().int().min(0).max(1000).optional().default(0),
   content: contentSchema,
@@ -198,6 +238,7 @@ const previewCampaignSchema = z.object({
   behavior: behaviorBaseSchema,
   startsAt: nullableDateSchema,
   endsAt: nullableDateSchema,
+  formConfig: formConfigSchema.optional().default(defaultFormConfigInput),
   promoCodeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional().default(null)
     .transform((value) => value || null),
   productEntries: z.array(z.string().trim().min(1).max(500)).max(500).default([]),
@@ -210,6 +251,10 @@ const statusSchema = z.object({ status: z.enum(['draft', 'active', 'paused']) })
 const analyticsSchema = z.object({
   days: z.coerce.number().int().min(7).max(90).optional().default(30),
   campaignId: z.union([z.string().uuid(), z.literal('')]).optional().default('').transform((value) => value || null)
+});
+const contactsSchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  pageSize: z.coerce.number().int().min(10).max(100).optional().default(50)
 });
 
 function requestOrigin(req) {
@@ -250,12 +295,34 @@ router.get('/analytics/overview', asyncHandler(async (req, res) => {
   res.json({ data: await popupBannerAnalytics(parseInput(analyticsSchema, req.query)) });
 }));
 
+router.get('/contacts/export', asyncHandler(async (_req, res) => {
+  const workbook = await exportPopupContactsWorkbook();
+  res.attachment('popup-contacts.xlsx');
+  res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(workbook);
+}));
+
 router.post('/preview', asyncHandler(async (req, res) => {
   res.json({ data: await previewPopupCampaign(parseInput(previewCampaignSchema, req.body)) });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
   res.json({ data: await getPopupCampaign(parseInput(idSchema, req.params.id)) });
+}));
+
+router.get('/:id/contacts', asyncHandler(async (req, res) => {
+  res.json({
+    data: await listPopupContacts(
+      parseInput(idSchema, req.params.id),
+      parseInput(contactsSchema, req.query)
+    )
+  });
+}));
+
+router.get('/:id/contacts/export', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const workbook = await exportPopupContactsWorkbook(id);
+  res.attachment(`popup-contacts-${id}.xlsx`);
+  res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(workbook);
 }));
 
 router.post('/', asyncHandler(async (req, res) => {

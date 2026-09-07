@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import * as XLSX from 'xlsx';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { loadPromoCodeRow, promoCodeSnapshot } from '../promo-codes/promo-code.service.js';
@@ -78,6 +79,16 @@ const defaultBehavior = {
   buttonCount: 2
 };
 
+const defaultFormConfig = {
+  fields: [
+    { id: 'name', type: 'text', label: 'Імʼя', placeholder: 'Ваше імʼя', required: true, options: [] },
+    { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }
+  ],
+  submitLabel: 'Отримати промокод',
+  successTitle: 'Ваш промокод готовий',
+  successBody: 'Скопіюйте код і використайте його під час оформлення замовлення.'
+};
+
 const eventStatsKey = {
   impression: 'impressions',
   dismiss: 'dismissals',
@@ -89,10 +100,10 @@ const eventStatsKey = {
 
 function normalizeCampaignType(value, targeting = {}) {
   if (value === 'exit_offer') return 'message';
-  if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code'].includes(value)) {
+  if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form'].includes(value)) {
     return 'out_of_stock_recommendations';
   }
-  if (['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code'].includes(value)) return value;
+  if (['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form'].includes(value)) return value;
   return 'message';
 }
 
@@ -241,7 +252,38 @@ function campaignSnapshot(row, targets = [], promoProducts = []) {
     promoProducts,
     promoCodeId: row.promo_code_id || null,
     promoCode: object(row.promo_code_draft_snapshot),
-    publishedPromoCode: object(row.promo_code_published_snapshot)
+    publishedPromoCode: object(row.promo_code_published_snapshot),
+    formConfig: normalizeFormConfig(row.form_config),
+    publishedFormConfig: object(row.form_published_snapshot)
+  };
+}
+
+function normalizeFormConfig(value) {
+  const source = object(value);
+  const usedIds = new Set();
+  const fields = array(source.fields).flatMap((candidate) => {
+    const field = object(candidate);
+    const id = String(field.id || '').trim().slice(0, 64);
+    const type = ['text', 'email', 'phone', 'textarea', 'select', 'checkbox'].includes(field.type)
+      ? field.type : 'text';
+    const label = String(field.label || '').trim().slice(0, 120);
+    if (!/^[a-z][a-z0-9_-]{0,63}$/iu.test(id) || usedIds.has(id) || !label) return [];
+    usedIds.add(id);
+    return [{
+      id,
+      type,
+      label,
+      placeholder: String(field.placeholder || '').trim().slice(0, 200),
+      required: field.required === true,
+      options: type === 'select' ? stringList(field.options, 20).map((item) => item.slice(0, 80)) : []
+    }];
+  }).slice(0, 12);
+  return {
+    fields,
+    submitLabel: String(source.submitLabel ?? defaultFormConfig.submitLabel).trim().slice(0, 120)
+      || defaultFormConfig.submitLabel,
+    successTitle: String(source.successTitle ?? defaultFormConfig.successTitle).trim().slice(0, 240),
+    successBody: String(source.successBody ?? defaultFormConfig.successBody).trim().slice(0, 1000)
   };
 }
 
@@ -338,13 +380,17 @@ function serializeCampaign(row, targets = [], promoProducts = []) {
     promoCodeId: row.promo_code_id || null,
     promoCode: Object.keys(object(row.promo_code_draft_snapshot)).length ? object(row.promo_code_draft_snapshot) : null,
     publishedPromoCode: Object.keys(object(row.promo_code_published_snapshot)).length ? object(row.promo_code_published_snapshot) : null,
+    formConfig: normalizeFormConfig(row.form_config),
+    publishedFormConfig: Object.keys(object(row.form_published_snapshot)).length
+      ? normalizeFormConfig(row.form_published_snapshot) : null,
     stats: {
       impressions: Number(row.impressions || 0),
       dismissals: Number(row.dismissals || 0),
       clicks: Number(row.clicks || 0),
       acknowledgements: Number(row.acknowledgements || 0),
       copies: Number(row.copies || 0),
-      promoCtaClicks: Number(row.promoCtaClicks || 0)
+      promoCtaClicks: Number(row.promoCtaClicks || 0),
+      contacts: Number(row.contacts || 0)
     },
     connection: row.connection_id ? {
       id: row.connection_id,
@@ -386,6 +432,11 @@ async function loadCampaignRow(id, db = { query }) {
   );
   const row = result.rows[0];
   for (const item of stats.rows) row[eventStatsKey[item.event_type]] = Number(item.count);
+  const contacts = await db.query(
+    'SELECT COUNT(*) AS count FROM popup_banner_contacts WHERE campaign_id = $1',
+    [id]
+  );
+  row.contacts = Number(contacts.rows[0]?.count || 0);
   return row;
 }
 
@@ -404,6 +455,14 @@ export async function listPopupCampaigns() {
   for (const item of statsResult.rows) {
     const current = stats.get(item.campaign_id) || {};
     current[eventStatsKey[item.event_type]] = Number(item.count);
+    stats.set(item.campaign_id, current);
+  }
+  const contactStatsResult = await query(
+    'SELECT campaign_id, COUNT(*) AS count FROM popup_banner_contacts GROUP BY campaign_id'
+  );
+  for (const item of contactStatsResult.rows) {
+    const current = stats.get(item.campaign_id) || {};
+    current.contacts = Number(item.count);
     stats.set(item.campaign_id, current);
   }
   const targetRows = await query(
@@ -597,11 +656,15 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     const targeting = normalizeTargeting(input.targeting);
     validateTargetPage(targeting, connection.store_domain);
     const behavior = normalizeBehavior(input.behavior);
+    const formConfig = normalizeFormConfig(input.formConfig);
     if (['product_promo', 'out_of_stock_recommendations'].includes(campaignType) && behavior.trigger === 'exit_intent') {
       behavior.trigger = 'delay';
     }
+    if (campaignType === 'lead_form' && formConfig.fields.length === 0) {
+      throw new AppError(422, 'POPUP_FORM_FIELDS_EMPTY', 'Додайте хоча б одне поле до контактної форми.');
+    }
     let selectedPromoCode = null;
-    if (campaignType === 'promo_code') {
+    if (['promo_code', 'lead_form'].includes(campaignType)) {
       selectedPromoCode = await loadPromoCodeRow(input.promoCodeId, connection.id, client, true);
     }
     const draftPromoCodeSnapshot = selectedPromoCode ? promoCodeSnapshot(selectedPromoCode) : null;
@@ -612,16 +675,19 @@ async function savePopupCampaign(existingId, input, actorUserId) {
       const updated = await client.query(
         `UPDATE popup_banner_campaigns
          SET connection_id = $2, connection_generation = $3, campaign_type = $4,
-             name = $5, priority = $6, content = $7::JSONB, styles = $8::JSONB,
-             targeting = $9::JSONB, behavior = $10::JSONB, starts_at = $11, ends_at = $12,
-             promo_code_id = $13, promo_code_draft_snapshot = $14::JSONB,
-             promo_code_published_snapshot = CASE WHEN $4 = 'promo_code' THEN promo_code_published_snapshot ELSE NULL END,
-             updated_by = $15, updated_at = NOW()
+              name = $5, priority = $6, content = $7::JSONB, styles = $8::JSONB,
+              targeting = $9::JSONB, behavior = $10::JSONB, starts_at = $11, ends_at = $12,
+              promo_code_id = $13, promo_code_draft_snapshot = $14::JSONB,
+              promo_code_published_snapshot = CASE WHEN $4 IN ('promo_code', 'lead_form') THEN promo_code_published_snapshot ELSE NULL END,
+              form_config = $15::JSONB,
+              form_published_snapshot = CASE WHEN $4 = 'lead_form' THEN form_published_snapshot ELSE NULL END,
+              updated_by = $16, updated_at = NOW()
          WHERE id = $1 RETURNING id`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
-          draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null, actorUserId]
+          draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
+          JSON.stringify(formConfig), actorUserId]
       );
       if (!updated.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
     } else {
@@ -629,13 +695,14 @@ async function savePopupCampaign(existingId, input, actorUserId) {
       await client.query(
         `INSERT INTO popup_banner_campaigns (
            id, connection_id, connection_generation, campaign_type, name, priority, content, styles,
-           targeting, behavior, starts_at, ends_at, promo_code_id, promo_code_draft_snapshot,
-           created_by, updated_by
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15, $15)`,
+            targeting, behavior, starts_at, ends_at, promo_code_id, promo_code_draft_snapshot,
+            form_config, created_by, updated_by
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16)`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
-          draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null, actorUserId]
+          draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
+          JSON.stringify(formConfig), actorUserId]
       );
     }
 
@@ -721,6 +788,7 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
       current_store_domain: connection.rows[0]?.store_domain || ''
     } : null;
     if (!current) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
+    const campaignType = normalizeCampaignType(current.campaign_type, current.targeting);
     if (status === 'active') {
       if (!current.current_connection_id || current.connection_id !== current.current_connection_id
         || current.connection_generation !== current.current_generation) {
@@ -732,30 +800,42 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
         const targets = await client.query('SELECT 1 FROM popup_banner_product_targets WHERE campaign_id = $1 LIMIT 1', [id]);
         if (!targets.rows[0]) throw new AppError(422, 'POPUP_TARGETS_EMPTY', 'Додайте хоча б один товар до кампанії.');
       }
-      if (normalizeCampaignType(current.campaign_type, current.targeting) === 'product_promo') {
+      if (campaignType === 'product_promo') {
         const products = await client.query('SELECT 1 FROM popup_banner_promo_products WHERE campaign_id = $1 LIMIT 1', [id]);
         if (!products.rows[0]) throw new AppError(422, 'POPUP_PROMO_PRODUCTS_EMPTY', 'Додайте хоча б один товар до промобанера.');
       }
-      if (normalizeCampaignType(current.campaign_type, current.targeting) === 'promo_code') {
+      if (['promo_code', 'lead_form'].includes(campaignType)) {
         if (!current.promo_code_id) {
           throw new AppError(422, 'POPUP_PROMO_CODE_EMPTY', 'Оберіть промокод для кампанії.');
         }
         const code = await loadPromoCodeRow(current.promo_code_id, current.current_connection_id, client, true);
         current.promo_code_published_snapshot = promoCodeSnapshot(code);
       }
+      if (campaignType === 'lead_form') {
+        const formConfig = normalizeFormConfig(current.form_config);
+        if (!formConfig.fields.length) {
+          throw new AppError(422, 'POPUP_FORM_FIELDS_EMPTY', 'Додайте хоча б одне поле до контактної форми.');
+        }
+        current.form_published_snapshot = formConfig;
+      }
     }
     await client.query(
       `UPDATE popup_banner_campaigns
        SET status = $2::VARCHAR,
            published_at = CASE WHEN $2::VARCHAR = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
-           promo_code_published_snapshot = CASE
-             WHEN $2::VARCHAR = 'active' AND campaign_type = 'promo_code' THEN $4::JSONB
-             ELSE promo_code_published_snapshot
-           END,
-           updated_by = $3, updated_at = NOW()
+            promo_code_published_snapshot = CASE
+              WHEN $2::VARCHAR = 'active' AND campaign_type IN ('promo_code', 'lead_form') THEN $4::JSONB
+              ELSE promo_code_published_snapshot
+            END,
+            form_published_snapshot = CASE
+              WHEN $2::VARCHAR = 'active' AND campaign_type = 'lead_form' THEN $5::JSONB
+              ELSE form_published_snapshot
+            END,
+            updated_by = $3, updated_at = NOW()
        WHERE id = $1`,
       [id, status, actorUserId, current.promo_code_published_snapshot
-        ? JSON.stringify(current.promo_code_published_snapshot) : null]
+        ? JSON.stringify(current.promo_code_published_snapshot) : null,
+      current.form_published_snapshot ? JSON.stringify(current.form_published_snapshot) : null]
     );
     if (status === 'active') await recordVersion(client, id, actorUserId);
     await client.query('COMMIT');
@@ -1106,6 +1186,7 @@ export async function previewPopupCampaign(input) {
   const styles = normalizeStyles(input.styles);
   const targeting = normalizeTargeting(input.targeting);
   const behavior = normalizeBehavior(input.behavior);
+  const formConfig = normalizeFormConfig(input.formConfig);
 
   let products = [];
   if (campaignType === 'product_promo') {
@@ -1134,7 +1215,7 @@ export async function previewPopupCampaign(input) {
   const recommendations = targeting.mode === 'out_of_stock'
     ? await loadPreviewRecommendations(connection, targeting.recommendationLimit, db)
     : [];
-  const selectedPromoCode = campaignType === 'promo_code' && input.promoCodeId
+  const selectedPromoCode = ['promo_code', 'lead_form'].includes(campaignType) && input.promoCodeId
     ? await loadPromoCodeRow(input.promoCodeId, connection.id, db)
     : null;
   const normalizedSnapshot = {
@@ -1143,6 +1224,7 @@ export async function previewPopupCampaign(input) {
     styles,
     targeting,
     behavior,
+    formConfig,
     promoCodeId: input.promoCodeId || null,
     products: products.map((item) => [item.productExternalId, item.modificationExternalId])
   };
@@ -1156,6 +1238,7 @@ export async function previewPopupCampaign(input) {
       content: Object.fromEntries(Object.entries(content).map(([key, value]) => [key, templateText(value, templateProduct)])),
       styles,
       behavior,
+      formConfig,
       promoCode: selectedPromoCode ? promoCodeSnapshot(selectedPromoCode) : null
     },
     product: templateProduct ? { article: templateProduct.sku, title: templateProduct.title } : null,
@@ -1203,10 +1286,14 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       ))
       : [];
     if (campaignType === 'product_promo' && promoProducts.length === 0) continue;
-    const publishedPromoCode = campaignType === 'promo_code'
+    const publishedPromoCode = ['promo_code', 'lead_form'].includes(campaignType)
       ? object(campaign.promo_code_published_snapshot)
       : null;
-    if (campaignType === 'promo_code' && !publishedPromoCode?.code) continue;
+    const publishedFormConfig = campaignType === 'lead_form'
+      ? normalizeFormConfig(campaign.form_published_snapshot)
+      : normalizeFormConfig(null);
+    if (['promo_code', 'lead_form'].includes(campaignType) && !publishedPromoCode?.code) continue;
+    if (campaignType === 'lead_form' && !publishedFormConfig.fields.length) continue;
     return {
       campaign: {
         publicId: campaign.public_id,
@@ -1218,7 +1305,8 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
         content: Object.fromEntries(Object.entries(content).map(([key, value]) => [key, templateText(value, product)])),
         styles: normalizeStyles(campaign.styles),
         behavior: normalizeBehavior(campaign.behavior),
-        promoCode: publishedPromoCode
+        formConfig: publishedFormConfig,
+        promoCode: campaignType === 'promo_code' ? publishedPromoCode : null
       },
       product: product ? { article: product.sku, title: product.title } : null,
       recommendations,
@@ -1244,6 +1332,203 @@ export async function recordPopupEvent({ publicId, eventType, pageUrl, article, 
     [campaign.rows[0].id, product?.id || null, product?.modificationId || null,
       eventType, visitorKeyHash, parsedPage?.href.slice(0, 4000) || null, JSON.stringify(object(metadata))]
   );
+}
+
+function contactValue(field, rawValue) {
+  if (field.type === 'checkbox') return rawValue === true || rawValue === 'true' || rawValue === '1';
+  const maximum = field.type === 'textarea' ? 2000 : 500;
+  return String(rawValue ?? '').trim().slice(0, maximum);
+}
+
+function validatedContactValues(formConfig, suppliedValues) {
+  const source = object(suppliedValues);
+  const values = {};
+  const details = [];
+  for (const field of formConfig.fields) {
+    const value = contactValue(field, source[field.id]);
+    const empty = field.type === 'checkbox' ? value !== true : !value;
+    if (field.required && empty) {
+      details.push({ field: field.id, message: `Заповніть поле «${field.label}».` });
+      continue;
+    }
+    if (empty) {
+      values[field.id] = value;
+      continue;
+    }
+    if (field.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value)) {
+      details.push({ field: field.id, message: `Перевірте email у полі «${field.label}».` });
+    }
+    if (field.type === 'phone') {
+      const digits = value.replace(/\D/gu, '');
+      if (digits.length < 7 || digits.length > 15) {
+        details.push({ field: field.id, message: `Перевірте номер у полі «${field.label}».` });
+      }
+    }
+    if (field.type === 'select' && !field.options.includes(value)) {
+      details.push({ field: field.id, message: `Оберіть доступне значення у полі «${field.label}».` });
+    }
+    values[field.id] = field.type === 'email' ? value.toLocaleLowerCase('uk-UA') : value;
+  }
+  if (details.length) {
+    throw new AppError(422, 'POPUP_CONTACT_INVALID', 'Перевірте заповнені поля форми.', details);
+  }
+  return values;
+}
+
+export async function submitPopupContact({ publicId, values, pageUrl, article, visitorKey, requestOrigin }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `SELECT campaign.*, connection.store_domain, connection.generation AS current_generation
+       FROM popup_banner_campaigns AS campaign
+       JOIN search_horoshop_connections AS connection ON connection.id = campaign.connection_id
+       WHERE campaign.public_id = $1 AND campaign.status = 'active'
+         AND campaign.campaign_type = 'lead_form'
+         AND (campaign.starts_at IS NULL OR campaign.starts_at <= NOW())
+         AND (campaign.ends_at IS NULL OR campaign.ends_at > NOW())
+       FOR UPDATE`,
+      [publicId]
+    );
+    const campaign = result.rows[0];
+    if (!campaign || campaign.connection_generation !== campaign.current_generation
+      || !isWithinBehaviorSchedule(campaign.behavior)) {
+      throw new AppError(404, 'POPUP_FORM_NOT_AVAILABLE', 'Ця контактна форма більше не доступна.');
+    }
+    const parsedPage = normalizedPageUrl(pageUrl);
+    const parsedOrigin = normalizedPageUrl(requestOrigin);
+    if (!parsedPage || !sameStoreHost(parsedPage.hostname, campaign.store_domain)
+      || (parsedOrigin && !sameStoreHost(parsedOrigin.hostname, campaign.store_domain))) {
+      throw new AppError(403, 'POPUP_STORE_MISMATCH', 'Форму можна надсилати лише з підключеного магазину.');
+    }
+    const formConfig = normalizeFormConfig(campaign.form_published_snapshot);
+    const promoCode = object(campaign.promo_code_published_snapshot);
+    if (!formConfig.fields.length || !promoCode.code) {
+      throw new AppError(409, 'POPUP_FORM_NOT_PUBLISHED', 'Опублікована версія форми недоступна.');
+    }
+    const normalizedValues = validatedContactValues(formConfig, values);
+    const product = await resolveProduct({ id: campaign.connection_id, generation: campaign.current_generation }, article, parsedPage);
+    const visitorKeyHash = visitorKey
+      ? createHash('sha256').update(String(visitorKey).slice(0, 200)).digest('hex') : null;
+    const dedupeKey = createHash('sha256')
+      .update(JSON.stringify(formConfig.fields.map((field) => [field.id, normalizedValues[field.id]])))
+      .digest('hex');
+    const existing = await client.query(
+      'SELECT id, created_at FROM popup_banner_contacts WHERE campaign_id = $1 AND dedupe_key = $2 LIMIT 1',
+      [campaign.id, dedupeKey]
+    );
+    const inserted = existing.rows[0] ? { rows: [] } : await client.query(
+      `INSERT INTO popup_banner_contacts (
+         campaign_id, product_id, modification_id, values, visitor_key_hash, dedupe_key, page_url
+       ) VALUES ($1, $2, $3, $4::JSONB, $5, $6, $7)
+       ON CONFLICT (campaign_id, dedupe_key) DO NOTHING
+       RETURNING id, created_at`,
+      [campaign.id, product?.id || null, product?.modificationId || null,
+        JSON.stringify(normalizedValues), visitorKeyHash, dedupeKey, parsedPage.href.slice(0, 4000)]
+    );
+    await client.query('COMMIT');
+    return {
+      duplicate: !inserted.rows[0],
+      promoCode,
+      submittedAt: inserted.rows[0]?.created_at || existing.rows[0]?.created_at || null
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function serializeContact(row) {
+  return {
+    id: row.id,
+    values: object(row.values),
+    pageUrl: row.page_url || '',
+    createdAt: row.created_at
+  };
+}
+
+export async function listPopupContacts(campaignId, { page = 1, pageSize = 50 } = {}) {
+  const campaign = await loadCampaignRow(campaignId);
+  if (normalizeCampaignType(campaign.campaign_type, campaign.targeting) !== 'lead_form') {
+    throw new AppError(409, 'POPUP_CONTACTS_UNAVAILABLE', 'Списки контактів доступні лише для банерів із формою.');
+  }
+  const offset = (page - 1) * pageSize;
+  const [items, total] = await Promise.all([
+    query(
+      `SELECT id, values, page_url, created_at
+       FROM popup_banner_contacts WHERE campaign_id = $1
+       ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`,
+      [campaignId, pageSize, offset]
+    ),
+    query('SELECT COUNT(*) AS count FROM popup_banner_contacts WHERE campaign_id = $1', [campaignId])
+  ]);
+  return {
+    campaign: {
+      id: campaign.id,
+      name: campaign.name,
+      formConfig: normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config)
+    },
+    items: items.rows.map(serializeContact),
+    page,
+    pageSize,
+    total: Number(total.rows[0]?.count || 0)
+  };
+}
+
+function safeSpreadsheetValue(value) {
+  const text = value === true ? 'Так' : value === false ? 'Ні' : String(value ?? '');
+  return /^[=+\-@]/u.test(text) ? `'${text}` : text;
+}
+
+function safeSheetName(value, used) {
+  const base = String(value || 'Контакти').replace(/[\\/?*:]/gu, ' ').replaceAll('[', ' ').replaceAll(']', ' ').trim().slice(0, 31) || 'Контакти';
+  let name = base;
+  let index = 2;
+  while (used.has(name.toLocaleLowerCase('uk-UA'))) {
+    const suffix = ` ${index++}`;
+    name = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+  }
+  used.add(name.toLocaleLowerCase('uk-UA'));
+  return name;
+}
+
+export async function exportPopupContactsWorkbook(campaignId = null) {
+  const campaigns = await query(
+    `SELECT id, name, form_config, form_published_snapshot
+     FROM popup_banner_campaigns
+     WHERE campaign_type = 'lead_form' ${campaignId ? 'AND id = $1' : ''}
+     ORDER BY updated_at DESC`,
+    campaignId ? [campaignId] : []
+  );
+  if (campaignId && !campaigns.rows[0]) {
+    throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
+  }
+  const workbook = XLSX.utils.book_new();
+  const usedNames = new Set();
+  for (const campaign of campaigns.rows) {
+    const formConfig = normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config);
+    const contacts = await query(
+      `SELECT values, page_url, created_at FROM popup_banner_contacts
+       WHERE campaign_id = $1 ORDER BY created_at DESC, id DESC`,
+      [campaign.id]
+    );
+    const headers = ['Дата отримання', ...formConfig.fields.map((field) => field.label), 'Сторінка'];
+    const rows = contacts.rows.map((contact) => [
+      contact.created_at instanceof Date ? contact.created_at.toISOString() : String(contact.created_at || ''),
+      ...formConfig.fields.map((field) => safeSpreadsheetValue(object(contact.values)[field.id])),
+      safeSpreadsheetValue(contact.page_url)
+    ]);
+    const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    sheet['!cols'] = [{ wch: 24 }, ...formConfig.fields.map(() => ({ wch: 28 })), { wch: 64 }];
+    sheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, rows.length), c: headers.length - 1 } }) };
+    XLSX.utils.book_append_sheet(workbook, sheet, safeSheetName(campaign.name, usedNames));
+  }
+  if (!workbook.SheetNames.length) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['Контактних форм ще немає']]), 'Контакти');
+  }
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', compression: true });
 }
 
 export async function popupBannerAnalytics({ days = 30, campaignId = null } = {}) {
@@ -1679,11 +1964,56 @@ export function popupEmbedScript(origin) {
     return [raw, currencyText].filter(Boolean).join(' ');
   }
 
+  function appendPromoCode(container, promo, campaign, productArticle, withCta) {
+    const offer = document.createElement('div'); offer.className = 'promo-code-offer';
+    const value = document.createElement('p'); value.className = 'promo-code-value';
+    value.textContent = promo.type === 'percent_coupon'
+      ? 'Знижка ' + String(promo.discountValue || '') + '%'
+      : 'Сертифікат на ' + money(promo.discountValue, promo.currency);
+    const row = document.createElement('div'); row.className = 'promo-code-row';
+    const code = document.createElement('code'); code.className = 'promo-code'; code.textContent = promo.code || '';
+    const copy = document.createElement('button'); copy.className = 'promo-code-copy'; copy.type = 'button'; copy.textContent = 'Скопіювати';
+    copy.addEventListener('click', async () => {
+      let copied = false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(String(promo.code || ''));
+          copied = true;
+        }
+      } catch {}
+      if (!copied) {
+        const field = document.createElement('textarea');
+        field.value = String(promo.code || ''); field.setAttribute('readonly', '');
+        field.style.position = 'fixed'; field.style.opacity = '0'; document.body.append(field); field.select();
+        try { copied = document.execCommand('copy'); } catch {}
+        field.remove();
+      }
+      if (!copied) return;
+      event(campaign.publicId, 'copy', productArticle, { action: 'copy_promo_code' });
+      copy.textContent = 'Скопійовано'; copy.classList.add('is-copied');
+      setTimeout(() => { if (copy.isConnected) { copy.textContent = 'Скопіювати'; copy.classList.remove('is-copied'); } }, 1800);
+    });
+    row.append(code, copy); offer.append(value, row);
+    if (promo.scopeNote) { const note = document.createElement('p'); note.className = 'promo-code-note'; note.textContent = promo.scopeNote; offer.append(note); }
+    container.append(offer);
+    if (withCta && campaign.content.primaryUrl && campaign.content.primaryLabel) {
+      const cta = document.createElement('a'); cta.className = 'promo-code-cta';
+      cta.href = campaign.content.primaryUrl; cta.textContent = campaign.content.primaryLabel;
+      cta.addEventListener('click', (clickEvent) => {
+        if (previewMode) { clickEvent.preventDefault(); return; }
+        event(campaign.publicId, 'promo_cta', productArticle, { action: 'promo_cta' });
+      });
+      container.append(cta);
+    }
+    return copy;
+  }
+
   function render(payload, productArticle) {
     if (currentHost || (!previewMode && isSuppressed(payload))) return;
     const { campaign } = payload;
     const isProductPromo = campaign.type === 'product_promo';
     const isPromoCode = campaign.type === 'promo_code';
+    const isLeadForm = campaign.type === 'lead_form';
     const promoFormat = campaign.styles.promoFormat || 'notification';
     const cleanupTasks = [];
     const host = document.createElement('div');
@@ -1716,6 +2046,7 @@ export function popupEmbedScript(origin) {
     style.textContent += '.recommendation-image{background:#fff}';
     style.textContent += '.recommendation-price.is-discounted strong{color:#dc2626}';
     style.textContent += \`.promo-code-offer{display:grid;gap:14px;margin-top:22px;padding:18px;border:1px solid color-mix(in srgb,var(--accent) 24%,transparent);border-radius:calc(var(--radius) * .55);background:color-mix(in srgb,var(--accent) 7%,var(--bg))}.promo-code-value{margin:0;color:var(--text);font-size:15px;font-weight:800}.promo-code-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px}.promo-code{display:flex;align-items:center;min-width:0;min-height:52px;overflow:hidden;border:1px dashed color-mix(in srgb,var(--accent) 55%,var(--text));border-radius:var(--button-radius);padding:9px 14px;color:var(--text);background:var(--bg);font:850 20px/1.1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.08em;overflow-wrap:anywhere}.promo-code-copy{display:inline-flex;align-items:center;justify-content:center;min-width:112px;min-height:52px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:9px 16px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.promo-code-copy.is-copied{filter:saturate(.75);opacity:.82}.promo-code-note{margin:0;color:var(--muted);font-size:13px;line-height:1.45}.promo-code-cta{display:flex;align-items:center;justify-content:center;min-height:44px;margin-top:14px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:10px 18px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;text-decoration:none;cursor:pointer}@media(max-width:600px){.promo-code-offer{gap:11px;margin-top:17px;padding:14px}.promo-code-row{grid-template-columns:1fr}.promo-code-copy{width:100%}.promo-code{font-size:18px}}\`;
+    style.textContent += \`.lead-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:22px}.lead-field{display:grid;align-content:start;gap:6px;min-width:0;color:var(--text);font:700 13px/1.35 Inter,system-ui,sans-serif}.lead-field-textarea,.lead-field-select,.lead-field-checkbox,.lead-form-error,.lead-form-submit{grid-column:1/-1}.lead-field input:not([type=checkbox]),.lead-field textarea,.lead-field select{box-sizing:border-box;width:100%;min-height:46px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:var(--button-radius);padding:10px 12px;color:var(--text);background:var(--bg);font:500 15px/1.35 Inter,system-ui,sans-serif;outline:none}.lead-field textarea{min-height:92px;resize:vertical}.lead-field input:focus,.lead-field textarea:focus,.lead-field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}.lead-field input[aria-invalid=true],.lead-field textarea[aria-invalid=true],.lead-field select[aria-invalid=true]{border-color:#dc2626}.lead-field-checkbox{display:flex;align-items:flex-start;gap:9px;padding:4px 0;font-weight:550}.lead-field-checkbox input{flex:0 0 auto;width:18px;height:18px;margin:0;accent-color:var(--accent)}.lead-form-error{min-height:18px;margin:0;color:#b42318;font-size:13px;line-height:1.4}.lead-form-submit{min-height:48px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:10px 18px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.lead-form-submit:disabled{opacity:.6;cursor:wait}.lead-form-success{display:grid;gap:2px;margin-top:20px}.lead-form-success h3{margin:0;color:var(--text);font-size:22px;line-height:1.2}.lead-form-success>p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.45}.lead-form-success .promo-code-offer{margin-top:14px}@media(max-width:600px){.lead-form{grid-template-columns:1fr;gap:11px;margin-top:17px}.lead-field-textarea,.lead-field-select,.lead-field-checkbox,.lead-form-error,.lead-form-submit{grid-column:auto}.lead-form-success h3{font-size:19px}}\`;
     style.textContent += \`.product-promo-host{width:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);pointer-events:none}
 .product-promo-host .card{width:100%;max-height:none;overflow:hidden;pointer-events:auto;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);box-shadow:0 18px 52px rgba(15,23,42,.22)}
 .card.is-product-promo{display:flex;flex-direction:column;cursor:pointer}
@@ -1853,50 +2184,100 @@ export function popupEmbedScript(origin) {
     if (campaign.content.title) {
       const title = document.createElement('h2'); title.className = 'title'; title.id = 'mt-popup-title-' + campaign.publicId; title.textContent = campaign.content.title; content.append(title);
       card.setAttribute('aria-labelledby', title.id);
-    } else card.setAttribute('aria-label', isProductPromo ? 'Товарний промобанер' : isPromoCode ? 'Банер із промокодом' : 'Інформаційний попап');
+    } else card.setAttribute('aria-label', isProductPromo ? 'Товарний промобанер' : isPromoCode ? 'Банер із промокодом' : isLeadForm ? 'Форма за промокод' : 'Інформаційний попап');
     if (campaign.content.body) { const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body); }
+    if (isLeadForm) {
+      const formConfig = campaign.formConfig || { fields: [], submitLabel: 'Отримати промокод', successTitle: '', successBody: '' };
+      const form = document.createElement('form'); form.className = 'lead-form'; form.noValidate = true;
+      const bindings = [];
+      for (const field of formConfig.fields || []) {
+        const label = document.createElement('label'); label.className = 'lead-field lead-field-' + field.type;
+        let control;
+        if (field.type === 'checkbox') {
+          control = document.createElement('input'); control.type = 'checkbox';
+          const text = document.createElement('span'); text.textContent = field.label;
+          label.append(control, text);
+        } else {
+          const text = document.createElement('span'); text.textContent = field.label + (field.required ? ' *' : '');
+          if (field.type === 'textarea') control = document.createElement('textarea');
+          else if (field.type === 'select') {
+            control = document.createElement('select');
+            const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = field.placeholder || 'Оберіть значення'; control.append(placeholder);
+            for (const option of field.options || []) { const node = document.createElement('option'); node.value = option; node.textContent = option; control.append(node); }
+          } else {
+            control = document.createElement('input');
+            control.type = field.type === 'phone' ? 'tel' : field.type === 'email' ? 'email' : 'text';
+          }
+          if (field.placeholder && field.type !== 'select') control.placeholder = field.placeholder;
+          label.append(text, control);
+        }
+        control.name = field.id; control.required = Boolean(field.required);
+        control.autocomplete = field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : field.id === 'name' ? 'name' : 'off';
+        form.append(label); bindings.push({ field, control });
+      }
+      const formError = document.createElement('p'); formError.className = 'lead-form-error'; formError.setAttribute('role', 'alert');
+      const submit = document.createElement('button'); submit.className = 'lead-form-submit'; submit.type = 'submit'; submit.textContent = formConfig.submitLabel || 'Отримати промокод';
+      form.append(formError, submit);
+      form.addEventListener('submit', async (submitEvent) => {
+        submitEvent.preventDefault();
+        formError.textContent = '';
+        const values = {};
+        let valid = true;
+        for (const binding of bindings) {
+          const value = binding.field.type === 'checkbox' ? binding.control.checked : String(binding.control.value || '').trim();
+          values[binding.field.id] = value;
+          binding.control.removeAttribute('aria-invalid');
+          if (binding.field.required && (binding.field.type === 'checkbox' ? value !== true : !value)) {
+            binding.control.setAttribute('aria-invalid', 'true'); valid = false;
+          }
+          if (binding.field.type === 'email' && value && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/u.test(value)) {
+            binding.control.setAttribute('aria-invalid', 'true'); valid = false;
+          }
+          if (binding.field.type === 'phone' && value) {
+            const digits = value.replace(/\\D/gu, '');
+            if (digits.length < 7 || digits.length > 15) { binding.control.setAttribute('aria-invalid', 'true'); valid = false; }
+          }
+        }
+        if (!valid) { formError.textContent = 'Перевірте обов’язкові поля.'; bindings.find((binding) => binding.control.getAttribute('aria-invalid') === 'true')?.control.focus(); return; }
+        submit.disabled = true; submit.textContent = 'Надсилаємо…';
+        try {
+          let promo = campaign.promoCode;
+          if (!previewMode) {
+            const response = await fetch(new URL('/api/public/popup-banners/' + campaign.publicId + '/contacts', apiOrigin), {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', accept: 'application/json' },
+              body: JSON.stringify({ values, pageUrl: location.href, article: productArticle, visitorKey })
+            });
+            const envelope = await response.json().catch(() => ({}));
+            if (!response.ok || !envelope.data?.promoCode?.code) throw new Error(envelope.error?.message || 'Не вдалося зберегти контакт.');
+            promo = envelope.data.promoCode;
+          }
+          if (!promo?.code) throw new Error('Для прев’ю не вибрано промокод.');
+          const success = document.createElement('div'); success.className = 'lead-form-success';
+          if (formConfig.successTitle) { const title = document.createElement('h3'); title.textContent = formConfig.successTitle; success.append(title); }
+          if (formConfig.successBody) { const body = document.createElement('p'); body.textContent = formConfig.successBody; success.append(body); }
+          const copy = appendPromoCode(success, promo, campaign, productArticle, false);
+          form.replaceWith(success);
+          copy?.focus();
+        } catch (error) {
+          submit.disabled = false; submit.textContent = formConfig.submitLabel || 'Отримати промокод';
+          formError.textContent = error instanceof Error ? error.message : 'Не вдалося надіслати форму. Спробуйте ще раз.';
+        }
+      });
+      content.append(form);
+      card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
+      currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
+      if (!previewMode && campaign.behavior.autoCloseSeconds > 0) {
+        const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
+        cleanupTasks.push(() => clearTimeout(autoCloseTimer));
+      }
+      activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
+      requestAnimationFrame(() => bindings[0]?.control.focus());
+      return;
+    }
     if (isPromoCode) {
       const promo = campaign.promoCode || {};
-      const offer = document.createElement('div'); offer.className = 'promo-code-offer';
-      const value = document.createElement('p'); value.className = 'promo-code-value';
-      value.textContent = promo.type === 'percent_coupon'
-        ? 'Знижка ' + String(promo.discountValue || '') + '%'
-        : 'Сертифікат на ' + money(promo.discountValue, promo.currency);
-      const row = document.createElement('div'); row.className = 'promo-code-row';
-      const code = document.createElement('code'); code.className = 'promo-code'; code.textContent = promo.code || '';
-      const copy = document.createElement('button'); copy.className = 'promo-code-copy'; copy.type = 'button'; copy.textContent = 'Скопіювати';
-      copy.addEventListener('click', async () => {
-        let copied = false;
-        try {
-          if (navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(String(promo.code || ''));
-            copied = true;
-          }
-        } catch {}
-        if (!copied) {
-          const field = document.createElement('textarea');
-          field.value = String(promo.code || ''); field.setAttribute('readonly', '');
-          field.style.position = 'fixed'; field.style.opacity = '0'; document.body.append(field); field.select();
-          try { copied = document.execCommand('copy'); } catch {}
-          field.remove();
-        }
-        if (!copied) return;
-        event(campaign.publicId, 'copy', productArticle, { action: 'copy_promo_code' });
-        copy.textContent = 'Скопійовано'; copy.classList.add('is-copied');
-        setTimeout(() => { if (copy.isConnected) { copy.textContent = 'Скопіювати'; copy.classList.remove('is-copied'); } }, 1800);
-      });
-      row.append(code, copy); offer.append(value, row);
-      if (promo.scopeNote) { const note = document.createElement('p'); note.className = 'promo-code-note'; note.textContent = promo.scopeNote; offer.append(note); }
-      content.append(offer);
-      if (campaign.content.primaryUrl && campaign.content.primaryLabel) {
-        const cta = document.createElement('a'); cta.className = 'promo-code-cta';
-        cta.href = campaign.content.primaryUrl; cta.textContent = campaign.content.primaryLabel;
-        cta.addEventListener('click', (clickEvent) => {
-          if (previewMode) { clickEvent.preventDefault(); return; }
-          event(campaign.publicId, 'promo_cta', productArticle, { action: 'promo_cta' });
-        });
-        content.append(cta);
-      }
+      const copy = appendPromoCode(content, promo, campaign, productArticle, true);
       card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
       if (!previewMode && campaign.behavior.autoCloseSeconds > 0) {

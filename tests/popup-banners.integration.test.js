@@ -31,6 +31,12 @@ const unavailableAlternativeProductId = randomUUID();
 const differentCategoryProductId = randomUUID();
 const syncId = randomUUID();
 
+function binaryParser(response, callback) {
+  const chunks = [];
+  response.on('data', (chunk) => chunks.push(chunk));
+  response.on('end', () => callback(null, Buffer.concat(chunks)));
+}
+
 function input(overrides = {}) {
   return {
     name: 'Попередження про вживаний товар',
@@ -1391,6 +1397,153 @@ test('promo code widget is responsive on desktop and mobile and never auto-appli
     assert.ok(events.some((event) => event.eventType === 'promo_cta'));
     const runtimeCss = shadow.querySelector('style').textContent;
     assert.match(runtimeCss, /@media\(max-width:600px\)\{\.promo-code-offer/u);
+    dom.window.close();
+  }
+});
+
+test('lead-form campaign stores a deduplicated contact and exports campaign lists as XLSX', async () => {
+  await pool.query("UPDATE popup_banner_campaigns SET status = 'paused'");
+  const createdCode = await admin.post('/api/promo-codes').send({
+    internalName: 'Промокод за контакт',
+    code: 'CONTACT15',
+    type: 'percent_coupon',
+    discountValue: 15,
+    currency: '',
+    startsAt: null,
+    endsAt: null,
+    usageLimit: null,
+    scopeNote: 'Для першого замовлення',
+    enabled: true,
+    horoshopConfirmed: true
+  }).expect(201);
+  const formConfig = {
+    fields: [
+      { id: 'email', type: 'email', label: 'Email', placeholder: 'name@example.com', required: true, options: [] },
+      { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] },
+      { id: 'interest', type: 'select', label: 'Цікавить', placeholder: 'Оберіть категорію', required: false, options: ['Смартфони', 'Аксесуари'] },
+      { id: 'consent', type: 'checkbox', label: 'Погоджуюся на обробку даних', placeholder: '', required: true, options: [] }
+    ],
+    submitLabel: 'Отримати промокод',
+    successTitle: 'Готово',
+    successBody: 'Ваш персональний код нижче.'
+  };
+  const created = await admin.post('/api/popup-banners').send(input({
+    campaignType: 'lead_form',
+    name: 'Контакти за промокод',
+    promoCodeId: createdCode.body.data.id,
+    formConfig,
+    content: {
+      ...input().content,
+      eyebrow: 'Подарунок',
+      title: 'Отримайте знижку',
+      body: 'Залиште контакти — код з’явиться після відправлення.',
+      primaryLabel: '',
+      secondaryLabel: '',
+      acknowledgementLabel: ''
+    },
+    targeting: { ...input().targeting, mode: 'all_pages' },
+    behavior: { ...input().behavior, frequency: 'session', requireAcknowledgement: false, buttonCount: 1 },
+    productEntries: []
+  })).expect(201);
+  assert.equal(created.body.data.formConfig.fields.length, 4);
+  assert.equal(created.body.data.publishedFormConfig, null);
+  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+
+  const resolved = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/sale/' })
+    .expect(200);
+  assert.equal(resolved.body.data.campaign.type, 'lead_form');
+  assert.equal(resolved.body.data.campaign.formConfig.fields[0].id, 'email');
+  assert.equal(resolved.body.data.campaign.promoCode, null, 'the code must not leak in the resolve payload');
+
+  const publicPath = `/api/public/popup-banners/${created.body.data.publicId}/contacts`;
+  const invalid = await request(app).post(publicPath).set('Origin', 'https://shop.example.com').send({
+    values: { email: 'wrong', phone: '12', consent: false },
+    pageUrl: 'https://shop.example.com/sale/',
+    visitorKey: 'lead-visitor'
+  }).expect(422);
+  assert.equal(invalid.body.error.code, 'POPUP_CONTACT_INVALID');
+  await request(app).post(publicPath).set('Origin', 'https://foreign.example.com').send({
+    values: { email: 'buyer@example.com', phone: '+380501112233', interest: 'Смартфони', consent: true },
+    pageUrl: 'https://shop.example.com/sale/',
+    visitorKey: 'lead-visitor'
+  }).expect(403);
+  const submission = {
+    values: { email: 'BUYER@EXAMPLE.COM', phone: '+380 50 111 22 33', interest: 'Смартфони', consent: true },
+    pageUrl: 'https://shop.example.com/sale/',
+    visitorKey: 'lead-visitor'
+  };
+  const accepted = await request(app).post(publicPath).set('Origin', 'https://shop.example.com').send(submission).expect(201);
+  assert.equal(accepted.body.data.promoCode.code, 'CONTACT15');
+  assert.equal(accepted.body.data.duplicate, false);
+  const duplicate = await request(app).post(publicPath).set('Origin', 'https://shop.example.com').send(submission).expect(200);
+  assert.equal(duplicate.body.data.duplicate, true);
+
+  await request(app).get(`/api/popup-banners/${created.body.data.id}/contacts`).expect(401);
+  const contacts = await admin.get(`/api/popup-banners/${created.body.data.id}/contacts`).expect(200);
+  assert.equal(contacts.body.data.total, 1);
+  assert.equal(contacts.body.data.items[0].values.email, 'buyer@example.com');
+  assert.equal(contacts.body.data.items[0].values.consent, true);
+  const campaigns = await admin.get('/api/popup-banners').expect(200);
+  assert.equal(campaigns.body.data.find((campaign) => campaign.id === created.body.data.id).stats.contacts, 1);
+
+  const campaignExport = await admin.get(`/api/popup-banners/${created.body.data.id}/contacts/export`).buffer(true).parse(binaryParser).expect(200);
+  assert.match(campaignExport.headers['content-type'], /spreadsheetml/u);
+  assert.equal(Buffer.from(campaignExport.body).subarray(0, 2).toString(), 'PK');
+  const allExport = await admin.get('/api/popup-banners/contacts/export').buffer(true).parse(binaryParser).expect(200);
+  assert.equal(Buffer.from(allExport.body).subarray(0, 2).toString(), 'PK');
+});
+
+test('lead-form widget renders and reveals its promo code after submission on desktop and mobile', async () => {
+  const payload = {
+    campaign: {
+      publicId: 'a38e14ad-b9e8-4c09-a5ea-8077ad33ee45', revision: 'lead-form-revision', type: 'lead_form', mode: 'all_pages',
+      content: { eyebrow: 'Подарунок', title: 'Отримайте знижку', body: 'Залиште контакти.', primaryLabel: '', primaryUrl: '', secondaryLabel: '', imageUrl: '', acknowledgementLabel: '' },
+      styles: input().styles,
+      behavior: { ...input().behavior, frequency: 'always', requireAcknowledgement: false, buttonCount: 1 },
+      formConfig: {
+        fields: [
+          { id: 'email', type: 'email', label: 'Email', placeholder: 'name@example.com', required: true, options: [] },
+          { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }
+        ],
+        submitLabel: 'Отримати код', successTitle: 'Готово', successBody: 'Скопіюйте промокод.'
+      },
+      promoCode: null
+    },
+    product: null, recommendations: [], products: []
+  };
+  for (const surface of [{ width: 1440, userAgent: 'Mozilla/5.0 Chrome/140' }, { width: 390, userAgent: 'Mozilla/5.0 (Linux; Android 16) Chrome/140 Mobile Safari/537.36' }]) {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+      pretendToBeVisual: true, runScripts: 'outside-only', url: 'https://shop.example.com/sale/'
+    });
+    Object.defineProperty(dom.window, 'innerWidth', { configurable: true, value: surface.width });
+    Object.defineProperty(dom.window.navigator, 'userAgent', { configurable: true, value: surface.userAgent });
+    dom.window.MutationObserver = class MutationObserver { observe() {} disconnect() {} };
+    const submitted = [];
+    dom.window.fetch = async (input, options = {}) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/resolve')) return { ok: true, json: async () => ({ data: payload }) };
+      if (url.pathname.endsWith('/events')) return { ok: true };
+      if (url.pathname.endsWith('/contacts')) {
+        submitted.push(JSON.parse(options.body));
+        return { ok: true, json: async () => ({ data: { promoCode: { code: 'CONTACT15', type: 'percent_coupon', discountValue: 15, currency: '', scopeNote: '' } } }) };
+      }
+      throw new Error(`Unexpected fetch: ${url.href}`);
+    };
+    dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 35));
+    const shadow = dom.window.document.querySelector('#mt-popup-banner-root').shadowRoot;
+    assert.equal(shadow.querySelector('.promo-code'), null);
+    shadow.querySelector('[name="email"]').value = 'buyer@example.com';
+    shadow.querySelector('[name="phone"]').value = '+380501112233';
+    shadow.querySelector('.lead-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 25));
+    assert.equal(submitted.length, 1);
+    assert.equal(shadow.querySelector('.promo-code').textContent, 'CONTACT15');
+    assert.equal(shadow.querySelector('.lead-form-success h3').textContent, 'Готово');
+    assert.match(shadow.querySelector('style').textContent, /@media\(max-width:600px\)\{\.lead-form/u);
     dom.window.close();
   }
 });

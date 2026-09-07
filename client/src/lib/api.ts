@@ -124,6 +124,7 @@ import type { SystemMetrics } from '../types/system';
 import type {
   PopupCampaign,
   PopupCampaignInput,
+  PopupLeadContactFeed,
   PopupCampaignOptions,
   PopupPreviewPayload,
   PopupCampaignStatus
@@ -261,6 +262,10 @@ export const api = {
     embedCode: () => request<{ code: string }>('/api/popup-banners/embed-code'),
     analytics: (params: { days?: number; campaignId?: string } = {}, signal?: AbortSignal) => request<PopupBannerAnalytics>(
       `/api/popup-banners/analytics/overview${queryString(params)}`,
+      { signal }
+    ),
+    contacts: (id: string, params: { page?: number; pageSize?: number } = {}, signal?: AbortSignal) => request<PopupLeadContactFeed>(
+      `/api/popup-banners/${encodeURIComponent(id)}/contacts${queryString(params)}`,
       { signal }
     ),
     preview: (input: PopupCampaignInput, signal?: AbortSignal) => request<PopupPreviewPayload>('/api/popup-banners/preview', {

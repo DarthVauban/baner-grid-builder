@@ -6,7 +6,8 @@ import { parseInput } from '../../lib/validation.js';
 import {
   popupEmbedScript,
   recordPopupEvent,
-  resolvePopupCampaign
+  resolvePopupCampaign,
+  submitPopupContact
 } from './popup-banner.service.js';
 
 const router = Router();
@@ -31,6 +32,19 @@ const eventSchema = z.object({
   visitorKey: z.string().trim().max(200).default(''),
   metadata: z.record(z.string(), z.unknown()).optional().default({})
 });
+const contactSchema = z.object({
+  values: z.record(z.string(), z.union([z.string().max(2000), z.boolean()])),
+  pageUrl: z.string().trim().min(1).max(4000),
+  article: z.string().trim().max(300).optional().default(''),
+  visitorKey: z.string().trim().max(200).optional().default('')
+});
+const contactLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: 'POPUP_CONTACT_RATE_LIMITED', message: 'Забагато спроб. Спробуйте ще раз за хвилину.' } }
+});
 
 function requestOrigin(req) {
   const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
@@ -52,6 +66,16 @@ router.get('/resolve', asyncHandler(async (req, res) => {
 router.post('/events', asyncHandler(async (req, res) => {
   await recordPopupEvent(parseInput(eventSchema, req.body));
   res.status(204).end();
+}));
+
+router.post('/:publicId/contacts', contactLimiter, asyncHandler(async (req, res) => {
+  const publicId = parseInput(z.string().uuid(), req.params.publicId);
+  const data = await submitPopupContact({
+    publicId,
+    ...parseInput(contactSchema, req.body),
+    requestOrigin: String(req.get('origin') || '')
+  });
+  res.status(data.duplicate ? 200 : 201).json({ data });
 }));
 
 router.get('/embed.js', (req, res) => {

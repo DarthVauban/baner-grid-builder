@@ -1,7 +1,7 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
 import type { PromoCodeSnapshot } from './promo-code';
 
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form';
 export type PopupLayout = 'modal' | 'bottom-sheet' | 'corner';
 export type PopupPromoFormat = 'notification' | 'compact' | 'standard' | 'wide' | 'custom';
 export type PopupDesktopPosition = 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
@@ -94,6 +94,24 @@ export interface PopupProductTarget {
   matchedBy: string;
 }
 
+export type PopupLeadFieldType = 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'checkbox';
+
+export interface PopupLeadField {
+  id: string;
+  type: PopupLeadFieldType;
+  label: string;
+  placeholder: string;
+  required: boolean;
+  options: string[];
+}
+
+export interface PopupLeadFormConfig {
+  fields: PopupLeadField[];
+  submitLabel: string;
+  successTitle: string;
+  successBody: string;
+}
+
 export interface PopupPromoProductReference {
   productExternalId: string;
   modificationExternalId: string | null;
@@ -136,6 +154,8 @@ export interface PopupCampaign {
   promoCodeId: string | null;
   promoCode: PromoCodeSnapshot | null;
   publishedPromoCode: PromoCodeSnapshot | null;
+  formConfig: PopupLeadFormConfig;
+  publishedFormConfig: PopupLeadFormConfig | null;
   stats: {
     impressions: number;
     dismissals: number;
@@ -143,6 +163,7 @@ export interface PopupCampaign {
     acknowledgements: number;
     copies: number;
     promoCtaClicks: number;
+    contacts: number;
   };
   connection: { id: string; generation: string; storeDomain: string } | null;
   resolution?: {
@@ -166,6 +187,7 @@ export interface PopupCampaignInput {
   productEntries: string[];
   promoItems: PopupPromoProductReference[];
   promoCodeId: string | null;
+  formConfig: PopupLeadFormConfig;
 }
 
 export interface PopupRuntimeProduct {
@@ -190,11 +212,31 @@ export interface PopupPreviewPayload {
     content: PopupContent;
     styles: PopupStyles;
     behavior: PopupBehavior;
+    formConfig: PopupLeadFormConfig;
     promoCode: PromoCodeSnapshot | null;
   };
   product: { article: string; title: string } | null;
   recommendations: PopupRuntimeProduct[];
   products: PopupPromoProduct[];
+}
+
+export interface PopupLeadContact {
+  id: string;
+  values: Record<string, string | boolean>;
+  pageUrl: string;
+  createdAt: string;
+}
+
+export interface PopupLeadContactFeed {
+  campaign: {
+    id: string;
+    name: string;
+    formConfig: PopupLeadFormConfig;
+  };
+  items: PopupLeadContact[];
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface PopupCampaignOptions {

@@ -101,7 +101,12 @@ const baseCampaign: PopupCampaign = {
   promoCodeId: null,
   promoCode: null,
   publishedPromoCode: null,
-  stats: { impressions: 1280, dismissals: 32, clicks: 14, acknowledgements: 115, copies: 0, promoCtaClicks: 0 },
+  formConfig: {
+    fields: [{ id: 'phone', type: 'phone', label: 'Телефон', placeholder: '+380', required: true, options: [] }],
+    submitLabel: 'Отримати промокод', successTitle: 'Ваш промокод готовий', successBody: 'Скопіюйте код.'
+  },
+  publishedFormConfig: null,
+  stats: { impressions: 1280, dismissals: 32, clicks: 14, acknowledgements: 115, copies: 0, promoCtaClicks: 0, contacts: 0 },
   connection: { id: 'connection-1', generation: 'generation-1', storeDomain: 'mobiletrend.com.ua' },
   createdAt: '2026-08-20T08:00:00.000Z',
   updatedAt: '2026-08-21T09:00:00.000Z'
@@ -115,7 +120,7 @@ const secondCampaign: PopupCampaign = {
   status: 'draft',
   targeting: { ...baseCampaign.targeting, mode: 'all_products' },
   productTargets: [],
-  stats: { impressions: 0, dismissals: 0, clicks: 0, acknowledgements: 0, copies: 0, promoCtaClicks: 0 }
+  stats: { impressions: 0, dismissals: 0, clicks: 0, acknowledgements: 0, copies: 0, promoCtaClicks: 0, contacts: 0 }
 };
 
 const options: PopupCampaignOptions = {
@@ -183,6 +188,7 @@ function previewPayload(campaign: PopupCampaignInput): PopupPreviewPayload {
       content: campaign.content,
       styles: campaign.styles,
       behavior: campaign.behavior,
+      formConfig: campaign.formConfig,
       promoCode: campaign.promoCodeId ? {
         libraryId: promoCode.id,
         internalName: promoCode.internalName,
@@ -562,4 +568,65 @@ describe('PopupBannersPage', () => {
       content: expect.objectContaining({ primaryLabel: 'Перейти до акції', primaryUrl: '' })
     }), expect.anything()));
   });
+
+  it('builds a configurable contact form that reveals a selected promo code', async () => {
+    const create = vi.spyOn(api.popupBanners, 'create').mockImplementation(async (campaign) => ({
+      ...structuredClone(baseCampaign),
+      ...campaign,
+      id: 'lead-form-campaign',
+      publicId: 'lead-form-public',
+      status: 'draft',
+      productTargets: [],
+      promoProducts: [],
+      promoCodeId: promoCode.id,
+      promoCode: previewPayload(campaign).campaign.promoCode,
+      publishedPromoCode: null,
+      publishedFormConfig: null,
+      stats: { ...baseCampaign.stats, contacts: 0 },
+      connection: baseCampaign.connection,
+      createdAt: baseCampaign.createdAt,
+      updatedAt: baseCampaign.updatedAt,
+      publishedAt: null
+    }));
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /Форма за промокод/u }));
+
+    expect(screen.getByText('Поля контактної форми')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Назва поля')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /Додати поле/u }));
+    expect(screen.getAllByLabelText('Назва поля')).toHaveLength(3);
+    fireEvent.change(screen.getAllByLabelText('Назва поля')[2], { target: { value: 'Місто' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Тип поля Місто' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Список варіантів' }));
+    fireEvent.change(screen.getByText('Варіанти — по одному з рядка').closest('label')!.querySelector('textarea')!, {
+      target: { value: 'Київ\nЛьвів' }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Обрати промокод/u }));
+    fireEvent.click((await screen.findByText('AUTUMN10')).closest('button')!);
+
+    await waitFor(() => expect(api.popupBanners.preview).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        campaignType: 'lead_form',
+        promoCodeId: promoCode.id,
+        formConfig: expect.objectContaining({
+          fields: expect.arrayContaining([expect.objectContaining({ label: 'Місто', type: 'select', options: ['Київ', 'Львів'] })])
+        })
+      }),
+      expect.any(AbortSignal)
+    ));
+    expect(screen.getByTitle('Живий перегляд банера').getAttribute('srcdoc')).toContain('Отримати промокод');
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      campaignType: 'lead_form',
+      promoCodeId: promoCode.id,
+      formConfig: expect.objectContaining({
+        fields: expect.arrayContaining([expect.objectContaining({ label: 'Місто', type: 'select', options: ['Київ', 'Львів'] })])
+      })
+    }), expect.anything()));
+  }, 10_000);
 });

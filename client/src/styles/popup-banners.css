@@ -678,6 +678,31 @@
 .popup-snapshot-note strong { color: var(--ink); font-size: 10px; }
 .popup-snapshot-note small { color: var(--muted); font-size: 8px; line-height: 1.45; }
 
+.popup-campaign-list__header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.popup-campaign-list__header-actions .button { white-space: nowrap; }
+.popup-lead-fields { display: grid; gap: 10px; margin-bottom: 12px; }
+.popup-lead-field { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 12px; border: 1px solid var(--line); border-radius: 16px; padding: 14px; background: var(--surface-soft); }
+.popup-lead-field__position { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; color: var(--brand); background: var(--brand-soft); font-size: 10px; font-weight: 850; }
+.popup-lead-field__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.popup-lead-field__grid .is-full { grid-column: 1 / -1; }
+.popup-lead-field__required { align-self: end; display: flex !important; min-height: 38px; flex-direction: row !important; align-items: center; gap: 8px !important; }
+.popup-lead-field__required input { width: 16px; height: 16px; }
+.popup-lead-field__actions { display: flex; gap: 5px; }
+.popup-lead-result-settings { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+.popup-contacts-section { min-width: 0; }
+.popup-contacts-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid color-mix(in srgb,var(--brand) 18%,var(--line)); border-radius: 14px; padding: 12px 14px; background: color-mix(in srgb,var(--brand-soft) 35%,var(--surface)); }
+.popup-contacts-toolbar > div { display: grid; gap: 3px; }
+.popup-contacts-toolbar strong { color: var(--ink); font-size: 12px; }
+.popup-contacts-toolbar small { color: var(--muted); font-size: 9px; }
+.popup-contacts-table-wrap { max-width: 100%; overflow: auto; border: 1px solid var(--line); border-radius: 14px; }
+.popup-contacts-table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 10px; }
+.popup-contacts-table th,.popup-contacts-table td { min-width: 130px; border-bottom: 1px solid var(--line); padding: 10px 12px; color: var(--ink); text-align: left; vertical-align: top; }
+.popup-contacts-table th { position: sticky; top: 0; z-index: 1; color: var(--muted); background: var(--surface-soft); font-size: 9px; font-weight: 800; }
+.popup-contacts-table td:first-child { min-width: 170px; white-space: nowrap; }
+.popup-contacts-table tr:last-child td { border-bottom: 0; }
+.popup-contacts-table a { display: inline-flex; align-items: center; gap: 4px; color: var(--brand); text-decoration: none; }
+.popup-contacts-limit { margin: 0; color: var(--muted); font-size: 9px; }
+
 .popup-preview.is-promo-code .popup-preview__card { width: min(var(--preview-width),calc(100% - 24px)); }
 .popup-preview__promo-code { display: grid !important; grid-template-columns: auto minmax(0,1fr); align-items: stretch; gap: 9px; margin-top: 5px; color: var(--preview-text) !important; font-size: inherit !important; }
 .popup-preview__promo-code > span { display: grid; align-content: center; justify-items: center; min-width: 68px; border-radius: 10px; padding: 8px; color: var(--preview-primary-text); background: var(--preview-primary-bg); }
@@ -759,6 +784,11 @@
   .popup-promo-order { grid-column: 2 / -1; justify-content: flex-end; }
   .popup-position-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .popup-selected-code { grid-template-columns: minmax(0,1fr) auto; }
+  .popup-campaign-list__header-actions,.popup-contacts-toolbar { align-items: stretch; flex-direction: column; }
+  .popup-lead-field { grid-template-columns: auto minmax(0, 1fr); }
+  .popup-lead-field__actions { grid-column: 2; justify-content: flex-end; }
+  .popup-lead-field__grid { grid-template-columns: 1fr; }
+  .popup-lead-field__grid .is-full { grid-column: auto; }
   .popup-campaign-list--tab .popup-campaign-list__tools,
   .popup-campaign-list--tab .popup-campaign-list__items { grid-template-columns: 1fr; }
   .popup-runtime-preview { height: 520px; }
