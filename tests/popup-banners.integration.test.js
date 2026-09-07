@@ -351,7 +351,8 @@ test('exit offer persists its dedicated type and forces the exit-intent trigger'
   assert.equal(created.body.data.promoProducts.length, 1);
   assert.equal(created.body.data.promoProducts[0].sku, 'IPHONE-15-NEW-BLACK');
 
-  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+  const activated = await admin.patch(`/api/popup-banners/${created.body.data.id}/status`)
+    .send({ status: 'active' }).expect(200);
   const resolved = await request(app)
     .get('/api/public/popup-banners/resolve')
     .set('Origin', 'https://shop.example.com')
@@ -359,6 +360,7 @@ test('exit offer persists its dedicated type and forces the exit-intent trigger'
     .expect(200);
   assert.equal(resolved.body.data.campaign.publicId, created.body.data.publicId);
   assert.equal(resolved.body.data.campaign.type, 'exit_offer');
+  assert.equal(resolved.body.data.campaign.revision, activated.body.data.updatedAt);
   assert.equal(resolved.body.data.campaign.behavior.trigger, 'exit_intent');
   assert.equal(resolved.body.data.products.length, 1);
   assert.equal(resolved.body.data.products[0].buyId, '9002');
@@ -469,6 +471,81 @@ test('exit offer waits for independent desktop and mobile exit signals', async (
     assert.equal(host.shadowRoot.querySelector('.recommendation-title')?.textContent, 'Спеціальна пропозиція');
     assert.equal(host.shadowRoot.querySelector('.recommendation-buy')?.textContent, 'Переглянути');
   }
+});
+
+test('exit offer keeps an early desktop exit signal until its activation delay elapses', async (t) => {
+  const script = popupEmbedScript('https://mt-panel.example.com');
+  const payload = {
+    campaign: {
+      publicId: 'exit-offer-delayed-runtime',
+      revision: '2026-09-07T12:00:00.000Z',
+      type: 'exit_offer',
+      mode: 'all_pages',
+      content: {
+        eyebrow: 'Зачекайте', title: 'Не поспішайте йти', body: 'Для вас є спеціальна пропозиція.',
+        primaryLabel: 'Переглянути', primaryUrl: '/offer/', secondaryLabel: 'Ні, дякую',
+        imageUrl: '', acknowledgementLabel: ''
+      },
+      styles: {
+        layout: 'modal', promoFormat: 'notification', desktopPosition: 'bottom_right', mobilePosition: 'bottom',
+        accentColor: '#6d5dfc', backgroundColor: '#ffffff', textColor: '#172033', mutedColor: '#667085',
+        primaryButtonBackgroundColor: '#ffe101', primaryButtonTextColor: '#111827',
+        secondaryButtonBackgroundColor: '#ffffff', secondaryButtonTextColor: '#172033',
+        checkboxAccentColor: '#6d5dfc', checkboxCheckColor: '#ffffff', checkboxTextColor: '#172033',
+        timelineColor: '#6d5dfc', timelineTrackColor: '#ede9fe', showPromoTitle: false,
+        eyebrowFontSize: 12, titleFontSize: 34, bodyFontSize: 16, acknowledgementFontSize: 14,
+        buttonFontSize: 16, buttonBorderRadius: 12, borderRadius: 24, maxWidth: 560
+      },
+      behavior: {
+        trigger: 'exit_intent', delayMs: 60, scrollPercent: 35, inactivitySeconds: 8,
+        frequency: 'always', cooldownHours: 24, cooldownDays: 7, maxShowsPerSession: 0,
+        device: 'desktop', autoCloseSeconds: 0, rotationSeconds: 6,
+        activeWeekdays: [1, 2, 3, 4, 5, 6, 7], dailyStartTime: '', dailyEndTime: '',
+        scheduleTimezone: 'Europe/Kyiv', dismissible: true, requireAcknowledgement: false, buttonCount: 1
+      }
+    },
+    product: null,
+    recommendations: [],
+    products: [{
+      productId: 'exit-product', modificationId: null, article: 'EXIT-1', title: 'Спеціальна пропозиція',
+      price: '999', oldPrice: '1199', currency: 'UAH', imageUrl: 'https://shop.example.com/exit.jpg',
+      pageUrl: 'https://shop.example.com/exit/', buyId: '9003'
+    }]
+  };
+  const dom = new JSDOM('<!doctype html><html><body><main>Storefront</main></body></html>', {
+    pretendToBeVisual: true,
+    runScripts: 'outside-only',
+    url: 'https://shop.example.com/delayed-exit/'
+  });
+  t.after(() => dom.window.close());
+  Object.defineProperty(dom.window, 'innerWidth', { configurable: true, value: 1366 });
+  Object.defineProperty(dom.window.navigator, 'userAgent', {
+    configurable: true,
+    value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+  });
+  dom.window.sessionStorage.setItem('mt-popup-count:exit-offer-delayed-runtime', '99');
+  dom.window.sessionStorage.setItem(
+    'mt-popup-count:exit-offer-delayed-runtime:2026-09-06T12:00:00.000Z',
+    '99'
+  );
+  dom.window.MutationObserver = class MutationObserver { observe() {} disconnect() {} };
+  dom.window.fetch = async (input) => new URL(String(input)).pathname.endsWith('/resolve')
+    ? { ok: true, json: async () => ({ data: structuredClone(payload) }) }
+    : { ok: true, json: async () => ({}) };
+
+  dom.window.eval(script);
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 15));
+  dom.window.document.documentElement.dispatchEvent(new dom.window.MouseEvent('mouseleave', {
+    clientY: -1,
+    relatedTarget: null
+  }));
+  assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), null);
+
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 70));
+  assert.ok(dom.window.document.querySelector('#mt-popup-banner-root'));
+  assert.equal(dom.window.sessionStorage.getItem(
+    'mt-popup-count:exit-offer-delayed-runtime:2026-09-07T12:00:00.000Z'
+  ), '1');
 });
 
 test('out-of-stock widget keeps focus and scrolling on the dialog while using Horoshop native cart metadata', async (t) => {

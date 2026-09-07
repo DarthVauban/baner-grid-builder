@@ -1041,6 +1041,9 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
     return {
       campaign: {
         publicId: campaign.public_id,
+        revision: campaign.updated_at instanceof Date
+          ? campaign.updated_at.toISOString()
+          : String(campaign.updated_at || ''),
         type: campaignType,
         mode: targeting.mode,
         content: Object.fromEntries(Object.entries(content).map(([key, value]) => [key, templateText(value, product)])),
@@ -1223,11 +1226,11 @@ export function popupEmbedScript(origin) {
   function frequencyKey(payload) {
     const frequency = payload.campaign.behavior.frequency;
     const suffix = frequency === 'product' ? (payload.product?.article || location.pathname) : 'site';
-    return 'mt-popup:' + payload.campaign.publicId + ':' + suffix;
+    return 'mt-popup:' + payload.campaign.publicId + ':' + String(payload.campaign.revision || 'legacy') + ':' + suffix;
   }
 
   function sessionCountKey(payload) {
-    return 'mt-popup-count:' + payload.campaign.publicId;
+    return 'mt-popup-count:' + payload.campaign.publicId + ':' + String(payload.campaign.revision || 'legacy');
   }
 
   function isMobileInteractionSurface() {
@@ -1842,23 +1845,35 @@ export function popupEmbedScript(origin) {
     if (behavior.trigger === 'exit_intent') {
       const mobile = isMobileInteractionSurface();
       let armed = behavior.delayMs <= 0;
+      let exitPending = false;
       let maxScrollY = Math.max(0, scrollY);
       let touchStartY = null;
       let touchStartedAt = 0;
       let hiddenAt = 0;
+      const signalExit = () => {
+        if (armed) show();
+        else exitPending = true;
+      };
+      const leftThroughTop = (mouseEvent) => !mobile
+        && !mouseEvent.relatedTarget
+        && Number(mouseEvent.clientY) <= 20;
       const onMouseOut = (mouseEvent) => {
-        if (!armed || mobile || mouseEvent.relatedTarget || mouseEvent.toElement || mouseEvent.clientY > 10) return;
-        show();
+        if (!leftThroughTop(mouseEvent)) return;
+        signalExit();
+      };
+      const onMouseLeave = (mouseEvent) => {
+        if (!leftThroughTop(mouseEvent)) return;
+        signalExit();
       };
       const onScroll = () => { maxScrollY = Math.max(maxScrollY, Math.max(0, scrollY)); };
       const onTouchStart = (touchEvent) => {
-        if (!armed || !mobile) return;
+        if (!mobile) return;
         const touch = touchEvent.touches?.[0];
         touchStartY = Number.isFinite(touch?.clientY) ? touch.clientY : null;
         touchStartedAt = Date.now();
       };
       const onTouchEnd = (touchEvent) => {
-        if (!armed || !mobile || touchStartY === null) return;
+        if (!mobile || touchStartY === null) return;
         const touch = touchEvent.changedTouches?.[0];
         const endY = Number.isFinite(touch?.clientY) ? touch.clientY : touchStartY;
         const returnedUp = endY - touchStartY >= 70;
@@ -1866,21 +1881,27 @@ export function popupEmbedScript(origin) {
         const nearTop = scrollY <= 80;
         const exploredPage = maxScrollY >= 140;
         touchStartY = null;
-        if (returnedUp && quickGesture && nearTop && exploredPage) show();
+        if (returnedUp && quickGesture && nearTop && exploredPage) signalExit();
       };
       const onVisibilityChange = () => {
-        if (!armed || !mobile) return;
+        if (!mobile) return;
         if (document.visibilityState === 'hidden') hiddenAt = Date.now();
-        else if (hiddenAt && Date.now() - hiddenAt >= 600) show();
+        else if (hiddenAt && Date.now() - hiddenAt >= 600) signalExit();
       };
       document.addEventListener('mouseout', onMouseOut);
+      document.documentElement.addEventListener('mouseleave', onMouseLeave);
       addEventListener('scroll', onScroll, { passive: true });
       document.addEventListener('touchstart', onTouchStart, { passive: true });
       document.addEventListener('touchend', onTouchEnd, { passive: true });
       document.addEventListener('visibilitychange', onVisibilityChange);
-      if (!armed) pendingTimer = setTimeout(() => { pendingTimer = null; armed = true; }, behavior.delayMs);
+      if (!armed) pendingTimer = setTimeout(() => {
+        pendingTimer = null;
+        armed = true;
+        if (exitPending) show();
+      }, behavior.delayMs);
       pendingCleanup = () => {
         document.removeEventListener('mouseout', onMouseOut);
+        document.documentElement.removeEventListener('mouseleave', onMouseLeave);
         removeEventListener('scroll', onScroll);
         document.removeEventListener('touchstart', onTouchStart);
         document.removeEventListener('touchend', onTouchEnd);
