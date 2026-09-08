@@ -57,6 +57,39 @@ test.describe('live campaign editor', () => {
 for (const surface of [{ name: 'desktop', config: devices['Desktop Chrome'] }, { name: 'mobile', config: devices['iPhone 13'] }]) {
   test.describe('published blocks ' + surface.name, () => {
     test.use({ viewport: surface.config.viewport, userAgent: surface.config.userAgent, isMobile: surface.config.isMobile, hasTouch: surface.config.hasTouch });
+    test('selects the banner product and binds standalone text through the editor', async ({ page }, testInfo) => {
+      await login(page); await page.goto(popupBase + '/tools/popup-banners/builder');
+      await choose(page, 'Товарна картка');
+      const inspector = page.getByRole('complementary', { name: 'Властивості блока' });
+      await page.getByRole('button', { name: 'Товар банера', exact: true }).click();
+      await expect(inspector.getByText('Товар ще не обрано.', { exact: false })).toBeVisible();
+      await inspector.getByLabel('Знайти товар').fill('PHONE-LIVE');
+      await inspector.getByRole('button', { name: /Смартфон із живого каталогу/ }).click();
+      await expect(page.locator('.pb-product-bar')).toContainText('Смартфон із живого каталогу · PHONE-LIVE');
+      if (surface.name === 'mobile') await page.getByRole('navigation', { name: 'Панелі конструктора' }).getByRole('button', { name: 'Структура', exact: true }).click();
+      await page.getByRole('button', { name: 'Обрати: Заголовок', exact: true }).click();
+      await inspector.getByRole('button', { name: 'Джерело вмісту', exact: true }).click();
+      await page.getByRole('option', { name: 'Назва товару', exact: true }).click();
+      await expect(inspector.locator('.pb-product-binding')).toContainText('Товар банера: Смартфон із живого каталогу');
+      await inspector.getByRole('button', { name: 'Змінити товар', exact: true }).click();
+      await expect(inspector.getByLabel('Знайти товар')).toBeVisible();
+      await page.getByRole('button', { name: 'Зберегти', exact: true }).click();
+      await expect(page).toHaveURL(/\/builder\/[a-f0-9-]+$/);
+      const id = page.url().split('/').at(-1)!;
+      await page.reload();
+      await expect(page.locator('.pb-product-bar')).toContainText('Смартфон із живого каталогу · PHONE-LIVE');
+      await expect(page.locator('.pb-node[data-label="Заголовок"]')).toContainText('Смартфон із живого каталогу');
+      await expect(page.locator('.pb-node[data-label="Назва товару"]')).toContainText('Смартфон із живого каталогу');
+      await page.getByRole('button', { name: 'Товар банера', exact: true }).click();
+      await page.screenshot({ path: testInfo.outputPath('banner-product-' + surface.name + '.png') });
+      await page.getByRole('button', { name: 'Опублікувати', exact: true }).click();
+      await expect(page.getByText('Кампанію опубліковано на сайті.', { exact: false })).toBeVisible();
+      await page.goto(popupBase + '/popup-test-store');
+      const banner = page.locator('#mt-popup-banner-root');
+      await expect(banner.getByText('Смартфон із живого каталогу', { exact: true })).toHaveCount(2);
+      await expect(banner.getByRole('link', { name: 'Переглянути товар', exact: true })).toHaveAttribute('href', popupBase + '/popup-test-product');
+      await page.request.delete(popupBase + '/api/popup-banners/' + id);
+    });
     if (surface.name === 'mobile') test('opens campaign settings on touch devices and saves a real draft', async ({ page }, testInfo) => {
       await login(page); await page.goto(popupBase + '/tools/popup-banners/builder');
       await page.getByLabel('Назва макета').fill('Мобільна чернетка');

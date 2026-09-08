@@ -51,6 +51,10 @@
 .pb-property small { font-size: 10px; color: #aa9fb6; }
 .pb-two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .pb-inspector-content { padding: 22px 18px; }
+.pb-product-bar { display: flex; flex: none; align-items: center; gap: 12px; padding: 8px 18px; border-bottom: 1px solid var(--pp-border, #e5e1ed); }
+.pb-product-bar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; opacity: .75; }
+.pb-product-bar > button, .pb-product-binding > button { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--pp-border, #e5e1ed); border-radius: 8px; background: var(--pp-surface, #fff); color: inherit; cursor: pointer; }
+.pb-product-bar > button:disabled { opacity: .45; cursor: default; }
 .pb-inspector-title { margin-bottom: 20px; }
 .pb-inspector-title small { text-transform: uppercase; font-size: 9px; letter-spacing: 1.2px; color: #a091b2; }
 .pb-inspector-title h2 { font-size: 16px; font-weight: 650; margin-top: 5px; overflow-wrap: anywhere; }

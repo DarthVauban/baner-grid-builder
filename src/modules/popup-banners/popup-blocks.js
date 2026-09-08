@@ -10,7 +10,7 @@ export function normalizeBlockDocument(value) {
 }
 export function blockProductReferences(document) {
   const items = new Map();
-  for (const { node } of flatten(document.root)) if (node.type === 'product' && node.props.productExternalId) {
+  for (const { node } of flatten(document.root)) if ((node === document.root || node.type === 'product') && node.props.productExternalId) {
     const value = { productExternalId: node.props.productExternalId, modificationExternalId: node.props.modificationExternalId || null };
     items.set(JSON.stringify(value), value);
   }
@@ -46,7 +46,7 @@ export function validateBlockPublication(document, { products = [], promoCode = 
   const entries = flatten(document.root);
   const productKeys = new Set(products.filter((item) => item.available && item.visible).map((item) => JSON.stringify([item.productExternalId, item.modificationExternalId || ''])));
   for (const { node, parent } of entries) {
-    if (node.type === 'product' && !productKeys.has(JSON.stringify([node.props.productExternalId, node.props.modificationExternalId || '']))) fail('Оберіть доступний товар із поточного каталогу для блока «' + node.name + '».');
+    if ((node === document.root || node.type === 'product') && node.props.productExternalId && !productKeys.has(JSON.stringify([node.props.productExternalId, node.props.modificationExternalId || '']))) fail('Оберіть доступний товар із поточного каталогу для ' + (node === document.root ? 'банера.' : 'блока «' + node.name + '».'));
     if (node.type === 'countdown') {
       if (node.props.timerMode === 'deadline' && (!/T.*(?:Z|[+-]\d{2}:\d{2})$/u.test(node.props.deadlineAt) || !Number.isFinite(Date.parse(node.props.deadlineAt)) || Date.parse(node.props.deadlineAt) <= now)) fail('Вкажіть майбутню дату завершення таймера з часовим поясом.');
       if (!Number.isInteger(node.props.durationMinutes)) fail('Тривалість таймера має бути цілим числом хвилин.');
@@ -62,9 +62,9 @@ export function validateBlockPublication(document, { products = [], promoCode = 
       if (!options.length || options.length > 20 || options.some((value) => value.length > 80)) fail('Список має містити від 1 до 20 варіантів до 80 символів кожен.');
     }
     let ancestor = parent;
-    let inProduct = node.type === 'product'; let inForm = false;
-    while (ancestor) { if (ancestor.type === 'product') inProduct = true; if (ancestor.type === 'form') inForm = true; ancestor = entries.find((entry) => entry.node.id === ancestor.id)?.parent || null; }
-    if (((node.props.binding !== 'none' && ['text', 'image'].includes(node.type)) || (node.type === 'button' && ['product', 'cart'].includes(node.props.action))) && !inProduct) fail('Елемент «' + node.name + '» має бути всередині блока товару.');
+    let inProduct = node.type === 'product' && Boolean(node.props.productExternalId); let inForm = false;
+    while (ancestor) { if ((ancestor === document.root || ancestor.type === 'product') && ancestor.props.productExternalId) inProduct = true; if (ancestor.type === 'form') inForm = true; ancestor = entries.find((entry) => entry.node.id === ancestor.id)?.parent || null; }
+    if ((node.type === 'product' || (node.props.binding !== 'none' && ['text', 'image'].includes(node.type)) || (node.type === 'button' && ['product', 'cart'].includes(node.props.action))) && !inProduct) fail('Для елемента «' + node.name + '» оберіть «Товар банера» або товар у батьківському блоці «Товар».');
     if (node.type === 'button' && node.props.action === 'submit' && !inForm) fail('Кнопка відправлення має бути всередині форми.');
   }
   for (const device of ['desktop', 'mobile']) {

@@ -81,7 +81,8 @@ export function BlockRenderer({ root, device, selectedId, testing, onSelect, onD
     const style = effectiveStyle(node, device);
     if (style.hidden && testing) return null;
     const container = isContainer(node);
-    const productKey = node.type === 'product' ? node.props.productExternalId + ':' + node.props.modificationExternalId : productId;
+    const ownsProduct = (node === root || node.type === 'product') && node.props.productExternalId;
+    const productKey = ownsProduct ? node.props.productExternalId + ':' + node.props.modificationExternalId : productId;
     const offer = products?.find(item => item.productExternalId + ':' + (item.modificationExternalId || '') === productKey);
     const product = products ? { id: productKey, title: offer?.title || 'Оберіть товар у властивостях', variant: offer?.sku || '', badge: Number(offer?.oldPrice) > Number(offer?.price) ? 'Вигідна ціна' : '', price: Number(offer?.price || 0), oldPrice: Number(offer?.oldPrice || 0), tone: demoProducts[0].tone } : demoProducts.find((item) => item.id === (node.type === 'product' ? node.props.productId : productId)) || demoProducts[0];
     const css = blockCss(style, container);

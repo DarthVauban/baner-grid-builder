@@ -3,9 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { promoOffer } from '../../lib/popup-campaign';
 import type { BlockNode } from './block-model';
+import type { PopupPromoProduct } from '../../types/popup-banner';
 import { Choice, Property } from './BlockInspector';
 
-export function CatalogBlockPicker({ node, onChange }: { node: BlockNode; onChange: (node: BlockNode) => void }) {
+export function CatalogBlockPicker({ node, onChange, product, inheritedProduct }: { node: BlockNode; onChange: (node: BlockNode) => void; product?: PopupPromoProduct; inheritedProduct?: PopupPromoProduct }) {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
@@ -17,7 +18,8 @@ export function CatalogBlockPicker({ node, onChange }: { node: BlockNode; onChan
     return modifications.length ? modifications.map(item => promoOffer(product, item)) : [promoOffer(product)];
   });
   return <div className="pb-catalog-picker">
-    <p className="pb-help">{node.props.productExternalId ? `Прив’язано товар ${node.props.productExternalId}${node.props.modificationExternalId ? ' · варіант ' + node.props.modificationExternalId : ''}` : 'Оберіть товар із підключеного каталогу. Ціна й наявність оновлюються з каталогу.'}</p>
+    <p className="pb-help">{node.type === 'product' ? 'Власний товар цього блока замінює товар банера для вкладених елементів.' : 'Назва, артикул, фото, ціни та дії кнопок беруть дані цього товару. Для окремої картки можна обрати інший товар у блоці «Товар».'}</p>
+    <p className="pb-help" role="status">{node.props.productExternalId ? product ? `Обрано: ${product.title} · ${product.sku}` : `Товар ${node.props.productExternalId}: очікуємо актуальні дані каталогу. Якщо він недоступний, оберіть інший.` : inheritedProduct ? `Успадковано: ${inheritedProduct.title} · ${inheritedProduct.sku}` : 'Товар ще не обрано. Знайдіть його за назвою або артикулом нижче.'}</p>
     <Property label="Знайти товар"><input aria-label="Знайти товар" value={search} placeholder="Назва або артикул" onChange={event => setSearch(event.target.value)} /></Property>
     <Choice label="Категорія каталогу" value={category} options={ [['', 'Усі категорії'], ...(feed.data?.categories || []).map(item => [item.externalId, item.titles.uk || item.titles.ua || Object.values(item.titles)[0] || item.externalId] as const)] } onChange={value => { setCategory(value); setPage(1); }} />
     {feed.isPending && <p role="status">Завантаження товарів…</p>}

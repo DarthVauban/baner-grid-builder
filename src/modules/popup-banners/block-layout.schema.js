@@ -34,6 +34,7 @@ export const propsSchema = z.object({
     code: z.string().max(80).default('HELLO10'), copyLabel: z.string().max(120).default('Скопіювати'),
     timerMode: z.enum(['duration', 'deadline']).default('duration'), durationMinutes: z.number().min(1).max(43200).default(15), deadlineAt: z.string().max(40).default(''), hideOnExpire: z.boolean().default(true),
     fieldType: z.enum(['text', 'email', 'phone', 'textarea', 'select', 'checkbox']).default('email'), placeholder: z.string().max(200).default(''), required: z.boolean().default(false), options: z.string().max(1600).default('Варіант 1\nВаріант 2'),
+    // The root sets the banner product; product blocks may override it for their descendants.
     productExternalId: z.string().max(300).default(''), modificationExternalId: z.string().max(300).default(''),
     couponSource: z.enum(['custom', 'campaign']).default('custom'), reward: z.enum(['none', 'promo_code']).default('none'),
     productId: z.enum(['titanium', 'blue', 'pink', 'black']).default('titanium'), successMessage: z.string().max(1000).default('Дякуємо! Контакти отримано.')

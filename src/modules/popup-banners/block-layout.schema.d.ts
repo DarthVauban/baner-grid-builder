@@ -68,6 +68,7 @@ export interface BlockProps {
   placeholder: string;
   required: boolean;
   options: string;
+  /** On the root: banner product. On product blocks: optional override of the inherited product. */
   productExternalId: string;
   modificationExternalId: string;
   couponSource: "custom" | "campaign";

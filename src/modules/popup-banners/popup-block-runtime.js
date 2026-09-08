@@ -101,8 +101,9 @@ export function createPopupBlockRuntime(browser, helpers) {
       function render(node, inheritedProduct = null) {
         const s = styleFor(node, device), p = node.props;
         if (s.hidden) return null;
-        const product = node.type === 'product' ? payload.products?.find(item => item.productExternalId === p.productExternalId && String(item.modificationExternalId || '') === String(p.modificationExternalId || '')) : inheritedProduct;
-        if (node.type === 'product' && !product) return null;
+        const ownsProduct = (node === root || node.type === 'product') && p.productExternalId;
+        const product = ownsProduct ? payload.products?.find(item => item.productExternalId === p.productExternalId && String(item.modificationExternalId || '') === String(p.modificationExternalId || '')) : inheritedProduct;
+        if ((ownsProduct || node.type === 'product') && !product) return null;
         const element = document.createElement(node.type === 'form' ? 'form' : 'div'); element.className = 'node'; element.dataset.blockId = node.id; element.dataset.blockType = node.type;
         applyStyle(element, s, containerTypes.includes(node.type));
         if (node === root) element.style.maxWidth = '100%';

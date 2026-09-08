@@ -1,4 +1,5 @@
 import { blockNode, blockDocument } from './fixtures/popup-block-document.js';
+import { createPopupBlockRuntime } from '../src/modules/popup-banners/popup-block-runtime.js';
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -225,6 +226,58 @@ test('block campaigns publish an immutable layout, targeting and schedule while 
   assert.equal(await resolve(), null);
   const targeted = (await request(app).get('/api/public/popup-banners/resolve').query({ pageUrl: 'https://shop.example.com/used-iphone-15/', article: 'USED-IPHONE-128' }).expect(200)).body.data;
   assert.equal(targeted.campaign.blockDocument.root.children[0].props.text, 'Draft heading');
+  await admin.delete('/api/popup-banners/' + created.id).expect(204);
+});
+
+test('banner product bindings persist, publish independently and allow nested product overrides', async () => {
+  const document = blockDocument([
+    blockNode('title', 'text', { binding: 'product.title' }),
+    blockNode('details', 'container', {}, [blockNode('photo', 'image', { binding: 'product.image' }), blockNode('link', 'button', { action: 'product', text: 'Відкрити' })]),
+    blockNode('inherited', 'product', {}, [blockNode('inherited-title', 'text', { binding: 'product.title' })]),
+    blockNode('override', 'product', { productExternalId: 'samsung-s24' }, [blockNode('override-title', 'text', { binding: 'product.title' }), blockNode('nested', 'product', {}, [blockNode('nested-title', 'text', { binding: 'product.title' })])])
+  ]);
+  Object.assign(document.root.props, { productExternalId: 'iphone-15-new', modificationExternalId: 'iphone-15-new:black' });
+  const value = input({ campaignType: 'block', blockDocument: document, targeting: { ...input().targeting, mode: 'all_pages' }, productEntries: [], behavior: { ...input().behavior, requireAcknowledgement: false } });
+  const preview = (await admin.post('/api/popup-banners/preview').send(value).expect(200)).body.data;
+  assert.equal(preview.products.length, 2);
+  const primary = preview.products.find(product => product.productExternalId === 'iphone-15-new');
+  assert.equal(primary.modificationExternalId, 'iphone-15-new:black');
+  for (const device of ['desktop', 'mobile']) {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://shop.example.com/' });
+    try {
+      const runtime = createPopupBlockRuntime(dom.window, {});
+      const mounted = runtime.mount(preview, { device, preview: true });
+      const shadow = mounted.host.shadowRoot;
+      assert.equal(shadow.querySelector('[data-block-id="title"]').textContent, primary.title);
+      assert.equal(shadow.querySelector('[data-block-id="inherited-title"]').textContent, primary.title);
+      assert.equal(shadow.querySelector('[data-block-id="photo"] img').src, primary.imageUrl);
+      assert.equal(shadow.querySelector('[data-block-id="link"] a').href, primary.pageUrl);
+      assert.equal(shadow.querySelector('[data-block-id="override-title"]').textContent, 'Смартфон Samsung Galaxy S24');
+      assert.equal(shadow.querySelector('[data-block-id="nested-title"]').textContent, 'Смартфон Samsung Galaxy S24');
+      mounted.dispose();
+      const withoutOverride = runtime.mount({ ...preview, products: [primary] }, { device, preview: true });
+      assert.equal(withoutOverride.host.shadowRoot.querySelector('[data-block-id="override"]'), null);
+      withoutOverride.dispose();
+      assert.equal(runtime.mount({ ...preview, products: [] }, { device, preview: true }), null);
+    } finally { dom.window.close(); }
+  }
+  const created = (await admin.post('/api/popup-banners').send(value).expect(201)).body.data;
+  const reopened = (await admin.get('/api/popup-banners/' + created.id).expect(200)).body.data;
+  assert.equal(reopened.blockDocument.root.props.modificationExternalId, 'iphone-15-new:black');
+  await admin.patch('/api/popup-banners/' + created.id + '/status').send({ status: 'active' }).expect(200);
+  const resolve = async () => (await request(app).get('/api/public/popup-banners/resolve').query({ pageUrl: 'https://shop.example.com/' }).expect(200)).body.data;
+  assert.equal((await resolve()).products.length, 2);
+  Object.assign(document.root.props, { productExternalId: 'samsung-s24', modificationExternalId: '' });
+  await admin.put('/api/popup-banners/' + created.id).send(value).expect(200);
+  assert.equal((await resolve()).campaign.blockDocument.root.props.modificationExternalId, 'iphone-15-new:black');
+  await admin.patch('/api/popup-banners/' + created.id + '/status').send({ status: 'active' }).expect(200);
+  assert.equal((await resolve()).campaign.blockDocument.root.props.productExternalId, 'samsung-s24');
+  for (const productExternalId of ['', 'pixel-unavailable']) {
+    document.root.props.productExternalId = productExternalId;
+    await admin.put('/api/popup-banners/' + created.id).send(value).expect(200);
+    await admin.patch('/api/popup-banners/' + created.id + '/status').send({ status: 'active' }).expect(422);
+    assert.equal((await resolve()).campaign.blockDocument.root.props.productExternalId, 'samsung-s24');
+  }
   await admin.delete('/api/popup-banners/' + created.id).expect(204);
 });
 
