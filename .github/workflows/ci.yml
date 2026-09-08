@@ -17,6 +17,20 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: popup_banners_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -27,6 +41,10 @@ jobs:
       - run: npm run lint
       - run: npm run check
       - run: npm run test:server
+      - name: Verify popup banners on PostgreSQL
+        run: node --import ./tests/test-env.js --test tests/popup-banners.integration.test.js
+        env:
+          POPUP_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/popup_banners_test
       - run: npm run test:web
       - run: npm run build
 

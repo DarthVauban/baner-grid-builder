@@ -703,15 +703,16 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     const endsAt = input.endsAt || null;
     let id = existingId;
     if (id) {
+      // PostgreSQL must infer the same type for the assignment and snapshot conditions.
       const updated = await client.query(
         `UPDATE popup_banner_campaigns
-         SET connection_id = $2, connection_generation = $3, campaign_type = $4,
+         SET connection_id = $2, connection_generation = $3, campaign_type = $4::VARCHAR,
               name = $5, priority = $6, content = $7::JSONB, styles = $8::JSONB,
               targeting = $9::JSONB, behavior = $10::JSONB, starts_at = $11, ends_at = $12,
               promo_code_id = $13, promo_code_draft_snapshot = $14::JSONB,
-              promo_code_published_snapshot = CASE WHEN $4 IN ('promo_code', 'lead_form') THEN promo_code_published_snapshot ELSE NULL END,
+              promo_code_published_snapshot = CASE WHEN $4::VARCHAR IN ('promo_code', 'lead_form') THEN promo_code_published_snapshot ELSE NULL END,
               form_config = $15::JSONB,
-              form_published_snapshot = CASE WHEN $4 = 'lead_form' THEN form_published_snapshot ELSE NULL END,
+              form_published_snapshot = CASE WHEN $4::VARCHAR = 'lead_form' THEN form_published_snapshot ELSE NULL END,
               updated_by = $16, updated_at = NOW()
          WHERE id = $1 RETURNING id`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,

@@ -1592,6 +1592,78 @@ test('lead-form campaign stores a deduplicated contact and exports campaign list
   assert.equal(Buffer.from(allExport.body).subarray(0, 2).toString(), 'PK');
 });
 
+test('lead-form campaign can add a field after publication without losing contacts or changing the published form', async () => {
+  await pool.query("UPDATE popup_banner_campaigns SET status = 'paused'");
+  const code = await admin.post('/api/promo-codes').send({
+    internalName: 'Промокод для розширюваної форми',
+    code: 'EXPAND15',
+    type: 'percent_coupon',
+    discountValue: 15,
+    enabled: true,
+    horoshopConfirmed: true
+  }).expect(201);
+  const emailField = { id: 'email', type: 'email', label: 'Пошта', placeholder: '', required: true, options: [] };
+  const phoneField = { id: 'phone', type: 'phone', label: 'Телефон', placeholder: '', required: true, options: [] };
+  const campaignInput = input({
+    campaignType: 'lead_form',
+    name: 'Промокод за пошту',
+    promoCodeId: code.body.data.id,
+    targeting: { ...input().targeting, mode: 'all_pages' },
+    productEntries: [],
+    formConfig: {
+      fields: [emailField],
+      blocks: [{ id: 'contacts', layout: 'column', fieldIds: ['email'] }],
+      submitLabel: 'Отримати промокод',
+      successTitle: 'Готово',
+      successBody: 'Скопіюйте код.'
+    }
+  });
+  const created = await admin.post('/api/popup-banners').send(campaignInput).expect(201);
+  const campaignPath = `/api/popup-banners/${created.body.data.id}`;
+  const publicPath = `/api/public/popup-banners/${created.body.data.publicId}/contacts`;
+  const published = await admin.patch(`${campaignPath}/status`).send({ status: 'active' }).expect(200);
+  const submission = {
+    values: { email: 'first@example.com' },
+    pageUrl: 'https://shop.example.com/sale/',
+    visitorKey: 'existing-lead-contact'
+  };
+  await request(app).post(publicPath).set('Origin', 'https://shop.example.com').send(submission).expect(201);
+
+  const expandedForm = {
+    ...campaignInput.formConfig,
+    fields: [emailField, phoneField],
+    blocks: [{ id: 'contacts', layout: 'row', fieldIds: ['email', 'phone'] }]
+  };
+  const updated = await admin.put(campaignPath).send({ ...campaignInput, formConfig: expandedForm }).expect(200);
+  assert.deepEqual(updated.body.data.formConfig, expandedForm);
+  assert.deepEqual(updated.body.data.publishedFormConfig, published.body.data.publishedFormConfig);
+  assert.deepEqual(updated.body.data.publishedPromoCode, published.body.data.publishedPromoCode);
+  const reloaded = await admin.get(campaignPath).expect(200);
+  assert.deepEqual(reloaded.body.data.formConfig, expandedForm);
+
+  const resolve = () => request(app).get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: submission.pageUrl });
+  const beforeRepublish = await resolve().expect(200);
+  assert.deepEqual(beforeRepublish.body.data.campaign.formConfig.fields, [emailField]);
+  assert.equal(beforeRepublish.body.data.campaign.promoCode, null);
+  await request(app).post(publicPath).set('Origin', 'https://shop.example.com').send(submission).expect(200);
+
+  await admin.patch(`${campaignPath}/status`).send({ status: 'active' }).expect(200);
+  const afterRepublish = await resolve().expect(200);
+  assert.deepEqual(afterRepublish.body.data.campaign.formConfig, expandedForm);
+  await request(app).post(publicPath).set('Origin', 'https://shop.example.com').send({
+    ...submission, values: { email: 'second@example.com' }
+  }).expect(422);
+  const accepted = await request(app).post(publicPath).set('Origin', 'https://shop.example.com').send({
+    ...submission, values: { email: 'second@example.com', phone: '+380501234567' }
+  }).expect(201);
+  assert.equal(accepted.body.data.promoCode.code, 'EXPAND15');
+  const contacts = await admin.get(`${campaignPath}/contacts`).expect(200);
+  assert.equal(contacts.body.data.total, 2);
+  assert.deepEqual(contacts.body.data.items.find((contact) => contact.values.email === 'first@example.com').values, submission.values);
+});
+
 test('lead-form widget renders and reveals its promo code after submission on desktop and mobile', async () => {
   const payload = {
     campaign: {
