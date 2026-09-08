@@ -102,6 +102,7 @@ const OnlineSupportPage = lazy(() => import('../pages/OnlineSupportPage').then((
 const PopupBannersPage = lazy(() => import('../pages/PopupBannersPage').then((module) => ({
   default: module.PopupBannersPage
 })));
+const PopupBlockBuilderPage = lazy(() => import('../pages/PopupBlockBuilderPage').then((module) => ({ default: module.PopupBlockBuilderPage })));
 const PopupBuilderPrototypePage = lazy(() => import('../pages/PopupBuilderPrototypePage').then((module) => ({
   default: module.PopupBuilderPrototypePage
 })));
@@ -172,6 +173,7 @@ export function App() {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<ToolAccessRoute tool="popup_banners" />}>
+          <Route path="tools/popup-banners/builder" element={<Suspense fallback={<LoadingScreen />}><PopupBlockBuilderPage /></Suspense>} />
           <Route path="tools/popup-banners/prototypes/:kind?" element={<Suspense fallback={<LoadingScreen />}><PopupBuilderPrototypePage /></Suspense>} />
         </Route>
         <Route element={<ToolAccessRoute tool="used_smartphones_catalog" />}>
