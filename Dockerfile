@@ -5,6 +5,7 @@ RUN npm ci
 COPY tsconfig.json vite.config.ts ./
 COPY client ./client
 COPY src/modules/popup-banners/block-layout.schema.js src/modules/popup-banners/block-layout.schema.d.ts ./src/modules/popup-banners/
+COPY src/modules/popup-banners/campaign-rules.js src/modules/popup-banners/campaign-rules.d.ts ./src/modules/popup-banners/
 RUN npm run build
 
 FROM node:20-alpine AS runtime
