@@ -1689,6 +1689,7 @@ export function popupEmbedScript(origin) {
   }
   const previewMode = Boolean(previewPayload);
   const previewDevice = (script?.dataset.previewDevice || window.__MT_POPUP_PREVIEW_DEVICE__) === 'mobile' ? 'mobile' : 'desktop';
+  const previewState = (script?.dataset.previewState || window.__MT_POPUP_PREVIEW_STATE__) === 'lead-success' ? 'lead-success' : 'form';
   const articleSelector = script?.dataset.articleSelector || '';
   let currentHost = null;
   let currentUrl = '';
@@ -2248,6 +2249,12 @@ export function popupEmbedScript(origin) {
     if (campaign.content.body) { const body = document.createElement('p'); body.className = 'body'; body.textContent = campaign.content.body; content.append(body); }
     if (isLeadForm) {
       const formConfig = campaign.formConfig || { fields: [], blocks: [], submitLabel: 'Отримати промокод', successTitle: '', successBody: '' };
+      const createSuccess = (promo) => {
+        const success = document.createElement('div'); success.className = 'lead-form-success';
+        if (formConfig.successTitle) { const title = document.createElement('h3'); title.textContent = formConfig.successTitle; success.append(title); }
+        if (formConfig.successBody) { const body = document.createElement('p'); body.textContent = formConfig.successBody; success.append(body); }
+        return { success, copy: appendPromoCode(success, promo, campaign, productArticle, false) };
+      };
       const form = document.createElement('form'); form.className = 'lead-form'; form.noValidate = true;
       const bindings = [];
       const formFields = formConfig.fields || [];
@@ -2324,10 +2331,7 @@ export function popupEmbedScript(origin) {
             promo = envelope.data.promoCode;
           }
           if (!promo?.code) throw new Error('Для прев’ю не вибрано промокод.');
-          const success = document.createElement('div'); success.className = 'lead-form-success';
-          if (formConfig.successTitle) { const title = document.createElement('h3'); title.textContent = formConfig.successTitle; success.append(title); }
-          if (formConfig.successBody) { const body = document.createElement('p'); body.textContent = formConfig.successBody; success.append(body); }
-          const copy = appendPromoCode(success, promo, campaign, productArticle, false);
+          const { success, copy } = createSuccess(promo);
           form.replaceWith(success);
           copy?.focus();
         } catch (error) {
@@ -2335,7 +2339,12 @@ export function popupEmbedScript(origin) {
           formError.textContent = error instanceof Error ? error.message : 'Не вдалося надіслати форму. Спробуйте ще раз.';
         }
       });
-      content.append(form);
+      if (previewMode && previewState === 'lead-success') {
+        const previewPromo = campaign.promoCode?.code ? campaign.promoCode : {
+          code: 'PROMO10', type: 'percent_coupon', discountValue: 10, currency: '', scopeNote: 'Демонстраційний промокод для прев’ю'
+        };
+        content.append(createSuccess(previewPromo).success);
+      } else content.append(form);
       card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
       if (!previewMode && campaign.behavior.autoCloseSeconds > 0) {

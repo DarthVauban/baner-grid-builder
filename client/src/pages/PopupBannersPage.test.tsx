@@ -701,6 +701,13 @@ describe('PopupBannersPage', () => {
       expect.any(AbortSignal)
     ));
     expect(screen.getByTitle('Живий перегляд банера').getAttribute('srcdoc')).toContain('Отримати промокод');
+    expect(screen.getByTitle('Живий перегляд банера').getAttribute('srcdoc')).toContain('data-preview-state="form"');
+    fireEvent.click(screen.getByRole('button', { name: 'Промокод отримано' }));
+    expect(screen.getByRole('button', { name: 'Промокод отримано' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTitle('Живий перегляд банера').getAttribute('srcdoc')).toContain('data-preview-state="lead-success"');
+    fireEvent.click(screen.getByRole('button', { name: /^Форма$/u }));
+    expect(screen.getByRole('button', { name: /^Форма$/u })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTitle('Живий перегляд банера').getAttribute('srcdoc')).toContain('data-preview-state="form"');
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
 
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({

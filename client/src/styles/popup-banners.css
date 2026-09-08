@@ -394,7 +394,7 @@
 
 .popup-editor__preview { position: sticky; top: 82px; display: grid; gap: 12px; min-width: 0; padding: 16px; }
 .popup-live-preview { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
-.popup-live-preview > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 54px; padding: 9px 11px 9px 14px; border-bottom: 1px solid var(--line); }
+.popup-live-preview > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; min-height: 54px; padding: 9px 11px 9px 14px; border-bottom: 1px solid var(--line); }
 .popup-live-preview > header > div:first-child { display: grid; gap: 2px; }
 .popup-live-preview > header strong { color: var(--ink); font-size: 11px; }
 .popup-live-preview > header small { color: var(--muted); font-size: 8px; }
@@ -404,7 +404,10 @@
 .popup-preview-device button span { display: none; }
 .popup-preview-device button.is-active { color: var(--brand); background: var(--surface); box-shadow: 0 2px 7px rgba(22, 30, 50, .08); }
 
-.popup-preview-toolbar { display: flex; align-items: center; gap: 7px; }
+.popup-preview-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.popup-preview-state { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+.popup-preview-state button { min-height: 28px; padding: 0 9px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 8px; font-weight: 800; white-space: nowrap; }
+.popup-preview-state button.is-active { color: var(--brand); background: var(--surface); box-shadow: 0 2px 7px rgba(22, 30, 50, .08); }
 .popup-preview-fullscreen { display: flex; align-items: center; justify-content: center; gap: 7px; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--surface-soft); }
 .popup-preview-fullscreen span { display: none; font-size: 10px; font-weight: 800; white-space: nowrap; }
 .popup-preview-fullscreen:hover { color: var(--brand); background: var(--brand-soft); }
@@ -418,6 +421,8 @@
 .popup-live-preview.is-fullscreen > header { position: relative; z-index: 1; min-height: 68px; padding: 12px 18px; background: var(--surface); }
 .popup-live-preview.is-fullscreen .popup-preview-device { gap: 4px; padding: 4px; }
 .popup-live-preview.is-fullscreen .popup-preview-device button { width: auto; height: 36px; padding: 0 12px; }
+.popup-live-preview.is-fullscreen .popup-preview-state { gap: 4px; padding: 4px; }
+.popup-live-preview.is-fullscreen .popup-preview-state button { min-height: 36px; padding: 0 12px; font-size: 10px; }
 .popup-live-preview.is-fullscreen .popup-preview-device button span,
 .popup-live-preview.is-fullscreen .popup-preview-fullscreen span { display: inline; }
 .popup-live-preview.is-fullscreen .popup-preview-fullscreen { width: auto; padding: 0 14px; color: var(--ink); background: var(--surface); }

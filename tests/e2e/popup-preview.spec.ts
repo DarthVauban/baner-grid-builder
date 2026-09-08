@@ -1,6 +1,6 @@
 import { devices, expect, test, type Locator, type Page } from '@playwright/test';
 
-async function setupPreview(page: Page) {
+async function setupPreview(page: Page, campaignType: 'product_promo' | 'lead_form' = 'product_promo') {
   await page.route('**/popup-preview-product.svg', (route) => route.fulfill({
     contentType: 'image/svg+xml',
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect x="16" y="4" width="32" height="56" rx="6" fill="#172033"/><rect x="19" y="10" width="26" height="42" rx="2" fill="#6d5dfc"/></svg>'
@@ -19,7 +19,10 @@ async function setupPreview(page: Page) {
       campaign: {
         publicId: 'preview', revision: 'preview-layout', type: input.campaignType, mode: input.targeting.mode,
         content: input.content, styles: input.styles, behavior: input.behavior,
-        timerConfig: input.timerConfig, formConfig: input.formConfig, promoCode: null
+        timerConfig: input.timerConfig, formConfig: input.formConfig,
+        promoCode: input.campaignType === 'lead_form'
+          ? { code: 'CONTACT15', type: 'percent_coupon', discountValue: 15, currency: '', scopeNote: 'Для першого замовлення' }
+          : null
       },
       product: null, recommendations: [], products: [{
         productId: 'product', modificationId: null, article: 'TEST-PHONE', title: 'Тестовий смартфон',
@@ -33,8 +36,9 @@ async function setupPreview(page: Page) {
   await page.getByRole('button', { name: 'Увійти' }).click();
   await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
   await page.goto('/tools/popup-banners');
-  await page.getByRole('button', { name: /Товарний промобанер/u }).click();
-  await expect(page.frameLocator('iframe[title="Живий перегляд банера"]').locator('.card')).toBeVisible();
+  await page.getByRole('button', { name: campaignType === 'lead_form' ? /Форма за промокод/u : /Товарний промобанер/u }).click();
+  const preview = page.frameLocator('iframe[title="Живий перегляд банера"]');
+  await expect(campaignType === 'lead_form' ? preview.locator('.lead-form') : preview.locator('.card')).toBeVisible();
 }
 
 async function expectUncovered(control: Locator) {
@@ -120,6 +124,29 @@ for (const surface of [
       await page.keyboard.press('Escape');
       await expect(preview).toHaveCount(0);
       await expect(open).toBeFocused();
+    });
+
+    test('switches a lead form between input and received-promo states', async ({ page }) => {
+      await setupPreview(page, 'lead_form');
+      const frame = page.frameLocator('iframe[title="Живий перегляд банера"]');
+      const formState = page.getByRole('button', { name: 'Форма', exact: true });
+      const successState = page.getByRole('button', { name: 'Промокод отримано', exact: true });
+
+      await expect(formState).toHaveAttribute('aria-pressed', 'true');
+      await expect(frame.locator('.lead-form')).toBeVisible();
+      await expect(frame.locator('.lead-form-success')).toHaveCount(0);
+
+      await successState.click();
+      await expect(successState).toHaveAttribute('aria-pressed', 'true');
+      await expect(frame.locator('.lead-form')).toHaveCount(0);
+      await expect(frame.locator('.lead-form-success')).toBeVisible();
+      await expect(frame.locator('.promo-code')).toHaveText('CONTACT15');
+      await expect(frame.locator('.promo-code-note')).toHaveText('Для першого замовлення');
+
+      await formState.click();
+      await expect(formState).toHaveAttribute('aria-pressed', 'true');
+      await expect(frame.locator('.lead-form')).toBeVisible();
+      await expect(frame.locator('.lead-form-success')).toHaveCount(0);
     });
   });
 }

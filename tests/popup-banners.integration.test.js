@@ -1761,6 +1761,57 @@ test('lead-form widget renders and reveals its promo code after submission on de
   }
 });
 
+test('lead-form preview renders the received-promo state without submitting on desktop and mobile', async () => {
+  const basePayload = {
+    campaign: {
+      publicId: 'preview-lead-form', revision: 'preview-success-state', type: 'lead_form', mode: 'all_pages',
+      content: { eyebrow: 'Подарунок', title: 'Отримайте знижку', body: 'Залиште контакти.', primaryLabel: '', primaryUrl: '', secondaryLabel: '', imageUrl: '', acknowledgementLabel: '' },
+      styles: input().styles,
+      behavior: { ...input().behavior, frequency: 'always', requireAcknowledgement: false, buttonCount: 1 },
+      formConfig: {
+        fields: [{ id: 'email', type: 'email', label: 'Email', placeholder: 'name@example.com', required: true, options: [] }],
+        blocks: [{ id: 'contacts', layout: 'column', fieldIds: ['email'] }],
+        submitLabel: 'Отримати код', successTitle: 'Готово', successBody: 'Скопіюйте промокод.'
+      },
+      promoCode: null
+    },
+    product: null, recommendations: [], products: []
+  };
+  for (const surface of [
+    {
+      width: 1440, userAgent: 'Mozilla/5.0 Chrome/140',
+      promoCode: { code: 'CONTACT15', type: 'percent_coupon', discountValue: 15, currency: '', scopeNote: 'Для першого замовлення' },
+      expectedCode: 'CONTACT15', expectedNote: 'Для першого замовлення'
+    },
+    {
+      width: 390, userAgent: 'Mozilla/5.0 (Linux; Android 16) Chrome/140 Mobile Safari/537.36',
+      promoCode: null, expectedCode: 'PROMO10', expectedNote: 'Демонстраційний промокод для прев’ю'
+    }
+  ]) {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+      pretendToBeVisual: true, runScripts: 'outside-only', url: 'https://mt-panel.example.com/tools/popup-banners'
+    });
+    Object.defineProperty(dom.window, 'innerWidth', { configurable: true, value: surface.width });
+    Object.defineProperty(dom.window.navigator, 'userAgent', { configurable: true, value: surface.userAgent });
+    dom.window.MutationObserver = class MutationObserver { observe() {} disconnect() {} };
+    dom.window.__MT_POPUP_PREVIEW__ = structuredClone(basePayload);
+    dom.window.__MT_POPUP_PREVIEW__.campaign.promoCode = surface.promoCode;
+    dom.window.__MT_POPUP_PREVIEW_DEVICE__ = surface.width <= 600 ? 'mobile' : 'desktop';
+    dom.window.__MT_POPUP_PREVIEW_STATE__ = 'lead-success';
+    let fetchCount = 0;
+    dom.window.fetch = async () => { fetchCount += 1; throw new Error('Preview must not submit contacts'); };
+
+    dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
+    const shadow = dom.window.document.querySelector('#mt-popup-banner-root').shadowRoot;
+    assert.equal(shadow.querySelector('.lead-form'), null);
+    assert.equal(shadow.querySelector('.lead-form-success h3').textContent, 'Готово');
+    assert.equal(shadow.querySelector('.promo-code').textContent, surface.expectedCode);
+    assert.equal(shadow.querySelector('.promo-code-note').textContent, surface.expectedNote);
+    assert.equal(fetchCount, 0);
+    dom.window.close();
+  }
+});
+
 test('countdown campaigns persist both modes through creation, publication, editing, and public resolution', async () => {
   const campaigns = await admin.get('/api/popup-banners').expect(200);
   for (const campaign of campaigns.body.data) {

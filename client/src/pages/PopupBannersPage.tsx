@@ -34,6 +34,7 @@ import '../styles/popup-banners.css';
 type EditorTab = 'library' | 'content' | 'products' | 'contacts' | 'targeting' | 'behavior';
 type CampaignFilter = 'all' | PopupCampaignStatus;
 type PreviewViewport = 'desktop' | 'mobile';
+type LeadFormPreviewState = 'form' | 'success';
 
 const statusLabels: Record<PopupCampaignStatus, string> = {
   draft: 'Чернетка',
@@ -646,7 +647,7 @@ function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) 
   </section>;
 }
 
-function previewDocument(payload: PopupPreviewPayload, viewport: PreviewViewport) {
+function previewDocument(payload: PopupPreviewPayload, viewport: PreviewViewport, leadFormState: LeadFormPreviewState) {
   const serializedPayload = JSON.stringify(payload)
     .replaceAll('&', '&amp;')
     .replaceAll('"', '&quot;')
@@ -659,11 +660,12 @@ function previewDocument(payload: PopupPreviewPayload, viewport: PreviewViewport
 .site{min-height:100vh;background:linear-gradient(145deg,#fff 0 57%,#eef1f7 57%)}.top{display:flex;align-items:center;gap:18px;height:68px;padding:0 5%;border-bottom:1px solid #e5e9f0;background:#fff}.logo{width:96px;height:20px;border-radius:7px;background:#6d5dfc}.nav{width:52px;height:8px;border-radius:9px;background:#d9dee8}.nav.first{margin-left:auto}.hero{display:grid;grid-template-columns:1fr .9fr;gap:7%;padding:8%}.visual{aspect-ratio:1.15;border-radius:24px;background:linear-gradient(140deg,#e9e6ff,#dbe5f7)}.copy{display:grid;align-content:start;gap:14px;padding-top:7%}.copy b,.copy span,.copy i{display:block;border-radius:8px;background:#d4dae5}.copy b{width:88%;height:22px}.copy span{width:68%;height:11px}.copy i{width:118px;height:38px;margin-top:14px;background:#ffe101}
 @media(max-width:600px){.top{height:56px;padding:0 18px}.logo{width:70px}.nav{width:28px}.hero{grid-template-columns:1fr;padding:30px 18px}.copy{display:none}}
 </style></head><body><div class="site" aria-hidden="true"><div class="top"><div class="logo"></div><div class="nav first"></div><div class="nav"></div><div class="nav"></div></div><div class="hero"><div class="visual"></div><div class="copy"><b></b><span></span><span></span><i></i></div></div></div>
-<script src="/api/public/popup-banners/embed.js" data-preview-payload="${serializedPayload}" data-preview-device="${viewport}"></script></body></html>`;
+<script src="/api/public/popup-banners/embed.js" data-preview-payload="${serializedPayload}" data-preview-device="${viewport}" data-preview-state="${leadFormState === 'success' ? 'lead-success' : 'form'}"></script></body></html>`;
 }
 
 function Preview({ input }: { input: PopupCampaignInput }) {
   const [viewport, setViewport] = useState<PreviewViewport>('desktop');
+  const [leadFormState, setLeadFormState] = useState<LeadFormPreviewState>('form');
   const [fullscreen, setFullscreen] = useState(false);
   const [payload, setPayload] = useState<PopupPreviewPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -712,7 +714,15 @@ function Preview({ input }: { input: PopupCampaignInput }) {
     };
   }, [fullscreen]);
 
-  const documentSource = useMemo(() => payload ? previewDocument(payload, viewport) : '', [payload, viewport]);
+  const isLeadForm = input.campaignType === 'lead_form';
+  useEffect(() => {
+    if (!isLeadForm) setLeadFormState('form');
+  }, [isLeadForm]);
+
+  const documentSource = useMemo(
+    () => payload ? previewDocument(payload, viewport, leadFormState) : '',
+    [leadFormState, payload, viewport]
+  );
   useEffect(() => {
     if (!fullscreen) return undefined;
     const iframe = iframeRef.current;
@@ -742,6 +752,16 @@ function Preview({ input }: { input: PopupCampaignInput }) {
     <header>
       <div><strong>Живий перегляд</strong><small>Реальний storefront-runtime банера</small></div>
       <div className="popup-preview-toolbar">
+        {isLeadForm && <div className="popup-preview-state" role="group" aria-label="Стан форми у попередньому перегляді">
+          <button type="button" className={leadFormState === 'form' ? 'is-active' : ''} onClick={() => setLeadFormState('form')} aria-pressed={leadFormState === 'form'}>Форма</button>
+          <button
+            type="button"
+            className={leadFormState === 'success' ? 'is-active' : ''}
+            onClick={() => setLeadFormState('success')}
+            aria-pressed={leadFormState === 'success'}
+            title={payload?.campaign.promoCode ? 'Показати стан після успішного надсилання' : 'Буде показано демонстраційний промокод'}
+          >Промокод отримано</button>
+        </div>}
         <div className="popup-preview-device" role="group" aria-label="Розмір попереднього перегляду">
           <button type="button" className={viewport === 'desktop' ? 'is-active' : ''} onClick={() => setViewport('desktop')} aria-label="Комп’ютер" aria-pressed={viewport === 'desktop'}><Icon name="monitor" size={16} /><span>Десктоп</span></button>
           <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон" aria-pressed={viewport === 'mobile'}><Icon name="phone" size={16} /><span>Мобільний</span></button>
@@ -753,7 +773,7 @@ function Preview({ input }: { input: PopupCampaignInput }) {
       </div>
     </header>
     <div className={`popup-runtime-preview is-${viewport}`}>
-      {payload && <iframe ref={iframeRef} key={`${payload.campaign.revision}:${viewport}`} title="Живий перегляд банера" srcDoc={documentSource} sandbox="allow-scripts allow-same-origin" />}
+      {payload && <iframe ref={iframeRef} key={`${payload.campaign.revision}:${viewport}:${leadFormState}`} title="Живий перегляд банера" srcDoc={documentSource} sandbox="allow-scripts allow-same-origin" />}
       {!payload && !error && <div className="popup-runtime-preview__state">Готуємо точне прев’ю…</div>}
       {error && <div className="popup-runtime-preview__state is-error"><Icon name="deadline" size={22} /><span>{error}</span></div>}
       {loading && payload && <span className="popup-runtime-preview__refresh">Оновлюємо…</span>}
