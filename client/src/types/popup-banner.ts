@@ -1,8 +1,7 @@
-import type { BlockDocument } from '../../../src/modules/popup-banners/block-layout.schema.js';
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
 import type { PromoCodeSnapshot } from './promo-code';
 
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown' | 'block';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown';
 
 export interface PopupTimerConfig {
   mode: 'deadline' | 'duration';
@@ -59,8 +58,6 @@ export interface PopupStyles {
 }
 
 export interface PopupTargeting {
-  rules?: import('../../../src/modules/popup-banners/campaign-rules.js').RuleGroup;
-  exclusions?: import('../../../src/modules/popup-banners/campaign-rules.js').RuleGroup;
   mode: PopupTargetMode;
   match: 'all' | 'any';
   stickers: string[];
@@ -153,9 +150,6 @@ export interface PopupPromoProduct extends PopupPromoProductReference {
 }
 
 export interface PopupCampaign {
-  blockDocument?: BlockDocument | null;
-  publishedBlockDocument?: BlockDocument | null;
-  hasUnpublishedChanges?: boolean;
   id: string;
   publicId: string;
   campaignType: PopupCampaignType;
@@ -196,7 +190,6 @@ export interface PopupCampaign {
 }
 
 export interface PopupCampaignInput {
-  blockDocument?: BlockDocument | null;
   campaignType: PopupCampaignType;
   name: string;
   priority: number;
@@ -227,13 +220,8 @@ export interface PopupRuntimeProduct {
 }
 
 export interface PopupPreviewPayload {
-  candidates?: PopupPreviewPayload[];
-  collections?: Record<string, PopupPromoProduct[]>;
-  pageProduct?: PopupPromoProduct | null;
   serverNow?: string;
   campaign: {
-    name?: string; priority?: number;
-    blockDocument?: BlockDocument | null;
     publicId: string;
     revision: string;
     type: PopupCampaignType;
@@ -251,9 +239,6 @@ export interface PopupPreviewPayload {
 }
 
 export interface PopupLeadContact {
-  formId?: string | null;
-  revision?: string | null;
-  fields?: PopupLeadField[];
   id: string;
   values: Record<string, string | boolean>;
   pageUrl: string;
@@ -283,15 +268,5 @@ export interface PopupCampaignOptions {
   stickers: Array<{ id: string; title: string }>;
   brands: string[];
   conditions: string[];
-  categories: Array<{ id: string; title: string; parentId?: string; path?: string }>;
-}
-
-export interface PopupInspectionInput { campaignId?: string; campaign: PopupCampaignInput; pageUrl: string; article: string; device: 'desktop' | 'mobile'; stockState: 'catalog' | 'unknown' | 'available' | 'out_of_stock'; now?: string; seen: boolean }
-export interface PopupInspection {
-  competitors: { name: string; priority: number; trigger: PopupTrigger; delayMs: number }[];
-  eligible: boolean; checks: { label: string; pass: boolean }[];
-  audience: { include: { traces: import('../../../src/modules/popup-banners/campaign-rules.js').RuleTrace[] }; exclude: { traces: import('../../../src/modules/popup-banners/campaign-rules.js').RuleTrace[] } };
-  product: { title: string; sku: string } | null; stockState: string; stockSource: string; categoryPath: string; unmatched: string[];
-  collections: { id: string; name: string; count: number; minimum: number; enough: boolean; rejected: { title: string; reason: string }[] }[];
-  preview: PopupPreviewPayload;
+  categories: Array<{ id: string; title: string }>;
 }

@@ -1,13 +1,8 @@
-import { ruleGroupSchema, evaluateAudience, categoryOptions, categoryAncestors } from './campaign-rules.js';
-import { flatten } from './block-layout.schema.js';
-import { isDeepStrictEqual } from 'node:util';
-import { createPopupBlockRuntime } from './popup-block-runtime.js';
 import { createHash, randomUUID } from 'node:crypto';
 import * as XLSX from 'xlsx';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { loadPromoCodeRow, promoCodeSnapshot } from '../promo-codes/promo-code.service.js';
-import { normalizeBlockDocument, blockProductReferences, blockNeedsPromoCode, blockHasRewardForm, blockFormConfig, allBlockFields, blockDeadlineExpired, validateBlockPublication } from './popup-blocks.js';
 import { createPopupTimerRuntime, isTimerExpired, normalizeTimerConfig } from './popup-timer.js';
 
 export const popupBannerToolId = 'popup_banners';
@@ -106,7 +101,6 @@ const eventStatsKey = {
 };
 
 function normalizeCampaignType(value, targeting = {}) {
-  if (value === 'block') return 'block';
   if (value === 'exit_offer') return 'message';
   if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(value)) {
     return 'out_of_stock_recommendations';
@@ -201,8 +195,6 @@ function normalizeStyles(value) {
 function normalizeTargeting(value) {
   const source = object(value);
   return {
-    ...(source.rules ? { rules: ruleGroupSchema.parse(source.rules) } : {}),
-    ...(source.exclusions ? { exclusions: ruleGroupSchema.parse(source.exclusions) } : {}),
     mode: ['all_pages', 'all_products', 'products', 'rules', 'target_page', 'out_of_stock'].includes(source.mode)
       ? source.mode : defaultTargeting.mode,
     match: source.match === 'any' ? 'any' : 'all',
@@ -246,36 +238,8 @@ function normalizeBehavior(value) {
   };
 }
 
-function blockTargetIds(targets) { return targets.map(target => [target.product_id, target.modification_id || null]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))); }
-function blockDraftSnapshot(row) {
-  const promoCode = { ...object(row.promo_code_draft_snapshot) }; delete promoCode.capturedAt;
-  return {
-    promo_code_draft_snapshot: promoCode,
-    campaign_type: 'block', block_document: normalizeBlockDocument(row.block_document),
-    connection_id: row.connection_id, connection_generation: row.connection_generation,
-    name: row.name, priority: Number(row.priority), content: normalizeContent(row.content), styles: normalizeStyles(row.styles),
-    targeting: normalizeTargeting(row.targeting), behavior: normalizeBehavior(row.behavior),
-    starts_at: row.starts_at ? new Date(row.starts_at).toISOString() : null,
-    ends_at: row.ends_at ? new Date(row.ends_at).toISOString() : null,
-    promo_code_id: row.promo_code_id || null
-  };
-}
-function publishedBlockRow(row) {
-  if (row.campaign_type !== 'block') return row;
-  const snapshot = object(row.block_published_snapshot);
-  return snapshot.block_document ? { ...row, ...snapshot, block_published_snapshot: snapshot, updated_at: snapshot.revision } : null;
-}
-async function blockRuntimeProducts(row, db = { query }) {
-  const document = normalizeBlockDocument(row.block_document);
-  if (!document) return [];
-  const resolution = await resolvePromoItems(blockProductReferences(document), row.connection_id, row.connection_generation, db);
-  return (await loadPreviewProductsByResolvedItems(resolution.items, db)).filter((item) => item.available && item.visible && item.title && item.pageUrl);
-}
-
 function campaignSnapshot(row, targets = [], promoProducts = []) {
   return {
-    blockDocument: normalizeBlockDocument(row.block_document),
-    publishedBlockSnapshot: row.block_published_snapshot || null,
     timerConfig: normalizeTimerConfig(row.timer_config),
     campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
     name: row.name,
@@ -422,19 +386,14 @@ function serializePromoProduct(row) {
     oldPrice: oldPrice || '',
     currency: (hasModification ? row.modification_currency : row.product_currency) || row.product_currency || '',
     availability: availability || '',
-    visible: row.product_visible !== false && (hasModification ? row.modification_visible : row.product_visible) !== false,
+    visible: (hasModification ? row.modification_visible : row.product_visible) !== false,
     available: isAvailable(availability),
     buyId: sourceIdentifier(sourceData, sourceIdentifier(productSourceData, row.modification_external_id || row.product_external_id))
   };
 }
 
 function serializeCampaign(row, targets = [], promoProducts = []) {
-  const blockDocument = normalizeBlockDocument(row.block_document);
-  const published = object(row.block_published_snapshot);
   return {
-    blockDocument,
-    publishedBlockDocument: published.block_document || null,
-    hasUnpublishedChanges: row.campaign_type === 'block' && (!published.block_document || !isDeepStrictEqual(blockDraftSnapshot(row), blockDraftSnapshot(published.draft || {})) || !isDeepStrictEqual(blockTargetIds(targets), blockTargetIds(array(published.targets)))),
     timerConfig: normalizeTimerConfig(row.timer_config),
     id: row.id,
     publicId: row.public_id,
@@ -453,7 +412,7 @@ function serializeCampaign(row, targets = [], promoProducts = []) {
     promoProducts: promoProducts.map(serializePromoProduct),
     promoCodeId: row.promo_code_id || null,
     promoCode: Object.keys(object(row.promo_code_draft_snapshot)).length ? object(row.promo_code_draft_snapshot) : null,
-    publishedPromoCode: row.campaign_type === 'block' ? published.promo_code_published_snapshot || null : Object.keys(object(row.promo_code_published_snapshot)).length ? object(row.promo_code_published_snapshot) : null,
+    publishedPromoCode: Object.keys(object(row.promo_code_published_snapshot)).length ? object(row.promo_code_published_snapshot) : null,
     formConfig: normalizeFormConfig(row.form_config),
     publishedFormConfig: Object.keys(object(row.form_published_snapshot)).length
       ? normalizeFormConfig(row.form_published_snapshot) : null,
@@ -495,7 +454,7 @@ async function loadCampaignRow(id, db = { query }) {
     `SELECT campaign.*, connection.store_domain
      FROM popup_banner_campaigns AS campaign
      LEFT JOIN search_horoshop_connections AS connection ON connection.id = campaign.connection_id
-     WHERE campaign.id = $1`,
+     WHERE campaign.id = $1 AND campaign.campaign_type <> 'block'`,
     [id]
   );
   if (!result.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
@@ -519,6 +478,7 @@ export async function listPopupCampaigns() {
     `SELECT campaign.*, connection.store_domain
      FROM popup_banner_campaigns AS campaign
      LEFT JOIN search_horoshop_connections AS connection ON connection.id = campaign.connection_id
+     WHERE campaign.campaign_type <> 'block'
      ORDER BY campaign.priority DESC, campaign.updated_at DESC`
   );
   const statsResult = await query(
@@ -576,7 +536,7 @@ export async function popupCampaignOptions() {
   const [products, modifications, categories] = await Promise.all([
     query(`SELECT brand, stickers, condition_label FROM search_horoshop_products WHERE connection_id = $1 AND active`, [connection.id]),
     query(`SELECT stickers, condition_label FROM search_horoshop_modifications WHERE connection_id = $1 AND active`, [connection.id]),
-    query(`SELECT external_id, parent_external_id, titles FROM search_horoshop_categories WHERE connection_id = $1 AND active ORDER BY titles::TEXT`, [connection.id])
+    query(`SELECT external_id, titles FROM search_horoshop_categories WHERE connection_id = $1 AND active ORDER BY titles::TEXT`, [connection.id])
   ]);
   const stickers = new Map();
   const brands = new Set();
@@ -600,7 +560,7 @@ export async function popupCampaignOptions() {
     stickers: [...stickers.values()].sort((left, right) => left.title.localeCompare(right.title, 'uk-UA')),
     brands: [...brands].sort((left, right) => left.localeCompare(right, 'uk-UA')),
     conditions: [...conditions].sort((left, right) => left.localeCompare(right, 'uk-UA')),
-    categories: categoryOptions(categories.rows)
+    categories: categories.rows.map((item) => ({ id: item.external_id, title: localizedTitle(item.titles) }))
   };
 }
 
@@ -726,8 +686,6 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     const connection = connectionResult.rows[0] || null;
     if (!connection) throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед створенням попап-кампанії.');
     const campaignType = normalizeCampaignType(input.campaignType, input.targeting);
-    const blockDocument = campaignType === 'block' ? normalizeBlockDocument(input.blockDocument) : null;
-    if (campaignType === 'block' && !blockDocument) throw new AppError(422, 'POPUP_BLOCK_DOCUMENT_REQUIRED', 'Додайте макет блокового банера.');
     const content = normalizeContent(input.content);
     const styles = normalizeStyles(input.styles);
     const targeting = normalizeTargeting(input.targeting);
@@ -741,7 +699,7 @@ async function savePopupCampaign(existingId, input, actorUserId) {
       throw new AppError(422, 'POPUP_FORM_FIELDS_EMPTY', 'Додайте хоча б одне поле до контактної форми.');
     }
     let selectedPromoCode = null;
-    if (['promo_code', 'lead_form'].includes(campaignType) || (campaignType === 'block' && input.promoCodeId)) {
+    if (['promo_code', 'lead_form'].includes(campaignType)) {
       selectedPromoCode = await loadPromoCodeRow(input.promoCodeId, connection.id, client, true);
     }
     const draftPromoCodeSnapshot = selectedPromoCode ? promoCodeSnapshot(selectedPromoCode) : null;
@@ -756,16 +714,16 @@ async function savePopupCampaign(existingId, input, actorUserId) {
               name = $5, priority = $6, content = $7::JSONB, styles = $8::JSONB,
               targeting = $9::JSONB, behavior = $10::JSONB, starts_at = $11, ends_at = $12,
               promo_code_id = $13, promo_code_draft_snapshot = $14::JSONB,
-              promo_code_published_snapshot = CASE WHEN $4::VARCHAR IN ('promo_code', 'lead_form', 'block') THEN promo_code_published_snapshot ELSE NULL END,
+              promo_code_published_snapshot = CASE WHEN $4::VARCHAR IN ('promo_code', 'lead_form') THEN promo_code_published_snapshot ELSE NULL END,
               form_config = $15::JSONB,
               form_published_snapshot = CASE WHEN $4::VARCHAR = 'lead_form' THEN form_published_snapshot ELSE NULL END,
-              timer_config = $17::JSONB, block_document = $18::JSONB, updated_by = $16, updated_at = NOW()
-         WHERE id = $1 RETURNING id`,
+              timer_config = $17::JSONB, updated_by = $16, updated_at = NOW()
+         WHERE id = $1 AND campaign_type <> 'block' RETURNING id`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
           draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
-          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig)), blockDocument ? JSON.stringify(blockDocument) : null]
+          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig))]
       );
       if (!updated.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
     } else {
@@ -774,13 +732,13 @@ async function savePopupCampaign(existingId, input, actorUserId) {
         `INSERT INTO popup_banner_campaigns (
            id, connection_id, connection_generation, campaign_type, name, priority, content, styles,
             targeting, behavior, starts_at, ends_at, promo_code_id, promo_code_draft_snapshot,
-            form_config, created_by, updated_by, timer_config, block_document
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16, $17::JSONB, $18::JSONB)`,
+            form_config, created_by, updated_by, timer_config
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16, $17::JSONB)`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
           draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
-          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig)), blockDocument ? JSON.stringify(blockDocument) : null]
+          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig))]
       );
     }
 
@@ -806,8 +764,8 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     }
 
     await client.query('DELETE FROM popup_banner_promo_products WHERE campaign_id = $1', [id]);
-    const promoResolution = ['product_promo', 'block'].includes(campaignType)
-      ? await resolvePromoItems(blockDocument ? blockProductReferences(blockDocument) : input.promoItems || [], connection.id, connection.generation, client)
+    const promoResolution = campaignType === 'product_promo'
+      ? await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, client)
       : { items: [], unmatched: [] };
     for (const item of promoResolution.items) {
       await client.query(
@@ -852,7 +810,7 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
   try {
     await client.query('BEGIN');
     const campaign = await client.query(
-      'SELECT * FROM popup_banner_campaigns WHERE id = $1 FOR UPDATE',
+      "SELECT * FROM popup_banner_campaigns WHERE id = $1 AND campaign_type <> 'block' FOR UPDATE",
       [id]
     );
     const connection = await client.query(
@@ -891,17 +849,6 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
         const code = await loadPromoCodeRow(current.promo_code_id, current.current_connection_id, client, true);
         current.promo_code_published_snapshot = promoCodeSnapshot(code);
       }
-      if (campaignType === 'block') {
-        const document = normalizeBlockDocument(current.block_document);
-        const products = await blockRuntimeProducts(current, client);
-        const code = document && blockNeedsPromoCode(document) && current.promo_code_id ? promoCodeSnapshot(await loadPromoCodeRow(current.promo_code_id, current.current_connection_id, client, true)) : null;
-        validateBlockPublication(document, { products, promoCode: code, behavior: normalizeBehavior(current.behavior) });
-        const draft = blockDraftSnapshot(current);
-        current.block_published_snapshot = { ...draft, draft, revision: randomUUID(),
-          promo_code_published_snapshot: code,
-          targets: (await loadTargets(id, client)).map((target) => ({ product_id: target.product_id, modification_id: target.modification_id }))
-        };
-      }
       if (campaignType === 'lead_form') {
         const formConfig = normalizeFormConfig(current.form_config);
         if (!formConfig.fields.length) {
@@ -913,8 +860,7 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
     await client.query(
       `UPDATE popup_banner_campaigns
        SET status = $2::VARCHAR,
-           published_at = CASE WHEN $2::VARCHAR = 'active' AND campaign_type = 'block' THEN NOW() WHEN $2::VARCHAR = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
-            block_published_snapshot = $6::JSONB,
+           published_at = CASE WHEN $2::VARCHAR = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
             promo_code_published_snapshot = CASE
               WHEN $2::VARCHAR = 'active' AND campaign_type IN ('promo_code', 'lead_form') THEN $4::JSONB
               ELSE promo_code_published_snapshot
@@ -927,8 +873,7 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
        WHERE id = $1`,
       [id, status, actorUserId, current.promo_code_published_snapshot
         ? JSON.stringify(current.promo_code_published_snapshot) : null,
-      current.form_published_snapshot ? JSON.stringify(current.form_published_snapshot) : null,
-      current.block_published_snapshot ? JSON.stringify(current.block_published_snapshot) : null]
+      current.form_published_snapshot ? JSON.stringify(current.form_published_snapshot) : null]
     );
     if (status === 'active') await recordVersion(client, id, actorUserId);
     await client.query('COMMIT');
@@ -942,7 +887,7 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
 }
 
 export async function deletePopupCampaign(id) {
-  const result = await query('DELETE FROM popup_banner_campaigns WHERE id = $1 RETURNING id', [id]);
+  const result = await query("DELETE FROM popup_banner_campaigns WHERE id = $1 AND campaign_type <> 'block' RETURNING id", [id]);
   if (!result.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
 }
 
@@ -1005,7 +950,6 @@ function templateText(value, product) {
 
 function matchesTargeting(campaign, product, pageUrl, targets, stockState) {
   const targeting = normalizeTargeting(campaign.targeting);
-  if ((targeting.rules || targeting.exclusions) && !evaluateAudience(targeting, { product, pageUrl: pageUrl.href, stockState: stockState === 'in_stock' ? 'available' : stockState, categories: product?.categories || [] }).eligible) return false;
   if (targeting.mode === 'target_page') return matchesTargetPage(targeting.targetPageUrl, pageUrl);
   if (targeting.mode === 'all_pages') return true;
   if (!product) return false;
@@ -1036,17 +980,15 @@ async function resolveProduct(connection, article, pageUrl) {
     `SELECT product.*, modification.id AS modification_id, modification.sku AS modification_sku,
             modification.titles AS modification_titles, modification.price AS modification_price,
             modification.currency AS modification_currency, modification.stickers AS modification_stickers,
-            modification.condition_label AS modification_condition, modification.external_id AS modification_external_id,
-            modification.availability AS modification_availability
+            modification.condition_label AS modification_condition
      FROM search_horoshop_products AS product
      LEFT JOIN search_horoshop_modifications AS modification
        ON modification.product_id = product.id AND modification.active = TRUE
-       AND modification.connection_id = $1 AND modification.generation = $3
-       AND (($2 <> '' AND LOWER(modification.sku) = LOWER($2)) OR ($2 = '' AND modification.page_url IN ($4, $4 || '/')))
+       AND $2 <> '' AND LOWER(modification.sku) = LOWER($2)
      WHERE product.connection_id = $1 AND product.generation = $3 AND product.active = TRUE
        AND (
          ($2 <> '' AND (LOWER(product.sku) = LOWER($2) OR modification.id IS NOT NULL))
-         OR COALESCE(product.canonical_url, '') IN ($4, $4 || '/') OR modification.id IS NOT NULL
+         OR COALESCE(product.canonical_url, '') IN ($4, $4 || '/')
        )
      ORDER BY CASE WHEN modification.id IS NOT NULL THEN 1 WHEN LOWER(product.sku) = LOWER($2) THEN 2 ELSE 3 END
      LIMIT 1`,
@@ -1064,8 +1006,7 @@ async function resolveProduct(connection, article, pageUrl) {
   const price = row.modification_price || row.price || '';
   const currency = row.modification_currency || row.currency || '';
   return {
-    id: row.id, externalId: row.external_id, modificationExternalId: row.modification_external_id || null,
-    availability: row.modification_id ? row.modification_availability : row.availability,
+    id: row.id,
     modificationId: row.modification_id || null,
     sku: row.modification_sku || row.sku,
     title: localizedTitle(row.modification_titles) || localizedTitle(row.titles),
@@ -1179,23 +1120,19 @@ function numericValue(value) {
   return match ? Number(match[0]) : null;
 }
 
-async function resolveOutOfStockRecommendations(connection, product, limit, config = null, categories = [], diagnostics = []) {
-  let categoryId = config?.source === 'selected_category' ? config.categoryId : product?.categoryId;
-  if (config?.source === 'parent_category') categoryId = categories.find(c => c.id === categoryId)?.parentId;
-  if (!categoryId) return [];
-  const categoryIds = config?.descendants ? [...new Set([categoryId, ...categories.filter(c => categoryAncestors(c.id, categories).includes(categoryId)).map(c => c.id)])] : [categoryId];
-  const available = value => config ? catalogStock(value) === 'available' : isAvailable(value);
+async function resolveOutOfStockRecommendations(connection, product, limit) {
+  if (!product?.categoryId) return [];
   const candidates = await query(
     `SELECT product.id, product.external_id, product.sku, product.titles,
             product.price, product.old_price, product.currency, product.availability,
             product.visible, product.primary_image_url, product.canonical_url,
-            product.popularity, product.source_data, product.brand, product.condition_label, product.category_external_id,
+            product.popularity, product.source_data,
             modification.id AS modification_id, modification.external_id AS modification_external_id,
             modification.sku AS modification_sku, modification.titles AS modification_titles,
             modification.price AS modification_price, modification.old_price AS modification_old_price,
             modification.currency AS modification_currency, modification.availability AS modification_availability,
             modification.visible AS modification_visible, modification.image_url AS modification_image_url,
-            modification.page_url AS modification_page_url, modification.source_data AS modification_source_data, modification.condition_label AS modification_condition
+            modification.page_url AS modification_page_url, modification.source_data AS modification_source_data
      FROM search_horoshop_products AS product
      LEFT JOIN search_horoshop_modifications AS modification
        ON modification.product_id = product.id
@@ -1203,9 +1140,9 @@ async function resolveOutOfStockRecommendations(connection, product, limit, conf
       AND modification.active = TRUE
      WHERE product.connection_id = $1 AND product.generation = $2
        AND product.active = TRUE AND product.visible = TRUE
-       AND product.category_external_id = ANY($3::TEXT[]) AND product.id <> $4
+       AND product.category_external_id = $3 AND product.id <> $4
      ORDER BY product.updated_at DESC, modification.updated_at DESC`,
-    [connection.id, connection.generation, categoryIds, config?.excludeCurrent === false ? '00000000-0000-0000-0000-000000000000' : product?.id || '00000000-0000-0000-0000-000000000000']
+    [connection.id, connection.generation, product.categoryId, product.id]
   );
   const grouped = new Map();
   for (const row of candidates.rows) {
@@ -1214,9 +1151,9 @@ async function resolveOutOfStockRecommendations(connection, product, limit, conf
       candidate = { row, offers: [] };
       grouped.set(row.id, candidate);
     }
-    if (row.modification_id && row.modification_visible !== false && available(row.modification_availability)) {
+    if (row.modification_id && row.modification_visible !== false && isAvailable(row.modification_availability)) {
       candidate.offers.push({
-        modificationId: row.modification_id, modificationExternalId: row.modification_external_id, condition: row.modification_condition || row.condition_label || '',
+        modificationId: row.modification_id,
         article: row.modification_sku || row.sku,
         title: localizedTitle(row.modification_titles) || localizedTitle(row.titles),
         price: row.modification_price || row.price || '',
@@ -1229,12 +1166,12 @@ async function resolveOutOfStockRecommendations(connection, product, limit, conf
       });
     }
   }
-  const currentPrice = numericValue(product?.priceValue);
+  const currentPrice = numericValue(product.priceValue);
   const recommendations = [];
   for (const { row, offers } of grouped.values()) {
-    if (available(row.availability)) {
+    if (isAvailable(row.availability)) {
       offers.push({
-        modificationId: null, modificationExternalId: null, condition: row.condition_label || '',
+        modificationId: null,
         article: row.sku,
         title: localizedTitle(row.titles),
         price: row.price || '',
@@ -1245,13 +1182,7 @@ async function resolveOutOfStockRecommendations(connection, product, limit, conf
         buyId: sourceIdentifier(row.source_data, row.external_id)
       });
     }
-    let reason = '';
-    if (config?.excludedProducts.includes(row.external_id)) reason = 'Товар у виключеннях';
-    else if (config?.excludedCategories.some(id => categoryAncestors(row.category_external_id, categories).includes(id))) reason = 'Категорія у виключеннях';
-    else if (config?.excludedBrands.includes(row.brand)) reason = 'Бренд у виключеннях';
-    else if (config?.brands.length && !config.brands.includes(row.brand)) reason = 'Бренд не відповідає';
-    const validOffers = reason ? [] : offers.filter(offer => (!config?.conditions.length || config.conditions.includes(offer.condition)) && offer.title && offer.imageUrl && offer.pageUrl && offer.buyId && (!config || ((config.minPrice == null || (numericValue(offer.price) != null && numericValue(offer.price) >= config.minPrice)) && (config.maxPrice == null || (numericValue(offer.price) != null && numericValue(offer.price) <= config.maxPrice)))));
-    if (!validOffers.length) diagnostics.push({ title: localizedTitle(row.titles), productExternalId: row.external_id, reason: reason || 'Немає доступної пропозиції з потрібним станом, ціною, фото та посиланням' });
+    const validOffers = offers.filter((offer) => offer.title && offer.imageUrl && offer.pageUrl && offer.buyId);
     if (!validOffers.length) continue;
     validOffers.sort((left, right) => {
       const leftPrice = numericValue(left.price);
@@ -1262,92 +1193,19 @@ async function resolveOutOfStockRecommendations(connection, product, limit, conf
       return (leftPrice ?? Number.MAX_SAFE_INTEGER) - (rightPrice ?? Number.MAX_SAFE_INTEGER);
     });
     recommendations.push({
-      productId: row.id, productExternalId: row.external_id,
+      productId: row.id,
       ...validOffers[0],
       popularity: numericValue(row.popularity) || 0,
       priceDistance: currentPrice === null || numericValue(validOffers[0].price) === null
         ? Number.MAX_SAFE_INTEGER : Math.abs(numericValue(validOffers[0].price) - currentPrice)
     });
   }
-  recommendations.sort((left, right) => (config?.sort === 'popular' ? right.popularity - left.popularity : config?.sort === 'price_asc' ? (numericValue(left.price) ?? Infinity) - (numericValue(right.price) ?? Infinity) : config?.sort === 'price_desc' ? (numericValue(right.price) ?? -Infinity) - (numericValue(left.price) ?? -Infinity) : left.priceDistance - right.priceDistance) || right.popularity - left.popularity || left.productExternalId.localeCompare(right.productExternalId));
-  for (const item of recommendations.slice(limit)) diagnostics.push({ title: item.title, productExternalId: item.productExternalId, reason: 'Поза лімітом добірки після сортування' });
+  recommendations.sort((left, right) => left.priceDistance - right.priceDistance || right.popularity - left.popularity);
   return recommendations.slice(0, limit).map(({
     popularity: _popularity,
     priceDistance: _priceDistance,
     ...recommendation
   }) => recommendation);
-}
-
-function catalogStock(value) {
-  const text = String(value || '').toLowerCase();
-  if (/(немає|нет в наличии|out.of.stock|not.available|закінчив|отсутств)/iu.test(text)) return 'out_of_stock';
-  if (/(в наявност|в наличии|in.stock|available|на складі)/iu.test(text)) return 'available';
-  return 'unknown';
-}
-async function loadRuleCategories(connection) {
-  return categoryOptions((await query('SELECT external_id, parent_external_id, titles FROM search_horoshop_categories WHERE connection_id = $1 AND generation = $2 AND active = TRUE', [connection.id, connection.generation])).rows);
-}
-async function loadPageOffer(product) {
-  if (!product) return null;
-  return (await loadPreviewProductsByResolvedItems([{ productId: product.id, modificationId: product.modificationId }]))[0] || null;
-}
-async function resolveBlockCollections(connection, document, product, categories) {
-  const collections = {}, diagnostics = []; let insufficient = false;
-  for (const { node } of flatten(document.root).filter(entry => entry.node.type === 'collection')) {
-    const config = node.props.collection; const rejected = []; let offers;
-    if (config.source === 'manual') {
-      const resolution = await resolvePromoItems(config.items, connection.id, connection.generation, { query });
-      for (const missing of resolution.unmatched) rejected.push({ title: missing.productExternalId, productExternalId: missing.productExternalId, reason: 'Товар або модифікація відсутні в поточному каталозі' });
-      offers = (await loadPreviewProductsByResolvedItems(resolution.items)).filter(item => {
-        const valid = catalogStock(item.availability) === 'available' && item.visible && item.imageUrl && item.pageUrl && item.buyId && (!config.excludeCurrent || item.productId !== product?.id);
-        if (!valid) rejected.push({ title: item.title, productExternalId: item.productExternalId, reason: config.excludeCurrent && item.productId === product?.id ? 'Товар відкритої сторінки' : 'Недоступний, прихований або неповні дані пропозиції' });
-        return valid;
-      });
-      offers = [...new Map(offers.map(item => [item.productExternalId, item])).values()].slice(0, config.limit);
-    } else {
-      offers = (await resolveOutOfStockRecommendations(connection, product, config.limit, config, categories, rejected)).map((item, position) => ({ ...item, id: item.productId + ':' + (item.modificationId || ''), sku: item.article, position, availability: 'В наявності', available: true, visible: true }));
-    }
-    const enough = offers.length >= config.minimum;
-    // A hidden collection must not suppress the other surface.
-    if (!enough && ['desktop', 'mobile'].every(device => visibleCollection(document, node.id, device))) insufficient = true;
-    collections[node.id] = enough ? offers : [];
-    diagnostics.push({ id: node.id, name: node.name, source: config.source, minimum: config.minimum, enough, count: offers.length, rejected: rejected.slice(0, 100) });
-  }
-  return { collections, diagnostics, insufficient };
-}
-export async function inspectPopupCampaign({ campaign: input, pageUrl: rawUrl, article, device, stockState, now, seen, campaignId }) {
-  const connection = (await query('SELECT id, generation, store_domain FROM search_horoshop_connections WHERE singleton = TRUE LIMIT 1')).rows[0];
-  const pageUrl = normalizedPageUrl(rawUrl);
-  if (!connection || !pageUrl || !sameStoreHost(pageUrl.hostname, connection.store_domain)) throw new AppError(422, 'POPUP_TEST_STORE_MISMATCH', 'Вкажіть URL підключеного магазину.');
-  const product = await resolveProduct(connection, article, pageUrl);
-  const categories = await loadRuleCategories(connection); if (product) product.categories = categories;
-  const actualStock = stockState === 'catalog' ? catalogStock(product?.availability) : stockState;
-  const targeting = normalizeTargeting(input.targeting);
-  const audience = evaluateAudience(targeting, { product, categories, stockState: actualStock, pageUrl: pageUrl.href });
-  const resolution = await resolveProductEntries(input.productEntries || [], connection.id, { query });
-  const targets = resolution.targets.map(t => ({ product_id: t.productId, modification_id: t.modificationId }));
-  const date = now ? new Date(now) : new Date();
-  const behavior = normalizeBehavior(input.behavior);
-  const collections = input.blockDocument ? await resolveBlockCollections(connection, input.blockDocument, product, categories) : null;
-  const checks = [
-    { label: 'Сторінка та правила', pass: matchesTargeting({ targeting }, product, pageUrl, targets, actualStock) },
-    { label: 'Пристрій', pass: behavior.device === 'all' || behavior.device === device },
-    { label: 'Дати та розклад', pass: (!input.startsAt || new Date(input.startsAt) <= date) && (!input.endsAt || new Date(input.endsAt) > date) && isWithinBehaviorSchedule(behavior, date) },
-    { label: 'Частота (задана симуляція)', pass: !seen || behavior.frequency === 'always' && !behavior.maxShowsPerSession },
-    { label: 'Достатньо товарів у видимих добірках', pass: !collections?.diagnostics.some(d => !d.enough && visibleCollection(input.blockDocument, d.id, device)) },
-    { label: 'Таймер не завершився', pass: !input.blockDocument || !blockDeadlineExpired(input.blockDocument, date.getTime(), device) }
-  ];
-  const preview = await previewPopupCampaign({ ...input, contextUrl: rawUrl, contextArticle: article });
-  try { if (input.blockDocument) validateBlockPublication(input.blockDocument, { products: preview.products, promoCode: preview.campaign.promoCode, behavior, now: date.getTime() }); checks.push({ label: 'Макет готовий до публікації', pass: true }); }
-  catch (error) { checks.push({ label: 'Макет: ' + error.message, pass: false }); }
-  const active = await resolvePopupCampaign({ pageUrl: rawUrl, article, stockState: actualStock === 'available' ? 'in_stock' : actualStock, allCandidates: true, at: date });
-  const current = campaignId ? (await query('SELECT public_id FROM popup_banner_campaigns WHERE id = $1', [campaignId])).rows[0]?.public_id : null;
-  const competitors = (active?.candidates || []).filter(p => p.campaign.publicId !== current && (p.campaign.behavior.device === 'all' || p.campaign.behavior.device === device)).map(p => ({ name: p.campaign.name, priority: p.campaign.priority, trigger: p.campaign.behavior.trigger, delayMs: p.campaign.behavior.delayMs }));
-  return { eligible: checks.every(c => c.pass), checks, audience, competitors, product: product ? { ...product, categories: undefined } : null, stockState: actualStock, stockSource: stockState === 'catalog' ? 'Каталог: на сайті стан може відрізнятися' : 'Симуляція стану на сайті', categoryPath: categories.find(c => c.id === product?.categoryId)?.path || '', collections: collections?.diagnostics || [], unmatched: resolution.unmatched, preview };
-}
-function visibleCollection(document, id, device) {
-  function visit(node) { if ((device === 'mobile' ? node.mobile.hidden ?? node.style.hidden : node.style.hidden)) return false; return node.id === id || node.children.some(visit); }
-  return visit(document.root);
 }
 
 export async function previewPopupCampaign(input) {
@@ -1367,13 +1225,12 @@ export async function previewPopupCampaign(input) {
   const targeting = normalizeTargeting(input.targeting);
   const behavior = normalizeBehavior(input.behavior);
   const formConfig = normalizeFormConfig(input.formConfig);
-  const blockDocument = campaignType === 'block' ? normalizeBlockDocument(input.blockDocument) : null;
 
   let products = [];
-  if (['product_promo', 'block'].includes(campaignType)) {
-    const resolution = await resolvePromoItems(blockDocument ? blockProductReferences(blockDocument) : input.promoItems || [], connection.id, connection.generation, db);
+  if (campaignType === 'product_promo') {
+    const resolution = await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, db);
     products = (await loadPreviewProductsByResolvedItems(resolution.items, db)).filter((item) => (
-      item.available && item.visible && item.title && item.pageUrl && (campaignType === 'block' || (item.imageUrl && item.buyId))
+      item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
     ));
   }
 
@@ -1393,18 +1250,13 @@ export async function previewPopupCampaign(input) {
     }
   }
 
-  const previewPageUrl = normalizedPageUrl(input.contextUrl);
-  const contextProduct = previewPageUrl && sameStoreHost(previewPageUrl.hostname, connection.store_domain) ? await resolveProduct(connection, input.contextArticle || '', previewPageUrl) : null;
-  const collectionData = blockDocument ? await resolveBlockCollections(connection, blockDocument, contextProduct, await loadRuleCategories(connection)) : null;
-  const pageProduct = await loadPageOffer(contextProduct);
   const recommendations = targeting.mode === 'out_of_stock'
     ? await loadPreviewRecommendations(connection, targeting.recommendationLimit, db)
     : [];
-  const selectedPromoCode = ['promo_code', 'lead_form', 'block'].includes(campaignType) && input.promoCodeId
+  const selectedPromoCode = ['promo_code', 'lead_form'].includes(campaignType) && input.promoCodeId
     ? await loadPromoCodeRow(input.promoCodeId, connection.id, db)
     : null;
   const normalizedSnapshot = {
-    blockDocument,
     timerConfig: normalizeTimerConfig(input.timerConfig),
     type: campaignType,
     content,
@@ -1419,7 +1271,6 @@ export async function previewPopupCampaign(input) {
   return {
     campaign: {
       publicId: 'preview',
-      blockDocument,
       timerConfig: normalizedSnapshot.timerConfig,
       revision: `preview-${createHash('sha256').update(JSON.stringify(normalizedSnapshot)).digest('hex').slice(0, 16)}`,
       type: campaignType,
@@ -1432,12 +1283,11 @@ export async function previewPopupCampaign(input) {
     },
     product: templateProduct ? { article: templateProduct.sku, title: templateProduct.title } : null,
     recommendations,
-    collections: collectionData?.collections || {}, pageProduct,
     products
   };
 }
 
-export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', stockState = 'unknown', requestOrigin = '', allCandidates = false, at = new Date() }) {
+export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', stockState = 'unknown', requestOrigin = '' }) {
   const pageUrl = normalizedPageUrl(rawPageUrl);
   if (!pageUrl) throw new AppError(422, 'POPUP_PAGE_URL_INVALID', 'Не вдалося визначити сторінку для попапа.');
   const connectionResult = await query(
@@ -1449,45 +1299,37 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
   const originUrl = normalizedPageUrl(requestOrigin);
   if (originUrl && !sameStoreHost(originUrl.hostname, connection.store_domain)) return null;
   const product = await resolveProduct(connection, article, pageUrl);
-  const categories = await loadRuleCategories(connection);
-  if (product) product.categories = categories;
   const campaigns = await query(
     `SELECT * FROM popup_banner_campaigns
      WHERE status = 'active' AND connection_id = $1 AND connection_generation = $2
+       AND campaign_type <> 'block'
+       AND (starts_at IS NULL OR starts_at <= NOW())
+       AND (ends_at IS NULL OR ends_at > NOW())
      ORDER BY priority DESC, updated_at DESC`,
     [connection.id, connection.generation]
   );
-  const eligible = [];
-  for (const campaign of campaigns.rows.map(publishedBlockRow).filter(Boolean).sort((left, right) => right.priority - left.priority)) {
-    if (campaign.connection_id !== connection.id || campaign.connection_generation !== connection.generation) continue;
-    if (campaign.starts_at && new Date(campaign.starts_at) > at) continue;
-    if (campaign.ends_at && new Date(campaign.ends_at) <= at) continue;
-    const blockDocument = campaign.campaign_type === 'block' ? normalizeBlockDocument(campaign.block_document) : null;
-    if (blockDocument && blockDeadlineExpired(blockDocument, at.getTime())) continue;
+  for (const campaign of campaigns.rows) {
     const campaignType = normalizeCampaignType(campaign.campaign_type, campaign.targeting);
     const timerConfig = normalizeTimerConfig(campaign.timer_config);
-    if (campaignType === 'countdown' && isTimerExpired(timerConfig, at.getTime())) continue;
-    if (!isWithinBehaviorSchedule(campaign.behavior, at)) continue;
-    const targets = blockDocument ? campaign.targets || [] : campaign.targeting?.mode === 'products'
+    if (campaignType === 'countdown' && isTimerExpired(timerConfig)) continue;
+    if (!isWithinBehaviorSchedule(campaign.behavior)) continue;
+    const targets = campaign.targeting?.mode === 'products'
       ? (await query('SELECT product_id, modification_id FROM popup_banner_product_targets WHERE campaign_id = $1', [campaign.id])).rows
       : [];
     if (!matchesTargeting(campaign, product, pageUrl, targets, stockState)) continue;
     const content = normalizeContent(campaign.content);
     const targeting = normalizeTargeting(campaign.targeting);
-    const recommendations = !blockDocument && targeting.mode === 'out_of_stock'
+    const recommendations = targeting.mode === 'out_of_stock'
       ? await resolveOutOfStockRecommendations(connection, product, targeting.recommendationLimit)
       : [];
-    if (!blockDocument && targeting.mode === 'out_of_stock' && recommendations.length === 0) continue;
-    const collectionData = blockDocument ? await resolveBlockCollections(connection, blockDocument, product, categories) : null;
-    if (collectionData?.insufficient) continue;
-    const pageProduct = blockDocument ? await loadPageOffer(product) : null;
-    const promoProducts = blockDocument ? await blockRuntimeProducts(campaign) : campaignType === 'product_promo'
+    if (targeting.mode === 'out_of_stock' && recommendations.length === 0) continue;
+    const promoProducts = campaignType === 'product_promo'
       ? (await loadPromoProducts(campaign.id)).map(serializePromoProduct).filter((item) => (
         item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
       ))
       : [];
     if (campaignType === 'product_promo' && promoProducts.length === 0) continue;
-    const publishedPromoCode = ['promo_code', 'lead_form', 'block'].includes(campaignType)
+    const publishedPromoCode = ['promo_code', 'lead_form'].includes(campaignType)
       ? object(campaign.promo_code_published_snapshot)
       : null;
     const publishedFormConfig = campaignType === 'lead_form'
@@ -1495,11 +1337,10 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       : normalizeFormConfig(null);
     if (['promo_code', 'lead_form'].includes(campaignType) && !publishedPromoCode?.code) continue;
     if (campaignType === 'lead_form' && !publishedFormConfig.fields.length) continue;
-    const payload = {
+    return {
       serverNow: new Date().toISOString(),
       campaign: {
-        publicId: campaign.public_id, name: campaign.name, priority: Number(campaign.priority),
-        blockDocument,
+        publicId: campaign.public_id,
         timerConfig,
         revision: campaign.updated_at instanceof Date
           ? campaign.updated_at.toISOString()
@@ -1510,17 +1351,14 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
         styles: normalizeStyles(campaign.styles),
         behavior: normalizeBehavior(campaign.behavior),
         formConfig: publishedFormConfig,
-        promoCode: campaignType === 'promo_code' || (blockDocument && !blockHasRewardForm(blockDocument)) ? publishedPromoCode : null
+        promoCode: campaignType === 'promo_code' ? publishedPromoCode : null
       },
       product: product ? { article: product.sku, title: product.title } : null,
       recommendations,
-      collections: collectionData?.collections || {}, pageProduct,
       products: promoProducts
     };
-    if (!allCandidates) return payload;
-    eligible.push(payload);
   }
-  return eligible.length ? { ...eligible[0], candidates: eligible } : null;
+  return null;
 }
 
 export async function recordPopupEvent({ publicId, eventType, pageUrl, article, visitorKey, metadata }) {
@@ -1587,7 +1425,7 @@ function validatedContactValues(formConfig, suppliedValues) {
   return values;
 }
 
-export async function submitPopupContact({ publicId, values, pageUrl, article, visitorKey, requestOrigin, formId = '', revision = '', device = 'desktop' }) {
+export async function submitPopupContact({ publicId, values, pageUrl, article, visitorKey, requestOrigin }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1596,14 +1434,14 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
        FROM popup_banner_campaigns AS campaign
        JOIN search_horoshop_connections AS connection ON connection.id = campaign.connection_id
        WHERE campaign.public_id = $1 AND campaign.status = 'active'
-         AND campaign.campaign_type IN ('lead_form', 'block')
-         AND (campaign.campaign_type = 'block' OR campaign.starts_at IS NULL OR campaign.starts_at <= NOW())
-         AND (campaign.campaign_type = 'block' OR campaign.ends_at IS NULL OR campaign.ends_at > NOW())
+         AND campaign.campaign_type = 'lead_form'
+         AND (campaign.starts_at IS NULL OR campaign.starts_at <= NOW())
+         AND (campaign.ends_at IS NULL OR campaign.ends_at > NOW())
        FOR UPDATE`,
       [publicId]
     );
-    const campaign = result.rows[0] ? publishedBlockRow(result.rows[0]) : null;
-    if (!campaign || (campaign.starts_at && new Date(campaign.starts_at) > new Date()) || (campaign.ends_at && new Date(campaign.ends_at) <= new Date()) || campaign.connection_generation !== campaign.current_generation
+    const campaign = result.rows[0];
+    if (!campaign || campaign.connection_generation !== campaign.current_generation
       || !isWithinBehaviorSchedule(campaign.behavior)) {
       throw new AppError(404, 'POPUP_FORM_NOT_AVAILABLE', 'Ця контактна форма більше не доступна.');
     }
@@ -1613,11 +1451,9 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
       || (parsedOrigin && !sameStoreHost(parsedOrigin.hostname, campaign.store_domain))) {
       throw new AppError(403, 'POPUP_STORE_MISMATCH', 'Форму можна надсилати лише з підключеного магазину.');
     }
-    const blockDocument = campaign.campaign_type === 'block' ? normalizeBlockDocument(campaign.block_document) : null;
-    if (blockDocument && (revision !== campaign.revision || blockDeadlineExpired(blockDocument, Date.now(), device))) throw new AppError(409, 'POPUP_FORM_STALE', 'Форму оновлено або її термін завершився. Оновіть сторінку.');
-    const formConfig = blockDocument ? blockFormConfig(blockDocument, formId, device) : normalizeFormConfig(campaign.form_published_snapshot);
+    const formConfig = normalizeFormConfig(campaign.form_published_snapshot);
     const promoCode = object(campaign.promo_code_published_snapshot);
-    if (!formConfig?.fields.length || ((!blockDocument || formConfig.reward === 'promo_code') && !promoCode.code)) {
+    if (!formConfig.fields.length || !promoCode.code) {
       throw new AppError(409, 'POPUP_FORM_NOT_PUBLISHED', 'Опублікована версія форми недоступна.');
     }
     const normalizedValues = validatedContactValues(formConfig, values);
@@ -1625,7 +1461,7 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
     const visitorKeyHash = visitorKey
       ? createHash('sha256').update(String(visitorKey).slice(0, 200)).digest('hex') : null;
     const dedupeKey = createHash('sha256')
-      .update(JSON.stringify([...(blockDocument ? [formId, revision] : []), ...formConfig.fields.map((field) => [field.id, normalizedValues[field.id]])]))
+      .update(JSON.stringify(formConfig.fields.map((field) => [field.id, normalizedValues[field.id]])))
       .digest('hex');
     const existing = await client.query(
       'SELECT id, created_at FROM popup_banner_contacts WHERE campaign_id = $1 AND dedupe_key = $2 LIMIT 1',
@@ -1633,18 +1469,17 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
     );
     const inserted = existing.rows[0] ? { rows: [] } : await client.query(
       `INSERT INTO popup_banner_contacts (
-         campaign_id, product_id, modification_id, values, visitor_key_hash, dedupe_key, page_url, form_id, form_revision, field_snapshot
-       ) VALUES ($1, $2, $3, $4::JSONB, $5, $6, $7, $8, $9, $10::JSONB)
+         campaign_id, product_id, modification_id, values, visitor_key_hash, dedupe_key, page_url
+       ) VALUES ($1, $2, $3, $4::JSONB, $5, $6, $7)
        ON CONFLICT (campaign_id, dedupe_key) DO NOTHING
        RETURNING id, created_at`,
       [campaign.id, product?.id || null, product?.modificationId || null,
-        JSON.stringify(normalizedValues), visitorKeyHash, dedupeKey, parsedPage.href.slice(0, 4000), blockDocument ? formId : null, blockDocument ? revision : null, JSON.stringify(formConfig.fields)]
+        JSON.stringify(normalizedValues), visitorKeyHash, dedupeKey, parsedPage.href.slice(0, 4000)]
     );
     await client.query('COMMIT');
     return {
       duplicate: !inserted.rows[0],
-      promoCode: !blockDocument || formConfig.reward === 'promo_code' ? promoCode : null,
-      ...(blockDocument ? { successMessage: formConfig.successMessage, formId } : {}),
+      promoCode,
       submittedAt: inserted.rows[0]?.created_at || existing.rows[0]?.created_at || null
     };
   } catch (error) {
@@ -1657,9 +1492,6 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
 
 function serializeContact(row) {
   return {
-    formId: row.form_id || null,
-    revision: row.form_revision || null,
-    fields: array(row.field_snapshot),
     id: row.id,
     values: object(row.values),
     pageUrl: row.page_url || '',
@@ -1669,13 +1501,13 @@ function serializeContact(row) {
 
 export async function listPopupContacts(campaignId, { page = 1, pageSize = 50 } = {}) {
   const campaign = await loadCampaignRow(campaignId);
-  if (!['lead_form', 'block'].includes(normalizeCampaignType(campaign.campaign_type, campaign.targeting))) {
+  if (normalizeCampaignType(campaign.campaign_type, campaign.targeting) !== 'lead_form') {
     throw new AppError(409, 'POPUP_CONTACTS_UNAVAILABLE', 'Списки контактів доступні лише для банерів із формою.');
   }
   const offset = (page - 1) * pageSize;
   const [items, total] = await Promise.all([
     query(
-      `SELECT id, values, page_url, created_at, form_id, form_revision, field_snapshot
+      `SELECT id, values, page_url, created_at
        FROM popup_banner_contacts WHERE campaign_id = $1
        ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`,
       [campaignId, pageSize, offset]
@@ -1686,7 +1518,7 @@ export async function listPopupContacts(campaignId, { page = 1, pageSize = 50 } 
     campaign: {
       id: campaign.id,
       name: campaign.name,
-      formConfig: campaign.block_document ? { fields: allBlockFields(normalizeBlockDocument(campaign.block_published_snapshot?.block_document || campaign.block_document)), blocks: [], submitLabel: '', successTitle: '', successBody: '' } : normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config)
+      formConfig: normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config)
     },
     items: items.rows.map(serializeContact),
     page,
@@ -1714,9 +1546,9 @@ function safeSheetName(value, used) {
 
 export async function exportPopupContactsWorkbook(campaignId = null) {
   const campaigns = await query(
-    `SELECT id, name, form_config, form_published_snapshot, block_document, block_published_snapshot
+    `SELECT id, name, form_config, form_published_snapshot
      FROM popup_banner_campaigns
-     WHERE campaign_type IN ('lead_form', 'block') ${campaignId ? 'AND id = $1' : ''}
+     WHERE campaign_type = 'lead_form' ${campaignId ? 'AND id = $1' : ''}
      ORDER BY updated_at DESC`,
     campaignId ? [campaignId] : []
   );
@@ -1726,15 +1558,12 @@ export async function exportPopupContactsWorkbook(campaignId = null) {
   const workbook = XLSX.utils.book_new();
   const usedNames = new Set();
   for (const campaign of campaigns.rows) {
-    const formConfig = campaign.block_document ? { fields: allBlockFields(normalizeBlockDocument(campaign.block_published_snapshot?.block_document || campaign.block_document)) } : normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config);
+    const formConfig = normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config);
     const contacts = await query(
-      `SELECT values, page_url, created_at, field_snapshot FROM popup_banner_contacts
+      `SELECT values, page_url, created_at FROM popup_banner_contacts
        WHERE campaign_id = $1 ORDER BY created_at DESC, id DESC`,
       [campaign.id]
     );
-    const fieldsById = new Map(formConfig.fields.map((field) => [field.id, field]));
-    for (const contact of contacts.rows) for (const field of array(contact.field_snapshot)) if (!fieldsById.has(field.id)) fieldsById.set(field.id, field);
-    formConfig.fields = [...fieldsById.values()];
     const headers = ['Дата отримання', ...formConfig.fields.map(contactFieldName), 'Сторінка'];
     const rows = contacts.rows.map((contact) => [
       contact.created_at instanceof Date ? contact.created_at.toISOString() : String(contact.created_at || ''),
@@ -1863,8 +1692,8 @@ export function popupEmbedScript(origin) {
   const articleSelector = script?.dataset.articleSelector || '';
   let currentHost = null;
   let currentUrl = '';
-  const pendingCancels = new Set();
-  let evaluationId = 0;
+  let pendingTimer = null;
+  let pendingCleanup = null;
   let activeCleanup = null;
   const visitorStorageKey = 'mt-popup-visitor';
   let visitorKey = previewMode ? 'preview' : localStorage.getItem(visitorStorageKey);
@@ -2235,25 +2064,6 @@ export function popupEmbedScript(origin) {
   function render(payload, productArticle) {
     if (currentHost || (!previewMode && isSuppressed(payload))) return;
     const { campaign } = payload;
-    if (campaign.type === 'block') {
-      const runtime = (${createPopupBlockRuntime.toString()})(window, { timer: timerRuntime, nativeBuy });
-      const mounted = runtime.mount(payload, {
-        device: isMobileInteractionSurface() ? 'mobile' : 'desktop', preview: previewMode,
-        onClose: (type) => { currentHost = null; activeCleanup = null; if (type) event(campaign.publicId, type, productArticle); },
-        onEvent: (type, metadata) => event(campaign.publicId, type, productArticle, metadata),
-        submit: async (data) => {
-          const response = await fetch(new URL('/api/public/popup-banners/' + campaign.publicId + '/contacts', apiOrigin), {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ ...data, publicId: campaign.publicId, pageUrl: location.href, article: productArticle, visitorKey })
-          });
-          const body = await response.json();
-          if (!response.ok) throw new Error(body.error?.message || body.message || 'Не вдалося надіслати форму.');
-          return body.data;
-        }
-      });
-      if (mounted) { currentHost = mounted.host; activeCleanup = mounted.dispose; remember(payload); event(campaign.publicId, 'impression', productArticle); }
-      return;
-    }
     const countdown = timerRuntime.start(campaign, previewMode);
     if (countdown?.expired) return;
     const isProductPromo = campaign.type === 'product_promo';
@@ -2723,19 +2533,17 @@ export function popupEmbedScript(origin) {
   }
 
   function clearPendingRender() {
-    for (const cancel of pendingCancels) cancel();
-    pendingCancels.clear();
+    if (pendingTimer) clearTimeout(pendingTimer);
+    pendingTimer = null;
+    if (pendingCleanup) pendingCleanup();
+    pendingCleanup = null;
   }
 
-  function scheduleRender(payload, productArticle, evaluatedUrl, ready) {
-    let pendingTimer = null, pendingCleanup = null, waiting = false;
-    const cancel = () => { if (pendingTimer) clearTimeout(pendingTimer); if (pendingCleanup) pendingCleanup(); pendingTimer = null; pendingCleanup = null; pendingCancels.delete(cancel); };
-    pendingCancels.add(cancel);
-    const behavior = payload.campaign.behavior, notBefore = Date.now() + behavior.delayMs;
+  function scheduleRender(payload, productArticle, evaluatedUrl) {
+    const behavior = payload.campaign.behavior;
     const show = () => {
-      if (Date.now() < notBefore) { if (!waiting) { waiting = true; pendingTimer = setTimeout(show, notBefore - Date.now()); } return; }
-      cancel();
-      if (location.href === evaluatedUrl) ready(payload, productArticle);
+      clearPendingRender();
+      if (location.href === evaluatedUrl) render(payload, productArticle);
     };
     if (behavior.trigger === 'exit_intent') {
       const mobile = isMobileInteractionSurface();
@@ -2829,7 +2637,6 @@ export function popupEmbedScript(origin) {
   }
 
   async function evaluate() {
-    const run = ++evaluationId;
     const evaluatedUrl = location.href;
     currentUrl = evaluatedUrl;
     clearPendingRender();
@@ -2842,30 +2649,14 @@ export function popupEmbedScript(origin) {
     url.searchParams.set('pageUrl', location.href);
     if (productArticle) url.searchParams.set('article', productArticle);
     url.searchParams.set('stockState', productStockState);
-    url.searchParams.set('allCandidates', 'true');
     try {
       const response = await fetch(url, { headers: { accept: 'application/json' } });
       if (!response.ok) return;
       const envelope = await response.json();
-      if (!envelope.data || location.href !== evaluatedUrl || run !== evaluationId) return;
+      if (!envelope.data || location.href !== evaluatedUrl) return;
       timerRuntime.sync(envelope.data.serverNow);
-      const candidates = envelope.data.candidates || [envelope.data];
-      const ready = new Set(); let selectionTimer = null;
-      pendingCancels.add(() => { if (selectionTimer) clearTimeout(selectionTimer); });
-      const selectReady = payload => {
-        ready.add(payload);
-        if (selectionTimer) return;
-        selectionTimer = setTimeout(() => {
-          selectionTimer = null;
-          if (location.href !== evaluatedUrl || run !== evaluationId || currentHost) return;
-          for (const candidate of candidates) {
-            if (!ready.has(candidate) || isSuppressed(candidate) || !deviceAllowed(candidate.campaign.behavior)) continue;
-            ready.delete(candidate); render(candidate, productArticle);
-            if (currentHost) { clearPendingRender(); break; }
-          }
-        }, 0);
-      };
-      for (const candidate of candidates) if (deviceAllowed(candidate.campaign.behavior) && !isSuppressed(candidate)) scheduleRender(candidate, productArticle, evaluatedUrl, selectReady);
+      if (!deviceAllowed(envelope.data.campaign.behavior)) return;
+      scheduleRender(envelope.data, productArticle, evaluatedUrl);
     } catch {}
   }
 

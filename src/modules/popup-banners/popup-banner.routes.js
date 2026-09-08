@@ -1,9 +1,7 @@
-import { ruleGroupSchema } from './campaign-rules.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
-import { normalizeBlockDocument } from './popup-blocks.js';
 import { defaultTimerConfig } from './popup-timer.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
@@ -20,7 +18,6 @@ import {
   popupCampaignOptions,
   popupEmbedCode,
   previewPopupCampaign,
-  inspectPopupCampaign,
   setPopupCampaignStatus,
   updatePopupCampaign
 } from './popup-banner.service.js';
@@ -87,7 +84,6 @@ const targetPageUrlSchema = z.string().trim().max(2000).default('').refine((valu
   }
 }, 'Вкажіть повне посилання сторінки з http:// або https://.');
 const targetingBaseSchema = z.object({
-  rules: ruleGroupSchema.optional(), exclusions: ruleGroupSchema.optional(),
   mode: z.enum(['all_pages', 'all_products', 'products', 'rules', 'target_page', 'out_of_stock']),
   match: z.enum(['all', 'any']).default('all'),
   stickers: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
@@ -197,9 +193,8 @@ const timerConfigSchema = z.object({
   durationMinutes: z.number().int().min(1).max(43200)
 }).optional().default(defaultTimerConfig);
 const campaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown', 'block']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown']).default('message'),
   timerConfig: timerConfigSchema,
-  blockDocument: z.unknown().optional().transform((value) => normalizeBlockDocument(value)),
   name: z.string().trim().min(1).max(160),
   priority: z.number().int().min(0).max(1000),
   content: contentSchema,
@@ -220,10 +215,6 @@ const campaignSchema = z.object({
   message: 'Дата завершення має бути пізніше дати початку.',
   path: ['endsAt']
 }).superRefine((value, context) => {
-  if (value.campaignType === 'block') {
-    if (!value.blockDocument) context.addIssue({ code: 'custom', path: ['blockDocument'], message: 'Додайте макет блокового банера.' });
-    return;
-  }
   if (value.campaignType === 'countdown') {
     if (value.targeting.mode === 'out_of_stock') context.addIssue({
       code: 'custom', path: ['targeting', 'mode'], message: 'Банер із таймером не підтримує сценарій відсутнього товару.'
@@ -276,10 +267,8 @@ const campaignSchema = z.object({
   });
 });
 const previewCampaignSchema = z.object({
-  contextUrl: z.string().max(2000).optional(), contextArticle: z.string().max(300).optional(),
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown', 'block']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown']).default('message'),
   timerConfig: timerConfigSchema,
-  blockDocument: z.unknown().optional().transform((value) => normalizeBlockDocument(value)),
   name: z.string().trim().max(160).optional().default(''),
   priority: z.number().int().min(0).max(1000).optional().default(0),
   content: contentSchema,
@@ -349,11 +338,6 @@ router.get('/contacts/export', asyncHandler(async (_req, res) => {
   const workbook = await exportPopupContactsWorkbook();
   res.attachment('popup-contacts.xlsx');
   res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(workbook);
-}));
-
-router.post('/inspect', asyncHandler(async (req, res) => {
-  const input = parseInput(z.object({ campaign: previewCampaignSchema, campaignId: z.string().uuid().optional(), pageUrl: z.string().url().max(2000), article: z.string().max(300).default(''), device: z.enum(['desktop', 'mobile']), stockState: z.enum(['catalog', 'unknown', 'available', 'out_of_stock']).default('catalog'), now: z.string().datetime({ offset: true }).optional(), seen: z.boolean().default(false) }), req.body);
-  res.json({ data: await inspectPopupCampaign(input) });
 }));
 
 router.post('/preview', asyncHandler(async (req, res) => {

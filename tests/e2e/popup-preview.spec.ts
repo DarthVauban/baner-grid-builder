@@ -32,7 +32,7 @@ async function setupPreview(page: Page) {
   await page.locator('input[name="password"]').fill('E2E-admin-password-2026');
   await page.getByRole('button', { name: 'Увійти' }).click();
   await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
-  await page.goto('/tools/popup-banners/legacy');
+  await page.goto('/tools/popup-banners');
   await page.getByRole('button', { name: /Товарний промобанер/u }).click();
   await expect(page.frameLocator('iframe[title="Живий перегляд банера"]').locator('.card')).toBeVisible();
 }
@@ -44,6 +44,17 @@ async function expectUncovered(control: Locator) {
     return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
   })).toBe(true);
 }
+
+test('retired builder links lead to the original popup editor', async ({ page }) => {
+  await setupPreview(page);
+  for (const path of ['builder', 'builder/00000000-0000-4000-8000-000000000001', 'prototypes/blocks', 'prototypes/product', 'legacy']) {
+    await page.goto('/tools/popup-banners/' + path);
+    await expect(page).toHaveURL(/\/tools\/popup-banners$/u);
+    await expect(page.getByRole('heading', { name: 'Оберіть тип банера' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Альтернативи відсутнього товару/u })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Банер із таймером/u })).toBeVisible();
+  }
+});
 
 for (const surface of [
   { name: 'desktop', device: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 } } },
