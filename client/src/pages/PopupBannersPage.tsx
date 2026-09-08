@@ -1201,6 +1201,7 @@ export function PopupBannersPage() {
         <p>Створюйте охайні повідомлення та показуйте їх потрібним покупцям у потрібний момент.</p>
       </div>
       <div className="popup-banners-header__actions">
+        <Link className="button button--secondary" to="/tools/popup-banners/prototypes/product"><Icon name="edit" size={17} /> Новий конструктор · прототипи</Link>
         <Link className="button button--secondary" to="/tools/promo-codes"><Icon name="copy" size={17} /> Промокоди</Link>
         <button className="button button--secondary" type="button" onClick={() => void copyEmbed()} disabled={!embed.data?.code}><Icon name="copy" size={17} /> Код для сайту</button>
         <button className="button button--primary" type="button" onClick={createNew}><Icon name="add" size={18} /> Нова кампанія</button>
