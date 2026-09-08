@@ -132,6 +132,10 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       mutedColor: '#667085',
       primaryButtonBackgroundColor: '#6d5dfc',
       primaryButtonTextColor: '#ffffff',
+      promoCopyButtonBackgroundColor: '#6d5dfc',
+      promoCopyButtonTextColor: '#ffffff',
+      promoCodeBackgroundColor: '#6d5dfc',
+      promoCodeBackgroundOpacity: 7,
       secondaryButtonBackgroundColor: '#ffffff',
       secondaryButtonTextColor: '#172033',
       checkboxAccentColor: '#6d5dfc',
@@ -561,6 +565,18 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
       <input type="color" value={value} onChange={(event) => onChange(event.target.value)} aria-label={`${label}: вибрати колір`} />
       <input type="text" value={value} readOnly aria-label={`${label}: HEX`} />
     </div>
+  </label>;
+}
+
+function OpacityField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  const update = (nextValue: string) => onChange(Math.min(100, Math.max(0, Number(nextValue) || 0)));
+  return <label className="popup-opacity-field">
+    <span>{label}</span>
+    <div>
+      <input type="range" min={0} max={100} step={1} value={value} onChange={(event) => update(event.target.value)} aria-label={`${label}: повзунок`} />
+      <input type="number" min={0} max={100} step={1} value={value} onChange={(event) => update(event.target.value)} aria-label={`${label}: значення`} />
+    </div>
+    <small>0% — повністю прозорий, 100% — суцільний колір.</small>
   </label>;
 }
 
@@ -1327,6 +1343,16 @@ export function PopupBannersPage() {
                   <button className="button button--secondary button--small" type="button" onClick={() => setPromoCodePickerOpen(true)}>Змінити</button>
                   {(!selectedPromoCode.horoshopConfirmed || selectedPromoCode.status === 'ended' || selectedPromoCode.status === 'disabled') && <p className="popup-selected-code__warning"><Icon name="deadline" size={15} />{!selectedPromoCode.horoshopConfirmed ? 'Код не підтверджено в Хорошоп. Перевірте його перед публікацією.' : selectedPromoCode.status === 'ended' ? 'Термін дії коду завершився.' : 'Запис вимкнено в бібліотеці.'}</p>}
                 </div> : <button className="popup-select-code" type="button" onClick={() => setPromoCodePickerOpen(true)}><span><Icon name="copy" size={22} /></span><div><strong>Обрати промокод</strong><small>Пошук, фільтри статусу та створення нового запису</small></div><Icon name="arrow" size={18} /></button>}
+                <div className="popup-settings-group">
+                  <strong>Вигляд отриманого промокоду</strong>
+                  <small>Підкладка та кнопка копіювання налаштовуються окремо від загального акценту банера.</small>
+                  <div className="popup-color-grid">
+                    <ColorField label="Фон блоку промокоду" value={draft.styles.promoCodeBackgroundColor} onChange={(promoCodeBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, promoCodeBackgroundColor } }))} />
+                    <ColorField label="Кнопка «Скопіювати»" value={draft.styles.promoCopyButtonBackgroundColor} onChange={(promoCopyButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, promoCopyButtonBackgroundColor } }))} />
+                    <ColorField label="Текст кнопки «Скопіювати»" value={draft.styles.promoCopyButtonTextColor} onChange={(promoCopyButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, promoCopyButtonTextColor } }))} />
+                  </div>
+                  <OpacityField label="Непрозорість фону промокоду" value={draft.styles.promoCodeBackgroundOpacity} onChange={(promoCodeBackgroundOpacity) => setDraft((current) => ({ ...current, styles: { ...current.styles, promoCodeBackgroundOpacity } }))} />
+                </div>
                 <div className="popup-snapshot-note"><Icon name="save" size={16} /><span><strong>Опублікована версія не змінюється непомітно</strong><small>Редагування чи архівація коду в бібліотеці потребує повторної публікації кампанії.</small></span></div>
               </div>}
 
@@ -1368,6 +1394,14 @@ export function PopupBannersPage() {
                   <label><span>Кнопка відправлення</span><input value={draft.formConfig.submitLabel} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, formConfig: { ...current.formConfig, submitLabel: event.target.value } }))} /></label>
                   <label><span>Заголовок після відправлення</span><input value={draft.formConfig.successTitle} maxLength={240} onChange={(event) => setDraft((current) => ({ ...current, formConfig: { ...current.formConfig, successTitle: event.target.value } }))} /></label>
                   <label className="is-full"><span>Текст після відправлення</span><textarea rows={3} value={draft.formConfig.successBody} maxLength={1000} onChange={(event) => setDraft((current) => ({ ...current, formConfig: { ...current.formConfig, successBody: event.target.value } }))} /></label>
+                </div>
+                <div className="popup-settings-group">
+                  <strong>Кнопка форми</strong>
+                  <small>Окремо задайте фон і колір тексту кнопки, яка надсилає контактні дані.</small>
+                  <div className="popup-color-grid is-pair">
+                    <ColorField label="Колір кнопки форми" value={draft.styles.primaryButtonBackgroundColor} onChange={(primaryButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonBackgroundColor } }))} />
+                    <ColorField label="Колір тексту кнопки форми" value={draft.styles.primaryButtonTextColor} onChange={(primaryButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, primaryButtonTextColor } }))} />
+                  </div>
                 </div>
               </div>}
 

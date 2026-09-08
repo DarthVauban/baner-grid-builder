@@ -39,6 +39,10 @@ export interface PopupStyles {
   mutedColor: string;
   primaryButtonBackgroundColor: string;
   primaryButtonTextColor: string;
+  promoCopyButtonBackgroundColor: string;
+  promoCopyButtonTextColor: string;
+  promoCodeBackgroundColor: string;
+  promoCodeBackgroundOpacity: number;
   secondaryButtonBackgroundColor: string;
   secondaryButtonTextColor: string;
   checkboxAccentColor: string;

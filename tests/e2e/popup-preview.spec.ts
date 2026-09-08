@@ -49,6 +49,16 @@ async function expectUncovered(control: Locator) {
   })).toBe(true);
 }
 
+async function setColor(control: Locator, value: string) {
+  await control.evaluate((element, color) => {
+    const input = element as HTMLInputElement;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    valueSetter?.call(input, color);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+}
+
 test('retired builder links lead to the original popup editor', async ({ page }) => {
   await setupPreview(page);
   for (const path of ['builder', 'builder/00000000-0000-4000-8000-000000000001', 'prototypes/blocks', 'prototypes/product', 'legacy']) {
@@ -132,9 +142,15 @@ for (const surface of [
       const formState = page.getByRole('button', { name: 'Форма', exact: true });
       const successState = page.getByRole('button', { name: 'Промокод отримано', exact: true });
 
+      await setColor(page.getByLabel('Колір кнопки форми: вибрати колір'), '#123456');
+      await setColor(page.getByLabel('Кнопка «Скопіювати»: вибрати колір'), '#e11d48');
+      await setColor(page.getByLabel('Текст кнопки «Скопіювати»: вибрати колір'), '#f8fafc');
+      await setColor(page.getByLabel('Фон блоку промокоду: вибрати колір'), '#0ea5e9');
+      await page.getByLabel('Непрозорість фону промокоду: значення').fill('35');
       await expect(formState).toHaveAttribute('aria-pressed', 'true');
       await expect(frame.locator('.lead-form')).toBeVisible();
       await expect(frame.locator('.lead-form-success')).toHaveCount(0);
+      await expect.poll(() => frame.locator('.backdrop').evaluate((element) => element.style.getPropertyValue('--primary-bg'))).toBe('#123456');
 
       await successState.click();
       await expect(successState).toHaveAttribute('aria-pressed', 'true');
@@ -142,6 +158,14 @@ for (const surface of [
       await expect(frame.locator('.lead-form-success')).toBeVisible();
       await expect(frame.locator('.promo-code')).toHaveText('CONTACT15');
       await expect(frame.locator('.promo-code-note')).toHaveText('Для першого замовлення');
+      await expect.poll(() => frame.locator('.backdrop').evaluate((element) => ({
+        copyBackground: element.style.getPropertyValue('--promo-copy-bg'),
+        copyText: element.style.getPropertyValue('--promo-copy-text'),
+        codeBackground: element.style.getPropertyValue('--promo-code-bg'),
+        codeBackgroundOpacity: element.style.getPropertyValue('--promo-code-bg-opacity')
+      }))).toEqual({
+        copyBackground: '#e11d48', copyText: '#f8fafc', codeBackground: '#0ea5e9', codeBackgroundOpacity: '35%'
+      });
 
       await formState.click();
       await expect(formState).toHaveAttribute('aria-pressed', 'true');

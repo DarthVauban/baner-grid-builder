@@ -63,6 +63,10 @@ function input(overrides = {}) {
       mutedColor: '#667085',
       primaryButtonBackgroundColor: '#ffe101',
       primaryButtonTextColor: '#101828',
+      promoCopyButtonBackgroundColor: '#e11d48',
+      promoCopyButtonTextColor: '#f8fafc',
+      promoCodeBackgroundColor: '#0ea5e9',
+      promoCodeBackgroundOpacity: 23,
       secondaryButtonBackgroundColor: '#ffffff',
       secondaryButtonTextColor: '#172033',
       checkboxAccentColor: '#f04438',
@@ -319,6 +323,10 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(created.body.data.productTargets[0].modificationId, modificationId);
   assert.equal(created.body.data.productTargets[0].sku, 'USED-IPHONE-128');
   assert.equal(created.body.data.styles.primaryButtonBackgroundColor, '#ffe101');
+  assert.equal(created.body.data.styles.promoCopyButtonBackgroundColor, '#e11d48');
+  assert.equal(created.body.data.styles.promoCopyButtonTextColor, '#f8fafc');
+  assert.equal(created.body.data.styles.promoCodeBackgroundColor, '#0ea5e9');
+  assert.equal(created.body.data.styles.promoCodeBackgroundOpacity, 23);
   assert.equal(created.body.data.styles.checkboxAccentColor, '#f04438');
   assert.equal(created.body.data.styles.checkboxCheckColor, '#101828');
   assert.equal(created.body.data.styles.timelineColor, '#6d5dfc');
@@ -341,6 +349,9 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(resolved.body.data.campaign.publicId, publicId);
   assert.equal(resolved.body.data.product.article, 'USED-IPHONE-128');
   assert.equal(resolved.body.data.campaign.styles.primaryButtonBackgroundColor, '#ffe101');
+  assert.equal(resolved.body.data.campaign.styles.promoCopyButtonBackgroundColor, '#e11d48');
+  assert.equal(resolved.body.data.campaign.styles.promoCodeBackgroundColor, '#0ea5e9');
+  assert.equal(resolved.body.data.campaign.styles.promoCodeBackgroundOpacity, 23);
   assert.equal(resolved.body.data.campaign.styles.checkboxTextColor, '#344054');
   assert.equal(resolved.body.data.campaign.styles.checkboxCheckColor, '#101828');
   assert.equal(resolved.body.data.campaign.styles.bodyFontSize, 18);
@@ -370,6 +381,24 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(analytics.body.data.totals.uniqueVisitors, 1);
   assert.equal(analytics.body.data.campaigns[0].name, created.body.data.name);
   assert.equal(analytics.body.data.pages[0].pageUrl, 'https://shop.example.com/used-iphone-15/');
+});
+
+test('popup promo styles preserve legacy colors and validate background opacity', async () => {
+  const legacyInput = structuredClone(input());
+  delete legacyInput.styles.promoCopyButtonBackgroundColor;
+  delete legacyInput.styles.promoCopyButtonTextColor;
+  delete legacyInput.styles.promoCodeBackgroundColor;
+  delete legacyInput.styles.promoCodeBackgroundOpacity;
+  const preview = await admin.post('/api/popup-banners/preview').send(legacyInput).expect(200);
+  assert.equal(preview.body.data.campaign.styles.promoCopyButtonBackgroundColor, legacyInput.styles.primaryButtonBackgroundColor);
+  assert.equal(preview.body.data.campaign.styles.promoCopyButtonTextColor, legacyInput.styles.primaryButtonTextColor);
+  assert.equal(preview.body.data.campaign.styles.promoCodeBackgroundColor, legacyInput.styles.accentColor);
+  assert.equal(preview.body.data.campaign.styles.promoCodeBackgroundOpacity, 7);
+
+  await admin.post('/api/popup-banners/preview').send({
+    ...legacyInput,
+    styles: { ...legacyInput.styles, promoCodeBackgroundOpacity: 101 }
+  }).expect(422);
 });
 
 test('sticker rules and the embeddable widget work without exact product targets', async () => {
@@ -1745,6 +1774,12 @@ test('lead-form widget renders and reveals its promo code after submission on de
     dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
     await new Promise((resolve) => dom.window.setTimeout(resolve, 35));
     const shadow = dom.window.document.querySelector('#mt-popup-banner-root').shadowRoot;
+    const backdrop = shadow.querySelector('.backdrop');
+    assert.equal(backdrop.style.getPropertyValue('--primary-bg'), '#ffe101');
+    assert.equal(backdrop.style.getPropertyValue('--promo-copy-bg'), '#e11d48');
+    assert.equal(backdrop.style.getPropertyValue('--promo-copy-text'), '#f8fafc');
+    assert.equal(backdrop.style.getPropertyValue('--promo-code-bg'), '#0ea5e9');
+    assert.equal(backdrop.style.getPropertyValue('--promo-code-bg-opacity'), '23%');
     assert.equal(shadow.querySelector('.promo-code'), null);
     assert.equal(shadow.querySelector('.lead-form-block.is-row').children.length, 2);
     assert.equal(shadow.querySelector('[name="email"]').getAttribute('aria-label'), 'name@example.com');
@@ -1803,10 +1838,15 @@ test('lead-form preview renders the received-promo state without submitting on d
 
     dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
     const shadow = dom.window.document.querySelector('#mt-popup-banner-root').shadowRoot;
+    const backdrop = shadow.querySelector('.backdrop');
     assert.equal(shadow.querySelector('.lead-form'), null);
     assert.equal(shadow.querySelector('.lead-form-success h3').textContent, 'Готово');
     assert.equal(shadow.querySelector('.promo-code').textContent, surface.expectedCode);
     assert.equal(shadow.querySelector('.promo-code-note').textContent, surface.expectedNote);
+    assert.equal(backdrop.style.getPropertyValue('--promo-copy-bg'), '#e11d48');
+    assert.equal(backdrop.style.getPropertyValue('--promo-code-bg'), '#0ea5e9');
+    assert.equal(backdrop.style.getPropertyValue('--promo-code-bg-opacity'), '23%');
+    assert.match(shadow.querySelector('style').textContent, /background:color-mix\(in srgb,var\(--promo-code-bg\) var\(--promo-code-bg-opacity\),transparent\)/u);
     assert.equal(fetchCount, 0);
     dom.window.close();
   }

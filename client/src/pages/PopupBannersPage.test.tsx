@@ -38,6 +38,10 @@ const baseCampaign: PopupCampaign = {
     mutedColor: '#667085',
     primaryButtonBackgroundColor: '#ffe101',
     primaryButtonTextColor: '#172033',
+    promoCopyButtonBackgroundColor: '#6d5dfc',
+    promoCopyButtonTextColor: '#ffffff',
+    promoCodeBackgroundColor: '#6d5dfc',
+    promoCodeBackgroundOpacity: 7,
     secondaryButtonBackgroundColor: '#ffffff',
     secondaryButtonTextColor: '#172033',
     checkboxAccentColor: '#6d5dfc',
@@ -685,11 +689,23 @@ describe('PopupBannersPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Обрати промокод/u }));
     fireEvent.click((await screen.findByText('AUTUMN10')).closest('button')!);
+    fireEvent.change(screen.getByLabelText('Колір кнопки форми: вибрати колір'), { target: { value: '#123456' } });
+    fireEvent.change(screen.getByLabelText('Кнопка «Скопіювати»: вибрати колір'), { target: { value: '#e11d48' } });
+    fireEvent.change(screen.getByLabelText('Текст кнопки «Скопіювати»: вибрати колір'), { target: { value: '#f8fafc' } });
+    fireEvent.change(screen.getByLabelText('Фон блоку промокоду: вибрати колір'), { target: { value: '#0ea5e9' } });
+    fireEvent.change(screen.getByLabelText('Непрозорість фону промокоду: значення'), { target: { value: '35' } });
 
     await waitFor(() => expect(api.popupBanners.preview).toHaveBeenLastCalledWith(
       expect.objectContaining({
         campaignType: 'lead_form',
         promoCodeId: promoCode.id,
+        styles: expect.objectContaining({
+          primaryButtonBackgroundColor: '#123456',
+          promoCopyButtonBackgroundColor: '#e11d48',
+          promoCopyButtonTextColor: '#f8fafc',
+          promoCodeBackgroundColor: '#0ea5e9',
+          promoCodeBackgroundOpacity: 35
+        }),
         formConfig: expect.objectContaining({
           blocks: expect.arrayContaining([expect.objectContaining({ layout: 'column', fieldIds: expect.arrayContaining([expect.any(String), expect.any(String)]) })]),
           fields: expect.arrayContaining([
@@ -713,6 +729,13 @@ describe('PopupBannersPage', () => {
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
       campaignType: 'lead_form',
       promoCodeId: promoCode.id,
+      styles: expect.objectContaining({
+        primaryButtonBackgroundColor: '#123456',
+        promoCopyButtonBackgroundColor: '#e11d48',
+        promoCopyButtonTextColor: '#f8fafc',
+        promoCodeBackgroundColor: '#0ea5e9',
+        promoCodeBackgroundOpacity: 35
+      }),
       formConfig: expect.objectContaining({
         blocks: expect.arrayContaining([expect.objectContaining({ layout: 'column', fieldIds: expect.any(Array) })]),
         fields: expect.arrayContaining([
