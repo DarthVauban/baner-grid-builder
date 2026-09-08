@@ -58,6 +58,17 @@ for (const surface of [
     test('keeps the toolbar above the workspace and switches formats without leaving fullscreen', async ({ page }, testInfo) => {
       await setupPreview(page);
       const open = page.getByRole('button', { name: 'Відкрити прев’ю на весь екран' });
+      if (surface.name === 'desktop') {
+        const panel = page.locator('.popup-editor__preview');
+        const panelTop = await panel.evaluate((node) => node.getBoundingClientRect().top + window.scrollY);
+        await page.evaluate((top) => window.scrollTo(0, top + 200), panelTop);
+        const topbarBottom = (await page.locator('.topbar').boundingBox())!.height;
+        await expect.poll(async () => (await panel.boundingBox())!.y).toBeGreaterThan(topbarBottom);
+        const pinnedTop = (await panel.boundingBox())!.y;
+        await page.evaluate(() => window.scrollBy(0, 350));
+        await expect.poll(async () => (await panel.boundingBox())!.y).toBeCloseTo(pinnedTop, 0);
+        await expectUncovered(open);
+      }
       await open.click();
       const preview = page.locator('.popup-live-preview.is-fullscreen');
       const close = page.getByRole('button', { name: 'Закрити повноекранний перегляд' });
