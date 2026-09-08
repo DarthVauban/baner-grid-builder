@@ -7,16 +7,16 @@ function restore(key: string) {
   catch { return { document: createTemplate('promotion'), error: 'Не вдалося відновити макет. Початковий запис залишено в браузері; експортуй новий макет або внеси зміну, щоб зберегти його.' }; }
   return { document: createTemplate('promotion'), error: '' };
 }
-export function useBlockDocument(key: string) {
-  const [initial] = useState(() => restore(key));
+export function useBlockDocument(key: string, initialDocument?: BlockDocument) {
+  const [initial] = useState(() => initialDocument ? { document: validateDocument(initialDocument), error: '' } : restore(key));
   const [history, setHistory] = useState<{ past: BlockDocument[]; present: BlockDocument; future: BlockDocument[] }>({ past: [], present: initial.document, future: [] });
   const [dirty, setDirty] = useState(false);
   const [storageError, setStorageError] = useState(initial.error);
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || initialDocument) return;
     try { localStorage.setItem(key, JSON.stringify(history.present)); setStorageError(''); }
     catch { setStorageError('Не вдалося зберегти в браузері. Експортуй макет, щоб не втратити зміни.'); }
-  }, [key, history.present, dirty]);
+  }, [key, history.present, dirty, initialDocument]);
   function update(change: (document: BlockDocument) => BlockDocument) {
     const next = validateDocument(change(history.present));
     if (JSON.stringify(next) === JSON.stringify(history.present)) return;

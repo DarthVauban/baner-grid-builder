@@ -1,3 +1,4 @@
+import type { PopupPromoProduct } from '../../types/popup-banner';
 import { useEffect, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
 import { StyledSelect } from '../StyledSelect';
 import { Icon } from '../Icon';
@@ -24,6 +25,7 @@ export function blockCss(style: BlockStyle, container: boolean): CSSProperties {
 }
 export type DropPlacement = 'before' | 'inside' | 'after';
 interface RendererProps {
+  products?: PopupPromoProduct[]; campaignCode?: string;
   root: BlockNode; device: Device; selectedId: string; testing: boolean; onSelect: (id: string) => void;
   onDrop: (sourceId: string, targetId: string, placement: DropPlacement) => void;
 }
@@ -66,7 +68,7 @@ function FieldPreview({ node, testing }: { node: BlockNode; testing: boolean }) 
   </div>;
 }
 
-export function BlockRenderer({ root, device, selectedId, testing, onSelect, onDrop }: RendererProps) {
+export function BlockRenderer({ root, device, selectedId, testing, onSelect, onDrop, products, campaignCode }: RendererProps) {
   const [closed, setClosed] = useState(false);
   const [notice, setNotice] = useState('');
   const [dropTarget, setDropTarget] = useState('');
@@ -79,12 +81,15 @@ export function BlockRenderer({ root, device, selectedId, testing, onSelect, onD
     const style = effectiveStyle(node, device);
     if (style.hidden && testing) return null;
     const container = isContainer(node);
-    const product = demoProducts.find((item) => item.id === (node.type === 'product' ? node.props.productId : productId)) || demoProducts[0];
+    const productKey = node.type === 'product' ? node.props.productExternalId + ':' + node.props.modificationExternalId : productId;
+    const offer = products?.find(item => item.productExternalId + ':' + (item.modificationExternalId || '') === productKey);
+    const product = products ? { id: productKey, title: offer?.title || 'Оберіть товар у властивостях', variant: offer?.sku || '', badge: Number(offer?.oldPrice) > Number(offer?.price) ? 'Вигідна ціна' : '', price: Number(offer?.price || 0), oldPrice: Number(offer?.oldPrice || 0), tone: demoProducts[0].tone } : demoProducts.find((item) => item.id === (node.type === 'product' ? node.props.productId : productId)) || demoProducts[0];
     const css = blockCss(style, container);
     let body: ReactNode;
     const children = node.children.map((child) => render(child, product.id, inForm || node.type === 'form'));
     const binding = node.props.binding;
-    const text = binding === 'product.title' ? product.title : binding === 'product.variant' ? product.variant : binding === 'product.badge' ? product.badge : binding === 'product.price' ? `${product.price.toLocaleString('uk-UA')} ₴` : binding === 'product.oldPrice' ? `${product.oldPrice.toLocaleString('uk-UA')} ₴` : node.props.text;
+    const amount = (value: number) => value.toLocaleString('uk-UA') + (products ? ' ' + (offer?.currency === 'UAH' ? '₴' : offer?.currency || '') : ' ₴');
+    const text = binding === 'product.title' ? product.title : binding === 'product.variant' ? product.variant : binding === 'product.badge' ? product.badge : binding === 'product.price' ? products && !offer?.price ? '' : amount(product.price) : binding === 'product.oldPrice' ? products && product.oldPrice <= product.price ? '' : amount(product.oldPrice) : node.props.text;
     const onAction = () => {
       if (!testing) return;
       if (node.props.action === 'close') setClosed(true);
@@ -93,10 +98,10 @@ export function BlockRenderer({ root, device, selectedId, testing, onSelect, onD
       else if (node.props.action === 'link') setNotice(safeHref(node.props.href) ? `Тест: перехід на ${node.props.href}` : 'Задай посилання в налаштуваннях кнопки');
       else if (!inForm) setNotice('Кнопка відправлення має бути всередині форми');
     };
-    if (node.type === 'text') body = <span className="pb-text" style={{ textDecoration: binding === 'product.oldPrice' ? 'line-through' : undefined }}>{text || (!testing ? 'Введи текст…' : '')}</span>;
-    else if (node.type === 'image') body = <div className="pb-image" style={{ height: style.heightMode === 'auto' ? 180 : '100%' }}>{binding === 'product.image' ? <PhoneArtwork tone={product.tone} /> : /^https?:\/\//i.test(node.props.src) ? <img src={node.props.src} alt={node.props.alt} draggable={false} style={{ objectFit: node.props.imageFit, objectPosition: node.props.imagePosition }} /> : <div className="pb-image-empty"><Icon name="productCard" size={28} /><span>{node.props.alt || 'Додай зображення'}</span></div>}</div>;
+    if (node.type === 'text') body = <span className="pb-text" style={{ textDecoration: binding === 'product.oldPrice' ? 'line-through' : undefined }}>{text || (!testing && binding === 'none' ? 'Введи текст…' : '')}</span>;
+    else if (node.type === 'image') body = <div className="pb-image" style={{ height: style.heightMode === 'auto' ? 180 : '100%' }}>{binding === 'product.image' ? products ? offer?.imageUrl ? <img src={offer.imageUrl} alt={node.props.alt || offer.title} draggable={false} style={{ objectFit: node.props.imageFit, objectPosition: node.props.imagePosition }} /> : <div className="pb-image-empty">Фото обраного товару</div> : <PhoneArtwork tone={product.tone} /> : /^https?:\/\//i.test(node.props.src) ? <img src={node.props.src} alt={node.props.alt} draggable={false} style={{ objectFit: node.props.imageFit, objectPosition: node.props.imagePosition }} /> : <div className="pb-image-empty"><Icon name="productCard" size={28} /><span>{node.props.alt || 'Додай зображення'}</span></div>}</div>;
     else if (node.type === 'button') body = <button type={testing && node.props.action === 'submit' && inForm ? 'submit' : 'button'} className="pb-action" tabIndex={testing ? 0 : -1} onClick={onAction}>{node.props.text || 'Кнопка'}</button>;
-    else if (node.type === 'coupon') body = <div className="pb-coupon"><strong>{node.props.code}</strong><button type="button" tabIndex={testing ? 0 : -1} onClick={() => testing && void copy(node.props.code)}><Icon name="copy" size={16} />{node.props.copyLabel}</button></div>;
+    else if (node.type === 'coupon') body = <div className="pb-coupon"><strong>{node.props.couponSource === 'campaign' ? campaignCode || 'Оберіть промокод кампанії' : node.props.code}</strong><button type="button" tabIndex={testing ? 0 : -1} onClick={() => testing && void copy(node.props.code)}><Icon name="copy" size={16} />{node.props.copyLabel}</button></div>;
     else if (node.type === 'countdown') body = <Countdown key={`${node.id}:${node.props.timerMode}:${node.props.durationMinutes}:${node.props.deadlineAt}`} node={node} testing={testing} onExpire={expire} />;
     else if (node.type === 'field') body = <FieldPreview node={node} testing={testing} />;
     else if (node.type === 'form') body = <FormPreview node={node} testing={testing} style={{ display: 'flex', flexDirection: style.direction, flexWrap: style.wrap ? 'wrap' : 'nowrap', columnGap: style.gap, rowGap: style.rowGap, justifyContent: style.justify, alignItems: style.align, width: '100%' }}>{children}</FormPreview>;

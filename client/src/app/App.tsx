@@ -102,6 +102,8 @@ const OnlineSupportPage = lazy(() => import('../pages/OnlineSupportPage').then((
 const PopupBannersPage = lazy(() => import('../pages/PopupBannersPage').then((module) => ({
   default: module.PopupBannersPage
 })));
+const PopupCampaignBuilderPage = lazy(() => import('../pages/PopupCampaignBuilderPage').then(module => ({ default: module.PopupCampaignBuilderPage })));
+const PopupCampaignsPage = lazy(() => import('../pages/PopupCampaignsPage').then(module => ({ default: module.PopupCampaignsPage })));
 const PopupBlockBuilderPage = lazy(() => import('../pages/PopupBlockBuilderPage').then((module) => ({ default: module.PopupBlockBuilderPage })));
 const PopupBuilderPrototypePage = lazy(() => import('../pages/PopupBuilderPrototypePage').then((module) => ({
   default: module.PopupBuilderPrototypePage
@@ -173,7 +175,8 @@ export function App() {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<ToolAccessRoute tool="popup_banners" />}>
-          <Route path="tools/popup-banners/builder" element={<Suspense fallback={<LoadingScreen />}><PopupBlockBuilderPage /></Suspense>} />
+          <Route path="tools/popup-banners/builder/:id?" element={<Suspense fallback={<LoadingScreen />}><PopupCampaignBuilderPage /></Suspense>} />
+          <Route path="tools/popup-banners/prototypes/blocks" element={<Suspense fallback={<LoadingScreen />}><PopupBlockBuilderPage /></Suspense>} />
           <Route path="tools/popup-banners/prototypes/:kind?" element={<Suspense fallback={<LoadingScreen />}><PopupBuilderPrototypePage /></Suspense>} />
         </Route>
         <Route element={<ToolAccessRoute tool="used_smartphones_catalog" />}>
@@ -250,7 +253,8 @@ export function App() {
             <Route path="tools/online-support" element={<Suspense fallback={<LoadingScreen />}><OnlineSupportPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="popup_banners" />}>
-            <Route path="tools/popup-banners" element={<Suspense fallback={<LoadingScreen />}><PopupBannersPage /></Suspense>} />
+            <Route path="tools/popup-banners" element={<Suspense fallback={<LoadingScreen />}><PopupCampaignsPage /></Suspense>} />
+            <Route path="tools/popup-banners/legacy" element={<Suspense fallback={<LoadingScreen />}><PopupBannersPage /></Suspense>} />
             <Route path="tools/promo-codes" element={<Suspense fallback={<LoadingScreen />}><PromoCodesPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="horoshop_catalog_menu" />}>

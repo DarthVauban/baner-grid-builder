@@ -33,6 +33,9 @@ const eventSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional().default({})
 });
 const contactSchema = z.object({
+  formId: z.string().max(80).optional().default(''),
+  revision: z.string().max(80).optional().default(''),
+  device: z.enum(['desktop', 'mobile']).optional().default('desktop'),
   values: z.record(z.string(), z.union([z.string().max(2000), z.boolean()])),
   pageUrl: z.string().trim().min(1).max(4000),
   article: z.string().trim().max(300).optional().default(''),

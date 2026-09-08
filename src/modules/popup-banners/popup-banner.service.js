@@ -1,8 +1,11 @@
+import { isDeepStrictEqual } from 'node:util';
+import { createPopupBlockRuntime } from './popup-block-runtime.js';
 import { createHash, randomUUID } from 'node:crypto';
 import * as XLSX from 'xlsx';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { loadPromoCodeRow, promoCodeSnapshot } from '../promo-codes/promo-code.service.js';
+import { normalizeBlockDocument, blockProductReferences, blockNeedsPromoCode, blockHasRewardForm, blockFormConfig, allBlockFields, blockDeadlineExpired, validateBlockPublication } from './popup-blocks.js';
 import { createPopupTimerRuntime, isTimerExpired, normalizeTimerConfig } from './popup-timer.js';
 
 export const popupBannerToolId = 'popup_banners';
@@ -101,6 +104,7 @@ const eventStatsKey = {
 };
 
 function normalizeCampaignType(value, targeting = {}) {
+  if (value === 'block') return 'block';
   if (value === 'exit_offer') return 'message';
   if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(value)) {
     return 'out_of_stock_recommendations';
@@ -238,8 +242,36 @@ function normalizeBehavior(value) {
   };
 }
 
+function blockTargetIds(targets) { return targets.map(target => [target.product_id, target.modification_id || null]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))); }
+function blockDraftSnapshot(row) {
+  const promoCode = { ...object(row.promo_code_draft_snapshot) }; delete promoCode.capturedAt;
+  return {
+    promo_code_draft_snapshot: promoCode,
+    campaign_type: 'block', block_document: normalizeBlockDocument(row.block_document),
+    connection_id: row.connection_id, connection_generation: row.connection_generation,
+    name: row.name, priority: Number(row.priority), content: normalizeContent(row.content), styles: normalizeStyles(row.styles),
+    targeting: normalizeTargeting(row.targeting), behavior: normalizeBehavior(row.behavior),
+    starts_at: row.starts_at ? new Date(row.starts_at).toISOString() : null,
+    ends_at: row.ends_at ? new Date(row.ends_at).toISOString() : null,
+    promo_code_id: row.promo_code_id || null
+  };
+}
+function publishedBlockRow(row) {
+  if (row.campaign_type !== 'block') return row;
+  const snapshot = object(row.block_published_snapshot);
+  return snapshot.block_document ? { ...row, ...snapshot, block_published_snapshot: snapshot, updated_at: snapshot.revision } : null;
+}
+async function blockRuntimeProducts(row, db = { query }) {
+  const document = normalizeBlockDocument(row.block_document);
+  if (!document) return [];
+  const resolution = await resolvePromoItems(blockProductReferences(document), row.connection_id, row.connection_generation, db);
+  return (await loadPreviewProductsByResolvedItems(resolution.items, db)).filter((item) => item.available && item.visible && item.title && item.pageUrl);
+}
+
 function campaignSnapshot(row, targets = [], promoProducts = []) {
   return {
+    blockDocument: normalizeBlockDocument(row.block_document),
+    publishedBlockSnapshot: row.block_published_snapshot || null,
     timerConfig: normalizeTimerConfig(row.timer_config),
     campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
     name: row.name,
@@ -393,7 +425,12 @@ function serializePromoProduct(row) {
 }
 
 function serializeCampaign(row, targets = [], promoProducts = []) {
+  const blockDocument = normalizeBlockDocument(row.block_document);
+  const published = object(row.block_published_snapshot);
   return {
+    blockDocument,
+    publishedBlockDocument: published.block_document || null,
+    hasUnpublishedChanges: row.campaign_type === 'block' && (!published.block_document || !isDeepStrictEqual(blockDraftSnapshot(row), published.draft) || !isDeepStrictEqual(blockTargetIds(targets), blockTargetIds(array(published.targets)))),
     timerConfig: normalizeTimerConfig(row.timer_config),
     id: row.id,
     publicId: row.public_id,
@@ -412,7 +449,7 @@ function serializeCampaign(row, targets = [], promoProducts = []) {
     promoProducts: promoProducts.map(serializePromoProduct),
     promoCodeId: row.promo_code_id || null,
     promoCode: Object.keys(object(row.promo_code_draft_snapshot)).length ? object(row.promo_code_draft_snapshot) : null,
-    publishedPromoCode: Object.keys(object(row.promo_code_published_snapshot)).length ? object(row.promo_code_published_snapshot) : null,
+    publishedPromoCode: row.campaign_type === 'block' ? published.promo_code_published_snapshot || null : Object.keys(object(row.promo_code_published_snapshot)).length ? object(row.promo_code_published_snapshot) : null,
     formConfig: normalizeFormConfig(row.form_config),
     publishedFormConfig: Object.keys(object(row.form_published_snapshot)).length
       ? normalizeFormConfig(row.form_published_snapshot) : null,
@@ -685,6 +722,8 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     const connection = connectionResult.rows[0] || null;
     if (!connection) throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед створенням попап-кампанії.');
     const campaignType = normalizeCampaignType(input.campaignType, input.targeting);
+    const blockDocument = campaignType === 'block' ? normalizeBlockDocument(input.blockDocument) : null;
+    if (campaignType === 'block' && !blockDocument) throw new AppError(422, 'POPUP_BLOCK_DOCUMENT_REQUIRED', 'Додайте макет блокового банера.');
     const content = normalizeContent(input.content);
     const styles = normalizeStyles(input.styles);
     const targeting = normalizeTargeting(input.targeting);
@@ -698,7 +737,7 @@ async function savePopupCampaign(existingId, input, actorUserId) {
       throw new AppError(422, 'POPUP_FORM_FIELDS_EMPTY', 'Додайте хоча б одне поле до контактної форми.');
     }
     let selectedPromoCode = null;
-    if (['promo_code', 'lead_form'].includes(campaignType)) {
+    if (['promo_code', 'lead_form'].includes(campaignType) || (campaignType === 'block' && input.promoCodeId)) {
       selectedPromoCode = await loadPromoCodeRow(input.promoCodeId, connection.id, client, true);
     }
     const draftPromoCodeSnapshot = selectedPromoCode ? promoCodeSnapshot(selectedPromoCode) : null;
@@ -713,16 +752,16 @@ async function savePopupCampaign(existingId, input, actorUserId) {
               name = $5, priority = $6, content = $7::JSONB, styles = $8::JSONB,
               targeting = $9::JSONB, behavior = $10::JSONB, starts_at = $11, ends_at = $12,
               promo_code_id = $13, promo_code_draft_snapshot = $14::JSONB,
-              promo_code_published_snapshot = CASE WHEN $4::VARCHAR IN ('promo_code', 'lead_form') THEN promo_code_published_snapshot ELSE NULL END,
+              promo_code_published_snapshot = CASE WHEN $4::VARCHAR IN ('promo_code', 'lead_form', 'block') THEN promo_code_published_snapshot ELSE NULL END,
               form_config = $15::JSONB,
               form_published_snapshot = CASE WHEN $4::VARCHAR = 'lead_form' THEN form_published_snapshot ELSE NULL END,
-              timer_config = $17::JSONB, updated_by = $16, updated_at = NOW()
+              timer_config = $17::JSONB, block_document = $18::JSONB, updated_by = $16, updated_at = NOW()
          WHERE id = $1 RETURNING id`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
           draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
-          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig))]
+          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig)), blockDocument ? JSON.stringify(blockDocument) : null]
       );
       if (!updated.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
     } else {
@@ -731,13 +770,13 @@ async function savePopupCampaign(existingId, input, actorUserId) {
         `INSERT INTO popup_banner_campaigns (
            id, connection_id, connection_generation, campaign_type, name, priority, content, styles,
             targeting, behavior, starts_at, ends_at, promo_code_id, promo_code_draft_snapshot,
-            form_config, created_by, updated_by, timer_config
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16, $17::JSONB)`,
+            form_config, created_by, updated_by, timer_config, block_document
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16, $17::JSONB, $18::JSONB)`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
           draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
-          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig))]
+          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig)), blockDocument ? JSON.stringify(blockDocument) : null]
       );
     }
 
@@ -763,8 +802,8 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     }
 
     await client.query('DELETE FROM popup_banner_promo_products WHERE campaign_id = $1', [id]);
-    const promoResolution = campaignType === 'product_promo'
-      ? await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, client)
+    const promoResolution = ['product_promo', 'block'].includes(campaignType)
+      ? await resolvePromoItems(blockDocument ? blockProductReferences(blockDocument) : input.promoItems || [], connection.id, connection.generation, client)
       : { items: [], unmatched: [] };
     for (const item of promoResolution.items) {
       await client.query(
@@ -848,6 +887,17 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
         const code = await loadPromoCodeRow(current.promo_code_id, current.current_connection_id, client, true);
         current.promo_code_published_snapshot = promoCodeSnapshot(code);
       }
+      if (campaignType === 'block') {
+        const document = normalizeBlockDocument(current.block_document);
+        const products = await blockRuntimeProducts(current, client);
+        const code = document && blockNeedsPromoCode(document) && current.promo_code_id ? promoCodeSnapshot(await loadPromoCodeRow(current.promo_code_id, current.current_connection_id, client, true)) : null;
+        validateBlockPublication(document, { products, promoCode: code });
+        const draft = blockDraftSnapshot(current);
+        current.block_published_snapshot = { ...draft, draft, revision: randomUUID(),
+          promo_code_published_snapshot: code,
+          targets: (await loadTargets(id, client)).map((target) => ({ product_id: target.product_id, modification_id: target.modification_id }))
+        };
+      }
       if (campaignType === 'lead_form') {
         const formConfig = normalizeFormConfig(current.form_config);
         if (!formConfig.fields.length) {
@@ -859,7 +909,8 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
     await client.query(
       `UPDATE popup_banner_campaigns
        SET status = $2::VARCHAR,
-           published_at = CASE WHEN $2::VARCHAR = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
+           published_at = CASE WHEN $2::VARCHAR = 'active' AND campaign_type = 'block' THEN NOW() WHEN $2::VARCHAR = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
+            block_published_snapshot = $6::JSONB,
             promo_code_published_snapshot = CASE
               WHEN $2::VARCHAR = 'active' AND campaign_type IN ('promo_code', 'lead_form') THEN $4::JSONB
               ELSE promo_code_published_snapshot
@@ -872,7 +923,8 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
        WHERE id = $1`,
       [id, status, actorUserId, current.promo_code_published_snapshot
         ? JSON.stringify(current.promo_code_published_snapshot) : null,
-      current.form_published_snapshot ? JSON.stringify(current.form_published_snapshot) : null]
+      current.form_published_snapshot ? JSON.stringify(current.form_published_snapshot) : null,
+      current.block_published_snapshot ? JSON.stringify(current.block_published_snapshot) : null]
     );
     if (status === 'active') await recordVersion(client, id, actorUserId);
     await client.query('COMMIT');
@@ -1224,12 +1276,13 @@ export async function previewPopupCampaign(input) {
   const targeting = normalizeTargeting(input.targeting);
   const behavior = normalizeBehavior(input.behavior);
   const formConfig = normalizeFormConfig(input.formConfig);
+  const blockDocument = campaignType === 'block' ? normalizeBlockDocument(input.blockDocument) : null;
 
   let products = [];
-  if (campaignType === 'product_promo') {
-    const resolution = await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, db);
+  if (['product_promo', 'block'].includes(campaignType)) {
+    const resolution = await resolvePromoItems(blockDocument ? blockProductReferences(blockDocument) : input.promoItems || [], connection.id, connection.generation, db);
     products = (await loadPreviewProductsByResolvedItems(resolution.items, db)).filter((item) => (
-      item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
+      item.available && item.visible && item.title && item.pageUrl && (campaignType === 'block' || (item.imageUrl && item.buyId))
     ));
   }
 
@@ -1252,10 +1305,11 @@ export async function previewPopupCampaign(input) {
   const recommendations = targeting.mode === 'out_of_stock'
     ? await loadPreviewRecommendations(connection, targeting.recommendationLimit, db)
     : [];
-  const selectedPromoCode = ['promo_code', 'lead_form'].includes(campaignType) && input.promoCodeId
+  const selectedPromoCode = ['promo_code', 'lead_form', 'block'].includes(campaignType) && input.promoCodeId
     ? await loadPromoCodeRow(input.promoCodeId, connection.id, db)
     : null;
   const normalizedSnapshot = {
+    blockDocument,
     timerConfig: normalizeTimerConfig(input.timerConfig),
     type: campaignType,
     content,
@@ -1270,6 +1324,7 @@ export async function previewPopupCampaign(input) {
   return {
     campaign: {
       publicId: 'preview',
+      blockDocument,
       timerConfig: normalizedSnapshot.timerConfig,
       revision: `preview-${createHash('sha256').update(JSON.stringify(normalizedSnapshot)).digest('hex').slice(0, 16)}`,
       type: campaignType,
@@ -1301,17 +1356,22 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
   const campaigns = await query(
     `SELECT * FROM popup_banner_campaigns
      WHERE status = 'active' AND connection_id = $1 AND connection_generation = $2
-       AND (starts_at IS NULL OR starts_at <= NOW())
-       AND (ends_at IS NULL OR ends_at > NOW())
+       AND (campaign_type = 'block' OR starts_at IS NULL OR starts_at <= NOW())
+       AND (campaign_type = 'block' OR ends_at IS NULL OR ends_at > NOW())
      ORDER BY priority DESC, updated_at DESC`,
     [connection.id, connection.generation]
   );
-  for (const campaign of campaigns.rows) {
+  for (const campaign of campaigns.rows.map(publishedBlockRow).filter(Boolean).sort((left, right) => right.priority - left.priority)) {
+    if (campaign.connection_id !== connection.id || campaign.connection_generation !== connection.generation) continue;
+    if (campaign.starts_at && new Date(campaign.starts_at) > new Date()) continue;
+    if (campaign.ends_at && new Date(campaign.ends_at) <= new Date()) continue;
+    const blockDocument = campaign.campaign_type === 'block' ? normalizeBlockDocument(campaign.block_document) : null;
+    if (blockDocument && blockDeadlineExpired(blockDocument)) continue;
     const campaignType = normalizeCampaignType(campaign.campaign_type, campaign.targeting);
     const timerConfig = normalizeTimerConfig(campaign.timer_config);
     if (campaignType === 'countdown' && isTimerExpired(timerConfig)) continue;
     if (!isWithinBehaviorSchedule(campaign.behavior)) continue;
-    const targets = campaign.targeting?.mode === 'products'
+    const targets = blockDocument ? campaign.targets || [] : campaign.targeting?.mode === 'products'
       ? (await query('SELECT product_id, modification_id FROM popup_banner_product_targets WHERE campaign_id = $1', [campaign.id])).rows
       : [];
     if (!matchesTargeting(campaign, product, pageUrl, targets, stockState)) continue;
@@ -1321,13 +1381,13 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       ? await resolveOutOfStockRecommendations(connection, product, targeting.recommendationLimit)
       : [];
     if (targeting.mode === 'out_of_stock' && recommendations.length === 0) continue;
-    const promoProducts = campaignType === 'product_promo'
+    const promoProducts = blockDocument ? await blockRuntimeProducts(campaign) : campaignType === 'product_promo'
       ? (await loadPromoProducts(campaign.id)).map(serializePromoProduct).filter((item) => (
         item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
       ))
       : [];
     if (campaignType === 'product_promo' && promoProducts.length === 0) continue;
-    const publishedPromoCode = ['promo_code', 'lead_form'].includes(campaignType)
+    const publishedPromoCode = ['promo_code', 'lead_form', 'block'].includes(campaignType)
       ? object(campaign.promo_code_published_snapshot)
       : null;
     const publishedFormConfig = campaignType === 'lead_form'
@@ -1339,6 +1399,7 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       serverNow: new Date().toISOString(),
       campaign: {
         publicId: campaign.public_id,
+        blockDocument,
         timerConfig,
         revision: campaign.updated_at instanceof Date
           ? campaign.updated_at.toISOString()
@@ -1349,7 +1410,7 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
         styles: normalizeStyles(campaign.styles),
         behavior: normalizeBehavior(campaign.behavior),
         formConfig: publishedFormConfig,
-        promoCode: campaignType === 'promo_code' ? publishedPromoCode : null
+        promoCode: campaignType === 'promo_code' || (blockDocument && !blockHasRewardForm(blockDocument)) ? publishedPromoCode : null
       },
       product: product ? { article: product.sku, title: product.title } : null,
       recommendations,
@@ -1423,7 +1484,7 @@ function validatedContactValues(formConfig, suppliedValues) {
   return values;
 }
 
-export async function submitPopupContact({ publicId, values, pageUrl, article, visitorKey, requestOrigin }) {
+export async function submitPopupContact({ publicId, values, pageUrl, article, visitorKey, requestOrigin, formId = '', revision = '', device = 'desktop' }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1432,14 +1493,14 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
        FROM popup_banner_campaigns AS campaign
        JOIN search_horoshop_connections AS connection ON connection.id = campaign.connection_id
        WHERE campaign.public_id = $1 AND campaign.status = 'active'
-         AND campaign.campaign_type = 'lead_form'
-         AND (campaign.starts_at IS NULL OR campaign.starts_at <= NOW())
-         AND (campaign.ends_at IS NULL OR campaign.ends_at > NOW())
+         AND campaign.campaign_type IN ('lead_form', 'block')
+         AND (campaign.campaign_type = 'block' OR campaign.starts_at IS NULL OR campaign.starts_at <= NOW())
+         AND (campaign.campaign_type = 'block' OR campaign.ends_at IS NULL OR campaign.ends_at > NOW())
        FOR UPDATE`,
       [publicId]
     );
-    const campaign = result.rows[0];
-    if (!campaign || campaign.connection_generation !== campaign.current_generation
+    const campaign = result.rows[0] ? publishedBlockRow(result.rows[0]) : null;
+    if (!campaign || (campaign.starts_at && new Date(campaign.starts_at) > new Date()) || (campaign.ends_at && new Date(campaign.ends_at) <= new Date()) || campaign.connection_generation !== campaign.current_generation
       || !isWithinBehaviorSchedule(campaign.behavior)) {
       throw new AppError(404, 'POPUP_FORM_NOT_AVAILABLE', 'Ця контактна форма більше не доступна.');
     }
@@ -1449,9 +1510,11 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
       || (parsedOrigin && !sameStoreHost(parsedOrigin.hostname, campaign.store_domain))) {
       throw new AppError(403, 'POPUP_STORE_MISMATCH', 'Форму можна надсилати лише з підключеного магазину.');
     }
-    const formConfig = normalizeFormConfig(campaign.form_published_snapshot);
+    const blockDocument = campaign.campaign_type === 'block' ? normalizeBlockDocument(campaign.block_document) : null;
+    if (blockDocument && (revision !== campaign.revision || blockDeadlineExpired(blockDocument, Date.now(), device))) throw new AppError(409, 'POPUP_FORM_STALE', 'Форму оновлено або її термін завершився. Оновіть сторінку.');
+    const formConfig = blockDocument ? blockFormConfig(blockDocument, formId, device) : normalizeFormConfig(campaign.form_published_snapshot);
     const promoCode = object(campaign.promo_code_published_snapshot);
-    if (!formConfig.fields.length || !promoCode.code) {
+    if (!formConfig?.fields.length || ((!blockDocument || formConfig.reward === 'promo_code') && !promoCode.code)) {
       throw new AppError(409, 'POPUP_FORM_NOT_PUBLISHED', 'Опублікована версія форми недоступна.');
     }
     const normalizedValues = validatedContactValues(formConfig, values);
@@ -1459,7 +1522,7 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
     const visitorKeyHash = visitorKey
       ? createHash('sha256').update(String(visitorKey).slice(0, 200)).digest('hex') : null;
     const dedupeKey = createHash('sha256')
-      .update(JSON.stringify(formConfig.fields.map((field) => [field.id, normalizedValues[field.id]])))
+      .update(JSON.stringify([...(blockDocument ? [formId, revision] : []), ...formConfig.fields.map((field) => [field.id, normalizedValues[field.id]])]))
       .digest('hex');
     const existing = await client.query(
       'SELECT id, created_at FROM popup_banner_contacts WHERE campaign_id = $1 AND dedupe_key = $2 LIMIT 1',
@@ -1467,17 +1530,18 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
     );
     const inserted = existing.rows[0] ? { rows: [] } : await client.query(
       `INSERT INTO popup_banner_contacts (
-         campaign_id, product_id, modification_id, values, visitor_key_hash, dedupe_key, page_url
-       ) VALUES ($1, $2, $3, $4::JSONB, $5, $6, $7)
+         campaign_id, product_id, modification_id, values, visitor_key_hash, dedupe_key, page_url, form_id, form_revision, field_snapshot
+       ) VALUES ($1, $2, $3, $4::JSONB, $5, $6, $7, $8, $9, $10::JSONB)
        ON CONFLICT (campaign_id, dedupe_key) DO NOTHING
        RETURNING id, created_at`,
       [campaign.id, product?.id || null, product?.modificationId || null,
-        JSON.stringify(normalizedValues), visitorKeyHash, dedupeKey, parsedPage.href.slice(0, 4000)]
+        JSON.stringify(normalizedValues), visitorKeyHash, dedupeKey, parsedPage.href.slice(0, 4000), blockDocument ? formId : null, blockDocument ? revision : null, JSON.stringify(formConfig.fields)]
     );
     await client.query('COMMIT');
     return {
       duplicate: !inserted.rows[0],
-      promoCode,
+      promoCode: !blockDocument || formConfig.reward === 'promo_code' ? promoCode : null,
+      ...(blockDocument ? { successMessage: formConfig.successMessage, formId } : {}),
       submittedAt: inserted.rows[0]?.created_at || existing.rows[0]?.created_at || null
     };
   } catch (error) {
@@ -1490,6 +1554,9 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
 
 function serializeContact(row) {
   return {
+    formId: row.form_id || null,
+    revision: row.form_revision || null,
+    fields: array(row.field_snapshot),
     id: row.id,
     values: object(row.values),
     pageUrl: row.page_url || '',
@@ -1499,13 +1566,13 @@ function serializeContact(row) {
 
 export async function listPopupContacts(campaignId, { page = 1, pageSize = 50 } = {}) {
   const campaign = await loadCampaignRow(campaignId);
-  if (normalizeCampaignType(campaign.campaign_type, campaign.targeting) !== 'lead_form') {
+  if (!['lead_form', 'block'].includes(normalizeCampaignType(campaign.campaign_type, campaign.targeting))) {
     throw new AppError(409, 'POPUP_CONTACTS_UNAVAILABLE', 'Списки контактів доступні лише для банерів із формою.');
   }
   const offset = (page - 1) * pageSize;
   const [items, total] = await Promise.all([
     query(
-      `SELECT id, values, page_url, created_at
+      `SELECT id, values, page_url, created_at, form_id, form_revision, field_snapshot
        FROM popup_banner_contacts WHERE campaign_id = $1
        ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`,
       [campaignId, pageSize, offset]
@@ -1516,7 +1583,7 @@ export async function listPopupContacts(campaignId, { page = 1, pageSize = 50 } 
     campaign: {
       id: campaign.id,
       name: campaign.name,
-      formConfig: normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config)
+      formConfig: campaign.block_document ? { fields: allBlockFields(normalizeBlockDocument(campaign.block_published_snapshot?.block_document || campaign.block_document)), blocks: [], submitLabel: '', successTitle: '', successBody: '' } : normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config)
     },
     items: items.rows.map(serializeContact),
     page,
@@ -1544,9 +1611,9 @@ function safeSheetName(value, used) {
 
 export async function exportPopupContactsWorkbook(campaignId = null) {
   const campaigns = await query(
-    `SELECT id, name, form_config, form_published_snapshot
+    `SELECT id, name, form_config, form_published_snapshot, block_document, block_published_snapshot
      FROM popup_banner_campaigns
-     WHERE campaign_type = 'lead_form' ${campaignId ? 'AND id = $1' : ''}
+     WHERE campaign_type IN ('lead_form', 'block') ${campaignId ? 'AND id = $1' : ''}
      ORDER BY updated_at DESC`,
     campaignId ? [campaignId] : []
   );
@@ -1556,12 +1623,15 @@ export async function exportPopupContactsWorkbook(campaignId = null) {
   const workbook = XLSX.utils.book_new();
   const usedNames = new Set();
   for (const campaign of campaigns.rows) {
-    const formConfig = normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config);
+    const formConfig = campaign.block_document ? { fields: allBlockFields(normalizeBlockDocument(campaign.block_published_snapshot?.block_document || campaign.block_document)) } : normalizeFormConfig(campaign.form_published_snapshot || campaign.form_config);
     const contacts = await query(
-      `SELECT values, page_url, created_at FROM popup_banner_contacts
+      `SELECT values, page_url, created_at, field_snapshot FROM popup_banner_contacts
        WHERE campaign_id = $1 ORDER BY created_at DESC, id DESC`,
       [campaign.id]
     );
+    const fieldsById = new Map(formConfig.fields.map((field) => [field.id, field]));
+    for (const contact of contacts.rows) for (const field of array(contact.field_snapshot)) if (!fieldsById.has(field.id)) fieldsById.set(field.id, field);
+    formConfig.fields = [...fieldsById.values()];
     const headers = ['Дата отримання', ...formConfig.fields.map(contactFieldName), 'Сторінка'];
     const rows = contacts.rows.map((contact) => [
       contact.created_at instanceof Date ? contact.created_at.toISOString() : String(contact.created_at || ''),
@@ -2062,6 +2132,25 @@ export function popupEmbedScript(origin) {
   function render(payload, productArticle) {
     if (currentHost || (!previewMode && isSuppressed(payload))) return;
     const { campaign } = payload;
+    if (campaign.type === 'block') {
+      const runtime = (${createPopupBlockRuntime.toString()})(window, { timer: timerRuntime, nativeBuy });
+      const mounted = runtime.mount(payload, {
+        device: isMobileInteractionSurface() ? 'mobile' : 'desktop', preview: previewMode,
+        onClose: (type) => { currentHost = null; activeCleanup = null; if (type) event(campaign.publicId, type, productArticle); },
+        onEvent: (type, metadata) => event(campaign.publicId, type, productArticle, metadata),
+        submit: async (data) => {
+          const response = await fetch(new URL('/api/public/popup-banners/' + campaign.publicId + '/contacts', apiOrigin), {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ...data, publicId: campaign.publicId, pageUrl: location.href, article: productArticle, visitorKey })
+          });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.error?.message || body.message || 'Не вдалося надіслати форму.');
+          return body.data;
+        }
+      });
+      if (mounted) { currentHost = mounted.host; activeCleanup = mounted.dispose; remember(payload); event(campaign.publicId, 'impression', productArticle); }
+      return;
+    }
     const countdown = timerRuntime.start(campaign, previewMode);
     if (countdown?.expired) return;
     const isProductPromo = campaign.type === 'product_promo';

@@ -32,7 +32,7 @@ async function setupPreview(page: Page) {
   await page.locator('input[name="password"]').fill('E2E-admin-password-2026');
   await page.getByRole('button', { name: 'Увійти' }).click();
   await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
-  await page.goto('/tools/popup-banners');
+  await page.goto('/tools/popup-banners/legacy');
   await page.getByRole('button', { name: /Товарний промобанер/u }).click();
   await expect(page.frameLocator('iframe[title="Живий перегляд банера"]').locator('.card')).toBeVisible();
 }

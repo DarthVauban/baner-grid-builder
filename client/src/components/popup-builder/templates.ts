@@ -5,7 +5,7 @@ function text(value: string, size = 16, weight = 400, color = '#252438'): BlockN
 }
 export const templateLabels = { blank: 'Чистий аркуш', promotion: 'Промопропозиція', product: 'Товарна картка', form: 'Форма за промокод', countdown: 'Акція з таймером' } as const;
 export type TemplateName = keyof typeof templateLabels;
-export function createTemplate(name: TemplateName): BlockDocument {
+export function createTemplate(name: TemplateName, live = false): BlockDocument {
   const document = blankDocument(); document.name = templateLabels[name];
   if (name === 'blank') return document;
   const eyebrow = text('MOBILE TREND · ОСОБЛИВА ПРОПОЗИЦІЯ', 11, 650, '#6554c0'); eyebrow.name = 'Надзаголовок'; eyebrow.style.letterSpacing = 1.2;
@@ -22,13 +22,13 @@ export function createTemplate(name: TemplateName): BlockDocument {
     details.children.splice(0, 0, badge); details.children.splice(2, 0, variant, oldPrice);
     document.root.children.push(product);
   } else if (name === 'form') {
-    title.props.text = 'Знайомимось? Тобі −10%'; body.props.text = 'Залиш контакти й отримай промокод на першу покупку.';
-    const form = makeBlock('form'); form.children[0].name = 'Email';
+    title.props.text = live ? 'Промокод за контакт' : 'Знайомимось? Тобі −10%'; body.props.text = 'Залиш контакти й отримай промокод на першу покупку.';
+    const form = makeBlock('form'); if (live) form.props.reward = 'promo_code'; else form.props.successMessage = 'Дякуємо! Твій промокод — HELLO10.'; form.children[0].name = 'Email';
     const row = makeBlock('container', 'row'); row.name = 'Контактні дані';
     const nameField = makeBlock('field'); nameField.name = 'Ім’я'; nameField.props.fieldType = 'text'; nameField.props.text = 'Твоє ім’я'; nameField.props.placeholder = 'Як до тебе звертатися?';
     row.children = [nameField, form.children[0]]; form.children = [row, form.children[1]];
     const footnote = text('Демонстрація: дані залишаються в цьому прев’ю.', 11, 400, '#817c91');
-    document.root.children.push(form, footnote);
+    document.root.children.push(form); if (!live) document.root.children.push(footnote);
   } else if (name === 'countdown') {
     title.props.text = 'Час для приємної покупки'; body.props.text = 'Спеціальна пропозиція діє обмежений час.';
     document.root.children.push(makeBlock('countdown'), makeBlock('coupon'));
@@ -41,5 +41,6 @@ export function createTemplate(name: TemplateName): BlockDocument {
     }
     const button = makeBlock('button'); button.props.text = 'Переглянути пропозицію'; document.root.children.push(columns, button);
   }
+  if (live) { const prepare = (node: BlockNode) => { node.props.code = ''; if (node.props.binding === 'product.variant') node.name = 'Артикул товару'; if (node.type === 'coupon') node.props.couponSource = 'campaign'; node.children.forEach(prepare); }; prepare(document.root); }
   return document;
 }

@@ -1,7 +1,8 @@
+import type { BlockDocument } from '../../../src/modules/popup-banners/block-layout.schema.js';
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
 import type { PromoCodeSnapshot } from './promo-code';
 
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown' | 'block';
 
 export interface PopupTimerConfig {
   mode: 'deadline' | 'duration';
@@ -150,6 +151,9 @@ export interface PopupPromoProduct extends PopupPromoProductReference {
 }
 
 export interface PopupCampaign {
+  blockDocument?: BlockDocument | null;
+  publishedBlockDocument?: BlockDocument | null;
+  hasUnpublishedChanges?: boolean;
   id: string;
   publicId: string;
   campaignType: PopupCampaignType;
@@ -190,6 +194,7 @@ export interface PopupCampaign {
 }
 
 export interface PopupCampaignInput {
+  blockDocument?: BlockDocument | null;
   campaignType: PopupCampaignType;
   name: string;
   priority: number;
@@ -222,6 +227,7 @@ export interface PopupRuntimeProduct {
 export interface PopupPreviewPayload {
   serverNow?: string;
   campaign: {
+    blockDocument?: BlockDocument | null;
     publicId: string;
     revision: string;
     type: PopupCampaignType;
@@ -239,6 +245,9 @@ export interface PopupPreviewPayload {
 }
 
 export interface PopupLeadContact {
+  formId?: string | null;
+  revision?: string | null;
+  fields?: PopupLeadField[];
   id: string;
   values: Record<string, string | boolean>;
   pageUrl: string;

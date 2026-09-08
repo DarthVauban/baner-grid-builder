@@ -6,7 +6,7 @@ async function openBuilder(page: Page) {
   await page.locator('input[name="password"]').fill('E2E-admin-password-2026');
   await page.getByRole('button', { name: 'Увійти' }).click();
   await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
-  await page.goto('/tools/popup-banners/builder');
+  await page.goto('/tools/popup-banners/prototypes/blocks');
   await expect(page.getByRole('main')).toHaveClass(/pb-studio/);
 }
 async function template(page: Page, name: string) {

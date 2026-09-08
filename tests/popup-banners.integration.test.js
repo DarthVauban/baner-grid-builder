@@ -1,3 +1,4 @@
+import { blockNode, blockDocument } from './fixtures/popup-block-document.js';
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -198,6 +199,75 @@ before(async () => {
 
 after(async () => {
   await pool.end();
+});
+
+
+test('block campaigns publish an immutable layout, targeting and schedule while allowing further drafts', async () => {
+  const document = blockDocument([blockNode('heading', 'text', { text: 'Published heading' }), blockNode('offer', 'product', { productExternalId: 'iphone-15-new', modificationExternalId: 'iphone-15-new:black' }, [blockNode('title', 'text', { binding: 'product.title' }), blockNode('buy', 'button', { action: 'cart', text: 'Купити' })])]);
+  const value = input({ campaignType: 'block', blockDocument: document, targeting: { ...input().targeting, mode: 'all_pages' }, productEntries: [], behavior: { ...input().behavior, requireAcknowledgement: false } });
+  const created = (await admin.post('/api/popup-banners').send(value).expect(201)).body.data;
+  const resolve = async () => (await request(app).get('/api/public/popup-banners/resolve').query({ pageUrl: 'https://shop.example.com/' }).expect(200)).body.data;
+  assert.equal(await resolve(), null);
+  const published = (await admin.patch('/api/popup-banners/' + created.id + '/status').send({ status: 'active' }).expect(200)).body.data;
+  assert.equal(published.hasUnpublishedChanges, false);
+  const runtime = await resolve();
+  assert.equal(runtime.campaign.blockDocument.root.children[0].props.text, 'Published heading');
+  assert.equal(runtime.products[0].buyId, '9002');
+  assert.deepEqual(runtime.campaign.blockDocument.root.mobile, { width: 350, paddingLeft: 16, paddingRight: 16 });
+  const changed = structuredClone(value); changed.blockDocument.root.children[0].props.text = 'Draft heading'; changed.startsAt = '2099-01-01T00:00:00Z'; changed.targeting = { ...changed.targeting, mode: 'products' }; changed.productEntries = ['USED-IPHONE-128'];
+  const updated = (await admin.put('/api/popup-banners/' + created.id).send(changed).expect(200)).body.data;
+  assert.equal(updated.hasUnpublishedChanges, true);
+  assert.equal((await resolve()).campaign.revision, runtime.campaign.revision);
+  assert.equal((await resolve()).campaign.blockDocument.root.children[0].props.text, 'Published heading');
+  changed.startsAt = null;
+  await admin.put('/api/popup-banners/' + created.id).send(changed).expect(200);
+  await admin.patch('/api/popup-banners/' + created.id + '/status').send({ status: 'active' }).expect(200);
+  assert.equal(await resolve(), null);
+  const targeted = (await request(app).get('/api/public/popup-banners/resolve').query({ pageUrl: 'https://shop.example.com/used-iphone-15/', article: 'USED-IPHONE-128' }).expect(200)).body.data;
+  assert.equal(targeted.campaign.blockDocument.root.children[0].props.text, 'Draft heading');
+  await admin.delete('/api/popup-banners/' + created.id).expect(204);
+});
+
+test('block forms validate the published fields, hide rewards until submission and preserve historical contacts', async () => {
+  const code = (await admin.post('/api/promo-codes').send({ internalName: 'Block reward', code: 'BLOCKREWARD17', type: 'percent_coupon', discountValue: 17, currency: '', startsAt: null, endsAt: null, usageLimit: null, scopeNote: '', enabled: true, horoshopConfirmed: true }).expect(201)).body.data;
+  const form = blockNode('lead', 'form', { reward: 'promo_code', successMessage: 'Дякуємо за контакт' }, [blockNode('email', 'field', { fieldType: 'email', text: 'Email', required: true }), blockNode('submit', 'button', { action: 'submit', text: 'Надіслати' })]);
+  const value = input({ campaignType: 'block', promoCodeId: code.id, blockDocument: blockDocument([form]), targeting: { ...input().targeting, mode: 'all_pages' }, productEntries: [], behavior: { ...input().behavior, requireAcknowledgement: false } });
+  const created = (await admin.post('/api/popup-banners').send(value).expect(201)).body.data;
+  await admin.patch('/api/popup-banners/' + created.id + '/status').send({ status: 'active' }).expect(200);
+  const resolved = (await request(app).get('/api/public/popup-banners/resolve').query({ pageUrl: 'https://shop.example.com/' }).expect(200)).body.data;
+  assert.equal(resolved.campaign.promoCode, null);
+  assert.ok(!JSON.stringify(resolved).includes('BLOCKREWARD17'));
+  const endpoint = '/api/public/popup-banners/' + created.publicId + '/contacts';
+  const contact = { formId: 'lead', revision: resolved.campaign.revision, device: 'mobile', pageUrl: 'https://shop.example.com/', values: { email: 'block@example.com' } };
+  await request(app).post(endpoint).set('X-Forwarded-For', '192.0.2.77').send({ ...contact, values: { email: 'invalid' } }).expect(422);
+  const sent = (await request(app).post(endpoint).set('X-Forwarded-For', '192.0.2.77').send(contact).expect(201)).body.data;
+  assert.equal(sent.promoCode.code, 'BLOCKREWARD17'); assert.equal(sent.successMessage, 'Дякуємо за контакт');
+  await request(app).post(endpoint).set('X-Forwarded-For', '192.0.2.77').send(contact).expect(200);
+  value.blockDocument.root.children[0].children.splice(1, 0, blockNode('phone', 'field', { fieldType: 'phone', text: 'Телефон', required: true }));
+  await admin.put('/api/popup-banners/' + created.id).send(value).expect(200);
+  await request(app).post(endpoint).set('X-Forwarded-For', '192.0.2.77').send(contact).expect(200);
+  await admin.patch('/api/popup-banners/' + created.id + '/status').send({ status: 'active' }).expect(200);
+  await request(app).post(endpoint).set('X-Forwarded-For', '192.0.2.77').send(contact).expect(409);
+  const next = (await request(app).get('/api/public/popup-banners/resolve').query({ pageUrl: 'https://shop.example.com/' }).expect(200)).body.data;
+  await request(app).post(endpoint).set('X-Forwarded-For', '192.0.2.77').send({ ...contact, revision: next.campaign.revision, values: { email: 'new@example.com', phone: '+380671234567' } }).expect(201);
+  const feed = (await admin.get('/api/popup-banners/' + created.id + '/contacts').expect(200)).body.data;
+  assert.equal(feed.total, 2); assert.ok(feed.items.some(item => item.fields.length === 1)); assert.ok(feed.items.some(item => item.fields.length === 2));
+  const workbook = await admin.get('/api/popup-banners/' + created.id + '/contacts/export').buffer(true).parse(binaryParser).expect(200);
+  assert.ok(workbook.body.length > 100);
+  await admin.delete('/api/popup-banners/' + created.id).expect(204);
+  assert.equal((await pool.query('SELECT * FROM popup_banner_contacts WHERE campaign_id = $1', [created.id])).rows.length, 0);
+});
+
+test('block publication rejects unsafe links, unbound products and incomplete visible forms', async () => {
+  const value = input({ campaignType: 'block', blockDocument: blockDocument([blockNode('unsafe', 'button', { action: 'link', href: 'javascript:alert(1)' })]), targeting: { ...input().targeting, mode: 'all_pages' }, productEntries: [], behavior: { ...input().behavior, requireAcknowledgement: false } });
+  const created = (await admin.post('/api/popup-banners').send(value).expect(201)).body.data;
+  for (const document of [value.blockDocument, blockDocument([blockNode('unbound', 'product')]), blockDocument([blockNode('form', 'form', {}, [blockNode('email', 'field', { fieldType: 'email' })])])]) {
+    await admin.put('/api/popup-banners/' + created.id).send({ ...value, blockDocument: document }).expect(200);
+    await admin.patch('/api/popup-banners/' + created.id + '/status').send({ status: 'active' }).expect(422);
+  }
+  const bad = structuredClone(value.blockDocument); bad.root.children.push(structuredClone(bad.root.children[0]));
+  await admin.put('/api/popup-banners/' + created.id).send({ ...value, blockDocument: bad }).expect(422);
+  await admin.delete('/api/popup-banners/' + created.id).expect(204);
 });
 
 test('authenticated preview API returns the storefront runtime payload for an unsaved campaign', async () => {

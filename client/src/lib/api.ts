@@ -271,7 +271,7 @@ export const api = {
     preview: (input: PopupCampaignInput, signal?: AbortSignal) => request<PopupPreviewPayload>('/api/popup-banners/preview', {
       method: 'POST', body: jsonBody(input), signal
     }),
-    get: (id: string) => request<PopupCampaign>(`/api/popup-banners/${encodeURIComponent(id)}`),
+    get: (id: string, signal?: AbortSignal) => request<PopupCampaign>(`/api/popup-banners/${encodeURIComponent(id)}`, { signal }),
     create: (input: PopupCampaignInput) => request<PopupCampaign>('/api/popup-banners', {
       method: 'POST', body: jsonBody(input), timeoutMs: 60_000
     }),
