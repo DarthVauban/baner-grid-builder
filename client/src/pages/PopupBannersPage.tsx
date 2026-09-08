@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
@@ -667,6 +668,9 @@ function Preview({ input }: { input: PopupCampaignInput }) {
   const [payload, setPayload] = useState<PopupPreviewPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const previewRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const fullscreenButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -692,17 +696,49 @@ function Preview({ input }: { input: PopupCampaignInput }) {
   useEffect(() => {
     if (!fullscreen) return undefined;
     const previousOverflow = document.body.style.overflow;
+    const background = Array.from(document.body.children)
+      .filter((node): node is HTMLElement => node instanceof HTMLElement && node !== previewRef.current)
+      .map((node) => ({ node, inert: node.inert }));
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setFullscreen(false); };
     document.body.style.overflow = 'hidden';
+    for (const { node } of background) node.inert = true;
     document.addEventListener('keydown', onKeyDown);
+    fullscreenButtonRef.current?.focus({ preventScroll: true });
     return () => {
       document.body.style.overflow = previousOverflow;
+      for (const { node, inert } of background) node.inert = inert;
       document.removeEventListener('keydown', onKeyDown);
+      fullscreenButtonRef.current?.focus({ preventScroll: true });
     };
   }, [fullscreen]);
 
   const documentSource = useMemo(() => payload ? previewDocument(payload, viewport) : '', [payload, viewport]);
-  return <div className={`popup-live-preview${fullscreen ? ' is-fullscreen' : ''}`}>
+  useEffect(() => {
+    if (!fullscreen) return undefined;
+    const iframe = iframeRef.current;
+    let frameDocument: Document | null = null;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setFullscreen(false); };
+    // Keyboard events inside the same-origin preview do not bubble to the workspace.
+    const bindFrame = () => {
+      frameDocument?.removeEventListener('keydown', onKeyDown);
+      frameDocument = iframe?.contentDocument || null;
+      frameDocument?.addEventListener('keydown', onKeyDown);
+    };
+    iframe?.addEventListener('load', bindFrame);
+    bindFrame();
+    return () => {
+      iframe?.removeEventListener('load', bindFrame);
+      frameDocument?.removeEventListener('keydown', onKeyDown);
+    };
+  }, [fullscreen, documentSource]);
+
+  const preview = <div
+    ref={previewRef}
+    className={`popup-live-preview${fullscreen ? ' is-fullscreen' : ''}`}
+    role={fullscreen ? 'dialog' : undefined}
+    aria-modal={fullscreen || undefined}
+    aria-label={fullscreen ? 'Повноекранний перегляд банера' : undefined}
+  >
     <header>
       <div><strong>Живий перегляд</strong><small>Реальний storefront-runtime банера</small></div>
       <div className="popup-preview-toolbar">
@@ -710,19 +746,21 @@ function Preview({ input }: { input: PopupCampaignInput }) {
           <button type="button" className={viewport === 'desktop' ? 'is-active' : ''} onClick={() => setViewport('desktop')} aria-label="Комп’ютер" aria-pressed={viewport === 'desktop'}><Icon name="monitor" size={16} /><span>Десктоп</span></button>
           <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => setViewport('mobile')} aria-label="Телефон" aria-pressed={viewport === 'mobile'}><Icon name="phone" size={16} /><span>Мобільний</span></button>
         </div>
-        <button className="popup-preview-fullscreen" type="button" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? 'Закрити повноекранний перегляд' : 'Відкрити прев’ю на весь екран'}>
+        <button ref={fullscreenButtonRef} className="popup-preview-fullscreen" type="button" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? 'Закрити повноекранний перегляд' : 'Відкрити прев’ю на весь екран'}>
           <Icon name={fullscreen ? 'fullscreenExit' : 'fullscreen'} size={18} />
           <span>{fullscreen ? 'Вийти' : 'На весь екран'}</span>
         </button>
       </div>
     </header>
     <div className={`popup-runtime-preview is-${viewport}`}>
-      {payload && <iframe key={`${payload.campaign.revision}:${viewport}`} title="Живий перегляд банера" srcDoc={documentSource} sandbox="allow-scripts allow-same-origin" />}
+      {payload && <iframe ref={iframeRef} key={`${payload.campaign.revision}:${viewport}`} title="Живий перегляд банера" srcDoc={documentSource} sandbox="allow-scripts allow-same-origin" />}
       {!payload && !error && <div className="popup-runtime-preview__state">Готуємо точне прев’ю…</div>}
       {error && <div className="popup-runtime-preview__state is-error"><Icon name="deadline" size={22} /><span>{error}</span></div>}
       {loading && payload && <span className="popup-runtime-preview__refresh">Оновлюємо…</span>}
     </div>
   </div>;
+  // Escape the sticky editor column's stacking context, including the app sidebar and topbar.
+  return fullscreen ? createPortal(preview, document.body) : preview;
 }
 
 export function PopupBannersPage() {

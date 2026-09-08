@@ -278,13 +278,38 @@ describe('PopupBannersPage', () => {
     const iframe = screen.getByTitle('Живий перегляд банера');
     expect(iframe).toHaveAttribute('srcdoc', expect.stringContaining('/api/public/popup-banners/embed.js'));
     fireEvent.click(screen.getByRole('button', { name: 'Відкрити прев’ю на весь екран' }));
-    expect(iframe.closest('.popup-live-preview')).toHaveClass('is-fullscreen');
+    const fullscreenPreview = screen.getByRole('dialog', { name: 'Повноекранний перегляд банера' });
+    expect(fullscreenPreview).toHaveClass('is-fullscreen');
+    expect(fullscreenPreview.parentElement).toBe(document.body);
     expect(screen.getByRole('button', { name: 'Закрити повноекранний перегляд' })).toHaveTextContent('Вийти');
     fireEvent.click(screen.getByRole('button', { name: 'Телефон' }));
     expect(screen.getByTitle('Живий перегляд банера').parentElement).toHaveClass('is-mobile');
     expect(screen.getByTitle('Живий перегляд банера').getAttribute('srcdoc')).toContain('data-preview-device="mobile"');
     fireEvent.click(screen.getByRole('button', { name: 'Закрити повноекранний перегляд' }));
     expect(screen.getByTitle('Живий перегляд банера').closest('.popup-live-preview')).not.toHaveClass('is-fullscreen');
+    expect(screen.getByRole('button', { name: 'Відкрити прев’ю на весь екран' })).toHaveFocus();
+  });
+
+  it('exits fullscreen with Escape inside a replacement preview frame and restores the workspace on unmount', async () => {
+    const { container, unmount } = renderPage();
+    await screen.findByTitle('Живий перегляд банера');
+    const originalOverflow = document.body.style.overflow;
+    container.inert = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Відкрити прев’ю на весь екран' }));
+    expect(container.inert).toBe(true);
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.click(screen.getByRole('button', { name: 'Телефон' }));
+    const iframe = screen.getByTitle('Живий перегляд банера') as HTMLIFrameElement;
+    fireEvent.load(iframe);
+    fireEvent.keyDown(iframe.contentDocument!, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Повноекранний перегляд банера' })).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe(originalOverflow);
+    expect(container.inert).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Відкрити прев’ю на весь екран' }));
+    unmount();
+    expect(document.body.style.overflow).toBe(originalOverflow);
+    expect(container.inert).toBe(false);
+    expect(document.querySelector('.popup-live-preview.is-fullscreen')).toBeNull();
   });
 
   it('filters the campaign library by search and status', async () => {
