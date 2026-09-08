@@ -21,11 +21,11 @@ test.describe('popup builder prototypes on desktop', () => {
     await openPrototype(page);
     const canvas = page.getByRole('region', { name: 'Полотно конструктора' });
     const inspector = page.getByRole('complementary', { name: 'Властивості елемента' });
-    await canvas.getByRole('button', { name: 'Редагувати: Заголовок і текст', exact: true }).click();
+    await canvas.getByRole('button', { name: 'Редагувати: Заголовок', exact: true }).click();
     await inspector.getByRole('textbox', { name: 'Заголовок', exact: true }).fill('Особлива добірка');
-    await expect(canvas.getByRole('heading', { name: 'Особлива добірка' })).toBeVisible();
+    await expect(canvas.locator('[data-part=title]')).toHaveText('Особлива добірка');
     await page.getByRole('button', { name: 'Скасувати зміну' }).click();
-    await expect(canvas.getByRole('heading', { name: 'Твій наступний iPhone' })).toBeVisible();
+    await expect(canvas.locator('[data-part=title]')).toHaveText('Твій наступний iPhone');
     await page.getByRole('button', { name: 'Повторити зміну' }).click();
     await page.getByRole('button', { name: 'Mobile', exact: true }).click();
     await page.getByRole('complementary', { name: 'Структура банера' }).getByRole('button', { name: /Композиція/ }).click();
@@ -35,8 +35,8 @@ test.describe('popup builder prototypes on desktop', () => {
     await page.getByRole('button', { name: 'Desktop', exact: true }).click();
     await expect(inspector.getByLabel('Ширина банера')).toHaveValue('580');
     await page.reload();
-    await expect(canvas.getByRole('heading', { name: 'Особлива добірка' })).toBeVisible();
-    await canvas.getByRole('button', { name: 'Редагувати: Картка товару', exact: true }).click();
+    await expect(canvas.locator('[data-part=title]')).toHaveText('Особлива добірка');
+    await page.getByRole('complementary', { name: 'Структура банера' }).getByRole('button', { name: /Товари/ }).click();
     await inspector.getByRole('checkbox', { name: /iPhone 15/ }).uncheck();
     await expect(page.locator('.pp-carousel > span')).toHaveText('1 / 2');
     await page.getByRole('button', { name: 'Тестувати', exact: true }).click();
@@ -49,6 +49,122 @@ test.describe('popup builder prototypes on desktop', () => {
     expect((await download).suggestedFilename()).toBe('popup-product-prototype.json');
     await page.screenshot({ path: testInfo.outputPath('product-studio.png'), animations: 'disabled' });
     expect(writes).toEqual([]);
+  });
+
+  test('selects every product text separately, keeps typography independent and restores edits', async ({ page }, testInfo) => {
+    await openPrototype(page);
+    const inspector = page.getByRole('complementary', { name: 'Властивості елемента' });
+    const canvas = page.getByRole('region', { name: 'Полотно конструктора' });
+    const edits = [
+      ['eyebrow', 'Надзаголовок', 'Лише цього тижня'],
+      ['title', 'Заголовок', 'Знайди свій телефон'],
+      ['body', 'Основний текст', 'Нова добірка для тебе'],
+      ['productBadge', 'Позначка товару', 'Спецпропозиція'],
+      ['productTitle', 'Назва товару', 'Мій iPhone Pro'],
+      ['productVariant', 'Характеристики товару', '512 ГБ · Titanium'],
+      ['oldPrice', 'Стара ціна', '55555'],
+      ['price', 'Ціна товару', '44444']
+    ];
+    for (const [id, label, value] of edits) {
+      await canvas.locator('[data-part="' + id + '"]').click();
+      await expect(inspector.getByRole('heading', { name: label, exact: true })).toBeVisible();
+      await inspector.getByLabel(label, { exact: true }).fill(value);
+      await expect(canvas.locator('[data-part="' + id + '"]')).toHaveClass(/is-selected/);
+      await expect(canvas.locator('[data-part=products]')).not.toHaveClass(/is-selected/);
+    }
+    await canvas.locator('[data-part=productTitle]').click();
+    await inspector.getByLabel('Розмір тексту', { exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(canvas.locator('[data-part=productTitle]')).toHaveCSS('font-size', '21px');
+    await expect(canvas.locator('[data-part=productVariant]')).toHaveCSS('font-size', '10px');
+    await inspector.getByRole('checkbox', { name: 'Курсив', exact: true }).check();
+    await expect(canvas.locator('[data-part=productTitle]')).toHaveCSS('font-style', 'italic');
+    await page.getByRole('button', { name: 'Mobile', exact: true }).click();
+    await expect(canvas.locator('[data-part=productTitle]')).toHaveCSS('font-size', '17px');
+    await expect(canvas.locator('[data-part=productTitle]')).toHaveCSS('font-style', 'normal');
+    await page.getByRole('button', { name: 'Desktop', exact: true }).click();
+    await canvas.locator('[data-part=productImage]').click();
+    await inspector.getByLabel('Висота фото').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(canvas.locator('[data-part=productImage]')).toHaveCSS('height', '221px');
+    await canvas.getByRole('button', { name: 'Наступний товар', exact: true }).click();
+    await expect(canvas.locator('[data-part=productTitle]')).toHaveText('iPhone 15');
+    await expect(canvas.locator('[data-part=productTitle]')).toHaveCSS('font-size', '21px');
+    await page.reload();
+    for (const [id, , value] of edits.filter(([id]) => !['oldPrice', 'price'].includes(id))) {
+      await expect(canvas.locator('[data-part="' + id + '"]')).toHaveText(value);
+    }
+    await expect(canvas.locator('[data-part=productTitle]')).toHaveCSS('font-style', 'italic');
+    await expect(canvas.locator('[data-part=price]')).toContainText('44');
+    await canvas.locator('[data-part=productTitle]').click();
+    await page.screenshot({ path: testInfo.outputPath('individual-text-editor.png'), animations: 'disabled' });
+  });
+
+  test('zooms around the pointer, pans within bounds and recenters without editing the banner', async ({ page }, testInfo) => {
+    await openPrototype(page);
+    const viewport = page.locator('.pp-stage-viewport');
+    const scene = page.locator('.pp-scene-shell');
+    const banner = page.locator('.pp-sample-banner');
+    const rect = (await viewport.boundingBox())!;
+    await expect.poll(async () => Number(await viewport.getAttribute('data-scale'))).toBeGreaterThan(0.5);
+    const before = (await scene.boundingBox())!;
+    const point = { x: before.x + before.width / 2 + 25, y: before.y + before.height / 2 };
+    const localBefore = (point.x - before.x) / before.width;
+    const scaleBefore = Number(await viewport.getAttribute('data-scale'));
+    await page.mouse.move(point.x, point.y);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -40);
+    await page.keyboard.up('Control');
+    await expect.poll(async () => Number(await viewport.getAttribute('data-scale'))).toBeGreaterThan(scaleBefore);
+    const zoomed = (await scene.boundingBox())!;
+    expect(Math.abs((point.x - zoomed.x) / zoomed.width - localBefore)).toBeLessThan(0.01);
+    await page.keyboard.down('Space');
+    await page.mouse.down();
+    await page.mouse.move(point.x + 45, point.y + 30, { steps: 6 });
+    await page.mouse.up();
+    await page.keyboard.up('Space');
+    await expect.poll(async () => (await scene.boundingBox())!.x).toBeGreaterThan(zoomed.x + 30);
+    await expect(page.getByRole('button', { name: 'Скасувати зміну' })).toBeDisabled();
+    await page.getByRole('button', { name: 'Масштаб полотна' }).click();
+    await page.getByRole('option', { name: '300%', exact: true }).click();
+    await expect(viewport).toHaveAttribute('data-scale', '3');
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.wheel(0, 100000);
+    await expect.poll(async () => {
+      const box = (await scene.boundingBox())!;
+      return box.y + box.height;
+    }).toBeGreaterThanOrEqual(rect.y + rect.height - 65);
+    await page.getByRole('button', { name: 'Вписати банер', exact: true }).click();
+    await expect.poll(async () => {
+      const box = (await banner.boundingBox())!;
+      return box.x >= rect.x && box.y >= rect.y && box.x + box.width <= rect.x + rect.width && box.y + box.height <= rect.y + rect.height;
+    }).toBe(true);
+    await page.getByRole('button', { name: 'Розгорнути прев’ю' }).click();
+    await expect(page.getByRole('button', { name: 'Збільшити масштаб' })).toBeVisible();
+    await page.getByRole('button', { name: 'Збільшити масштаб' }).click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('complementary', { name: 'Властивості елемента' })).toBeVisible();
+    await page.getByRole('button', { name: 'Вписати банер', exact: true }).click();
+    await page.screenshot({ path: testInfo.outputPath('compact-canvas.png'), animations: 'disabled' });
+  });
+
+  test('selects cover and reward texts without leaving the selected screen', async ({ page }) => {
+    await openPrototype(page, 'lead-form');
+    const canvas = page.getByRole('region', { name: 'Полотно конструктора' });
+    const inspector = page.getByRole('complementary', { name: 'Властивості елемента' });
+    await canvas.locator('[data-part=coverBody]').click();
+    await inspector.getByLabel('Текст обкладинки', { exact: true }).fill('Твоя вигода');
+    await page.getByRole('button', { name: 'Промокод отримано', exact: true }).click();
+    for (const [id, label, value] of [['successTitle', 'Заголовок успіху', 'Готово!'], ['successBody', 'Повідомлення успіху', 'Забирай свій бонус'], ['discount', 'Опис знижки', 'Для тебе'], ['code', 'Текст промокоду', 'NEW10'], ['copyLabel', 'Кнопка копіювання', 'Копіювати код']]) {
+      await canvas.locator('[data-part="' + id + '"]').click();
+      await inspector.getByLabel(label, { exact: true }).fill(value);
+      await expect(page.getByRole('button', { name: 'Промокод отримано', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    }
+    await page.reload();
+    await expect(canvas.locator('[data-part=coverBody]')).toHaveText('Твоя вигода');
+    await page.getByRole('button', { name: 'Промокод отримано', exact: true }).click();
+    await expect(canvas.locator('[data-part=successTitle]')).toHaveText('Готово!');
+    await expect(canvas.locator('[data-part=code]')).toHaveText('NEW10');
   });
 
   test('builds a contact form and simulates validation, sending and coupon success without API writes', async ({ page }, testInfo) => {
@@ -101,11 +217,25 @@ test.describe('popup builder prototypes on mobile', () => {
     test(`supports panels and fullscreen controls for ${kind}`, async ({ page }, testInfo) => {
       await openPrototype(page, kind);
       await page.getByRole('button', { name: 'Mobile', exact: true }).click();
+      const viewportNode = page.locator('.pp-stage-viewport');
+      const area = (await viewportNode.boundingBox())!;
+      const center = { x: Math.round(area.x + area.width / 2), y: Math.round(area.y + area.height / 2) };
+      const initialScale = Number(await viewportNode.getAttribute('data-scale'));
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, x: center.x - 25, y: center.y }, { id: 2, x: center.x + 25, y: center.y }] });
+      for (const distance of [35, 45, 55]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: center.x - distance, y: center.y }, { id: 2, x: center.x + distance, y: center.y }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect.poll(async () => Number(await viewportNode.getAttribute('data-scale'))).toBeGreaterThan(initialScale);
+      await expect(page.getByRole('main')).toHaveClass(/is-panel-canvas/);
+      await page.getByRole('button', { name: 'Вписати банер', exact: true }).click();
+      await page.locator('[data-part=title]').tap();
+      await expect(page.getByRole('main')).toHaveClass(/is-panel-properties/);
+      await cdp.detach();
       await page.getByRole('button', { name: 'Структура', exact: true }).click();
       await page.getByRole('complementary', { name: 'Структура банера' }).getByRole('button', { name: 'Заголовок і текст', exact: true }).click();
       await page.getByRole('textbox', { name: 'Заголовок', exact: true }).fill('Мобільна пропозиція');
       await page.getByRole('button', { name: 'Полотно', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Мобільна пропозиція' })).toBeVisible();
+      await expect(page.locator('[data-part=title]')).toHaveText('Мобільна пропозиція');
       await page.getByRole('button', { name: 'Розгорнути прев’ю' }).click();
       const close = page.getByRole('button', { name: 'Повернутися до редактора' });
       await expect(close).toBeVisible();

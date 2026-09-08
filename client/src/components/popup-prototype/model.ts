@@ -3,10 +3,35 @@ import { z } from 'zod';
 export type PrototypeKind = 'product' | 'lead-form';
 export type Device = 'desktop' | 'mobile';
 export type PreviewState = 'default' | 'errors' | 'sending' | 'success';
-export type Selection = 'banner' | 'copy' | 'products' | 'cta' | 'fields' | 'success' | 'coupon' | 'rules' | `field:${string}`;
+export const textElementLabels = {
+  eyebrow: 'Надзаголовок', title: 'Заголовок', body: 'Основний текст',
+  productBadge: 'Позначка товару', productTitle: 'Назва товару', productVariant: 'Характеристики товару',
+  oldPrice: 'Стара ціна', price: 'Ціна товару', successTitle: 'Заголовок успіху', successBody: 'Повідомлення успіху',
+  discount: 'Опис знижки', code: 'Текст промокоду', copyLabel: 'Кнопка копіювання',
+  coverEyebrow: 'Надпис обкладинки', coverOffer: 'Бонус на обкладинці', coverBody: 'Текст обкладинки',
+  coverBrand: 'Підпис обкладинки', footnote: 'Підпис під формою', couponNote: 'Підпис під промокодом'
+} as const;
+export type TextElement = keyof typeof textElementLabels;
+export type Selection = 'banner' | 'copy' | 'products' | 'productImage' | 'cta' | 'fields' | 'success' | 'coupon' | 'rules' | TextElement | `field:${string}`;
+export function isTextElement(value: string): value is TextElement { return Object.hasOwn(textElementLabels, value); }
 
 const color = z.string().regex(/^#[\da-f]{6}$/i);
-const deviceSchema = z.object({ width: z.number().min(280).max(800), titleSize: z.number().min(16).max(48), padding: z.number().min(12).max(48) });
+const textStyleSchema = z.object({
+  fontSize: z.number().min(8).max(96), fontWeight: z.number().min(300).max(800),
+  lineHeight: z.number().min(1).max(2.5), letterSpacing: z.number().min(-5).max(10),
+  color, textAlign: z.enum(['left', 'center', 'right']), fontStyle: z.enum(['normal', 'italic'])
+}).partial();
+export type TextStyle = z.infer<typeof textStyleSchema>;
+const deviceSchema = z.object({
+  width: z.number().min(280).max(800), titleSize: z.number().min(16).max(48), padding: z.number().min(12).max(48),
+  textStyles: z.record(z.string().max(100), textStyleSchema).default({}),
+  imageHeight: z.number().min(80).max(400).optional()
+});
+const productOverrideSchema = z.object({
+  title: z.string().max(200), variant: z.string().max(200), badge: z.string().max(120),
+  price: z.number().min(0).max(9999999), oldPrice: z.number().min(0).max(9999999),
+  imageUrl: z.string().max(2000)
+}).partial();
 const fieldSchema = z.object({
   id: z.string().max(100), type: z.enum(['text', 'email', 'phone', 'textarea', 'select', 'checkbox']),
   label: z.string().max(120), placeholder: z.string().max(160), required: z.boolean(),
@@ -18,10 +43,13 @@ export const draftSchema = z.object({
   button: z.string().max(80), accent: color, background: color, text: color,
   radius: z.number().min(0).max(36), buttonRadius: z.number().min(0).max(30),
   desktop: deviceSchema, mobile: deviceSchema,
+  extraText: z.record(z.string().max(100), z.string().max(1000)).default({}),
   product: z.object({
     ids: z.array(z.string()).min(1).max(4), layout: z.enum(['compact', 'card', 'wide']),
     showOldPrice: z.boolean(), showBadge: z.boolean(), action: z.enum(['product', 'cart']),
-    rotation: z.number().min(0).max(20)
+    rotation: z.number().min(0).max(20),
+    overrides: z.record(z.string().max(100), productOverrideSchema).default({}),
+    image: z.object({ fit: z.enum(['contain', 'cover']).default('contain'), radius: z.number().min(0).max(40).default(15), background: color.optional() }).prefault({})
   }),
   form: z.object({
     layout: z.enum(['simple', 'split']), fields: z.array(fieldSchema).min(1).max(8),
@@ -52,9 +80,10 @@ export function initialDraft(kind: PrototypeKind): PrototypeDraft {
     body: kind === 'product' ? 'Улюблені моделі за особливими цінами. Знайди свою.' : 'Залиш контакти й отримай промокод на першу покупку. Все просто.',
     button: kind === 'product' ? 'Переглянути товар' : 'Отримати промокод',
     accent: '#6554c0', background: '#ffffff', text: '#252438', radius: 24, buttonRadius: 12,
-    desktop: { width: kind === 'product' ? 580 : 620, titleSize: 30, padding: 28 },
-    mobile: { width: 350, titleSize: 24, padding: 20 },
-    product: { ids: ['titanium', 'blue', 'pink'], layout: 'wide', showOldPrice: true, showBadge: true, action: 'product', rotation: 0 },
+    desktop: { width: kind === 'product' ? 580 : 620, titleSize: 30, padding: 28, textStyles: {} },
+    mobile: { width: 350, titleSize: 24, padding: 20, textStyles: {} },
+    extraText: {},
+    product: { ids: ['titanium', 'blue', 'pink'], layout: 'wide', showOldPrice: true, showBadge: true, action: 'product', rotation: 0, overrides: {}, image: { fit: 'contain', radius: 15 } },
     form: {
       layout: 'split', fields: [
         { id: 'name', type: 'text', label: 'Як до тебе звертатися?', placeholder: 'Твоє ім’я', required: false, width: 'full', options: '' },

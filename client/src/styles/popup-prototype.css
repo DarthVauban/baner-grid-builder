@@ -50,7 +50,7 @@
 .pp-structure footer > div { display: flex; gap: 7px; align-items: center; color: #817295; font-size: 10px; }
 .pp-structure footer p { font-size: 10px; line-height: 1.7; color: #a19aae; margin-top: 7px; }
 .pp-canvas-workspace { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.pp-canvas-toolbar { min-height: 62px; padding: 12px 20px; background: #fcfcfd; border-bottom: 1px solid var(--pp-ui-line); display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.pp-canvas-toolbar { flex-wrap: wrap; min-height: 62px; padding: 12px 20px; background: #fcfcfd; border-bottom: 1px solid var(--pp-ui-line); display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
 .pp-mode-switch, .pp-device-switch { display: flex; padding: 3px; border: 1px solid #e6e4ec; background: #f4f3f6; border-radius: 8px; gap: 3px; }
 .pp-mode-switch button { padding: 5px 10px; border-radius: 5px; font-size: 10px; color: #8b829b; }
 .pp-mode-switch button[aria-pressed=true], .pp-device-switch button[aria-pressed=true] { background: white; color: #67509c; box-shadow: 0 1px 4px #2623350b; }
@@ -66,12 +66,14 @@
 .pp-state-toolbar button { border-radius: 5px; padding: 4px 9px; font-size: 10px; color: #9c91ab; }
 .pp-state-toolbar button[aria-pressed=true] { color: #6e539f; background: #e9e3f5; }
 .pp-state-toolbar > p { margin-left: auto; color: #aaa1b5; font-size: 10px; }
-.pp-stage-viewport { overflow: auto; min-height: 0; flex: 1; padding: 26px 20px; background-color: #f1f0f5; background-image: radial-gradient(#dcd8e6 .7px, transparent .7px); background-size: 14px 14px; }
-.pp-stage-caption { display: flex; justify-content: space-between; align-items: center; max-width: 1100px; margin: 0 auto 15px; color: #a398af; font-size: 9px; letter-spacing: 1px; }
+.pp-stage-viewport { position: relative; overflow: hidden; min-height: 0; flex: 1; padding: 0; touch-action: none; overscroll-behavior: contain; background-color: #f1f0f5; background-image: radial-gradient(#dcd8e6 .7px, transparent .7px); background-size: 14px 14px; }
+.pp-stage-viewport.is-hand, .pp-stage-viewport.is-hand * { cursor: grab !important; user-select: none; }
+.pp-stage-viewport.is-grabbing, .pp-stage-viewport.is-grabbing * { cursor: grabbing !important; user-select: none; }
+.pp-stage-caption { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; margin: 0; flex-shrink: 0; color: #847b91; font-size: 9px; letter-spacing: 1px; }
 .pp-stage-caption b { margin-left: 7px; font-size: 8px; font-weight: 500; opacity: .7; }
 .pp-stage-caption small { font-size: 10px; letter-spacing: 0; color: #a9a0b7; }
 .pp-stage-sizer { margin: 0 auto; position: relative; flex-shrink: 0; }
-.pp-scene-shell { transform-origin: top left; position: absolute; left: 0; top: 0; box-shadow: 0 5px 22px #3930450d; border: 1px solid #e3dfee; border-radius: 14px; overflow: hidden; }
+.pp-scene-shell { transform-origin: top left; position: absolute; left: 0; top: 0; will-change: transform; }
 .pp-canvas-bottom-label { font-size: 10px; margin: 18px auto 0; color: #aaa0b5; display: flex; align-items: center; justify-content: center; gap: 7px; }
 .pp-canvas-footer { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 12px 22px; background: #fcfcfd; border-top: 1px solid #e8e4ee; color: #a39aaf; font-size: 10px; flex-shrink: 0; }
 .pp-canvas-footer > span:first-child { display: flex; gap: 7px; align-items: center; }
@@ -174,9 +176,15 @@
 .pp-sample-banner p { font-size: 12px; line-height: 1.65; color: color-mix(in srgb, var(--pp-card-text), transparent 45%); margin-bottom: 18px; overflow-wrap: anywhere; }
 .pp-part { position: relative; border-radius: 3px; }
 .pp-part[role=button] { cursor: pointer; outline: 1px solid transparent; outline-offset: 5px; }
-.pp-part[role=button]:hover { outline-color: #b49bcf; }
+.pp-part[role=button]:hover:not(:has(.pp-part:hover)) { outline-color: #b49bcf; }
 .pp-part.is-selected, .pp-part[role=button]:focus-visible { outline: 2px solid #ab8dce; outline-offset: 5px; }
-.pp-part[role=button]:hover::after, .pp-part.is-selected::after { content: attr(data-label); position: absolute; left: 0; top: -23px; padding: 2px 6px; border-radius: 4px 4px 0 0; background: #a184c4; color: white; font-size: 8px; line-height: 14px; white-space: nowrap; z-index: 3; pointer-events: none; }
+.pp-part[role=button]:hover:not(:has(.pp-part:hover))::after, .pp-part.is-selected::after { content: attr(data-label); position: absolute; left: 0; top: -23px; padding: 2px 6px; border-radius: 4px 4px 0 0; background: #a184c4; color: white; font-size: 8px; font-weight: 400; letter-spacing: 0; line-height: 14px; white-space: nowrap; z-index: 3; pointer-events: none; }
+.pp-text-part { white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-editing=true] .pp-text-part { min-height: 1em; min-width: 12px; }
+.pp-product-image img { width: 100%; height: 100%; min-height: 0; }
+.pp-part.pp-product-image { overflow: visible; min-width: 0; }
+.pp-product-image-content { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; grid-template-columns: minmax(0, 1fr); border-radius: inherit; overflow: hidden; }
+.pp-product-image img { border-radius: inherit; }
 .pp-sample-product { display: grid; grid-template-columns: 43% minmax(0, 1fr); align-items: center; gap: 23px; padding: 11px 0 6px; }
 .pp-product-image { height: 220px; display: grid; place-items: center; background: color-mix(in srgb, var(--pp-accent) 5%, white); border-radius: 15px; overflow: hidden; }
 .pp-product-badge { display: inline-block; font-size: 8px; background: color-mix(in srgb, var(--pp-accent) 9%, white); color: var(--pp-accent); padding: 4px 7px; border-radius: 5px; margin-bottom: 10px; }
@@ -200,7 +208,7 @@
 .pp-sample-banner.is-card .pp-product-copy { display: grid; grid-template-columns: 1fr auto; }
 .pp-sample-banner.is-card .pp-product-copy > :is(p, h3, span) { grid-column: 1; }
 .pp-sample-banner.is-card .pp-product-copy > .pp-price { grid-column: 2; grid-row: 1 / 4; text-align: right; }
-.pp-sample-banner.is-card .pp-product-copy > .pp-part { grid-column: 1 / -1; }
+.pp-sample-banner.is-card .pp-product-copy > [data-part=cta] { grid-column: 1 / -1; }
 .pp-sample-banner.is-compact .pp-sample-product { grid-template-columns: 100px minmax(0, 1fr); gap: 16px; }
 .pp-sample-banner.is-compact .pp-product-image { height: 138px; }
 .pp-sample-banner.is-compact .pp-phone-art { transform: scale(.65); }
@@ -221,7 +229,7 @@
 .pp-lead-visual > span { font-size: 9px; line-height: 1.7; letter-spacing: 2px; opacity: .65; }
 .pp-gift-orbit { position: relative; display: grid; place-items: center; margin: auto -30px; min-height: 210px; }
 .pp-gift-orbit > i { position: absolute; width: 145px; height: 145px; border: 1px solid color-mix(in srgb, var(--pp-accent), transparent 65%); border-radius: 50%; transform: rotate(-30deg) scaleX(.6); box-shadow: 0 0 0 20px color-mix(in srgb, var(--pp-accent), transparent 96%), 0 0 0 40px color-mix(in srgb, var(--pp-accent), transparent 97%); }
-.pp-gift-orbit > b { font-size: 76px; font-weight: 500; letter-spacing: -5px; z-index: 1; transform: rotate(-8deg); text-shadow: 0 5px 15px #fff6; }
+.pp-gift-orbit > strong { font-size: 60px; font-weight: 500; letter-spacing: -5px; z-index: 1; transform: rotate(-8deg); text-shadow: 0 5px 15px #fff6; }
 .pp-gift-orbit > b span { font-size: 29px; letter-spacing: -1px; }
 .pp-lead-visual p { margin: 0 0 24px; font-size: 11px; line-height: 1.7; color: inherit; opacity: .65; }
 .pp-lead-visual p strong { font-weight: 600; }
@@ -265,6 +273,13 @@
 .pp-demo-scene.is-mobile .pp-price > strong { font-size: 21px; }
 .pp-demo-scene.is-mobile .pp-sample-banner.is-card .pp-sample-product { grid-template-columns: minmax(0, 1fr); }
 .pp-demo-scene.is-mobile .pp-sample-banner.is-card .pp-phone-art { transform: scale(.85); }
+/* Editing uses a compact artboard; the shop backdrop belongs to interaction testing. */
+.pp-demo-scene[data-editing=true] { min-height: 0; background: transparent; }
+[data-editing=true] .pp-demo-site { display: none; }
+.pp-demo-scene[data-editing=true] .pp-banner-position { min-height: 0; padding: 32px; background: none; justify-content: center; align-items: center; }
+.pp-zoom-controls { gap: 4px; }
+.pp-zoom-controls > button { min-width: 27px; min-height: 30px; border-radius: 5px; }
+.pp-zoom-controls > button[aria-pressed=true] { background: #ede8f9; color: #6554c0; }
 /* Keep dense inspector controls readable independently of the sample's colors. */
 .pp-inspector .pp-hint, .pp-control small, .pp-inspector > footer, .pp-structure footer p { color: #777181; font-size: 11px; }
 .pp-inspector h3 { font-size: 12px; color: #51485d; }
@@ -334,7 +349,9 @@
   .pp-state-toolbar > span { font-size: 9px; }
   .pp-state-toolbar > p { font-size: 8px; }
   .pp-state-toolbar button { font-size: 9px; padding: 4px 6px; }
-  .pp-stage-viewport { padding-top: 18px; }
+  .pp-stage-viewport { padding: 0; }
+  .pp-canvas-toolbar { flex-wrap: wrap; }
+  .pp-zoom-controls { margin-left: auto; }
   .pp-canvas-bottom-label { font-size: 8px; }
   .pp-canvas-footer { font-size: 9px; padding: 10px 14px; }
   .pp-inspector > header { min-height: 66px; padding: 15px 20px; }

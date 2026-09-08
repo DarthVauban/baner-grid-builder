@@ -5,8 +5,9 @@ import { useAuth } from '../auth/AuthContext';
 import { Icon, type IconName } from '../components/Icon';
 import { PrototypeCanvas } from '../components/popup-prototype/PrototypeCanvas';
 import { PrototypeInspector, selectionLabels } from '../components/popup-prototype/PrototypeInspector';
-import { initialDraft, stateLabels, type Device, type PreviewState, type PrototypeKind, type Selection } from '../components/popup-prototype/model';
+import { initialDraft, stateLabels, textElementLabels, type Device, type PreviewState, type PrototypeKind, type Selection } from '../components/popup-prototype/model';
 import { usePrototypeDraft } from '../components/popup-prototype/usePrototypeDraft';
+import { usePrototypeViewport } from '../components/popup-prototype/usePrototypeViewport';
 import '../styles/popup-prototype.css';
 
 function PrototypeStudio({ kind, storageKey }: { kind: PrototypeKind; storageKey: string }) {
@@ -17,36 +18,15 @@ function PrototypeStudio({ kind, storageKey }: { kind: PrototypeKind; storageKey
   const [testing, setTesting] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [productIndex, setProductIndex] = useState(0);
-  const [scale, setScale] = useState(1);
-  const [naturalHeight, setNaturalHeight] = useState(720);
-  const [zoom, setZoom] = useState('fit');
   const [mobilePanel, setMobilePanel] = useState<'canvas' | 'structure' | 'properties'>('canvas');
   const [resetOpen, setResetOpen] = useState(false);
   const [announcement, setAnnouncement] = useState('');
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<HTMLDivElement>(null);
   const fullscreenButton = useRef<HTMLButtonElement>(null);
   const lead = kind === 'lead-form';
-  const sceneWidth = device === 'mobile' ? 390 : Math.max(900, draft.desktop.width + 80);
+  const sceneWidth = testing ? device === 'mobile' ? 390 : Math.max(900, draft.desktop.width + 80) : draft[device].width + 64;
+  const viewport = usePrototypeViewport(sceneWidth, `${device}:${testing}`);
   const activeSelection = selection.startsWith('field:') && !draft.form.fields.some((field) => `field:${field.id}` === selection) ? 'fields' : selection;
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    const scene = sceneRef.current;
-    if (!viewport || !scene) return undefined;
-    const resize = () => {
-      if (!viewport.clientWidth || !viewport.clientHeight) return;
-      setScale(zoom === 'actual' ? 1 : Math.min(1,
-        Math.max(160, viewport.clientWidth - 40) / sceneWidth,
-        Math.max(160, viewport.clientHeight - 120) / Math.max(1, scene.offsetHeight)));
-      setNaturalHeight(scene.offsetHeight);
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(viewport);
-    observer.observe(scene);
-    resize();
-    return () => observer.disconnect();
-  }, [sceneWidth, zoom, fullscreen, mobilePanel]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -61,8 +41,8 @@ function PrototypeStudio({ kind, storageKey }: { kind: PrototypeKind; storageKey
 
   function select(value: Selection) {
     setSelection(value);
-    if (lead && (value === 'success' || value === 'coupon')) setState('success');
-    else if (lead && (value === 'fields' || value === 'copy' || value === 'cta' || value.startsWith('field:'))) setState('default');
+    if (lead && ['success', 'coupon', 'successTitle', 'successBody', 'code', 'discount', 'copyLabel', 'couponNote'].includes(value)) setState('success');
+    else if (lead && (value === 'fields' || value === 'copy' || value === 'cta' || ['eyebrow', 'title', 'body', 'footnote'].includes(value) || value.startsWith('field:'))) setState('default');
     setMobilePanel('properties');
   }
 
@@ -98,26 +78,25 @@ function PrototypeStudio({ kind, storageKey }: { kind: PrototypeKind; storageKey
           <div className="pp-tree-heading">{lead ? 'ЕКРАН 01 · ЗНАЙОМСТВО' : 'СТРУКТУРА БАНЕРА'}</div>
           {node('banner', 'popup', 'Композиція', lead ? 'Обкладинка та форма' : 'Формат і розміри')}
           {node('copy', 'edit', 'Заголовок і текст')}
-          {lead ? <>{node('fields', 'formBuilder', 'Поля форми', `${draft.form.fields.length} поля`)}{draft.form.fields.map((field) => node(`field:${field.id}`, field.type === 'phone' ? 'phone' : 'edit', field.label || 'Без назви', field.required ? 'Обов’язкове' : undefined, true))}</> : node('products', 'productCard', 'Товари', `${draft.product.ids.length} у добірці`)}
-          {node('cta', 'arrowRight', lead ? 'Кнопка отримання' : 'Кнопка товару')}
-          {lead && <><div className="pp-tree-heading">ЕКРАН 02 · ВИНАГОРОДА</div>{node('success', 'check', 'Повідомлення про успіх')}{node('coupon', 'copy', 'Промокод і копіювання')}</>}
+          {(['eyebrow', 'title', 'body'] as const).map((id) => node(id, 'edit', textElementLabels[id], undefined, true))}
+          {lead && draft.form.layout === 'split' && (['coverEyebrow', 'coverOffer', 'coverBody', 'coverBrand'] as const).map((id) => node(id, 'edit', textElementLabels[id], undefined, true))}
+          {lead ? <>{node('fields', 'formBuilder', 'Поля форми', `${draft.form.fields.length} поля`)}{draft.form.fields.map((field) => node(`field:${field.id}`, field.type === 'phone' ? 'phone' : 'edit', field.label || 'Без назви', field.required ? 'Обов’язкове' : undefined, true))}</> : <>{node('products', 'productCard', 'Товари', `${draft.product.ids.length} у добірці`)}{node('productImage', 'productCard', 'Фото товару', undefined, true)}{(['productBadge', 'productTitle', 'productVariant', 'oldPrice', 'price'] as const).map((id) => node(id, 'edit', textElementLabels[id], id === 'oldPrice' && !draft.product.showOldPrice || id === 'productBadge' && !draft.product.showBadge ? 'Приховано' : undefined, true))}</>}
+          {node('cta', 'arrowRight', lead ? 'Кнопка отримання' : 'Кнопка товару')}{lead && node('footnote', 'edit', 'Підпис під формою', undefined, true)}
+          {lead && <><div className="pp-tree-heading">ЕКРАН 02 · ВИНАГОРОДА</div>{node('success', 'check', 'Повідомлення про успіх')}{(['successTitle', 'successBody'] as const).map((id) => node(id, 'edit', textElementLabels[id], undefined, true))}{node('coupon', 'copy', 'Промокод і копіювання')}{(['discount', 'code', 'couponNote', 'copyLabel'] as const).map((id) => node(id, 'edit', textElementLabels[id], undefined, true))}</>}
           <div className="pp-tree-heading">СЦЕНАРІЙ</div>{node('rules', 'schedule', 'Умови показу')}
         </div>
         <footer><div><Icon name="visibility" size={18} /><strong>Обери елемент на полотні</strong></div><p>Його властивості відкриються праворуч. Для перевірки дій увімкни «Тестувати».</p></footer>
       </aside>
       <section className="pp-canvas-workspace" aria-label="Полотно конструктора">
-        <div className="pp-canvas-toolbar"><div className="pp-mode-switch" role="group" aria-label="Режим роботи"><button type="button" aria-pressed={!testing} onClick={() => { setTesting(false); setAnnouncement(''); }}><Icon name="edit" size={15} />Редагувати</button><button type="button" aria-pressed={testing} onClick={() => { setTesting(true); setState('default'); }}><Icon name="visibility" size={15} />Тестувати</button></div><div className="pp-device-switch" role="group" aria-label="Формат екрана"><button type="button" aria-label="Desktop" aria-pressed={device === 'desktop'} onClick={() => setDevice('desktop')}><Icon name="monitor" size={19} /></button><button type="button" aria-label="Mobile" aria-pressed={device === 'mobile'} onClick={() => setDevice('mobile')}><Icon name="phone" size={18} /></button></div><div className="pp-zoom-controls"><StyledSelect compact ariaLabel="Масштаб полотна" value={zoom} onChange={setZoom} options={[{ value: 'fit', label: `Вписати · ${Math.round(scale * 100)}%` }, { value: 'actual', label: '100%' }]} /><button ref={fullscreenButton} type="button" aria-label={fullscreen ? 'Повернутися до редактора' : 'Розгорнути прев’ю'} onClick={() => setFullscreen((value) => !value)}><Icon name={fullscreen ? 'fullscreenExit' : 'fullscreen'} size={19} />{fullscreen && <span>Вийти</span>}</button></div></div>
+        <div className="pp-canvas-toolbar"><div className="pp-mode-switch" role="group" aria-label="Режим роботи"><button type="button" aria-pressed={!testing} onClick={() => { setTesting(false); setAnnouncement(''); }}><Icon name="edit" size={15} />Редагувати</button><button type="button" aria-pressed={testing} onClick={() => { setTesting(true); setState('default'); }}><Icon name="visibility" size={15} />Тестувати</button></div><div className="pp-device-switch" role="group" aria-label="Формат екрана"><button type="button" aria-label="Desktop" aria-pressed={device === 'desktop'} onClick={() => setDevice('desktop')}><Icon name="monitor" size={19} /></button><button type="button" aria-label="Mobile" aria-pressed={device === 'mobile'} onClick={() => setDevice('mobile')}><Icon name="phone" size={18} /></button></div><div className="pp-zoom-controls"><button type="button" aria-label="Переміщення полотна" aria-pressed={viewport.handTool} title="Переміщення · також пробіл + перетягування" onClick={() => viewport.setHandTool((value) => !value)}>✥</button><button type="button" aria-label="Зменшити масштаб" disabled={viewport.scale <= 0.1} onClick={() => viewport.zoomBy(1 / 1.2)}>−</button><StyledSelect compact ariaLabel="Масштаб полотна" value={viewport.isFit ? 'fit' : String(Math.round(viewport.scale * 100))} onChange={(value) => value === 'fit' ? viewport.fit() : viewport.setZoom(Number(value) / 100)} options={[{ value: 'fit', label: viewport.isFit ? `${Math.round(viewport.scale * 100)}% · Вписати` : 'Вписати' }, ...Array.from(new Set([10, 25, 50, 75, 100, 125, 150, 200, 300, Math.round(viewport.scale * 100)])).sort((a, b) => a - b).map((percent) => ({ value: String(percent), label: `${percent}%` }))]} /><button type="button" aria-label="Збільшити масштаб" disabled={viewport.scale >= 3} onClick={() => viewport.zoomBy(1.2)}>+</button><button type="button" aria-label="Вписати банер" title="Вписати й центрувати · 0" onClick={viewport.fit}><Icon name="fullscreenExit" size={17} /></button><button ref={fullscreenButton} type="button" aria-label={fullscreen ? 'Повернутися до редактора' : 'Розгорнути прев’ю'} onClick={() => setFullscreen((value) => !value)}><Icon name={fullscreen ? 'fullscreenExit' : 'fullscreen'} size={19} />{fullscreen && <span>Вийти</span>}</button></div></div>
         <div className="pp-state-toolbar">{lead ? <><span>Стан екрана</span><div role="group" aria-label="Стан форми">{(Object.keys(stateLabels) as PreviewState[]).map((value) => <button key={value} type="button" aria-pressed={state === value} onClick={() => setState(value)}>{stateLabels[value]}</button>)}</div></> : <><span><i /> Живий перегляд</span><p>Демодобірка · {draft.product.ids.length} товари · {draft.product.rotation ? `ротація ${draft.product.rotation} с` : 'ручне перемикання'}</p></>}</div>
-        <div className="pp-stage-viewport" ref={viewportRef}>
-          <div className="pp-stage-caption"><span>{device === 'desktop' ? 'DESKTOP' : 'MOBILE'} <b>{sceneWidth} PX</b></span><small>{testing ? 'Взаємодій із банером як покупець' : 'Натисни на елемент, щоб налаштувати'}</small></div>
-          <div className="pp-stage-sizer" style={{ width: sceneWidth * scale, height: naturalHeight * scale }}>
-            <div className="pp-scene-shell" ref={sceneRef} style={{ width: sceneWidth, transform: `scale(${scale})` }}><PrototypeCanvas key={`${kind}:${testing}`} draft={draft} device={device} state={state} onState={setState} selection={activeSelection} onSelect={select} testing={testing} productIndex={productIndex} onProductIndex={setProductIndex} /></div>
-          </div>
-          <div className="pp-canvas-bottom-label"><Icon name={lead ? 'security' : 'productCard'} size={14} />{lead ? 'Тестове відправлення не створює контактів' : 'Товари й ціни наведені для прикладу'}</div>
+        <div className="pp-stage-caption"><span>{device === 'desktop' ? 'DESKTOP' : 'MOBILE'} <b>{draft[device].width} PX</b></span><small>Ctrl / ⌘ + колесо — зум · пробіл + перетягування — рух</small></div>
+        <div className={`pp-stage-viewport ${viewport.grabbing ? 'is-grabbing' : viewport.handTool || viewport.spaceHeld ? 'is-hand' : ''}`} ref={viewport.viewportRef} tabIndex={0} aria-label="Навігація полотном" data-scale={viewport.scale}>
+          <div className="pp-scene-shell" ref={viewport.sceneRef} style={viewport.sceneStyle}><PrototypeCanvas key={`${kind}:${testing}`} draft={draft} device={device} state={state} onState={setState} selection={activeSelection} onSelect={select} testing={testing} productIndex={productIndex} onProductIndex={setProductIndex} /></div>
         </div>
         <footer className="pp-canvas-footer"><span><i />{testing ? 'Тестування взаємодії' : selectionLabels[activeSelection] || 'Поле форми'}</span><span>{draft[device].width} px · {device === 'desktop' ? 'Комп’ютер' : 'Телефон'}</span></footer>
       </section>
-      <PrototypeInspector draft={draft} device={device} selection={activeSelection} onSelect={select} update={update} />
+      <PrototypeInspector draft={draft} device={device} productIndex={productIndex} selection={activeSelection} onSelect={select} update={update} />
     </div>
     {announcement && <div className="pp-announcement" role="status">{announcement}<button type="button" aria-label="Прибрати сповіщення" onClick={() => setAnnouncement('')}><Icon name="close" size={16} /></button></div>}
   </main>;
