@@ -59,6 +59,8 @@ export interface PopupStyles {
 }
 
 export interface PopupTargeting {
+  rules?: import('../../../src/modules/popup-banners/campaign-rules.js').RuleGroup;
+  exclusions?: import('../../../src/modules/popup-banners/campaign-rules.js').RuleGroup;
   mode: PopupTargetMode;
   match: 'all' | 'any';
   stickers: string[];
@@ -225,8 +227,12 @@ export interface PopupRuntimeProduct {
 }
 
 export interface PopupPreviewPayload {
+  candidates?: PopupPreviewPayload[];
+  collections?: Record<string, PopupPromoProduct[]>;
+  pageProduct?: PopupPromoProduct | null;
   serverNow?: string;
   campaign: {
+    name?: string; priority?: number;
     blockDocument?: BlockDocument | null;
     publicId: string;
     revision: string;
@@ -277,5 +283,15 @@ export interface PopupCampaignOptions {
   stickers: Array<{ id: string; title: string }>;
   brands: string[];
   conditions: string[];
-  categories: Array<{ id: string; title: string }>;
+  categories: Array<{ id: string; title: string; parentId?: string; path?: string }>;
+}
+
+export interface PopupInspectionInput { campaignId?: string; campaign: PopupCampaignInput; pageUrl: string; article: string; device: 'desktop' | 'mobile'; stockState: 'catalog' | 'unknown' | 'available' | 'out_of_stock'; now?: string; seen: boolean }
+export interface PopupInspection {
+  competitors: { name: string; priority: number; trigger: PopupTrigger; delayMs: number }[];
+  eligible: boolean; checks: { label: string; pass: boolean }[];
+  audience: { include: { traces: import('../../../src/modules/popup-banners/campaign-rules.js').RuleTrace[] }; exclude: { traces: import('../../../src/modules/popup-banners/campaign-rules.js').RuleTrace[] } };
+  product: { title: string; sku: string } | null; stockState: string; stockSource: string; categoryPath: string; unmatched: string[];
+  collections: { id: string; name: string; count: number; minimum: number; enough: boolean; rejected: { title: string; reason: string }[] }[];
+  preview: PopupPreviewPayload;
 }

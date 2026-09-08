@@ -5,7 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { emptyCampaign, previewDocument } from '../lib/popup-campaign';
 import { BlockStudio } from './PopupBlockBuilderPage';
-import { CampaignSettings } from '../components/popup-builder/CampaignSettings';
+import { CampaignWorkspace, applyScenario } from '../components/popup-builder/CampaignWorkspace';
+import '../styles/popup-campaign-workspace.css';
 import { createTemplate } from '../components/popup-builder/templates';
 import type { BlockDocument, Device } from '../components/popup-builder/block-model';
 import type { PopupCampaign, PopupCampaignInput, PopupPreviewPayload } from '../types/popup-banner';
@@ -26,7 +27,7 @@ function inputFor(settings: PopupCampaignInput, document: BlockDocument): PopupC
     productEntries: settings.productEntries.map(value => value.trim()).filter(Boolean),
     targeting: { ...settings.targeting, urlContains: settings.targeting.urlContains.map(value => value.trim()).filter(Boolean) },
     styles: { ...settings.styles, maxWidth: Math.max(320, Math.min(1400, document.root.style.width || 640)) },
-    behavior: { ...settings.behavior, dismissible: true, requireAcknowledgement: false }
+    behavior: settings.behavior
   };
 }
 function RuntimePreview({ payload, device, restart, error, onEscape }: { payload: PopupPreviewPayload | null; device: Device; restart: number; error: string; onEscape: () => void }) {
@@ -47,6 +48,7 @@ function CampaignEditor({ campaign }: { campaign?: PopupCampaign }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [contextUrl, setContextUrl] = useState('');
   const [picker, setPicker] = useState(false);
   const [code, setCode] = useState<PromoCode | PromoCodeSnapshot | null>(campaign?.promoCode || null);
   const [preview, setPreview] = useState<PopupPreviewPayload | null>(null);
@@ -64,10 +66,10 @@ function CampaignEditor({ campaign }: { campaign?: PopupCampaign }) {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setPreviewBusy(true);
-      void api.popupBanners.preview(input, controller.signal).then(value => { if (!controller.signal.aborted) { setPreview(value); setPreviewError(''); } }).catch(caught => { if (!controller.signal.aborted) setPreviewError(caught instanceof Error ? caught.message : 'Не вдалося оновити прев’ю.'); }).finally(() => { if (!controller.signal.aborted) setPreviewBusy(false); });
+      void api.popupBanners.preview({ ...input, contextUrl } as PopupCampaignInput, controller.signal).then(value => { if (!controller.signal.aborted) { setPreview(value); setPreviewError(''); } }).catch(caught => { if (!controller.signal.aborted) setPreviewError(caught instanceof Error ? caught.message : 'Не вдалося оновити прев’ю.'); }).finally(() => { if (!controller.signal.aborted) setPreviewBusy(false); });
     }, 350);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [input]);
+  }, [input, contextUrl]);
   async function save(value: BlockDocument, publish = false) {
     if (busy) return;
     setBusy(true); setError(''); setMessage('');
@@ -95,9 +97,13 @@ function CampaignEditor({ campaign }: { campaign?: PopupCampaign }) {
     <BlockStudio storageKey={'popup-campaign:' + (campaign?.id || 'new')} live={{
       onLeave: () => { if (!dirty) navigate('/tools/popup-banners'); else void confirm({ title: 'Вийти без збереження?', message: 'Незбережені зміни макета й умов показу буде втрачено.', confirmLabel: 'Вийти без збереження' }).then(leave => { if (leave) navigate('/tools/popup-banners'); }); },
       initialDocument: initial.blockDocument!, onDocumentChange, busy,
+      initialTab: campaign ? 'design' : 'data',
+      onTemplate: async name => { const ok = await confirm({ title: 'Застосувати шаблон?', message: 'Макет та правила аудиторії будуть замінені налаштуваннями сценарію. Частота, розклад і промокод збережуться.', confirmLabel: 'Застосувати шаблон' }); if (ok) setSettings(current => applyScenario(current, name)); return ok; },
+      collections: preview?.collections, pageProduct: preview?.pageProduct,
+      workspace: (tab, value, update, select) => <CampaignWorkspace campaignId={saved?.id} tab={tab} input={inputFor(settings, value)} onChange={setSettings} document={value} onDocument={update} onSelect={select} contextUrl={contextUrl} onContextUrl={setContextUrl} preview={preview} promoCode={settings.promoCodeId ? code?.code : undefined} onChooseCode={() => setPicker(true)} />,
       products: preview?.products || [], campaignCode: settings.promoCodeId ? code?.code : undefined,
       controls: value => <><span className="pp-save-state" role="status">{busy ? 'Збереження…' : dirty ? 'Незбережені зміни' : saved?.hasUnpublishedChanges ? 'Є неопубліковані зміни' : saved?.status === 'active' ? 'Опубліковано' : 'Чернетку збережено'}</span><button type="button" disabled={busy || !dirty} onClick={() => void save(value)}>Зберегти</button>{saved?.status === 'active' && <button type="button" disabled={busy} onClick={() => void pause()}>Призупинити</button>}<button className="pp-primary" type="button" disabled={busy} onClick={() => void save(value, true)}>Опублікувати</button></>,
-      settings: <CampaignSettings input={settings} onChange={setSettings} promoCode={settings.promoCodeId ? code?.code : undefined} onChooseCode={() => setPicker(true)} />,
+      settings: null,
       preview: (_value, device, restart) => <RuntimePreview payload={preview} device={device} restart={restart} error={previewError} onEscape={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))} />
     }} />
     {(message || error || previewBusy || previewError) && <div className={'pb-server-notice ' + (error ? 'is-error' : '')} role={error ? 'alert' : 'status'}>{error || message || previewError || 'Оновлюємо дані прев’ю…'}{(message || error) && <button type="button" aria-label="Закрити сповіщення" onClick={() => { setError(''); setMessage(''); }}>×</button>}</div>}

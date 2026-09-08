@@ -10,7 +10,7 @@ test.afterAll(async () => { await stop?.(); });
 async function login(page: Page) {
   const response = await page.request.post(popupBase + '/api/auth/login', { data: { email: 'popup-live@test.local', password: 'Popup-live-password-2026' } }); expect(response.ok()).toBe(true);
 }
-async function choose(page: Page, name: string) { await page.getByRole('button', { name: /Шаблони/ }).click(); await page.getByRole('group', { name: 'Шаблони банерів' }).getByRole('button', { name, exact: true }).click(); }
+async function choose(page: Page, name: string) { await page.getByRole('button', { name: /Шаблони/ }).click(); await page.getByRole('group', { name: 'Шаблони банерів' }).getByRole('button', { name, exact: true }).click(); await page.getByRole('button', { name: 'Застосувати шаблон', exact: true }).click(); }
 
 test.describe('live campaign editor', () => {
   test.use({ viewport: { width: 1680, height: 1050 } });
@@ -57,6 +57,62 @@ test.describe('live campaign editor', () => {
 for (const surface of [{ name: 'desktop', config: devices['Desktop Chrome'] }, { name: 'mobile', config: devices['iPhone 13'] }]) {
   test.describe('published blocks ' + surface.name, () => {
     test.use({ viewport: surface.config.viewport, userAgent: surface.config.userAgent, isMobile: surface.config.isMobile, hasTouch: surface.config.hasTouch });
+    test('requires acknowledgement before the warning action on the storefront', async ({ page }) => {
+      await login(page);
+      const base = emptyCampaign('block');
+      const value = { ...base, blockDocument: createTemplate('warning', true), name: 'Підтвердження', targeting: { ...base.targeting, mode: 'all_pages' }, behavior: { ...base.behavior, delayMs: 0, requireAcknowledgement: true, dismissible: false, frequency: 'always' } };
+      const response = await page.request.post(popupBase + '/api/popup-banners', { data: value }); expect(response.ok()).toBe(true);
+      const id = (await response.json()).data.id;
+      expect((await page.request.patch(popupBase + '/api/popup-banners/' + id + '/status', { data: { status: 'active' } })).ok()).toBe(true);
+      await page.goto(popupBase + '/popup-test-store');
+      const banner = page.locator('#mt-popup-banner-root');
+      const action = banner.getByRole('button', { name: 'Ознайомлений', exact: true });
+      await expect(action).toBeDisabled(); await expect(banner.getByRole('button', { name: 'Закрити банер' })).toHaveCount(0);
+      await banner.getByRole('checkbox').check(); await expect(action).toBeEnabled(); await action.click(); await expect(banner).toHaveCount(0);
+      await expect.poll(async () => (await (await page.request.get(popupBase + '/api/popup-banners/' + id)).json()).data.stats.acknowledgements).toBe(1);
+      await page.request.delete(popupBase + '/api/popup-banners/' + id);
+    });
+    test('configures alternatives, edits every card, checks a URL and publishes the collection', async ({ page }, testInfo) => {
+      const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+      await login(page); await page.goto(popupBase + '/tools/popup-banners/builder');
+      await page.getByRole('button', { name: /Альтернативи відсутнього товару Доступні моделі/ }).click();
+      await page.getByRole('button', { name: 'Застосувати сценарій', exact: true }).click();
+      await page.getByLabel('URL товару для прикладу').fill(popupBase + '/popup-test-store-missing');
+      await expect(page.getByText('У прикладі знайдено: 2 товарів.')).toBeVisible();
+      await page.getByRole('button', { name: 'Редагувати шаблон картки', exact: true }).click();
+      if (surface.name === 'mobile') await page.getByRole('navigation', { name: 'Панелі конструктора' }).getByRole('button', { name: 'Структура', exact: true }).click();
+      await page.getByRole('button', { name: 'Обрати: Назва товару', exact: true }).click();
+      const inspector = page.getByRole('complementary', { name: 'Властивості блока' });
+      await inspector.getByLabel('Розмір шрифту', { exact: true }).fill('19');
+      const titles = page.locator('.pb-node[data-label="Назва товару"]');
+      await expect(titles).toHaveCount(2);
+      await expect(titles.first()).toHaveCSS('font-size', '19px'); await expect(titles.last()).toHaveCSS('font-size', '19px');
+      await page.getByRole('navigation', { name: 'Розділи кампанії' }).getByRole('button', { name: 'Правила показу', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Де і кому показувати', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Коли і як часто', exact: true }).click();
+      await page.getByLabel('Не раніше ніж, секунд').fill('0');
+      await page.getByRole('navigation', { name: 'Розділи кампанії' }).getByRole('button', { name: 'Перевірка', exact: true }).click();
+      await page.getByRole('button', { name: 'Перевірити сторінку', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Кампанія відповідає умовам показу', exact: true })).toBeVisible();
+      await expect(page.locator('.pc-result-products article')).toHaveCount(2);
+      await page.screenshot({ path: testInfo.outputPath('alternatives-check-' + surface.name + '.png') });
+      await page.getByRole('button', { name: 'Опублікувати', exact: true }).click();
+      await expect(page).toHaveURL(/\/builder\/[a-f0-9-]+$/);
+      const id = page.url().split('/').at(-1)!;
+      const stored = (await (await page.request.get(popupBase + '/api/popup-banners/' + id)).json()).data;
+      expect(stored.status).toBe('active'); expect(stored.targeting.mode).toBe('out_of_stock');
+      await page.goto(popupBase + '/popup-test-store-missing');
+      const banner = page.locator('#mt-popup-banner-root');
+      await expect(banner).toBeVisible();
+      await expect(banner.getByRole('link', { name: 'Переглянути товар', exact: true })).toHaveCount(2);
+      await expect(banner).toContainText('Інша доступна модель'); await expect(banner).toContainText('Смартфон із живого каталогу');
+      const links = await banner.getByRole('link', { name: 'Переглянути товар', exact: true }).evaluateAll(elements => elements.map(el => el.getAttribute('href')));
+      expect(links).not.toContain(popupBase + '/popup-test-store-missing');
+      await page.screenshot({ path: testInfo.outputPath('alternatives-store-' + surface.name + '.png') });
+      await banner.getByRole('button', { name: 'Закрити банер' }).click();
+      await expect(banner).toHaveCount(0); expect(errors).toEqual([]);
+      await page.request.delete(popupBase + '/api/popup-banners/' + id);
+    });
     test('selects the banner product and binds standalone text through the editor', async ({ page }, testInfo) => {
       await login(page); await page.goto(popupBase + '/tools/popup-banners/builder');
       await choose(page, 'Товарна картка');
@@ -94,9 +150,9 @@ for (const surface of [{ name: 'desktop', config: devices['Desktop Chrome'] }, {
       await login(page); await page.goto(popupBase + '/tools/popup-banners/builder');
       await page.getByLabel('Назва макета').fill('Мобільна чернетка');
       await page.getByRole('button', { name: 'Умови показу', exact: true }).click();
-      const inspector = page.getByRole('complementary', { name: 'Властивості блока' });
-      await expect(inspector.getByRole('heading', { name: 'Умови показу', exact: true })).toBeVisible();
-      await inspector.getByLabel('Затримка, секунд', { exact: true }).fill('7');
+      await page.getByRole('button', { name: 'Коли і як часто', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Момент та частота показу', exact: true })).toBeVisible();
+      await page.getByLabel('Не раніше ніж, секунд', { exact: true }).fill('7');
       await page.getByRole('button', { name: 'Зберегти', exact: true }).click();
       await expect(page).toHaveURL(/\/builder\/[a-f0-9-]+$/);
       const id = page.url().split('/').at(-1)!;

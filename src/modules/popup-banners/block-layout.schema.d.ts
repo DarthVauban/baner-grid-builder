@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-export const blockTypes: readonly ["container","text","image","button","divider","spacer","coupon","countdown","form","field","product"];
+export const blockTypes: readonly ["container","text","image","button","divider","spacer","coupon","countdown","form","field","product","collection","acknowledgement"];
 export type BlockType = typeof blockTypes[number];
 export type Device = 'desktop' | 'mobile';
 export const blockLabels: Record<BlockType, string>;
@@ -49,6 +49,8 @@ export interface BlockStyle {
 }
 
 export interface BlockProps {
+  dataSource: 'inherit' | 'page' | 'banner' | 'item';
+  collection: import('./campaign-rules.js').CollectionConfig;
   text: string;
   src: string;
   alt: string;

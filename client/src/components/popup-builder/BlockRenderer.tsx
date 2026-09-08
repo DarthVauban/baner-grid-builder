@@ -25,6 +25,7 @@ export function blockCss(style: BlockStyle, container: boolean): CSSProperties {
 }
 export type DropPlacement = 'before' | 'inside' | 'after';
 interface RendererProps {
+  collections?: Record<string, PopupPromoProduct[]>; pageProduct?: PopupPromoProduct | null;
   products?: PopupPromoProduct[]; campaignCode?: string;
   root: BlockNode; device: Device; selectedId: string; testing: boolean; onSelect: (id: string) => void;
   onDrop: (sourceId: string, targetId: string, placement: DropPlacement) => void;
@@ -68,7 +69,7 @@ function FieldPreview({ node, testing }: { node: BlockNode; testing: boolean }) 
   </div>;
 }
 
-export function BlockRenderer({ root, device, selectedId, testing, onSelect, onDrop, products, campaignCode }: RendererProps) {
+export function BlockRenderer({ root, device, selectedId, testing, onSelect, onDrop, products, campaignCode, collections, pageProduct }: RendererProps) {
   const [closed, setClosed] = useState(false);
   const [notice, setNotice] = useState('');
   const [dropTarget, setDropTarget] = useState('');
@@ -77,17 +78,17 @@ export function BlockRenderer({ root, device, selectedId, testing, onSelect, onD
     try { await navigator.clipboard.writeText(value); setNotice('Промокод скопійовано'); }
     catch { setNotice(`Скопіюй код вручну: ${value}`); }
   }
-  function render(node: BlockNode, productId = 'titanium', inForm = false): ReactNode {
+  function render(node: BlockNode, productId = 'titanium', inForm = false, inheritedOffer?: PopupPromoProduct, itemOffer?: PopupPromoProduct): ReactNode {
     const style = effectiveStyle(node, device);
     if (style.hidden && testing) return null;
     const container = isContainer(node);
     const ownsProduct = (node === root || node.type === 'product') && node.props.productExternalId;
     const productKey = ownsProduct ? node.props.productExternalId + ':' + node.props.modificationExternalId : productId;
-    const offer = products?.find(item => item.productExternalId + ':' + (item.modificationExternalId || '') === productKey);
+    const offer = node.props.dataSource === 'page' ? pageProduct || undefined : node.props.dataSource === 'item' ? itemOffer : node.props.dataSource === 'banner' ? products?.find(item => item.productExternalId === root.props.productExternalId && (item.modificationExternalId || '') === root.props.modificationExternalId) : ownsProduct ? products?.find(item => item.productExternalId + ':' + (item.modificationExternalId || '') === productKey) : inheritedOffer;
     const product = products ? { id: productKey, title: offer?.title || 'Оберіть товар у властивостях', variant: offer?.sku || '', badge: Number(offer?.oldPrice) > Number(offer?.price) ? 'Вигідна ціна' : '', price: Number(offer?.price || 0), oldPrice: Number(offer?.oldPrice || 0), tone: demoProducts[0].tone } : demoProducts.find((item) => item.id === (node.type === 'product' ? node.props.productId : productId)) || demoProducts[0];
     const css = blockCss(style, container);
     let body: ReactNode;
-    const children = node.children.map((child) => render(child, product.id, inForm || node.type === 'form'));
+    const children = node.children.map((child) => render(child, product.id, inForm || node.type === 'form', offer, itemOffer));
     const binding = node.props.binding;
     const amount = (value: number) => value.toLocaleString('uk-UA') + (products ? ' ' + (offer?.currency === 'UAH' ? '₴' : offer?.currency || '') : ' ₴');
     const text = binding === 'product.title' ? product.title : binding === 'product.variant' ? product.variant : binding === 'product.badge' ? product.badge : binding === 'product.price' ? products && !offer?.price ? '' : amount(product.price) : binding === 'product.oldPrice' ? products && product.oldPrice <= product.price ? '' : amount(product.oldPrice) : node.props.text;
@@ -104,8 +105,15 @@ export function BlockRenderer({ root, device, selectedId, testing, onSelect, onD
     else if (node.type === 'button') body = <button type={testing && node.props.action === 'submit' && inForm ? 'submit' : 'button'} className="pb-action" tabIndex={testing ? 0 : -1} onClick={onAction}>{node.props.text || 'Кнопка'}</button>;
     else if (node.type === 'coupon') body = <div className="pb-coupon"><strong>{node.props.couponSource === 'campaign' ? campaignCode || 'Оберіть промокод кампанії' : node.props.code}</strong><button type="button" tabIndex={testing ? 0 : -1} onClick={() => testing && void copy(node.props.code)}><Icon name="copy" size={16} />{node.props.copyLabel}</button></div>;
     else if (node.type === 'countdown') body = <Countdown key={`${node.id}:${node.props.timerMode}:${node.props.durationMinutes}:${node.props.deadlineAt}`} node={node} testing={testing} onExpire={expire} />;
+    else if (node.type === 'acknowledgement') body = <label><input type="checkbox" disabled={!testing} /> {node.props.text}</label>;
     else if (node.type === 'field') body = <FieldPreview node={node} testing={testing} />;
     else if (node.type === 'form') body = <FormPreview node={node} testing={testing} style={{ display: 'flex', flexDirection: style.direction, flexWrap: style.wrap ? 'wrap' : 'nowrap', columnGap: style.gap, rowGap: style.rowGap, justifyContent: style.justify, alignItems: style.align, width: '100%' }}>{children}</FormPreview>;
+    else if (node.type === 'collection') {
+      const config = node.props.collection, columns = device === 'mobile' ? config.mobileColumns : config.desktopColumns;
+      Object.assign(css, config.layout === 'carousel' ? { display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 'calc((100% - ' + ((columns - 1) * style.gap) + 'px) / ' + columns + ')', overflowX: 'auto' } : { display: 'grid', gridTemplateColumns: 'repeat(' + columns + ', minmax(0, 1fr))' });
+      const items = collections?.[node.id] || [];
+      body = items.length ? items.map(item => <div key={item.id || item.productExternalId} style={{ display: 'contents' }}>{render(node.children[0], item.productExternalId, false, item, item)}</div>) : <div style={{ gridColumn: '1 / -1' }}><p className="pc-callout">Шаблон картки · вкажіть URL товару у «Сценарій і дані», щоб побачити реальну добірку.</p>{node.children[0] && render(node.children[0])}</div>;
+    }
     else if (container) body = children.length ? children : !testing ? <div className="pb-empty-container"><Icon name="add" size={18} /><span>Додай або перетягни блок</span></div> : null;
     else body = !testing && node.type === 'spacer' ? <span className="pb-spacer-label">Відступ</span> : null;
     const handleDrop = (event: DragEvent) => {

@@ -2,7 +2,7 @@
 export function createPopupBlockRuntime(browser, helpers) {
   const document = browser.document;
   const styleFor = (node, device) => ({ ...node.style, ...(device === 'mobile' ? node.mobile : {}) });
-  const containerTypes = ['container', 'form', 'product'];
+  const containerTypes = ['container', 'form', 'product', 'collection'];
   function applyStyle(element, s, container) {
     Object.assign(element.style, {
       display: container ? 'flex' : 'block', flexDirection: s.direction, flexWrap: s.wrap ? 'wrap' : 'nowrap',
@@ -32,6 +32,8 @@ export function createPopupBlockRuntime(browser, helpers) {
       const device = options.device;
       const cleanups = [];
       const timers = new Map();
+      let acknowledged = !campaign.behavior.requireAcknowledgement;
+      const guardedButtons = [], acknowledgementInputs = [];
       let expired = false;
       function prepare(node) {
         if (styleFor(node, device).hidden) return;
@@ -42,6 +44,8 @@ export function createPopupBlockRuntime(browser, helpers) {
         }
         node.children.forEach(prepare);
       }
+      const emptyCollection = node => !styleFor(node, device).hidden && ((node.type === 'collection' && !payload.collections?.[node.id]?.length) || node.children.some(emptyCollection));
+      if (emptyCollection(root)) return null;
       prepare(root);
       if (expired) return null;
       const host = document.createElement('div'); host.id = 'mt-popup-banner-root';
@@ -69,7 +73,7 @@ export function createPopupBlockRuntime(browser, helpers) {
       if (modal && !options.preview) { const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden'; cleanups.push(() => { document.body.style.overflow = overflow; }); }
       const dispose = () => { if (disposed) return; disposed = true; cleanups.forEach(cleanup => cleanup()); host.remove(); if (document.activeElement === document.body && previousFocus?.isConnected && !options.preview) previousFocus.focus?.({ preventScroll: true }); };
       const close = (eventType = 'dismiss') => { dispose(); options.onClose(eventType); };
-      const closeButton = document.createElement('button'); closeButton.type = 'button'; closeButton.className = 'close'; closeButton.textContent = '×'; closeButton.setAttribute('aria-label', 'Закрити банер'); closeButton.addEventListener('click', () => close()); card.append(closeButton);
+      const closeButton = document.createElement('button'); closeButton.type = 'button'; closeButton.className = 'close'; closeButton.textContent = '×'; closeButton.setAttribute('aria-label', 'Закрити банер'); closeButton.addEventListener('click', () => close()); if (campaign.behavior.dismissible) card.append(closeButton);
       if (campaign.behavior.dismissible) surface.addEventListener('click', e => { if (e.target === surface) close(); });
       const keydown = e => {
         if (e.key === 'Escape' && campaign.behavior.dismissible) { e.stopPropagation(); close(); }
@@ -98,11 +102,12 @@ export function createPopupBlockRuntime(browser, helpers) {
         const button = document.createElement('button'); button.type = 'button'; button.textContent = node.props.copyLabel || 'Скопіювати'; button.addEventListener('click', () => copy(code, button, node));
         row.append(text, button); parent.append(row);
       }
-      function render(node, inheritedProduct = null) {
+      function render(node, inheritedProduct = null, itemProduct = null) {
         const s = styleFor(node, device), p = node.props;
         if (s.hidden) return null;
         const ownsProduct = (node === root || node.type === 'product') && p.productExternalId;
-        const product = ownsProduct ? payload.products?.find(item => item.productExternalId === p.productExternalId && String(item.modificationExternalId || '') === String(p.modificationExternalId || '')) : inheritedProduct;
+        const bannerProduct = payload.products?.find(item => item.productExternalId === root.props.productExternalId && String(item.modificationExternalId || '') === root.props.modificationExternalId);
+        const product = p.dataSource === 'page' ? payload.pageProduct : p.dataSource === 'banner' ? bannerProduct : p.dataSource === 'item' ? itemProduct : ownsProduct ? payload.products?.find(item => item.productExternalId === p.productExternalId && String(item.modificationExternalId || '') === String(p.modificationExternalId || '')) : inheritedProduct;
         if ((ownsProduct || node.type === 'product') && !product) return null;
         const element = document.createElement(node.type === 'form' ? 'form' : 'div'); element.className = 'node'; element.dataset.blockId = node.id; element.dataset.blockType = node.type;
         applyStyle(element, s, containerTypes.includes(node.type));
@@ -118,9 +123,12 @@ export function createPopupBlockRuntime(browser, helpers) {
           const button = document.createElement(['link', 'product'].includes(p.action) && href ? 'a' : 'button'); button.className = 'action'; button.textContent = p.text || 'Кнопка';
           if (button.tagName === 'A') { button.href = href; if (p.newTab) { button.target = '_blank'; button.rel = 'noopener noreferrer'; } }
           else button.type = p.action === 'submit' ? 'submit' : 'button';
+          if (campaign.behavior.requireAcknowledgement && ['close', 'link', 'product', 'cart', 'submit'].includes(p.action)) { button.setAttribute('aria-disabled', String(!acknowledged)); if (button.tagName === 'BUTTON') button.disabled = !acknowledged; guardedButtons.push({ button, unavailable: p.action === 'cart' && !product?.available }); }
+          if (p.action === 'cart' && !product?.available) { button.disabled = true; button.title = 'Товар недоступний'; }
           button.addEventListener('click', async e => {
+            if (button.getAttribute('aria-disabled') === 'true') { e.preventDefault(); return; }
             if (button.dataset.fallback && product) { track('click', node, { action: 'product_fallback' }); browser.location.assign(safeUrl(product.pageUrl)); return; }
-            if (p.action === 'close') close();
+            if (p.action === 'close') close(campaign.behavior.requireAcknowledgement ? 'acknowledge' : 'dismiss');
             else if (p.action === 'copy') await copy(p.couponSource === 'campaign' ? campaign.promoCode?.code : p.code, button, node);
             else if (p.action === 'cart' && product) {
               if (options.preview) { button.textContent = 'Тест: товар можна додати до кошика'; return; }
@@ -129,6 +137,9 @@ export function createPopupBlockRuntime(browser, helpers) {
               finally { button.disabled = false; }
             } else if (['link', 'product'].includes(p.action)) { if (options.preview) e.preventDefault(); else track('click', node, { action: p.action }); }
           }); element.append(button);
+        } else if (node.type === 'acknowledgement') {
+          const label = document.createElement('label'), checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = false; acknowledgementInputs.push(checkbox); label.append(checkbox, document.createTextNode(' ' + (p.text || 'Ознайомлений'))); element.append(label);
+          checkbox.addEventListener('change', () => { acknowledged = !campaign.behavior.requireAcknowledgement || acknowledgementInputs.every(input => input.checked); for (const { button, unavailable } of guardedButtons) { button.setAttribute('aria-disabled', String(!acknowledged)); if (button.tagName === 'BUTTON') button.disabled = !acknowledged || unavailable; } });
         } else if (node.type === 'coupon') coupon(element, p.couponSource === 'campaign' ? campaign.promoCode?.code : p.code, node);
         else if (node.type === 'countdown') {
           const timer = timers.get(node.id);
@@ -142,12 +153,16 @@ export function createPopupBlockRuntime(browser, helpers) {
           if (p.fieldType === 'select') for (const value of ['', ...new Set(p.options.split('\n').map(v => v.trim()).filter(Boolean))]) { const option = document.createElement('option'); option.value = value; option.textContent = value || p.placeholder || 'Оберіть варіант'; input.append(option); }
           else { input.placeholder = p.placeholder; if (p.fieldType !== 'checkbox') input.maxLength = 2000; }
           if (p.fieldType === 'checkbox') { label.prepend(input); element.append(label); } else element.append(label, input);
+        } else if (node.type === 'collection') {
+          const config = p.collection, columns = device === 'mobile' ? config.mobileColumns : config.desktopColumns;
+          Object.assign(element.style, config.layout === 'carousel' ? { display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 'calc((100% - ' + ((columns - 1) * s.gap) + 'px) / ' + columns + ')', overflowX: 'auto', scrollSnapType: 'x mandatory' } : { display: 'grid', gridTemplateColumns: 'repeat(' + columns + ', minmax(0, 1fr))' });
+          for (const item of payload.collections?.[node.id] || []) { const rendered = render(node.children[0], item, item); if (rendered) { rendered.style.scrollSnapAlign = 'start'; element.append(rendered); } }
         } else if (containerTypes.includes(node.type)) {
-          for (const child of node.children) { const rendered = render(child, product); if (rendered) element.append(rendered); }
+          for (const child of node.children) { const rendered = render(child, product, itemProduct); if (rendered) element.append(rendered); }
           if (node.type === 'form') {
             const status = document.createElement('div'); status.className = 'status'; status.setAttribute('role', 'status'); element.append(status);
             element.addEventListener('submit', async e => {
-              e.preventDefault(); if (element.dataset.sending) return;
+              e.preventDefault(); if (element.dataset.sending || !acknowledged) return;
               const values = {}; for (const input of element.querySelectorAll('input,textarea,select')) values[input.name] = input.type === 'checkbox' ? input.checked : input.value;
               element.dataset.sending = 'true'; const buttons = [...element.querySelectorAll('[type=submit]')]; buttons.forEach(b => { b.disabled = true; }); status.textContent = 'Надсилання…'; status.classList.remove('error');
               try {

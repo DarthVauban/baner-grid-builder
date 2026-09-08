@@ -253,6 +253,7 @@ export const api = {
     )
   },
   popupBanners: {
+    inspect: (input: import('../types/popup-banner').PopupInspectionInput, signal?: AbortSignal) => request<import('../types/popup-banner').PopupInspection>('/api/popup-banners/inspect', { method: 'POST', body: jsonBody(input), signal }),
     list: () => request<PopupCampaign[]>('/api/popup-banners'),
     options: () => request<PopupCampaignOptions>('/api/popup-banners/options'),
     catalog: (params: { search?: string; category?: string; page?: number; pageSize?: number } = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(

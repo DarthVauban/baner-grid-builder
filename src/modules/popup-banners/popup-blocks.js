@@ -14,6 +14,7 @@ export function blockProductReferences(document) {
     const value = { productExternalId: node.props.productExternalId, modificationExternalId: node.props.modificationExternalId || null };
     items.set(JSON.stringify(value), value);
   }
+  for (const { node } of flatten(document.root)) if (node.type === 'collection' && node.props.collection.source === 'manual') for (const ref of node.props.collection.items) items.set(JSON.stringify(ref), ref);
   return [...items.values()];
 }
 export function blockNeedsPromoCode(document) {
@@ -40,7 +41,7 @@ export function allBlockFields(document) {
 export function blockDeadlineExpired(document, now = Date.now(), device = null) {
   return (device ? [device] : ['desktop', 'mobile']).every(surface => visibleBlockNodes(document.root, surface).some(node => node.type === 'countdown' && node.props.hideOnExpire && node.props.timerMode === 'deadline' && Date.parse(node.props.deadlineAt) <= now));
 }
-export function validateBlockPublication(document, { products = [], promoCode = null, now = Date.now() } = {}) {
+export function validateBlockPublication(document, { products = [], promoCode = null, now = Date.now(), behavior = null } = {}) {
   const fail = (message) => { throw new AppError(422, 'POPUP_BLOCK_NOT_READY', message); };
   if (!document || !document.root.children.length) fail('Додайте вміст до банера перед публікацією.');
   const entries = flatten(document.root);
@@ -62,13 +63,21 @@ export function validateBlockPublication(document, { products = [], promoCode = 
       if (!options.length || options.length > 20 || options.some((value) => value.length > 80)) fail('Список має містити від 1 до 20 варіантів до 80 символів кожен.');
     }
     let ancestor = parent;
+    let inCollection = false;
     let inProduct = node.type === 'product' && Boolean(node.props.productExternalId); let inForm = false;
-    while (ancestor) { if ((ancestor === document.root || ancestor.type === 'product') && ancestor.props.productExternalId) inProduct = true; if (ancestor.type === 'form') inForm = true; ancestor = entries.find((entry) => entry.node.id === ancestor.id)?.parent || null; }
+    while (ancestor) { if ((ancestor === document.root || ancestor.type === 'product') && ancestor.props.productExternalId) inProduct = true; if (ancestor.type === 'form') inForm = true; if (ancestor.type === 'collection') { inCollection = true; inProduct = true; } ancestor = entries.find((entry) => entry.node.id === ancestor.id)?.parent || null; }
+    if (node.props.dataSource === 'page') inProduct = true;
+    if (node.props.dataSource === 'banner') inProduct = Boolean(document.root.props.productExternalId);
+    if (node.props.dataSource === 'item' && !inCollection) fail('Джерело «Товар картки» доступне лише всередині добірки.');
+    if (node.type === 'collection' && node.props.collection.source === 'selected_category' && !node.props.collection.categoryId) fail('Оберіть категорію добірки.');
+    if (node.type === 'collection' && node.props.collection.source === 'manual' && !node.props.collection.items.length) fail('Додайте товари до ручної добірки.');
     if ((node.type === 'product' || (node.props.binding !== 'none' && ['text', 'image'].includes(node.type)) || (node.type === 'button' && ['product', 'cart'].includes(node.props.action))) && !inProduct) fail('Для елемента «' + node.name + '» оберіть «Товар банера» або товар у батьківському блоці «Товар».');
     if (node.type === 'button' && node.props.action === 'submit' && !inForm) fail('Кнопка відправлення має бути всередині форми.');
   }
   for (const device of ['desktop', 'mobile']) {
     const visible = visibleBlockNodes(document.root, device);
+    if (behavior && !behavior.dismissible && !behavior.autoCloseSeconds && !visible.some(node => node.type === 'button' && node.props.action === 'close')) fail('Додайте видиму кнопку закриття або дозвольте стандартне закриття на ' + device + '.');
+    if (behavior?.requireAcknowledgement && !visible.some(node => node.type === 'acknowledgement')) fail('Додайте видимий блок «Підтвердження» на ' + device + '.');
     for (const form of visible.filter((node) => node.type === 'form')) {
       const children = visibleBlockNodes(form, device);
       if (!children.some((node) => node.type === 'field')) fail('У формі потрібне хоча б одне видиме поле для ' + device + '.');

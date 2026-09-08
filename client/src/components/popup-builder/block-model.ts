@@ -13,6 +13,7 @@ export function makeBlock(type: BlockType, direction: 'row' | 'column' = 'column
   if (type === 'spacer') Object.assign(node.style, { heightMode: 'fixed', height: 24 });
   if (type === 'coupon') Object.assign(node.style, { paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16, background: '#f3effc', borderWidth: 1, borderStyle: 'dashed', borderColor: '#c0b4e8', radius: 12, fontSize: 22, fontWeight: 650 });
   if (type === 'countdown') Object.assign(node.style, { fontSize: 28, fontWeight: 650, textAlign: 'center', color: '#6554c0' });
+  if (type === 'acknowledgement') { node.props.text = 'Я ознайомився з інформацією про товар'; node.style.fontSize = 13; }
   if (type === 'field') node.props.text = 'Електронна пошта';
   if (type === 'form') { const field = makeBlock('field'); field.props.required = true; const button = makeBlock('button'); button.props.action = 'submit'; button.props.text = 'Отримати промокод'; node.children = [field, button]; }
   if (type === 'product') {
@@ -23,6 +24,12 @@ export function makeBlock(type: BlockType, direction: 'row' | 'column' = 'column
     const price = makeBlock('text'); price.name = 'Ціна товару'; price.props.binding = 'product.price'; Object.assign(price.style, { fontSize: 26, fontWeight: 650 });
     const button = makeBlock('button'); button.props.action = 'product'; button.props.text = 'Переглянути товар';
     details.children = [title, price, button]; node.children = [photo, details];
+  }
+  if (type === 'collection') {
+    const card = makeBlock('product'); card.type = 'container'; card.name = 'Шаблон картки добірки'; card.style.direction = 'column';
+    card.children[0].style.widthMode = 'fill';
+    Object.assign(card.style, { paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16, background: '#f5f2fc', radius: 16 });
+    node.children = [card];
   }
   return node;
 }

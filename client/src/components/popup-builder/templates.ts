@@ -3,7 +3,7 @@ import { blankDocument, makeBlock, type BlockDocument, type BlockNode } from './
 function text(value: string, size = 16, weight = 400, color = '#252438'): BlockNode {
   const node = makeBlock('text'); node.props.text = value; node.name = value.slice(0, 36) || 'Текст'; Object.assign(node.style, { fontSize: size, fontWeight: weight, color }); return node;
 }
-export const templateLabels = { blank: 'Чистий аркуш', promotion: 'Промопропозиція', product: 'Товарна картка', form: 'Форма за промокод', countdown: 'Акція з таймером' } as const;
+export const templateLabels = { alternatives: 'Альтернативи відсутнього товару', warning: 'Інформація та підтвердження', coupon: 'Банер із промокодом', blank: 'Чистий аркуш', promotion: 'Промопропозиція', product: 'Товарна картка', form: 'Форма за промокод', countdown: 'Акція з таймером' } as const;
 export type TemplateName = keyof typeof templateLabels;
 export function createTemplate(name: TemplateName, live = false): BlockDocument {
   const document = blankDocument(); document.name = templateLabels[name];
@@ -12,7 +12,15 @@ export function createTemplate(name: TemplateName, live = false): BlockDocument 
   const title = text('Твій наступний улюблений гаджет', 34, 700); title.name = 'Заголовок'; title.style.lineHeight = 1.15; title.mobile.fontSize = 26;
   const body = text('Створи пропозицію, яку захочеться відкрити. Кожен елемент цього банера можна змінити.', 15, 400, '#817c91');
   body.name = 'Опис'; document.root.children = [eyebrow, title, body];
-  if (name === 'product') {
+  if (name === 'alternatives') {
+    document.root.style.width = 1000; title.props.text = 'Цього товару зараз немає в наявності'; body.props.text = 'Переглянь доступні альтернативи з цієї категорії.';
+    document.root.children.push(makeBlock('collection'));
+  } else if (name === 'warning') {
+    title.props.text = 'Зверніть увагу'; body.props.text = 'Важлива інформація перед оформленням замовлення.';
+    const button = makeBlock('button'); button.props.text = 'Ознайомлений'; button.props.action = 'close'; document.root.children.push(makeBlock('acknowledgement'), button);
+  } else if (name === 'coupon') {
+    title.props.text = 'Твоя спеціальна пропозиція'; body.props.text = 'Скопіюй промокод для наступної покупки.'; document.root.children.push(makeBlock('coupon'));
+  } else if (name === 'product') {
     title.props.text = 'Знайди свій iPhone';
     const product = makeBlock('product');
     const details = product.children[1];

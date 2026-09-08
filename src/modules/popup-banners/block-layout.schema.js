@@ -1,6 +1,7 @@
 import { z } from 'zod';
-export const blockTypes = ['container', 'text', 'image', 'button', 'divider', 'spacer', 'coupon', 'countdown', 'form', 'field', 'product'];
-export const blockLabels = { container: 'Контейнер', text: 'Текст', image: 'Зображення', button: 'Кнопка', divider: 'Роздільник', spacer: 'Відступ', coupon: 'Промокод', countdown: 'Таймер', form: 'Форма', field: 'Поле форми', product: 'Товар' };
+import { collectionSchema } from './campaign-rules.js';
+export const blockTypes = ['container', 'text', 'image', 'button', 'divider', 'spacer', 'coupon', 'countdown', 'form', 'field', 'product', 'collection', 'acknowledgement'];
+export const blockLabels = { container: 'Контейнер', text: 'Текст', image: 'Зображення', button: 'Кнопка', divider: 'Роздільник', spacer: 'Відступ', coupon: 'Промокод', countdown: 'Таймер', form: 'Форма', field: 'Поле форми', product: 'Товар', collection: 'Добірка товарів', acknowledgement: 'Підтвердження' };
 export const MAX_BLOCKS = 120;
 export const MAX_DEPTH = 12;
 const color = z.string().regex(/^(#[a-f\d]{6}|transparent)$/i);
@@ -29,6 +30,8 @@ const mobileStyleSchema = z.object(Object.fromEntries(Object.entries(styleSchema
 export const propsSchema = z.object({
     text: z.string().max(3000).default(''), src: z.string().max(2000).default(''), alt: z.string().max(240).default(''),
     imageFit: z.enum(['contain', 'cover']).default('contain'), imagePosition: z.enum(['center', 'top', 'bottom', 'left', 'right']).default('center'),
+    dataSource: z.enum(['inherit', 'page', 'banner', 'item']).default('inherit'),
+    collection: collectionSchema.default(() => collectionSchema.parse({})),
     binding: z.enum(['none', 'product.title', 'product.variant', 'product.price', 'product.oldPrice', 'product.badge', 'product.image']).default('none'),
     action: z.enum(['link', 'close', 'copy', 'submit', 'product', 'cart']).default('link'), href: z.string().max(2000).default(''), newTab: z.boolean().default(false),
     code: z.string().max(80).default('HELLO10'), copyLabel: z.string().max(120).default('Скопіювати'),
@@ -45,7 +48,7 @@ const nodeSchema = z.object({
     children: z.array(z.lazy(() => nodeSchema)).max(MAX_BLOCKS)
 });
 const documentSchema = z.object({ version: z.literal(1), name: z.string().max(160), root: nodeSchema });
-export function isContainer(node) { return ['container', 'form', 'product'].includes(node.type); }
+export function isContainer(node) { return ['container', 'form', 'product', 'collection'].includes(node.type); }
 export function effectiveStyle(node, device) { return device === 'mobile' ? { ...node.style, ...node.mobile } : node.style; }
 export function flatten(root, parent = null, depth = 0) {
     return [{ node: root, parent, depth }, ...root.children.flatMap((child) => flatten(child, root, depth + 1))];
@@ -53,7 +56,7 @@ export function flatten(root, parent = null, depth = 0) {
 export function findBlock(root, id) { return flatten(root).find((entry) => entry.node.id === id); }
 export function validateDocument(value) {
     // Bound depth/count before asking the recursive schema to walk untrusted imports.
-    const pending = [{ value: value?.root, depth: 0, inForm: false }];
+    const pending = [{ value: value?.root, depth: 0, inForm: false, inCollection: false }];
     const ids = new Set();
     while (pending.length) {
         const entry = pending.pop();
@@ -67,12 +70,14 @@ export function validateDocument(value) {
         ids.add(node.id);
         if (!isContainer(node) && node.children.length)
             throw new Error('Вкладати блоки можна лише в контейнери, форми й товари.');
+        if (node.type === 'collection' && (entry.inCollection || entry.inForm || node.children.length !== 1 || node.children[0].type !== 'container')) throw new Error('Добірка повинна містити один контейнер — шаблон картки. Вкладені добірки не підтримуються.');
+        if (entry.inCollection && ['form', 'field', 'countdown', 'acknowledgement'].includes(node.type)) throw new Error('Форми та таймери розміщуйте поза шаблоном добірки.');
         if (entry.inForm && node.type === 'form')
             throw new Error('Не можна вкладати форму в іншу форму.');
         if (node.type === 'field' && !entry.inForm)
             throw new Error('Поле має бути всередині форми.');
         for (const child of node.children)
-            pending.push({ value: child, depth: entry.depth + 1, inForm: entry.inForm || node.type === 'form' });
+            pending.push({ value: child, depth: entry.depth + 1, inForm: entry.inForm || node.type === 'form', inCollection: entry.inCollection || node.type === 'collection' });
     }
     const result = documentSchema.safeParse(value);
     if (!result.success || result.data.root.type !== 'container')

@@ -202,6 +202,77 @@ after(async () => {
   await pool.end();
 });
 
+test('block alternatives preserve draft rules, resolve category collections and diagnose real URLs', async () => {
+  const condition = (field, values) => ({ kind: 'condition', field, values, operator: 'is', descendants: false });
+  const doc = blockDocument([
+    blockNode('page-title', 'text', { binding: 'product.title', dataSource: 'page' }),
+    blockNode('alternatives', 'collection', { collection: { limit: 6, minimum: 1 } }, [blockNode('card-template', 'container', {}, [
+      blockNode('item-title', 'text', { binding: 'product.title', dataSource: 'item' }),
+      blockNode('item-image', 'image', { binding: 'product.image' }),
+      blockNode('item-buy', 'button', { action: 'cart', text: 'Купити' })
+    ])])
+  ]);
+  const value = input({ campaignType: 'block', blockDocument: doc, productEntries: [], targeting: { ...input().targeting, mode: 'out_of_stock', rules: { kind: 'group', match: 'all', children: [condition('brand', ['Apple']), { kind: 'group', match: 'any', children: [condition('sku', ['USED-IPHONE-128']), condition('sticker', ['14'])] }] } }, behavior: { ...input().behavior, requireAcknowledgement: false } });
+  const created = (await admin.post('/api/popup-banners').send(value).expect(201)).body.data;
+  const path = '/api/popup-banners/' + created.id;
+  try {
+    await admin.patch(path + '/status').send({ status: 'active' }).expect(200);
+    const resolve = async stockState => (await request(app).get('/api/public/popup-banners/resolve').query({ pageUrl: 'https://shop.example.com/used-iphone-15/', article: 'USED-IPHONE-128', stockState }).expect(200)).body.data;
+    assert.equal(await resolve('unknown'), null); assert.equal(await resolve('in_stock'), null);
+    const runtime = await resolve('out_of_stock');
+    assert.deepEqual(runtime.collections.alternatives.map(p => p.productExternalId), ['iphone-15-new', 'samsung-s24']);
+    assert.equal(runtime.collections.alternatives[0].modificationExternalId, 'iphone-15-new:black');
+    assert.equal(runtime.pageProduct.sku, 'USED-IPHONE-128');
+    for (const device of ['desktop', 'mobile']) {
+      const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://shop.example.com/used-iphone-15/' });
+      Object.defineProperty(dom.window, 'innerWidth', { value: device === 'mobile' ? 390 : 1440 });
+      Object.defineProperty(dom.window.navigator, 'userAgent', { value: device === 'mobile' ? 'Mozilla/5.0 iPhone Mobile' : 'Mozilla/5.0 Chrome' });
+      const mounted = createPopupBlockRuntime(dom.window, {}).mount(runtime, { device, preview: true });
+      assert.equal(mounted.host.shadowRoot.querySelectorAll('[data-block-id="item-title"]').length, 2);
+      assert.equal(mounted.host.shadowRoot.querySelector('[data-block-id="page-title"]').textContent, runtime.pageProduct.title);
+      assert.equal(mounted.host.shadowRoot.querySelector('[data-block-id="item-title"]').textContent, runtime.collections.alternatives[0].title);
+      assert.equal(mounted.host.shadowRoot.querySelector('[data-block-type="collection"]').style.gridTemplateColumns, `repeat(${device === 'mobile' ? 1 : 3}, minmax(0, 1fr))`);
+      mounted.dispose(); dom.window.close();
+    }
+    const inspectInput = { campaign: value, pageUrl: 'https://shop.example.com/used-iphone-15/', article: 'USED-IPHONE-128', device: 'mobile', stockState: 'out_of_stock', seen: false };
+    const inspection = (await admin.post('/api/popup-banners/inspect').send(inspectInput).expect(200)).body.data;
+    assert.equal(inspection.eligible, true);
+    assert.equal(inspection.collections[0].count, 2);
+    assert.match(inspection.stockSource, /Симуляція/);
+    assert.ok(inspection.collections[0].rejected.some(item => item.productExternalId === 'pixel-unavailable'));
+    await admin.post('/api/popup-banners/inspect').send({ ...inspectInput, pageUrl: 'https://other.example/used-iphone-15/' }).expect(422);
+    value.targeting.exclusions = { kind: 'group', match: 'any', children: [condition('sku', ['USED-IPHONE-128'])] };
+    await admin.put(path).send(value).expect(200);
+    assert.equal((await resolve('out_of_stock')).campaign.revision, runtime.campaign.revision);
+    const excluded = (await admin.post('/api/popup-banners/inspect').send({ ...inspectInput, campaign: value }).expect(200)).body.data;
+    assert.equal(excluded.eligible, false); assert.equal(excluded.audience.exclude.result, true);
+    await admin.patch(path + '/status').send({ status: 'active' }).expect(200);
+    assert.equal(await resolve('out_of_stock'), null);
+  } finally { await admin.delete(path).expect(204); }
+});
+
+test('collection minimum, explicit category, manual selection and hierarchy are enforced without broadening', async () => {
+  const parentId = randomUUID(), laptopsId = randomUUID();
+  await pool.query('INSERT INTO search_horoshop_categories (id, connection_id, generation, external_id, titles, active, last_seen_sync_id) VALUES ($1,$2,$3,\'catalog\',$4::JSONB,TRUE,$5)', [parentId, connectionId, generation, JSON.stringify({ uk: 'Каталог' }), syncId]);
+  await pool.query('INSERT INTO search_horoshop_categories (id, connection_id, generation, external_id, parent_external_id, titles, active, last_seen_sync_id) VALUES ($1,$2,$3,\'laptops\',\'catalog\',$4::JSONB,TRUE,$5)', [laptopsId, connectionId, generation, JSON.stringify({ uk: 'Ноутбуки' }), syncId]);
+  await pool.query("UPDATE search_horoshop_categories SET parent_external_id = 'catalog' WHERE external_id = 'used-phones'");
+  const collection = blockNode('list', 'collection', { collection: { source: 'category', minimum: 3, limit: 6 } }, [blockNode('template', 'container', {}, [blockNode('title', 'text', { binding: 'product.title' })])]);
+  const value = input({ campaignType: 'block', blockDocument: blockDocument([collection]), productEntries: [], targeting: { ...input().targeting, mode: 'out_of_stock' }, behavior: { ...input().behavior, requireAcknowledgement: false } });
+  const check = async () => (await admin.post('/api/popup-banners/inspect').send({ campaign: value, pageUrl: 'https://shop.example.com/used-iphone-15/', device: 'desktop', stockState: 'out_of_stock', seen: false }).expect(200)).body.data;
+  assert.equal((await check()).eligible, false);
+  value.blockDocument.root.children[0].props.collection = { ...value.blockDocument.root.children[0].props.collection, source: 'parent_category', descendants: true };
+  let result = await check(); assert.equal(result.eligible, true); assert.equal(result.collections[0].count, 3);
+  assert.equal(result.categoryPath, 'Каталог / Вживані смартфони');
+  value.blockDocument.root.children[0].props.collection.descendants = false;
+  assert.equal((await check()).eligible, false);
+  value.blockDocument.root.children[0].props.collection = { ...value.blockDocument.root.children[0].props.collection, source: 'selected_category', categoryId: 'laptops', minimum: 1 };
+  result = await check(); assert.deepEqual(result.preview.collections.list.map(p => p.productExternalId), ['macbook-available']);
+  value.blockDocument.root.children[0].props.collection = { ...value.blockDocument.root.children[0].props.collection, source: 'manual', items: [{ productExternalId: 'samsung-s24', modificationExternalId: null }, { productExternalId: 'pixel-unavailable', modificationExternalId: null }] };
+  result = await check(); assert.deepEqual(result.preview.collections.list.map(p => p.productExternalId), ['samsung-s24']);
+  await pool.query("UPDATE search_horoshop_categories SET parent_external_id = NULL WHERE external_id = 'used-phones'");
+  await pool.query('DELETE FROM search_horoshop_categories WHERE id = ANY($1::UUID[])', [[parentId, laptopsId]]);
+});
+
 
 test('block campaigns publish an immutable layout, targeting and schedule while allowing further drafts', async () => {
   const document = blockDocument([blockNode('heading', 'text', { text: 'Published heading' }), blockNode('offer', 'product', { productExternalId: 'iphone-15-new', modificationExternalId: 'iphone-15-new:black' }, [blockNode('title', 'text', { binding: 'product.title' }), blockNode('buy', 'button', { action: 'cart', text: 'Купити' })])]);
@@ -1923,4 +1994,34 @@ test('popup live preview never steals focus from the workspace editor', async ()
   await new Promise((resolve) => dom.window.setTimeout(resolve, 35));
   assert.equal(dom.window.document.activeElement, workspaceField);
   dom.window.close();
+});
+
+test('storefront chooses a ready campaign after frequency and device checks and observes minimum delay', async () => {
+  const payload = (publicId, behavior) => ({ campaign: { publicId, revision: 'rules-v1', type: 'block', blockDocument: blockDocument([blockNode('title', 'text', { text: publicId })]), styles: input().styles, behavior: { ...input().behavior, requireAcknowledgement: false, frequency: 'session', ...behavior } }, products: [], recommendations: [], product: null });
+  const cases = [
+    { name: 'suppressed', high: { trigger: 'delay', delayMs: 0 }, low: { trigger: 'delay', delayMs: 0 }, suppress: true, expected: 'low' },
+    { name: 'device', high: { trigger: 'delay', device: 'mobile', delayMs: 0 }, low: { trigger: 'delay', delayMs: 0 }, expected: 'low' },
+    { name: 'waiting exit', high: { trigger: 'exit_intent', delayMs: 0 }, low: { trigger: 'delay', delayMs: 0 }, expected: 'low' },
+    { name: 'same readiness', high: { trigger: 'delay', delayMs: 0 }, low: { trigger: 'delay', delayMs: 0 }, expected: 'high' },
+    { name: 'minimum before scroll', high: { trigger: 'scroll', delayMs: 120, scrollPercent: 10 }, low: { trigger: 'delay', delayMs: 300 }, scroll: true, expected: 'high' }
+  ];
+  for (const config of cases) {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://shop.example.com/', runScripts: 'outside-only', pretendToBeVisual: true });
+    try {
+      Object.defineProperty(dom.window, 'innerWidth', { value: 1440 });
+      Object.defineProperty(dom.window.navigator, 'userAgent', { value: 'Mozilla/5.0 Chrome/140' });
+      Object.defineProperty(dom.window, 'scrollY', { value: config.scroll ? 100 : 0 });
+      dom.window.MutationObserver = class { observe() {} disconnect() {} };
+      const high = payload('high', config.high), low = payload('low', config.low);
+      if (config.suppress) dom.window.sessionStorage.setItem('mt-popup:high:rules-v1:site', '1');
+      const events = [];
+      dom.window.fetch = async (url, options = {}) => String(url).includes('/resolve') ? { ok: true, json: async () => ({ data: { ...high, candidates: [high, low] } }) } : (events.push(JSON.parse(options.body)), { ok: true });
+      dom.window.eval(popupEmbedScript('https://mt-panel.example.com'));
+      if (config.scroll) { await new Promise(resolve => setTimeout(resolve, 40)); assert.equal(dom.window.document.querySelector('#mt-popup-banner-root'), null); }
+      await new Promise(resolve => setTimeout(resolve, config.scroll ? 120 : 50));
+      const host = dom.window.document.querySelector('#mt-popup-banner-root');
+      assert.equal(host?.shadowRoot.querySelector('[data-block-id="title"]').textContent, config.expected, config.name);
+      assert.equal(events.filter(e => e.eventType === 'impression').length, 1, config.name);
+    } finally { dom.window.close(); }
+  }
 });
