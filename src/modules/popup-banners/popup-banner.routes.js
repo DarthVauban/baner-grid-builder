@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
+import { defaultTimerConfig } from './popup-timer.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { horoshopCatalogService } from '../search/horoshop/catalog.service.js';
@@ -186,8 +187,14 @@ const behaviorSchema = behaviorBaseSchema.superRefine((value, context) => {
     });
   }
 });
+const timerConfigSchema = z.object({
+  mode: z.enum(['deadline', 'duration']),
+  deadlineAt: nullableDateSchema,
+  durationMinutes: z.number().int().min(1).max(43200)
+}).optional().default(defaultTimerConfig);
 const campaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown']).default('message'),
+  timerConfig: timerConfigSchema,
   name: z.string().trim().min(1).max(160),
   priority: z.number().int().min(0).max(1000),
   content: contentSchema,
@@ -208,6 +215,14 @@ const campaignSchema = z.object({
   message: 'Дата завершення має бути пізніше дати початку.',
   path: ['endsAt']
 }).superRefine((value, context) => {
+  if (value.campaignType === 'countdown') {
+    if (value.targeting.mode === 'out_of_stock') context.addIssue({
+      code: 'custom', path: ['targeting', 'mode'], message: 'Банер із таймером не підтримує сценарій відсутнього товару.'
+    });
+    if (value.timerConfig.mode === 'deadline' && !value.timerConfig.deadlineAt) context.addIssue({
+      code: 'custom', path: ['timerConfig', 'deadlineAt'], message: 'Вкажіть дату й час завершення таймера.'
+    });
+  }
   if (value.campaignType === 'product_promo' && value.targeting.mode === 'out_of_stock') {
     context.addIssue({
       code: 'custom', path: ['targeting', 'mode'], message: 'Цей тип банера не підтримує сценарій відсутнього товару.'
@@ -252,7 +267,8 @@ const campaignSchema = z.object({
   });
 });
 const previewCampaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown']).default('message'),
+  timerConfig: timerConfigSchema,
   name: z.string().trim().max(160).optional().default(''),
   priority: z.number().int().min(0).max(1000).optional().default(0),
   content: contentSchema,

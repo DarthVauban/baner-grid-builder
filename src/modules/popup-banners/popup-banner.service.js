@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { loadPromoCodeRow, promoCodeSnapshot } from '../promo-codes/promo-code.service.js';
+import { createPopupTimerRuntime, isTimerExpired, normalizeTimerConfig } from './popup-timer.js';
 
 export const popupBannerToolId = 'popup_banners';
 
@@ -101,10 +102,10 @@ const eventStatsKey = {
 
 function normalizeCampaignType(value, targeting = {}) {
   if (value === 'exit_offer') return 'message';
-  if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form'].includes(value)) {
+  if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(value)) {
     return 'out_of_stock_recommendations';
   }
-  if (['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form'].includes(value)) return value;
+  if (['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown'].includes(value)) return value;
   return 'message';
 }
 
@@ -239,6 +240,7 @@ function normalizeBehavior(value) {
 
 function campaignSnapshot(row, targets = [], promoProducts = []) {
   return {
+    timerConfig: normalizeTimerConfig(row.timer_config),
     campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
     name: row.name,
     status: row.status,
@@ -392,6 +394,7 @@ function serializePromoProduct(row) {
 
 function serializeCampaign(row, targets = [], promoProducts = []) {
   return {
+    timerConfig: normalizeTimerConfig(row.timer_config),
     id: row.id,
     publicId: row.public_id,
     campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
@@ -713,13 +716,13 @@ async function savePopupCampaign(existingId, input, actorUserId) {
               promo_code_published_snapshot = CASE WHEN $4::VARCHAR IN ('promo_code', 'lead_form') THEN promo_code_published_snapshot ELSE NULL END,
               form_config = $15::JSONB,
               form_published_snapshot = CASE WHEN $4::VARCHAR = 'lead_form' THEN form_published_snapshot ELSE NULL END,
-              updated_by = $16, updated_at = NOW()
+              timer_config = $17::JSONB, updated_by = $16, updated_at = NOW()
          WHERE id = $1 RETURNING id`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
           draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
-          JSON.stringify(formConfig), actorUserId]
+          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig))]
       );
       if (!updated.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
     } else {
@@ -728,13 +731,13 @@ async function savePopupCampaign(existingId, input, actorUserId) {
         `INSERT INTO popup_banner_campaigns (
            id, connection_id, connection_generation, campaign_type, name, priority, content, styles,
             targeting, behavior, starts_at, ends_at, promo_code_id, promo_code_draft_snapshot,
-            form_config, created_by, updated_by
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16)`,
+            form_config, created_by, updated_by, timer_config
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16, $17::JSONB)`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
           draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
-          JSON.stringify(formConfig), actorUserId]
+          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig))]
       );
     }
 
@@ -821,6 +824,9 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
     if (!current) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
     const campaignType = normalizeCampaignType(current.campaign_type, current.targeting);
     if (status === 'active') {
+      if (campaignType === 'countdown' && isTimerExpired(normalizeTimerConfig(current.timer_config))) {
+        throw new AppError(422, 'POPUP_TIMER_EXPIRED', 'Вкажіть майбутню дату завершення таймера перед публікацією.');
+      }
       if (!current.current_connection_id || current.connection_id !== current.current_connection_id
         || current.connection_generation !== current.current_generation) {
         throw new AppError(409, 'POPUP_CATALOG_STALE', 'Кампанія належить до попереднього підключення Хорошоп. Збережіть її повторно для поточного каталогу.');
@@ -1250,6 +1256,7 @@ export async function previewPopupCampaign(input) {
     ? await loadPromoCodeRow(input.promoCodeId, connection.id, db)
     : null;
   const normalizedSnapshot = {
+    timerConfig: normalizeTimerConfig(input.timerConfig),
     type: campaignType,
     content,
     styles,
@@ -1263,6 +1270,7 @@ export async function previewPopupCampaign(input) {
   return {
     campaign: {
       publicId: 'preview',
+      timerConfig: normalizedSnapshot.timerConfig,
       revision: `preview-${createHash('sha256').update(JSON.stringify(normalizedSnapshot)).digest('hex').slice(0, 16)}`,
       type: campaignType,
       mode: targeting.mode,
@@ -1300,6 +1308,8 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
   );
   for (const campaign of campaigns.rows) {
     const campaignType = normalizeCampaignType(campaign.campaign_type, campaign.targeting);
+    const timerConfig = normalizeTimerConfig(campaign.timer_config);
+    if (campaignType === 'countdown' && isTimerExpired(timerConfig)) continue;
     if (!isWithinBehaviorSchedule(campaign.behavior)) continue;
     const targets = campaign.targeting?.mode === 'products'
       ? (await query('SELECT product_id, modification_id FROM popup_banner_product_targets WHERE campaign_id = $1', [campaign.id])).rows
@@ -1326,8 +1336,10 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
     if (['promo_code', 'lead_form'].includes(campaignType) && !publishedPromoCode?.code) continue;
     if (campaignType === 'lead_form' && !publishedFormConfig.fields.length) continue;
     return {
+      serverNow: new Date().toISOString(),
       campaign: {
         publicId: campaign.public_id,
+        timerConfig,
         revision: campaign.updated_at instanceof Date
           ? campaign.updated_at.toISOString()
           : String(campaign.updated_at || ''),
@@ -1665,6 +1677,9 @@ export function popupEmbedScript(origin) {
   if (window.__mtPopupBannersLoaded) return;
   window.__mtPopupBannersLoaded = true;
   const script = document.currentScript;
+  const timerRuntime = (${createPopupTimerRuntime.toString()})(window);
+  const localStorage = timerRuntime.storage('localStorage');
+  const sessionStorage = timerRuntime.storage('sessionStorage');
   const apiOrigin = ${JSON.stringify(origin)};
   let previewPayload = window.__MT_POPUP_PREVIEW__ || null;
   if (!previewPayload && script?.dataset.previewPayload) {
@@ -2047,13 +2062,19 @@ export function popupEmbedScript(origin) {
   function render(payload, productArticle) {
     if (currentHost || (!previewMode && isSuppressed(payload))) return;
     const { campaign } = payload;
+    const countdown = timerRuntime.start(campaign, previewMode);
+    if (countdown?.expired) return;
     const isProductPromo = campaign.type === 'product_promo';
     const isPromoCode = campaign.type === 'promo_code';
     const isLeadForm = campaign.type === 'lead_form';
     const promoFormat = campaign.styles.promoFormat || 'notification';
     const cleanupTasks = [];
+    const previousFocus = document.activeElement;
     const host = document.createElement('div');
     host.id = 'mt-popup-banner-root';
+    if (countdown && !previewMode) cleanupTasks.push(() => {
+      if (document.activeElement === host && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    });
     host.style.position = 'fixed';
     host.style.zIndex = '2147482990';
     if (isProductPromo) {
@@ -2080,6 +2101,7 @@ export function popupEmbedScript(origin) {
     style.textContent = \`:host{all:initial}.backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.56);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}.card{position:relative;width:min(var(--width),100%);max-height:calc(100vh - 36px);overflow:auto;border-radius:var(--radius);background:var(--bg);box-shadow:0 28px 90px rgba(15,23,42,.3);animation:enter .2s ease-out}.card:focus{outline:none}.card.is-recommendations{display:flex;flex-direction:column;overflow:hidden}.card.is-recommendations>.image{flex:0 1 auto;max-height:min(220px,24vh)}.card.is-recommendations .content{box-sizing:border-box;display:flex;flex:1 1 auto;flex-direction:column;max-height:none;min-height:0;overflow:hidden}.content{padding:30px}.image{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) - 7px) calc(var(--radius) - 7px) 0 0}.eyebrow{margin:0 0 8px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.title{margin:0;color:var(--text);font-size:clamp(24px,4vw,34px);line-height:1.08}.body{margin:14px 0 0;color:var(--muted);font-size:16px;line-height:1.58;white-space:pre-line}.ack{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:10px;margin:20px 0 0;padding:14px;border-radius:14px;color:var(--checkbox-text);background:color-mix(in srgb,var(--checkbox) 9%,var(--bg));font-size:14px;line-height:1.4}.ack input{display:grid;place-content:center;width:18px;height:18px;margin:0;appearance:none;border:1.5px solid color-mix(in srgb,var(--checkbox) 55%,#fff);border-radius:5px;background:var(--bg);cursor:pointer}.ack input:before{width:8px;height:4px;border-bottom:2px solid #fff;border-left:2px solid #fff;content:'';transform:rotate(-45deg) scale(0);transition:transform .12s ease}.ack input:checked{border-color:var(--checkbox);background:var(--checkbox)}.ack input:checked:before{transform:rotate(-45deg) scale(1)}.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.button{min-height:44px;border:1px solid transparent;border-radius:var(--button-radius,12px);padding:10px 18px;font:inherit;font-weight:750;cursor:pointer}.primary{border-color:var(--primary-bg);background:var(--primary-bg);color:var(--primary-text)}.primary:disabled{opacity:.45;cursor:not-allowed}.secondary{border-color:color-mix(in srgb,var(--secondary-text) 16%,transparent);background:var(--secondary-bg);color:var(--secondary-text)}.close{position:absolute;z-index:2;top:12px;right:12px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(15,23,42,.72);color:#fff;font-size:24px;line-height:1;cursor:pointer}.recommendations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}.card.is-recommendations .recommendations{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.recommendation{display:grid;grid-template-rows:auto minmax(44px,1fr) auto auto;gap:10px;min-width:0;padding:12px;border:1px solid color-mix(in srgb,var(--text) 12%,transparent);border-radius:16px;background:color-mix(in srgb,var(--bg) 94%,var(--text));text-decoration:none}.recommendation-image{display:block;width:100%;aspect-ratio:1.2;object-fit:contain;border-radius:12px;background:#f6f7f9}.recommendation-title{display:-webkit-box;overflow:hidden;margin:0;color:var(--text);font-size:14px;font-weight:650;line-height:1.4;text-decoration:none;-webkit-box-orient:vertical;-webkit-line-clamp:2}.recommendation-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px}.recommendation-price strong{color:var(--text);font-size:18px}.recommendation-price del{color:var(--muted);font-size:12px}.recommendation-buy{width:100%;min-height:42px;border:1px solid var(--primary-bg);border-radius:var(--button-radius,12px);background:var(--primary-bg);color:var(--primary-text);font:750 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.recommendation-buy:disabled{opacity:.65;cursor:wait}.corner{align-items:flex-end;justify-content:flex-end;background:transparent;pointer-events:none}.corner .card{pointer-events:auto;box-shadow:0 20px 65px rgba(15,23,42,.25)}.bottom-sheet{align-items:flex-end}.bottom-sheet .card{width:min(760px,100%);border-radius:var(--radius) var(--radius) 0 0;margin-bottom:-18px}@keyframes enter{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}@media(max-width:760px){.recommendations{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card.is-recommendations .recommendations{overflow-x:hidden;overflow-y:auto}.recommendation{gap:8px;padding:9px;border-radius:14px}.recommendation-image{aspect-ratio:1}.recommendation-title{font-size:13px;line-height:1.35}.recommendation-price{gap:5px}.recommendation-price strong{font-size:16px}.recommendation-price del{font-size:11px}.recommendation-buy{min-height:40px;font-size:clamp(13px,var(--button-size),15px)}}@media(max-width:600px){.backdrop{padding:10px;align-items:flex-end}.card{border-radius:20px 20px 0 0;margin-bottom:-10px}.content{padding:24px 20px}.actions{flex-direction:column-reverse}.button{width:100%}.recommendations{margin-right:0;padding-right:0}}\`;
     style.textContent += \`.eyebrow{font-size:var(--eyebrow-size)}.title{font-size:var(--title-size)}.body{font-size:var(--body-size)}.ack{font-size:var(--ack-size)}.ack input:before{border-bottom-color:var(--checkbox-check);border-left-color:var(--checkbox-check)}.button{font-size:var(--button-size)}.bottom-sheet .card{width:min(var(--width),100%)}\`;
     style.textContent += '.recommendation-image{background:#fff}';
+    style.textContent += '.countdown{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:24px}.countdown-cell{display:grid;gap:6px;min-width:0;padding:16px 4px;text-align:center;border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);border-radius:calc(var(--radius) * .5);background:color-mix(in srgb,var(--accent) 8%,var(--bg))}.countdown-cell strong{color:var(--accent);font-size:clamp(24px,6vw,40px);line-height:1.1;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.countdown-cell span{color:var(--muted);font-size:12px;line-height:1.3}@media(max-width:600px){.countdown{gap:6px;margin-top:20px}.countdown-cell{padding:12px 2px}.countdown-cell span{font-size:10px}}';
     style.textContent += '.recommendation-price.is-discounted strong{color:#dc2626}';
     style.textContent += \`.promo-code-offer{display:grid;gap:14px;margin-top:22px;padding:18px;border:1px solid color-mix(in srgb,var(--accent) 24%,transparent);border-radius:calc(var(--radius) * .55);background:color-mix(in srgb,var(--accent) 7%,var(--bg))}.promo-code-value{margin:0;color:var(--text);font-size:15px;font-weight:800}.promo-code-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px}.promo-code{display:flex;align-items:center;min-width:0;min-height:52px;overflow:hidden;border:1px dashed color-mix(in srgb,var(--accent) 55%,var(--text));border-radius:var(--button-radius);padding:9px 14px;color:var(--text);background:var(--bg);font:850 20px/1.1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.08em;overflow-wrap:anywhere}.promo-code-copy{display:inline-flex;align-items:center;justify-content:center;min-width:112px;min-height:52px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:9px 16px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.promo-code-copy.is-copied{filter:saturate(.75);opacity:.82}.promo-code-note{margin:0;color:var(--muted);font-size:13px;line-height:1.45}.promo-code-cta{display:flex;align-items:center;justify-content:center;min-height:44px;margin-top:14px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:10px 18px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;text-decoration:none;cursor:pointer}@media(max-width:600px){.promo-code-offer{gap:11px;margin-top:17px;padding:14px}.promo-code-row{grid-template-columns:1fr}.promo-code-copy{width:100%}.promo-code{font-size:18px}}\`;
     style.textContent += \`.lead-form{display:grid;gap:13px;margin-top:22px}.lead-form-block{display:grid;gap:13px;min-width:0}.lead-form-block.is-row{grid-template-columns:repeat(var(--lead-columns,1),minmax(0,1fr))}.lead-form-block.is-column{grid-template-columns:1fr}.lead-field{display:grid;align-content:start;gap:6px;min-width:0;color:var(--text);font:700 13px/1.35 Inter,system-ui,sans-serif}.lead-field input:not([type=checkbox]),.lead-field textarea,.lead-field select{box-sizing:border-box;width:100%;min-width:0;min-height:46px;border:1px solid color-mix(in srgb,var(--text) 18%,transparent);border-radius:var(--button-radius);padding:10px 12px;color:var(--text);background:var(--bg);font:500 15px/1.35 Inter,system-ui,sans-serif;outline:none}.lead-field textarea{min-height:92px;resize:vertical}.lead-field input:focus,.lead-field textarea:focus,.lead-field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}.lead-field input[aria-invalid=true],.lead-field textarea[aria-invalid=true],.lead-field select[aria-invalid=true]{border-color:#dc2626}.lead-field-checkbox{display:flex;align-items:flex-start;gap:9px;padding:4px 0;font-weight:550}.lead-field-checkbox input{flex:0 0 auto;width:18px;height:18px;margin:0;accent-color:var(--accent)}.lead-form-error{min-height:18px;margin:0;color:#b42318;font-size:13px;line-height:1.4}.lead-form-submit{min-height:48px;border:1px solid var(--primary-bg);border-radius:var(--button-radius);padding:10px 18px;color:var(--primary-text);background:var(--primary-bg);font:800 var(--button-size)/1.2 Inter,system-ui,sans-serif;cursor:pointer}.lead-form-submit:disabled{opacity:.6;cursor:wait}.lead-form-success{display:grid;gap:2px;margin-top:20px}.lead-form-success h3{margin:0;color:var(--text);font-size:22px;line-height:1.2}.lead-form-success>p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.45}.lead-form-success .promo-code-offer{margin-top:14px}@media(max-width:600px){.lead-form{gap:11px;margin-top:17px}.lead-form-block.is-row{grid-template-columns:1fr}.lead-form-success h3{font-size:19px}}\`;
@@ -2201,7 +2223,7 @@ export function popupEmbedScript(origin) {
       else if (!keyEvent.shiftKey && active === last) { keyEvent.preventDefault(); first.focus(); }
     });
     const close = (kind) => {
-      event(campaign.publicId, kind, productArticle);
+      if (kind) event(campaign.publicId, kind, productArticle);
       for (const cleanup of cleanupTasks) cleanup();
       activeCleanup = null;
       host.remove(); currentHost = null;
@@ -2492,11 +2514,14 @@ export function popupEmbedScript(origin) {
       if (previewMode) return;
       event(campaign.publicId, campaign.behavior.requireAcknowledgement ? 'acknowledge' : 'click', productArticle);
       const target = campaign.content.primaryUrl;
-      host.remove(); currentHost = null;
+      close(null);
       if (target) { try { location.assign(new URL(target, location.href).href); } catch {} }
     });
+    const timerContainer = countdown ? document.createElement('div') : null;
+    if (timerContainer) content.append(timerContainer);
     actions.append(primary); content.append(actions); card.append(content); backdrop.append(card); shadow.append(backdrop); document.body.append(host);
     currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
+    if (countdown) cleanupTasks.push(countdown.mount(timerContainer, () => close(null)));
     if (!previewMode && campaign.behavior.autoCloseSeconds > 0) {
       const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
       cleanupTasks.push(() => clearTimeout(autoCloseTimer));
@@ -2627,6 +2652,7 @@ export function popupEmbedScript(origin) {
       if (!response.ok) return;
       const envelope = await response.json();
       if (!envelope.data || location.href !== evaluatedUrl) return;
+      timerRuntime.sync(envelope.data.serverNow);
       if (!deviceAllowed(envelope.data.campaign.behavior)) return;
       scheduleRender(envelope.data, productArticle, evaluatedUrl);
     } catch {}

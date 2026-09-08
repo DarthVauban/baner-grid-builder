@@ -13,6 +13,7 @@ const baseCampaign: PopupCampaign = {
   id: 'campaign-used',
   publicId: 'public-used',
   campaignType: 'message',
+  timerConfig: { mode: 'duration', deadlineAt: null, durationMinutes: 15 },
   name: 'Попередження про вживаний товар',
   status: 'active',
   priority: 100,
@@ -189,6 +190,7 @@ function previewPayload(campaign: PopupCampaignInput): PopupPreviewPayload {
       content: campaign.content,
       styles: campaign.styles,
       behavior: campaign.behavior,
+      timerConfig: campaign.timerConfig,
       formConfig: campaign.formConfig,
       promoCode: campaign.promoCodeId ? {
         libraryId: promoCode.id,
@@ -568,6 +570,48 @@ describe('PopupBannersPage', () => {
       targeting: expect.objectContaining({ mode: 'all_pages' }),
       content: expect.objectContaining({ primaryLabel: 'Перейти до акції', primaryUrl: '' })
     }), expect.anything()));
+  });
+
+  it('creates a personal countdown and edits it to a deadline without changing its type or targeting', async () => {
+    let saved = { ...structuredClone(baseCampaign), id: 'timer-campaign', status: 'draft' as const, productTargets: [] };
+    const create = vi.spyOn(api.popupBanners, 'create').mockImplementation(async (input) => {
+      saved = { ...saved, ...input };
+      vi.mocked(api.popupBanners.list).mockResolvedValue([saved]);
+      return saved;
+    });
+    const update = vi.spyOn(api.popupBanners, 'update').mockImplementation(async (_id, input) => {
+      saved = { ...saved, ...input };
+      vi.mocked(api.popupBanners.list).mockResolvedValue([saved]);
+      return saved;
+    });
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+    fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /Банер із таймером/u }));
+    expect(screen.getByText('Зворотний відлік')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Тривалість таймера, хвилин/u), { target: { value: '30' } });
+    await waitFor(() => expect(api.popupBanners.preview).toHaveBeenLastCalledWith(expect.objectContaining({
+      campaignType: 'countdown', timerConfig: { mode: 'duration', deadlineAt: null, durationMinutes: 30 }
+    }), expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      campaignType: 'countdown', timerConfig: { mode: 'duration', deadlineAt: null, durationMinutes: 30 }
+    }), expect.anything()));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Режим таймера' }));
+    fireEvent.click(screen.getByRole('option', { name: 'До заданої дати й часу' }));
+    const dateInput = screen.getByLabelText(/Дата й час завершення таймера/u);
+    fireEvent.change(dateInput, { target: { value: '' } });
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
+    fireEvent.change(dateInput, { target: { value: '2099-01-01T15:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith('timer-campaign', expect.objectContaining({
+      campaignType: 'countdown',
+      timerConfig: { mode: 'deadline', durationMinutes: 30, deadlineAt: new Date('2099-01-01T15:00').toISOString() },
+      targeting: expect.objectContaining({ mode: 'all_pages' })
+    })));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled());
+    expect(dateInput).toHaveValue('2099-01-01T15:00');
   });
 
   it('builds a configurable contact form that reveals a selected promo code', async () => {

@@ -1,7 +1,13 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
 import type { PromoCodeSnapshot } from './promo-code';
 
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown';
+
+export interface PopupTimerConfig {
+  mode: 'deadline' | 'duration';
+  deadlineAt: string | null;
+  durationMinutes: number;
+}
 export type PopupLayout = 'modal' | 'bottom-sheet' | 'corner';
 export type PopupPromoFormat = 'notification' | 'compact' | 'standard' | 'wide' | 'custom';
 export type PopupDesktopPosition = 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
@@ -162,6 +168,7 @@ export interface PopupCampaign {
   promoCodeId: string | null;
   promoCode: PromoCodeSnapshot | null;
   publishedPromoCode: PromoCodeSnapshot | null;
+  timerConfig: PopupTimerConfig;
   formConfig: PopupLeadFormConfig;
   publishedFormConfig: PopupLeadFormConfig | null;
   stats: {
@@ -195,6 +202,7 @@ export interface PopupCampaignInput {
   productEntries: string[];
   promoItems: PopupPromoProductReference[];
   promoCodeId: string | null;
+  timerConfig: PopupTimerConfig;
   formConfig: PopupLeadFormConfig;
 }
 
@@ -212,6 +220,7 @@ export interface PopupRuntimeProduct {
 }
 
 export interface PopupPreviewPayload {
+  serverNow?: string;
   campaign: {
     publicId: string;
     revision: string;
@@ -220,6 +229,7 @@ export interface PopupPreviewPayload {
     content: PopupContent;
     styles: PopupStyles;
     behavior: PopupBehavior;
+    timerConfig: PopupTimerConfig;
     formConfig: PopupLeadFormConfig;
     promoCode: PromoCodeSnapshot | null;
   };

@@ -45,7 +45,8 @@ const campaignTypeLabels: Record<PopupCampaignType, string> = {
   out_of_stock_recommendations: 'Альтернативи товару',
   product_promo: 'Товарний промобанер',
   promo_code: 'Банер із промокодом',
-  lead_form: 'Форма за промокод'
+  lead_form: 'Форма за промокод',
+  countdown: 'Банер із таймером'
 };
 
 const layoutLabels: Record<PopupLayout, string> = {
@@ -180,6 +181,7 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
     startsAt: null,
     endsAt: null,
     promoCodeId: null,
+    timerConfig: { mode: 'duration', deadlineAt: null, durationMinutes: 15 },
     formConfig: {
       fields: [
         { id: 'name', type: 'text', label: 'Імʼя', placeholder: 'Ваше імʼя', required: true, options: [] },
@@ -296,6 +298,22 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       }
     };
   }
+  if (campaignType === 'countdown') {
+    return {
+      ...draft,
+      name: 'Банер із таймером',
+      content: {
+        ...draft.content,
+        eyebrow: 'Пропозиція обмежена в часі',
+        title: 'Встигніть скористатися пропозицією',
+        body: 'Оберіть товари за вигідною ціною до завершення акції.',
+        primaryLabel: 'Перейти до пропозиції',
+        acknowledgementLabel: ''
+      },
+      targeting: { ...draft.targeting, mode: 'all_pages' },
+      behavior: { ...draft.behavior, frequency: 'always', requireAcknowledgement: false, buttonCount: 1 }
+    };
+  }
   return draft;
 }
 
@@ -320,6 +338,7 @@ function campaignInput(campaign: PopupCampaign): PopupCampaignInput {
     styles,
     targeting: { ...campaign.targeting },
     behavior: { ...campaign.behavior },
+    timerConfig: { ...(campaign.timerConfig || emptyCampaign().timerConfig) },
     startsAt: campaign.startsAt,
     endsAt: campaign.endsAt,
     promoCodeId: campaign.promoCodeId,
@@ -514,7 +533,7 @@ function TargetModePicker({ value, campaignType, onChange }: { value: PopupTarge
     { value: 'all_products', icon: 'storefront', description: 'Будь-яка сторінка товару' },
     { value: 'all_pages', icon: 'productPage', description: 'Увесь сайт без обмежень' }
   ];
-  const visibleModes = ['product_promo', 'promo_code', 'lead_form'].includes(campaignType)
+  const visibleModes = ['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(campaignType)
     ? modes.filter((mode) => mode.value !== 'out_of_stock')
     : modes;
   return <div className="popup-target-mode" role="radiogroup" aria-label="Тип вибірки">
@@ -585,9 +604,6 @@ function PromoPositionPicker({
 }
 
 function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) => void }) {
-  const planned = [
-    { stage: 2, title: 'Банер із таймером', description: 'Акція з візуальним зворотним відліком.', icon: 'schedule' as const }
-  ];
   return <section className="popup-type-picker">
     <header><p className="eyebrow">Нова кампанія</p><h2>Оберіть тип банера</h2><p>Тип визначає структуру конструктора, поведінку на сайті та набір доступних налаштувань.</p></header>
     <div className="popup-type-picker__group">
@@ -611,10 +627,12 @@ function CampaignTypePicker({ onSelect }: { onSelect: (type: PopupCampaignType) 
           <small>Збір контактів із настроюваними полями. Промокод відкривається лише після успішного надсилання.</small>
           <b>Створити банер <Icon name="arrow" size={16} /></b>
         </button>
-        {planned.map((item) => <article key={item.title}>
-          <span><Icon name={item.icon} size={23} /></span><i>ЕТАП {item.stage}</i>
-          <strong>{item.title}</strong><small>{item.description}</small><b>Незабаром</b>
-        </article>)}
+        <button type="button" onClick={() => onSelect('countdown')}>
+          <span><Icon name="schedule" size={25} /></span><i>НОВИЙ</i>
+          <strong>Банер із таймером</strong>
+          <small>Спільний відлік до дати або персональний таймер для кожного відвідувача. Автоматично приховується після завершення.</small>
+          <b>Створити банер <Icon name="arrow" size={16} /></b>
+        </button>
       </div>
     </div>
     <div className="popup-type-picker__group is-scenarios">
@@ -814,6 +832,11 @@ export function PopupBannersPage() {
     }))
   }), [draft, productText, promoProducts]);
   const targetPageMissing = draft.targeting.mode === 'target_page' && !draft.targeting.targetPageUrl.trim();
+  const timerInvalid = draft.campaignType === 'countdown' && (
+    (draft.timerConfig.mode === 'deadline' && !draft.timerConfig.deadlineAt)
+    || !Number.isInteger(draft.timerConfig.durationMinutes)
+    || draft.timerConfig.durationMinutes < 1 || draft.timerConfig.durationMinutes > 43200
+  );
   const isDirty = useMemo(() => {
     if (isCreating || !selectedCampaign) return true;
     return JSON.stringify(currentInput) !== JSON.stringify(campaignInput(selectedCampaign));
@@ -886,7 +909,7 @@ export function PopupBannersPage() {
         && current.content.body === 'Перед оформленням замовлення ознайомтеся з важливою інформацією про товар.';
       return {
         ...current,
-        campaignType: ['product_promo', 'promo_code', 'lead_form'].includes(current.campaignType)
+        campaignType: ['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(current.campaignType)
           ? current.campaignType
           : mode === 'out_of_stock' ? 'out_of_stock_recommendations' : 'message',
         name: isFirstOutOfStockSetup && current.name === 'Попередження про товар'
@@ -1169,7 +1192,7 @@ export function PopupBannersPage() {
             {!isCreating && selectedCampaign?.status !== 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('active')} disabled={changeStatus.isPending || isDirty}><Icon name="publication" size={16} /> Опублікувати</button>}
             {!isCreating && selectedCampaign?.status === 'active' && <button className="button button--secondary button--small" type="button" onClick={() => void setStatus('paused')} disabled={changeStatus.isPending}><Icon name="deadline" size={16} /> Призупинити</button>}
             {!isCreating && <button className="icon-button icon-button--danger" type="button" onClick={() => void remove()} aria-label="Видалити кампанію"><Icon name="delete" size={18} /></button>}
-            <button className="button button--primary button--small" type="button" onClick={() => void save()} disabled={saving || !options.data?.integration || !draft.name.trim() || targetPageMissing || (hasAttachedProducts && !promoProducts.length) || (['promo_code', 'lead_form'].includes(draft.campaignType) && !draft.promoCodeId) || (draft.campaignType === 'lead_form' && !draft.formConfig.fields.length) || !isDirty}><Icon name="save" size={16} /> {saving ? 'Зберігаємо…' : 'Зберегти'}</button>
+            <button className="button button--primary button--small" type="button" onClick={() => void save()} disabled={saving || !options.data?.integration || !draft.name.trim() || targetPageMissing || timerInvalid || (hasAttachedProducts && !promoProducts.length) || (['promo_code', 'lead_form'].includes(draft.campaignType) && !draft.promoCodeId) || (draft.campaignType === 'lead_form' && !draft.formConfig.fields.length) || !isDirty}><Icon name="save" size={16} /> {saving ? 'Зберігаємо…' : 'Зберегти'}</button>
           </div>
         </header>
 
@@ -1212,6 +1235,30 @@ export function PopupBannersPage() {
                   <label className="is-full"><span>Зображення</span><input type="url" placeholder="https://..." value={draft.content.imageUrl} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, imageUrl: event.target.value } }))} /><small>Необов’язково. Використовуйте пряме HTTPS-посилання.</small></label>
                 </div>}
               </div>
+
+              {draft.campaignType === 'countdown' && <div className="popup-form-section">
+                <SectionHeading icon="schedule" title="Зворотний відлік" description="Після завершення таймера банер автоматично приховається." />
+                <div className="popup-form-grid">
+                  <label className="is-full"><span>Режим таймера</span><StyledSelect
+                    ariaLabel="Режим таймера"
+                    value={draft.timerConfig.mode}
+                    onChange={(mode) => setDraft((current) => ({ ...current, timerConfig: {
+                      ...current.timerConfig, mode,
+                      deadlineAt: mode === 'deadline' && !current.timerConfig.deadlineAt
+                        ? new Date(Date.now() + 86400000).toISOString() : current.timerConfig.deadlineAt
+                    } }))}
+                    options={[{ value: 'duration', label: 'Персональний відлік' }, { value: 'deadline', label: 'До заданої дати й часу' }]}
+                  /></label>
+                  {draft.timerConfig.mode === 'deadline' ? <label className="is-full"><span>Дата й час завершення таймера</span>
+                    <input type="datetime-local" value={localDateTime(draft.timerConfig.deadlineAt)} onChange={(event) => setDraft((current) => ({ ...current, timerConfig: { ...current.timerConfig, deadlineAt: isoDateTime(event.target.value) } }))} />
+                    <small>Часовий пояс: {Intl.DateTimeFormat().resolvedOptions().timeZone}. Усі відвідувачі бачать однаковий відлік.</small>
+                    {draft.timerConfig.deadlineAt && Date.parse(draft.timerConfig.deadlineAt) <= Date.now() && <small>Цей час уже минув. Вкажіть майбутню дату, щоб опублікувати банер.</small>}
+                  </label> : <label className="is-full"><span>Тривалість таймера, хвилин</span>
+                    <input type="number" min={1} max={43200} step={1} value={draft.timerConfig.durationMinutes} onChange={(event) => setDraft((current) => ({ ...current, timerConfig: { ...current.timerConfig, durationMinutes: Number(event.target.value) } }))} />
+                    <small>Від 1 хвилини до 30 днів. Відлік починається з першого показу та зберігається в браузері між сторінками й перезавантаженнями. Після завершення повторно не запускається.</small>
+                  </label>}
+                </div>
+              </div>}
 
               {['promo_code', 'lead_form'].includes(draft.campaignType) && <div className="popup-form-section">
                 <SectionHeading icon="copy" title="Промокод" description={draft.campaignType === 'lead_form' ? 'Код не передається у браузер до успішного збереження контакту. Під час публікації кампанія отримає незмінний snapshot.' : 'Оберіть код із бібліотеки поточного магазину. Хорошоп залишається джерелом істини, а банер отримає snapshot під час публікації.'} />
@@ -1355,11 +1402,11 @@ export function PopupBannersPage() {
                     <label><span>Надзаголовок, px</span><input type="number" min={8} max={32} value={draft.styles.eyebrowFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, eyebrowFontSize: Number(event.target.value) } }))} /></label>
                     <label><span>Заголовок, px</span><input type="number" min={18} max={72} value={draft.styles.titleFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, titleFontSize: Number(event.target.value) } }))} /></label>
                     <label><span>Основний текст, px</span><input type="number" min={10} max={36} value={draft.styles.bodyFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, bodyFontSize: Number(event.target.value) } }))} /></label>
-                  {draft.targeting.mode !== 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form'].includes(draft.campaignType) && <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>}
+                  {draft.targeting.mode !== 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(draft.campaignType) && <label><span>Підтвердження, px</span><input type="number" min={10} max={28} value={draft.styles.acknowledgementFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, acknowledgementFontSize: Number(event.target.value) } }))} /></label>}
                     <label><span>Кнопки, px</span><input type="number" min={10} max={28} value={draft.styles.buttonFontSize} onChange={(event) => setDraft((current) => ({ ...current, styles: { ...current.styles, buttonFontSize: Number(event.target.value) } }))} /></label>
                   </div>
                 </div>
-                {draft.targeting.mode !== 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form'].includes(draft.campaignType) && <div className="popup-settings-group">
+                {draft.targeting.mode !== 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(draft.campaignType) && <div className="popup-settings-group">
                   <strong>Стиль чекбокса підтвердження</strong>
                   <small>Ці кольори застосуються, коли в розділі поведінки увімкнено явне підтвердження.</small>
                   <div className="popup-color-grid">
@@ -1501,9 +1548,9 @@ export function PopupBannersPage() {
                 </div>
                 <div className="popup-toggle-list">
                   <Toggle checked={draft.behavior.dismissible} label="Покупець може закрити попап" description={draft.campaignType === 'product_promo' ? 'Показувати хрестик у самій панелі. Банер не перехоплює кліки поза нею.' : 'Показувати хрестик і дозволити закриття кліком по затемненому фону.'} onChange={(dismissible) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, dismissible } }))} />
-                  {draft.targeting.mode !== 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form'].includes(draft.campaignType) && <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />}
+                  {draft.targeting.mode !== 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(draft.campaignType) && <Toggle checked={draft.behavior.requireAcknowledgement} label="Потрібне явне підтвердження" description="Основна кнопка стане доступною лише після встановлення прапорця." onChange={(requireAcknowledgement) => setDraft((current) => ({ ...current, behavior: { ...current.behavior, requireAcknowledgement } }))} />}
                 </div>
-                {draft.targeting.mode !== 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form'].includes(draft.campaignType) && draft.behavior.requireAcknowledgement && <>
+                {draft.targeting.mode !== 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(draft.campaignType) && draft.behavior.requireAcknowledgement && <>
                   <label><span>Текст підтвердження</span><textarea rows={3} value={draft.content.acknowledgementLabel} onChange={(event) => setDraft((current) => ({ ...current, content: { ...current.content, acknowledgementLabel: event.target.value } }))} /></label>
                 </>}
               </div>

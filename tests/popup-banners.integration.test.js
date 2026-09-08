@@ -1720,6 +1720,61 @@ test('lead-form widget renders and reveals its promo code after submission on de
   }
 });
 
+test('countdown campaigns persist both modes through creation, publication, editing, and public resolution', async () => {
+  const campaigns = await admin.get('/api/popup-banners').expect(200);
+  for (const campaign of campaigns.body.data) {
+    if (campaign.status === 'active') await admin.patch(`/api/popup-banners/${campaign.id}/status`).send({ status: 'paused' }).expect(200);
+  }
+  const timerConfig = { mode: 'deadline', deadlineAt: '2099-01-01T15:00:00+03:00', durationMinutes: 15 };
+  const payload = input({
+    campaignType: 'countdown', name: 'Таймер акції', timerConfig, productEntries: [],
+    targeting: { ...input().targeting, mode: 'all_pages' },
+    behavior: { ...input().behavior, frequency: 'always', requireAcknowledgement: false }
+  });
+  const created = await admin.post('/api/popup-banners').send(payload).expect(201);
+  const path = `/api/popup-banners/${created.body.data.id}`;
+  const normalized = { ...timerConfig, deadlineAt: '2099-01-01T12:00:00.000Z' };
+  assert.deepEqual(created.body.data.timerConfig, normalized);
+  const preview = await admin.post('/api/popup-banners/preview').send(payload).expect(200);
+  assert.equal(preview.body.data.campaign.type, 'countdown');
+  assert.deepEqual(preview.body.data.campaign.timerConfig, normalized);
+  await admin.patch(`${path}/status`).send({ status: 'active' }).expect(200);
+  const resolve = () => request(app).get('/api/public/popup-banners/resolve').query({ pageUrl: 'https://shop.example.com/sale/' }).expect(200);
+  let publicCampaign = (await resolve()).body.data;
+  assert.deepEqual(publicCampaign.campaign.timerConfig, normalized);
+  assert.ok(Math.abs(Date.parse(publicCampaign.serverNow) - Date.now()) < 10000);
+
+  payload.timerConfig = { mode: 'duration', deadlineAt: null, durationMinutes: 30 };
+  const updated = await admin.put(path).send(payload).expect(200);
+  assert.equal(updated.body.data.status, 'active');
+  assert.deepEqual(updated.body.data.timerConfig, payload.timerConfig);
+  assert.deepEqual((await admin.get(path).expect(200)).body.data.timerConfig, payload.timerConfig);
+  assert.deepEqual((await admin.get('/api/popup-banners').expect(200)).body.data.find((campaign) => campaign.id === created.body.data.id).timerConfig, payload.timerConfig);
+  publicCampaign = (await resolve()).body.data;
+  assert.equal(publicCampaign.campaign.type, 'countdown');
+  assert.deepEqual(publicCampaign.campaign.timerConfig, payload.timerConfig);
+  const changedPreview = await admin.post('/api/popup-banners/preview').send(payload).expect(200);
+  assert.notEqual(changedPreview.body.data.campaign.revision, preview.body.data.campaign.revision);
+
+  payload.timerConfig = { mode: 'deadline', deadlineAt: '2020-01-01T00:00:00Z', durationMinutes: 30 };
+  await admin.put(path).send(payload).expect(200);
+  assert.equal((await resolve()).body.data, null);
+  const expired = await admin.patch(`${path}/status`).send({ status: 'active' }).expect(422);
+  assert.equal(expired.body.error.code, 'POPUP_TIMER_EXPIRED');
+  await admin.delete(path).expect(204);
+});
+
+test('countdown validation rejects invalid durations, missing deadlines and unsupported targeting', async () => {
+  const payload = input({ campaignType: 'countdown' });
+  for (const durationMinutes of [0, -1, 1.5, 43201]) {
+    await admin.post('/api/popup-banners').send({ ...payload, timerConfig: { mode: 'duration', deadlineAt: null, durationMinutes } }).expect(422);
+  }
+  for (const deadlineAt of [null, 'not-a-date', '2026-09-08T15:00:00']) {
+    await admin.post('/api/popup-banners').send({ ...payload, timerConfig: { mode: 'deadline', deadlineAt, durationMinutes: 15 } }).expect(422);
+  }
+  await admin.post('/api/popup-banners').send({ ...payload, targeting: { ...payload.targeting, mode: 'out_of_stock' } }).expect(422);
+});
+
 test('popup live preview never steals focus from the workspace editor', async () => {
   const dom = new JSDOM('<!doctype html><html><body><input id="workspace-field"></body></html>', {
     pretendToBeVisual: true, runScripts: 'outside-only', url: 'https://mt-panel.example.com/tools/popup-banners'
