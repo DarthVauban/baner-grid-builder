@@ -60,6 +60,7 @@ const stylesSchema = z.object({
   primaryButtonTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   promoCopyButtonBackgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   promoCopyButtonTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+  promoDiscountTextColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   promoCodeBackgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   promoCodeBackgroundOpacity: z.number().int().min(0).max(100).optional(),
   secondaryButtonBackgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),

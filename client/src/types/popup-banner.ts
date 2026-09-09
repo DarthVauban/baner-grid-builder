@@ -41,6 +41,7 @@ export interface PopupStyles {
   primaryButtonTextColor: string;
   promoCopyButtonBackgroundColor: string;
   promoCopyButtonTextColor: string;
+  promoDiscountTextColor: string;
   promoCodeBackgroundColor: string;
   promoCodeBackgroundOpacity: number;
   secondaryButtonBackgroundColor: string;

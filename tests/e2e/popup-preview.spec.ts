@@ -145,6 +145,7 @@ for (const surface of [
       await setColor(page.getByLabel('Колір кнопки форми: вибрати колір'), '#123456');
       await setColor(page.getByLabel('Кнопка «Скопіювати»: вибрати колір'), '#e11d48');
       await setColor(page.getByLabel('Текст кнопки «Скопіювати»: вибрати колір'), '#f8fafc');
+      await setColor(page.getByLabel('Текст зі знижкою: вибрати колір'), '#be123c');
       await setColor(page.getByLabel('Фон блоку промокоду: вибрати колір'), '#0ea5e9');
       await page.getByLabel('Непрозорість фону промокоду: значення').fill('35');
       await expect(formState).toHaveAttribute('aria-pressed', 'true');
@@ -158,13 +159,15 @@ for (const surface of [
       await expect(frame.locator('.lead-form-success')).toBeVisible();
       await expect(frame.locator('.promo-code')).toHaveText('CONTACT15');
       await expect(frame.locator('.promo-code-note')).toHaveText('Для першого замовлення');
+      await expect(frame.locator('.promo-code-value')).toHaveCSS('color', 'rgb(190, 18, 60)');
       await expect.poll(() => frame.locator('.backdrop').evaluate((element) => ({
         copyBackground: element.style.getPropertyValue('--promo-copy-bg'),
         copyText: element.style.getPropertyValue('--promo-copy-text'),
+        discountText: element.style.getPropertyValue('--promo-discount-text'),
         codeBackground: element.style.getPropertyValue('--promo-code-bg'),
         codeBackgroundOpacity: element.style.getPropertyValue('--promo-code-bg-opacity')
       }))).toEqual({
-        copyBackground: '#e11d48', copyText: '#f8fafc', codeBackground: '#0ea5e9', codeBackgroundOpacity: '35%'
+        copyBackground: '#e11d48', copyText: '#f8fafc', discountText: '#be123c', codeBackground: '#0ea5e9', codeBackgroundOpacity: '35%'
       });
 
       await formState.click();

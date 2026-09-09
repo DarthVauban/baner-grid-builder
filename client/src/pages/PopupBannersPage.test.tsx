@@ -40,6 +40,7 @@ const baseCampaign: PopupCampaign = {
     primaryButtonTextColor: '#172033',
     promoCopyButtonBackgroundColor: '#6d5dfc',
     promoCopyButtonTextColor: '#ffffff',
+    promoDiscountTextColor: '#172033',
     promoCodeBackgroundColor: '#6d5dfc',
     promoCodeBackgroundOpacity: 7,
     secondaryButtonBackgroundColor: '#ffffff',
@@ -692,6 +693,7 @@ describe('PopupBannersPage', () => {
     fireEvent.change(screen.getByLabelText('Колір кнопки форми: вибрати колір'), { target: { value: '#123456' } });
     fireEvent.change(screen.getByLabelText('Кнопка «Скопіювати»: вибрати колір'), { target: { value: '#e11d48' } });
     fireEvent.change(screen.getByLabelText('Текст кнопки «Скопіювати»: вибрати колір'), { target: { value: '#f8fafc' } });
+    fireEvent.change(screen.getByLabelText('Текст зі знижкою: вибрати колір'), { target: { value: '#be123c' } });
     fireEvent.change(screen.getByLabelText('Фон блоку промокоду: вибрати колір'), { target: { value: '#0ea5e9' } });
     fireEvent.change(screen.getByLabelText('Непрозорість фону промокоду: значення'), { target: { value: '35' } });
 
@@ -703,6 +705,7 @@ describe('PopupBannersPage', () => {
           primaryButtonBackgroundColor: '#123456',
           promoCopyButtonBackgroundColor: '#e11d48',
           promoCopyButtonTextColor: '#f8fafc',
+          promoDiscountTextColor: '#be123c',
           promoCodeBackgroundColor: '#0ea5e9',
           promoCodeBackgroundOpacity: 35
         }),
@@ -733,6 +736,7 @@ describe('PopupBannersPage', () => {
         primaryButtonBackgroundColor: '#123456',
         promoCopyButtonBackgroundColor: '#e11d48',
         promoCopyButtonTextColor: '#f8fafc',
+        promoDiscountTextColor: '#be123c',
         promoCodeBackgroundColor: '#0ea5e9',
         promoCodeBackgroundOpacity: 35
       }),

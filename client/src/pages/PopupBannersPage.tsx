@@ -134,6 +134,7 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       primaryButtonTextColor: '#ffffff',
       promoCopyButtonBackgroundColor: '#6d5dfc',
       promoCopyButtonTextColor: '#ffffff',
+      promoDiscountTextColor: '#172033',
       promoCodeBackgroundColor: '#6d5dfc',
       promoCodeBackgroundOpacity: 7,
       secondaryButtonBackgroundColor: '#ffffff',
@@ -1346,8 +1347,9 @@ export function PopupBannersPage() {
                 <div className="popup-settings-group">
                   <strong>Вигляд отриманого промокоду</strong>
                   <small>Підкладка та кнопка копіювання налаштовуються окремо від загального акценту банера.</small>
-                  <div className="popup-color-grid">
+                  <div className="popup-color-grid is-pair">
                     <ColorField label="Фон блоку промокоду" value={draft.styles.promoCodeBackgroundColor} onChange={(promoCodeBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, promoCodeBackgroundColor } }))} />
+                    <ColorField label="Текст зі знижкою" value={draft.styles.promoDiscountTextColor} onChange={(promoDiscountTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, promoDiscountTextColor } }))} />
                     <ColorField label="Кнопка «Скопіювати»" value={draft.styles.promoCopyButtonBackgroundColor} onChange={(promoCopyButtonBackgroundColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, promoCopyButtonBackgroundColor } }))} />
                     <ColorField label="Текст кнопки «Скопіювати»" value={draft.styles.promoCopyButtonTextColor} onChange={(promoCopyButtonTextColor) => setDraft((current) => ({ ...current, styles: { ...current.styles, promoCopyButtonTextColor } }))} />
                   </div>

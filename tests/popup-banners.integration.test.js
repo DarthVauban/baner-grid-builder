@@ -65,6 +65,7 @@ function input(overrides = {}) {
       primaryButtonTextColor: '#101828',
       promoCopyButtonBackgroundColor: '#e11d48',
       promoCopyButtonTextColor: '#f8fafc',
+      promoDiscountTextColor: '#be123c',
       promoCodeBackgroundColor: '#0ea5e9',
       promoCodeBackgroundOpacity: 23,
       secondaryButtonBackgroundColor: '#ffffff',
@@ -325,6 +326,7 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(created.body.data.styles.primaryButtonBackgroundColor, '#ffe101');
   assert.equal(created.body.data.styles.promoCopyButtonBackgroundColor, '#e11d48');
   assert.equal(created.body.data.styles.promoCopyButtonTextColor, '#f8fafc');
+  assert.equal(created.body.data.styles.promoDiscountTextColor, '#be123c');
   assert.equal(created.body.data.styles.promoCodeBackgroundColor, '#0ea5e9');
   assert.equal(created.body.data.styles.promoCodeBackgroundOpacity, 23);
   assert.equal(created.body.data.styles.checkboxAccentColor, '#f04438');
@@ -350,6 +352,7 @@ test('popup banner tool resolves exact product campaigns and records public even
   assert.equal(resolved.body.data.product.article, 'USED-IPHONE-128');
   assert.equal(resolved.body.data.campaign.styles.primaryButtonBackgroundColor, '#ffe101');
   assert.equal(resolved.body.data.campaign.styles.promoCopyButtonBackgroundColor, '#e11d48');
+  assert.equal(resolved.body.data.campaign.styles.promoDiscountTextColor, '#be123c');
   assert.equal(resolved.body.data.campaign.styles.promoCodeBackgroundColor, '#0ea5e9');
   assert.equal(resolved.body.data.campaign.styles.promoCodeBackgroundOpacity, 23);
   assert.equal(resolved.body.data.campaign.styles.checkboxTextColor, '#344054');
@@ -387,11 +390,13 @@ test('popup promo styles preserve legacy colors and validate background opacity'
   const legacyInput = structuredClone(input());
   delete legacyInput.styles.promoCopyButtonBackgroundColor;
   delete legacyInput.styles.promoCopyButtonTextColor;
+  delete legacyInput.styles.promoDiscountTextColor;
   delete legacyInput.styles.promoCodeBackgroundColor;
   delete legacyInput.styles.promoCodeBackgroundOpacity;
   const preview = await admin.post('/api/popup-banners/preview').send(legacyInput).expect(200);
   assert.equal(preview.body.data.campaign.styles.promoCopyButtonBackgroundColor, legacyInput.styles.primaryButtonBackgroundColor);
   assert.equal(preview.body.data.campaign.styles.promoCopyButtonTextColor, legacyInput.styles.primaryButtonTextColor);
+  assert.equal(preview.body.data.campaign.styles.promoDiscountTextColor, legacyInput.styles.textColor);
   assert.equal(preview.body.data.campaign.styles.promoCodeBackgroundColor, legacyInput.styles.accentColor);
   assert.equal(preview.body.data.campaign.styles.promoCodeBackgroundOpacity, 7);
 
@@ -1778,6 +1783,7 @@ test('lead-form widget renders and reveals its promo code after submission on de
     assert.equal(backdrop.style.getPropertyValue('--primary-bg'), '#ffe101');
     assert.equal(backdrop.style.getPropertyValue('--promo-copy-bg'), '#e11d48');
     assert.equal(backdrop.style.getPropertyValue('--promo-copy-text'), '#f8fafc');
+    assert.equal(backdrop.style.getPropertyValue('--promo-discount-text'), '#be123c');
     assert.equal(backdrop.style.getPropertyValue('--promo-code-bg'), '#0ea5e9');
     assert.equal(backdrop.style.getPropertyValue('--promo-code-bg-opacity'), '23%');
     assert.equal(shadow.querySelector('.promo-code'), null);
@@ -1844,6 +1850,7 @@ test('lead-form preview renders the received-promo state without submitting on d
     assert.equal(shadow.querySelector('.promo-code').textContent, surface.expectedCode);
     assert.equal(shadow.querySelector('.promo-code-note').textContent, surface.expectedNote);
     assert.equal(backdrop.style.getPropertyValue('--promo-copy-bg'), '#e11d48');
+    assert.equal(backdrop.style.getPropertyValue('--promo-discount-text'), '#be123c');
     assert.equal(backdrop.style.getPropertyValue('--promo-code-bg'), '#0ea5e9');
     assert.equal(backdrop.style.getPropertyValue('--promo-code-bg-opacity'), '23%');
     assert.match(shadow.querySelector('style').textContent, /background:color-mix\(in srgb,var\(--promo-code-bg\) var\(--promo-code-bg-opacity\),transparent\)/u);
