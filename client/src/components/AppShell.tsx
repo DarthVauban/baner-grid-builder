@@ -7,6 +7,7 @@ import { showSupportDesktopNotification } from '../lib/support-desktop-notificat
 import { roleLabels } from '../lib/user';
 import { Icon } from './Icon';
 import { NotificationCenter } from './NotificationCenter';
+import { isWorkspaceToolPath, ToolBackButton } from './ToolBackButton';
 import { useTheme } from '../theme/ThemeContext';
 import { UserAvatar } from './UserAvatar';
 
@@ -327,6 +328,7 @@ export function AppShell() {
           <button className="icon-button topbar__menu" type="button" onClick={() => setSidebarOpen(true)} aria-label="Відкрити меню">
             <Icon name="menu" />
           </button>
+          {isWorkspaceToolPath(location.pathname) && <ToolBackButton className="topbar__back" />}
           <div className="topbar__spacer" />
           <button className="icon-button topbar__theme" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? 'Увімкнути фірмову темну тему' : 'Увімкнути світлу тему'} title={theme === 'light' ? 'Фірмова темна тема' : 'Світла тема'}>
             <Icon name={theme === 'light' ? 'darkMode' : 'lightMode'} />

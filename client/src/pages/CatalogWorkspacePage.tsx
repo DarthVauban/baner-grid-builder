@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { ToolBackButton } from '../components/ToolBackButton';
 import { UserAvatar } from '../components/UserAvatar';
 import { useAuth } from '../auth/AuthContext';
 
@@ -56,8 +57,13 @@ export function CatalogWorkspacePage() {
         {user && <Link className="catalog-sidebar__profile" to="/profile" aria-label={user.name} title={user.name}><UserAvatar name={user.name} avatarUrl={user.avatarUrl} /><span>{user.name}</span></Link>}
       </div>
     </aside>
-    <main className="catalog-workspace__content">
-      <Outlet />
-    </main>
+    <div className="standalone-tool-workspace">
+      <header className="standalone-tool-topbar">
+        <ToolBackButton fallbackPath="/" />
+      </header>
+      <main className="catalog-workspace__content">
+        <Outlet />
+      </main>
+    </div>
   </div>;
 }

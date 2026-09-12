@@ -29,6 +29,7 @@ describe('TradeInWorkspacePage', () => {
     const user = userEvent.setup();
     const view = renderWorkspace();
 
+    expect(screen.getByRole('button', { name: 'Повернутися на попередню сторінку' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Огляд' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Конструктор' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Тестова сторінка' })).toHaveAttribute('href', '/trade-in/preview/storefront');

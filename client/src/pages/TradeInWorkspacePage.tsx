@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
+import { ToolBackButton } from '../components/ToolBackButton';
 import { UserAvatar } from '../components/UserAvatar';
 
 const tradeInLinks = [
@@ -84,9 +85,14 @@ export function TradeInWorkspacePage() {
         </div>
       </aside>
 
-      <main className="trade-in-workspace__content">
-        <Outlet />
-      </main>
+      <div className="standalone-tool-workspace">
+        <header className="standalone-tool-topbar">
+          <ToolBackButton fallbackPath="/" />
+        </header>
+        <main className="trade-in-workspace__content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
