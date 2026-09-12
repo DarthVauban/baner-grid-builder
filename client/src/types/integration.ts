@@ -58,6 +58,7 @@ export interface HoroshopSyncRun {
   mode: 'full' | 'manual' | 'scheduled';
   status: 'running' | 'succeeded' | 'failed';
   categoriesReceived: number;
+  stickersReceived: number;
   productsReceived: number;
   modificationsReceived: number;
   pagesReceived: number;
@@ -78,6 +79,7 @@ export interface HoroshopIntegration {
   lastError: string | null;
   counts: {
     categories: number;
+    stickers: number;
     products: number;
     modifications: number;
   };

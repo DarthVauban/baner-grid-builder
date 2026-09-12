@@ -1419,7 +1419,7 @@ test('disconnect removes selections, drafts and their generated media', async ()
     throw new Error(connection?.lastError || error.message, { cause: error });
   }
 
-  assert.deepEqual(result, { categories: 0, products: 2, modifications: 2 });
+  assert.deepEqual(result, { categories: 0, stickers: 0, products: 2, modifications: 2 });
   for (const table of [
     'search_horoshop_photo_selections',
     'search_horoshop_photo_drafts',

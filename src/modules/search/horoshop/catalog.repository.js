@@ -43,6 +43,7 @@ function mapRun(row) {
     mode: row.mode,
     status: row.status,
     categoriesReceived: Number(row.categories_received),
+    stickersReceived: Number(row.stickers_received),
     productsReceived: Number(row.products_received),
     modificationsReceived: Number(row.modifications_received),
     pagesReceived: Number(row.pages_received),
@@ -152,7 +153,7 @@ export class HoroshopCatalogRepository {
         pollingIntervalMinutes: null,
         lastSyncAt: null,
         lastError: null,
-        counts: { categories: 0, products: 0, modifications: 0 },
+        counts: { categories: 0, stickers: 0, products: 0, modifications: 0 },
         latestRun: null
       };
     }
@@ -160,11 +161,12 @@ export class HoroshopCatalogRepository {
       this.pool.query(`
         SELECT
           (SELECT COUNT(*) FROM search_horoshop_categories WHERE connection_id = $1 AND active) AS categories,
+          (SELECT COUNT(*) FROM search_horoshop_stickers WHERE connection_id = $1 AND active) AS stickers,
           (SELECT COUNT(*) FROM search_horoshop_products WHERE connection_id = $1 AND active) AS products,
           (SELECT COUNT(*) FROM search_horoshop_modifications WHERE connection_id = $1 AND active) AS modifications
       `, [connection.id]),
       this.pool.query(`
-        SELECT id, mode, status, categories_received, products_received, modifications_received,
+        SELECT id, mode, status, categories_received, stickers_received, products_received, modifications_received,
                pages_received, export_items_received, export_items_total, error_message,
                started_at, completed_at
         FROM search_horoshop_sync_runs
@@ -183,6 +185,7 @@ export class HoroshopCatalogRepository {
       lastError: connection.lastError,
       counts: {
         categories: Number(counts.categories || 0),
+        stickers: Number(counts.stickers || 0),
         products: Number(counts.products || 0),
         modifications: Number(counts.modifications || 0)
       },
@@ -639,6 +642,62 @@ export class HoroshopCatalogRepository {
     }
   }
 
+  async applyStickers(connection, runId, stickers) {
+    if (stickers.length === 0) return;
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await this.assertWritableConnection(client, connection);
+      const externalIds = [...new Set(stickers.map((sticker) => sticker.externalId))];
+      const placeholders = externalIds.map((_, index) => `$${index + 2}`).join(', ');
+      const existingResult = await client.query(`
+        SELECT id, external_id, sync_signature, active
+        FROM search_horoshop_stickers
+        WHERE connection_id = $1 AND external_id IN (${placeholders})
+      `, [connection.id, ...externalIds]);
+      const existingByExternalId = new Map(existingResult.rows.map((row) => [row.external_id, row]));
+
+      for (const sticker of stickers) {
+        const signature = syncSignature(sticker);
+        const existing = existingByExternalId.get(sticker.externalId);
+        if (!existing) {
+          const id = randomUUID();
+          await client.query(`
+            INSERT INTO search_horoshop_stickers (
+              id, connection_id, generation, external_id, title, enabled,
+              source_data, sync_signature, active, last_seen_sync_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, TRUE, $9)
+          `, [
+            id, connection.id, connection.generation, sticker.externalId, sticker.title,
+            sticker.enabled, JSON.stringify(sticker.source), signature, runId
+          ]);
+          existingByExternalId.set(sticker.externalId, {
+            id, external_id: sticker.externalId, sync_signature: signature, active: true
+          });
+          continue;
+        }
+        if (existing.active && existing.sync_signature === signature) continue;
+        await client.query(`
+          UPDATE search_horoshop_stickers
+          SET generation = $3, title = $4, enabled = $5, source_data = $6::jsonb,
+              sync_signature = $7, active = TRUE, last_seen_sync_id = $8, updated_at = NOW()
+          WHERE id = $1 AND connection_id = $2
+        `, [
+          existing.id, connection.id, connection.generation, sticker.title, sticker.enabled,
+          JSON.stringify(sticker.source), signature, runId
+        ]);
+        existing.sync_signature = signature;
+        existing.active = true;
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async applyProducts(connection, runId, products) {
     if (products.length === 0) return;
     const client = await this.pool.connect();
@@ -788,11 +847,12 @@ export class HoroshopCatalogRepository {
   async updateRunProgress(runId, counts) {
     await this.pool.query(`
       UPDATE search_horoshop_sync_runs
-      SET categories_received = $2, products_received = $3, modifications_received = $4,
-          pages_received = $5, export_items_received = $6, export_items_total = $7
+      SET categories_received = $2, stickers_received = $3, products_received = $4,
+          modifications_received = $5, pages_received = $6, export_items_received = $7,
+          export_items_total = $8
       WHERE id = $1 AND status = 'running'
     `, [
-      runId, counts.categories, counts.products, counts.modifications, counts.pages,
+      runId, counts.categories, counts.stickers, counts.products, counts.modifications, counts.pages,
       counts.exportItemsReceived, counts.exportItemsTotal
     ]);
   }
@@ -809,6 +869,12 @@ export class HoroshopCatalogRepository {
           AND NOT (external_id = ANY($3::text[]))
       `, [connection.id, connection.generation, seenExternalIds.categories]);
       await client.query(`
+        UPDATE search_horoshop_stickers
+        SET active = FALSE, updated_at = NOW()
+        WHERE connection_id = $1 AND generation = $2 AND active
+          AND NOT (external_id = ANY($3::text[]))
+      `, [connection.id, connection.generation, seenExternalIds.stickers]);
+      await client.query(`
         UPDATE search_horoshop_products
         SET active = FALSE, updated_at = NOW()
         WHERE connection_id = $1 AND generation = $2 AND active
@@ -822,12 +888,12 @@ export class HoroshopCatalogRepository {
       `, [connection.id, connection.generation, seenExternalIds.modifications]);
       await client.query(`
         UPDATE search_horoshop_sync_runs
-        SET status = 'succeeded', categories_received = $2, products_received = $3,
-            modifications_received = $4, pages_received = $5, export_items_received = $6,
-            export_items_total = $7, completed_at = NOW()
-        WHERE id = $1 AND connection_id = $8 AND generation = $9
+        SET status = 'succeeded', categories_received = $2, stickers_received = $3,
+            products_received = $4, modifications_received = $5, pages_received = $6,
+            export_items_received = $7, export_items_total = $8, completed_at = NOW()
+        WHERE id = $1 AND connection_id = $9 AND generation = $10
       `, [
-        runId, counts.categories, counts.products, counts.modifications, counts.pages,
+        runId, counts.categories, counts.stickers, counts.products, counts.modifications, counts.pages,
         counts.exportItemsReceived, counts.exportItemsTotal ?? counts.exportItemsReceived,
         connection.id, connection.generation
       ]);
@@ -892,6 +958,7 @@ export class HoroshopCatalogRepository {
       const countsResult = await client.query(`
         SELECT
           (SELECT COUNT(*) FROM search_horoshop_categories WHERE connection_id = $1) AS categories,
+          (SELECT COUNT(*) FROM search_horoshop_stickers WHERE connection_id = $1) AS stickers,
           (SELECT COUNT(*) FROM search_horoshop_products WHERE connection_id = $1) AS products,
           (SELECT COUNT(*) FROM search_horoshop_modifications WHERE connection_id = $1) AS modifications,
           (SELECT COUNT(*) FROM search_horoshop_photo_selections WHERE connection_id = $1) AS photo_selections,
@@ -974,7 +1041,7 @@ export class HoroshopCatalogRepository {
         connection.id, connection.generation
       ]);
       for (const table of [
-        'search_horoshop_categories', 'search_horoshop_products',
+        'search_horoshop_categories', 'search_horoshop_stickers', 'search_horoshop_products',
         'search_horoshop_modifications', 'search_horoshop_sync_runs',
         'search_horoshop_photo_selections', 'search_horoshop_photo_drafts',
         'search_horoshop_photo_batches'
@@ -991,6 +1058,7 @@ export class HoroshopCatalogRepository {
       `, [randomUUID(), connection.id, audit.actorUserId, audit.domainFingerprint, JSON.stringify({
         deleted: {
           categories: Number(countsResult.rows[0]?.categories || 0),
+          stickers: Number(countsResult.rows[0]?.stickers || 0),
           products: Number(countsResult.rows[0]?.products || 0),
           modifications: Number(countsResult.rows[0]?.modifications || 0),
           photoSelections: Number(countsResult.rows[0]?.photo_selections || 0),
@@ -1001,6 +1069,7 @@ export class HoroshopCatalogRepository {
       await client.query('COMMIT');
       return {
         categories: Number(countsResult.rows[0]?.categories || 0),
+        stickers: Number(countsResult.rows[0]?.stickers || 0),
         products: Number(countsResult.rows[0]?.products || 0),
         modifications: Number(countsResult.rows[0]?.modifications || 0),
         mediaStorageKeys: mediaRows.map((row) => row.storage_key)

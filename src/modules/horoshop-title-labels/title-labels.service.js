@@ -95,9 +95,24 @@ async function loadCatalogRows(connectionId, generation) {
   return result.rows;
 }
 
-function catalogIndex(rows, storeDomain) {
+async function loadStickerRows(connectionId, generation) {
+  if (!connectionId || !generation) return [];
+  const result = await query(
+    `SELECT external_id, title
+     FROM search_horoshop_stickers
+     WHERE connection_id = $1 AND generation = $2 AND active = TRUE AND enabled = TRUE`,
+    [connectionId, generation]
+  );
+  return result.rows;
+}
+
+function catalogIndex(rows, storeDomain, stickerRows = []) {
   const stickers = new Map();
   const pathKeys = new Map();
+  stickerRows.forEach((row) => {
+    const descriptor = stickerDescriptor({ id: row.external_id, title: row.title });
+    if (descriptor) stickers.set(descriptor.key, { ...descriptor, paths: new Set() });
+  });
   const addPath = (path, descriptors) => {
     if (!path) return;
     if (!pathKeys.has(path)) pathKeys.set(path, new Set());
@@ -159,8 +174,11 @@ function serializeSettings(row, options, origin = '') {
 
 export async function getTitleLabelSettings(origin = '') {
   const row = await loadSettingsRow();
-  const rows = await loadCatalogRows(row.connection_id, row.generation);
-  return serializeSettings(row, stickerOptions(catalogIndex(rows, row.store_domain)), origin);
+  const [rows, stickerRows] = await Promise.all([
+    loadCatalogRows(row.connection_id, row.generation),
+    loadStickerRows(row.connection_id, row.generation)
+  ]);
+  return serializeSettings(row, stickerOptions(catalogIndex(rows, row.store_domain, stickerRows)), origin);
 }
 
 export async function updateTitleLabelDraft(rules, userId, origin = '') {
@@ -227,8 +245,11 @@ export async function loadPublishedTitleLabels(publicId) {
   const row = result.rows[0];
   if (!row?.connection_id || !row.store_domain) return null;
   const rules = jsonArray(row.published_rules).map(normalizeRule).filter((rule) => rule.enabled);
-  const rows = await loadCatalogRows(row.connection_id, row.generation);
-  const index = catalogIndex(rows, row.store_domain);
+  const [rows, stickerRows] = await Promise.all([
+    loadCatalogRows(row.connection_id, row.generation),
+    loadStickerRows(row.connection_id, row.generation)
+  ]);
+  const index = catalogIndex(rows, row.store_domain, stickerRows);
   return {
     version: Number(row.published_version || 0),
     storeDomain: row.store_domain,

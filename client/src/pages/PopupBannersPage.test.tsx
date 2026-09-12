@@ -241,7 +241,7 @@ beforeEach(() => {
     integration: {
       configured: true, status: 'connected', storeDomain: 'mobiletrend.com.ua',
       pollingIntervalMinutes: 30, lastSyncAt: '2026-08-21T08:30:00.000Z', lastError: null,
-      counts: { categories: 1, products: 2, modifications: 0 }, latestRun: null
+      counts: { categories: 1, stickers: 2, products: 2, modifications: 0 }, latestRun: null
     },
     items: [{
       id: 'product-db-1', externalId: 'promo-product-1', parentExternalId: null,

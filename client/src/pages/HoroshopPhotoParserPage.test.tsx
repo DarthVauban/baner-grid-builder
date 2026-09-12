@@ -112,7 +112,7 @@ const filterFeed: HoroshopCatalogFeed = {
     pollingIntervalMinutes: 15,
     lastSyncAt: '2026-08-20T08:00:00.000Z',
     lastError: null,
-    counts: { categories: 1, products: 7, modifications: 12 },
+    counts: { categories: 1, stickers: 2, products: 7, modifications: 12 },
     latestRun: null
   },
   items: [],

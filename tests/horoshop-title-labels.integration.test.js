@@ -59,6 +59,14 @@ before(async () => {
   `);
   const { id, generation } = connection.rows[0];
   await pool.query(`
+    INSERT INTO search_horoshop_stickers (
+      connection_id, generation, external_id, title, enabled, active, last_seen_sync_id
+    ) VALUES
+      ($1, $2, 'used', 'Вживаний', TRUE, TRUE, $2),
+      ($1, $2, 'sale', 'Акція', TRUE, TRUE, $2),
+      ($1, $2, 'new', 'Новинка', TRUE, TRUE, $2)
+  `, [id, generation]);
+  await pool.query(`
     INSERT INTO search_horoshop_products (
       connection_id, generation, external_id, sku, titles, canonical_url,
       visible, active, stickers, last_seen_sync_id
@@ -87,8 +95,9 @@ test('constructor publishes ordered sticker rules and a current catalog URL map'
   assert.equal(initial.body.data.enabled, false);
   assert.equal(initial.body.data.storeDomain, 'shop.example.com');
   assert.match(initial.body.data.embedCode, /<script async src=".*horoshop-title-labels\/embed\.js\?site=/u);
-  assert.deepEqual(initial.body.data.stickerOptions.map((item) => item.title), ['Акція', 'Вживаний']);
+  assert.deepEqual(initial.body.data.stickerOptions.map((item) => item.title), ['Акція', 'Вживаний', 'Новинка']);
   assert.equal(initial.body.data.stickerOptions.find((item) => item.key === 'id:sale').productCount, 2);
+  assert.equal(initial.body.data.stickerOptions.find((item) => item.key === 'id:new').productCount, 0);
 
   const publicId = initial.body.data.publicId;
   const disabled = await request(app)

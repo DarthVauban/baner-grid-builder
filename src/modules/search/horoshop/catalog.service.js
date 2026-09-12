@@ -3,7 +3,11 @@ import { env } from '../../../config/env.js';
 import { AppError } from '../../../lib/app-error.js';
 import { decryptHoroshopCredentials, encryptHoroshopCredentials } from './credential-cipher.js';
 import { HoroshopApiError, HoroshopClient } from './horoshop.client.js';
-import { normalizeHoroshopCategories, normalizeHoroshopProducts } from './catalog.normalizer.js';
+import {
+  normalizeHoroshopCategories,
+  normalizeHoroshopProducts,
+  normalizeHoroshopStickers
+} from './catalog.normalizer.js';
 import { HoroshopCatalogRepository } from './catalog.repository.js';
 import { removeMediaImage } from '../../media/media.storage.js';
 
@@ -218,6 +222,7 @@ export class HoroshopCatalogService {
       )));
       return {
         categories: purged.categories,
+        stickers: purged.stickers,
         products: purged.products,
         modifications: purged.modifications
       };
@@ -251,6 +256,9 @@ export class HoroshopCatalogService {
       this.assertNotAborted(signal);
       const categories = await this.exportCategoryTree(client, token, connection.storeDomain, signal);
       await this.repository.applyCategories(connection, runId, categories);
+      this.assertNotAborted(signal);
+      const stickers = normalizeHoroshopStickers(await client.exportStickers(token));
+      await this.repository.applyStickers(connection, runId, stickers);
 
       const productIds = new Set();
       const modificationIds = new Set();
@@ -274,7 +282,7 @@ export class HoroshopCatalogService {
           throw new Error('Horoshop pagination returned a repeated product page');
         }
         visitedPages.add(pageFingerprint);
-        const products = normalizeHoroshopProducts(page.products, connection.storeDomain);
+        const products = normalizeHoroshopProducts(page.products, connection.storeDomain, stickers);
         await this.repository.applyProducts(connection, runId, products);
         for (const product of products) {
           productIds.add(product.externalId);
@@ -283,6 +291,7 @@ export class HoroshopCatalogService {
         pages = pageNumber + 1;
         await this.repository.updateRunProgress(runId, {
           categories: categories.length,
+          stickers: stickers.length,
           products: productIds.size,
           modifications: modificationIds.size,
           pages,
@@ -299,6 +308,7 @@ export class HoroshopCatalogService {
 
       const counts = {
         categories: categories.length,
+        stickers: stickers.length,
         products: productIds.size,
         modifications: modificationIds.size,
         pages,
@@ -307,6 +317,7 @@ export class HoroshopCatalogService {
       };
       await this.repository.completeSync(connection, runId, counts, {
         categories: categories.map((category) => category.externalId),
+        stickers: stickers.map((sticker) => sticker.externalId),
         products: [...productIds],
         modifications: [...modificationIds]
       });

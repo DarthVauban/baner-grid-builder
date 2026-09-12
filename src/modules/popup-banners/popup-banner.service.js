@@ -546,14 +546,20 @@ export async function popupCampaignOptions() {
   );
   const connection = connectionResult.rows[0] || null;
   if (!connection) return { integration: null, stickers: [], brands: [], categories: [], conditions: [] };
-  const [products, modifications, categories] = await Promise.all([
+  const [products, modifications, categories, stickerDirectory] = await Promise.all([
     query(`SELECT brand, stickers, condition_label FROM search_horoshop_products WHERE connection_id = $1 AND active`, [connection.id]),
     query(`SELECT stickers, condition_label FROM search_horoshop_modifications WHERE connection_id = $1 AND active`, [connection.id]),
-    query(`SELECT external_id, titles FROM search_horoshop_categories WHERE connection_id = $1 AND active ORDER BY titles::TEXT`, [connection.id])
+    query(`SELECT external_id, titles FROM search_horoshop_categories WHERE connection_id = $1 AND active ORDER BY titles::TEXT`, [connection.id]),
+    query(`SELECT external_id, title FROM search_horoshop_stickers
+           WHERE connection_id = $1 AND generation = $2 AND active = TRUE AND enabled = TRUE
+           ORDER BY title`, [connection.id, connection.generation])
   ]);
   const stickers = new Map();
   const brands = new Set();
   const conditions = new Set();
+  for (const sticker of stickerDirectory.rows) {
+    stickers.set(String(sticker.external_id), { id: String(sticker.external_id), title: String(sticker.title) });
+  }
   for (const item of [...products.rows, ...modifications.rows]) {
     for (const sticker of stickerList(item.stickers)) {
       const key = sticker.id || sticker.title.toLocaleLowerCase('uk-UA');

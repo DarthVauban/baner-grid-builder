@@ -141,6 +141,13 @@ before(async () => {
     ) VALUES ($1, $2, $3, 'used-phones', $4::JSONB, TRUE, $5)
   `, [randomUUID(), connectionId, generation, JSON.stringify({ uk: 'Вживані смартфони' }), syncId]);
   await pool.query(`
+    INSERT INTO search_horoshop_stickers (
+      connection_id, generation, external_id, title, enabled, active, last_seen_sync_id
+    ) VALUES
+      ($1, $2, '14', 'Вживаний', TRUE, TRUE, $3),
+      ($1, $2, '22', 'Новинка', TRUE, TRUE, $3)
+  `, [connectionId, generation, syncId]);
+  await pool.query(`
     INSERT INTO search_horoshop_products (
       id, connection_id, generation, external_id, sku, titles, brand,
       category_external_id, price, currency, availability, visible,
@@ -316,7 +323,10 @@ test('popup banner tool resolves exact product campaigns and records public even
 
   const options = await admin.get('/api/popup-banners/options').expect(200);
   assert.equal(options.body.data.integration.storeDomain, 'shop.example.com');
-  assert.deepEqual(options.body.data.stickers, [{ id: '14', title: 'Вживаний' }]);
+  assert.deepEqual(options.body.data.stickers, [
+    { id: '14', title: 'Вживаний' },
+    { id: '22', title: 'Новинка' }
+  ]);
   assert.deepEqual(options.body.data.conditions, ['Вживаний']);
 
   const created = await admin.post('/api/popup-banners').send(input()).expect(201);

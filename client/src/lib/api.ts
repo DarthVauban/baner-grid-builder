@@ -991,7 +991,7 @@ export const api = {
       { method: 'POST' }
     ),
     disconnectHoroshopIntegration: (confirmDomain: string) => request<{
-      deleted: { categories: number; products: number; modifications: number };
+      deleted: { categories: number; stickers: number; products: number; modifications: number };
       integration: HoroshopIntegration;
     }>('/api/admin/integrations/horoshop', {
       method: 'DELETE', body: jsonBody({ confirmDomain }), timeoutMs: 60_000

@@ -199,7 +199,7 @@ export function AdminIntegrationsPage() {
     try {
       const result = await disconnectHoroshop.mutateAsync(disconnectDomain.trim());
       await queryClient.invalidateQueries({ queryKey: ['admin-horoshop-integration'] });
-      showToast(`Інтеграцію відключено. Видалено ${result.deleted.products} товарів і ${result.deleted.modifications} модифікацій.`);
+      showToast(`Інтеграцію відключено. Видалено ${result.deleted.stickers} стікерів, ${result.deleted.products} товарів і ${result.deleted.modifications} модифікацій.`);
       setActiveIntegration(null);
     } catch (caught) {
       setHoroshopError(caught instanceof Error ? caught.message : 'Не вдалося повністю очистити дані Хорошоп.');
@@ -475,12 +475,13 @@ export function AdminIntegrationsPage() {
                 <span>Синхронізація кожні {horoshop.pollingIntervalMinutes} хв</span>
               </div>
               <div><small>Розділи</small><strong>{horoshop.counts.categories.toLocaleString('uk-UA')}</strong></div>
+              <div><small>Стікери</small><strong>{horoshop.counts.stickers.toLocaleString('uk-UA')}</strong></div>
               <div><small>Товари</small><strong>{horoshop.counts.products.toLocaleString('uk-UA')}</strong></div>
               <div><small>Модифікації</small><strong>{horoshop.counts.modifications.toLocaleString('uk-UA')}</strong></div>
             </section>
             <div className="integration-note">
               {horoshop.status === 'syncing'
-                ? `Звірка триває: ${horoshop.latestRun?.productsReceived || 0} товарів, ${horoshop.latestRun?.modificationsReceived || 0} модифікацій, ${horoshop.latestRun?.pagesReceived || 0} пакетів.`
+                ? `Звірка триває: ${horoshop.latestRun?.stickersReceived || 0} стікерів, ${horoshop.latestRun?.productsReceived || 0} товарів, ${horoshop.latestRun?.modificationsReceived || 0} модифікацій, ${horoshop.latestRun?.pagesReceived || 0} пакетів.`
                 : `Остання успішна синхронізація: ${formatDate(horoshop.lastSyncAt)}.`}
             </div>
             <form className="horoshop-sync-settings" onSubmit={submitHoroshopSettings}>

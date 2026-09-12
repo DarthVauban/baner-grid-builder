@@ -42,7 +42,7 @@ test('Horoshop integration state is admin-only, non-cacheable and never contains
     pollingIntervalMinutes: null,
     lastSyncAt: null,
     lastError: null,
-    counts: { categories: 0, products: 0, modifications: 0 },
+    counts: { categories: 0, stickers: 0, products: 0, modifications: 0 },
     latestRun: null
   });
   assert.equal(JSON.stringify(response.body).includes('password'), false);

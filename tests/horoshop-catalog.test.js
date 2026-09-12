@@ -14,7 +14,8 @@ const {
   normalizeHoroshopStoreDomain
 } = await import('../src/modules/search/horoshop/horoshop.client.js');
 const {
-  normalizeHoroshopProducts
+  normalizeHoroshopProducts,
+  normalizeHoroshopStickers
 } = await import('../src/modules/search/horoshop/catalog.normalizer.js');
 const {
   HoroshopCatalogRepository
@@ -42,6 +43,7 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
     { status: 'OK', response: { token: 'session-token' } },
     { status: 'OK', response: { pages: [{ id: 10 }] } },
     { status: 'OK', response: { pages: [{ id: 11, parent: 10 }] } },
+    { status: 'OK', response: { icons: [{ id: 14, title: 'Вживаний', enabled: 1 }] } },
     { status: 'OK', response: { products: [{ id: 1 }], total: 2 } },
     { status: 'OK', response: { imported: 1 } }
   ];
@@ -61,6 +63,7 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
   assert.equal(token, 'session-token');
   assert.deepEqual(await client.exportCategories(token), [{ id: 10 }]);
   assert.deepEqual(await client.exportCategories(token, 10), [{ id: 11, parent: 10 }]);
+  assert.deepEqual(await client.exportStickers(token), [{ id: 14, title: 'Вживаний', enabled: 1 }]);
   assert.deepEqual(await client.exportCatalog(token, 0, 1), {
     products: [{ id: 1 }],
     nextOffset: 1,
@@ -70,12 +73,14 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
     imported: 1
   });
   assert.deepEqual(calls.map((call) => new URL(call.url).pathname), [
-    '/api/auth/', '/api/pages/export/', '/api/pages/export/', '/api/catalog/export/', '/api/catalog/import/'
+    '/api/auth/', '/api/pages/export/', '/api/pages/export/', '/api/icons/export/',
+    '/api/catalog/export/', '/api/catalog/import/'
   ]);
   assert.deepEqual(calls[1].body, { token: 'session-token', parent: 0 });
   assert.deepEqual(calls[2].body, { token: 'session-token', parent: 10 });
-  assert.deepEqual(calls[3].body, { token: 'session-token', offset: 0, limit: 1 });
-  assert.deepEqual(calls[4].body, {
+  assert.deepEqual(calls[3].body, { token: 'session-token' });
+  assert.deepEqual(calls[4].body, { token: 'session-token', offset: 0, limit: 1 });
+  assert.deepEqual(calls[5].body, {
     token: 'session-token', products: [{ article: 'PHONE-1', accessories: ['CASE-1'] }]
   });
 });
@@ -150,6 +155,10 @@ test('Horoshop catalog import does not retry transport failures when maxAttempts
 });
 
 test('normalizer keeps product modifications, stock, URLs and raw source data', () => {
+  const stickers = normalizeHoroshopStickers([
+    { id: 14, title: { ua: 'Вживаний' }, enabled: 1 },
+    { id: 18, title: 'Розпродаж', enabled: 'true' }
+  ]);
   const [product] = normalizeHoroshopProducts([{
     id: 501,
     parent_article: 'PHONE-501',
@@ -159,18 +168,18 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
     brand: 'Example',
     popularity: 87,
     creation_time: '2026-08-20 12:30:00',
-    icons: [{ id: 14, title: { ua: 'Вживаний' } }],
+    icons: ['Вживаний'],
     condition: 'Вживаний',
     characteristics: { color: 'black' },
     modifications: [
       {
         article: 'PHONE-501-128', mod_title: { ua: '128 ГБ' }, price: 100, quantity: 3,
         creation_time: 1_776_688_200, images: { links: ['https://cdn.example.com/501-128.webp'] },
-        icons: [{ id: 18, title: 'Розпродаж' }]
+        icons: [18]
       },
       { article: 'PHONE-501-256', mod_title: { ua: '256 ГБ' }, price: 120, residues: { 1: 0 } }
     ]
-  }], 'shop.example.com');
+  }], 'shop.example.com', stickers);
 
   assert.equal(product.externalId, '501');
   assert.equal(product.titles.uk, 'Телефон 501');
@@ -186,6 +195,10 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
   assert.equal(product.modifications[0].hasPhotos, true);
   assert.equal(product.modifications[1].hasPhotos, false);
   assert.deepEqual(product.source.characteristics, { color: 'black' });
+  assert.deepEqual(stickers.map(({ externalId, title, enabled }) => ({ externalId, title, enabled })), [
+    { externalId: '14', title: 'Вживаний', enabled: true },
+    { externalId: '18', title: 'Розпродаж', enabled: true }
+  ]);
 });
 
 test('Horoshop category sync expands a catalog root whose technical parent is absent from parent=0', async () => {
@@ -239,6 +252,14 @@ test('full import streams pages, reconciles missing rows and purges before anoth
       { id: 'p-new', article: 'SECOND-1', title: { ua: 'Новий магазин' }, parent_id: 'cat-new' }
     ]]]
   ]);
+  const stickerCatalogs = new Map([
+    ['first.example.com', [
+      { id: 'used', title: { ua: 'Вживаний' }, enabled: 1 },
+      { id: 'sale', title: 'Розпродаж', enabled: true },
+      { id: 'new', title: 'Новинка', enabled: true }
+    ]],
+    ['second.example.com', [{ id: 'featured', title: 'Рекомендовано', enabled: true }]]
+  ]);
   const clientFactory = (domain) => ({
     storeDomain: normalizeHoroshopStoreDomain(domain).hostname,
     async authenticate(login, password) {
@@ -248,6 +269,9 @@ test('full import streams pages, reconciles missing rows and purges before anoth
     },
     async exportCategories() {
       return [{ id: domain.startsWith('first') ? 'cat-1' : 'cat-new', title: { ua: 'Категорія' } }];
+    },
+    async exportStickers() {
+      return stickerCatalogs.get(domain) || [];
     },
     async exportCatalog(_token, offset) {
       const pages = catalogs.get(domain);
@@ -272,7 +296,8 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   await service.waitForIdle();
   let status = await service.status();
   assert.equal(status.status, 'connected');
-  assert.deepEqual(status.counts, { categories: 1, products: 2, modifications: 3 });
+  assert.deepEqual(status.counts, { categories: 1, stickers: 3, products: 2, modifications: 3 });
+  assert.equal(status.latestRun.stickersReceived, 3);
   assert.equal(status.latestRun.pagesReceived, 2);
   assert.equal(status.latestRun.exportItemsReceived, 2);
   assert.equal(status.latestRun.exportItemsTotal, 2);
@@ -291,6 +316,7 @@ test('full import streams pages, reconciles missing rows and purges before anoth
 
   const staleTimestamp = new Date('2001-01-01T00:00:00.000Z');
   await query('UPDATE search_horoshop_categories SET updated_at = $1', [staleTimestamp]);
+  await query('UPDATE search_horoshop_stickers SET updated_at = $1', [staleTimestamp]);
   await query('UPDATE search_horoshop_products SET updated_at = $1', [staleTimestamp]);
   await query('UPDATE search_horoshop_modifications SET updated_at = $1', [staleTimestamp]);
   const beforeUnchangedSync = await query(`
@@ -318,25 +344,30 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   const unchangedCategoryAndModificationRows = await query(`
     SELECT
       (SELECT COUNT(*) FROM search_horoshop_categories WHERE updated_at = $1) AS categories,
+      (SELECT COUNT(*) FROM search_horoshop_stickers WHERE updated_at = $1) AS stickers,
       (SELECT COUNT(*) FROM search_horoshop_modifications WHERE updated_at = $1) AS modifications
   `, [staleTimestamp]);
   assert.deepEqual({
     categories: Number(unchangedCategoryAndModificationRows.rows[0].categories),
+    stickers: Number(unchangedCategoryAndModificationRows.rows[0].stickers),
     modifications: Number(unchangedCategoryAndModificationRows.rows[0].modifications)
-  }, { categories: 1, modifications: 3 });
+  }, { categories: 1, stickers: 3, modifications: 3 });
 
   catalogs.set('first.example.com', [[{
     id: 'p-1', article: 'FIRST-1', title: { ua: 'Перший оновлений' }, parent_id: 'cat-1',
     modifications: [{ article: 'FIRST-1-BLACK', price: '95', quantity: 1 }]
   }]]);
+  stickerCatalogs.set('first.example.com', [{ id: 'used', title: 'Вживаний', enabled: true }]);
   assert.equal(await service.startSync('manual'), true);
   await service.waitForIdle();
   const activeAfterReconcile = await query(`
     SELECT
       (SELECT COUNT(*) FROM search_horoshop_products WHERE active) AS products,
+      (SELECT COUNT(*) FROM search_horoshop_stickers WHERE active) AS stickers,
       (SELECT COUNT(*) FROM search_horoshop_modifications WHERE active) AS modifications
   `);
   assert.equal(Number(activeAfterReconcile.rows[0].products), 1);
+  assert.equal(Number(activeAfterReconcile.rows[0].stickers), 1);
   assert.equal(Number(activeAfterReconcile.rows[0].modifications), 1);
   const changedRows = await query(`
     SELECT external_id, active, updated_at
@@ -351,20 +382,22 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   assert.equal(unchangedCategory.rows[0].updated_at.toISOString(), staleTimestamp.toISOString());
 
   const deleted = await service.disconnect('first.example.com', null);
-  assert.deepEqual(deleted, { categories: 1, products: 2, modifications: 3 });
+  assert.deepEqual(deleted, { categories: 1, stickers: 3, products: 2, modifications: 3 });
   const purged = await query(`
     SELECT
       (SELECT COUNT(*) FROM search_horoshop_connections) AS connections,
+      (SELECT COUNT(*) FROM search_horoshop_stickers) AS stickers,
       (SELECT COUNT(*) FROM search_horoshop_products) AS products,
       (SELECT COUNT(*) FROM search_horoshop_modifications) AS modifications,
       (SELECT COUNT(*) FROM search_horoshop_sync_runs) AS runs
   `);
   assert.deepEqual({
     connections: Number(purged.rows[0].connections),
+    stickers: Number(purged.rows[0].stickers),
     products: Number(purged.rows[0].products),
     modifications: Number(purged.rows[0].modifications),
     runs: Number(purged.rows[0].runs)
-  }, { connections: 0, products: 0, modifications: 0, runs: 0 });
+  }, { connections: 0, stickers: 0, products: 0, modifications: 0, runs: 0 });
 
   await service.connect({
     storeDomain: 'second.example.com', login: 'owner-2', password: 'password-2', pollingIntervalMinutes: 30
@@ -373,7 +406,7 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   await service.waitForIdle();
   status = await service.status();
   assert.equal(status.storeDomain, 'second.example.com');
-  assert.deepEqual(status.counts, { categories: 1, products: 1, modifications: 1 });
+  assert.deepEqual(status.counts, { categories: 1, stickers: 1, products: 1, modifications: 1 });
   const articles = await query('SELECT sku FROM search_horoshop_products ORDER BY sku');
   assert.deepEqual(articles.rows.map((row) => row.sku), ['SECOND-1']);
 });

@@ -233,6 +233,11 @@ export class HoroshopClient {
     return extractArray(response, ['pages', 'categories']);
   }
 
+  async exportStickers(token) {
+    const response = await this.post('icons/export', { token });
+    return extractArray(response, ['icons', 'stickers']);
+  }
+
   async exportCatalog(token, offset = 0, limit = 200) {
     const response = await this.post('catalog/export', { token, offset, limit });
     const products = extractArray(response, ['products', 'catalog', 'items']);

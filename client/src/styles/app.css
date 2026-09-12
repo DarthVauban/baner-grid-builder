@@ -955,7 +955,7 @@ input[type="checkbox"]:not(.switch):focus-visible, input[type="radio"]:focus-vis
 .integration-card__icon--horoshop { color: #e94928; background: #fff0ec; }
 .horoshop-integration-content { display: grid; }
 .horoshop-integration-content > .form-message { width: 100%; }
-.horoshop-integration-summary { display: grid; grid-template-columns: minmax(0,1.8fr) repeat(3,minmax(90px,.7fr)); gap: 9px; }
+.horoshop-integration-summary { display: grid; grid-template-columns: minmax(0,1.8fr) repeat(4,minmax(82px,.7fr)); gap: 9px; }
 .horoshop-integration-summary > div { min-width: 0; display: grid; align-content: center; gap: 3px; border: 1px solid #e7eaf0; border-radius: 12px; padding: 12px; background: #fafbfc; }
 .horoshop-integration-summary small { color: #8993a4; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .horoshop-integration-summary strong { overflow: hidden; color: #344056; font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
@@ -3951,7 +3951,7 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .telegram-integration-section__heading .integration-status { align-self: flex-start; }
   .telegram-integration-section__actions .button { width: 100%; justify-content: center; }
   .telegram-integration-footer { padding: 16px 19px calc(16px + env(safe-area-inset-bottom)); }
-  .horoshop-integration-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .horoshop-integration-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .horoshop-integration-summary__domain { grid-column: 1 / -1; }
   .horoshop-sync-settings { grid-template-columns: 1fr; }
   .horoshop-sync-settings .button { width: 100%; justify-content: center; }

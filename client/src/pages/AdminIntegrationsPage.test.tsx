@@ -51,7 +51,7 @@ describe('AdminIntegrationsPage', () => {
       pollingIntervalMinutes: null,
       lastSyncAt: null,
       lastError: null,
-      counts: { categories: 0, products: 0, modifications: 0 },
+      counts: { categories: 0, stickers: 0, products: 0, modifications: 0 },
       latestRun: null
     });
     const saveLocalApi = vi.spyOn(api.admin, 'saveTelegramLocalApiIntegration').mockResolvedValue({
@@ -116,7 +116,7 @@ describe('AdminIntegrationsPage', () => {
       pollingIntervalMinutes: null,
       lastSyncAt: null,
       lastError: null,
-      counts: { categories: 0, products: 0, modifications: 0 },
+      counts: { categories: 0, stickers: 0, products: 0, modifications: 0 },
       latestRun: null
     });
     const connect = vi.spyOn(api.admin, 'connectHoroshopIntegration').mockResolvedValue({
@@ -126,7 +126,7 @@ describe('AdminIntegrationsPage', () => {
       pollingIntervalMinutes: 15,
       lastSyncAt: null,
       lastError: null,
-      counts: { categories: 0, products: 0, modifications: 0 },
+      counts: { categories: 0, stickers: 0, products: 0, modifications: 0 },
       latestRun: null
     });
 
@@ -165,7 +165,7 @@ describe('AdminIntegrationsPage', () => {
       pollingIntervalMinutes: 15,
       lastSyncAt: '2030-01-01T10:00:00.000Z',
       lastError: null,
-      counts: { categories: 4, products: 120, modifications: 260 },
+      counts: { categories: 4, stickers: 8, products: 120, modifications: 260 },
       latestRun: null
     });
     const updateSettings = vi.spyOn(api.admin, 'updateHoroshopIntegrationSettings').mockResolvedValue({
@@ -175,7 +175,7 @@ describe('AdminIntegrationsPage', () => {
       pollingIntervalMinutes: 60,
       lastSyncAt: '2030-01-01T10:00:00.000Z',
       lastError: null,
-      counts: { categories: 4, products: 120, modifications: 260 },
+      counts: { categories: 4, stickers: 8, products: 120, modifications: 260 },
       latestRun: null
     });
 

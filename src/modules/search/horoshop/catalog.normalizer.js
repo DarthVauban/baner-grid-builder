@@ -27,22 +27,49 @@ function localizedStringValue(value, depth = 0) {
   return null;
 }
 
-function stickerEntries(value) {
+function stickerTitleKey(value) {
+  return String(value || '').trim().toLocaleLowerCase('uk-UA');
+}
+
+function stickerDirectoryIndex(stickers) {
+  const byId = new Map();
+  const candidates = new Map();
+  stickers.forEach((sticker) => {
+    const id = stringValue(sticker?.externalId ?? sticker?.id);
+    const title = localizedStringValue(sticker?.title);
+    if (!id || !title) return;
+    byId.set(id, title);
+    const key = stickerTitleKey(title);
+    if (!candidates.has(key)) candidates.set(key, new Set());
+    candidates.get(key).add(id);
+  });
+  const byTitle = new Map([...candidates.entries()].flatMap(([title, ids]) => (
+    ids.size === 1 ? [[title, [...ids][0]]] : []
+  )));
+  return { byId, byTitle };
+}
+
+function stickerEntries(value, directory = { byId: new Map(), byTitle: new Map() }) {
   const values = Array.isArray(value)
     ? value
     : typeof value === 'string' ? value.split(';') : value === null || value === undefined ? [] : [value];
   const seen = new Set();
   return values.flatMap((item) => {
     const source = record(item);
-    const title = localizedStringValue(
+    const explicitId = stringValue(source.id ?? source.external_id ?? source.icon_id);
+    const primitive = Object.keys(source).length ? null : stringValue(item);
+    const id = explicitId || (primitive && directory.byId.has(primitive) ? primitive : '');
+    const explicitTitle = localizedStringValue(
       Object.keys(source).length ? source.title ?? source.name ?? source.label ?? source.value : item
     );
+    const title = (primitive && id ? directory.byId.get(id) : null)
+      || explicitTitle || (id ? directory.byId.get(id) : null);
     if (!title) return [];
-    const id = stringValue(source.id ?? source.external_id) || '';
-    const key = `${id}:${title.toLocaleLowerCase('uk-UA')}`;
+    const resolvedId = id || directory.byTitle.get(stickerTitleKey(title)) || '';
+    const key = `${resolvedId}:${title.toLocaleLowerCase('uk-UA')}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ id, title }];
+    return [{ id: resolvedId, title }];
   });
 }
 
@@ -207,6 +234,21 @@ export function normalizeHoroshopCategories(items, storeDomain) {
   });
 }
 
+export function normalizeHoroshopStickers(items) {
+  return items.flatMap((item) => {
+    const source = record(item);
+    const externalId = stringValue(source.id ?? source.external_id ?? source.icon_id);
+    const title = localizedStringValue(source.title ?? source.name ?? source.label);
+    if (!externalId || !title) return [];
+    return [{
+      externalId,
+      title,
+      enabled: booleanValue(source.enabled ?? source.active ?? source.visible),
+      source
+    }];
+  });
+}
+
 function normalizeModification(
   source,
   fallbackSku,
@@ -214,7 +256,8 @@ function normalizeModification(
   inheritedAvailability,
   inheritedCreationTime,
   storeDomain,
-  inheritedPageUrl
+  inheritedPageUrl,
+  stickerDirectory
 ) {
   const sku = stringValue(source.article ?? source.sku) ?? fallbackSku;
   const offerIdentity = stringValue(source.article ?? source.sku ?? source.external_id ?? source.id) ?? fallbackSku;
@@ -231,7 +274,10 @@ function normalizeModification(
     imageUrl: firstImage(source, storeDomain),
     pageUrl: pageUrl(source, storeDomain) ?? inheritedPageUrl,
     attributes: record(source.characteristics ?? source.attributes),
-    stickers: mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers)),
+    stickers: mergeStickers(
+      stickerEntries(source.icons, stickerDirectory),
+      stickerEntries(source.stickers, stickerDirectory)
+    ),
     conditionLabel: localizedStringValue(source.condition_label ?? source.condition),
     creationTime: dateTimeValue(source.creation_time) ?? inheritedCreationTime,
     hasPhotos: hasPhotoCollection(source.images),
@@ -239,7 +285,8 @@ function normalizeModification(
   };
 }
 
-export function normalizeHoroshopProducts(items, storeDomain) {
+export function normalizeHoroshopProducts(items, storeDomain, stickerDirectory = []) {
+  const stickerIndex = stickerDirectoryIndex(stickerDirectory);
   const groups = new Map();
   for (const item of items) {
     const source = record(item);
@@ -270,7 +317,10 @@ export function normalizeHoroshopProducts(items, storeDomain) {
           canonicalUrl,
           popularity: stringValue(source.popularity),
           characteristics: record(source.characteristics),
-          stickers: mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers)),
+          stickers: mergeStickers(
+            stickerEntries(source.icons, stickerIndex),
+            stickerEntries(source.stickers, stickerIndex)
+          ),
           conditionLabel: localizedStringValue(source.condition_label ?? source.condition),
           creationTime: dateTimeValue(source.creation_time),
           hasPhotos: hasPhotoCollection(source.gallery_common),
@@ -285,7 +335,10 @@ export function normalizeHoroshopProducts(items, storeDomain) {
     }
     group.base.stickers = mergeStickers(
       group.base.stickers,
-      mergeStickers(stickerEntries(source.icons), stickerEntries(source.stickers))
+      mergeStickers(
+        stickerEntries(source.icons, stickerIndex),
+        stickerEntries(source.stickers, stickerIndex)
+      )
     );
     group.base.conditionLabel ??= localizedStringValue(source.condition_label ?? source.condition);
     group.base.hasPhotos ||= hasPhotoCollection(source.gallery_common);
@@ -302,7 +355,7 @@ export function normalizeHoroshopProducts(items, storeDomain) {
     for (const modificationSource of modificationSources) {
       const modification = normalizeModification(
         record(modificationSource), sku, externalId, inheritedAvailability, group.base.creationTime,
-        storeDomain, group.base.canonicalUrl
+        storeDomain, group.base.canonicalUrl, stickerIndex
       );
       if (!modification) continue;
       group.modifications.set(modification.externalId, modification);
