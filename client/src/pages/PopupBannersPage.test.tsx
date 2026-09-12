@@ -68,6 +68,7 @@ const baseCampaign: PopupCampaign = {
     categoryIds: [],
     conditions: [],
     targetPageUrl: '',
+    excludedPageUrls: [],
     urlContains: [],
     recommendationLimit: 6
   },
@@ -103,6 +104,7 @@ const baseCampaign: PopupCampaign = {
     inputValue: 'USED-PHONE-1',
     matchedBy: 'sku'
   }],
+  excludedProductTargets: [],
   promoProducts: [],
   promoCodeId: null,
   promoCode: null,
@@ -366,6 +368,43 @@ describe('PopupBannersPage', () => {
       baseCampaign.id,
       expect.objectContaining({
         targeting: expect.objectContaining({ mode: 'target_page', targetPageUrl })
+      })
+    ));
+  });
+
+  it('saves exact page and product exclusions from the shared targeting editor', async () => {
+    const excludedPageUrl = 'https://mobiletrend.com.ua/oformlennya-zamovlennya/?step=delivery';
+    const update = vi.spyOn(api.popupBanners, 'update').mockResolvedValue({
+      ...structuredClone(baseCampaign),
+      targeting: { ...baseCampaign.targeting, excludedPageUrls: [excludedPageUrl] },
+      excludedProductTargets: [{
+        id: 'excluded-target-1',
+        productId: 'product-2',
+        modificationId: null,
+        sku: 'PROMO-2',
+        title: 'Другий промотовар',
+        inputValue: 'PROMO-2',
+        matchedBy: 'product_sku'
+      }]
+    });
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
+    expect(screen.getByText('Де не показувати')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Виключені сторінки' }), {
+      target: { value: excludedPageUrl }
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Виключені товари' }), {
+      target: { value: 'PROMO-2' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith(
+      baseCampaign.id,
+      expect.objectContaining({
+        targeting: expect.objectContaining({ excludedPageUrls: [excludedPageUrl] }),
+        excludedProductEntries: ['PROMO-2']
       })
     ));
   });

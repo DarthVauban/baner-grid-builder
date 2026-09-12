@@ -60,6 +60,7 @@ const defaultTargeting = {
   categoryIds: [],
   conditions: [],
   targetPageUrl: '',
+  excludedPageUrls: [],
   urlContains: [],
   recommendationLimit: 6
 };
@@ -216,6 +217,7 @@ function normalizeTargeting(value) {
     categoryIds: stringList(source.categoryIds),
     conditions: stringList(source.conditions),
     targetPageUrl: normalizeTargetPageUrl(source.targetPageUrl),
+    excludedPageUrls: [...new Set(stringList(source.excludedPageUrls).map(normalizeTargetPageUrl).filter(Boolean))],
     urlContains: stringList(source.urlContains, 30).map((item) => item.toLocaleLowerCase('uk-UA')),
     recommendationLimit: Math.min(8, Math.max(3, Number(source.recommendationLimit) || defaultTargeting.recommendationLimit))
   };
@@ -251,7 +253,7 @@ function normalizeBehavior(value) {
   };
 }
 
-function campaignSnapshot(row, targets = [], promoProducts = []) {
+function campaignSnapshot(row, targets = [], promoProducts = [], excludedTargets = []) {
   return {
     timerConfig: normalizeTimerConfig(row.timer_config),
     campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
@@ -265,6 +267,7 @@ function campaignSnapshot(row, targets = [], promoProducts = []) {
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     targets,
+    excludedTargets,
     promoProducts,
     promoCodeId: row.promo_code_id || null,
     promoCode: object(row.promo_code_draft_snapshot),
@@ -405,7 +408,7 @@ function serializePromoProduct(row) {
   };
 }
 
-function serializeCampaign(row, targets = [], promoProducts = []) {
+function serializeCampaign(row, targets = [], promoProducts = [], excludedTargets = []) {
   return {
     timerConfig: normalizeTimerConfig(row.timer_config),
     id: row.id,
@@ -422,6 +425,7 @@ function serializeCampaign(row, targets = [], promoProducts = []) {
     endsAt: row.ends_at,
     publishedAt: row.published_at,
     productTargets: targets.map(serializeTarget),
+    excludedProductTargets: excludedTargets.map(serializeTarget),
     promoProducts: promoProducts.map(serializePromoProduct),
     promoCodeId: row.promo_code_id || null,
     promoCode: Object.keys(object(row.promo_code_draft_snapshot)).length ? object(row.promo_code_draft_snapshot) : null,
@@ -453,6 +457,20 @@ async function loadTargets(campaignId, db = { query }) {
     `SELECT target.*, product.sku AS product_sku, product.titles AS product_titles,
             modification.sku AS modification_sku, modification.titles AS modification_titles
      FROM popup_banner_product_targets AS target
+     JOIN search_horoshop_products AS product ON product.id = target.product_id
+     LEFT JOIN search_horoshop_modifications AS modification ON modification.id = target.modification_id
+     WHERE target.campaign_id = $1
+     ORDER BY COALESCE(modification.titles, product.titles)::TEXT, target.id`,
+    [campaignId]
+  );
+  return result.rows;
+}
+
+async function loadExcludedTargets(campaignId, db = { query }) {
+  const result = await db.query(
+    `SELECT target.*, product.sku AS product_sku, product.titles AS product_titles,
+            modification.sku AS modification_sku, modification.titles AS modification_titles
+     FROM popup_banner_product_exclusions AS target
      JOIN search_horoshop_products AS product ON product.id = target.product_id
      LEFT JOIN search_horoshop_modifications AS modification ON modification.id = target.modification_id
      WHERE target.campaign_id = $1
@@ -526,17 +544,34 @@ export async function listPopupCampaigns() {
     items.push(target);
     grouped.set(target.campaign_id, items);
   }
+  const exclusionRows = await query(
+    `SELECT target.*, product.sku AS product_sku, product.titles AS product_titles,
+            modification.sku AS modification_sku, modification.titles AS modification_titles
+     FROM popup_banner_product_exclusions AS target
+     JOIN search_horoshop_products AS product ON product.id = target.product_id
+     LEFT JOIN search_horoshop_modifications AS modification ON modification.id = target.modification_id
+     ORDER BY target.created_at, target.id`
+  );
+  const groupedExclusions = new Map();
+  for (const target of exclusionRows.rows) {
+    const items = groupedExclusions.get(target.campaign_id) || [];
+    items.push(target);
+    groupedExclusions.set(target.campaign_id, items);
+  }
   return Promise.all(result.rows.map(async (row) => serializeCampaign(
     { ...row, ...(stats.get(row.id) || {}) },
     grouped.get(row.id) || [],
-    await loadPromoProducts(row.id)
+    await loadPromoProducts(row.id),
+    groupedExclusions.get(row.id) || []
   )));
 }
 
 export async function getPopupCampaign(id) {
   const row = await loadCampaignRow(id);
-  const [targets, promoProducts] = await Promise.all([loadTargets(id), loadPromoProducts(id)]);
-  return serializeCampaign(row, targets, promoProducts);
+  const [targets, promoProducts, excludedTargets] = await Promise.all([
+    loadTargets(id), loadPromoProducts(id), loadExcludedTargets(id)
+  ]);
+  return serializeCampaign(row, targets, promoProducts, excludedTargets);
 }
 
 export async function popupCampaignOptions() {
@@ -677,9 +712,10 @@ async function resolvePromoItems(items, connectionId, generation, db) {
 
 async function recordVersion(client, campaignId, actorUserId) {
   const row = await loadCampaignRow(campaignId, client);
-  const [targets, promoProducts] = await Promise.all([
+  const [targets, promoProducts, excludedTargets] = await Promise.all([
     loadTargets(campaignId, client),
-    loadPromoProducts(campaignId, client)
+    loadPromoProducts(campaignId, client),
+    loadExcludedTargets(campaignId, client)
   ]);
   await client.query(
     `INSERT INTO popup_banner_versions (campaign_id, version_number, snapshot, created_by)
@@ -688,10 +724,11 @@ async function recordVersion(client, campaignId, actorUserId) {
     [campaignId, JSON.stringify(campaignSnapshot(
       row,
       targets.map(serializeTarget),
-      promoProducts.map(serializePromoProduct)
+      promoProducts.map(serializePromoProduct),
+      excludedTargets.map(serializeTarget)
     )), actorUserId]
   );
-  return serializeCampaign(row, targets, promoProducts);
+  return serializeCampaign(row, targets, promoProducts, excludedTargets);
 }
 
 async function savePopupCampaign(existingId, input, actorUserId) {
@@ -782,6 +819,17 @@ async function savePopupCampaign(existingId, input, actorUserId) {
       if (!hasRule) throw new AppError(422, 'POPUP_RULES_EMPTY', 'Додайте хоча б одну умову показу.');
     }
 
+    await client.query('DELETE FROM popup_banner_product_exclusions WHERE campaign_id = $1', [id]);
+    const excludedResolution = await resolveProductEntries(input.excludedProductEntries || [], connection.id, client);
+    for (const target of excludedResolution.targets) {
+      await client.query(
+        `INSERT INTO popup_banner_product_exclusions (
+           campaign_id, product_id, modification_id, target_key, input_value, matched_by
+         ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, target.productId, target.modificationId, target.targetKey, target.inputValue, target.matchedBy]
+      );
+    }
+
     await client.query('DELETE FROM popup_banner_promo_products WHERE campaign_id = $1', [id]);
     const promoResolution = campaignType === 'product_promo'
       ? await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, client)
@@ -805,6 +853,7 @@ async function savePopupCampaign(existingId, input, actorUserId) {
       ...campaign,
       resolution: {
         unmatched: resolution.unmatched,
+        unmatchedExcludedProducts: excludedResolution.unmatched,
         unmatchedPromoProducts: promoResolution.unmatched
       }
     };
@@ -939,13 +988,23 @@ function sameStoreHost(left, right) {
 }
 
 function validateTargetPage(targeting, storeDomain) {
-  if (targeting.mode !== 'target_page') return;
-  const targetPage = normalizedPageUrl(targeting.targetPageUrl);
-  if (!targetPage) {
-    throw new AppError(422, 'POPUP_TARGET_PAGE_INVALID', 'Вкажіть коректне посилання цільової сторінки.');
+  if (targeting.mode === 'target_page') {
+    const targetPage = normalizedPageUrl(targeting.targetPageUrl);
+    if (!targetPage) {
+      throw new AppError(422, 'POPUP_TARGET_PAGE_INVALID', 'Вкажіть коректне посилання цільової сторінки.');
+    }
+    if (!sameStoreHost(targetPage.hostname, storeDomain)) {
+      throw new AppError(422, 'POPUP_TARGET_PAGE_STORE_MISMATCH', 'Цільова сторінка має належати підключеному магазину Хорошоп.');
+    }
   }
-  if (!sameStoreHost(targetPage.hostname, storeDomain)) {
-    throw new AppError(422, 'POPUP_TARGET_PAGE_STORE_MISMATCH', 'Цільова сторінка має належати підключеному магазину Хорошоп.');
+  for (const excludedPageUrl of targeting.excludedPageUrls) {
+    const excludedPage = normalizedPageUrl(excludedPageUrl);
+    if (!excludedPage) {
+      throw new AppError(422, 'POPUP_EXCLUDED_PAGE_INVALID', 'Вкажіть коректне посилання сторінки-виключення.');
+    }
+    if (!sameStoreHost(excludedPage.hostname, storeDomain)) {
+      throw new AppError(422, 'POPUP_EXCLUDED_PAGE_STORE_MISMATCH', 'Сторінка-виключення має належати підключеному магазину Хорошоп.');
+    }
   }
 }
 
@@ -1319,16 +1378,23 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
   if (originUrl && !sameStoreHost(originUrl.hostname, connection.store_domain)) return null;
   const product = await resolveProduct(connection, article, pageUrl);
   const campaigns = await query(
-    `SELECT * FROM popup_banner_campaigns
-     WHERE status = 'active' AND connection_id = $1 AND connection_generation = $2
-       AND campaign_type <> 'block'
-       AND (starts_at IS NULL OR starts_at <= NOW())
-       AND (ends_at IS NULL OR ends_at > NOW())
-     ORDER BY priority DESC, updated_at DESC`,
-    [connection.id, connection.generation]
+    `SELECT campaign.* FROM popup_banner_campaigns AS campaign
+     LEFT JOIN popup_banner_product_exclusions AS exclusion
+       ON exclusion.campaign_id = campaign.id
+      AND exclusion.product_id = $3
+      AND (exclusion.modification_id IS NULL OR exclusion.modification_id = $4)
+     WHERE campaign.status = 'active' AND campaign.connection_id = $1 AND campaign.connection_generation = $2
+       AND campaign.campaign_type <> 'block'
+       AND (campaign.starts_at IS NULL OR campaign.starts_at <= NOW())
+       AND (campaign.ends_at IS NULL OR campaign.ends_at > NOW())
+       AND exclusion.id IS NULL
+     ORDER BY campaign.priority DESC, campaign.updated_at DESC`,
+    [connection.id, connection.generation, product?.id || null, product?.modificationId || null]
   );
   for (const campaign of campaigns.rows) {
     const campaignType = normalizeCampaignType(campaign.campaign_type, campaign.targeting);
+    const targeting = normalizeTargeting(campaign.targeting);
+    if (targeting.excludedPageUrls.some((excludedPageUrl) => matchesTargetPage(excludedPageUrl, pageUrl))) continue;
     const timerConfig = normalizeTimerConfig(campaign.timer_config);
     if (campaignType === 'countdown' && isTimerExpired(timerConfig)) continue;
     if (!isWithinBehaviorSchedule(campaign.behavior)) continue;
@@ -1337,7 +1403,6 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       : [];
     if (!matchesTargeting(campaign, product, pageUrl, targets, stockState)) continue;
     const content = normalizeContent(campaign.content);
-    const targeting = normalizeTargeting(campaign.targeting);
     const recommendations = targeting.mode === 'out_of_stock'
       ? await resolveOutOfStockRecommendations(connection, product, targeting.recommendationLimit)
       : [];

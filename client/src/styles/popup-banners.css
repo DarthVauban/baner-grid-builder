@@ -330,6 +330,8 @@
 .popup-form-section textarea:focus,
 .popup-form-section .custom-select__button:focus-visible { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent); }
 .popup-products-input { min-height: 240px; }
+.popup-exclusions-grid { align-items: start; }
+.popup-exclusions-grid textarea { min-height: 138px; }
 
 .popup-layout-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .popup-layout-picker > button { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); text-align: left; background: var(--surface); }

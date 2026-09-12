@@ -70,6 +70,7 @@ export interface PopupTargeting {
   categoryIds: string[];
   conditions: string[];
   targetPageUrl: string;
+  excludedPageUrls: string[];
   urlContains: string[];
   recommendationLimit: number;
 }
@@ -169,6 +170,7 @@ export interface PopupCampaign {
   endsAt: string | null;
   publishedAt: string | null;
   productTargets: PopupProductTarget[];
+  excludedProductTargets: PopupProductTarget[];
   promoProducts: PopupPromoProduct[];
   promoCodeId: string | null;
   promoCode: PromoCodeSnapshot | null;
@@ -188,6 +190,7 @@ export interface PopupCampaign {
   connection: { id: string; generation: string; storeDomain: string } | null;
   resolution?: {
     unmatched: string[];
+    unmatchedExcludedProducts?: string[];
     unmatchedPromoProducts?: PopupPromoProductReference[];
   };
   createdAt: string;
@@ -205,6 +208,7 @@ export interface PopupCampaignInput {
   startsAt: string | null;
   endsAt: string | null;
   productEntries: string[];
+  excludedProductEntries: string[];
   promoItems: PopupPromoProductReference[];
   promoCodeId: string | null;
   timerConfig: PopupTimerConfig;

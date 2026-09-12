@@ -93,6 +93,7 @@ function input(overrides = {}) {
       categoryIds: [],
       conditions: [],
       targetPageUrl: '',
+      excludedPageUrls: [],
       urlContains: []
     },
     behavior: {
@@ -118,6 +119,7 @@ function input(overrides = {}) {
     startsAt: null,
     endsAt: null,
     productEntries: ['USED-IPHONE-128'],
+    excludedProductEntries: [],
     ...overrides
   };
 }
@@ -994,6 +996,70 @@ test('target-page campaigns match one exact storefront URL without requiring a p
     .query({ pageUrl: 'https://shop.example.com/returns/?source=popup' })
     .expect(200);
   assert.equal(differentPage.body.data, null);
+});
+
+test('page and product exclusions override broad popup targeting', async () => {
+  const campaigns = (await admin.get('/api/popup-banners').expect(200)).body.data;
+  for (const campaign of campaigns.filter((item) => item.status === 'active')) {
+    await admin.patch(`/api/popup-banners/${campaign.id}/status`).send({ status: 'paused' }).expect(200);
+  }
+
+  const foreignStore = await admin.post('/api/popup-banners').send(input({
+    name: 'Некоректне виключення',
+    targeting: {
+      ...input().targeting,
+      mode: 'all_pages',
+      excludedPageUrls: ['https://other.example.com/checkout/']
+    },
+    productEntries: []
+  })).expect(422);
+  assert.equal(foreignStore.body.error.code, 'POPUP_EXCLUDED_PAGE_STORE_MISMATCH');
+
+  const created = await admin.post('/api/popup-banners').send(input({
+    name: 'Кампанія з виключеннями',
+    priority: 900,
+    targeting: {
+      ...input().targeting,
+      mode: 'all_pages',
+      excludedPageUrls: ['https://www.shop.example.com/checkout/?source=editor#payment']
+    },
+    productEntries: [],
+    excludedProductEntries: ['USED-IPHONE']
+  })).expect(201);
+  assert.deepEqual(created.body.data.targeting.excludedPageUrls, ['https://www.shop.example.com/checkout']);
+  assert.equal(created.body.data.excludedProductTargets.length, 1);
+  assert.equal(created.body.data.excludedProductTargets[0].productId, productId);
+  assert.equal(created.body.data.excludedProductTargets[0].modificationId, null);
+  assert.deepEqual(created.body.data.resolution.unmatchedExcludedProducts, []);
+
+  const version = (await pool.query(
+    'SELECT snapshot FROM popup_banner_versions WHERE campaign_id = $1 ORDER BY version_number DESC LIMIT 1',
+    [created.body.data.id]
+  )).rows[0];
+  assert.equal(version.snapshot.excludedTargets.length, 1);
+
+  await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'active' }).expect(200);
+
+  const excludedPage = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/checkout/?step=delivery#address' })
+    .expect(200);
+  assert.equal(excludedPage.body.data, null);
+
+  const excludedProduct = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/used-iphone-15/', article: 'USED-IPHONE-128' })
+    .expect(200);
+  assert.equal(excludedProduct.body.data, null);
+
+  const allowedPage = await request(app)
+    .get('/api/public/popup-banners/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/delivery-and-payment/' })
+    .expect(200);
+  assert.equal(allowedPage.body.data.campaign.publicId, created.body.data.publicId);
 });
 
 test('out-of-stock campaigns return available alternatives from the same category with native buy ids', async () => {

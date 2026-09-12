@@ -162,6 +162,7 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       categoryIds: [],
       conditions: [],
       targetPageUrl: '',
+      excludedPageUrls: [],
       urlContains: [],
       recommendationLimit: 6
     },
@@ -200,6 +201,7 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
       successBody: 'Скопіюйте код і використайте його під час оформлення замовлення.'
     },
     productEntries: [],
+    excludedProductEntries: [],
     promoItems: []
   };
   if (campaignType === 'product_promo') {
@@ -355,6 +357,7 @@ function campaignInput(campaign: PopupCampaign): PopupCampaignInput {
       blocks: blocks.map((block) => ({ ...block, fieldIds: [...block.fieldIds] }))
     },
     productEntries: campaign.productTargets.map((item) => item.sku),
+    excludedProductEntries: (campaign.excludedProductTargets || []).map((item) => item.sku),
     promoItems: campaign.promoProducts.map((item) => ({
       productExternalId: item.productExternalId,
       modificationExternalId: item.modificationExternalId
@@ -808,6 +811,7 @@ export function PopupBannersPage() {
   const [draft, setDraft] = useState<PopupCampaignInput>(() => emptyCampaign());
   const [tab, setTab] = useState<EditorTab>('content');
   const [productText, setProductText] = useState('');
+  const [excludedProductText, setExcludedProductText] = useState('');
   const [promoProducts, setPromoProducts] = useState<PopupPromoProduct[]>([]);
   const [selectedPromoCode, setSelectedPromoCode] = useState<PromoCode | PromoCodeSnapshot | null>(null);
   const [promoCodePickerOpen, setPromoCodePickerOpen] = useState(false);
@@ -876,6 +880,7 @@ export function PopupBannersPage() {
     setSelectedId(campaign.id);
     setDraft(campaignInput(campaign));
     setProductText(campaign.productTargets.map((item) => item.sku).join('\n'));
+    setExcludedProductText((campaign.excludedProductTargets || []).map((item) => item.sku).join('\n'));
     setPromoProducts(campaign.promoProducts);
     setSelectedPromoCode(campaign.promoCode);
   }, [campaigns.data, isCreating, selectedId]);
@@ -901,11 +906,12 @@ export function PopupBannersPage() {
   const currentInput = useMemo(() => ({
     ...draft,
     productEntries: inputLines(productText),
+    excludedProductEntries: inputLines(excludedProductText),
     promoItems: promoProducts.map((item) => ({
       productExternalId: item.productExternalId,
       modificationExternalId: item.modificationExternalId
     }))
-  }), [draft, productText, promoProducts]);
+  }), [draft, excludedProductText, productText, promoProducts]);
   const targetPageMissing = draft.targeting.mode === 'target_page' && !draft.targeting.targetPageUrl.trim();
   const timerInvalid = draft.campaignType === 'countdown' && (
     (draft.timerConfig.mode === 'deadline' && !draft.timerConfig.deadlineAt)
@@ -933,6 +939,7 @@ export function PopupBannersPage() {
     setChoosingType(false);
     setDraft(campaignInput(campaign));
     setProductText(campaign.productTargets.map((item) => item.sku).join('\n'));
+    setExcludedProductText((campaign.excludedProductTargets || []).map((item) => item.sku).join('\n'));
     setPromoProducts(campaign.promoProducts);
     setSelectedPromoCode(campaign.promoCode);
     setTab('content');
@@ -944,6 +951,7 @@ export function PopupBannersPage() {
     setChoosingType(true);
     setDraft(emptyCampaign());
     setProductText('');
+    setExcludedProductText('');
     setPromoProducts([]);
     setSelectedPromoCode(null);
     setTab('content');
@@ -952,6 +960,7 @@ export function PopupBannersPage() {
   function beginCampaign(campaignType: PopupCampaignType) {
     setDraft(emptyCampaign(campaignType));
     setProductText('');
+    setExcludedProductText('');
     setPromoProducts([]);
     setSelectedPromoCode(null);
     setChoosingType(false);
@@ -1132,10 +1141,15 @@ export function PopupBannersPage() {
       setIsCreating(false);
       setDraft(campaignInput(saved));
       setProductText(saved.productTargets.map((item) => item.sku).join('\n'));
+      setExcludedProductText((saved.excludedProductTargets || []).map((item) => item.sku).join('\n'));
       setPromoProducts(saved.promoProducts);
       setSelectedPromoCode(saved.promoCode);
       const missed = saved.resolution?.unmatched || [];
-      showToast(missed.length ? `Кампанію збережено. Не знайдено позицій: ${missed.length}.` : 'Попап-кампанію збережено.', missed.length ? 'error' : 'success');
+      const missedExclusions = saved.resolution?.unmatchedExcludedProducts || [];
+      const missedCount = missed.length + missedExclusions.length;
+      showToast(missedCount
+        ? `Кампанію збережено. Не знайдено позицій: ${missedCount}.`
+        : 'Попап-кампанію збережено.', missedCount ? 'error' : 'success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося зберегти кампанію.', 'error');
     }
@@ -1604,6 +1618,19 @@ export function PopupBannersPage() {
                 <label><span>URL містить — один фрагмент з рядка</span><textarea rows={4} value={draft.targeting.urlContains.join('\n')} onChange={(event) => updateTargeting({ urlContains: inputLines(event.target.value) })} placeholder="/vzhyvani-smartfony/" /></label>
               </div>}
               {(draft.targeting.mode === 'all_products' || draft.targeting.mode === 'all_pages') && <div className="popup-wide-target-note"><span><Icon name="visibility" size={20} /></span><div><strong>Широка аудиторія</strong><p>Попап охопить {draft.targeting.mode === 'all_pages' ? 'всі сторінки сайту' : 'всі картки товарів'}. Перевірте частоту показу, щоб повідомлення не заважало покупцям.</p></div></div>}
+              <div className="popup-form-section">
+                <SectionHeading
+                  icon="visibility"
+                  title="Де не показувати"
+                  description="Додайте винятки, які мають вищий пріоритет за всі умови показу цієї кампанії."
+                  aside={`${draft.targeting.excludedPageUrls.length + inputLines(excludedProductText).length} виключень`}
+                />
+                <div className="popup-wide-target-note"><span><Icon name="visibility" size={20} /></span><div><strong>Попап буде повністю вимкнено</strong><p>Якщо сторінка або відкритий товар потрапляє до списку нижче, ця кампанія не показуватиметься незалежно від її основної аудиторії.</p></div></div>
+                <div className="popup-form-grid popup-exclusions-grid">
+                  <label><span>Конкретні сторінки сайту</span><textarea rows={7} aria-label="Виключені сторінки" value={draft.targeting.excludedPageUrls.join('\n')} onChange={(event) => updateTargeting({ excludedPageUrls: inputLines(event.target.value) })} placeholder={'https://mobiletrend.com.ua/dostavka-ta-oplata/\nhttps://mobiletrend.com.ua/kontakty/'} /><small>Одне повне посилання з підключеного магазину на рядок. Параметри після «?» і фрагмент після «#» ігноруються.</small></label>
+                  <label><span>Конкретні товари й модифікації</span><textarea rows={7} aria-label="Виключені товари" value={excludedProductText} onChange={(event) => setExcludedProductText(event.target.value)} placeholder={'П0000012345\nСмартфон Apple iPhone 15 128GB Black'} /><small>Назва або артикул на рядок. Товар виключає всі його модифікації, а артикул модифікації — лише цю модифікацію.</small></label>
+                </div>
+              </div>
             </>}
 
             {tab === 'behavior' && <>

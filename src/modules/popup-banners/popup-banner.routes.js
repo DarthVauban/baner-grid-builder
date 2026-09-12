@@ -88,6 +88,13 @@ const targetPageUrlSchema = z.string().trim().max(2000).default('').refine((valu
     return false;
   }
 }, 'Вкажіть повне посилання сторінки з http:// або https://.');
+const excludedPageUrlSchema = z.string().trim().min(1).max(2000).refine((value) => {
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}, 'Вкажіть повне посилання сторінки з http:// або https://.');
 const targetingBaseSchema = z.object({
   mode: z.enum(['all_pages', 'all_products', 'products', 'rules', 'target_page', 'out_of_stock']),
   match: z.enum(['all', 'any']).default('all'),
@@ -96,6 +103,7 @@ const targetingBaseSchema = z.object({
   categoryIds: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   conditions: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
   targetPageUrl: targetPageUrlSchema,
+  excludedPageUrls: z.array(excludedPageUrlSchema).max(100).default([]),
   urlContains: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
   recommendationLimit: z.number().int().min(3).max(8).default(6)
 });
@@ -212,6 +220,7 @@ const campaignSchema = z.object({
   promoCodeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional().default(null)
     .transform((value) => value || null),
   productEntries: z.array(z.string().trim().min(1).max(500)).max(500).default([]),
+  excludedProductEntries: z.array(z.string().trim().min(1).max(500)).max(500).default([]),
   promoItems: z.array(z.object({
     productExternalId: z.string().trim().min(1).max(300),
     modificationExternalId: z.string().trim().max(300).nullable().optional().default(null)
