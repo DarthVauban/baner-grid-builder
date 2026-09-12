@@ -128,6 +128,25 @@ describe('ToolsPage catalog', () => {
     expect(tile).toHaveAttribute('href', '/tools/popup-banners');
   });
 
+  it('shows the form and embeddable button constructor as a separate tool tile', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
+      tools: [{
+        toolId: 'form_builder',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    });
+
+    renderPage();
+
+    await expandCategory('Функціональні інструменти');
+    const tile = await screen.findByRole('link', { name: /Конструктор форм/u });
+    expect(tile).toHaveAttribute('href', '/tools/forms');
+  });
+
   it('shows the Horoshop catalog menu visual tool as a separate tile', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
       tools: [{

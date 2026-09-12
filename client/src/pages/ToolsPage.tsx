@@ -41,7 +41,7 @@ export function ToolsPage() {
     ...tools.map((tool) => ({ ...tool, accessToolId: tool.id, key: tool.id })),
     ...workspaceSections.map((tool) => ({ ...tool, key: tool.id }))
   ]
-    .filter((tool) => !['chat', 'form_builder', 'store_map'].includes(tool.id))
+    .filter((tool) => !['chat', 'store_map'].includes(tool.id))
     .filter((tool) => tool.showInTools !== false)
     .filter((tool) => accessByTool.get(tool.accessToolId)?.granted);
   const visibleCategories = toolCategories
