@@ -217,6 +217,15 @@ test('form builder and applications list have separate access and process public
   assert.equal(formPreview.body.data.title, 'Unsaved storefront preview');
   assert.equal(formPreview.body.data.styles.buttonTextColor, '#fedcba');
   assert.deepEqual(formPreview.body.data.fields.map((field) => field.key), ['comment', 'contact_phone']);
+  const emptyFieldLabelPreview = await builder.post('/api/forms/preview').send({
+    ...previewInput,
+    fields: [{ ...previewInput.fields[0], label: '' }]
+  }).expect(200);
+  assert.equal(emptyFieldLabelPreview.body.data.fields[0].label, 'Поле 1');
+  await builder.put(`/api/forms/${flexibleForm.body.data.id}`).send({
+    ...previewInput,
+    fields: [{ ...previewInput.fields[0], label: '' }]
+  }).expect(422);
   await builder.patch(`/api/forms/${flexibleForm.body.data.id}/publish`).expect(200);
   const flexiblePublic = await request(app).get(`/api/public/application-forms/${flexibleForm.body.data.publicId}`).expect(200);
   assert.deepEqual(flexiblePublic.body.data.fields.map((field) => field.key), ['comment', 'contact_phone']);

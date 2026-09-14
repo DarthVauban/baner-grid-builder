@@ -59,6 +59,12 @@ const formSchema = z.object({
   workflow: z.record(z.string(), z.unknown()).nullable().optional(),
   fields: z.array(fieldSchema).max(60).optional()
 });
+const previewFieldSchema = fieldSchema.extend({
+  label: z.string().trim().max(160).default('')
+});
+const previewFormSchema = formSchema.extend({
+  fields: z.array(previewFieldSchema).max(60).optional()
+});
 const bankSchema = z.object({
   label: z.string().trim().min(1).max(160),
   value: z.string().trim().min(1).max(120).optional(),
@@ -231,7 +237,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 router.post('/preview', asyncHandler(async (req, res) => {
-  const input = parseInput(formSchema, req.body);
+  const input = parseInput(previewFormSchema, req.body);
   if ((input.formType || 'simple') !== 'simple') {
     throw new AppError(422, 'SIMPLE_FORM_REQUIRED', 'Live preview доступний лише для простої форми.');
   }
@@ -245,6 +251,7 @@ router.post('/preview', asyncHandler(async (req, res) => {
     return {
       ...field,
       key,
+      label: field.label || `Поле ${index + 1}`,
       system: false,
       systemFieldType: null,
       sortOrder: index
