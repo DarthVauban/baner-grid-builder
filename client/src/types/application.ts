@@ -250,6 +250,7 @@ export type ApplicationButtonInput = Omit<ApplicationButtonConfig, 'id' | 'archi
 export type ApplicationFormCampaignStatus = 'draft' | 'active' | 'paused';
 export type ApplicationFormCampaignAvailabilityMode = 'all' | 'out_of_stock';
 export type ApplicationFormCampaignInsertPosition = 'start' | 'end' | 'before' | 'after';
+export type ApplicationFormCampaignTargetMode = 'all_products' | 'products' | 'category' | 'sticker';
 
 export interface ApplicationFormCampaignTarget {
   id: string;
@@ -282,6 +283,9 @@ export interface ApplicationFormCampaign {
   buttonStyles: Record<string, string>;
   placement: ApplicationFormCampaignPlacement;
   availabilityMode: ApplicationFormCampaignAvailabilityMode;
+  targetMode: ApplicationFormCampaignTargetMode;
+  categoryExternalId: string | null;
+  stickerExternalId: string | null;
   startsAt: string | null;
   endsAt: string | null;
   publishedAt: string | null;
@@ -299,6 +303,9 @@ export interface ApplicationFormCampaignInput {
   buttonStyles: Record<string, string>;
   placement: ApplicationFormCampaignPlacement;
   availabilityMode: ApplicationFormCampaignAvailabilityMode;
+  targetMode: ApplicationFormCampaignTargetMode;
+  categoryExternalId: string | null;
+  stickerExternalId: string | null;
   startsAt: string | null;
   endsAt: string | null;
   targets: Array<{ productId: string; modificationId: string | null }>;

@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
@@ -15,7 +15,7 @@ import { Icon } from './Icon';
 import { StyledSelect } from './StyledSelect';
 
 interface Props {
-  form: ApplicationForm;
+  forms: ApplicationForm[];
 }
 
 interface TargetDraft {
@@ -101,7 +101,7 @@ function fromSavedTarget(target: ApplicationFormCampaignTarget): TargetDraft {
 function emptyCampaign(form: ApplicationForm): ApplicationFormCampaignInput {
   return {
     formId: form.id,
-    name: `Передзамовлення · ${form.name}`,
+    name: `Кнопка · ${form.name}`,
     priority: 100,
     buttonText: 'Передзамовити',
     buttonStyles: {
@@ -113,6 +113,9 @@ function emptyCampaign(form: ApplicationForm): ApplicationFormCampaignInput {
       mobile: { selector: '.product-order__row', insertPosition: 'end' }
     },
     availabilityMode: 'all',
+    targetMode: 'products',
+    categoryExternalId: null,
+    stickerExternalId: null,
     startsAt: null,
     endsAt: null,
     targets: []
@@ -128,6 +131,9 @@ function campaignInput(campaign: ApplicationFormCampaign): ApplicationFormCampai
     buttonStyles: campaign.buttonStyles,
     placement: campaign.placement,
     availabilityMode: campaign.availabilityMode,
+    targetMode: campaign.targetMode,
+    categoryExternalId: campaign.categoryExternalId,
+    stickerExternalId: campaign.stickerExternalId,
     startsAt: campaign.startsAt,
     endsAt: campaign.endsAt,
     targets: campaign.targets.map((target) => ({ productId: target.productId, modificationId: target.modificationId }))
@@ -156,45 +162,39 @@ function colorInputValue(value: string | undefined, fallback: string) {
   return /^#[0-9a-f]{6}$/iu.test(value || '') ? value as string : fallback;
 }
 
-export function ApplicationFormPlacementEditor({ form }: Props) {
+export function ApplicationFormPlacementEditor({ forms }: Props) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const confirm = useConfirmDialog();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<ApplicationFormCampaignInput>(() => emptyCampaign(form));
+  const [draft, setDraft] = useState<ApplicationFormCampaignInput>(() => emptyCampaign(forms[0]));
   const [selectedTargets, setSelectedTargets] = useState<TargetDraft[]>([]);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
+  const [catalogCategory, setCatalogCategory] = useState('');
   const [page, setPage] = useState(1);
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(() => new Set());
   const deferredSearch = useDeferredValue(search);
 
   const campaigns = useQuery({
-    queryKey: ['form-campaigns', form.id],
-    queryFn: () => api.formCampaigns.list(form.id)
+    queryKey: ['form-campaigns'],
+    queryFn: () => api.formCampaigns.list()
   });
   const catalog = useQuery({
-    queryKey: ['form-campaign-catalog', deferredSearch, category, page],
-    queryFn: ({ signal }) => api.formCampaigns.catalog({ search: deferredSearch, category, page, pageSize: 20 }, signal)
+    queryKey: ['form-campaign-catalog', deferredSearch, catalogCategory, page],
+    queryFn: ({ signal }) => api.formCampaigns.catalog({ search: deferredSearch, category: catalogCategory, page, pageSize: 20 }, signal)
   });
   const embedCode = useQuery({ queryKey: ['form-campaign-embed-code'], queryFn: api.formCampaigns.embedCode });
   const selectedCampaign = useMemo(
     () => campaigns.data?.find((campaign) => campaign.id === selectedId) || null,
     [campaigns.data, selectedId]
   );
+  const selectedForm = forms.find((candidate) => candidate.id === draft.formId) || forms[0];
 
   const createCampaign = useMutation({ mutationFn: api.formCampaigns.create });
   const updateCampaign = useMutation({ mutationFn: ({ id, input }: { id: string; input: ApplicationFormCampaignInput }) => api.formCampaigns.update(id, input) });
   const updateStatus = useMutation({ mutationFn: ({ id, status }: { id: string; status: ApplicationFormCampaign['status'] }) => api.formCampaigns.setStatus(id, status) });
   const archiveCampaign = useMutation({ mutationFn: api.formCampaigns.archive });
   const busy = createCampaign.isPending || updateCampaign.isPending || updateStatus.isPending || archiveCampaign.isPending;
-
-  useEffect(() => {
-    setSelectedId(null);
-    setDraft(emptyCampaign(form));
-    setSelectedTargets([]);
-    setExpandedProducts(new Set());
-  }, [form]);
 
   function openCampaign(campaign: ApplicationFormCampaign) {
     setSelectedId(campaign.id);
@@ -204,7 +204,7 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
 
   function createNew() {
     setSelectedId(null);
-    setDraft(emptyCampaign(form));
+    setDraft(emptyCampaign(forms[0]));
     setSelectedTargets([]);
   }
 
@@ -260,14 +260,15 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
   }
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: ['form-campaigns', form.id] });
+    await queryClient.invalidateQueries({ queryKey: ['form-campaigns'] });
   }
 
   async function save() {
     const input = {
       ...draft,
-      formId: form.id,
-      targets: selectedTargets.map((target) => ({ productId: target.productId, modificationId: target.modificationId }))
+      targets: draft.targetMode === 'products'
+        ? selectedTargets.map((target) => ({ productId: target.productId, modificationId: target.modificationId }))
+        : []
     };
     try {
       const saved = selectedId
@@ -276,10 +277,10 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
       setSelectedId(saved.id);
       setDraft(campaignInput(saved));
       setSelectedTargets(saved.targets.map(fromSavedTarget));
-      showToast(selectedId ? 'Розміщення оновлено.' : 'Розміщення створено.');
+      showToast(selectedId ? 'Кнопку оновлено.' : 'Кнопку створено.');
       await refresh();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти розміщення.', 'error');
+      showToast(error instanceof Error ? error.message : 'Не вдалося зберегти кнопку.', 'error');
     }
   }
 
@@ -288,7 +289,7 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
     try {
       const updated = await updateStatus.mutateAsync({ id: selectedCampaign.id, status });
       openCampaign(updated);
-      showToast(status === 'active' ? 'Розміщення активовано.' : 'Статус розміщення оновлено.');
+      showToast(status === 'active' ? 'Кнопку активовано.' : 'Статус кнопки оновлено.');
       await refresh();
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося змінити статус.', 'error');
@@ -298,8 +299,8 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
   async function archive() {
     if (!selectedCampaign) return;
     const confirmed = await confirm({
-      title: 'Архівувати розміщення?',
-      message: `Кнопка кампанії «${selectedCampaign.name}» більше не показуватиметься на сайті.`,
+      title: 'Архівувати кнопку?',
+      message: `Кнопка «${selectedCampaign.name}» більше не показуватиметься на сайті.`,
       confirmLabel: 'Архівувати',
       tone: 'danger'
     });
@@ -307,10 +308,10 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
     try {
       await archiveCampaign.mutateAsync(selectedCampaign.id);
       createNew();
-      showToast('Розміщення перенесено в архів.');
+      showToast('Кнопку перенесено в архів.');
       await refresh();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося архівувати розміщення.', 'error');
+      showToast(error instanceof Error ? error.message : 'Не вдалося архівувати кнопку.', 'error');
     }
   }
 
@@ -328,21 +329,55 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
     { value: '', label: 'Усі категорії' },
     ...(catalog.data?.categories || []).map((item) => ({ value: item.externalId, label: firstTitle(item.titles) }))
   ];
+  const targetModeOptions = [
+    { value: 'all_products' as const, label: 'На всіх товарах' },
+    { value: 'products' as const, label: 'На конкретних товарах або модифікаціях' },
+    { value: 'sticker' as const, label: 'На товарах зі стікером' },
+    { value: 'category' as const, label: 'У певній категорії' }
+  ];
+  const formOptions = forms.map((candidate) => ({
+    value: candidate.id,
+    label: `${candidate.name}${candidate.status === 'published' ? '' : ' · не опублікована'}`
+  }));
+  const stickerOptions = [
+    { value: '', label: 'Оберіть стікер' },
+    ...(catalog.data?.stickers || []).map((sticker) => ({ value: sticker.externalId, label: sticker.title }))
+  ];
+  const targetCategoryOptions = [
+    { value: '', label: 'Оберіть категорію' },
+    ...(catalog.data?.categories || []).map((item) => ({ value: item.externalId, label: firstTitle(item.titles) }))
+  ];
+  const targetSummary = (campaign: ApplicationFormCampaign) => {
+    if (campaign.targetMode === 'all_products') return 'Усі товари';
+    if (campaign.targetMode === 'category') {
+      const targetCategory = catalog.data?.categories.find((item) => item.externalId === campaign.categoryExternalId);
+      return `Категорія: ${targetCategory ? firstTitle(targetCategory.titles) : campaign.categoryExternalId || '—'}`;
+    }
+    if (campaign.targetMode === 'sticker') {
+      const targetSticker = catalog.data?.stickers?.find((item) => item.externalId === campaign.stickerExternalId);
+      return `Стікер: ${targetSticker?.title || campaign.stickerExternalId || '—'}`;
+    }
+    return `${campaign.targets.length} товарів / модифікацій`;
+  };
+  const targetingComplete = draft.targetMode === 'all_products'
+    || (draft.targetMode === 'products' && selectedTargets.length > 0)
+    || (draft.targetMode === 'category' && Boolean(draft.categoryExternalId))
+    || (draft.targetMode === 'sticker' && Boolean(draft.stickerExternalId));
 
   return <div className="form-placement-editor">
     <div className="form-placement-editor__top">
       <section className="tool-panel form-placement-editor__library">
         <header className="tool-panel__header">
-          <div><p className="eyebrow">Розміщення</p><h2>Кампанії форми</h2></div>
-          <button className="button button--primary button--small" type="button" onClick={createNew}><Icon name="add" size={15} /> Нова</button>
+          <div><p className="eyebrow">Бібліотека</p><h2>Кнопки форм</h2></div>
+          <button className="button button--primary button--small" type="button" onClick={createNew}><Icon name="add" size={15} /> Нова кнопка</button>
         </header>
-        <p className="form-placement-editor__hint">Кожна кампанія показує кнопку лише на обраних товарах або їх конкретних модифікаціях.</p>
+        <p className="form-placement-editor__hint">Кожна кнопка викликає обрану просту форму та має власні правила показу у каталозі.</p>
         <div className="form-placement-campaign-list">
           {(campaigns.data || []).map((campaign) => <button className={selectedId === campaign.id ? 'is-active' : ''} type="button" key={campaign.id} onClick={() => openCampaign(campaign)}>
-            <span><strong>{campaign.name}</strong><small>{campaign.targets.length} цілей · {statusLabel(campaign.status)}</small></span>
+            <span><strong>{campaign.name}</strong><small>{campaign.formName} · {targetSummary(campaign)} · {statusLabel(campaign.status)}</small></span>
             <i className={`form-placement-status form-placement-status--${campaign.status}`} />
           </button>)}
-          {!campaigns.isLoading && !campaigns.data?.length && <p>Розміщень ще немає. Створіть перше для цієї форми.</p>}
+          {!campaigns.isLoading && !campaigns.data?.length && <p>Кнопок ще немає. Створіть першу та прив’яжіть її до форми.</p>}
         </div>
         <div className="form-placement-embed">
           <span><strong>Єдиний код для магазину</strong><small>Вставте один раз. Цільові товари керуються звідси.</small></span>
@@ -351,12 +386,16 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
       </section>
 
       <section className="tool-panel form-placement-editor__settings">
-        <header className="tool-panel__header"><div><p className="eyebrow">Налаштування</p><h2>{selectedCampaign ? selectedCampaign.name : 'Нова кампанія'}</h2></div>{selectedCampaign && <span className={`status-pill status-pill--${selectedCampaign.status}`}>{statusLabel(selectedCampaign.status)}</span>}</header>
-        {form.status !== 'published' && <div className="form-message form-message--warning">Для активації спочатку опублікуйте форму.</div>}
+        <header className="tool-panel__header"><div><p className="eyebrow">Налаштування</p><h2>{selectedCampaign ? selectedCampaign.name : 'Нова кнопка'}</h2></div>{selectedCampaign && <span className={`status-pill status-pill--${selectedCampaign.status}`}>{statusLabel(selectedCampaign.status)}</span>}</header>
+        {selectedForm.status !== 'published' && <div className="form-message form-message--warning">Для активації спочатку опублікуйте обрану форму.</div>}
         <div className="form-builder-grid">
-          <label className="field form-builder-grid__wide"><span>Назва кампанії</span><input value={draft.name} maxLength={160} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+          <div className="field form-builder-grid__wide"><span>Яку форму відкривати</span><StyledSelect value={draft.formId} options={formOptions} onChange={(formId) => setDraft({ ...draft, formId })} ariaLabel="Форма для кнопки" /></div>
+          <label className="field form-builder-grid__wide"><span>Назва кнопки в робочому просторі</span><input value={draft.name} maxLength={160} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
           <label className="field"><span>Текст кнопки</span><input value={draft.buttonText} maxLength={120} onChange={(event) => setDraft({ ...draft, buttonText: event.target.value })} /></label>
           <label className="field"><span>Пріоритет</span><input type="number" min={0} max={1000} value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: Number(event.target.value) || 0 })} /></label>
+          <div className="field form-builder-grid__wide"><span>Де показувати кнопку</span><StyledSelect value={draft.targetMode} options={targetModeOptions} onChange={(targetMode) => setDraft({ ...draft, targetMode, categoryExternalId: null, stickerExternalId: null })} ariaLabel="Правило показу кнопки" /></div>
+          {draft.targetMode === 'category' && <div className="field form-builder-grid__wide"><span>Категорія товарів</span><StyledSelect value={draft.categoryExternalId || ''} options={targetCategoryOptions} onChange={(categoryExternalId) => setDraft({ ...draft, categoryExternalId: categoryExternalId || null })} ariaLabel="Цільова категорія" /></div>}
+          {draft.targetMode === 'sticker' && <div className="field form-builder-grid__wide"><span>Стікер товару</span><StyledSelect value={draft.stickerExternalId || ''} options={stickerOptions} onChange={(stickerExternalId) => setDraft({ ...draft, stickerExternalId: stickerExternalId || null })} ariaLabel="Цільовий стікер" /></div>}
           <div className="field"><span>Коли показувати</span><StyledSelect value={draft.availabilityMode} options={[{ value: 'all', label: 'Завжди на цільовому товарі' }, { value: 'out_of_stock', label: 'Лише коли немає в наявності' }]} onChange={(availabilityMode) => setDraft({ ...draft, availabilityMode })} ariaLabel="Умова наявності" /></div>
           <label className="field"><span>Колір кнопки</span><input type="color" value={colorInputValue(draft.buttonStyles.backgroundColor, '#6d5dfc')} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, backgroundColor: event.target.value } })} /></label>
           <label className="field"><span>Колір тексту кнопки</span><input type="color" value={colorInputValue(draft.buttonStyles.color, '#ffffff')} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, color: event.target.value } })} /></label>
@@ -375,22 +414,22 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
         <div className="button-live-preview form-placement-button-preview"><span>Вигляд кнопки</span><button type="button" style={{ ...draft.buttonStyles, border: 0, cursor: 'default' }}>{draft.buttonText || 'Передзамовити'}</button></div>
 
         <footer className="form-builder-actions">
-          <button className="button button--primary" type="button" disabled={busy || !draft.name.trim() || !selectedTargets.length} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити розміщення'}</button>
-          {selectedCampaign?.status !== 'active' && selectedCampaign && <button className="button button--secondary" type="button" disabled={busy || form.status !== 'published'} onClick={() => void setStatus('active')}>Активувати</button>}
+          <button className="button button--primary" type="button" disabled={busy || !draft.name.trim() || !targetingComplete} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити кнопку'}</button>
+          {selectedCampaign?.status !== 'active' && selectedCampaign && <button className="button button--secondary" type="button" disabled={busy || selectedForm.status !== 'published'} onClick={() => void setStatus('active')}>Активувати</button>}
           {selectedCampaign?.status === 'active' && <button className="button button--secondary" type="button" disabled={busy} onClick={() => void setStatus('paused')}>Призупинити</button>}
           {selectedCampaign && <button className="button button--danger" type="button" disabled={busy} onClick={() => void archive()}>Архівувати</button>}
         </footer>
       </section>
     </div>
 
-    <section className="tool-panel form-placement-editor__catalog">
+    {draft.targetMode === 'products' && <section className="tool-panel form-placement-editor__catalog">
       <header className="tool-panel__header"><div><p className="eyebrow">Таргетинг</p><h2>Товари і модифікації</h2></div><span className="form-placement-target-count">{selectedTargets.length} обрано</span></header>
       <p className="form-placement-editor__hint">Ціль “увесь товар” охоплює всі його модифікації. Обрана модифікація працює лише для свого SKU.</p>
       {catalog.data && !catalog.data.integration.configured && <div className="form-message form-message--warning">Підключіть і синхронізуйте Хорошоп, щоб обрати товари для передзамовлення.</div>}
       {selectedTargets.length > 0 && <div className="form-placement-selected-targets">{selectedTargets.map((target) => <button type="button" key={targetKey(target)} onClick={() => toggleTarget(target)} title="Вилучити"><span>{target.title}</span><small>{target.modificationId ? target.sku : 'Усі модифікації'}</small><Icon name="close" size={13} /></button>)}</div>}
       <div className="form-placement-catalog-toolbar">
         <label className="task-search"><Icon name="search" size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Назва або SKU" /></label>
-        <StyledSelect value={category} options={categoryOptions} onChange={(value) => { setCategory(value); setPage(1); }} ariaLabel="Категорія товару" />
+        <StyledSelect value={catalogCategory} options={categoryOptions} onChange={(value) => { setCatalogCategory(value); setPage(1); }} ariaLabel="Категорія товару" />
       </div>
       {catalog.isLoading && <div className="task-list-state"><p>Завантажуємо каталог Хорошоп...</p></div>}
       {catalog.isError && <div className="form-message form-message--error">{catalog.error instanceof Error ? catalog.error.message : 'Не вдалося завантажити каталог.'}</div>}
@@ -436,6 +475,6 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
         {!catalog.isLoading && !catalog.data?.items.length && <p>За фільтрами товарів не знайдено.</p>}
       </div>
       {(catalog.data?.pageCount || 0) > 1 && <footer className="application-pagination"><span>{catalog.data?.total || 0} товарів</span><div><button className="button button--secondary button--small" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Назад</button><span>{page} / {catalog.data?.pageCount}</span><button className="button button--secondary button--small" type="button" disabled={page >= (catalog.data?.pageCount || 1)} onClick={() => setPage((current) => current + 1)}>Далі</button></div></footer>}
-    </section>
+    </section>}
   </div>;
 }

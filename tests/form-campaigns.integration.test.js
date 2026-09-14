@@ -24,6 +24,7 @@ const connectionId = randomUUID();
 const generation = randomUUID();
 const syncId = randomUUID();
 const productId = randomUUID();
+const otherProductId = randomUUID();
 const blueModificationId = randomUUID();
 const blackModificationId = randomUUID();
 
@@ -57,20 +58,40 @@ before(async () => {
   await pool.query(`
     INSERT INTO search_horoshop_categories (
       id, connection_id, generation, external_id, titles, active, last_seen_sync_id
-    ) VALUES ($1, $2, $3, 'smartphones', $4::JSONB, TRUE, $5)
-  `, [randomUUID(), connectionId, generation, JSON.stringify({ uk: 'Смартфони' }), syncId]);
+    ) VALUES
+      ($1, $3, $4, 'smartphones', $5::JSONB, TRUE, $7),
+      ($2, $3, $4, 'laptops', $6::JSONB, TRUE, $7)
+  `, [randomUUID(), randomUUID(), connectionId, generation,
+    JSON.stringify({ uk: 'Смартфони' }), JSON.stringify({ uk: 'Ноутбуки' }), syncId]);
+  await pool.query(`
+    INSERT INTO search_horoshop_stickers (
+      id, connection_id, generation, external_id, title, enabled, active, last_seen_sync_id
+    ) VALUES ($1, $2, $3, 'preorder', 'Передзамовлення', TRUE, TRUE, $4)
+  `, [randomUUID(), connectionId, generation, syncId]);
   await pool.query(`
     INSERT INTO search_horoshop_products (
       id, connection_id, generation, external_id, sku, titles, brand,
       category_external_id, price, old_price, currency, availability, visible,
-      primary_image_url, canonical_url, active, last_seen_sync_id
+      primary_image_url, canonical_url, stickers, active, last_seen_sync_id
     ) VALUES (
       $1, $2, $3, 'iphone-17', 'IPHONE-17', $4::JSONB, 'Apple',
       'smartphones', '46999', '48999', 'UAH', 'Немає в наявності', TRUE,
       'https://cdn.example.com/iphone-17.webp',
-      'https://shop.example.com/iphone-17/', TRUE, $5
+      'https://shop.example.com/iphone-17/', $5::JSONB, TRUE, $6
     )
-  `, [productId, connectionId, generation, JSON.stringify({ uk: 'Apple iPhone 17' }), syncId]);
+  `, [productId, connectionId, generation, JSON.stringify({ uk: 'Apple iPhone 17' }),
+    JSON.stringify([{ id: 'preorder', title: 'Передзамовлення' }]), syncId]);
+  await pool.query(`
+    INSERT INTO search_horoshop_products (
+      id, connection_id, generation, external_id, sku, titles, brand,
+      category_external_id, price, currency, availability, visible,
+      canonical_url, active, last_seen_sync_id
+    ) VALUES (
+      $1, $2, $3, 'laptop-1', 'LAPTOP-1', $4::JSONB, 'Example',
+      'laptops', '29999', 'UAH', 'В наявності', TRUE,
+      'https://shop.example.com/laptop-1/', TRUE, $5
+    )
+  `, [otherProductId, connectionId, generation, JSON.stringify({ uk: 'Ноутбук Example' }), syncId]);
   await pool.query(`
     INSERT INTO search_horoshop_modifications (
       id, connection_id, product_id, generation, external_id, sku, titles,
@@ -130,6 +151,9 @@ function campaignInput(formId, targets, overrides = {}) {
     buttonStyles,
     placement,
     availabilityMode: 'all',
+    targetMode: 'products',
+    categoryExternalId: null,
+    stickerExternalId: null,
     startsAt: null,
     endsAt: null,
     targets,
@@ -159,8 +183,8 @@ test('preorder placement targets an exact Horoshop modification and creates an a
 
   const catalog = (await admin.get('/api/form-campaigns/catalog').expect(200)).body.data;
   assert.equal(catalog.integration.storeDomain, 'shop.example.com');
-  assert.equal(catalog.items[0].id, productId);
-  assert.equal(catalog.items[0].modifications.length, 2);
+  assert.equal(catalog.items.find((item) => item.id === productId).modifications.length, 2);
+  assert.deepEqual(catalog.stickers, [{ externalId: 'preorder', title: 'Передзамовлення' }]);
 
   const campaign = (await admin.post('/api/form-campaigns')
     .send(campaignInput(createdForm.id, [{ productId, modificationId: blueModificationId }]))
@@ -283,6 +307,60 @@ test('preorder placement targets an exact Horoshop modification and creates an a
     .expect(200);
   assert.equal(parentProductResolved.body.data.campaign.publicId, campaign.publicId);
   assert.equal(parentProductResolved.body.data.product.externalModificationId, '');
+
+  const allProductsCampaign = (await admin.put(`/api/form-campaigns/${campaign.id}`)
+    .send(campaignInput(createdForm.id, [], {
+      name: 'Кнопка на всіх товарах',
+      targetMode: 'all_products'
+    })).expect(200)).body.data;
+  assert.equal(allProductsCampaign.targetMode, 'all_products');
+  assert.equal(allProductsCampaign.targets.length, 0);
+  const allProductsResolved = await request(app)
+    .get('/api/public/application-form-campaigns/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/laptop-1/', article: 'LAPTOP-1' })
+    .expect(200);
+  assert.equal(allProductsResolved.body.data.campaign.publicId, campaign.publicId);
+
+  const categoryCampaign = (await admin.put(`/api/form-campaigns/${campaign.id}`)
+    .send(campaignInput(createdForm.id, [], {
+      name: 'Кнопка для смартфонів',
+      targetMode: 'category',
+      categoryExternalId: 'smartphones'
+    })).expect(200)).body.data;
+  assert.equal(categoryCampaign.categoryExternalId, 'smartphones');
+  const categoryMatch = await request(app)
+    .get('/api/public/application-form-campaigns/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/iphone-17-blue/', article: 'IPHONE-17-BLUE' })
+    .expect(200);
+  assert.equal(categoryMatch.body.data.campaign.publicId, campaign.publicId);
+  const categoryMiss = await request(app)
+    .get('/api/public/application-form-campaigns/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/laptop-1/', article: 'LAPTOP-1' })
+    .expect(200);
+  assert.equal(categoryMiss.body.data, null);
+
+  const stickerCampaign = (await admin.put(`/api/form-campaigns/${campaign.id}`)
+    .send(campaignInput(createdForm.id, [], {
+      name: 'Кнопка за стікером',
+      targetMode: 'sticker',
+      stickerExternalId: 'preorder'
+    })).expect(200)).body.data;
+  assert.equal(stickerCampaign.stickerExternalId, 'preorder');
+  const stickerMatch = await request(app)
+    .get('/api/public/application-form-campaigns/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/iphone-17-blue/', article: 'IPHONE-17-BLUE' })
+    .expect(200);
+  assert.equal(stickerMatch.body.data.campaign.publicId, campaign.publicId);
+  const stickerMiss = await request(app)
+    .get('/api/public/application-form-campaigns/resolve')
+    .set('Origin', 'https://shop.example.com')
+    .query({ pageUrl: 'https://shop.example.com/laptop-1/', article: 'LAPTOP-1' })
+    .expect(200);
+  assert.equal(stickerMiss.body.data, null);
 
   await admin.put(`/api/form-campaigns/${campaign.id}`)
     .send(campaignInput(createdForm.id, [{ productId, modificationId: null }], {

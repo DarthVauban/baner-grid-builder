@@ -115,7 +115,7 @@ export const tools: ToolDefinition[] = [
   {
     id: 'form_builder',
     name: 'Конструктор форм',
-    description: 'Форми, банки, поля, дизайн pop-up і скрипти кнопок для Хорошоп.',
+    description: 'Прості кастомні форми та покрокові сценарії з окремими редакторами й live preview.',
     path: '/tools/forms',
     icon: 'formBuilder',
     category: 'functional'
@@ -190,6 +190,15 @@ export const tools: ToolDefinition[] = [
 ];
 
 export const workspaceSections: WorkspaceSectionDefinition[] = [
+  {
+    id: 'form_buttons',
+    accessToolId: 'form_builder',
+    name: 'Кнопки форм',
+    description: 'Кнопки на сторінках товарів Хорошоп: вибір форми, дизайн, розміщення та правила показу за товарами, стікерами або категоріями.',
+    path: '/tools/form-buttons',
+    icon: 'productPage',
+    category: 'horoshop'
+  },
   {
     id: 'promo_codes',
     accessToolId: 'popup_banners',

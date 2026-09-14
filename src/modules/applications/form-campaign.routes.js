@@ -9,6 +9,7 @@ import {
   archiveFormCampaign,
   createFormCampaign,
   listFormCampaigns,
+  listFormCampaignStickers,
   loadFormCampaign,
   setFormCampaignStatus,
   updateFormCampaign
@@ -46,9 +47,12 @@ const campaignSchema = z.object({
   buttonStyles: stylesSchema,
   placement: z.object({ desktop: placementSchema, mobile: placementSchema }),
   availabilityMode: z.enum(['all', 'out_of_stock']).default('all'),
+  targetMode: z.enum(['all_products', 'products', 'category', 'sticker']).default('products'),
+  categoryExternalId: z.string().trim().min(1).max(255).nullable().optional().default(null),
+  stickerExternalId: z.string().trim().min(1).max(255).nullable().optional().default(null),
   startsAt: z.string().datetime({ offset: true }).nullable().optional().default(null),
   endsAt: z.string().datetime({ offset: true }).nullable().optional().default(null),
-  targets: z.array(targetSchema).min(1).max(500)
+  targets: z.array(targetSchema).max(500).default([])
 }).superRefine((input, context) => {
   if (input.startsAt && input.endsAt && new Date(input.endsAt) <= new Date(input.startsAt)) {
     context.addIssue({
@@ -56,6 +60,15 @@ const campaignSchema = z.object({
       path: ['endsAt'],
       message: 'Завершення має бути пізніше за початок.'
     });
+  }
+  if (input.targetMode === 'products' && input.targets.length === 0) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['targets'], message: 'Оберіть хоча б один товар або модифікацію.' });
+  }
+  if (input.targetMode === 'category' && !input.categoryExternalId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['categoryExternalId'], message: 'Оберіть категорію товарів.' });
+  }
+  if (input.targetMode === 'sticker' && !input.stickerExternalId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['stickerExternalId'], message: 'Оберіть стікер товару.' });
   }
 });
 const catalogQuerySchema = z.object({
@@ -74,11 +87,12 @@ function publicOrigin(req) {
 
 router.get('/catalog', asyncHandler(async (req, res) => {
   const input = parseInput(catalogQuerySchema, req.query);
-  res.json({ data: await horoshopCatalogService.catalog({
+  const [catalog, stickers] = await Promise.all([horoshopCatalogService.catalog({
     ...input,
     visibility: 'visible',
     state: 'active'
-  }) });
+  }), listFormCampaignStickers()]);
+  res.json({ data: { ...catalog, stickers } });
 }));
 
 router.get('/embed-code', (req, res) => {

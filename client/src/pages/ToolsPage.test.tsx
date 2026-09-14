@@ -128,7 +128,7 @@ describe('ToolsPage catalog', () => {
     expect(tile).toHaveAttribute('href', '/tools/popup-banners');
   });
 
-  it('shows the form and embeddable button constructor as a separate tool tile', async () => {
+  it('shows forms and storefront buttons as separate tool tiles', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
       tools: [{
         toolId: 'form_builder',
@@ -145,6 +145,9 @@ describe('ToolsPage catalog', () => {
     await expandCategory('Функціональні інструменти');
     const tile = await screen.findByRole('link', { name: /Конструктор форм/u });
     expect(tile).toHaveAttribute('href', '/tools/forms');
+    await expandCategory('Інструменти Хорошоп');
+    const buttonsTile = await screen.findByRole('link', { name: /Кнопки форм/u });
+    expect(buttonsTile).toHaveAttribute('href', '/tools/form-buttons');
   });
 
   it('shows the Horoshop catalog menu visual tool as a separate tile', async () => {

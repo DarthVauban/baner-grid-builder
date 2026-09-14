@@ -155,7 +155,8 @@ const catalog: HoroshopCatalogFeed = {
     updatedAt: timestamp,
     modifications: []
   }],
-  categories: [],
+  categories: [{ externalId: 'phones', parentExternalId: null, titles: { uk: 'Смартфони' }, productCount: 1 }],
+  stickers: [{ externalId: 'preorder', title: 'Передзамовлення' }],
   availabilityOptions: [],
   total: 3,
   page: 1,
@@ -169,7 +170,7 @@ function renderEditor() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <ConfirmDialogProvider>
-          <ApplicationFormPlacementEditor form={form} />
+          <ApplicationFormPlacementEditor forms={[form]} />
         </ConfirmDialogProvider>
       </ToastProvider>
     </QueryClientProvider>
@@ -228,5 +229,26 @@ describe('ApplicationFormPlacementEditor product tree', () => {
     expect(top).not.toBeNull();
     expect(top).toContainElement(libraryPanel);
     expect(top).not.toContainElement(catalogPanel);
+  });
+
+  it('switches between all-products, sticker, category and explicit product targeting', async () => {
+    renderEditor();
+    expect(await screen.findByRole('tree', { name: 'Товари з модифікаціями' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Правило показу кнопки' }));
+    fireEvent.click(screen.getByRole('option', { name: 'На всіх товарах' }));
+    expect(screen.queryByRole('tree', { name: 'Товари з модифікаціями' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Правило показу кнопки' }));
+    fireEvent.click(screen.getByRole('option', { name: 'На товарах зі стікером' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Цільовий стікер' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Передзамовлення' }));
+    expect(screen.getByRole('button', { name: 'Цільовий стікер' })).toHaveTextContent('Передзамовлення');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Правило показу кнопки' }));
+    fireEvent.click(screen.getByRole('option', { name: 'У певній категорії' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Цільова категорія' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Смартфони' }));
+    expect(screen.getByRole('button', { name: 'Цільова категорія' })).toHaveTextContent('Смартфони');
   });
 });

@@ -293,6 +293,10 @@ export function AppShell() {
             <Icon name="tools" size={18} />
             <span>Інструменти</span>
           </NavLink>
+          {hasFormsAccess && <NavLink aria-label="Кнопки форм" title="Кнопки форм" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/form-buttons" onClick={closeSidebar}>
+            <Icon name="productPage" size={18} />
+            <span>Кнопки форм</span>
+          </NavLink>}
           {hasCatalogAccess && <NavLink aria-label="Каталог смартфонів" title="Каталог смартфонів" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/catalog/products" onClick={closeSidebar}>
             <Icon name="catalog" size={18} />
             <span>Каталог смартфонів</span>

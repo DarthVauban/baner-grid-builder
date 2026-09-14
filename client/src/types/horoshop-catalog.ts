@@ -58,10 +58,16 @@ export interface HoroshopCatalogCategory {
   productCount: number;
 }
 
+export interface HoroshopCatalogSticker {
+  externalId: string;
+  title: string;
+}
+
 export interface HoroshopCatalogFeed {
   integration: HoroshopIntegration;
   items: HoroshopCatalogProduct[];
   categories: HoroshopCatalogCategory[];
+  stickers?: HoroshopCatalogSticker[];
   availabilityOptions: string[];
   total: number;
   page: number;

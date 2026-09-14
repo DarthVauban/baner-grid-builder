@@ -84,6 +84,9 @@ function serializeCampaign(row, targets = []) {
     buttonStyles: normalizeButtonStyles(row.button_styles),
     placement: normalizePlacement(row.placement),
     availabilityMode: row.availability_mode,
+    targetMode: row.target_mode || 'products',
+    categoryExternalId: row.category_external_id || null,
+    stickerExternalId: row.sticker_external_id || null,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     publishedAt: row.published_at,
@@ -149,6 +152,66 @@ async function currentConnection(db = pool) {
      LIMIT 1`
   );
   return result.rows[0] || null;
+}
+
+export async function listFormCampaignStickers(db = pool) {
+  const connection = await currentConnection(db);
+  if (!connection) return [];
+  const result = await db.query(
+    `SELECT external_id, title
+     FROM search_horoshop_stickers
+     WHERE connection_id = $1 AND generation = $2
+       AND active = TRUE AND enabled = TRUE
+     ORDER BY LOWER(title), external_id`,
+    [connection.id, connection.generation]
+  );
+  return result.rows.map((row) => ({ externalId: row.external_id, title: row.title }));
+}
+
+function normalizedTargeting(input) {
+  const targetMode = ['all_products', 'products', 'category', 'sticker'].includes(input.targetMode)
+    ? input.targetMode
+    : 'products';
+  return {
+    targetMode,
+    categoryExternalId: targetMode === 'category' ? cleanText(input.categoryExternalId, 255) : null,
+    stickerExternalId: targetMode === 'sticker' ? cleanText(input.stickerExternalId, 255) : null
+  };
+}
+
+async function resolveCampaignTargeting(input, connection, db) {
+  const targeting = normalizedTargeting(input);
+  if (targeting.targetMode === 'products') {
+    const targets = await resolveTargets(input.targets || [], connection, db);
+    if (!targets.length) {
+      throw new AppError(422, 'FORM_CAMPAIGN_TARGET_REQUIRED', 'Оберіть хоча б один товар або модифікацію.');
+    }
+    return { ...targeting, targets };
+  }
+  if (targeting.targetMode === 'category') {
+    const category = await db.query(
+      `SELECT id FROM search_horoshop_categories
+       WHERE connection_id = $1 AND generation = $2 AND external_id = $3 AND active = TRUE
+       LIMIT 1`,
+      [connection.id, connection.generation, targeting.categoryExternalId]
+    );
+    if (!category.rows[0]) {
+      throw new AppError(422, 'FORM_CAMPAIGN_CATEGORY_NOT_FOUND', 'Обрана категорія вже недоступна в актуальному каталозі.');
+    }
+  }
+  if (targeting.targetMode === 'sticker') {
+    const sticker = await db.query(
+      `SELECT id FROM search_horoshop_stickers
+       WHERE connection_id = $1 AND generation = $2 AND external_id = $3
+         AND active = TRUE AND enabled = TRUE
+       LIMIT 1`,
+      [connection.id, connection.generation, targeting.stickerExternalId]
+    );
+    if (!sticker.rows[0]) {
+      throw new AppError(422, 'FORM_CAMPAIGN_STICKER_NOT_FOUND', 'Обраний стікер уже недоступний в актуальному каталозі.');
+    }
+  }
+  return { ...targeting, targets: [] };
 }
 
 function normalizeTargetReferences(references) {
@@ -249,24 +312,23 @@ export async function createFormCampaign(input, actorUserId) {
     if (!connection || !['connected', 'syncing'].includes(connection.status)) {
       throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед створенням розміщення.');
     }
-    const targets = await resolveTargets(input.targets, connection, client);
-    if (!targets.length) {
-      throw new AppError(422, 'FORM_CAMPAIGN_TARGET_REQUIRED', 'Оберіть хоча б один товар або модифікацію.');
-    }
+    const targeting = await resolveCampaignTargeting(input, connection, client);
     const result = await client.query(
       `INSERT INTO application_form_campaigns (
          form_id, connection_id, connection_generation, name, priority,
          button_text, button_styles, placement, availability_mode,
+         target_mode, category_external_id, sticker_external_id,
          starts_at, ends_at, created_by, updated_by
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9, $10, $11, $12, $12)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9, $10, $11, $12, $13, $14, $15, $15)
        RETURNING id`,
       [input.formId, connection.id, connection.generation, input.name, input.priority,
         input.buttonText, JSON.stringify(normalizeButtonStyles(input.buttonStyles)),
         JSON.stringify(normalizePlacement(input.placement)), input.availabilityMode,
+        targeting.targetMode, targeting.categoryExternalId, targeting.stickerExternalId,
         input.startsAt || null, input.endsAt || null, actorUserId]
     );
     campaignId = result.rows[0].id;
-    await replaceTargets(client, campaignId, targets);
+    await replaceTargets(client, campaignId, targeting.targets);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -296,21 +358,22 @@ export async function updateFormCampaign(id, input, actorUserId) {
     if (!connection || !['connected', 'syncing'].includes(connection.status)) {
       throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед оновленням розміщення.');
     }
-    const targets = await resolveTargets(input.targets, connection, client);
-    if (!targets.length) throw new AppError(422, 'FORM_CAMPAIGN_TARGET_REQUIRED', 'Оберіть хоча б один товар або модифікацію.');
+    const targeting = await resolveCampaignTargeting(input, connection, client);
     await client.query(
       `UPDATE application_form_campaigns
        SET form_id = $2, connection_id = $3, connection_generation = $4,
            name = $5, priority = $6, button_text = $7, button_styles = $8::JSONB,
            placement = $9::JSONB, availability_mode = $10,
-           starts_at = $11, ends_at = $12, updated_by = $13, updated_at = NOW()
+           target_mode = $11, category_external_id = $12, sticker_external_id = $13,
+           starts_at = $14, ends_at = $15, updated_by = $16, updated_at = NOW()
        WHERE id = $1`,
       [id, input.formId, connection.id, connection.generation, input.name, input.priority,
         input.buttonText, JSON.stringify(normalizeButtonStyles(input.buttonStyles)),
         JSON.stringify(normalizePlacement(input.placement)), input.availabilityMode,
+        targeting.targetMode, targeting.categoryExternalId, targeting.stickerExternalId,
         input.startsAt || null, input.endsAt || null, actorUserId]
     );
-    await replaceTargets(client, id, targets);
+    await replaceTargets(client, id, targeting.targets);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -324,6 +387,7 @@ export async function updateFormCampaign(id, input, actorUserId) {
 async function assertCampaignCanActivate(id, db) {
   const result = await db.query(
     `SELECT campaign.id, campaign.connection_id, campaign.connection_generation,
+            campaign.target_mode, campaign.category_external_id, campaign.sticker_external_id,
             form.form_type, form.status AS form_status,
             connection.id AS current_connection_id, connection.generation AS current_generation,
             connection.status AS connection_status
@@ -341,6 +405,32 @@ async function assertCampaignCanActivate(id, db) {
     || campaign.connection_id !== campaign.current_connection_id
     || campaign.connection_generation !== campaign.current_generation) {
     throw new AppError(409, 'FORM_CAMPAIGN_CATALOG_STALE', 'Каталог Хорошоп змінився. Збережіть цільові товари повторно.');
+  }
+  if (campaign.target_mode === 'all_products') return;
+  if (campaign.target_mode === 'category') {
+    const category = await db.query(
+      `SELECT id FROM search_horoshop_categories
+       WHERE connection_id = $1 AND generation = $2 AND external_id = $3 AND active = TRUE
+       LIMIT 1`,
+      [campaign.current_connection_id, campaign.current_generation, campaign.category_external_id]
+    );
+    if (!category.rows[0]) {
+      throw new AppError(422, 'FORM_CAMPAIGN_CATEGORY_NOT_FOUND', 'Обрана категорія вже недоступна в актуальному каталозі.');
+    }
+    return;
+  }
+  if (campaign.target_mode === 'sticker') {
+    const sticker = await db.query(
+      `SELECT id FROM search_horoshop_stickers
+       WHERE connection_id = $1 AND generation = $2 AND external_id = $3
+         AND active = TRUE AND enabled = TRUE
+       LIMIT 1`,
+      [campaign.current_connection_id, campaign.current_generation, campaign.sticker_external_id]
+    );
+    if (!sticker.rows[0]) {
+      throw new AppError(422, 'FORM_CAMPAIGN_STICKER_NOT_FOUND', 'Обраний стікер уже недоступний в актуальному каталозі.');
+    }
+    return;
   }
   const targets = await db.query(
     `SELECT target.modification_id, product.id AS current_product_id,
@@ -405,8 +495,19 @@ function sameStoreHost(left, right) {
   return normalize(left) === normalize(right);
 }
 
+function stickerIds(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    if (typeof item === 'string' || typeof item === 'number') return String(item);
+    if (!item || typeof item !== 'object') return '';
+    return String(item.id || item.externalId || item.value || '');
+  }).filter(Boolean);
+}
+
 function productFromRow(row) {
   const modification = Boolean(row.modification_id);
+  const productStickerIds = stickerIds(row.product_stickers);
+  const modificationStickerIds = stickerIds(row.modification_stickers);
   return {
     id: row.product_id,
     modificationId: row.modification_id || null,
@@ -421,8 +522,18 @@ function productFromRow(row) {
     availability: cleanText((modification ? row.modification_availability : '') || row.product_availability || '', 160),
     externalProductId: cleanText(row.product_external_id || '', 180),
     externalModificationId: cleanText(row.modification_external_id || '', 180),
+    categoryExternalId: cleanText(row.product_category_external_id || '', 255),
+    stickerIds: [...new Set([...productStickerIds, ...modificationStickerIds])],
     domain: cleanText(row.store_domain || '', 255)
   };
+}
+
+function campaignMatchesProduct(campaign, product) {
+  const targetMode = campaign.target_mode || 'products';
+  if (targetMode === 'all_products') return true;
+  if (targetMode === 'category') return campaign.category_external_id === product.categoryExternalId;
+  if (targetMode === 'sticker') return product.stickerIds.includes(campaign.sticker_external_id);
+  return Boolean(campaign.matched_target_id);
 }
 
 function isOutOfStock(value) {
@@ -435,6 +546,8 @@ async function resolveStorefrontProduct(connection, article, pageUrl, db = pool)
   const pathUrl = `${pageUrl.origin}${pageUrl.pathname}`.replace(/\/+$/u, '');
   const selectProduct = `SELECT product.id AS product_id, product.external_id AS product_external_id,
             product.sku AS product_sku, product.titles AS product_titles,
+            product.category_external_id AS product_category_external_id,
+            product.stickers AS product_stickers,
             product.price AS product_price, product.old_price AS product_old_price,
             product.currency AS product_currency, product.availability AS product_availability,
             product.primary_image_url AS product_image_url, product.canonical_url AS product_url,
@@ -443,6 +556,7 @@ async function resolveStorefrontProduct(connection, article, pageUrl, db = pool)
             modification.sku AS modification_sku, modification.titles AS modification_titles,
             modification.price AS modification_price, modification.old_price AS modification_old_price,
             modification.currency AS modification_currency, modification.availability AS modification_availability,
+            modification.stickers AS modification_stickers,
             modification.image_url AS modification_image_url, modification.page_url AS modification_page_url,
             $4::TEXT AS store_domain`;
 
@@ -486,6 +600,8 @@ async function resolveStorefrontProduct(connection, article, pageUrl, db = pool)
   const byProductUrl = await db.query(
     `SELECT product.id AS product_id, product.external_id AS product_external_id,
             product.sku AS product_sku, product.titles AS product_titles,
+            product.category_external_id AS product_category_external_id,
+            product.stickers AS product_stickers,
             product.price AS product_price, product.old_price AS product_old_price,
             product.currency AS product_currency, product.availability AS product_availability,
             product.primary_image_url AS product_image_url, product.canonical_url AS product_url,
@@ -494,6 +610,7 @@ async function resolveStorefrontProduct(connection, article, pageUrl, db = pool)
             NULL::TEXT AS modification_sku, NULL::JSONB AS modification_titles,
             NULL::TEXT AS modification_price, NULL::TEXT AS modification_old_price,
             NULL::TEXT AS modification_currency, NULL::TEXT AS modification_availability,
+            NULL::JSONB AS modification_stickers,
             NULL::TEXT AS modification_image_url, NULL::TEXT AS modification_page_url,
             $3::TEXT AS store_domain
      FROM search_horoshop_products AS product
@@ -538,21 +655,26 @@ export async function resolvePublicFormCampaign({ pageUrl: rawPageUrl, article =
   const product = await resolveStorefrontProduct(connection, article, pageUrl);
   if (!product) return null;
   const result = await query(
-    `SELECT campaign.*, form.public_id AS form_public_id, form.name AS form_name
+    `SELECT campaign.*, form.public_id AS form_public_id, form.name AS form_name,
+            target.id AS matched_target_id
      FROM application_form_campaigns AS campaign
      JOIN application_forms AS form ON form.id = campaign.form_id
-     JOIN application_form_campaign_targets AS target ON target.campaign_id = campaign.id
+     LEFT JOIN application_form_campaign_targets AS target
+       ON target.campaign_id = campaign.id
+      AND target.product_id = $3
+      AND (target.modification_id IS NULL OR target.modification_id = $4)
      WHERE campaign.status = 'active' AND campaign.archived_at IS NULL
        AND campaign.connection_id = $1 AND campaign.connection_generation = $2
        AND form.form_type = 'simple' AND form.status = 'published'
-       AND target.product_id = $3
-       AND (target.modification_id IS NULL OR target.modification_id = $4)
        AND (campaign.starts_at IS NULL OR campaign.starts_at <= NOW())
        AND (campaign.ends_at IS NULL OR campaign.ends_at > NOW())
      ORDER BY campaign.priority DESC, campaign.updated_at DESC`,
     [connection.id, connection.generation, product.id, product.modificationId]
   );
-  const campaign = result.rows.find((row) => row.availability_mode !== 'out_of_stock' || isOutOfStock(product.availability));
+  const campaign = result.rows.find((row) => (
+    campaignMatchesProduct(row, product)
+    && (row.availability_mode !== 'out_of_stock' || isOutOfStock(product.availability))
+  ));
   if (!campaign) return null;
   return {
     campaign: {
@@ -585,6 +707,8 @@ async function loadProductByIds(campaign, productId, modificationId, db = pool) 
   const result = await db.query(
     `SELECT product.id AS product_id, product.external_id AS product_external_id,
             product.sku AS product_sku, product.titles AS product_titles,
+            product.category_external_id AS product_category_external_id,
+            product.stickers AS product_stickers,
             product.price AS product_price, product.old_price AS product_old_price,
             product.currency AS product_currency, product.availability AS product_availability,
             product.primary_image_url AS product_image_url, product.canonical_url AS product_url,
@@ -593,6 +717,7 @@ async function loadProductByIds(campaign, productId, modificationId, db = pool) 
             modification.sku AS modification_sku, modification.titles AS modification_titles,
             modification.price AS modification_price, modification.old_price AS modification_old_price,
             modification.currency AS modification_currency, modification.availability AS modification_availability,
+            modification.stickers AS modification_stickers,
             modification.image_url AS modification_image_url, modification.page_url AS modification_page_url,
             connection.store_domain
      FROM search_horoshop_products AS product
@@ -637,16 +762,22 @@ export async function resolveFormCampaignSubmission({ publicId, contextToken, so
     throw new AppError(409, 'FORM_CAMPAIGN_INACTIVE', 'Це розміщення вже неактивне. Оновіть сторінку.');
   }
   const modificationId = token.modificationId || null;
-  const target = await query(
-    `SELECT id FROM application_form_campaign_targets
-     WHERE campaign_id = $1 AND product_id = $2
-       AND (modification_id IS NULL OR modification_id = $3)
-     LIMIT 1`,
-    [campaign.id, token.productId, modificationId]
-  );
-  if (!target.rows[0]) throw new AppError(409, 'FORM_CAMPAIGN_TARGET_CHANGED', 'Цільовий товар цього розміщення змінився.');
   const product = await loadProductByIds(campaign, token.productId, modificationId);
   if (!product) throw new AppError(409, 'FORM_CAMPAIGN_PRODUCT_CHANGED', 'Товар або модифікація більше недоступні.');
+  let matchedTargetId = null;
+  if ((campaign.target_mode || 'products') === 'products') {
+    const target = await query(
+      `SELECT id FROM application_form_campaign_targets
+       WHERE campaign_id = $1 AND product_id = $2
+         AND (modification_id IS NULL OR modification_id = $3)
+       LIMIT 1`,
+      [campaign.id, token.productId, modificationId]
+    );
+    matchedTargetId = target.rows[0]?.id || null;
+  }
+  if (!campaignMatchesProduct({ ...campaign, matched_target_id: matchedTargetId }, product)) {
+    throw new AppError(409, 'FORM_CAMPAIGN_TARGET_CHANGED', 'Умови показу цієї кнопки для товару змінилися.');
+  }
   if (campaign.availability_mode === 'out_of_stock' && !isOutOfStock(product.availability)) {
     throw new AppError(409, 'FORM_CAMPAIGN_PRODUCT_AVAILABLE', 'Це розміщення доступне лише для товарів, яких немає в наявності.');
   }

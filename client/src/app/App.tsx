@@ -27,6 +27,9 @@ const ApplicationsPage = lazy(() => import('../pages/ApplicationsPage').then((mo
 const FormsBuilderPage = lazy(() => import('../pages/FormsBuilderPage').then((module) => ({
   default: module.FormsBuilderPage
 })));
+const FormButtonsPage = lazy(() => import('../pages/FormButtonsPage').then((module) => ({
+  default: module.FormButtonsPage
+})));
 const UsedSmartphonesCatalogPage = lazy(() => import('../pages/UsedSmartphonesCatalogPage').then((module) => ({
   default: module.UsedSmartphonesCatalogPage
 })));
@@ -222,6 +225,7 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="form_builder" />}>
             <Route path="tools/forms" element={<Suspense fallback={<LoadingScreen />}><FormsBuilderPage /></Suspense>} />
+            <Route path="tools/form-buttons" element={<Suspense fallback={<LoadingScreen />}><FormButtonsPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="chat" />}>
             <Route path="chat" element={<Suspense fallback={<LoadingScreen />}><ChatPage /></Suspense>} />

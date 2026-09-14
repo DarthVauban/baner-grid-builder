@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { ApplicationFormPlacementEditor } from '../components/ApplicationFormPlacementEditor';
 import { ApplicationFormLivePreview } from '../components/ApplicationFormLivePreview';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
@@ -115,7 +114,6 @@ export function FormsBuilderPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ApplicationFormInput | null>(null);
   const [fields, setFields] = useState<ApplicationFormField[]>([]);
-  const [activeTab, setActiveTab] = useState<'form' | 'placement'>('form');
   const [workflowTab, setWorkflowTab] = useState<'builder' | 'settings'>('builder');
   const [libraryType, setLibraryType] = useState<'all' | ApplicationForm['formType']>('all');
   const [librarySearch, setLibrarySearch] = useState('');
@@ -248,7 +246,6 @@ export function FormsBuilderPage() {
       });
       setSelectedId(form.id);
       setSearchParams({ form: form.id }, { replace: true });
-      setActiveTab('form');
       setWorkflowTab('builder');
       setCreateModalOpen(false);
       showToast('Форму створено.');
@@ -488,7 +485,7 @@ export function FormsBuilderPage() {
         <p>{selectedForm
           ? selectedForm.formType === 'workflow'
             ? 'Налаштуйте кроки, поля та логічні переходи покрокової форми.'
-            : 'Налаштуйте кастомні поля, вигляд форми та точні розміщення на товарах.'
+            : 'Налаштуйте кастомні поля, тексти й вигляд простої форми.'
           : 'Переглядайте всі форми, фільтруйте їх за типом і відкривайте потрібний редактор.'}</p>
       </div>
       <div className="forms-builder-create-actions">
@@ -601,12 +598,8 @@ export function FormsBuilderPage() {
               <div><p className="eyebrow">Поточна форма</p><h2>{selectedForm.name}</h2></div>
               <span>{statusText(selectedForm.status)}</span>
             </header>
-            <div className="segmented" role="tablist" aria-label="Розділи конструктора">
-              <button className={activeTab === 'form' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'form'} onClick={() => setActiveTab('form')}>Редактор форми</button>
-              <button className={activeTab === 'placement' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'placement'} onClick={() => setActiveTab('placement')}>Розміщення на сайті</button>
-            </div>
           </section>
-          {activeTab === 'form' ? <div className="forms-simple-editor">
+          <div className="forms-simple-editor">
           <div className="forms-simple-editor__settings">
           <section className="tool-panel">
             <header className="tool-panel__header"><div><p className="eyebrow">Форма</p><h2>Основні налаштування</h2></div></header>
@@ -678,7 +671,7 @@ export function FormsBuilderPage() {
 
           </div>
           {simplePreviewInput && <aside className="forms-simple-editor__preview"><ApplicationFormLivePreview input={simplePreviewInput} /></aside>}
-          </div> : <ApplicationFormPlacementEditor form={selectedForm} />}
+          </div>
         </>}
         </>}
       </div>
@@ -699,7 +692,7 @@ export function FormsBuilderPage() {
               <button className={newFormType === 'simple' ? 'forms-create-type is-selected' : 'forms-create-type'} type="button" role="radio" aria-checked={newFormType === 'simple'} onClick={() => setNewFormType('simple')}>
                 <span><Icon name="formBuilder" size={22} /></span>
                 <strong>Проста форма</strong>
-                <small>Кастомні поля та точні розміщення на товарах.</small>
+                <small>Кастомні поля, тексти та оформлення форми.</small>
               </button>
               <button className={newFormType === 'workflow' ? 'forms-create-type is-selected' : 'forms-create-type'} type="button" role="radio" aria-checked={newFormType === 'workflow'} onClick={() => setNewFormType('workflow')}>
                 <span><Icon name="variants" size={22} /></span>
