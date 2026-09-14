@@ -109,6 +109,7 @@ after(async () => pool.end());
 test('form builder and applications list have separate access and process public submissions', async () => {
   await builder.get('/api/applications/counts').expect(403);
   await manager.get('/api/forms').expect(403);
+  await manager.get('/api/form-campaigns').expect(403);
 
   const bank = await builder.post('/api/forms/banks').send({
     label: 'Mono Bank',
@@ -127,8 +128,7 @@ test('form builder and applications list have separate access and process public
     settings: {},
     styles: {}
   }).expect(201);
-  assert.equal(form.body.data.fields.length, 4);
-  assert.equal(form.body.data.fields.every((field) => field.showInSummary === true), true);
+  assert.equal(form.body.data.fields.length, 0);
 
   const flexibleForm = await builder.post('/api/forms').send({
     name: 'Flexible request',
@@ -139,8 +139,6 @@ test('form builder and applications list have separate access and process public
     settings: {},
     styles: {}
   }).expect(201);
-  const phoneField = flexibleForm.body.data.fields.find((field) => field.systemFieldType === 'phone');
-  assert.ok(phoneField);
   const flexibleConfigured = await builder.put(`/api/forms/${flexibleForm.body.data.id}`).send({
     name: flexibleForm.body.data.name,
     title: flexibleForm.body.data.title,
@@ -165,14 +163,30 @@ test('form builder and applications list have separate access and process public
         validation: {},
         options: []
       },
-      { ...phoneField, sortOrder: 1 }
+      {
+        key: 'contact_phone',
+        label: 'Contact phone',
+        type: 'phone',
+        placeholder: '',
+        helpText: '',
+        defaultValue: '',
+        required: true,
+        active: true,
+        system: true,
+        systemFieldType: 'phone',
+        showInSummary: true,
+        sortOrder: 1,
+        validation: {},
+        options: []
+      }
     ]
   }).expect(200);
-  assert.deepEqual(flexibleConfigured.body.data.fields.map((field) => field.key), ['comment', 'phone']);
-  assert.equal(flexibleConfigured.body.data.fields.some((field) => field.systemFieldType === 'first_name'), false);
+  assert.deepEqual(flexibleConfigured.body.data.fields.map((field) => field.key), ['comment', 'contact_phone']);
+  assert.equal(flexibleConfigured.body.data.fields.every((field) => field.system === false), true);
+  assert.equal(flexibleConfigured.body.data.fields.find((field) => field.key === 'contact_phone').required, true);
   await builder.patch(`/api/forms/${flexibleForm.body.data.id}/publish`).expect(200);
   const flexiblePublic = await request(app).get(`/api/public/application-forms/${flexibleForm.body.data.publicId}`).expect(200);
-  assert.deepEqual(flexiblePublic.body.data.fields.map((field) => field.key), ['comment', 'phone']);
+  assert.deepEqual(flexiblePublic.body.data.fields.map((field) => field.key), ['comment', 'contact_phone']);
   assert.equal(flexiblePublic.body.data.fields.some((field) => field.systemFieldType === 'bank'), false);
 
   const workflowDefinition = {
@@ -248,7 +262,38 @@ test('form builder and applications list have separate access and process public
       checkboxRadius: '6px'
     },
     fields: [
-      ...form.body.data.fields,
+      {
+        key: 'contact_name',
+        label: 'Contact name',
+        type: 'text',
+        placeholder: '',
+        helpText: '',
+        defaultValue: '',
+        required: true,
+        active: true,
+        system: false,
+        systemFieldType: null,
+        showInSummary: true,
+        sortOrder: 0,
+        validation: {},
+        options: []
+      },
+      {
+        key: 'contact_phone',
+        label: 'Contact phone',
+        type: 'phone',
+        placeholder: '',
+        helpText: '',
+        defaultValue: '',
+        required: false,
+        active: true,
+        system: false,
+        systemFieldType: null,
+        showInSummary: true,
+        sortOrder: 1,
+        validation: {},
+        options: []
+      },
       {
         key: 'credit_term',
         label: 'Credit term',
@@ -367,7 +412,7 @@ test('form builder and applications list have separate access and process public
   assert.equal(preflight.headers['access-control-allow-origin'], '*');
 
   const publicForm = await request(app).get(`/api/public/application-forms/${form.body.data.publicId}`).expect(200);
-  assert.equal(publicForm.body.data.fields.find((field) => field.systemFieldType === 'bank').options[0].value, 'mono');
+  assert.equal(publicForm.body.data.fields.some((field) => field.systemFieldType), false);
   assert.equal(publicForm.body.data.styles.numberBlockRadius, '18px');
   assert.equal(publicForm.body.data.fields.find((field) => field.key === 'addons').options[1].value, 'extended_warranty');
 
@@ -386,10 +431,8 @@ test('form builder and applications list have separate access and process public
 
   const submitted = await request(app).post(`/api/public/application-forms/${form.body.data.publicId}/applications`).send({
     values: {
-      first_name: 'Ivan',
-      last_name: 'Buyer',
-      phone: '+380501112233',
-      bank: 'mono',
+      contact_name: 'Ivan Buyer',
+      contact_phone: '+380501112233',
       credit_term: '12_months',
       addons: ['screen_protection', 'extended_warranty']
     },
@@ -410,7 +453,7 @@ test('form builder and applications list have separate access and process public
   assert.equal(submitted.body.data.number, '00001');
 
   const duplicate = await request(app).post(`/api/public/application-forms/${form.body.data.publicId}/applications`).send({
-    values: { first_name: 'Ivan', last_name: 'Buyer', phone: '+380501112233', bank: 'mono', credit_term: '12_months' },
+    values: { contact_name: 'Ivan Buyer', contact_phone: '+380501112233', credit_term: '12_months' },
     product: { title: 'Smartphone X' },
     context: { sourceUrl: 'https://shop.example.com/products/smartphone-x' },
     idempotencyKey: 'same-customer-1'
@@ -421,7 +464,8 @@ test('form builder and applications list have separate access and process public
   const feed = await manager.get('/api/applications?search=1').expect(200);
   assert.equal(feed.body.data.total, 1);
   assert.equal(feed.body.data.items[0].number, '00001');
-  assert.equal(feed.body.data.items[0].customer.bankLabel, 'Mono Bank');
+  assert.equal(feed.body.data.items[0].customer.bankLabel, '');
+  assert.equal(feed.body.data.items[0].values.find((value) => value.key === 'contact_name').value, 'Ivan Buyer');
   assert.equal(feed.body.data.items[0].product.title, 'Smartphone X');
   assert.equal(feed.body.data.items[0].product.imageUrl, 'http://shop.example.com/content/images/phone.webp');
   assert.equal(feed.body.data.items[0].product.imageProxyUrl, `/api/applications/${feed.body.data.items[0].id}/product-image`);
@@ -514,7 +558,7 @@ test('form builder and applications list have separate access and process public
   const flexibleSubmission = await request(app)
     .post(`/api/public/application-forms/${flexibleForm.body.data.publicId}/applications`)
     .send({
-      values: { comment: 'Call after 18:00', phone: '+380501234567' },
+      values: { comment: 'Call after 18:00', contact_phone: '+380501234567' },
       product: { title: 'Storefront smartphone' },
       context: { sourceUrl: 'https://shop.example.com/smartphones/storefront-phone' },
       idempotencyKey: 'flexible-form-customer-1'

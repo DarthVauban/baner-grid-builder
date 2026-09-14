@@ -251,8 +251,17 @@ router.get('/', asyncHandler(async (req, res) => {
       clauses.push(`app.id IN (
         SELECT values.application_id
         FROM application_values AS values
-        WHERE values.system_field_type IN ('first_name', 'last_name', 'phone')
-          AND LOWER(values.value) LIKE $${textParam}
+        WHERE LOWER(values.value) LIKE $${textParam}
+           OR LOWER(values.option_label_snapshot) LIKE $${textParam}
+      )`);
+      clauses.push(`LOWER(app.form_name_snapshot) LIKE $${textParam}`);
+      clauses.push(`LOWER(app.campaign_name_snapshot) LIKE $${textParam}`);
+      clauses.push(`app.id IN (
+        SELECT product.application_id
+        FROM application_product_snapshots AS product
+        WHERE LOWER(product.title) LIKE $${textParam}
+           OR LOWER(product.sku) LIKE $${textParam}
+           OR LOWER(product.product_code) LIKE $${textParam}
       )`);
       const digits = term.replace(/\D/g, '');
       if (digits) {
@@ -262,8 +271,7 @@ router.get('/', asyncHandler(async (req, res) => {
         clauses.push(`app.id IN (
           SELECT values.application_id
           FROM application_values AS values
-          WHERE values.system_field_type = 'phone'
-            AND values.value LIKE $${digitParam}
+          WHERE values.value LIKE $${digitParam}
         )`);
       }
       return `(${clauses.join(' OR ')})`;

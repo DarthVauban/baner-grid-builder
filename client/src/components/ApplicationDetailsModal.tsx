@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { applicationStatusLabels, customerName, formatApplicationDate } from '../lib/application';
+import { applicationStatusLabels, formatApplicationDate } from '../lib/application';
 import { copyToClipboard } from '../lib/banner-generator';
 import { useToast } from '../toast/ToastContext';
 import type { ApplicationRecord, ApplicationStatus } from '../types/application';
@@ -56,6 +56,8 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
   const productTitle = application.product?.title || application.pageTitle || 'Товар не визначено';
   const sourceUrl = application.product?.url || application.sourceUrl;
   const productCode = application.product?.productCode || '';
+  const legacyCustomerName = [application.customer.firstName, application.customer.lastName].filter(Boolean).join(' ');
+  const dialogTitle = legacyCustomerName || application.campaignName || application.formName;
   const utmEntries = Object.entries(application.utm || {}).filter(([, value]) => value);
   const canClaim = application.status === 'new' && !application.assignedManager;
   const summaryValues = application.values.filter((value) => value.showInSummary && !value.systemFieldType);
@@ -114,7 +116,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
       <header className="modal__header">
         <div>
           <p className="eyebrow">Заявка №{application.number}</p>
-          <h2 id="application-details-title">{customerName(application.customer.firstName, application.customer.lastName)}</h2>
+          <h2 id="application-details-title">{dialogTitle}</h2>
         </div>
         <button className="icon-button" type="button" onClick={onClose} aria-label="Закрити"><Icon name="close" size={20} /></button>
       </header>
@@ -136,6 +138,7 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
               {application.product?.oldPrice && <><dt>Стара ціна</dt><dd>{application.product.oldPrice}</dd></>}
               {application.product?.sku && <><dt>SKU</dt><dd>{application.product.sku}</dd></>}
               {application.product?.productCode && <><dt>Код</dt><dd>{application.product.productCode}</dd></>}
+              {application.product?.externalModificationId && <><dt>ID модифікації</dt><dd>{application.product.externalModificationId}</dd></>}
               {application.product?.availability && <><dt>Наявність</dt><dd>{application.product.availability}</dd></>}
               {application.product?.domain && <><dt>Домен</dt><dd>{application.product.domain}</dd></>}
             </dl>
@@ -149,11 +152,12 @@ export function ApplicationDetailsModal({ application, busy, onClose, onShare, o
         <section className="application-main-information">
           <h3>Основна інформація</h3>
           <div className="task-details-grid">
-            <div><Icon name="users" size={18} /><span><small>Покупець</small><strong>{customerName(application.customer.firstName, application.customer.lastName)}</strong></span></div>
-            <div><Icon name="phone" size={18} /><span><small>Телефон</small><strong>{application.customer.phone ? <a href={`tel:${application.customer.phone}`}>{application.customer.phone}</a> : 'Не вказано'}</strong></span></div>
-            <div><Icon name="publication" size={18} /><span><small>Банк</small><strong>{application.customer.bankLabel || 'Не вказано'}</strong></span></div>
+            {legacyCustomerName && <div><Icon name="users" size={18} /><span><small>Покупець</small><strong>{legacyCustomerName}</strong></span></div>}
+            {application.customer.phone && <div><Icon name="phone" size={18} /><span><small>Телефон</small><strong><a href={`tel:${application.customer.phone}`}>{application.customer.phone}</a></strong></span></div>}
+            {application.customer.bankLabel && <div><Icon name="publication" size={18} /><span><small>Банк</small><strong>{application.customer.bankLabel}</strong></span></div>}
             <div><Icon name="schedule" size={18} /><span><small>Створено</small><strong>{formatApplicationDate(application.createdAt)}</strong></span></div>
             <div><Icon name="edit" size={18} /><span><small>Форма</small><strong>{application.formName}</strong></span></div>
+            {application.campaignName && <div><Icon name="productPage" size={18} /><span><small>Розміщення</small><strong>{application.campaignName}</strong></span></div>}
             <div><Icon name="calendar" size={18} /><span><small>Оновлено</small><strong>{formatApplicationDate(application.updatedAt)}</strong></span></div>
             <div><Icon name="users" size={18} /><span><small>Менеджер</small><strong>{application.assignedManager ? application.assignedManager.name : 'Не взято в роботу'}</strong></span></div>
             <div><Icon name="schedule" size={18} /><span><small>Взято в роботу</small><strong>{application.assignedManager?.assignedAt ? formatApplicationDate(application.assignedManager.assignedAt) : '—'}</strong></span></div>

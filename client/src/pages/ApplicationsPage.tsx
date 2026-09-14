@@ -37,6 +37,19 @@ function ApplicationProductThumb({ src }: { src?: string }) {
   return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
 }
 
+function primaryApplicationValues(application: ApplicationRecord) {
+  const custom = application.values
+    .filter((value) => value.showInSummary && !value.stepId && !value.stepTitle)
+    .map((value) => ({ label: value.label, value: value.optionLabel || value.value }))
+    .filter((item) => item.value);
+  if (custom.length) return custom.slice(0, 2);
+  return [
+    { label: 'Покупець', value: customerName(application.customer.firstName, application.customer.lastName) },
+    { label: 'Телефон', value: application.customer.phone },
+    { label: 'Банк', value: application.customer.bankLabel }
+  ].filter((item) => item.value && item.value !== 'Покупець не вказаний').slice(0, 2);
+}
+
 const sortOptions = [
   { value: 'created_desc', label: 'Нові спочатку' },
   { value: 'updated_desc', label: 'Оновлені спочатку' },
@@ -303,19 +316,20 @@ export function ApplicationsPage() {
       </div>
       <div className="task-toolbar__controls">
         <label className="application-sort"><span>Сортування</span><StyledSelect compact value={sort} options={sortOptions} onChange={(value) => { setSort(value); setPage(1); }} ariaLabel="Сортування заявок" /></label>
-        <div className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Номер, імʼя або телефон" aria-label="Пошук заявки за номером, імʼям або телефоном" />{search && <button type="button" onClick={() => { setSearch(''); setPage(1); }} aria-label="Очистити пошук"><Icon name="close" size={16} /></button>}</div>
+        <div className="task-search"><Icon name="search" size={18} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Номер, відповідь або товар" aria-label="Пошук заявки за номером, відповіддю або товаром" />{search && <button type="button" onClick={() => { setSearch(''); setPage(1); }} aria-label="Очистити пошук"><Icon name="close" size={16} /></button>}</div>
       </div>
     </section>
 
     {applications.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо заявки...</p></div>}
     {applications.isError && <div className="task-list-state task-list-state--error"><p>{applications.error instanceof Error ? applications.error.message : 'Не вдалося завантажити заявки.'}</p><button className="button button--secondary" type="button" onClick={() => void applications.refetch()}>Спробувати ще</button></div>}
-    {!applications.isLoading && !applications.isError && items.length === 0 && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="tasks" size={28} /></span><h2>Заявок не знайдено</h2><p>{search ? 'Перевірте номер, імʼя або телефон і спробуйте інший запит.' : selectedForm ? 'У цій формі поки немає заявок з обраним статусом.' : 'Нові заявки зʼявляться тут автоматично після надсилання форми.'}</p></div>}
+    {!applications.isLoading && !applications.isError && items.length === 0 && <div className="task-list-state"><span className="task-list-state__icon"><Icon name="tasks" size={28} /></span><h2>Заявок не знайдено</h2><p>{search ? 'Перевірте номер, відповідь або назву товару і спробуйте інший запит.' : selectedForm ? 'У цій формі поки немає заявок з обраним статусом.' : 'Нові заявки зʼявляться тут автоматично після надсилання форми.'}</p></div>}
 
     {items.length > 0 && <section className="application-table" aria-label="Список заявок">
-      <div className="application-table__head"><span>№</span><span>Статус</span><span>Менеджер</span><span>Покупець</span><span>Телефон</span><span>Банк</span><span>Товар</span><span>Створено</span><span>Дії</span></div>
+      <div className="application-table__head"><span>№</span><span>Статус</span><span>Менеджер</span><span>Форма / кампанія</span><span>Основні поля</span><span>Товар</span><span>Створено</span><span>Дії</span></div>
       {items.map((application) => {
         const canClaim = application.status === 'new' && !application.assignedManager;
         const canChangeStatus = !canClaim && (application.assignedManager?.id === user?.id || user?.isPrimaryAdmin === true || !application.assignedManager);
+        const primaryValues = primaryApplicationValues(application);
         return <article className="application-row" key={application.id}>
         <strong>{application.number}</strong>
         <div className="application-row__status">
@@ -323,9 +337,8 @@ export function ApplicationsPage() {
           {canChangeStatus ? <StyledSelect compact value={application.status} disabled={setStatus.isPending} options={rowStatusOptions} onChange={(value) => void changeStatus(application, value, '')} ariaLabel={`Статус заявки ${application.number}`} /> : <small>{canClaim ? 'Очікує менеджера' : 'Призначена'}</small>}
         </div>
         <span className={application.assignedManager ? 'application-manager-pill' : 'application-manager-pill application-manager-pill--empty'}>{application.assignedManager?.name || 'Не взято'}</span>
-        <span className="application-row__customer" data-label="Покупець">{customerName(application.customer.firstName, application.customer.lastName)}</span>
-        <span className="application-row__phone" data-label="Телефон">{application.customer.phone || '—'}</span>
-        <span className="application-row__bank" data-label="Банк">{application.customer.bankLabel || '—'}</span>
+        <span className="application-row__campaign" data-label="Форма / кампанія"><strong>{application.campaignName || application.formName}</strong>{application.campaignName && <small>{application.formName}</small>}</span>
+        <span className="application-row__summaries" data-label="Основні поля">{[0, 1].map((index) => <span key={index}><small>{primaryValues[index]?.label || '—'}</small><strong>{primaryValues[index]?.value || '—'}</strong></span>)}</span>
         <span className="application-row__product" data-label="Товар"><ApplicationProductThumb src={application.product?.imageProxyUrl || application.product?.imageUrl} /><b>{application.product?.title || application.pageTitle || 'Товар не визначено'}</b></span>
         <time className="application-row__date" data-label="Створено">{formatApplicationDate(application.createdAt)}</time>
         <div className="application-row__actions">

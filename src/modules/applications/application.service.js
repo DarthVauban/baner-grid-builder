@@ -100,7 +100,7 @@ export function serializeField(row, options = []) {
     active: row.active === true,
     system: row.system === true,
     systemFieldType: row.system_field_type || null,
-    showInSummary: row.system_field_type ? true : row.show_in_summary === true,
+    showInSummary: row.show_in_summary === true,
     sortOrder: row.sort_order,
     validation: row.validation || {},
     options: options.map((option) => ({
@@ -342,6 +342,9 @@ export function serializeApplication(row, values = [], product = null, history =
     referrer: row.referrer,
     utm: row.utm || {},
     source: row.source,
+    campaignId: row.campaign_id || null,
+    campaignPublicId: row.campaign_public_id || null,
+    campaignName: row.campaign_name_snapshot || '',
     version: row.version,
     lastChangedBy: row.last_changed_by ? {
       id: row.last_changed_by,
@@ -366,6 +369,7 @@ export function serializeApplication(row, values = [], product = null, history =
       productCode: product.product_code,
       availability: product.availability,
       externalProductId: product.external_product_id,
+      externalModificationId: product.external_modification_id || '',
       domain: product.domain,
       rawSafeData: product.raw_safe_data || {},
       capturedAt: product.captured_at
@@ -487,6 +491,7 @@ export function buildSafeProductSnapshot(product = {}, context = {}) {
     productCode: cleanText(product.productCode, 160),
     availability: cleanText(product.availability, 160),
     externalProductId: cleanText(product.externalProductId, 180),
+    externalModificationId: cleanText(product.externalModificationId, 180),
     domain,
     rawSafeData: {}
   };

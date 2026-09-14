@@ -84,6 +84,9 @@ import type {
   ApplicationCounts,
   ApplicationFeed,
   ApplicationForm,
+  ApplicationFormCampaign,
+  ApplicationFormCampaignInput,
+  ApplicationFormCampaignStatus,
   ApplicationFormSummary,
   ApplicationFormInput,
   ApplicationRecord,
@@ -928,6 +931,32 @@ export const api = {
       request<ApplicationButtonConfig>(`/api/forms/buttons/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
     archiveButton: (id: string) => request<void>(`/api/forms/buttons/${encodeURIComponent(id)}/archive`, { method: 'PATCH' }),
     buttonScript: (id: string) => request<{ script: string; compactScript: string }>(`/api/forms/buttons/${encodeURIComponent(id)}/script`)
+  },
+  formCampaigns: {
+    list: (formId?: string) => request<ApplicationFormCampaign[]>(
+      `/api/form-campaigns${queryString({ formId })}`
+    ),
+    catalog: (params: { search?: string; category?: string; page?: number; pageSize?: number } = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
+      `/api/form-campaigns/catalog${queryString(params)}`,
+      { signal }
+    ),
+    create: (input: ApplicationFormCampaignInput) => request<ApplicationFormCampaign>(
+      '/api/form-campaigns',
+      { method: 'POST', body: jsonBody(input) }
+    ),
+    update: (id: string, input: ApplicationFormCampaignInput) => request<ApplicationFormCampaign>(
+      `/api/form-campaigns/${encodeURIComponent(id)}`,
+      { method: 'PUT', body: jsonBody(input) }
+    ),
+    setStatus: (id: string, status: ApplicationFormCampaignStatus) => request<ApplicationFormCampaign>(
+      `/api/form-campaigns/${encodeURIComponent(id)}/status`,
+      { method: 'PATCH', body: jsonBody({ status }) }
+    ),
+    archive: (id: string) => request<void>(
+      `/api/form-campaigns/${encodeURIComponent(id)}/archive`,
+      { method: 'PATCH' }
+    ),
+    embedCode: () => request<{ code: string }>('/api/form-campaigns/embed-code')
   },
   admin: {
     directory: (params: {

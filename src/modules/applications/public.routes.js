@@ -310,13 +310,14 @@ function loaderScript() {
           else values[field.key] = control.value || "";
         });
         try {
-          var sent = await fetch(apiBase + "/" + encodeURIComponent(formId) + "/applications", {
+          var sent = await fetch(options.submitUrl || apiBase + "/" + encodeURIComponent(formId) + "/applications", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               values: values,
               product: options.product || {},
               context: Object.assign({ sourceUrl: location.href, pageTitle: document.title, referrer: document.referrer }, options.context || {}),
+              contextToken: options.contextToken || "",
               idempotencyKey: (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()) + Math.random()),
               honeypot: trap.value
             })
@@ -373,14 +374,17 @@ export async function createPublicApplication({
   productOverride = null,
   contextOverride = {},
   source = 'public_form',
-  historyComment = 'Заявку створено з публічної форми'
+  historyComment = 'Заявку створено з публічної форми',
+  campaignId = null,
+  campaignPublicId = null,
+  campaignName = ''
 }) {
   if (input.honeypot) return { status: 204, data: null };
   const form = formOverride || await loadPublishedForm(publicId);
   if (!form) throw new AppError(404, 'FORM_NOT_FOUND', 'Форма недоступна.');
   form.banks ||= [];
-  if (!skipBankRequirement && !form.banks.length) throw new AppError(422, 'BANK_REQUIRED', 'Оберіть банк.');
   const bankField = form.fields.find((field) => field.systemFieldType === 'bank');
+  if (!skipBankRequirement && bankField && !form.banks.length) throw new AppError(422, 'BANK_REQUIRED', 'Оберіть банк.');
   if (bankField) bankField.options = form.banks.map((bank) => ({ label: bank.label, value: bank.value }));
   const values = validateSubmission(form, input.values);
   const context = { ...(input.context || {}), ...contextOverride };
@@ -416,8 +420,8 @@ export async function createPublicApplication({
       `INSERT INTO applications (
          application_number, form_id, form_public_id, form_name_snapshot,
          source_url, canonical_url, page_title, referrer, utm, user_agent,
-         source, idempotency_key
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11, $12)
+         source, idempotency_key, campaign_id, campaign_public_id, campaign_name_snapshot
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11, $12, $13, $14, $15)
        RETURNING id`,
       [
         applicationNumber,
@@ -431,7 +435,10 @@ export async function createPublicApplication({
         JSON.stringify(buildUtm(context)),
         cleanText(req.get('user-agent') || '', 500),
         cleanText(source, 80) || 'public_form',
-        input.idempotencyKey || null
+        input.idempotencyKey || null,
+        campaignId,
+        campaignPublicId,
+        cleanText(campaignName, 160)
       ]
     );
     applicationId = created.rows[0].id;
@@ -466,8 +473,9 @@ export async function createPublicApplication({
     await client.query(
       `INSERT INTO application_product_snapshots (
          application_id, title, url, image_url, price, old_price, currency,
-         sku, product_code, availability, external_product_id, domain, raw_safe_data
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::JSONB)`,
+         sku, product_code, availability, external_product_id, external_modification_id,
+         domain, raw_safe_data
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::JSONB)`,
       [
         applicationId,
         product.title,
@@ -480,6 +488,7 @@ export async function createPublicApplication({
         product.productCode,
         product.availability,
         product.externalProductId,
+        product.externalModificationId,
         product.domain,
         JSON.stringify(product.rawSafeData)
       ]

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { ApplicationFormPlacementEditor } from '../components/ApplicationFormPlacementEditor';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { TradeInLogicEditor } from '../components/trade-in/TradeInLogicEditor';
@@ -13,9 +14,6 @@ import { useUndoableState } from '../lib/use-undoable-state';
 import { createDefaultWorkflowForm } from '../lib/workflow-form';
 import { useToast } from '../toast/ToastContext';
 import type {
-  ApplicationBank,
-  ApplicationButtonConfig,
-  ApplicationButtonInput,
   ApplicationFieldType,
   ApplicationForm,
   ApplicationFormField,
@@ -34,34 +32,9 @@ const fieldTypeLabels: Record<ApplicationFieldType, string> = {
   number: 'Число'
 };
 
-const productSelectorFields = [
-  ['title', 'Назва'],
-  ['imageUrl', 'Зображення'],
-  ['price', 'Ціна'],
-  ['oldPrice', 'Стара ціна'],
-  ['productCode', 'Код товару']
-] as const;
-
-const productSelectorKeys = productSelectorFields.map(([key]) => key);
-const priceConditionKey = 'priceCondition';
 const choiceFieldTypes = ['select', 'radio', 'checkbox'] as const;
 
-const selectorSources = ['textContent', 'src', 'data-src', 'data-href', 'href', 'value', 'content'] as const;
 const fieldTypeOptions = Object.entries(fieldTypeLabels).map(([value, label]) => ({ value: value as ApplicationFieldType, label }));
-const insertPositionOptions = [
-  { value: 'after' as const, label: 'Після контейнера' },
-  { value: 'before' as const, label: 'Перед контейнером' },
-  { value: 'start' as const, label: 'На початку' },
-  { value: 'end' as const, label: 'В кінці' }
-];
-const fontWeightOptions = [
-  { value: '400', label: 'Звичайний' },
-  { value: '500', label: 'Medium' },
-  { value: '600', label: 'Semibold' },
-  { value: '700', label: 'Bold' },
-  { value: '800', label: 'Extra bold' }
-];
-const selectorSourceOptions = selectorSources.map((source) => ({ value: source, label: source }));
 
 function isChoiceFieldType(type: ApplicationFieldType) {
   return choiceFieldTypes.includes(type as typeof choiceFieldTypes[number]);
@@ -79,22 +52,6 @@ function newOption(index: number) {
     sortOrder: index,
     active: true
   };
-}
-
-function sanitizeProductSelectors(selectors: Record<string, unknown> = {}) {
-  const sanitized = productSelectorKeys.reduce<Record<string, unknown>>((result, key) => {
-    if (selectors[key]) result[key] = selectors[key];
-    return result;
-  }, {});
-  const condition = selectors[priceConditionKey];
-  if (condition && typeof condition === 'object') {
-    const value = condition as { enabled?: unknown; minPrice?: unknown };
-    sanitized[priceConditionKey] = {
-      enabled: value.enabled === true,
-      minPrice: typeof value.minPrice === 'string' ? value.minPrice.trim() : value.minPrice == null ? '' : String(value.minPrice).trim()
-    };
-  }
-  return sanitized;
 }
 
 const emptyForm: Omit<ApplicationFormInput, 'fields'> = {
@@ -157,12 +114,7 @@ export function FormsBuilderPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ApplicationFormInput | null>(null);
   const [fields, setFields] = useState<ApplicationFormField[]>([]);
-  const [bankDraft, setBankDraft] = useState({ label: '', value: '', active: true, sortOrder: 0 });
-  const [buttonDraft, setButtonDraft] = useState<ApplicationButtonInput | null>(null);
-  const [editingButtonId, setEditingButtonId] = useState<string | null>(null);
-  const [script, setScript] = useState('');
-  const [compactScript, setCompactScript] = useState('');
-  const [activeTab, setActiveTab] = useState<'form' | 'button'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'placement'>('form');
   const [workflowTab, setWorkflowTab] = useState<'builder' | 'settings'>('builder');
   const [libraryType, setLibraryType] = useState<'all' | ApplicationForm['formType']>('all');
   const [librarySearch, setLibrarySearch] = useState('');
@@ -184,8 +136,6 @@ export function FormsBuilderPage() {
     keyboard: false
   });
   const forms = useQuery({ queryKey: ['forms'], queryFn: api.forms.list });
-  const banks = useQuery({ queryKey: ['form-banks'], queryFn: api.forms.banks });
-  const buttons = useQuery({ queryKey: ['form-buttons'], queryFn: api.forms.buttons });
   const requestedFormId = searchParams.get('form');
   const selectedForm = useMemo(
     () => forms.data?.find((form) => form.id === selectedId)
@@ -231,30 +181,8 @@ export function FormsBuilderPage() {
     replaceWorkflow(selectedForm.formType === 'workflow'
       ? structuredClone(selectedForm.workflow || createDefaultWorkflowForm())
       : null);
-    setButtonDraft({
-      name: `Кнопка ${selectedForm.name}`,
-      formId: selectedForm.id,
-      selector: '.product-order__row',
-      insertPosition: 'end',
-      text: selectedForm.buttonText,
-      styles: { backgroundColor: '#6d5dfc', color: '#ffffff', borderRadius: '12px', padding: '12px 18px', fontWeight: '700', fontSize: 'inherit' },
-      cssClass: '',
-      fullWidth: false,
-      active: true,
-      productSelectors: {
-        title: { selector: 'h1', source: 'textContent' },
-        imageUrl: { selector: '.gallery__photos-list img[src*="/content/images/"]', source: 'src' },
-        price: { selector: '.product-price__item', source: 'textContent' },
-        oldPrice: { selector: '.product-price__old-price', source: 'textContent' },
-        productCode: { selector: '[data-product-code], .product-code', source: 'textContent' },
-        [priceConditionKey]: { enabled: false, minPrice: '' }
-      }
-    });
-    setEditingButtonId(null);
     setDraggedFieldIndex(null);
     setFieldDropTarget(null);
-    setScript('');
-    setCompactScript('');
   }, [replaceWorkflow, selectedForm]);
 
   const createForm = useMutation({ mutationFn: api.forms.create });
@@ -263,13 +191,6 @@ export function FormsBuilderPage() {
   const publishForm = useMutation({ mutationFn: api.forms.publish });
   const disableForm = useMutation({ mutationFn: api.forms.disable });
   const archiveForm = useMutation({ mutationFn: api.forms.archive });
-  const createBank = useMutation({ mutationFn: api.forms.createBank });
-  const updateBank = useMutation({ mutationFn: ({ id, input }: { id: string; input: Partial<Pick<ApplicationBank, 'label' | 'value' | 'active' | 'sortOrder'>> }) => api.forms.updateBank(id, input) });
-  const removeBank = useMutation({ mutationFn: api.forms.removeBank });
-  const createButton = useMutation({ mutationFn: api.forms.createButton });
-  const updateButton = useMutation({ mutationFn: ({ id, input }: { id: string; input: ApplicationButtonInput }) => api.forms.updateButton(id, input) });
-  const archiveButton = useMutation({ mutationFn: api.forms.archiveButton });
-  const buttonScript = useMutation({ mutationFn: api.forms.buttonScript });
   const busy = createForm.isPending || updateForm.isPending || duplicateForm.isPending || publishForm.isPending || disableForm.isPending || archiveForm.isPending;
 
   useEffect(() => {
@@ -282,11 +203,7 @@ export function FormsBuilderPage() {
   }, [createForm.isPending, createModalOpen]);
 
   async function refresh() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['forms'] }),
-      queryClient.invalidateQueries({ queryKey: ['form-banks'] }),
-      queryClient.invalidateQueries({ queryKey: ['form-buttons'] })
-    ]);
+    await queryClient.invalidateQueries({ queryKey: ['forms'] });
   }
 
   function openFormsLibrary() {
@@ -298,8 +215,6 @@ export function FormsBuilderPage() {
     setSelectedId(form.id);
     setSearchParams({ form: form.id }, { replace: true });
     setWorkflowTab('builder');
-    setScript('');
-    setCompactScript('');
   }
 
   function openCreateModal() {
@@ -446,10 +361,12 @@ export function FormsBuilderPage() {
       return {
         ...field,
         ...nextPatch,
-        active: field.system ? true : patch.active ?? field.active,
-        required: field.system ? true : patch.required ?? field.required,
-        showInSummary: field.system ? true : patch.showInSummary ?? field.showInSummary,
-        type: field.systemFieldType === 'bank' ? 'select' : field.systemFieldType === 'phone' ? 'phone' : patch.type ?? field.type
+        system: false,
+        systemFieldType: null,
+        active: patch.active ?? field.active,
+        required: patch.required ?? field.required,
+        showInSummary: patch.showInSummary ?? field.showInSummary,
+        type: patch.type ?? field.type
       };
     }));
   }
@@ -460,7 +377,9 @@ export function FormsBuilderPage() {
       const options = isChoiceFieldType(type) && field.options.length === 0 ? [newOption(0)] : field.options;
       return {
         ...field,
-        type: field.systemFieldType === 'bank' ? 'select' : field.systemFieldType === 'phone' ? 'phone' : type,
+        type,
+        system: false,
+        systemFieldType: null,
         options
       };
     }));
@@ -541,72 +460,6 @@ export function FormsBuilderPage() {
     setFieldDropTarget(null);
   }
 
-  async function addBank() {
-    if (!bankDraft.label.trim()) return;
-    try {
-      await createBank.mutateAsync(bankDraft);
-      setBankDraft({ label: '', value: '', active: true, sortOrder: 0 });
-      showToast('Банк додано.');
-      await refresh();
-    } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося додати банк.', 'error'); }
-  }
-
-  function editButton(button: ApplicationButtonConfig) {
-    setEditingButtonId(button.id);
-    setActiveTab('button');
-    setButtonDraft({
-      name: button.name,
-      formId: button.formId,
-      selector: button.selector,
-      insertPosition: button.insertPosition,
-      text: button.text,
-      styles: button.styles,
-      cssClass: button.cssClass,
-      fullWidth: button.fullWidth,
-      active: button.active,
-      productSelectors: sanitizeProductSelectors(button.productSelectors)
-    });
-    setScript('');
-    setCompactScript('');
-  }
-
-  async function saveButton(existing?: ApplicationButtonConfig) {
-    if (!buttonDraft) return;
-    try {
-      const target = existing || buttons.data?.find((button) => button.id === editingButtonId);
-      const payload = { ...buttonDraft, productSelectors: sanitizeProductSelectors(buttonDraft.productSelectors) };
-      const saved = target ? await updateButton.mutateAsync({ id: target.id, input: payload }) : await createButton.mutateAsync(payload);
-      setEditingButtonId(saved.id);
-      showToast(target ? 'Кнопку оновлено.' : 'Кнопку створено.');
-      const generated = await buttonScript.mutateAsync(saved.id);
-      setScript(generated.script);
-      setCompactScript(generated.compactScript);
-      await refresh();
-    } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося зберегти кнопку.', 'error'); }
-  }
-
-  async function copyCode(value: string, successMessage = 'Скрипт скопійовано.') {
-    if (!value) return;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = value;
-        textarea.setAttribute('readonly', '');
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        textarea.remove();
-      }
-      showToast(successMessage);
-    } catch {
-      showToast('Не вдалося скопіювати скрипт.', 'error');
-    }
-  }
-
   function draftStyle(key: string, fallback = '') {
     return String(draft?.styles?.[key] ?? fallback);
   }
@@ -614,58 +467,6 @@ export function FormsBuilderPage() {
   function updateDraftStyle(key: string, value: string) {
     if (!draft) return;
     setDraft({ ...draft, styles: { ...draft.styles, [key]: value } });
-  }
-
-  function buttonStyle(key: string, fallback = '') {
-    return String(buttonDraft?.styles?.[key] ?? fallback);
-  }
-
-  function updateButtonStyle(key: string, value: string) {
-    if (!buttonDraft) return;
-    setButtonDraft({ ...buttonDraft, styles: { ...buttonDraft.styles, [key]: value } });
-  }
-
-  function selectorConfig(key: string) {
-    const config = buttonDraft?.productSelectors?.[key];
-    if (!config || typeof config !== 'object') return { selector: '', source: 'textContent' };
-    const value = config as { selector?: unknown; source?: unknown };
-    return {
-      selector: typeof value.selector === 'string' ? value.selector : '',
-      source: typeof value.source === 'string' ? value.source : 'textContent'
-    };
-  }
-
-  function updateProductSelector(key: string, patch: { selector?: string; source?: string }) {
-    if (!buttonDraft) return;
-    const current = selectorConfig(key);
-    setButtonDraft({
-      ...buttonDraft,
-      productSelectors: {
-        ...buttonDraft.productSelectors,
-        [key]: { ...current, ...patch }
-      }
-    });
-  }
-
-  function priceCondition() {
-    const config = buttonDraft?.productSelectors?.[priceConditionKey];
-    if (!config || typeof config !== 'object') return { enabled: false, minPrice: '' };
-    const value = config as { enabled?: unknown; minPrice?: unknown };
-    return {
-      enabled: value.enabled === true,
-      minPrice: typeof value.minPrice === 'string' ? value.minPrice : value.minPrice == null ? '' : String(value.minPrice)
-    };
-  }
-
-  function updatePriceCondition(patch: { enabled?: boolean; minPrice?: string }) {
-    if (!buttonDraft) return;
-    setButtonDraft({
-      ...buttonDraft,
-      productSelectors: {
-        ...buttonDraft.productSelectors,
-        [priceConditionKey]: { ...priceCondition(), ...patch }
-      }
-    });
   }
 
   function previewOptions(field: ApplicationFormField) {
@@ -722,28 +523,6 @@ export function FormsBuilderPage() {
     </div>;
   }
 
-  function renderButtonPreview() {
-    if (!buttonDraft) return null;
-    const previewStyle = {
-      ...(buttonDraft.styles || {}),
-      backgroundColor: buttonStyle('backgroundColor', '#6d5dfc'),
-      color: buttonStyle('color', '#ffffff'),
-      borderRadius: buttonStyle('borderRadius', '12px'),
-      padding: buttonStyle('padding', '12px 18px'),
-      fontWeight: buttonStyle('fontWeight', '700'),
-      fontSize: buttonStyle('fontSize', 'inherit'),
-      fontFamily: 'inherit'
-    } as CSSProperties;
-    if (buttonDraft.fullWidth) previewStyle.width = '100%';
-    return <div className="button-live-preview">
-      <div className="button-live-preview__surface">
-        <button className="button-live-preview__button" type="button" style={previewStyle}>{buttonDraft.text || 'Залишити заявку'}</button>
-      </div>
-      <small>На сайті кнопка автоматично прийме основний шрифт магазину.</small>
-    </div>;
-  }
-
-  const currentPriceCondition = priceCondition();
   const workflowIssues = useMemo(
     () => workflow ? validateTradeInLogic(getTradeInFormGraph(workflow)) : [],
     [workflow]
@@ -758,7 +537,7 @@ export function FormsBuilderPage() {
         <p>{selectedForm
           ? selectedForm.formType === 'workflow'
             ? 'Налаштуйте кроки, поля та логічні переходи покрокової форми.'
-            : 'Налаштуйте поля, вигляд pop-up форми та кнопку для сайту.'
+            : 'Налаштуйте кастомні поля, вигляд форми та точні розміщення на товарах.'
           : 'Переглядайте всі форми, фільтруйте їх за типом і відкривайте потрібний редактор.'}</p>
       </div>
       <div className="forms-builder-create-actions">
@@ -873,16 +652,16 @@ export function FormsBuilderPage() {
             </header>
             <div className="segmented" role="tablist" aria-label="Розділи конструктора">
               <button className={activeTab === 'form' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'form'} onClick={() => setActiveTab('form')}>Редактор форми</button>
-              <button className={activeTab === 'button' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'button'} onClick={() => setActiveTab('button')}>Редактор кнопки</button>
+              <button className={activeTab === 'placement' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'placement'} onClick={() => setActiveTab('placement')}>Розміщення на сайті</button>
             </div>
           </section>
-          <details className="tool-panel forms-inline-preview">
+          {activeTab === 'form' && <details className="tool-panel forms-inline-preview">
             <summary>
-              <span><small>Попередній перегляд</small><strong>{activeTab === 'button' ? 'Кнопка на сайті' : 'Форма заявки'}</strong></span>
+              <span><small>Попередній перегляд</small><strong>Форма заявки</strong></span>
               <span>Розгорнути</span>
             </summary>
-            <div className="forms-inline-preview__body">{activeTab === 'button' ? renderButtonPreview() : renderFormPreview()}</div>
-          </details>
+            <div className="forms-inline-preview__body">{renderFormPreview()}</div>
+          </details>}
           {activeTab === 'form' ? <>
           <section className="tool-panel">
             <header className="tool-panel__header"><div><p className="eyebrow">Форма</p><h2>Основні налаштування</h2></div></header>
@@ -921,102 +700,38 @@ export function FormsBuilderPage() {
             <header className="tool-panel__header"><div><p className="eyebrow">Поля</p><h2>Структура форми</h2></div><button className="button button--secondary button--small" type="button" onClick={() => setFields((current) => normalizeFormFieldOrder([...current, newField(current.length)]))}><Icon name="add" size={15} /> Поле</button></header>
             <div className="form-fields-list">
               {fields.map((field, index) => <article
-                className={`${field.system ? 'form-field-card form-field-card--system' : 'form-field-card'}${draggedFieldIndex === index ? ' form-field-card--dragging' : ''}${fieldDropTarget?.index === index ? ` form-field-card--drop-${fieldDropTarget.placement}` : ''}`}
+                className={`form-field-card${draggedFieldIndex === index ? ' form-field-card--dragging' : ''}${fieldDropTarget?.index === index ? ` form-field-card--drop-${fieldDropTarget.placement}` : ''}`}
                 key={field.id || `${field.key}-${index}`}
                 onDragOver={(event) => overField(event, index)}
                 onDrop={(event) => dropField(event, index)}
                 onDragEnd={() => { setDraggedFieldIndex(null); setFieldDropTarget(null); }}
               >
                 <header className="form-field-card__bar">
-                  <div className="form-field-card__title"><strong>{field.label}</strong><span>{field.system ? 'Системне' : fieldTypeLabels[field.type]}</span></div>
+                  <div className="form-field-card__title"><strong>{field.label}</strong><span>{fieldTypeLabels[field.type]}</span></div>
                   <span className="catalog-drag-handle" draggable={fields.length > 1} aria-disabled={fields.length <= 1} title="Перетягнути поле" onDragStart={(event) => startFieldDrag(event, index)}><Icon name="menu" size={18} /> Поле {index + 1}</span>
                 </header>
                 <div className="form-builder-grid">
                   <label className="field"><span>Назва</span><input value={field.label} onChange={(event) => updateField(index, { label: event.target.value })} /></label>
-                  <div className="field"><span>Тип</span><StyledSelect value={field.type} disabled={field.system} options={fieldTypeOptions} onChange={(value) => updateFieldType(index, value)} ariaLabel={`Тип поля ${field.label}`} /></div>
+                  <div className="field"><span>Тип</span><StyledSelect value={field.type} options={fieldTypeOptions} onChange={(value) => updateFieldType(index, value)} ariaLabel={`Тип поля ${field.label}`} /></div>
                   <label className="field"><span>Placeholder</span><input value={field.placeholder} onChange={(event) => updateField(index, { placeholder: event.target.value })} /></label>
                   <label className="field"><span>Підказка</span><input value={field.helpText} onChange={(event) => updateField(index, { helpText: event.target.value })} /></label>
-                  {isChoiceFieldType(field.type) && !field.system && <div className="form-options-editor form-builder-grid__wide">
+                  {isChoiceFieldType(field.type) && <div className="form-options-editor form-builder-grid__wide">
                     <div><strong>Варіанти вибору</strong><button className="button button--secondary button--small" type="button" onClick={() => addFieldOption(index)}><Icon name="add" size={15} /> Додати варіант</button></div>
                     {(field.options.length ? field.options : [newOption(0)]).map((option, optionIndex) => <div className="form-option-row" key={`${option.value}-${optionIndex}`}>
                       <input value={option.label} onChange={(event) => updateFieldOption(index, optionIndex, event.target.value)} placeholder={`Варіант ${optionIndex + 1}`} />
                       <button className="icon-button icon-button--danger" type="button" disabled={field.options.length <= 1} onClick={() => removeFieldOption(index, optionIndex)} aria-label="Видалити варіант"><Icon name="delete" size={16} /></button>
                     </div>)}
                   </div>}
-                  <label className="check-field"><input type="checkbox" checked={field.required} disabled={field.system} onChange={(event) => updateField(index, { required: event.target.checked })} /><span>Обовʼязкове</span></label>
-                  <label className="check-field"><input type="checkbox" checked={field.active} disabled={field.system} onChange={(event) => updateField(index, { active: event.target.checked })} /><span>Активне</span></label>
-                  <label className="check-field form-builder-grid__wide"><input type="checkbox" checked={field.system || field.showInSummary} disabled={field.system} onChange={(event) => updateField(index, { showInSummary: event.target.checked })} /><span>Показувати в основній інформації заявки</span></label>
+                  <label className="check-field"><input type="checkbox" checked={field.required} onChange={(event) => updateField(index, { required: event.target.checked })} /><span>Обовʼязкове</span></label>
+                  <label className="check-field"><input type="checkbox" checked={field.active} onChange={(event) => updateField(index, { active: event.target.checked })} /><span>Активне</span></label>
+                  <label className="check-field form-builder-grid__wide"><input type="checkbox" checked={field.showInSummary} onChange={(event) => updateField(index, { showInSummary: event.target.checked })} /><span>Показувати в основній інформації заявки</span></label>
                 </div>
                 <footer><button className="button button--danger button--small" type="button" onClick={() => removeField(index)}><Icon name="delete" size={15} /> Видалити</button></footer>
               </article>)}
             </div>
           </section>
 
-          <section className="tool-panel">
-              <header className="tool-panel__header"><div><p className="eyebrow">Банки</p><h2>Варіанти банку</h2></div></header>
-              <div className="bank-editor">
-                {(banks.data || []).map((bank) => <article key={bank.id}><span><strong>{bank.label}</strong><small>{bank.value}</small></span><label className="check-field"><input type="checkbox" checked={bank.active} onChange={(event) => void updateBank.mutateAsync({ id: bank.id, input: { active: event.target.checked } }).then(refresh)} /><span>Активний</span></label><button className="icon-button icon-button--danger" type="button" onClick={() => void removeBank.mutateAsync(bank.id).then(refresh)} aria-label="Видалити банк"><Icon name="delete" size={17} /></button></article>)}
-                <div className="bank-editor__new"><input value={bankDraft.label} onChange={(event) => setBankDraft({ ...bankDraft, label: event.target.value })} placeholder="Назва банку" /><input value={bankDraft.value} onChange={(event) => setBankDraft({ ...bankDraft, value: event.target.value })} placeholder="Технічне значення" /><button className="button button--secondary button--small" type="button" onClick={() => void addBank()}>Додати</button></div>
-              </div>
-          </section>
-
-          </> : <>
-          <section className="tool-panel">
-            <header className="tool-panel__header"><div><p className="eyebrow">Кнопки</p><h2>Скрипти для Хорошоп</h2></div></header>
-            <div className="button-config-layout">
-              <div className="button-config-list">
-                {(buttons.data || []).filter((button) => button.formId === selectedForm.id).map((button) => <article key={button.id}><span><strong>{button.name}</strong><small>{button.selector}</small></span><button className="button button--secondary button--small" type="button" onClick={() => editButton(button)}>Редагувати</button><button className="button button--secondary button--small" type="button" onClick={() => void buttonScript.mutateAsync(button.id).then((result) => { setScript(result.script); setCompactScript(result.compactScript); })}>Код</button><button className="icon-button icon-button--danger" type="button" onClick={() => void archiveButton.mutateAsync(button.id).then(refresh)} aria-label="Архівувати кнопку"><Icon name="delete" size={16} /></button></article>)}
-              </div>
-              {buttonDraft && <div className="button-config-form">
-                <label className="field"><span>Назва</span><input value={buttonDraft.name} onChange={(event) => setButtonDraft({ ...buttonDraft, name: event.target.value })} /></label>
-                <label className="field"><span>Контейнер</span><input value={buttonDraft.selector} onChange={(event) => setButtonDraft({ ...buttonDraft, selector: event.target.value })} placeholder=".product__buy" /></label>
-                <div className="field"><span>Позиція</span><StyledSelect value={buttonDraft.insertPosition} options={insertPositionOptions} onChange={(value) => setButtonDraft({ ...buttonDraft, insertPosition: value })} ariaLabel="Позиція кнопки" /></div>
-                <label className="field"><span>Текст кнопки</span><input value={buttonDraft.text} onChange={(event) => setButtonDraft({ ...buttonDraft, text: event.target.value })} /></label>
-                <label className="field"><span>CSS-клас</span><input value={buttonDraft.cssClass} onChange={(event) => setButtonDraft({ ...buttonDraft, cssClass: event.target.value })} placeholder="mt-credit-button" /></label>
-                <div className="button-config-checks">
-                  <label className="check-field"><input type="checkbox" checked={buttonDraft.fullWidth} onChange={(event) => setButtonDraft({ ...buttonDraft, fullWidth: event.target.checked })} /><span>На всю ширину</span></label>
-                  <label className="check-field"><input type="checkbox" checked={buttonDraft.active} onChange={(event) => setButtonDraft({ ...buttonDraft, active: event.target.checked })} /><span>Активна</span></label>
-                </div>
-                <div className="button-style-grid">
-                  <label className="field"><span>Фон</span><input type="color" value={buttonStyle('backgroundColor', '#6d5dfc')} onChange={(event) => updateButtonStyle('backgroundColor', event.target.value)} /></label>
-                  <label className="field"><span>Текст</span><input type="color" value={buttonStyle('color', '#ffffff')} onChange={(event) => updateButtonStyle('color', event.target.value)} /></label>
-                  <div className="field"><span>Жирність шрифту</span><StyledSelect value={buttonStyle('fontWeight', '700')} options={fontWeightOptions} onChange={(value) => updateButtonStyle('fontWeight', value)} ariaLabel="Жирність шрифту кнопки" /></div>
-                  <label className="field"><span>Розмір шрифту</span><input value={buttonStyle('fontSize', 'inherit')} onChange={(event) => updateButtonStyle('fontSize', event.target.value)} placeholder="16px або inherit" /></label>
-                  <label className="field"><span>Заокруглення</span><input value={buttonStyle('borderRadius', '12px')} onChange={(event) => updateButtonStyle('borderRadius', event.target.value)} /></label>
-                  <label className="field"><span>Відступи</span><input value={buttonStyle('padding', '12px 18px')} onChange={(event) => updateButtonStyle('padding', event.target.value)} /></label>
-                </div>
-                <div className="button-price-condition">
-                  <header>
-                    <strong>Умова показу</strong>
-                    <small>Кнопка не вставлятиметься, якщо ціна товару нижча за вказану суму.</small>
-                  </header>
-                  <label className="check-field"><input type="checkbox" checked={currentPriceCondition.enabled} onChange={(event) => updatePriceCondition({ enabled: event.target.checked })} /><span>Показувати тільки для товарів від певної ціни</span></label>
-                  <label className="field"><span>Мінімальна ціна</span><input value={currentPriceCondition.minPrice} inputMode="decimal" disabled={!currentPriceCondition.enabled} onChange={(event) => updatePriceCondition({ minPrice: event.target.value })} placeholder="Наприклад, 10000" /></label>
-                  <small>Ціна читається з селектора товару “Ціна”, за замовчуванням .product-price__item.</small>
-                </div>
-                <div className="button-selector-grid">
-                  <strong>Селектори товару</strong>
-                  {productSelectorFields.map(([key, label]) => {
-                    const config = selectorConfig(key);
-                    return <div className="button-selector-row" key={key}>
-                      <label className="field"><span>{label}</span><input value={config.selector} onChange={(event) => updateProductSelector(key, { selector: event.target.value })} placeholder={key === 'title' ? 'h1' : ''} /></label>
-                      <div className="field"><span>Джерело</span><StyledSelect value={config.source} options={selectorSourceOptions} onChange={(value) => updateProductSelector(key, { source: value })} ariaLabel={`Джерело селектора ${label}`} /></div>
-                    </div>;
-                  })}
-                </div>
-                <button className="button button--primary" type="button" onClick={() => void saveButton()}>Зберегти і згенерувати код</button>
-              </div>}
-            </div>
-            {script && <section className="generated-script">
-              <header><span>Скрипт кнопки</span><button className="button button--secondary button--small" type="button" onClick={() => void copyCode(script)}><Icon name="copy" size={15} /> Копіювати</button></header>
-              <textarea value={script} readOnly rows={10} />
-            </section>}
-            {compactScript && <section className="generated-script generated-script--compact">
-              <header><span>Компактний скрипт з автооновленням</span><button className="button button--secondary button--small" type="button" onClick={() => void copyCode(compactScript, 'Компактний скрипт скопійовано.')}><Icon name="copy" size={15} /> Копіювати</button></header>
-              <textarea value={compactScript} readOnly rows={3} />
-            </section>}
-          </section>
-        </>}
+          </> : <ApplicationFormPlacementEditor form={selectedForm} />}
         </>}
         </>}
       </div>
@@ -1037,7 +752,7 @@ export function FormsBuilderPage() {
               <button className={newFormType === 'simple' ? 'forms-create-type is-selected' : 'forms-create-type'} type="button" role="radio" aria-checked={newFormType === 'simple'} onClick={() => setNewFormType('simple')}>
                 <span><Icon name="formBuilder" size={22} /></span>
                 <strong>Проста форма</strong>
-                <small>Поля, стилі pop-up і кнопка для сайту.</small>
+                <small>Кастомні поля та точні розміщення на товарах.</small>
               </button>
               <button className={newFormType === 'workflow' ? 'forms-create-type is-selected' : 'forms-create-type'} type="button" role="radio" aria-checked={newFormType === 'workflow'} onClick={() => setNewFormType('workflow')}>
                 <span><Icon name="variants" size={22} /></span>
@@ -1047,7 +762,7 @@ export function FormsBuilderPage() {
             </div>
             {newFormType && <label className="field forms-create-modal__name">
               <span>Назва форми</span>
-              <input value={newFormName} onChange={(event) => setNewFormName(event.target.value)} maxLength={160} placeholder={newFormType === 'workflow' ? 'Наприклад, Оцінка Trade-in' : 'Наприклад, Оформлення кредиту'} required autoFocus />
+              <input value={newFormName} onChange={(event) => setNewFormName(event.target.value)} maxLength={160} placeholder={newFormType === 'workflow' ? 'Наприклад, Оцінка Trade-in' : 'Наприклад, Передзамовлення iPhone'} required autoFocus />
               <small>Цю назву бачитимуть користувачі порталу в бібліотеці форм.</small>
             </label>}
           </div>

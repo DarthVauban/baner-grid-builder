@@ -20,6 +20,8 @@ import chatRoutes from './modules/chat/chat.routes.js';
 import applicationRoutes from './modules/applications/application.routes.js';
 import formRoutes from './modules/applications/form.routes.js';
 import publicApplicationRoutes from './modules/applications/public.routes.js';
+import formCampaignRoutes from './modules/applications/form-campaign.routes.js';
+import publicFormCampaignRoutes from './modules/applications/form-campaign.public.routes.js';
 import catalogRoutes from './modules/catalog/catalog.routes.js';
 import photoParserRoutes from './modules/catalog/photo-parser.routes.js';
 import storefrontRoutes from './modules/catalog/storefront.routes.js';
@@ -154,6 +156,7 @@ app.use(asyncHandler(async (req, res, next) => {
 if (env.APP_ORIGIN) {
   app.use((req, res, next) => {
     if (req.path.startsWith('/api/public/application-forms')) return next();
+    if (req.path.startsWith('/api/public/application-form-campaigns')) return next();
     if (req.path.startsWith('/api/public/trade-in')) return next();
     if (req.path.startsWith('/api/public/store-map')) return next();
     if (req.path.startsWith('/api/public/banner-grids')) return next();
@@ -223,6 +226,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/forms', formRoutes);
+app.use('/api/form-campaigns', formCampaignRoutes);
 app.use('/api/catalog/photo-parser', photoParserRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/trade-in', tradeInRoutes);
@@ -231,6 +235,7 @@ app.use('/api/facebook-publications', facebookPublicationRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/storefront', publicEmbedCors, storefrontRoutes);
 app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
+app.use('/api/public/application-form-campaigns', publicEmbedCors, publicFormCampaignRoutes);
 app.use('/api/public/trade-in', publicEmbedCors, publicTradeInRoutes);
 app.use('/api/public/store-map', publicEmbedCors, publicStoreMapRoutes);
 app.use('/api/public/banner-grids', publicEmbedCors, publicGridRoutes);

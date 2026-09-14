@@ -10,7 +10,6 @@ import { normalizeTradeInConfig } from '../trade-in/trade-in.defaults.js';
 import {
   buildButtonScript,
   buildCompactButtonScript,
-  ensureSystemFields,
   loadFields,
   loadForm,
   normalizeSlug,
@@ -95,11 +94,11 @@ async function replaceEditableFields(db, formId, fields = []) {
   const seenKeys = new Set();
   const summarySettings = [];
   for (const [index, field] of fields.entries()) {
-    const systemFieldType = field.system ? field.systemFieldType || null : null;
-    const system = Boolean(systemFieldType);
-    const showInSummary = system || field.showInSummary === true;
-    const type = systemFieldType === 'bank' ? 'select' : systemFieldType === 'phone' ? 'phone' : systemFieldType ? 'text' : field.type;
-    let key = normalizeSlug(field.key || systemFieldType || field.label, `field_${index + 1}`);
+    const systemFieldType = null;
+    const system = false;
+    const showInSummary = field.showInSummary === true;
+    const type = field.type;
+    let key = normalizeSlug(field.key || field.label, `field_${index + 1}`);
     while (seenKeys.has(key)) key = `${key}_${randomSuffix()}`;
     seenKeys.add(key);
     summarySettings.push({ key, showInSummary });
@@ -258,7 +257,6 @@ router.post('/', asyncHandler(async (req, res) => {
       ]
     );
     formId = result.rows[0].id;
-    if (formType === 'simple') await ensureSystemFields(client, formId);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -511,13 +509,6 @@ router.patch('/:id/publish', asyncHandler(async (req, res) => {
     const nodes = workflow.graph?.nodes || [];
     if (!nodes.some((node) => node.type === 'start') || !nodes.some((node) => node.type === 'finish')) {
       throw new AppError(422, 'WORKFLOW_INCOMPLETE', 'Додайте початок і завершення сценарію перед публікацією.');
-    }
-  }
-  const fields = current.rows[0].form_type === 'simple' ? await loadFields(id) : [];
-  if (fields.some((field) => field.active && field.systemFieldType === 'bank')) {
-    const activeBanks = await query('SELECT COUNT(*)::INTEGER AS count FROM application_banks WHERE active = TRUE');
-    if ((activeBanks.rows[0]?.count || 0) < 1) {
-      throw new AppError(422, 'ACTIVE_BANK_REQUIRED', 'Додайте хоча б один активний банк перед публікацією форми.');
     }
   }
   const result = await query(

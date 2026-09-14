@@ -84,6 +84,7 @@ export interface ApplicationProductSnapshot {
   productCode: string;
   availability: string;
   externalProductId: string;
+  externalModificationId: string;
   domain: string;
   rawSafeData: Record<string, unknown>;
   capturedAt: string;
@@ -138,6 +139,9 @@ export interface ApplicationRecord {
   referrer: string;
   utm: Record<string, string>;
   source: string;
+  campaignId: string | null;
+  campaignPublicId: string | null;
+  campaignName: string;
   version: number;
   lastChangedBy: { id: string; name: string } | null;
   assignedManager: { id: string; name: string; assignedAt: string | null } | null;
@@ -218,3 +222,60 @@ export interface ApplicationButtonConfig {
 }
 
 export type ApplicationButtonInput = Omit<ApplicationButtonConfig, 'id' | 'archivedAt' | 'createdAt' | 'updatedAt'>;
+
+export type ApplicationFormCampaignStatus = 'draft' | 'active' | 'paused';
+export type ApplicationFormCampaignAvailabilityMode = 'all' | 'out_of_stock';
+export type ApplicationFormCampaignInsertPosition = 'start' | 'end' | 'before' | 'after';
+
+export interface ApplicationFormCampaignTarget {
+  id: string;
+  productId: string;
+  modificationId: string | null;
+  productExternalId: string;
+  modificationExternalId: string | null;
+  sku: string;
+  title: string;
+  targetKey: string;
+}
+
+export interface ApplicationFormCampaignPlacement {
+  desktop: { selector: string; insertPosition: ApplicationFormCampaignInsertPosition };
+  mobile: { selector: string; insertPosition: ApplicationFormCampaignInsertPosition };
+}
+
+export interface ApplicationFormCampaign {
+  id: string;
+  publicId: string;
+  formId: string;
+  formPublicId: string;
+  formName: string;
+  connectionId: string | null;
+  connectionGeneration: string | null;
+  name: string;
+  status: ApplicationFormCampaignStatus;
+  priority: number;
+  buttonText: string;
+  buttonStyles: Record<string, string>;
+  placement: ApplicationFormCampaignPlacement;
+  availabilityMode: ApplicationFormCampaignAvailabilityMode;
+  startsAt: string | null;
+  endsAt: string | null;
+  publishedAt: string | null;
+  archivedAt: string | null;
+  targets: ApplicationFormCampaignTarget[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApplicationFormCampaignInput {
+  formId: string;
+  name: string;
+  priority: number;
+  buttonText: string;
+  buttonStyles: Record<string, string>;
+  placement: ApplicationFormCampaignPlacement;
+  availabilityMode: ApplicationFormCampaignAvailabilityMode;
+  startsAt: string | null;
+  endsAt: string | null;
+  targets: Array<{ productId: string; modificationId: string | null }>;
+}
