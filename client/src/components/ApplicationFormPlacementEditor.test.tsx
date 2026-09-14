@@ -37,7 +37,7 @@ const catalog: HoroshopCatalogFeed = {
     pollingIntervalMinutes: 15,
     lastSyncAt: timestamp,
     lastError: null,
-    counts: { categories: 1, stickers: 0, products: 2, modifications: 1 },
+    counts: { categories: 1, stickers: 0, products: 3, modifications: 3 },
     latestRun: null
   },
   items: [{
@@ -61,6 +61,23 @@ const catalog: HoroshopCatalogFeed = {
     hasPhotos: false,
     updatedAt: timestamp,
     modifications: [{
+      id: 'modification-primary',
+      externalId: 'phone-primary',
+      sku: 'PHONE',
+      titles: { uk: 'Смартфон із модифікаціями' },
+      price: '20000',
+      oldPrice: null,
+      currency: 'UAH',
+      availability: 'В наявності',
+      visible: true,
+      active: true,
+      imageUrl: null,
+      pageUrl: null,
+      attributes: {},
+      horoshopCreatedAt: timestamp,
+      hasPhotos: false,
+      updatedAt: timestamp
+    }, {
       id: 'modification-black',
       externalId: 'phone-black',
       sku: 'PHONE-BLACK',
@@ -69,6 +86,44 @@ const catalog: HoroshopCatalogFeed = {
       oldPrice: null,
       currency: 'UAH',
       availability: 'Немає в наявності',
+      visible: true,
+      active: true,
+      imageUrl: null,
+      pageUrl: null,
+      attributes: {},
+      horoshopCreatedAt: timestamp,
+      hasPhotos: false,
+      updatedAt: timestamp
+    }]
+  }, {
+    id: 'product-with-single-modification',
+    externalId: 'headphones',
+    parentExternalId: null,
+    sku: 'HEADPHONES',
+    titles: { uk: 'Навушники з єдиною модифікацією' },
+    brand: 'Example',
+    categoryExternalId: 'accessories',
+    price: '2199',
+    oldPrice: null,
+    currency: 'UAH',
+    availability: 'В наявності',
+    visible: true,
+    active: true,
+    primaryImageUrl: null,
+    canonicalUrl: null,
+    popularity: null,
+    horoshopCreatedAt: timestamp,
+    hasPhotos: false,
+    updatedAt: timestamp,
+    modifications: [{
+      id: 'modification-only',
+      externalId: 'headphones-only',
+      sku: 'HEADPHONES',
+      titles: { uk: 'Навушники з єдиною модифікацією' },
+      price: '2199',
+      oldPrice: null,
+      currency: 'UAH',
+      availability: 'В наявності',
       visible: true,
       active: true,
       imageUrl: null,
@@ -102,7 +157,7 @@ const catalog: HoroshopCatalogFeed = {
   }],
   categories: [],
   availabilityOptions: [],
-  total: 2,
+  total: 3,
   page: 1,
   pageSize: 20,
   pageCount: 1
@@ -130,24 +185,31 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('ApplicationFormPlacementEditor product tree', () => {
-  it('keeps modifications collapsed and omits accordion controls for products without modifications', async () => {
+  it('shows the full tree only for multi-modification products', async () => {
     const view = renderEditor();
 
     const tree = screen.getByRole('tree', { name: 'Товари з модифікаціями' });
     expect(screen.queryByText('Смартфон Black')).not.toBeInTheDocument();
 
     const expandableProduct = (await screen.findByText('Смартфон із модифікаціями')).closest('article');
+    const singleModificationProduct = screen.getByText('Навушники з єдиною модифікацією').closest('article');
     const standaloneProduct = screen.getByText('Кабель без модифікацій').closest('article');
     expect(expandableProduct).not.toBeNull();
+    expect(singleModificationProduct).not.toBeNull();
     expect(standaloneProduct).not.toBeNull();
-    expect(within(expandableProduct as HTMLElement).getByRole('button', { name: 'Модифікації 1' })).toBeInTheDocument();
+    expect(within(expandableProduct as HTMLElement).getByRole('button', { name: 'Модифікації 2' })).toBeInTheDocument();
+    expect(singleModificationProduct?.querySelector('.form-placement-product-toggle')).not.toBeInTheDocument();
+    expect(singleModificationProduct?.querySelector('.form-placement-modifications-button')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Навушники з єдиною модифікацією')).toHaveLength(1);
     expect(standaloneProduct?.querySelector('.form-placement-product-toggle')).not.toBeInTheDocument();
     expect(standaloneProduct?.querySelector('.form-placement-modifications-button')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Розгорнути модифікації Смартфон із модифікаціями' }));
 
     expect(await screen.findByText('Смартфон Black')).toBeInTheDocument();
+    expect(screen.getAllByText('Смартфон із модифікаціями')).toHaveLength(2);
     expect(within(tree).getByRole('group')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Обрати модифікацію Смартфон із модифікаціями' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Обрати модифікацію Смартфон Black' })).not.toBeChecked();
 
     const top = view.container.querySelector<HTMLElement>('.form-placement-editor__top');

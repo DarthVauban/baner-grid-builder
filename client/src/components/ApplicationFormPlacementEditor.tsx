@@ -397,7 +397,7 @@ export function ApplicationFormPlacementEditor({ form }: Props) {
         {(catalog.data?.items || []).map((product) => {
           const parentTarget = productTarget(product);
           const title = firstTitle(product.titles);
-          const hasModifications = product.modifications.length > 0;
+          const hasModifications = product.modifications.length > 1;
           const expanded = hasModifications && expandedProducts.has(product.id);
           const branchId = `form-placement-modifications-${product.id}`;
           const availability = productAvailability(product);
