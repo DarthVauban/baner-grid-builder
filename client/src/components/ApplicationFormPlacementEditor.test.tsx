@@ -197,6 +197,11 @@ describe('ApplicationFormPlacementEditor product tree', () => {
   it('lets the editor configure the button text color', async () => {
     const view = renderEditor();
 
+    expect(screen.getByRole('tab', { name: /Налаштування дизайну/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /Налаштування відображення/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Вибір товарів/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Правило показу кнопки' })).not.toBeInTheDocument();
+
     const color = await screen.findByLabelText('Колір тексту кнопки');
     expect(color).toHaveValue('#ffffff');
     fireEvent.change(color, { target: { value: '#172033' } });
@@ -216,6 +221,7 @@ describe('ApplicationFormPlacementEditor product tree', () => {
   it('shows the full tree only for multi-modification products', async () => {
     const view = renderEditor();
 
+    fireEvent.click(screen.getByRole('tab', { name: /Вибір товарів/ }));
     const tree = screen.getByRole('tree', { name: 'Товари з модифікаціями' });
     expect(screen.queryByText('Смартфон Black')).not.toBeInTheDocument();
 
@@ -241,31 +247,40 @@ describe('ApplicationFormPlacementEditor product tree', () => {
     expect(screen.getByRole('checkbox', { name: 'Обрати модифікацію Смартфон Black' })).not.toBeChecked();
 
     const top = view.container.querySelector<HTMLElement>('.form-placement-editor__top');
-    const libraryPanel = view.container.querySelector<HTMLElement>('.form-placement-editor__library');
+    const settingsPanel = view.container.querySelector<HTMLElement>('.form-placement-editor__settings');
     const catalogPanel = view.container.querySelector<HTMLElement>('.form-placement-editor__catalog');
     expect(top).not.toBeNull();
-    expect(top).toContainElement(libraryPanel);
-    expect(top).not.toContainElement(catalogPanel);
+    expect(top).toContainElement(catalogPanel);
+    expect(settingsPanel).toContainElement(catalogPanel);
   });
 
   it('switches between all-products, sticker, category and explicit product targeting', async () => {
     renderEditor();
-    expect(await screen.findByRole('tree', { name: 'Товари з модифікаціями' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Вибір товарів/ })).toBeInTheDocument();
+    expect(screen.queryByRole('tree', { name: 'Товари з модифікаціями' })).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('tab', { name: /Налаштування відображення/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Правило показу кнопки' }));
     fireEvent.click(screen.getByRole('option', { name: 'На всіх товарах' }));
-    expect(screen.queryByRole('tree', { name: 'Товари з модифікаціями' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Вибір товарів/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Правило показу кнопки' }));
     fireEvent.click(screen.getByRole('option', { name: 'На товарах зі стікером' }));
+    expect(screen.getByRole('tab', { name: /Вибір стікера/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Цільовий стікер' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Вибір стікера/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Цільовий стікер' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Передзамовлення' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Передзамовлення' }));
     expect(screen.getByRole('button', { name: 'Цільовий стікер' })).toHaveTextContent('Передзамовлення');
 
+    fireEvent.click(screen.getByRole('tab', { name: /Налаштування відображення/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Правило показу кнопки' }));
     fireEvent.click(screen.getByRole('option', { name: 'У певній категорії' }));
+    expect(screen.queryByRole('tab', { name: /Вибір стікера/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Вибір категорії/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Вибір категорії/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Цільова категорія' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Смартфони' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Смартфони' }));
     expect(screen.getByRole('button', { name: 'Цільова категорія' })).toHaveTextContent('Смартфони');
   });
 });

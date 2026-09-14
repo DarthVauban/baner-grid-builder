@@ -8,7 +8,8 @@ import type {
   ApplicationFormCampaign,
   ApplicationFormCampaignInput,
   ApplicationFormCampaignInsertPosition,
-  ApplicationFormCampaignTarget
+  ApplicationFormCampaignTarget,
+  ApplicationFormCampaignTargetMode
 } from '../types/application';
 import type { HoroshopCatalogModification, HoroshopCatalogProduct } from '../types/horoshop-catalog';
 import { Icon } from './Icon';
@@ -26,6 +27,7 @@ interface TargetDraft {
 }
 
 type AvailabilityTone = 'available' | 'waiting' | 'unavailable' | 'unknown';
+type PlacementEditorTab = 'design' | 'display' | 'products' | 'stickers' | 'categories';
 
 const positionOptions = [
   { value: 'end' as const, label: 'В кінці контейнера' },
@@ -167,11 +169,19 @@ function fontSizeInputValue(value: string | undefined) {
   return match ? match[1] : '16';
 }
 
+function selectionTabForMode(mode: ApplicationFormCampaignTargetMode): PlacementEditorTab | null {
+  if (mode === 'products') return 'products';
+  if (mode === 'sticker') return 'stickers';
+  if (mode === 'category') return 'categories';
+  return null;
+}
+
 export function ApplicationFormPlacementEditor({ forms }: Props) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const confirm = useConfirmDialog();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PlacementEditorTab>('design');
   const publishedForms = forms.filter((candidate) => candidate.status === 'published');
   const [draft, setDraft] = useState<ApplicationFormCampaignInput>(() => emptyCampaign(publishedForms[0]));
   const [selectedTargets, setSelectedTargets] = useState<TargetDraft[]>([]);
@@ -207,12 +217,14 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
     const input = campaignInput(campaign);
     setDraft(publishedForms.some((candidate) => candidate.id === input.formId) ? input : { ...input, formId: '' });
     setSelectedTargets(campaign.targets.map(fromSavedTarget));
+    setActiveTab('design');
   }
 
   function createNew() {
     setSelectedId(null);
     setDraft(emptyCampaign(publishedForms[0]));
     setSelectedTargets([]);
+    setActiveTab('design');
   }
 
   function patchPlacement(device: 'desktop' | 'mobile', patch: Partial<{ selector: string; insertPosition: ApplicationFormCampaignInsertPosition }>) {
@@ -223,6 +235,16 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
         [device]: { ...current.placement[device], ...patch }
       }
     }));
+  }
+
+  function changeTargetMode(targetMode: ApplicationFormCampaignTargetMode) {
+    setDraft((current) => ({
+      ...current,
+      targetMode,
+      categoryExternalId: targetMode === 'category' ? current.categoryExternalId : null,
+      stickerExternalId: targetMode === 'sticker' ? current.stickerExternalId : null
+    }));
+    if (!selectionTabForMode(targetMode) && !['design', 'display'].includes(activeTab)) setActiveTab('display');
   }
 
   function toggleTarget(target: TargetDraft) {
@@ -370,6 +392,17 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
     || (draft.targetMode === 'products' && selectedTargets.length > 0)
     || (draft.targetMode === 'category' && Boolean(draft.categoryExternalId))
     || (draft.targetMode === 'sticker' && Boolean(draft.stickerExternalId));
+  const selectionTab = selectionTabForMode(draft.targetMode);
+  const targetModeLabel = targetModeOptions.find((option) => option.value === draft.targetMode)?.label || 'Правило не вибрано';
+  const selectedSticker = catalog.data?.stickers?.find((item) => item.externalId === draft.stickerExternalId) || null;
+  const selectedCategory = catalog.data?.categories.find((item) => item.externalId === draft.categoryExternalId) || null;
+  const selectionTabCopy = selectionTab === 'products'
+    ? { label: 'Вибір товарів', summary: `${selectedTargets.length} обрано`, icon: 'productSelection' as const }
+    : selectionTab === 'stickers'
+      ? { label: 'Вибір стікера', summary: selectedSticker?.title || 'Не вибрано', icon: 'brands' as const }
+      : selectionTab === 'categories'
+        ? { label: 'Вибір категорії', summary: selectedCategory ? firstTitle(selectedCategory.titles) : 'Не вибрано', icon: 'catalog' as const }
+        : null;
 
   return <div className="form-placement-editor">
     <div className="form-placement-editor__top">
@@ -395,31 +428,140 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
       <section className="tool-panel form-placement-editor__settings">
         <header className="tool-panel__header"><div><p className="eyebrow">Налаштування</p><h2>{selectedCampaign ? selectedCampaign.name : 'Нова кнопка'}</h2></div>{selectedCampaign && <span className={`status-pill status-pill--${selectedCampaign.status}`}>{statusLabel(selectedCampaign.status)}</span>}</header>
         {selectedForm?.status !== 'published' && <div className="form-message form-message--warning">Оберіть опубліковану форму, яку має викликати кнопка.</div>}
-        <div className="form-builder-grid">
-          <div className="field form-builder-grid__wide"><span>Яку форму відкривати</span><StyledSelect value={draft.formId} options={formOptions} onChange={(formId) => setDraft({ ...draft, formId })} ariaLabel="Форма для кнопки" /></div>
-          <label className="field form-builder-grid__wide"><span>Назва кнопки в робочому просторі</span><input value={draft.name} maxLength={160} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-          <label className="field"><span>Текст кнопки</span><input value={draft.buttonText} maxLength={120} onChange={(event) => setDraft({ ...draft, buttonText: event.target.value })} /></label>
-          <label className="field"><span>Пріоритет</span><input type="number" min={0} max={1000} value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: Number(event.target.value) || 0 })} /></label>
-          <div className="field form-builder-grid__wide"><span>Де показувати кнопку</span><StyledSelect value={draft.targetMode} options={targetModeOptions} onChange={(targetMode) => setDraft({ ...draft, targetMode, categoryExternalId: null, stickerExternalId: null })} ariaLabel="Правило показу кнопки" /></div>
-          {draft.targetMode === 'category' && <div className="field form-builder-grid__wide"><span>Категорія товарів</span><StyledSelect value={draft.categoryExternalId || ''} options={targetCategoryOptions} onChange={(categoryExternalId) => setDraft({ ...draft, categoryExternalId: categoryExternalId || null })} ariaLabel="Цільова категорія" /></div>}
-          {draft.targetMode === 'sticker' && <div className="field form-builder-grid__wide"><span>Стікер товару</span><StyledSelect value={draft.stickerExternalId || ''} options={stickerOptions} onChange={(stickerExternalId) => setDraft({ ...draft, stickerExternalId: stickerExternalId || null })} ariaLabel="Цільовий стікер" /></div>}
-          <div className="field"><span>Коли показувати</span><StyledSelect value={draft.availabilityMode} options={[{ value: 'all', label: 'Завжди на цільовому товарі' }, { value: 'out_of_stock', label: 'Лише коли немає в наявності' }]} onChange={(availabilityMode) => setDraft({ ...draft, availabilityMode })} ariaLabel="Умова наявності" /></div>
-          <label className="field"><span>Колір кнопки</span><input type="color" value={colorInputValue(draft.buttonStyles.backgroundColor, '#6d5dfc')} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, backgroundColor: event.target.value } })} /></label>
-          <label className="field"><span>Колір тексту кнопки</span><input type="color" value={colorInputValue(draft.buttonStyles.color, '#ffffff')} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, color: event.target.value } })} /></label>
-          <label className="field"><span>Розмір шрифту кнопки, px</span><input type="number" min={8} max={48} step={1} value={fontSizeInputValue(draft.buttonStyles.fontSize)} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, fontSize: `${event.target.value || 16}px` } })} /></label>
-          <label className="field"><span>Початок показу</span><input type="datetime-local" value={toLocalDateTime(draft.startsAt)} onChange={(event) => setDraft({ ...draft, startsAt: fromLocalDateTime(event.target.value) })} /></label>
-          <label className="field"><span>Завершення показу</span><input type="datetime-local" value={toLocalDateTime(draft.endsAt)} onChange={(event) => setDraft({ ...draft, endsAt: fromLocalDateTime(event.target.value) })} /></label>
-        </div>
+        <nav className="form-placement-editor-tabs" role="tablist" aria-label="Розділи налаштування кнопки">
+          <button id="form-placement-tab-design" className={activeTab === 'design' ? 'is-active' : ''} type="button" role="tab" aria-selected={activeTab === 'design'} aria-controls="form-placement-panel-design" onClick={() => setActiveTab('design')}>
+            <span className="form-placement-editor-tabs__number">1</span><span className="form-placement-editor-tabs__icon"><Icon name="productCard" size={18} /></span><span className="form-placement-editor-tabs__copy"><strong>Налаштування дизайну</strong><small>{draft.buttonText || 'Без тексту'} · {fontSizeInputValue(draft.buttonStyles.fontSize)} px</small></span>
+          </button>
+          <button id="form-placement-tab-display" className={activeTab === 'display' ? 'is-active' : ''} type="button" role="tab" aria-selected={activeTab === 'display'} aria-controls="form-placement-panel-display" onClick={() => setActiveTab('display')}>
+            <span className="form-placement-editor-tabs__number">2</span><span className="form-placement-editor-tabs__icon"><Icon name="visibility" size={18} /></span><span className="form-placement-editor-tabs__copy"><strong>Налаштування відображення</strong><small>{targetModeLabel}</small></span>
+          </button>
+          {selectionTab && selectionTabCopy && <button id={`form-placement-tab-${selectionTab}`} className={activeTab === selectionTab ? 'is-active' : ''} type="button" role="tab" aria-selected={activeTab === selectionTab} aria-controls={`form-placement-panel-${selectionTab}`} onClick={() => setActiveTab(selectionTab)}>
+            <span className="form-placement-editor-tabs__number">3</span><span className="form-placement-editor-tabs__icon"><Icon name={selectionTabCopy.icon} size={18} /></span><span className="form-placement-editor-tabs__copy"><strong>{selectionTabCopy.label}</strong><small>{selectionTabCopy.summary}</small></span>
+          </button>}
+        </nav>
 
-        <div className="form-placement-device-grid">
-          {(['desktop', 'mobile'] as const).map((device) => <article key={device}>
-            <header><Icon name={device === 'desktop' ? 'productPage' : 'phone'} size={17} /><strong>{device === 'desktop' ? 'Комп’ютер' : 'Мобільний'}</strong></header>
-            <label className="field"><span>CSS-селектор контейнера</span><input value={draft.placement[device].selector} onChange={(event) => patchPlacement(device, { selector: event.target.value })} /></label>
-            <div className="field"><span>Позиція</span><StyledSelect value={draft.placement[device].insertPosition} options={positionOptions} onChange={(insertPosition) => patchPlacement(device, { insertPosition })} ariaLabel={`Позиція на ${device}`} /></div>
-          </article>)}
-        </div>
+        {activeTab === 'design' && <section className="form-placement-tab-panel" id="form-placement-panel-design" role="tabpanel" aria-labelledby="form-placement-tab-design">
+          <div className="form-placement-settings-block">
+            <header className="form-placement-section-heading"><span><Icon name="formBuilder" size={18} /></span><div><h3>Форма та назва</h3><p>Оберіть опубліковану форму та назвіть кнопку для команди.</p></div></header>
+            <div className="form-builder-grid">
+              <div className="field form-builder-grid__wide"><span>Яку форму відкривати</span><StyledSelect value={draft.formId} options={formOptions} onChange={(formId) => setDraft({ ...draft, formId })} ariaLabel="Форма для кнопки" /></div>
+              <label className="field form-builder-grid__wide"><span>Назва кнопки в робочому просторі</span><input value={draft.name} maxLength={160} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+            </div>
+          </div>
+          <div className="form-placement-settings-block">
+            <header className="form-placement-section-heading"><span><Icon name="productCard" size={18} /></span><div><h3>Вигляд кнопки</h3><p>Налаштуйте текст, кольори та розмір шрифту.</p></div></header>
+            <div className="form-builder-grid">
+              <label className="field form-builder-grid__wide"><span>Текст кнопки</span><input value={draft.buttonText} maxLength={120} onChange={(event) => setDraft({ ...draft, buttonText: event.target.value })} /></label>
+              <label className="field"><span>Колір кнопки</span><input type="color" value={colorInputValue(draft.buttonStyles.backgroundColor, '#6d5dfc')} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, backgroundColor: event.target.value } })} /></label>
+              <label className="field"><span>Колір тексту кнопки</span><input type="color" value={colorInputValue(draft.buttonStyles.color, '#ffffff')} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, color: event.target.value } })} /></label>
+              <label className="field form-builder-grid__wide"><span>Розмір шрифту кнопки, px</span><input type="number" min={8} max={48} step={1} value={fontSizeInputValue(draft.buttonStyles.fontSize)} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, fontSize: `${event.target.value || 16}px` } })} /></label>
+            </div>
+            <div className="button-live-preview form-placement-button-preview"><span>Живий вигляд</span><button type="button" style={{ ...draft.buttonStyles, border: 0, cursor: 'default' }}>{draft.buttonText || 'Передзамовити'}</button></div>
+          </div>
+        </section>}
 
-        <div className="button-live-preview form-placement-button-preview"><span>Вигляд кнопки</span><button type="button" style={{ ...draft.buttonStyles, border: 0, cursor: 'default' }}>{draft.buttonText || 'Передзамовити'}</button></div>
+        {activeTab === 'display' && <section className="form-placement-tab-panel" id="form-placement-panel-display" role="tabpanel" aria-labelledby="form-placement-tab-display">
+          <div className="form-placement-settings-block">
+            <header className="form-placement-section-heading"><span><Icon name="visibility" size={18} /></span><div><h3>Правила показу</h3><p>Визначте, для яких товарів і за якої наявності з’являється кнопка.</p></div></header>
+            <div className="form-builder-grid">
+              <div className="field form-builder-grid__wide"><span>Де показувати кнопку</span><StyledSelect value={draft.targetMode} options={targetModeOptions} onChange={changeTargetMode} ariaLabel="Правило показу кнопки" /></div>
+              <div className="field"><span>Коли показувати</span><StyledSelect value={draft.availabilityMode} options={[{ value: 'all', label: 'Завжди на цільовому товарі' }, { value: 'out_of_stock', label: 'Лише коли немає в наявності' }]} onChange={(availabilityMode) => setDraft({ ...draft, availabilityMode })} ariaLabel="Умова наявності" /></div>
+              <label className="field"><span>Пріоритет</span><input type="number" min={0} max={1000} value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: Number(event.target.value) || 0 })} /></label>
+            </div>
+            {selectionTab && selectionTabCopy && <button className="form-placement-context-link" type="button" onClick={() => setActiveTab(selectionTab)}>
+              <span><Icon name={selectionTabCopy.icon} size={18} /></span><span><strong>{selectionTabCopy.label}</strong><small>{selectionTabCopy.summary}</small></span><Icon name="arrow" size={18} />
+            </button>}
+          </div>
+          <div className="form-placement-settings-block">
+            <header className="form-placement-section-heading"><span><Icon name="schedule" size={18} /></span><div><h3>Розклад показу</h3><p>Залиште поля порожніми, якщо кнопка не має обмежень за часом.</p></div></header>
+            <div className="form-builder-grid">
+              <label className="field"><span>Початок показу</span><input type="datetime-local" value={toLocalDateTime(draft.startsAt)} onChange={(event) => setDraft({ ...draft, startsAt: fromLocalDateTime(event.target.value) })} /></label>
+              <label className="field"><span>Завершення показу</span><input type="datetime-local" value={toLocalDateTime(draft.endsAt)} onChange={(event) => setDraft({ ...draft, endsAt: fromLocalDateTime(event.target.value) })} /></label>
+            </div>
+          </div>
+          <div className="form-placement-settings-block">
+            <header className="form-placement-section-heading"><span><Icon name="productPage" size={18} /></span><div><h3>Розміщення на сторінці</h3><p>Налаштуйте окремі точки вставки для комп’ютерної та мобільної версій.</p></div></header>
+            <div className="form-placement-device-grid">
+              {(['desktop', 'mobile'] as const).map((device) => <article key={device}>
+                <header><Icon name={device === 'desktop' ? 'productPage' : 'phone'} size={17} /><strong>{device === 'desktop' ? 'Комп’ютер' : 'Мобільний'}</strong></header>
+                <label className="field"><span>CSS-селектор контейнера</span><input value={draft.placement[device].selector} onChange={(event) => patchPlacement(device, { selector: event.target.value })} /></label>
+                <div className="field"><span>Позиція</span><StyledSelect value={draft.placement[device].insertPosition} options={positionOptions} onChange={(insertPosition) => patchPlacement(device, { insertPosition })} ariaLabel={`Позиція на ${device}`} /></div>
+              </article>)}
+            </div>
+          </div>
+        </section>}
+
+        {activeTab === 'products' && selectionTab === 'products' && <section className="form-placement-tab-panel form-placement-editor__catalog" id="form-placement-panel-products" role="tabpanel" aria-labelledby="form-placement-tab-products">
+          <header className="form-placement-section-heading form-placement-section-heading--apart"><span><Icon name="productSelection" size={18} /></span><div><h3>Товари і модифікації</h3><p>Ціль «увесь товар» охоплює всі його модифікації. Обрана модифікація працює лише для свого SKU.</p></div><b className="form-placement-target-count">{selectedTargets.length} обрано</b></header>
+          {catalog.data && !catalog.data.integration.configured && <div className="form-message form-message--warning">Підключіть і синхронізуйте Хорошоп, щоб обрати товари для передзамовлення.</div>}
+          {selectedTargets.length > 0 && <div className="form-placement-selected-targets">{selectedTargets.map((target) => <button type="button" key={targetKey(target)} onClick={() => toggleTarget(target)} title="Вилучити"><span>{target.title}</span><small>{target.modificationId ? target.sku : 'Усі модифікації'}</small><Icon name="close" size={13} /></button>)}</div>}
+          <div className="form-placement-catalog-toolbar">
+            <label className="task-search"><Icon name="search" size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Назва або SKU" /></label>
+            <StyledSelect value={catalogCategory} options={categoryOptions} onChange={(value) => { setCatalogCategory(value); setPage(1); }} ariaLabel="Категорія товару" />
+          </div>
+          {catalog.isLoading && <div className="task-list-state"><p>Завантажуємо каталог Хорошоп...</p></div>}
+          {catalog.isError && <div className="form-message form-message--error">{catalog.error instanceof Error ? catalog.error.message : 'Не вдалося завантажити каталог.'}</div>}
+          <div className="form-placement-product-tree" role="tree" aria-label="Товари з модифікаціями">
+            {(catalog.data?.items || []).map((product) => {
+              const parentTarget = productTarget(product);
+              const title = firstTitle(product.titles);
+              const hasModifications = product.modifications.length > 1;
+              const expanded = hasModifications && expandedProducts.has(product.id);
+              const branchId = `form-placement-modifications-${product.id}`;
+              const availability = productAvailability(product);
+              return <article className={`form-placement-product-node${expanded ? ' is-expanded' : ''}`} key={product.id} role="treeitem" aria-level={1} aria-expanded={hasModifications ? expanded : undefined}>
+                <div className="form-placement-product-row form-placement-product-row--parent">
+                  {hasModifications ? <button className="form-placement-product-toggle" type="button" aria-controls={branchId} aria-expanded={expanded} aria-label={`${expanded ? 'Згорнути' : 'Розгорнути'} модифікації ${title}`} onClick={() => toggleProduct(product.id)}>
+                    <Icon name={expanded ? 'arrowDown' : 'arrow'} size={20} />
+                  </button> : <span className="form-placement-product-toggle-spacer" />}
+                  <div className="form-placement-product-main">
+                    <span className="form-placement-product-image">{product.primaryImageUrl ? <img src={product.primaryImageUrl} alt="" loading="lazy" /> : <Icon name="productSelection" size={20} />}</span>
+                    <span className="form-placement-product-copy"><strong title={title}>{title}</strong><small>{product.brand || 'Без бренду'} · <code>{product.sku || '—'}</code></small></span>
+                  </div>
+                  <span className="form-placement-product-price"><small>Ціна</small><strong>{productPrice(product)}</strong></span>
+                  <span className={`form-placement-availability form-placement-availability--${availability.tone}`}><i />{availability.label}</span>
+                  <label className="check-field form-placement-product-select"><input type="checkbox" checked={isTargetSelected(parentTarget)} onChange={() => toggleTarget(parentTarget)} /><span>Увесь товар</span></label>
+                  {hasModifications ? <button className="form-placement-modifications-button" type="button" aria-controls={branchId} aria-expanded={expanded} onClick={() => toggleProduct(product.id)}><Icon name="variants" size={17} /> Модифікації <b>{product.modifications.length}</b></button> : <span className="form-placement-modifications-spacer" />}
+                </div>
+                {hasModifications && expanded && <div className="form-placement-product-branches" id={branchId} role="group">{product.modifications.map((modification, index) => {
+                  const target = modificationTarget(product, modification);
+                  const modificationTitle = firstTitle(modification.titles, title);
+                  const modificationAvailability = availabilityFor(modification.availability, modification.active);
+                  return <div className="form-placement-product-row form-placement-product-row--modification" key={modification.id} role="treeitem" aria-level={2}>
+                    <span className="form-placement-product-joint" aria-hidden="true" />
+                    <div className="form-placement-product-main">
+                      <span className="form-placement-product-image form-placement-product-image--small">{modification.imageUrl || product.primaryImageUrl ? <img src={modification.imageUrl || product.primaryImageUrl || ''} alt="" loading="lazy" /> : <Icon name="productSelection" size={18} />}</span>
+                      <span className="form-placement-product-copy"><strong title={modificationTitle}>{modificationTitle}</strong><small>Модифікація {index + 1} · <code>{modification.sku || '—'}</code></small></span>
+                    </div>
+                    <span className="form-placement-product-price"><small>Ціна</small><strong>{formatPrice(modification.price, modification.currency || product.currency || 'UAH')}</strong></span>
+                    <span className={`form-placement-availability form-placement-availability--${modificationAvailability.tone}`}><i />{modificationAvailability.label}</span>
+                    <label className="check-field form-placement-product-select"><input type="checkbox" checked={isTargetSelected(target)} onChange={() => toggleTarget(target)} aria-label={`Обрати модифікацію ${modificationTitle}`} /><span>Обрати</span></label>
+                  </div>;
+                })}</div>}
+              </article>;
+            })}
+            {!catalog.isLoading && !catalog.data?.items.length && <p>За фільтрами товарів не знайдено.</p>}
+          </div>
+          {(catalog.data?.pageCount || 0) > 1 && <footer className="application-pagination"><span>{catalog.data?.total || 0} товарів</span><div><button className="button button--secondary button--small" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Назад</button><span>{page} / {catalog.data?.pageCount}</span><button className="button button--secondary button--small" type="button" disabled={page >= (catalog.data?.pageCount || 1)} onClick={() => setPage((current) => current + 1)}>Далі</button></div></footer>}
+        </section>}
+
+        {activeTab === 'stickers' && selectionTab === 'stickers' && <section className="form-placement-tab-panel" id="form-placement-panel-stickers" role="tabpanel" aria-labelledby="form-placement-tab-stickers">
+          <div className="form-placement-target-picker">
+            <header className="form-placement-section-heading"><span><Icon name="brands" size={18} /></span><div><h3>Стікер товару</h3><p>Кнопка з’явиться на товарах, яким у Хорошоп призначено обраний стікер.</p></div></header>
+            {catalog.data && !catalog.data.integration.configured && <div className="form-message form-message--warning">Підключіть і синхронізуйте Хорошоп, щоб обрати стікер.</div>}
+            <div className="field"><span>Оберіть стікер</span><StyledSelect value={draft.stickerExternalId || ''} options={stickerOptions} onChange={(stickerExternalId) => setDraft({ ...draft, stickerExternalId: stickerExternalId || null })} ariaLabel="Цільовий стікер" /></div>
+            {selectedSticker && <div className="form-placement-current-target"><span><Icon name="check" size={18} /></span><div><small>Обраний стікер</small><strong>{selectedSticker.title}</strong></div></div>}
+          </div>
+        </section>}
+
+        {activeTab === 'categories' && selectionTab === 'categories' && <section className="form-placement-tab-panel" id="form-placement-panel-categories" role="tabpanel" aria-labelledby="form-placement-tab-categories">
+          <div className="form-placement-target-picker">
+            <header className="form-placement-section-heading"><span><Icon name="catalog" size={18} /></span><div><h3>Категорія товарів</h3><p>Кнопка з’явиться на товарах з обраної категорії каталогу Хорошоп.</p></div></header>
+            {catalog.data && !catalog.data.integration.configured && <div className="form-message form-message--warning">Підключіть і синхронізуйте Хорошоп, щоб обрати категорію.</div>}
+            <div className="field"><span>Оберіть категорію</span><StyledSelect value={draft.categoryExternalId || ''} options={targetCategoryOptions} onChange={(categoryExternalId) => setDraft({ ...draft, categoryExternalId: categoryExternalId || null })} ariaLabel="Цільова категорія" /></div>
+            {selectedCategory && <div className="form-placement-current-target"><span><Icon name="check" size={18} /></span><div><small>Обрана категорія</small><strong>{firstTitle(selectedCategory.titles)}</strong></div></div>}
+          </div>
+        </section>}
 
         <footer className="form-builder-actions">
           <button className="button button--primary" type="button" disabled={busy || selectedForm?.status !== 'published' || !draft.name.trim() || !targetingComplete} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити кнопку'}</button>
@@ -429,60 +571,5 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
         </footer>
       </section>
     </div>
-
-    {draft.targetMode === 'products' && <section className="tool-panel form-placement-editor__catalog">
-      <header className="tool-panel__header"><div><p className="eyebrow">Таргетинг</p><h2>Товари і модифікації</h2></div><span className="form-placement-target-count">{selectedTargets.length} обрано</span></header>
-      <p className="form-placement-editor__hint">Ціль “увесь товар” охоплює всі його модифікації. Обрана модифікація працює лише для свого SKU.</p>
-      {catalog.data && !catalog.data.integration.configured && <div className="form-message form-message--warning">Підключіть і синхронізуйте Хорошоп, щоб обрати товари для передзамовлення.</div>}
-      {selectedTargets.length > 0 && <div className="form-placement-selected-targets">{selectedTargets.map((target) => <button type="button" key={targetKey(target)} onClick={() => toggleTarget(target)} title="Вилучити"><span>{target.title}</span><small>{target.modificationId ? target.sku : 'Усі модифікації'}</small><Icon name="close" size={13} /></button>)}</div>}
-      <div className="form-placement-catalog-toolbar">
-        <label className="task-search"><Icon name="search" size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Назва або SKU" /></label>
-        <StyledSelect value={catalogCategory} options={categoryOptions} onChange={(value) => { setCatalogCategory(value); setPage(1); }} ariaLabel="Категорія товару" />
-      </div>
-      {catalog.isLoading && <div className="task-list-state"><p>Завантажуємо каталог Хорошоп...</p></div>}
-      {catalog.isError && <div className="form-message form-message--error">{catalog.error instanceof Error ? catalog.error.message : 'Не вдалося завантажити каталог.'}</div>}
-      <div className="form-placement-product-tree" role="tree" aria-label="Товари з модифікаціями">
-        {(catalog.data?.items || []).map((product) => {
-          const parentTarget = productTarget(product);
-          const title = firstTitle(product.titles);
-          const hasModifications = product.modifications.length > 1;
-          const expanded = hasModifications && expandedProducts.has(product.id);
-          const branchId = `form-placement-modifications-${product.id}`;
-          const availability = productAvailability(product);
-          return <article className={`form-placement-product-node${expanded ? ' is-expanded' : ''}`} key={product.id} role="treeitem" aria-level={1} aria-expanded={hasModifications ? expanded : undefined}>
-            <div className="form-placement-product-row form-placement-product-row--parent">
-              {hasModifications ? <button className="form-placement-product-toggle" type="button" aria-controls={branchId} aria-expanded={expanded} aria-label={`${expanded ? 'Згорнути' : 'Розгорнути'} модифікації ${title}`} onClick={() => toggleProduct(product.id)}>
-                <Icon name={expanded ? 'arrowDown' : 'arrow'} size={20} />
-              </button> : <span className="form-placement-product-toggle-spacer" />}
-              <div className="form-placement-product-main">
-                <span className="form-placement-product-image">{product.primaryImageUrl ? <img src={product.primaryImageUrl} alt="" loading="lazy" /> : <Icon name="productSelection" size={20} />}</span>
-                <span className="form-placement-product-copy"><strong title={title}>{title}</strong><small>{product.brand || 'Без бренду'} · <code>{product.sku || '—'}</code></small></span>
-              </div>
-              <span className="form-placement-product-price"><small>Ціна</small><strong>{productPrice(product)}</strong></span>
-              <span className={`form-placement-availability form-placement-availability--${availability.tone}`}><i />{availability.label}</span>
-              <label className="check-field form-placement-product-select"><input type="checkbox" checked={isTargetSelected(parentTarget)} onChange={() => toggleTarget(parentTarget)} /><span>Увесь товар</span></label>
-              {hasModifications ? <button className="form-placement-modifications-button" type="button" aria-controls={branchId} aria-expanded={expanded} onClick={() => toggleProduct(product.id)}><Icon name="variants" size={17} /> Модифікації <b>{product.modifications.length}</b></button> : <span className="form-placement-modifications-spacer" />}
-            </div>
-            {hasModifications && expanded && <div className="form-placement-product-branches" id={branchId} role="group">{product.modifications.map((modification, index) => {
-              const target = modificationTarget(product, modification);
-              const modificationTitle = firstTitle(modification.titles, title);
-              const modificationAvailability = availabilityFor(modification.availability, modification.active);
-              return <div className="form-placement-product-row form-placement-product-row--modification" key={modification.id} role="treeitem" aria-level={2}>
-                <span className="form-placement-product-joint" aria-hidden="true" />
-                <div className="form-placement-product-main">
-                  <span className="form-placement-product-image form-placement-product-image--small">{modification.imageUrl || product.primaryImageUrl ? <img src={modification.imageUrl || product.primaryImageUrl || ''} alt="" loading="lazy" /> : <Icon name="productSelection" size={18} />}</span>
-                  <span className="form-placement-product-copy"><strong title={modificationTitle}>{modificationTitle}</strong><small>Модифікація {index + 1} · <code>{modification.sku || '—'}</code></small></span>
-                </div>
-                <span className="form-placement-product-price"><small>Ціна</small><strong>{formatPrice(modification.price, modification.currency || product.currency || 'UAH')}</strong></span>
-                <span className={`form-placement-availability form-placement-availability--${modificationAvailability.tone}`}><i />{modificationAvailability.label}</span>
-                <label className="check-field form-placement-product-select"><input type="checkbox" checked={isTargetSelected(target)} onChange={() => toggleTarget(target)} aria-label={`Обрати модифікацію ${modificationTitle}`} /><span>Обрати</span></label>
-              </div>;
-            })}</div>}
-          </article>;
-        })}
-        {!catalog.isLoading && !catalog.data?.items.length && <p>За фільтрами товарів не знайдено.</p>}
-      </div>
-      {(catalog.data?.pageCount || 0) > 1 && <footer className="application-pagination"><span>{catalog.data?.total || 0} товарів</span><div><button className="button button--secondary button--small" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Назад</button><span>{page} / {catalog.data?.pageCount}</span><button className="button button--secondary button--small" type="button" disabled={page >= (catalog.data?.pageCount || 1)} onClick={() => setPage((current) => current + 1)}>Далі</button></div></footer>}
-    </section>}
   </div>;
 }
