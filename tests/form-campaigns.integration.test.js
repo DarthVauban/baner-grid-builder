@@ -179,6 +179,10 @@ test('preorder placement targets an exact Horoshop modification and creates an a
   assert.deepEqual(configuredForm.fields.filter((field) => field.required).map((field) => field.key), [
     'contact_name', 'quantity'
   ]);
+  await admin.post('/api/form-campaigns')
+    .send(campaignInput(createdForm.id, [{ productId, modificationId: blueModificationId }]))
+    .expect(422)
+    .expect((response) => assert.equal(response.body.error.code, 'FORM_CAMPAIGN_FORM_NOT_PUBLISHED'));
   await admin.patch(`/api/forms/${createdForm.id}/publish`).expect(200);
 
   const catalog = (await admin.get('/api/form-campaigns/catalog').expect(200)).body.data;
@@ -400,6 +404,20 @@ test('preorder placement targets an exact Horoshop modification and creates an a
     .send(campaignInput(workflowForm.id, [{ productId, modificationId: null }]))
     .expect(422)
     .expect((response) => assert.equal(response.body.error.code, 'FORM_CAMPAIGN_SIMPLE_ONLY'));
+
+  const unpublishedForm = (await admin.post('/api/forms').send({
+    name: 'Unpublished simple form',
+    title: 'Unpublished simple form',
+    description: '',
+    buttonText: 'Send',
+    successMessage: 'Done',
+    settings: {},
+    styles: {}
+  }).expect(201)).body.data;
+  await admin.put(`/api/form-campaigns/${campaign.id}`)
+    .send(campaignInput(unpublishedForm.id, [{ productId, modificationId: null }]))
+    .expect(422)
+    .expect((response) => assert.equal(response.body.error.code, 'FORM_CAMPAIGN_FORM_NOT_PUBLISHED'));
 
   await admin.patch(`/api/form-campaigns/${campaign.id}/status`).send({ status: 'paused' }).expect(200);
   const paused = await request(app)

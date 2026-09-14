@@ -106,7 +106,7 @@ function emptyCampaign(form: ApplicationForm): ApplicationFormCampaignInput {
     buttonText: 'Передзамовити',
     buttonStyles: {
       backgroundColor: '#6d5dfc', color: '#ffffff', borderRadius: '12px',
-      padding: '12px 18px', fontWeight: '700', fontSize: 'inherit'
+      padding: '12px 18px', fontWeight: '700', fontSize: '16px'
     },
     placement: {
       desktop: { selector: '.product-order__row', insertPosition: 'end' },
@@ -162,12 +162,18 @@ function colorInputValue(value: string | undefined, fallback: string) {
   return /^#[0-9a-f]{6}$/iu.test(value || '') ? value as string : fallback;
 }
 
+function fontSizeInputValue(value: string | undefined) {
+  const match = String(value || '').match(/^(\d+(?:\.\d+)?)px$/u);
+  return match ? match[1] : '16';
+}
+
 export function ApplicationFormPlacementEditor({ forms }: Props) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const confirm = useConfirmDialog();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<ApplicationFormCampaignInput>(() => emptyCampaign(forms[0]));
+  const publishedForms = forms.filter((candidate) => candidate.status === 'published');
+  const [draft, setDraft] = useState<ApplicationFormCampaignInput>(() => emptyCampaign(publishedForms[0]));
   const [selectedTargets, setSelectedTargets] = useState<TargetDraft[]>([]);
   const [search, setSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState('');
@@ -188,7 +194,7 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
     () => campaigns.data?.find((campaign) => campaign.id === selectedId) || null,
     [campaigns.data, selectedId]
   );
-  const selectedForm = forms.find((candidate) => candidate.id === draft.formId) || forms[0];
+  const selectedForm = forms.find((candidate) => candidate.id === draft.formId) || null;
 
   const createCampaign = useMutation({ mutationFn: api.formCampaigns.create });
   const updateCampaign = useMutation({ mutationFn: ({ id, input }: { id: string; input: ApplicationFormCampaignInput }) => api.formCampaigns.update(id, input) });
@@ -198,13 +204,14 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
 
   function openCampaign(campaign: ApplicationFormCampaign) {
     setSelectedId(campaign.id);
-    setDraft(campaignInput(campaign));
+    const input = campaignInput(campaign);
+    setDraft(publishedForms.some((candidate) => candidate.id === input.formId) ? input : { ...input, formId: '' });
     setSelectedTargets(campaign.targets.map(fromSavedTarget));
   }
 
   function createNew() {
     setSelectedId(null);
-    setDraft(emptyCampaign(forms[0]));
+    setDraft(emptyCampaign(publishedForms[0]));
     setSelectedTargets([]);
   }
 
@@ -335,10 +342,10 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
     { value: 'sticker' as const, label: 'На товарах зі стікером' },
     { value: 'category' as const, label: 'У певній категорії' }
   ];
-  const formOptions = forms.map((candidate) => ({
-    value: candidate.id,
-    label: `${candidate.name}${candidate.status === 'published' ? '' : ' · не опублікована'}`
-  }));
+  const formOptions = [
+    { value: '', label: 'Оберіть опубліковану форму' },
+    ...publishedForms.map((candidate) => ({ value: candidate.id, label: candidate.name }))
+  ];
   const stickerOptions = [
     { value: '', label: 'Оберіть стікер' },
     ...(catalog.data?.stickers || []).map((sticker) => ({ value: sticker.externalId, label: sticker.title }))
@@ -387,7 +394,7 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
 
       <section className="tool-panel form-placement-editor__settings">
         <header className="tool-panel__header"><div><p className="eyebrow">Налаштування</p><h2>{selectedCampaign ? selectedCampaign.name : 'Нова кнопка'}</h2></div>{selectedCampaign && <span className={`status-pill status-pill--${selectedCampaign.status}`}>{statusLabel(selectedCampaign.status)}</span>}</header>
-        {selectedForm.status !== 'published' && <div className="form-message form-message--warning">Для активації спочатку опублікуйте обрану форму.</div>}
+        {selectedForm?.status !== 'published' && <div className="form-message form-message--warning">Оберіть опубліковану форму, яку має викликати кнопка.</div>}
         <div className="form-builder-grid">
           <div className="field form-builder-grid__wide"><span>Яку форму відкривати</span><StyledSelect value={draft.formId} options={formOptions} onChange={(formId) => setDraft({ ...draft, formId })} ariaLabel="Форма для кнопки" /></div>
           <label className="field form-builder-grid__wide"><span>Назва кнопки в робочому просторі</span><input value={draft.name} maxLength={160} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
@@ -399,6 +406,7 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
           <div className="field"><span>Коли показувати</span><StyledSelect value={draft.availabilityMode} options={[{ value: 'all', label: 'Завжди на цільовому товарі' }, { value: 'out_of_stock', label: 'Лише коли немає в наявності' }]} onChange={(availabilityMode) => setDraft({ ...draft, availabilityMode })} ariaLabel="Умова наявності" /></div>
           <label className="field"><span>Колір кнопки</span><input type="color" value={colorInputValue(draft.buttonStyles.backgroundColor, '#6d5dfc')} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, backgroundColor: event.target.value } })} /></label>
           <label className="field"><span>Колір тексту кнопки</span><input type="color" value={colorInputValue(draft.buttonStyles.color, '#ffffff')} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, color: event.target.value } })} /></label>
+          <label className="field"><span>Розмір шрифту кнопки, px</span><input type="number" min={8} max={48} step={1} value={fontSizeInputValue(draft.buttonStyles.fontSize)} onChange={(event) => setDraft({ ...draft, buttonStyles: { ...draft.buttonStyles, fontSize: `${event.target.value || 16}px` } })} /></label>
           <label className="field"><span>Початок показу</span><input type="datetime-local" value={toLocalDateTime(draft.startsAt)} onChange={(event) => setDraft({ ...draft, startsAt: fromLocalDateTime(event.target.value) })} /></label>
           <label className="field"><span>Завершення показу</span><input type="datetime-local" value={toLocalDateTime(draft.endsAt)} onChange={(event) => setDraft({ ...draft, endsAt: fromLocalDateTime(event.target.value) })} /></label>
         </div>
@@ -414,8 +422,8 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
         <div className="button-live-preview form-placement-button-preview"><span>Вигляд кнопки</span><button type="button" style={{ ...draft.buttonStyles, border: 0, cursor: 'default' }}>{draft.buttonText || 'Передзамовити'}</button></div>
 
         <footer className="form-builder-actions">
-          <button className="button button--primary" type="button" disabled={busy || !draft.name.trim() || !targetingComplete} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити кнопку'}</button>
-          {selectedCampaign?.status !== 'active' && selectedCampaign && <button className="button button--secondary" type="button" disabled={busy || selectedForm.status !== 'published'} onClick={() => void setStatus('active')}>Активувати</button>}
+          <button className="button button--primary" type="button" disabled={busy || selectedForm?.status !== 'published' || !draft.name.trim() || !targetingComplete} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити кнопку'}</button>
+          {selectedCampaign?.status !== 'active' && selectedCampaign && <button className="button button--secondary" type="button" disabled={busy || selectedForm?.status !== 'published'} onClick={() => void setStatus('active')}>Активувати</button>}
           {selectedCampaign?.status === 'active' && <button className="button button--secondary" type="button" disabled={busy} onClick={() => void setStatus('paused')}>Призупинити</button>}
           {selectedCampaign && <button className="button button--danger" type="button" disabled={busy} onClick={() => void archive()}>Архівувати</button>}
         </footer>

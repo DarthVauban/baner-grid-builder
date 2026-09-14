@@ -18,7 +18,7 @@ const defaultButtonStyles = {
   borderRadius: '12px',
   padding: '12px 18px',
   fontWeight: '700',
-  fontSize: 'inherit'
+  fontSize: '16px'
 };
 
 function object(value) {
@@ -299,6 +299,9 @@ async function validateForm(formId, db) {
   if (form.form_type !== 'simple') {
     throw new AppError(422, 'FORM_CAMPAIGN_SIMPLE_ONLY', 'Розміщення на товарах доступне лише для звичайних форм.');
   }
+  if (form.status !== 'published') {
+    throw new AppError(422, 'FORM_CAMPAIGN_FORM_NOT_PUBLISHED', 'До кнопки можна прив’язати лише опубліковану форму.');
+  }
   return form;
 }
 
@@ -350,10 +353,7 @@ export async function updateFormCampaign(id, input, actorUserId) {
       [id]
     );
     if (!current.rows[0]) throw new AppError(404, 'FORM_CAMPAIGN_NOT_FOUND', 'Розміщення не знайдено.');
-    const form = await validateForm(input.formId, client);
-    if (current.rows[0].status === 'active' && form.status !== 'published') {
-      throw new AppError(422, 'FORM_CAMPAIGN_FORM_NOT_PUBLISHED', 'Активне розміщення можна прив’язати лише до опублікованої форми.');
-    }
+    await validateForm(input.formId, client);
     const connection = await currentConnection(client);
     if (!connection || !['connected', 'syncing'].includes(connection.status)) {
       throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед оновленням розміщення.');

@@ -29,6 +29,14 @@ const form: ApplicationForm = {
   updatedAt: timestamp
 };
 
+const draftForm: ApplicationForm = {
+  ...form,
+  id: 'form-draft',
+  publicId: 'draft-form',
+  name: 'Неопублікована форма',
+  status: 'draft'
+};
+
 const catalog: HoroshopCatalogFeed = {
   integration: {
     configured: true,
@@ -170,7 +178,7 @@ function renderEditor() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <ConfirmDialogProvider>
-          <ApplicationFormPlacementEditor forms={[form]} />
+          <ApplicationFormPlacementEditor forms={[form, draftForm]} />
         </ConfirmDialogProvider>
       </ToastProvider>
     </QueryClientProvider>
@@ -194,6 +202,15 @@ describe('ApplicationFormPlacementEditor product tree', () => {
     fireEvent.change(color, { target: { value: '#172033' } });
 
     expect(view.container.querySelector('.form-placement-button-preview button')).toHaveStyle({ color: '#172033' });
+
+    const fontSize = screen.getByLabelText('Розмір шрифту кнопки, px');
+    expect(fontSize).toHaveValue(16);
+    fireEvent.change(fontSize, { target: { value: '22' } });
+    expect(view.container.querySelector('.form-placement-button-preview button')).toHaveStyle({ fontSize: '22px' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Форма для кнопки' }));
+    expect(screen.getByRole('option', { name: 'Передзамовлення' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Неопублікована форма' })).not.toBeInTheDocument();
   });
 
   it('shows the full tree only for multi-modification products', async () => {
