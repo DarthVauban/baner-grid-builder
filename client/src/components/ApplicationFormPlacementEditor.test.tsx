@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmDialogProvider } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
-import type { ApplicationForm } from '../types/application';
+import type { ApplicationForm, ApplicationFormCampaign } from '../types/application';
 import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
 import { ApplicationFormPlacementEditor } from './ApplicationFormPlacementEditor';
 
@@ -172,6 +172,48 @@ const catalog: HoroshopCatalogFeed = {
   pageCount: 1
 };
 
+const campaignDraft: ApplicationFormCampaign = {
+  id: 'campaign-1',
+  publicId: 'campaign-public-1',
+  formId: form.id,
+  formPublicId: form.publicId,
+  formName: form.name,
+  connectionId: 'connection-1',
+  connectionGeneration: 'generation-1',
+  name: `Кнопка · ${form.name}`,
+  status: 'draft',
+  priority: 100,
+  buttonText: 'Передзамовити',
+  buttonStyles: {
+    backgroundColor: '#6d5dfc', color: '#ffffff', borderRadius: '12px',
+    padding: '12px 18px', fontWeight: '700', fontSize: '16px'
+  },
+  placement: {
+    desktop: { selector: '.product-order__row', insertPosition: 'end' },
+    mobile: { selector: '.product-order__row', insertPosition: 'end' }
+  },
+  availabilityMode: 'all',
+  targetMode: 'products',
+  categoryExternalId: null,
+  stickerExternalId: null,
+  startsAt: null,
+  endsAt: null,
+  publishedAt: null,
+  archivedAt: null,
+  targets: [{
+    id: 'target-1',
+    productId: 'product-without-modifications',
+    modificationId: null,
+    productExternalId: 'cable',
+    modificationExternalId: null,
+    sku: 'CABLE',
+    title: 'Кабель без модифікацій',
+    targetKey: 'product-without-modifications:*'
+  }],
+  createdAt: timestamp,
+  updatedAt: timestamp
+};
+
 function renderEditor() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -194,6 +236,28 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('ApplicationFormPlacementEditor product tree', () => {
+  it('activates a newly created button immediately', async () => {
+    const create = vi.spyOn(api.formCampaigns, 'create').mockResolvedValue(campaignDraft);
+    const activate = vi.spyOn(api.formCampaigns, 'setStatus').mockResolvedValue({
+      ...campaignDraft,
+      status: 'active',
+      publishedAt: timestamp
+    });
+    renderEditor();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Вибір товарів/ }));
+    const product = (await screen.findByText('Кабель без модифікацій')).closest('article');
+    expect(product).not.toBeNull();
+    fireEvent.click(within(product as HTMLElement).getByRole('checkbox', { name: 'Увесь товар' }));
+    const submit = screen.getByRole('button', { name: 'Створити й активувати' });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(activate).toHaveBeenCalledWith(campaignDraft.id, 'active'));
+    expect(await screen.findByText('Кнопку створено й активовано.')).toBeInTheDocument();
+  });
+
   it('lets the editor configure the button text color', async () => {
     const view = renderEditor();
 

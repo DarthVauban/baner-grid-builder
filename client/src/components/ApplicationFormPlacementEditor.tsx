@@ -299,16 +299,29 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
         ? selectedTargets.map((target) => ({ productId: target.productId, modificationId: target.modificationId }))
         : []
     };
+    let createdDraft: ApplicationFormCampaign | null = null;
     try {
-      const saved = selectedId
-        ? await updateCampaign.mutateAsync({ id: selectedId, input })
-        : await createCampaign.mutateAsync(input);
+      let saved: ApplicationFormCampaign;
+      if (selectedId) {
+        saved = await updateCampaign.mutateAsync({ id: selectedId, input });
+      } else {
+        createdDraft = await createCampaign.mutateAsync(input);
+        saved = await updateStatus.mutateAsync({ id: createdDraft.id, status: 'active' });
+      }
       setSelectedId(saved.id);
       setDraft(campaignInput(saved));
       setSelectedTargets(saved.targets.map(fromSavedTarget));
-      showToast(selectedId ? 'Кнопку оновлено.' : 'Кнопку створено.');
+      showToast(selectedId ? 'Кнопку оновлено.' : 'Кнопку створено й активовано.');
       await refresh();
     } catch (error) {
+      if (createdDraft) {
+        setSelectedId(createdDraft.id);
+        setDraft(campaignInput(createdDraft));
+        setSelectedTargets(createdDraft.targets.map(fromSavedTarget));
+        showToast('Кнопку збережено як чернетку, але не вдалося її активувати. Спробуйте ще раз.', 'error');
+        await refresh();
+        return;
+      }
       showToast(error instanceof Error ? error.message : 'Не вдалося зберегти кнопку.', 'error');
     }
   }
@@ -564,7 +577,7 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
         </section>}
 
         <footer className="form-builder-actions">
-          <button className="button button--primary" type="button" disabled={busy || selectedForm?.status !== 'published' || !draft.name.trim() || !targetingComplete} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити кнопку'}</button>
+          <button className="button button--primary" type="button" disabled={busy || selectedForm?.status !== 'published' || !draft.name.trim() || !targetingComplete} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити й активувати'}</button>
           {selectedCampaign?.status !== 'active' && selectedCampaign && <button className="button button--secondary" type="button" disabled={busy || selectedForm?.status !== 'published'} onClick={() => void setStatus('active')}>Активувати</button>}
           {selectedCampaign?.status === 'active' && <button className="button button--secondary" type="button" disabled={busy} onClick={() => void setStatus('paused')}>Призупинити</button>}
           {selectedCampaign && <button className="button button--danger" type="button" disabled={busy} onClick={() => void archive()}>Архівувати</button>}
