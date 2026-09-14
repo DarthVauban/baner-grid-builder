@@ -130,8 +130,10 @@ function loaderScript() {
   var previewPayload = null;
   try { previewPayload = loaderScript && loaderScript.dataset.previewPayload ? JSON.parse(loaderScript.dataset.previewPayload) : null; }
   catch (error) { previewPayload = null; }
-  var previewMode = Boolean(previewPayload);
+  var previewChannel = loaderScript && loaderScript.dataset.previewChannel || "";
+  var previewMode = Boolean(previewPayload || previewChannel);
   var previewState = loaderScript && loaderScript.dataset.previewState === "success" ? "success" : "form";
+  var previewBackdrop = null;
   var apiBase = (function(){
     try { return new URL("/api/public/application-forms", loaderScript && loaderScript.src ? loaderScript.src : window.location.href).toString().replace(/\\/$/, ""); }
     catch (error) { return "/api/public/application-forms"; }
@@ -224,11 +226,12 @@ function loaderScript() {
     style.textContent = ".mtf-backdrop{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.46)}.mtf-modal{width:min(520px,100%);max-height:min(760px,100%);overflow:auto;border-radius:var(--mtf-radius,18px);background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.24);font-family:Arial,sans-serif;color:#172033}.mtf-head{display:flex;gap:14px;justify-content:space-between;padding:22px 22px 12px}.mtf-head h2{margin:0;font-size:24px;line-height:1.2}.mtf-head p{margin:8px 0 0;color:#667085;line-height:1.45}.mtf-close{width:38px;height:38px;border:0;border-radius:10px;background:#f2f4f7;font-size:24px}.mtf-form{display:grid;gap:14px;padding:0 22px 22px}.mtf-field{display:grid;gap:7px}.mtf-field span{font-size:14px;font-weight:700}.mtf-field input:not([type=checkbox]):not([type=radio]),.mtf-field select,.mtf-field textarea{width:100%;border:1px solid #d8dee8;border-radius:var(--mtf-control-radius,12px);padding:12px 13px;font:inherit}.mtf-choice-list{display:grid;justify-items:start;gap:8px}.mtf-choice{width:fit-content;max-width:100%;display:flex;align-items:center;gap:8px;color:var(--mtf-choice-color,#344054);font-size:14px;cursor:pointer}.mtf-choice__text{min-width:0;overflow-wrap:anywhere}.mtf-choice input{appearance:none;width:18px;height:18px;flex:0 0 18px;border:1.5px solid var(--mtf-choice-border,#cfd6e3);background:var(--mtf-choice-bg,#fff);cursor:pointer;transition:border 140ms ease,background 140ms ease,box-shadow 140ms ease}.mtf-choice input[type=checkbox]{border-radius:var(--mtf-checkbox-radius,5px)}.mtf-choice input[type=radio]{border-radius:999px}.mtf-choice input[type=checkbox]:checked{border-color:var(--mtf-choice-accent,#6d5dfc);background-color:var(--mtf-choice-accent,#6d5dfc);background-image:url('data:image/svg+xml,%3Csvg width=%2218%22 height=%2218%22 viewBox=%220 0 18 18%22 fill=%22none%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cpath d=%22M4.5 9.2L7.3 12L13.8 5.8%22 stroke=%22white%22 stroke-width=%222.1%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E');background-position:center;background-repeat:no-repeat;background-size:16px}.mtf-choice input[type=radio]:checked{border-color:var(--mtf-choice-accent,#6d5dfc);background-color:var(--mtf-choice-accent,#6d5dfc);box-shadow:inset 0 0 0 4px var(--mtf-choice-bg,#fff)}.mtf-choice input:focus-visible{outline:0;box-shadow:0 0 0 4px rgba(109,93,252,.16)}.mtf-field small{color:#667085;font-size:12px}.mtf-actions{display:grid;gap:10px;align-items:center}.mtf-submit{width:100%;min-height:44px;border:0;border-radius:var(--mtf-control-radius,12px);padding:10px 18px;color:var(--mtf-button-color,#fff);background:var(--mtf-button-bg,#6d5dfc);font-weight:800;cursor:pointer}.mtf-submit:disabled{cursor:not-allowed;opacity:.7}.mtf-error{border:1px solid #ffd7df;border-radius:12px;padding:10px;color:#9f2940;background:#fff0f3}.mtf-success{display:grid;justify-items:center;gap:16px;padding:28px 22px 24px;text-align:center}.mtf-success strong{max-width:420px;font-size:21px;line-height:1.28;text-wrap:balance}.mtf-success small{color:#667085}.mtf-number{width:min(100%,292px);display:grid;justify-items:center;gap:7px;border:1px solid var(--mtf-number-border,#d8d4ff);border-radius:var(--mtf-number-radius,16px);padding:16px 20px;color:var(--mtf-number-color,#172033);background:var(--mtf-number-bg,#f6f4ff)}.mtf-number span{color:var(--mtf-number-label-color,#667085);font-size:12px;font-weight:800;text-transform:uppercase}.mtf-number b{font-size:34px;letter-spacing:.06em;color:var(--mtf-number-color,var(--mtf-button-bg,#6d5dfc))}@media(max-width:560px){.mtf-backdrop{align-items:flex-end;padding:0}.mtf-modal{max-height:92vh;border-radius:18px 18px 0 0}}";
     document.head.appendChild(style);
   }
-  function close(backdrop){ backdrop.remove(); document.documentElement.style.overflow = ""; }
+  function close(backdrop){ backdrop.remove(); if (previewBackdrop === backdrop) previewBackdrop = null; document.documentElement.style.overflow = ""; }
   async function open(options){
     injectStyles();
     var formId = options && options.formId;
     if (!formId) return;
+    if (previewMode && previewBackdrop) close(previewBackdrop);
     var backdrop = el("div", "mtf-backdrop");
     var modal = el("section", "mtf-modal");
     modal.setAttribute("role", "dialog");
@@ -236,6 +239,7 @@ function loaderScript() {
     modal.innerHTML = "<div class='mtf-success'><span>Завантажуємо форму...</span></div>";
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
+    if (previewMode) previewBackdrop = backdrop;
     document.documentElement.style.overflow = "hidden";
     backdrop.addEventListener("mousedown", function(event){ if (event.target === backdrop) close(backdrop); });
     try {
@@ -327,7 +331,15 @@ function loaderScript() {
     }
   }
   window.MTApplicationForms = { open: open };
-  if (previewMode) open({ formId: "preview", context: { sourceUrl: "https://shop.example.com/product/preview", pageTitle: "Товар для передзамовлення" } });
+  if (previewChannel) window.addEventListener("message", function(event){
+    var data = event && event.data;
+    if (event.source !== window.parent || !data || data.type !== "mt-application-form-preview-render" || data.channel !== previewChannel) return;
+    if (!data.payload || typeof data.payload !== "object") return;
+    previewPayload = data.payload;
+    previewState = data.previewState === "success" ? "success" : "form";
+    open({ formId: "preview", context: { sourceUrl: "https://shop.example.com/product/preview", pageTitle: "Товар для передзамовлення" } });
+  });
+  if (previewPayload) open({ formId: "preview", context: { sourceUrl: "https://shop.example.com/product/preview", pageTitle: "Товар для передзамовлення" } });
 })();`;
 }
 

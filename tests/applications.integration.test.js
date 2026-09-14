@@ -437,6 +437,7 @@ test('form builder and applications list have separate access and process public
   assert.match(loader.text, /text-wrap:balance/);
   assert.match(loader.text, /previewPayload/);
   assert.match(loader.text, /previewState/);
+  assert.match(loader.text, /mt-application-form-preview-render/);
 
   const previewDom = new JSDOM('<!doctype html><html><head></head><body><script data-mt-application-loader="true"></script></body></html>', {
     runScripts: 'outside-only',
@@ -459,6 +460,35 @@ test('form builder and applications list have separate access and process public
   assert.equal(previewDom.window.document.querySelector('.mtf-success strong')?.textContent, 'Preview request received.');
   assert.equal(previewDom.window.document.querySelector('.mtf-number b')?.textContent, '00007');
   previewDom.window.close();
+
+  const livePreviewDom = new JSDOM('<!doctype html><html><head></head><body><script data-mt-application-loader="true" data-preview-channel="form-editor"></script></body></html>', {
+    runScripts: 'outside-only',
+    url: 'https://workspace.test/tools/forms'
+  });
+  let livePreviewFetchCount = 0;
+  livePreviewDom.window.fetch = async () => {
+    livePreviewFetchCount += 1;
+    throw new Error('Live preview must not use the network');
+  };
+  livePreviewDom.window.eval(loader.text);
+  const renderLivePreview = (nextPayload, previewState = 'form') => livePreviewDom.window.dispatchEvent(new livePreviewDom.window.MessageEvent('message', {
+    source: livePreviewDom.window,
+    data: {
+      type: 'mt-application-form-preview-render',
+      channel: 'form-editor',
+      payload: nextPayload,
+      previewState
+    }
+  }));
+  renderLivePreview(formPreview.body.data);
+  assert.equal(livePreviewFetchCount, 0);
+  assert.equal(livePreviewDom.window.document.querySelector('.mtf-head h2')?.textContent, 'Unsaved storefront preview');
+  renderLivePreview({ ...formPreview.body.data, title: 'Updated without frame reload' });
+  assert.equal(livePreviewDom.window.document.querySelectorAll('.mtf-backdrop').length, 1);
+  assert.equal(livePreviewDom.window.document.querySelector('.mtf-head h2')?.textContent, 'Updated without frame reload');
+  renderLivePreview(formPreview.body.data, 'success');
+  assert.equal(livePreviewDom.window.document.querySelector('.mtf-success strong')?.textContent, 'Preview request received.');
+  livePreviewDom.window.close();
 
   const preflight = await request(app)
     .options(`/api/public/application-forms/${form.body.data.publicId}/applications`)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../lib/api';
 import type { ApplicationFormInput, ApplicationFormPreviewPayload } from '../types/application';
@@ -6,13 +6,11 @@ import { Icon } from './Icon';
 
 type PreviewViewport = 'desktop' | 'mobile';
 type PreviewState = 'form' | 'success';
+const previewRenderMessageType = 'mt-application-form-preview-render';
 
-function previewDocument(payload: ApplicationFormPreviewPayload, viewport: PreviewViewport, previewState: PreviewState) {
-  const serializedPayload = JSON.stringify(payload)
-    .replaceAll('&', '&amp;')
-    .replaceAll('"', '&quot;')
-    .replaceAll('<', '&#60;');
+function previewDocument(channel: string) {
   const origin = window.location.origin.replaceAll('"', '&quot;');
+  const safeChannel = channel.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&#60;');
   return `<!doctype html>
 <html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <base href="${origin}/"><style>
@@ -20,11 +18,13 @@ function previewDocument(payload: ApplicationFormPreviewPayload, viewport: Previ
 .store{min-height:100vh;background:#fff}.topline{height:26px;background:#121212}.header{display:flex;align-items:center;gap:24px;height:82px;padding:0 6%;border-bottom:1px solid #e7e9ee}.catalog{width:112px;height:38px;border-radius:11px;background:#ffe000}.search{width:min(290px,28vw);height:34px;border:1px solid #d8dde7;border-radius:999px}.logo{width:132px;height:29px;margin:auto;border-radius:8px;background:#171717}.icons{display:flex;gap:10px}.icons i{width:28px;height:28px;border:2px solid #30333a;border-radius:50%}.breadcrumbs{display:flex;gap:8px;padding:30px 9% 0}.breadcrumbs i{width:58px;height:7px;border-radius:6px;background:#e0e4eb}.product{display:grid;grid-template-columns:minmax(240px,1fr) minmax(260px,.82fr);gap:7%;padding:34px 9%}.photo{aspect-ratio:1.08;border-radius:22px;background:linear-gradient(140deg,#eeecff,#dfe8f7)}.copy{display:grid;align-content:start;gap:15px;padding-top:5%}.copy b,.copy span{display:block;border-radius:8px;background:#d5dae4}.copy b{width:90%;height:24px}.copy span{width:67%;height:10px}.copy span.short{width:42%}.price{width:128px;height:31px;margin-top:11px;border-radius:8px;background:#ef2636}.buy{width:100%;height:48px;margin-top:8px;border-radius:12px;background:#ffe000}
 @media(max-width:600px){.topline{height:20px}.header{height:60px;padding:0 18px}.catalog{width:40px}.search{display:none}.logo{width:88px;height:22px}.icons i:nth-child(n+3){display:none}.breadcrumbs{padding:20px 18px 0}.product{grid-template-columns:1fr;gap:24px;padding:24px 18px}.photo{aspect-ratio:1.25}.copy{padding:0}.copy b{height:19px}.buy{height:44px}}
 </style></head><body><div class="store" aria-hidden="true"><div class="topline"></div><div class="header"><div class="catalog"></div><div class="search"></div><div class="logo"></div><div class="icons"><i></i><i></i><i></i><i></i></div></div><div class="breadcrumbs"><i></i><i></i><i></i></div><div class="product"><div class="photo"></div><div class="copy"><b></b><span></span><span class="short"></span><div class="price"></div><div class="buy"></div></div></div></div>
-<script src="/api/public/application-forms/loader.js" data-mt-application-loader="true" data-preview-payload="${serializedPayload}" data-preview-device="${viewport}" data-preview-state="${previewState}"></script>
+<script src="/api/public/application-forms/loader.js" data-mt-application-loader="true" data-preview-channel="${safeChannel}"></script>
 </body></html>`;
 }
 
 export function ApplicationFormLivePreview({ input }: { input: ApplicationFormInput }) {
+  const reactId = useId();
+  const channel = useMemo(() => `application-form-preview-${reactId.replace(/[^a-z0-9_-]/giu, '')}`, [reactId]);
   const [viewport, setViewport] = useState<PreviewViewport>('desktop');
   const [previewState, setPreviewState] = useState<PreviewState>('form');
   const [fullscreen, setFullscreen] = useState(false);
@@ -34,6 +34,18 @@ export function ApplicationFormLivePreview({ input }: { input: ApplicationFormIn
   const previewRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fullscreenButtonRef = useRef<HTMLButtonElement>(null);
+  const documentSource = useMemo(() => previewDocument(channel), [channel]);
+
+  const renderPreview = useCallback(() => {
+    if (!payload) return;
+    iframeRef.current?.contentWindow?.postMessage({
+      type: previewRenderMessageType,
+      channel,
+      payload,
+      viewport,
+      previewState
+    }, window.location.origin);
+  }, [channel, payload, previewState, viewport]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -74,10 +86,9 @@ export function ApplicationFormLivePreview({ input }: { input: ApplicationFormIn
     };
   }, [fullscreen]);
 
-  const documentSource = useMemo(
-    () => payload ? previewDocument(payload, viewport, previewState) : '',
-    [payload, previewState, viewport]
-  );
+  useEffect(() => {
+    renderPreview();
+  }, [renderPreview]);
 
   useEffect(() => {
     if (!fullscreen) return undefined;
@@ -95,7 +106,7 @@ export function ApplicationFormLivePreview({ input }: { input: ApplicationFormIn
       iframe?.removeEventListener('load', bindFrame);
       frameDocument?.removeEventListener('keydown', closeOnEscape);
     };
-  }, [documentSource, fullscreen]);
+  }, [fullscreen]);
 
   const preview = <div
     ref={previewRef}
@@ -122,7 +133,7 @@ export function ApplicationFormLivePreview({ input }: { input: ApplicationFormIn
       </div>
     </header>
     <div className={`form-runtime-preview is-${viewport}`}>
-      {payload && <iframe ref={iframeRef} title="Живий перегляд форми" srcDoc={documentSource} sandbox="allow-scripts allow-same-origin" />}
+      <iframe ref={iframeRef} title="Живий перегляд форми" srcDoc={documentSource} sandbox="allow-scripts allow-same-origin" onLoad={renderPreview} />
       {!payload && !error && <div className="form-runtime-preview__state">Готуємо точне прев’ю…</div>}
       {error && <div className="form-runtime-preview__state is-error"><Icon name="deadline" size={22} /><span>{error}</span></div>}
       {loading && payload && <span className="form-runtime-preview__refresh">Оновлюємо…</span>}

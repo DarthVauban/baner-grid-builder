@@ -65,16 +65,58 @@ describe('ApplicationFormLivePreview', () => {
 
     await waitFor(() => expect(preview).toHaveBeenCalledWith(input, expect.any(AbortSignal)));
     const iframe = await screen.findByTitle('Живий перегляд форми');
+    const postMessage = vi.spyOn((iframe as HTMLIFrameElement).contentWindow!, 'postMessage');
+    fireEvent.load(iframe);
     expect(iframe.getAttribute('srcdoc')).toContain('/api/public/application-forms/loader.js');
-    expect(iframe.getAttribute('srcdoc')).toContain('data-preview-payload=');
-    expect(iframe.getAttribute('srcdoc')).toContain('data-preview-state="form"');
+    expect(iframe.getAttribute('srcdoc')).toContain('data-preview-channel=');
+    await waitFor(() => expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'mt-application-form-preview-render',
+      payload,
+      viewport: 'desktop',
+      previewState: 'form'
+    }), window.location.origin));
+    const stableDocument = iframe.getAttribute('srcdoc');
 
     fireEvent.click(screen.getByRole('button', { name: 'Телефон' }));
     expect(iframe.parentElement).toHaveClass('is-mobile');
-    expect(iframe.getAttribute('srcdoc')).toContain('data-preview-device="mobile"');
+    await waitFor(() => expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ viewport: 'mobile' }), window.location.origin));
+    expect(iframe.getAttribute('srcdoc')).toBe(stableDocument);
 
     fireEvent.click(screen.getByRole('button', { name: 'Після надсилання' }));
     expect(screen.getByRole('button', { name: 'Після надсилання' })).toHaveAttribute('aria-pressed', 'true');
-    expect(iframe.getAttribute('srcdoc')).toContain('data-preview-state="success"');
+    await waitFor(() => expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ previewState: 'success' }), window.location.origin));
+    expect(iframe.getAttribute('srcdoc')).toBe(stableDocument);
+  });
+
+  it('updates the preview payload without replacing the iframe or stealing editor focus', async () => {
+    const preview = vi.spyOn(api.forms, 'preview').mockImplementation(async (nextInput) => ({
+      ...payload,
+      title: nextInput.title
+    }));
+    const view = render(<>
+      <input aria-label="Заголовок у редакторі" defaultValue={input.title} />
+      <ApplicationFormLivePreview input={input} />
+    </>);
+
+    await waitFor(() => expect(preview).toHaveBeenCalledWith(input, expect.any(AbortSignal)));
+    const iframe = await screen.findByTitle('Живий перегляд форми');
+    const stableDocument = iframe.getAttribute('srcdoc');
+    const postMessage = vi.spyOn((iframe as HTMLIFrameElement).contentWindow!, 'postMessage');
+    const editor = screen.getByRole('textbox', { name: 'Заголовок у редакторі' });
+    editor.focus();
+
+    const updatedInput = { ...input, title: `${input.title}!` };
+    view.rerender(<>
+      <input aria-label="Заголовок у редакторі" defaultValue={updatedInput.title} />
+      <ApplicationFormLivePreview input={updatedInput} />
+    </>);
+
+    await waitFor(() => expect(preview).toHaveBeenLastCalledWith(updatedInput, expect.any(AbortSignal)));
+    await waitFor(() => expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ title: updatedInput.title })
+    }), window.location.origin));
+    expect(screen.getByTitle('Живий перегляд форми')).toBe(iframe);
+    expect(iframe.getAttribute('srcdoc')).toBe(stableDocument);
+    expect(editor).toHaveFocus();
   });
 });

@@ -639,7 +639,7 @@ export function FormsBuilderPage() {
             <div className="form-fields-list">
               {fields.map((field, index) => <article
                 className={`form-field-card${draggedFieldIndex === index ? ' form-field-card--dragging' : ''}${fieldDropTarget?.index === index ? ` form-field-card--drop-${fieldDropTarget.placement}` : ''}`}
-                key={field.id || `${field.key}-${index}`}
+                key={field.id || `field-${index}`}
                 onDragOver={(event) => overField(event, index)}
                 onDrop={(event) => dropField(event, index)}
                 onDragEnd={() => { setDraggedFieldIndex(null); setFieldDropTarget(null); }}
@@ -655,7 +655,7 @@ export function FormsBuilderPage() {
                   <label className="field"><span>Підказка</span><input value={field.helpText} onChange={(event) => updateField(index, { helpText: event.target.value })} /></label>
                   {isChoiceFieldType(field.type) && <div className="form-options-editor form-builder-grid__wide">
                     <div><strong>Варіанти вибору</strong><button className="button button--secondary button--small" type="button" onClick={() => addFieldOption(index)}><Icon name="add" size={15} /> Додати варіант</button></div>
-                    {(field.options.length ? field.options : [newOption(0)]).map((option, optionIndex) => <div className="form-option-row" key={`${option.value}-${optionIndex}`}>
+                    {(field.options.length ? field.options : [newOption(0)]).map((option, optionIndex) => <div className="form-option-row" key={`option-${optionIndex}`}>
                       <input value={option.label} onChange={(event) => updateFieldOption(index, optionIndex, event.target.value)} placeholder={`Варіант ${optionIndex + 1}`} />
                       <button className="icon-button icon-button--danger" type="button" disabled={field.options.length <= 1} onClick={() => removeFieldOption(index, optionIndex)} aria-label="Видалити варіант"><Icon name="delete" size={16} /></button>
                     </div>)}
