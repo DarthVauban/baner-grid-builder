@@ -455,14 +455,15 @@ async function assertCampaignCanActivate(id, db) {
 
 export async function setFormCampaignStatus(id, status, actorUserId) {
   if (status === 'active') await assertCampaignCanActivate(id, pool);
+  const activating = status === 'active';
   const result = await query(
     `UPDATE application_form_campaigns
-     SET status = $2,
-         published_at = CASE WHEN $2 = 'active' THEN COALESCE(published_at, NOW()) ELSE published_at END,
+     SET status = $2::VARCHAR(20),
+         published_at = CASE WHEN $4::BOOLEAN THEN COALESCE(published_at, NOW()) ELSE published_at END,
          updated_by = $3, updated_at = NOW()
      WHERE id = $1 AND archived_at IS NULL
      RETURNING id`,
-    [id, status, actorUserId]
+    [id, status, actorUserId, activating]
   );
   if (!result.rows[0]) throw new AppError(404, 'FORM_CAMPAIGN_NOT_FOUND', 'Розміщення не знайдено.');
   return loadFormCampaign(id);

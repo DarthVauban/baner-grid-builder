@@ -5,7 +5,7 @@ import request from 'supertest';
 import { JSDOM } from 'jsdom';
 
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL = 'pg-mem://form-campaigns-tests';
+process.env.DATABASE_URL = process.env.FORM_CAMPAIGN_TEST_DATABASE_URL || 'pg-mem://form-campaigns-tests';
 process.env.JWT_SECRET = 'form-campaigns-test-secret-0123456789';
 process.env.COOKIE_SECURE = 'false';
 process.env.APP_ORIGIN = 'https://panel.example.com';
@@ -206,6 +206,7 @@ test('preorder placement targets an exact Horoshop modification and creates an a
   assert.equal(activationResponse.status, 200, JSON.stringify(activationResponse.body));
   const activated = activationResponse.body.data;
   assert.equal(activated.status, 'active');
+  assert.ok(activated.publishedAt);
 
   const unrelatedModification = await request(app)
     .get('/api/public/application-form-campaigns/resolve')

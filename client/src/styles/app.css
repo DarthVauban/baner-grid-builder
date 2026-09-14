@@ -1778,6 +1778,11 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .form-placement-editor__top { min-width: 0; display: grid; grid-template-columns: minmax(280px,330px) minmax(0,1fr); align-items: start; gap: 18px; }
 .form-placement-editor__library { position: sticky; top: 18px; display: grid; gap: 14px; }
 .form-placement-editor__settings, .form-placement-editor__catalog { min-width: 0; display: grid; gap: 16px; }
+.form-placement-editor__settings-header { margin-bottom: 0; }
+.form-placement-editor__settings-heading { min-width: 0; }
+.form-placement-editor__title-row { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.form-placement-editor__title-row h2 { min-width: 0; overflow-wrap: anywhere; }
+.form-placement-editor__header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .form-placement-editor__hint { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .form-placement-editor-tabs { min-width: 0; display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 8px; padding: 5px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-soft); }
 .form-placement-editor-tabs > button { min-width: 0; min-height: 66px; display: grid; grid-template-columns: 23px 34px minmax(0,1fr); align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 12px; padding: 8px 10px; color: var(--muted); background: transparent; text-align: left; cursor: pointer; transition: border-color 150ms ease, color 150ms ease, background 150ms ease, box-shadow 150ms ease; }
@@ -1896,6 +1901,7 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
   .form-live-preview.is-fullscreen > header { padding: 10px 12px; }
   .form-placement-editor__top { grid-template-columns: 1fr; }
   .form-placement-editor__library { position: static; }
+  .form-placement-editor__header-actions { width: 100%; align-items: stretch; flex-direction: column; }
   .form-placement-editor-tabs { grid-template-columns: 1fr; }
   .form-placement-editor-tabs > button { min-height: 58px; }
   .form-placement-section-heading--apart { grid-template-columns: 36px minmax(0,1fr); }

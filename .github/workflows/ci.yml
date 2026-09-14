@@ -41,6 +41,14 @@ jobs:
       - run: npm run lint
       - run: npm run check
       - run: npm run test:server
+      - name: Create form campaign PostgreSQL database
+        env:
+          DATABASE_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+        run: node --input-type=module -e "import pg from 'pg'; const client = new pg.Client({ connectionString: process.env.DATABASE_ADMIN_URL }); await client.connect(); await client.query('CREATE DATABASE form_campaigns_test'); await client.end();"
+      - name: Verify form campaign activation on PostgreSQL
+        run: node --import ./tests/test-env.js --test tests/form-campaigns.integration.test.js
+        env:
+          FORM_CAMPAIGN_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/form_campaigns_test
       - name: Verify popup banners on PostgreSQL
         run: node --import ./tests/test-env.js --test tests/popup-banners.integration.test.js
         env:

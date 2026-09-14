@@ -236,6 +236,25 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('ApplicationFormPlacementEditor product tree', () => {
+  it('keeps the campaign status and all actions in the settings header', async () => {
+    vi.mocked(api.formCampaigns.list).mockResolvedValue([campaignDraft]);
+    const view = renderEditor();
+
+    const campaignName = await screen.findByText(campaignDraft.name);
+    fireEvent.click(campaignName.closest('button') as HTMLButtonElement);
+
+    const header = view.container.querySelector<HTMLElement>('.form-placement-editor__settings-header');
+    const titleRow = header?.querySelector<HTMLElement>('.form-placement-editor__title-row');
+    expect(header).not.toBeNull();
+    expect(titleRow).not.toBeNull();
+    expect(within(titleRow as HTMLElement).getByRole('heading', { name: campaignDraft.name })).toBeInTheDocument();
+    expect(within(titleRow as HTMLElement).getByText('Чернетка')).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Зберегти зміни' })).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Активувати' })).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Архівувати' })).toBeInTheDocument();
+    expect(view.container.querySelector('.form-builder-actions')).not.toBeInTheDocument();
+  });
+
   it('activates a newly created button immediately', async () => {
     const create = vi.spyOn(api.formCampaigns, 'create').mockResolvedValue(campaignDraft);
     const activate = vi.spyOn(api.formCampaigns, 'setStatus').mockResolvedValue({

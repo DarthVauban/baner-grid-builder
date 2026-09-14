@@ -439,7 +439,21 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
       </section>
 
       <section className="tool-panel form-placement-editor__settings">
-        <header className="tool-panel__header"><div><p className="eyebrow">Налаштування</p><h2>{selectedCampaign ? selectedCampaign.name : 'Нова кнопка'}</h2></div>{selectedCampaign && <span className={`status-pill status-pill--${selectedCampaign.status}`}>{statusLabel(selectedCampaign.status)}</span>}</header>
+        <header className="tool-panel__header form-placement-editor__settings-header">
+          <div className="form-placement-editor__settings-heading">
+            <p className="eyebrow">Налаштування</p>
+            <div className="form-placement-editor__title-row">
+              <h2>{selectedCampaign ? selectedCampaign.name : 'Нова кнопка'}</h2>
+              {selectedCampaign && <span className={`status-pill status-pill--${selectedCampaign.status}`}>{statusLabel(selectedCampaign.status)}</span>}
+            </div>
+          </div>
+          <div className="form-placement-editor__header-actions">
+            <button className="button button--primary button--small" type="button" disabled={busy || selectedForm?.status !== 'published' || !draft.name.trim() || !targetingComplete} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити й активувати'}</button>
+            {selectedCampaign?.status !== 'active' && selectedCampaign && <button className="button button--secondary button--small" type="button" disabled={busy || selectedForm?.status !== 'published'} onClick={() => void setStatus('active')}>Активувати</button>}
+            {selectedCampaign?.status === 'active' && <button className="button button--secondary button--small" type="button" disabled={busy} onClick={() => void setStatus('paused')}>Призупинити</button>}
+            {selectedCampaign && <button className="button button--danger button--small" type="button" disabled={busy} onClick={() => void archive()}>Архівувати</button>}
+          </div>
+        </header>
         {selectedForm?.status !== 'published' && <div className="form-message form-message--warning">Оберіть опубліковану форму, яку має викликати кнопка.</div>}
         <nav className="form-placement-editor-tabs" role="tablist" aria-label="Розділи налаштування кнопки">
           <button id="form-placement-tab-design" className={activeTab === 'design' ? 'is-active' : ''} type="button" role="tab" aria-selected={activeTab === 'design'} aria-controls="form-placement-panel-design" onClick={() => setActiveTab('design')}>
@@ -576,12 +590,6 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
           </div>
         </section>}
 
-        <footer className="form-builder-actions">
-          <button className="button button--primary" type="button" disabled={busy || selectedForm?.status !== 'published' || !draft.name.trim() || !targetingComplete} onClick={() => void save()}>{selectedId ? 'Зберегти зміни' : 'Створити й активувати'}</button>
-          {selectedCampaign?.status !== 'active' && selectedCampaign && <button className="button button--secondary" type="button" disabled={busy || selectedForm?.status !== 'published'} onClick={() => void setStatus('active')}>Активувати</button>}
-          {selectedCampaign?.status === 'active' && <button className="button button--secondary" type="button" disabled={busy} onClick={() => void setStatus('paused')}>Призупинити</button>}
-          {selectedCampaign && <button className="button button--danger" type="button" disabled={busy} onClick={() => void archive()}>Архівувати</button>}
-        </footer>
       </section>
     </div>
   </div>;
