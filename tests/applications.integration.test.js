@@ -1,6 +1,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { JSDOM } from 'jsdom';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -184,6 +185,38 @@ test('form builder and applications list have separate access and process public
   assert.deepEqual(flexibleConfigured.body.data.fields.map((field) => field.key), ['comment', 'contact_phone']);
   assert.equal(flexibleConfigured.body.data.fields.every((field) => field.system === false), true);
   assert.equal(flexibleConfigured.body.data.fields.find((field) => field.key === 'contact_phone').required, true);
+  const previewInput = {
+    formType: 'simple',
+    name: flexibleForm.body.data.name,
+    title: 'Unsaved storefront preview',
+    description: 'Rendered by the public loader.',
+    buttonText: 'Preview request',
+    successMessage: 'Preview request received.',
+    settings: {},
+    styles: { buttonBackgroundColor: '#123456', buttonTextColor: '#fedcba' },
+    fields: [...flexibleConfigured.body.data.fields, {
+      key: 'inactive_note',
+      label: 'Inactive note',
+      type: 'text',
+      placeholder: '',
+      helpText: '',
+      defaultValue: '',
+      required: false,
+      active: false,
+      system: false,
+      systemFieldType: null,
+      showInSummary: false,
+      sortOrder: 2,
+      validation: {},
+      options: []
+    }]
+  };
+  await manager.post('/api/forms/preview').send(previewInput).expect(403);
+  const formPreview = await builder.post('/api/forms/preview').send(previewInput).expect(200);
+  assert.equal(formPreview.body.data.id, 'preview');
+  assert.equal(formPreview.body.data.title, 'Unsaved storefront preview');
+  assert.equal(formPreview.body.data.styles.buttonTextColor, '#fedcba');
+  assert.deepEqual(formPreview.body.data.fields.map((field) => field.key), ['comment', 'contact_phone']);
   await builder.patch(`/api/forms/${flexibleForm.body.data.id}/publish`).expect(200);
   const flexiblePublic = await request(app).get(`/api/public/application-forms/${flexibleForm.body.data.publicId}`).expect(200);
   assert.deepEqual(flexiblePublic.body.data.fields.map((field) => field.key), ['comment', 'contact_phone']);
@@ -402,6 +435,30 @@ test('form builder and applications list have separate access and process public
   assert.match(loader.text, /mtf-choice__text/);
   assert.match(loader.text, /type='checkbox'/);
   assert.match(loader.text, /text-wrap:balance/);
+  assert.match(loader.text, /previewPayload/);
+  assert.match(loader.text, /previewState/);
+
+  const previewDom = new JSDOM('<!doctype html><html><head></head><body><script data-mt-application-loader="true"></script></body></html>', {
+    runScripts: 'outside-only',
+    url: 'https://workspace.test/tools/forms'
+  });
+  const previewLoader = previewDom.window.document.querySelector('script');
+  previewLoader.dataset.previewPayload = JSON.stringify(formPreview.body.data);
+  previewLoader.dataset.previewState = 'form';
+  let previewFetchCount = 0;
+  previewDom.window.fetch = async () => {
+    previewFetchCount += 1;
+    throw new Error('Preview must not use the network');
+  };
+  previewDom.window.eval(loader.text);
+  assert.equal(previewFetchCount, 0);
+  assert.equal(previewDom.window.document.querySelector('.mtf-head h2')?.textContent, 'Unsaved storefront preview');
+  assert.equal(previewDom.window.document.querySelector('.mtf-submit')?.textContent, 'Preview request');
+  previewDom.window.document.querySelector('.mtf-form')?.dispatchEvent(new previewDom.window.Event('submit', { bubbles: true, cancelable: true }));
+  assert.equal(previewFetchCount, 0);
+  assert.equal(previewDom.window.document.querySelector('.mtf-success strong')?.textContent, 'Preview request received.');
+  assert.equal(previewDom.window.document.querySelector('.mtf-number b')?.textContent, '00007');
+  previewDom.window.close();
 
   const preflight = await request(app)
     .options(`/api/public/application-forms/${form.body.data.publicId}/applications`)

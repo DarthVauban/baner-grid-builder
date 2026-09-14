@@ -72,6 +72,30 @@ export interface ApplicationFormInput {
   fields?: ApplicationFormField[];
 }
 
+export interface ApplicationFormPreviewPayload {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  buttonText: string;
+  successMessage: string;
+  settings: Record<string, unknown>;
+  styles: Record<string, unknown>;
+  fields: Array<{
+    key: string;
+    label: string;
+    type: ApplicationFieldType;
+    placeholder: string;
+    helpText: string;
+    defaultValue: string;
+    required: boolean;
+    system: boolean;
+    systemFieldType: ApplicationSystemFieldType | null;
+    sortOrder: number;
+    options: Array<{ label: string; value: string }>;
+  }>;
+}
+
 export interface ApplicationProductSnapshot {
   title: string;
   url: string;

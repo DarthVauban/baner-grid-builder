@@ -185,6 +185,16 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('ApplicationFormPlacementEditor product tree', () => {
+  it('lets the editor configure the button text color', async () => {
+    const view = renderEditor();
+
+    const color = await screen.findByLabelText('Колір тексту кнопки');
+    expect(color).toHaveValue('#ffffff');
+    fireEvent.change(color, { target: { value: '#172033' } });
+
+    expect(view.container.querySelector('.form-placement-button-preview button')).toHaveStyle({ color: '#172033' });
+  });
+
   it('shows the full tree only for multi-modification products', async () => {
     const view = renderEditor();
 

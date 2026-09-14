@@ -134,6 +134,34 @@ export function serializeForm(row, fields = []) {
   };
 }
 
+export function buildPublicFormPayload(form) {
+  return {
+    id: form.publicId,
+    name: form.name,
+    title: form.title,
+    description: form.description,
+    buttonText: form.buttonText,
+    successMessage: form.successMessage,
+    settings: form.settings || {},
+    styles: form.styles || {},
+    fields: (form.fields || []).map((field) => ({
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      placeholder: field.placeholder,
+      helpText: field.helpText,
+      defaultValue: field.defaultValue,
+      required: field.required,
+      system: field.system,
+      systemFieldType: field.systemFieldType,
+      sortOrder: field.sortOrder,
+      options: field.systemFieldType === 'bank'
+        ? (form.banks || []).map((bank) => ({ label: bank.label, value: bank.value }))
+        : (field.options || []).filter((option) => option.active).map((option) => ({ label: option.label, value: option.value }))
+    }))
+  };
+}
+
 export function serializeButtonConfig(row) {
   return {
     id: row.id,

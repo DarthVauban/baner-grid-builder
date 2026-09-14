@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties, DragEvent, FormEvent } from 'react';
+import type { DragEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { ApplicationFormPlacementEditor } from '../components/ApplicationFormPlacementEditor';
+import { ApplicationFormLivePreview } from '../components/ApplicationFormLivePreview';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { TradeInLogicEditor } from '../components/trade-in/TradeInLogicEditor';
@@ -469,65 +470,15 @@ export function FormsBuilderPage() {
     setDraft({ ...draft, styles: { ...draft.styles, [key]: value } });
   }
 
-  function previewOptions(field: ApplicationFormField) {
-    if (field.options.length > 0) return field.options;
-    return [{ label: field.type === 'checkbox' ? field.placeholder || 'Так' : 'Варіант', value: 'option', sortOrder: 0, active: true }];
-  }
-
-  function renderPreviewControl(field: ApplicationFormField) {
-    if (field.type === 'textarea') return <textarea rows={2} placeholder={field.placeholder} />;
-    if (field.type === 'select') {
-      return <StyledSelect value="" options={[{ value: '', label: 'Оберіть' }, ...previewOptions(field).map((option) => ({ value: option.value, label: option.label }))]} onChange={() => undefined} ariaLabel={`Попередній перегляд ${field.label}`} />;
-    }
-    if (field.type === 'radio' || field.type === 'checkbox') {
-      return <div className={`form-preview__choices form-preview__choices--${field.type}`}>
-        {previewOptions(field).map((option) => <label className="form-preview__choice" key={option.value}><input type={field.type} name={`preview-${field.key}`} /> <span>{option.label}</span></label>)}
-      </div>;
-    }
-    if (field.type === 'phone' || field.systemFieldType === 'phone') {
-      return <input type="tel" inputMode="tel" placeholder="+380 (__) ___-__-__" />;
-    }
-    return <input placeholder={field.placeholder} />;
-  }
-
-  function renderFormPreview() {
-    if (!draft) return null;
-    return <div className="form-preview" style={{
-      '--form-preview-accent': draftStyle('accentColor', '#6d5dfc'),
-      '--form-preview-button-bg': draftStyle('buttonBackgroundColor', '#6d5dfc'),
-      '--form-preview-button-color': draftStyle('buttonTextColor', '#ffffff'),
-      '--form-preview-radius': draftStyle('borderRadius', '12px'),
-      '--form-preview-choice-accent': draftStyle('choiceAccentColor', draftStyle('accentColor', '#6d5dfc')),
-      '--form-preview-choice-border': draftStyle('choiceBorderColor', '#cfd6e3'),
-      '--form-preview-choice-bg': draftStyle('choiceBackgroundColor', '#ffffff'),
-      '--form-preview-choice-text': draftStyle('choiceTextColor', '#344054'),
-      '--form-preview-checkbox-radius': draftStyle('checkboxRadius', '5px'),
-      '--form-preview-number-bg': draftStyle('numberBlockBackgroundColor', '#f6f4ff'),
-      '--form-preview-number-border': draftStyle('numberBlockBorderColor', '#d8d4ff'),
-      '--form-preview-number-color': draftStyle('numberBlockTextColor', '#172033'),
-      '--form-preview-number-radius': draftStyle('numberBlockRadius', '16px')
-    } as CSSProperties}>
-      <h3>{draft.title}</h3>
-      {draft.description && <p>{draft.description}</p>}
-      {fields.filter((field) => field.active).map((field) => {
-        const content = <><span>{field.label}{field.required ? ' *' : ''}</span>{renderPreviewControl(field)}</>;
-        return field.type === 'radio' || field.type === 'checkbox'
-          ? <div className="form-preview__field" key={field.key}>{content}</div>
-          : <label key={field.key}>{content}</label>;
-      })}
-      <button type="button">{draft.buttonText}</button>
-      <div className="form-preview__success">
-        <strong>{draft.successMessage}</strong>
-        <span><small>Номер заявки</small><b>00007</b></span>
-      </div>
-    </div>;
-  }
-
   const workflowIssues = useMemo(
     () => workflow ? validateTradeInLogic(getTradeInFormGraph(workflow)) : [],
     [workflow]
   );
   const workflowHasErrors = workflowIssues.some((issue) => issue.severity === 'error');
+  const simplePreviewInput = useMemo<ApplicationFormInput | null>(() => {
+    if (!draft || selectedForm?.formType !== 'simple') return null;
+    return { ...draft, formType: 'simple', workflow: null, fields: normalizeFormFieldOrder(fields) };
+  }, [draft, fields, selectedForm?.formType]);
 
   return <div className={`forms-builder-page${selectedForm?.formType === 'workflow' ? ' forms-builder-page--workflow' : ''}${selectedForm?.formType === 'workflow' && workflowTab === 'builder' ? ' forms-builder-page--workflow-builder' : ''}`}>
     <header className="page-heading page-heading--row">
@@ -655,14 +606,8 @@ export function FormsBuilderPage() {
               <button className={activeTab === 'placement' ? 'active' : undefined} type="button" role="tab" aria-selected={activeTab === 'placement'} onClick={() => setActiveTab('placement')}>Розміщення на сайті</button>
             </div>
           </section>
-          {activeTab === 'form' && <details className="tool-panel forms-inline-preview">
-            <summary>
-              <span><small>Попередній перегляд</small><strong>Форма заявки</strong></span>
-              <span>Розгорнути</span>
-            </summary>
-            <div className="forms-inline-preview__body">{renderFormPreview()}</div>
-          </details>}
-          {activeTab === 'form' ? <>
+          {activeTab === 'form' ? <div className="forms-simple-editor">
+          <div className="forms-simple-editor__settings">
           <section className="tool-panel">
             <header className="tool-panel__header"><div><p className="eyebrow">Форма</p><h2>Основні налаштування</h2></div></header>
             <div className="form-builder-grid">
@@ -731,7 +676,9 @@ export function FormsBuilderPage() {
             </div>
           </section>
 
-          </> : <ApplicationFormPlacementEditor form={selectedForm} />}
+          </div>
+          {simplePreviewInput && <aside className="forms-simple-editor__preview"><ApplicationFormLivePreview input={simplePreviewInput} /></aside>}
+          </div> : <ApplicationFormPlacementEditor form={selectedForm} />}
         </>}
         </>}
       </div>

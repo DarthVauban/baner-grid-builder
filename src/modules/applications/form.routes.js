@@ -8,6 +8,7 @@ import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { normalizeTradeInConfig } from '../trade-in/trade-in.defaults.js';
 import {
+  buildPublicFormPayload,
   buildButtonScript,
   buildCompactButtonScript,
   loadFields,
@@ -227,6 +228,35 @@ router.get('/', asyncHandler(async (req, res) => {
   );
   const forms = await Promise.all(result.rows.map(async (row) => serializeForm(row, await loadFields(row.id))));
   res.json({ data: forms });
+}));
+
+router.post('/preview', asyncHandler(async (req, res) => {
+  const input = parseInput(formSchema, req.body);
+  if ((input.formType || 'simple') !== 'simple') {
+    throw new AppError(422, 'SIMPLE_FORM_REQUIRED', 'Live preview доступний лише для простої форми.');
+  }
+  const seenKeys = new Set();
+  const fields = (input.fields || []).filter((field) => field.active).map((field, index) => {
+    const baseKey = normalizeSlug(field.key || field.label, `field_${index + 1}`);
+    let key = baseKey;
+    let suffix = 2;
+    while (seenKeys.has(key)) key = `${baseKey}_${suffix++}`;
+    seenKeys.add(key);
+    return {
+      ...field,
+      key,
+      system: false,
+      systemFieldType: null,
+      sortOrder: index
+    };
+  });
+  res.json({ data: buildPublicFormPayload({
+    ...input,
+    publicId: 'preview',
+    formType: 'simple',
+    fields,
+    banks: []
+  }) });
 }));
 
 router.post('/', asyncHandler(async (req, res) => {

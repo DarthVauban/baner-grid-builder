@@ -89,6 +89,7 @@ import type {
   ApplicationFormCampaignStatus,
   ApplicationFormSummary,
   ApplicationFormInput,
+  ApplicationFormPreviewPayload,
   ApplicationRecord,
   ApplicationStatus
 } from '../types/application';
@@ -907,6 +908,8 @@ export const api = {
   forms: {
     list: () => request<ApplicationForm[]>('/api/forms'),
     get: (id: string) => request<ApplicationForm>(`/api/forms/${encodeURIComponent(id)}`),
+    preview: (input: ApplicationFormInput, signal?: AbortSignal) =>
+      request<ApplicationFormPreviewPayload>('/api/forms/preview', { method: 'POST', body: jsonBody(input), signal }),
     create: (input: Omit<ApplicationFormInput, 'fields'>) =>
       request<ApplicationForm>('/api/forms', { method: 'POST', body: jsonBody(input) }),
     update: (id: string, input: ApplicationFormInput) =>

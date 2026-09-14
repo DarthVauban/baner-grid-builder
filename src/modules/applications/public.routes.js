@@ -9,6 +9,7 @@ import { publishChatUpdates } from '../chat/chat.events.js';
 import { createNotification } from '../notifications/notification.service.js';
 import { publishNotificationUpdates } from '../notifications/notification.events.js';
 import {
+  buildPublicFormPayload,
   buildSafeProductSnapshot,
   buildButtonScriptBody,
   buildUtm,
@@ -40,34 +41,6 @@ const submitLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Забагато спроб. Спробуйте пізніше.' } }
 });
-
-function publicFormPayload(form) {
-  return {
-    id: form.publicId,
-    name: form.name,
-    title: form.title,
-    description: form.description,
-    buttonText: form.buttonText,
-    successMessage: form.successMessage,
-    settings: form.settings,
-    styles: form.styles,
-    fields: form.fields.map((field) => ({
-      key: field.key,
-      label: field.label,
-      type: field.type,
-      placeholder: field.placeholder,
-      helpText: field.helpText,
-      defaultValue: field.defaultValue,
-      required: field.required,
-      system: field.system,
-      systemFieldType: field.systemFieldType,
-      sortOrder: field.sortOrder,
-      options: field.systemFieldType === 'bank'
-        ? form.banks.map((bank) => ({ label: bank.label, value: bank.value }))
-        : field.options.filter((option) => option.active).map((option) => ({ label: option.label, value: option.value }))
-    }))
-  };
-}
 
 function publicOrigin(req) {
   const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
@@ -154,6 +127,11 @@ function loaderScript() {
   "use strict";
   if (window.MTApplicationForms) return;
   var loaderScript = document.currentScript || document.querySelector('script[data-mt-application-loader="true"]');
+  var previewPayload = null;
+  try { previewPayload = loaderScript && loaderScript.dataset.previewPayload ? JSON.parse(loaderScript.dataset.previewPayload) : null; }
+  catch (error) { previewPayload = null; }
+  var previewMode = Boolean(previewPayload);
+  var previewState = loaderScript && loaderScript.dataset.previewState === "success" ? "success" : "form";
   var apiBase = (function(){
     try { return new URL("/api/public/application-forms", loaderScript && loaderScript.src ? loaderScript.src : window.location.href).toString().replace(/\\/$/, ""); }
     catch (error) { return "/api/public/application-forms"; }
@@ -261,10 +239,13 @@ function loaderScript() {
     document.documentElement.style.overflow = "hidden";
     backdrop.addEventListener("mousedown", function(event){ if (event.target === backdrop) close(backdrop); });
     try {
-      var response = await fetch(apiBase + "/" + encodeURIComponent(formId), { credentials: "omit" });
-      var payload = await response.json().catch(function(){ return {}; });
-      if (!response.ok) throw new Error(payload && payload.error && payload.error.message || "Форма недоступна.");
-      var form = payload.data;
+      var form = previewPayload;
+      if (!previewMode) {
+        var response = await fetch(apiBase + "/" + encodeURIComponent(formId), { credentials: "omit" });
+        var payload = await response.json().catch(function(){ return {}; });
+        if (!response.ok) throw new Error(payload && payload.error && payload.error.message || "Форма недоступна.");
+        form = payload.data;
+      }
       if (!form || typeof form !== "object") throw new Error("Форма недоступна. Перевірте URL скрипта.");
       modal.innerHTML = "";
       var styles = form.styles && typeof form.styles === "object" ? form.styles : {};
@@ -281,6 +262,18 @@ function loaderScript() {
       modal.style.setProperty("--mtf-number-border", styles.numberBlockBorderColor || "#d8d4ff");
       modal.style.setProperty("--mtf-number-color", styles.numberBlockTextColor || "#172033");
       modal.style.setProperty("--mtf-number-radius", styles.numberBlockRadius || "16px");
+      function showSuccess(number){
+        modal.innerHTML = "";
+        var done = el("div", "mtf-success");
+        var strong = document.createElement("strong"); strong.textContent = form.successMessage || "Заявку надіслано.";
+        var numberBox = el("div", "mtf-number");
+        var numberLabel = document.createElement("span"); numberLabel.textContent = "Номер заявки";
+        var numberValue = document.createElement("b"); numberValue.textContent = number;
+        numberBox.appendChild(numberLabel); numberBox.appendChild(numberValue);
+        var ok = el("button", "mtf-submit"); ok.type = "button"; ok.textContent = "Готово"; ok.addEventListener("click", function(){ close(backdrop); });
+        done.appendChild(strong); done.appendChild(numberBox); done.appendChild(ok); modal.appendChild(done);
+      }
+      if (previewMode && previewState === "success") { showSuccess("00007"); return; }
       var head = el("header", "mtf-head");
       var titleWrap = el("div");
       var title = document.createElement("h2"); title.textContent = form.title;
@@ -310,6 +303,7 @@ function loaderScript() {
           else values[field.key] = control.value || "";
         });
         try {
+          if (previewMode) { showSuccess("00007"); return; }
           var sent = await fetch(options.submitUrl || apiBase + "/" + encodeURIComponent(formId) + "/applications", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -324,7 +318,7 @@ function loaderScript() {
           });
           var result = await sent.json();
           if (!sent.ok) throw new Error(result && result.error && result.error.message || "Не вдалося надіслати заявку.");
-          modal.innerHTML = ""; var done = el("div", "mtf-success"); var strong = document.createElement("strong"); strong.textContent = form.successMessage || "Заявку надіслано."; var numberBox = el("div", "mtf-number"); var numberLabel = document.createElement("span"); numberLabel.textContent = "Номер заявки"; var numberValue = document.createElement("b"); numberValue.textContent = result.data.number; numberBox.appendChild(numberLabel); numberBox.appendChild(numberValue); var ok = el("button", "mtf-submit"); ok.type = "button"; ok.textContent = "Готово"; ok.addEventListener("click", function(){ close(backdrop); }); done.appendChild(strong); done.appendChild(numberBox); done.appendChild(ok); modal.appendChild(done);
+          showSuccess(result.data.number);
         } catch (submitError) { error.textContent = errorMessage(submitError, "Не вдалося надіслати заявку."); error.hidden = false; submit.disabled = false; }
       });
       modal.appendChild(body);
@@ -333,6 +327,7 @@ function loaderScript() {
     }
   }
   window.MTApplicationForms = { open: open };
+  if (previewMode) open({ formId: "preview", context: { sourceUrl: "https://shop.example.com/product/preview", pageTitle: "Товар для передзамовлення" } });
 })();`;
 }
 
@@ -362,7 +357,7 @@ router.get('/:publicId', asyncHandler(async (req, res) => {
   const publicId = parseInput(publicIdSchema, req.params.publicId);
   const form = await loadPublishedForm(publicId);
   if (!form) throw new AppError(404, 'FORM_NOT_FOUND', 'Форма недоступна.');
-  res.json({ data: publicFormPayload(form) });
+  res.json({ data: buildPublicFormPayload(form) });
 }));
 
 export async function createPublicApplication({
