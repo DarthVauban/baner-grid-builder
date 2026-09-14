@@ -139,6 +139,7 @@ for (const surface of [
     test('switches a lead form between input and received-promo states', async ({ page }) => {
       await setupPreview(page, 'lead_form');
       const frame = page.frameLocator('iframe[title="Живий перегляд банера"]');
+      const backdrop = frame.locator('.backdrop');
       const formState = page.getByRole('button', { name: 'Форма', exact: true });
       const successState = page.getByRole('button', { name: 'Промокод отримано', exact: true });
 
@@ -151,7 +152,7 @@ for (const surface of [
       await expect(formState).toHaveAttribute('aria-pressed', 'true');
       await expect(frame.locator('.lead-form')).toBeVisible();
       await expect(frame.locator('.lead-form-success')).toHaveCount(0);
-      await expect.poll(() => frame.locator('.backdrop').evaluate((element) => element.style.getPropertyValue('--primary-bg'))).toBe('#123456');
+      await expect(backdrop).toHaveCSS('--primary-bg', '#123456');
 
       await successState.click();
       await expect(successState).toHaveAttribute('aria-pressed', 'true');
@@ -160,15 +161,11 @@ for (const surface of [
       await expect(frame.locator('.promo-code')).toHaveText('CONTACT15');
       await expect(frame.locator('.promo-code-note')).toHaveText('Для першого замовлення');
       await expect(frame.locator('.promo-code-value')).toHaveCSS('color', 'rgb(190, 18, 60)');
-      await expect.poll(() => frame.locator('.backdrop').evaluate((element) => ({
-        copyBackground: element.style.getPropertyValue('--promo-copy-bg'),
-        copyText: element.style.getPropertyValue('--promo-copy-text'),
-        discountText: element.style.getPropertyValue('--promo-discount-text'),
-        codeBackground: element.style.getPropertyValue('--promo-code-bg'),
-        codeBackgroundOpacity: element.style.getPropertyValue('--promo-code-bg-opacity')
-      }))).toEqual({
-        copyBackground: '#e11d48', copyText: '#f8fafc', discountText: '#be123c', codeBackground: '#0ea5e9', codeBackgroundOpacity: '35%'
-      });
+      await expect(backdrop).toHaveCSS('--promo-copy-bg', '#e11d48');
+      await expect(backdrop).toHaveCSS('--promo-copy-text', '#f8fafc');
+      await expect(backdrop).toHaveCSS('--promo-discount-text', '#be123c');
+      await expect(backdrop).toHaveCSS('--promo-code-bg', '#0ea5e9');
+      await expect(backdrop).toHaveCSS('--promo-code-bg-opacity', '35%');
 
       await formState.click();
       await expect(formState).toHaveAttribute('aria-pressed', 'true');
