@@ -189,7 +189,6 @@
 .product-selection-preview__browser i { width: 7px; height: 7px; border-radius: 50%; background: #a9b0bd; }
 .product-selection-preview__browser span { margin-left: 7px; color: #667085; font-size: 9px; }
 .product-selection-preview__content { padding: 24px; background: #fff; }
-.product-selection-preview__content > h3 { margin: 0 0 18px; color: #111827; font-size: 24px; }
 .product-selection-preview__grid { display: grid; grid-template-columns: repeat(var(--preview-columns), minmax(0, 1fr)); gap: 12px; overflow-x: auto; }
 .product-selection-preview__grid > article { display: grid; grid-template-rows: auto minmax(42px, 1fr) auto auto; gap: 10px; min-width: 160px; padding: 11px; border: 1px solid #e1e5ea; border-radius: 14px; background: #fff; }
 .product-selection-preview__grid article > div:first-child { display: grid; aspect-ratio: 1; place-items: center; overflow: hidden; border-radius: 11px; background: #fff; }

@@ -16,13 +16,6 @@ const SELECTION_STYLES = `.mt-product-selection {
 .p-review-add {
   display: none !important;
 }
-.mt-product-selection__heading {
-  margin: 0 0 18px !important;
-  color: var(--mt-selection-text) !important;
-  font-size: clamp(22px, 2vw, 30px) !important;
-  font-weight: 800 !important;
-  line-height: 1.2 !important;
-}
 .mt-product-selection__grid {
   display: grid !important;
   grid-template-columns: repeat(var(--mt-selection-desktop-columns), minmax(0, 1fr)) !important;
@@ -479,13 +472,9 @@ export function productSelectionEmbedScript(selection, origin = '') {
     section.setAttribute("data-mt-product-selection", payload.id);
     section.style.setProperty("--mt-selection-desktop-columns", String(payload.desktopColumns || 4));
     section.style.setProperty("--mt-selection-mobile-columns", String(payload.mobileColumns || 2));
-    var heading = document.createElement("h2");
-    heading.className = "mt-product-selection__heading";
-    heading.textContent = payload.heading || "Ми рекомендуємо";
     var grid = document.createElement("div");
     grid.className = "mt-product-selection__grid";
     for (var index = 0; index < payload.products.length; index += 1) grid.appendChild(createCard(payload.products[index]));
-    section.appendChild(heading);
     section.appendChild(grid);
     var containerId = sourceScript.getAttribute("data-container") || "";
     var container = containerId ? document.getElementById(containerId) : null;

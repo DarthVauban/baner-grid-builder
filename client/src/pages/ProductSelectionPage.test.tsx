@@ -36,6 +36,7 @@ describe('ProductSelectionPage editor layout', () => {
     renderPage();
 
     expect(await screen.findByText('Вигляд товарного блоку')).toBeInTheDocument();
+    expect(screen.queryByText('Заголовок блоку')).not.toBeInTheDocument();
     expect(screen.queryByText('Каталог Хорошопа')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Товари/u }));

@@ -58,6 +58,8 @@ test('selection embed renders its own responsive cards without rewriting native 
   assert.match(code, /product_impression/u);
   assert.match(code, /add_to_cart_error/u);
   assert.match(code, /IntersectionObserver/u);
+  assert.doesNotMatch(code, /mt-product-selection__heading/u);
+  assert.doesNotMatch(code, /document\.createElement\("h2"\)/u);
   assert.doesNotMatch(code, /innerHTML/u);
 });
 
