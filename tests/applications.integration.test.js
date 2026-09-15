@@ -473,10 +473,12 @@ test('form builder and applications list have separate access and process public
   const autofillTrap = emptySubmissionDom.window.document.querySelector('.mtf-form input[aria-hidden="true"]');
   assert.ok(autofillTrap);
   assert.equal(autofillTrap.hasAttribute('name'), false);
+  assert.equal(autofillTrap.readOnly, true);
   assert.equal(autofillTrap.getAttribute('autocomplete'), 'off');
   assert.equal(autofillTrap.getAttribute('data-lpignore'), 'true');
   assert.equal(autofillTrap.getAttribute('data-1p-ignore'), 'true');
   assert.equal(autofillTrap.getAttribute('data-bwignore'), 'true');
+  assert.equal(autofillTrap.style.display, 'none');
   emptySubmissionDom.window.document.querySelector('.mtf-form')?.dispatchEvent(new emptySubmissionDom.window.Event('submit', { bubbles: true, cancelable: true }));
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(submittedPayload?.honeypot, '');
