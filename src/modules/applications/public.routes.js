@@ -289,7 +289,7 @@ function loaderScript() {
       var body = el("form", "mtf-form");
       var error = el("div", "mtf-error"); error.hidden = true; body.appendChild(error);
       (form.fields || []).forEach(function(field){ body.appendChild(fieldControl(field)); });
-      var trap = document.createElement("input"); trap.name = "company"; trap.tabIndex = -1; trap.autocomplete = "off"; trap.style.cssText = "position:absolute;left:-9999px;opacity:0"; body.appendChild(trap);
+      var trap = document.createElement("input"); trap.type = "text"; trap.tabIndex = -1; trap.autocomplete = "off"; trap.setAttribute("aria-hidden", "true"); trap.setAttribute("data-lpignore", "true"); trap.setAttribute("data-1p-ignore", "true"); trap.setAttribute("data-bwignore", "true"); trap.style.cssText = "position:absolute;left:-9999px;opacity:0"; body.appendChild(trap);
       var actions = el("div", "mtf-actions"); var submit = el("button", "mtf-submit"); submit.type = "submit"; submit.textContent = form.buttonText || "Надіслати"; actions.appendChild(submit); body.appendChild(actions);
       body.addEventListener("submit", async function(event){
         event.preventDefault(); error.hidden = true; submit.disabled = true;
@@ -320,8 +320,14 @@ function loaderScript() {
               honeypot: trap.value
             })
           });
-          var result = await sent.json();
+          var responseText = await sent.text();
+          var result = null;
+          if (responseText) {
+            try { result = JSON.parse(responseText); }
+            catch (parseError) { result = null; }
+          }
           if (!sent.ok) throw new Error(result && result.error && result.error.message || "Не вдалося надіслати заявку.");
+          if (!result || !result.data || !result.data.number) throw new Error("Не вдалося надіслати заявку. Спробуйте ще раз.");
           showSuccess(result.data.number);
         } catch (submitError) { error.textContent = errorMessage(submitError, "Не вдалося надіслати заявку."); error.hidden = false; submit.disabled = false; }
       });

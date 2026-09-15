@@ -447,6 +447,44 @@ test('form builder and applications list have separate access and process public
   assert.match(loader.text, /previewPayload/);
   assert.match(loader.text, /previewState/);
   assert.match(loader.text, /mt-application-form-preview-render/);
+  assert.doesNotMatch(loader.text, /trap\.name = "company"/);
+  assert.match(loader.text, /data-lpignore/);
+  assert.match(loader.text, /data-1p-ignore/);
+  assert.match(loader.text, /data-bwignore/);
+  assert.match(loader.text, /var responseText = await sent\.text\(\)/);
+
+  const emptySubmissionDom = new JSDOM('<!doctype html><html><head></head><body><script data-mt-application-loader="true" src="https://panel.example.com/api/public/application-forms/loader.js"></script></body></html>', {
+    runScripts: 'outside-only',
+    url: 'https://shop.example.com/product/test'
+  });
+  let submittedPayload = null;
+  emptySubmissionDom.window.fetch = async (_url, options = {}) => {
+    if (options.method === 'POST') {
+      submittedPayload = JSON.parse(options.body);
+      return { ok: true, status: 204, text: async () => '' };
+    }
+    return { ok: true, status: 200, json: async () => ({ data: formPreview.body.data }) };
+  };
+  emptySubmissionDom.window.eval(loader.text);
+  await emptySubmissionDom.window.MTApplicationForms.open({
+    formId: form.body.data.publicId,
+    submitUrl: 'https://panel.example.com/api/public/application-form-campaigns/campaign-id/applications'
+  });
+  const autofillTrap = emptySubmissionDom.window.document.querySelector('.mtf-form input[aria-hidden="true"]');
+  assert.ok(autofillTrap);
+  assert.equal(autofillTrap.hasAttribute('name'), false);
+  assert.equal(autofillTrap.getAttribute('autocomplete'), 'off');
+  assert.equal(autofillTrap.getAttribute('data-lpignore'), 'true');
+  assert.equal(autofillTrap.getAttribute('data-1p-ignore'), 'true');
+  assert.equal(autofillTrap.getAttribute('data-bwignore'), 'true');
+  emptySubmissionDom.window.document.querySelector('.mtf-form')?.dispatchEvent(new emptySubmissionDom.window.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(submittedPayload?.honeypot, '');
+  const emptyResponseError = emptySubmissionDom.window.document.querySelector('.mtf-error');
+  assert.equal(emptyResponseError?.hidden, false);
+  assert.equal(emptyResponseError?.textContent, 'Не вдалося надіслати заявку. Спробуйте ще раз.');
+  assert.doesNotMatch(emptyResponseError?.textContent || '', /Unexpected end of JSON input/);
+  emptySubmissionDom.window.close();
 
   const previewDom = new JSDOM('<!doctype html><html><head></head><body><script data-mt-application-loader="true"></script></body></html>', {
     runScripts: 'outside-only',
