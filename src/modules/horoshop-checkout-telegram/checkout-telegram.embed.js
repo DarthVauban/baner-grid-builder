@@ -25,6 +25,7 @@ export function checkoutTelegramEmbedScript(config) {
         --mt-checkout-telegram-border: ${config.buttonBorderColor};
         --mt-checkout-telegram-radius: ${config.buttonBorderRadius}px;
         --mt-checkout-telegram-font-size: ${config.buttonFontSize}px;
+        --mt-checkout-telegram-qr-size: ${config.qrSize}px;
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
@@ -32,6 +33,11 @@ export function checkoutTelegramEmbedScript(config) {
         width: min(100%, ${Math.max(280, config.qrSize + 48)}px);
         margin: 0 auto;
         padding: 30px 18px;
+      }
+      [data-mt-checkout-telegram-surface="mobile"] {
+        --mt-checkout-telegram-font-size: ${config.mobileButtonFontSize}px;
+        --mt-checkout-telegram-qr-size: ${config.mobileQrSize}px;
+        width: min(100%, ${Math.max(280, config.mobileQrSize + 48)}px);
       }
       section.checkout.__success[data-mt-checkout-telegram-layout="v1"] {
         position: relative;
@@ -52,7 +58,7 @@ export function checkoutTelegramEmbedScript(config) {
       }
       [data-mt-checkout-telegram="v1"] .mt-checkout-telegram__qr {
         display: block;
-        width: ${config.qrSize}px;
+        width: var(--mt-checkout-telegram-qr-size);
         max-width: 100%;
         height: auto;
       }
@@ -60,7 +66,7 @@ export function checkoutTelegramEmbedScript(config) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: ${config.qrSize}px;
+        width: var(--mt-checkout-telegram-qr-size);
         max-width: 100%;
         min-height: 48px;
         margin-top: 18px;
@@ -91,6 +97,8 @@ export function checkoutTelegramEmbedScript(config) {
   }
 
   function createCard(surface) {
+    const isMobile = surface === 'mobile';
+    const qrSize = isMobile ? config.mobileQrSize : config.qrSize;
     const card = document.createElement('section');
     card.setAttribute(marker, 'v1');
     card.setAttribute('data-mt-checkout-telegram-surface', surface);
@@ -105,9 +113,9 @@ export function checkoutTelegramEmbedScript(config) {
 
     const qr = document.createElement('img');
     qr.className = 'mt-checkout-telegram__qr';
-    qr.src = config.qrCodeDataUrl;
-    qr.width = config.qrSize;
-    qr.height = config.qrSize;
+    qr.src = isMobile ? config.mobileQrCodeDataUrl : config.qrCodeDataUrl;
+    qr.width = qrSize;
+    qr.height = qrSize;
     qr.alt = 'QR-код для переходу в Telegram';
     qr.decoding = 'async';
     qrLink.appendChild(qr);

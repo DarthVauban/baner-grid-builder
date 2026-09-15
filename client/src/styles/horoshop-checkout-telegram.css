@@ -19,6 +19,8 @@
 .checkout-telegram-field > span, .checkout-telegram-color-field > span:first-child { color: var(--ink); font-size: 11px; font-weight: 750; }
 .checkout-telegram-field input { width: 100%; min-height: 42px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 11px; padding: 9px 12px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; }
 .checkout-telegram-field input:focus { border-color: var(--brand); outline: 3px solid color-mix(in srgb, var(--brand) 14%, transparent); }
+.checkout-telegram-field input.is-invalid { border-color: var(--danger); }
+.checkout-telegram-field input.is-invalid:focus { outline-color: color-mix(in srgb, var(--danger) 14%, transparent); }
 .checkout-telegram-field small { color: var(--muted); font-size: 10px; }
 .checkout-telegram-field small.is-error { color: var(--danger); }
 .checkout-telegram-colors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
@@ -26,7 +28,11 @@
 .checkout-telegram-color-field > span:last-child { display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 11px; padding: 6px 10px 6px 7px; background: var(--surface-soft); }
 .checkout-telegram-color-field input { width: 32px; height: 32px; border: 0; padding: 0; background: transparent; cursor: pointer; }
 .checkout-telegram-color-field code { color: var(--muted); font-size: 10px; }
-.checkout-telegram-numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.checkout-telegram-shared-size { max-width: calc(50% - 5px); }
+.checkout-telegram-device-sizes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.checkout-telegram-device-size-group { min-width: 0; border: 1px solid var(--line); border-radius: 14px; padding: 13px; background: var(--surface-soft); }
+.checkout-telegram-device-size-group h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 11px; color: var(--ink); font-size: 11px; }
+.checkout-telegram-numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .checkout-telegram-numbers .checkout-telegram-field { margin: 0; }
 .checkout-telegram-viewport-switch { flex: 0 0 auto; display: inline-flex; gap: 3px; border: 1px solid var(--line); border-radius: 11px; padding: 3px; background: var(--surface-soft); }
 .checkout-telegram-viewport-switch button { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; padding: 6px 10px; color: var(--muted); background: transparent; font: inherit; font-size: 10px; font-weight: 750; cursor: pointer; }
@@ -46,8 +52,7 @@
 .checkout-telegram-preview__empty span { max-width: 150px; font-size: 10px; line-height: 1.4; }
 .checkout-telegram-preview.is-mobile .checkout-telegram-preview__site { min-width: 0; width: 390px; max-width: 100%; min-height: 620px; grid-template-columns: 1fr; grid-template-rows: auto auto; padding: 62px 15px 20px; }
 .checkout-telegram-preview.is-mobile .checkout-telegram-preview__order { min-height: 230px; }
-.checkout-telegram-preview.is-mobile .checkout-telegram-preview__card { width: 100% !important; padding: 20px 24px 4px; }
-.checkout-telegram-preview.is-mobile .checkout-telegram-preview__card img { width: min(240px, 100%) !important; }
+.checkout-telegram-preview.is-mobile .checkout-telegram-preview__card { padding: 20px 24px 4px; }
 .checkout-telegram-preview-note { display: flex; align-items: center; gap: 7px; margin: 12px 0 0; color: var(--muted); font-size: 10.5px; }
 .checkout-telegram-bottom-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(340px, .9fr); gap: 22px; }
 .checkout-telegram-install-card pre { max-width: 100%; margin: 0 0 13px; border: 1px solid #dfe3e9; border-radius: 12px; padding: 14px; color: #2f3948; background: #f6f7f9; font: 10.5px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -66,7 +71,8 @@
   .checkout-telegram-tool-heading { align-items: stretch; flex-direction: column; }
   .checkout-telegram-tool-status { min-width: 0; }
   .checkout-telegram-panel > header { flex-direction: column; }
-  .checkout-telegram-colors, .checkout-telegram-numbers, .checkout-telegram-actions { grid-template-columns: 1fr; }
+  .checkout-telegram-colors, .checkout-telegram-device-sizes, .checkout-telegram-numbers, .checkout-telegram-actions { grid-template-columns: 1fr; }
+  .checkout-telegram-shared-size { max-width: none; }
   .checkout-telegram-viewport-switch { width: 100%; }
   .checkout-telegram-viewport-switch button { flex: 1; justify-content: center; }
   .checkout-telegram-preview { padding: 8px; }

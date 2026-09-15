@@ -14,7 +14,9 @@ export const defaultCheckoutTelegramConfig = {
   buttonBorderColor: '#229ed9',
   buttonBorderRadius: 12,
   buttonFontSize: 16,
-  qrSize: 240
+  qrSize: 240,
+  mobileButtonFontSize: 16,
+  mobileQrSize: 240
 };
 
 function jsonObject(value) {
@@ -58,11 +60,14 @@ function color(value, fallback) {
 }
 
 export function normalizeCheckoutTelegramConfig(value, { requireUrl = false } = {}) {
-  const source = { ...defaultCheckoutTelegramConfig, ...jsonObject(value) };
+  const raw = jsonObject(value);
+  const source = { ...defaultCheckoutTelegramConfig, ...raw };
   const telegramUrl = String(source.telegramUrl || '').trim();
   if (requireUrl && !telegramUrl) {
     throw new AppError(422, 'TELEGRAM_URL_REQUIRED', 'Додайте посилання на Telegram-бота перед публікацією.');
   }
+  const buttonFontSize = numberInRange(source.buttonFontSize, defaultCheckoutTelegramConfig.buttonFontSize, 12, 24);
+  const qrSize = numberInRange(source.qrSize, defaultCheckoutTelegramConfig.qrSize, 160, 320);
   return {
     telegramUrl: telegramUrl ? normalizeTelegramBotUrl(telegramUrl) : '',
     buttonText: String(source.buttonText || defaultCheckoutTelegramConfig.buttonText).trim().slice(0, 80),
@@ -71,17 +76,19 @@ export function normalizeCheckoutTelegramConfig(value, { requireUrl = false } = 
     buttonTextColor: color(source.buttonTextColor, defaultCheckoutTelegramConfig.buttonTextColor),
     buttonBorderColor: color(source.buttonBorderColor, defaultCheckoutTelegramConfig.buttonBorderColor),
     buttonBorderRadius: numberInRange(source.buttonBorderRadius, defaultCheckoutTelegramConfig.buttonBorderRadius, 0, 32),
-    buttonFontSize: numberInRange(source.buttonFontSize, defaultCheckoutTelegramConfig.buttonFontSize, 12, 24),
-    qrSize: numberInRange(source.qrSize, defaultCheckoutTelegramConfig.qrSize, 160, 320)
+    buttonFontSize,
+    qrSize,
+    mobileButtonFontSize: numberInRange(raw.mobileButtonFontSize, buttonFontSize, 12, 24),
+    mobileQrSize: numberInRange(raw.mobileQrSize, qrSize, 160, 320)
   };
 }
 
-async function qrCodeDataUrl(config) {
+async function qrCodeDataUrl(config, width) {
   if (!config.telegramUrl) return '';
   return QRCode.toDataURL(config.telegramUrl, {
     errorCorrectionLevel: 'M',
     margin: 2,
-    width: config.qrSize,
+    width,
     color: { dark: '#111827', light: '#ffffff' }
   });
 }
@@ -187,7 +194,8 @@ export async function loadPublishedCheckoutTelegram(publicId) {
   return {
     ...config,
     version: Number(row.published_version || 0),
-    qrCodeDataUrl: await qrCodeDataUrl(config)
+    qrCodeDataUrl: await qrCodeDataUrl(config, config.qrSize),
+    mobileQrCodeDataUrl: await qrCodeDataUrl(config, config.mobileQrSize)
   };
 }
 

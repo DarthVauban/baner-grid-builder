@@ -8,6 +8,8 @@ export interface HoroshopCheckoutTelegramConfig {
   buttonBorderRadius: number;
   buttonFontSize: number;
   qrSize: number;
+  mobileButtonFontSize: number;
+  mobileQrSize: number;
 }
 
 export interface HoroshopCheckoutTelegramSettings {

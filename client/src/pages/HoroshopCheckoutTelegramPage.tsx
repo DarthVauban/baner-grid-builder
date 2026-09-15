@@ -7,6 +7,13 @@ import { useToast } from '../toast/ToastContext';
 import type { HoroshopCheckoutTelegramConfig } from '../types/horoshop-checkout-telegram';
 import '../styles/horoshop-checkout-telegram.css';
 
+const QR_SIZE_MIN = 160;
+const QR_SIZE_MAX = 320;
+const BUTTON_FONT_SIZE_MIN = 12;
+const BUTTON_FONT_SIZE_MAX = 24;
+const BUTTON_RADIUS_MIN = 0;
+const BUTTON_RADIUS_MAX = 32;
+
 function formatDate(value: string | null) {
   if (!value) return 'Ще не публікувалося';
   return new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
@@ -25,6 +32,15 @@ function isTelegramBotUrl(value: string) {
   }
 }
 
+function isIntegerInRange(value: number, minimum: number, maximum: number) {
+  return Number.isInteger(value) && value >= minimum && value <= maximum;
+}
+
+function valueInRange(value: number, minimum: number, maximum: number, fallback: number) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.round(value)));
+}
+
 interface ColorFieldProps {
   label: string;
   value: string;
@@ -35,6 +51,37 @@ function ColorField({ label, value, onChange }: ColorFieldProps) {
   return <label className="checkout-telegram-color-field">
     <span>{label}</span>
     <span><input type="color" value={value} onChange={(event) => onChange(event.target.value)} /><code>{value}</code></span>
+  </label>;
+}
+
+interface NumberFieldProps {
+  label: string;
+  ariaLabel: string;
+  value: number;
+  minimum: number;
+  maximum: number;
+  onChange: (value: number) => void;
+}
+
+function NumberField({ label, ariaLabel, value, minimum, maximum, onChange }: NumberFieldProps) {
+  const valid = isIntegerInRange(value, minimum, maximum);
+  return <label className="checkout-telegram-field">
+    <span>{label}</span>
+    <input
+      aria-label={ariaLabel}
+      aria-invalid={!valid}
+      className={valid ? undefined : 'is-invalid'}
+      type="number"
+      inputMode="numeric"
+      step={1}
+      min={minimum}
+      max={maximum}
+      value={value}
+      onChange={(event) => onChange(Number(event.target.value))}
+    />
+    <small className={valid ? undefined : 'is-error'}>
+      {valid ? `Допустимо: ${minimum}–${maximum} px.` : `Вкажіть ціле число від ${minimum} до ${maximum} px.`}
+    </small>
   </label>;
 }
 
@@ -57,7 +104,8 @@ export function HoroshopCheckoutTelegramPage() {
   }, [settingsQuery.data]);
 
   const telegramUrl = config?.telegramUrl || '';
-  const qrSize = config?.qrSize || 240;
+  const configuredQrSize = viewport === 'mobile' ? config?.mobileQrSize : config?.qrSize;
+  const qrSize = valueInRange(configuredQrSize || 240, QR_SIZE_MIN, QR_SIZE_MAX, 240);
   const validUrl = isTelegramBotUrl(telegramUrl);
   useEffect(() => {
     let active = true;
@@ -90,6 +138,13 @@ export function HoroshopCheckoutTelegramPage() {
 
   const settings = settingsQuery.data;
   const busy = saveDraft.isPending || publish.isPending || setEnabled.isPending;
+  const sizesValid = isIntegerInRange(config.buttonBorderRadius, BUTTON_RADIUS_MIN, BUTTON_RADIUS_MAX)
+    && isIntegerInRange(config.buttonFontSize, BUTTON_FONT_SIZE_MIN, BUTTON_FONT_SIZE_MAX)
+    && isIntegerInRange(config.qrSize, QR_SIZE_MIN, QR_SIZE_MAX)
+    && isIntegerInRange(config.mobileButtonFontSize, BUTTON_FONT_SIZE_MIN, BUTTON_FONT_SIZE_MAX)
+    && isIntegerInRange(config.mobileQrSize, QR_SIZE_MIN, QR_SIZE_MAX);
+  const configuredFontSize = viewport === 'mobile' ? config.mobileButtonFontSize : config.buttonFontSize;
+  const previewFontSize = valueInRange(configuredFontSize, BUTTON_FONT_SIZE_MIN, BUTTON_FONT_SIZE_MAX, 16);
   const update = <K extends keyof HoroshopCheckoutTelegramConfig>(key: K, value: HoroshopCheckoutTelegramConfig[K]) => {
     setConfig((current) => current ? { ...current, [key]: value } : current);
   };
@@ -100,6 +155,10 @@ export function HoroshopCheckoutTelegramPage() {
 
   async function save() {
     if (!config) return;
+    if (!sizesValid) {
+      showToast('Перевірте розміри: QR-код — 160–320 px, шрифт — 12–24 px, скруглення — 0–32 px.', 'error');
+      return;
+    }
     try {
       await saveDraft.mutateAsync(config);
       await refresh();
@@ -112,6 +171,10 @@ export function HoroshopCheckoutTelegramPage() {
   async function publishConfig() {
     if (!config || !validUrl) {
       showToast('Вкажіть коректне HTTPS-посилання виду https://t.me/назва_бота.', 'error');
+      return;
+    }
+    if (!sizesValid) {
+      showToast('Перевірте розміри: QR-код — 160–320 px, шрифт — 12–24 px, скруглення — 0–32 px.', 'error');
       return;
     }
     try {
@@ -175,10 +238,24 @@ export function HoroshopCheckoutTelegramPage() {
           <ColorField label="Колір рамки" value={config.buttonBorderColor} onChange={(value) => update('buttonBorderColor', value)} />
         </div>
 
-        <div className="checkout-telegram-numbers">
-          <label className="checkout-telegram-field"><span>Скруглення, px</span><input aria-label="Скруглення кнопки" type="number" min={0} max={32} value={config.buttonBorderRadius} onChange={(event) => update('buttonBorderRadius', Number(event.target.value))} /></label>
-          <label className="checkout-telegram-field"><span>Шрифт, px</span><input aria-label="Розмір шрифту кнопки" type="number" min={12} max={24} value={config.buttonFontSize} onChange={(event) => update('buttonFontSize', Number(event.target.value))} /></label>
-          <label className="checkout-telegram-field"><span>QR-код, px</span><input aria-label="Розмір QR-коду" type="number" min={160} max={320} value={config.qrSize} onChange={(event) => update('qrSize', Number(event.target.value))} /></label>
+        <div className="checkout-telegram-shared-size">
+          <NumberField label="Скруглення кнопки, px" ariaLabel="Скруглення кнопки" minimum={BUTTON_RADIUS_MIN} maximum={BUTTON_RADIUS_MAX} value={config.buttonBorderRadius} onChange={(value) => update('buttonBorderRadius', value)} />
+        </div>
+        <div className="checkout-telegram-device-sizes">
+          <section className="checkout-telegram-device-size-group" aria-labelledby="checkout-telegram-desktop-sizes">
+            <h3 id="checkout-telegram-desktop-sizes"><Icon name="monitor" size={16} /> Десктоп</h3>
+            <div className="checkout-telegram-numbers">
+              <NumberField label="QR-код, px" ariaLabel="Розмір QR-коду для десктопа" minimum={QR_SIZE_MIN} maximum={QR_SIZE_MAX} value={config.qrSize} onChange={(value) => update('qrSize', value)} />
+              <NumberField label="Шрифт кнопки, px" ariaLabel="Розмір шрифту кнопки для десктопа" minimum={BUTTON_FONT_SIZE_MIN} maximum={BUTTON_FONT_SIZE_MAX} value={config.buttonFontSize} onChange={(value) => update('buttonFontSize', value)} />
+            </div>
+          </section>
+          <section className="checkout-telegram-device-size-group" aria-labelledby="checkout-telegram-mobile-sizes">
+            <h3 id="checkout-telegram-mobile-sizes"><Icon name="phone" size={16} /> Мобільний</h3>
+            <div className="checkout-telegram-numbers">
+              <NumberField label="QR-код, px" ariaLabel="Розмір QR-коду для мобільного" minimum={QR_SIZE_MIN} maximum={QR_SIZE_MAX} value={config.mobileQrSize} onChange={(value) => update('mobileQrSize', value)} />
+              <NumberField label="Шрифт кнопки, px" ariaLabel="Розмір шрифту кнопки для мобільного" minimum={BUTTON_FONT_SIZE_MIN} maximum={BUTTON_FONT_SIZE_MAX} value={config.mobileButtonFontSize} onChange={(value) => update('mobileButtonFontSize', value)} />
+            </div>
+          </section>
         </div>
       </section>
 
@@ -193,11 +270,11 @@ export function HoroshopCheckoutTelegramPage() {
         <div className={`checkout-telegram-preview is-${viewport}`}>
           <div className="checkout-telegram-preview__site">
             <div className="checkout-telegram-preview__order"><strong>Ваше замовлення отримано</strong><span /><span /><span /><span /></div>
-            <div className="checkout-telegram-preview__card" style={{ width: Math.min(config.qrSize + 48, 368) }}>
+            <div className="checkout-telegram-preview__card" style={{ width: Math.min(qrSize + 48, 368) }}>
               {qrCodeDataUrl
-                ? <a href={config.telegramUrl} target="_blank" rel="noreferrer"><img src={qrCodeDataUrl} alt="QR-код для переходу в Telegram" style={{ width: config.qrSize }} /></a>
+                ? <a href={config.telegramUrl} target="_blank" rel="noreferrer"><img src={qrCodeDataUrl} alt="QR-код для переходу в Telegram" style={{ width: qrSize }} /></a>
                 : <div className="checkout-telegram-preview__empty"><Icon name="qrCode" size={42} /><span>Вставте посилання, щоб створити QR-код</span></div>}
-              <a className={!validUrl ? 'is-disabled' : ''} href={validUrl ? config.telegramUrl : undefined} target="_blank" rel="noreferrer" style={{ background: config.buttonBackgroundColor, borderColor: config.buttonBorderColor, borderRadius: config.buttonBorderRadius, color: config.buttonTextColor, fontSize: config.buttonFontSize }}>{config.buttonText || 'Відкрити Telegram'}</a>
+              <a className={!validUrl ? 'is-disabled' : ''} href={validUrl ? config.telegramUrl : undefined} target="_blank" rel="noreferrer" style={{ background: config.buttonBackgroundColor, borderColor: config.buttonBorderColor, borderRadius: config.buttonBorderRadius, color: config.buttonTextColor, fontSize: previewFontSize }}>{config.buttonText || 'Відкрити Telegram'}</a>
             </div>
           </div>
         </div>
@@ -219,8 +296,8 @@ export function HoroshopCheckoutTelegramPage() {
           <div><dt>Остання публікація</dt><dd>{formatDate(settings.publishedAt)}</dd></div>
         </dl>
         <div className="checkout-telegram-actions">
-          <button className="button button--secondary" type="button" onClick={() => void save()} disabled={!isDirty || busy}><Icon name="save" size={16} /> Зберегти чернетку</button>
-          <button className="button button--primary" type="button" onClick={() => void publishConfig()} disabled={!validUrl || !config.buttonText.trim() || busy}><Icon name="publication" size={16} /> Опублікувати й увімкнути</button>
+          <button className="button button--secondary" type="button" onClick={() => void save()} disabled={!isDirty || !sizesValid || busy}><Icon name="save" size={16} /> Зберегти чернетку</button>
+          <button className="button button--primary" type="button" onClick={() => void publishConfig()} disabled={!validUrl || !config.buttonText.trim() || !sizesValid || busy}><Icon name="publication" size={16} /> Опублікувати й увімкнути</button>
           <button className="checkout-telegram-enable-button" type="button" onClick={() => void toggleEnabled()} disabled={!settings.publishedVersion || busy}>{settings.enabled ? 'Тимчасово вимкнути блок' : 'Увімкнути опублікований блок'}</button>
         </div>
       </section>

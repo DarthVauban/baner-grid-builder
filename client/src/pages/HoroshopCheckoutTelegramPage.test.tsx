@@ -23,7 +23,9 @@ const settings: HoroshopCheckoutTelegramSettings = {
     buttonBorderColor: '#229ed9',
     buttonBorderRadius: 12,
     buttonFontSize: 16,
-    qrSize: 240
+    qrSize: 240,
+    mobileButtonFontSize: 15,
+    mobileQrSize: 208
   },
   publishedConfig: null,
   publishedVersion: 0,
@@ -80,7 +82,45 @@ describe('HoroshopCheckoutTelegramPage', () => {
     expect(vi.mocked(api.horoshopCheckoutTelegram.publish).mock.calls[0][0]).toEqual(expect.objectContaining({
       telegramUrl: 'https://t.me/mobiletrend_test_bot',
       buttonText: 'Стежити за замовленням',
-      buttonBorderRadius: 20
+      buttonBorderRadius: 20,
+      mobileButtonFontSize: 15,
+      mobileQrSize: 208
+    }));
+  });
+
+  it('shows QR limits and blocks requests for out-of-range sizes', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Telegram після замовлення' });
+    fireEvent.change(screen.getByLabelText('Посилання на Telegram-бота'), { target: { value: 'https://t.me/mobiletrend_test_bot' } });
+    fireEvent.change(screen.getByLabelText('Розмір QR-коду для десктопа'), { target: { value: '321' } });
+
+    expect(screen.getByText('Вкажіть ціле число від 160 до 320 px.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Зберегти чернетку/u })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Опублікувати й увімкнути/u })).toBeDisabled();
+    expect(api.horoshopCheckoutTelegram.saveDraft).not.toHaveBeenCalled();
+    expect(api.horoshopCheckoutTelegram.publish).not.toHaveBeenCalled();
+  });
+
+  it('uses independent mobile QR and font sizes in the preview and publish payload', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Telegram після замовлення' });
+    fireEvent.change(screen.getByLabelText('Посилання на Telegram-бота'), { target: { value: 'https://t.me/mobiletrend_test_bot' } });
+    fireEvent.change(screen.getByLabelText('Розмір QR-коду для мобільного'), { target: { value: '196' } });
+    fireEvent.change(screen.getByLabelText('Розмір шрифту кнопки для мобільного'), { target: { value: '19' } });
+    fireEvent.click(screen.getByRole('button', { name: /Мобільний/u }));
+
+    await waitFor(() => expect(QRCode.toDataURL).toHaveBeenCalledWith(
+      'https://t.me/mobiletrend_test_bot',
+      expect.objectContaining({ width: 196 })
+    ));
+    const previewButton = screen.getByRole('link', { name: 'Відкрити Telegram' });
+    expect(previewButton).toHaveStyle({ fontSize: '19px' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Опублікувати й увімкнути/u }));
+    await waitFor(() => expect(api.horoshopCheckoutTelegram.publish).toHaveBeenCalled());
+    expect(vi.mocked(api.horoshopCheckoutTelegram.publish).mock.calls[0][0]).toEqual(expect.objectContaining({
+      mobileQrSize: 196,
+      mobileButtonFontSize: 19
     }));
   });
 });

@@ -25,7 +25,9 @@ const configSchema = z.object({
   buttonBorderColor: colorSchema,
   buttonBorderRadius: z.number().int().min(0).max(32),
   buttonFontSize: z.number().int().min(12).max(24),
-  qrSize: z.number().int().min(160).max(320)
+  qrSize: z.number().int().min(160).max(320),
+  mobileButtonFontSize: z.number().int().min(12).max(24).optional(),
+  mobileQrSize: z.number().int().min(160).max(320).optional()
 });
 const enabledSchema = z.object({ enabled: z.boolean() });
 

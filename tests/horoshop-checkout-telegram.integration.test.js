@@ -28,7 +28,9 @@ const config = {
   buttonBorderColor: '#157cad',
   buttonBorderRadius: 14,
   buttonFontSize: 17,
-  qrSize: 240
+  qrSize: 240,
+  mobileButtonFontSize: 15,
+  mobileQrSize: 208
 };
 
 before(async () => {
@@ -54,6 +56,8 @@ test('Telegram checkout settings validate, publish and serve a self-contained QR
   const initial = await admin.get('/api/horoshop-checkout-telegram/settings').expect(200);
   assert.equal(initial.body.data.enabled, false);
   assert.equal(initial.body.data.draftConfig.telegramUrl, '');
+  assert.equal(initial.body.data.draftConfig.mobileQrSize, initial.body.data.draftConfig.qrSize);
+  assert.equal(initial.body.data.draftConfig.mobileButtonFontSize, initial.body.data.draftConfig.buttonFontSize);
   assert.equal(initial.body.data.storeDomain, 'shop551651.horoshop.ua');
   assert.match(initial.body.data.embedCode, /horoshop-checkout-telegram\/embed\.js\?site=/u);
 
@@ -68,6 +72,23 @@ test('Telegram checkout settings validate, publish and serve a self-contained QR
     .send({ ...config, telegramUrl: 'https://example.com/not-telegram' })
     .expect(422);
 
+  await admin.put('/api/horoshop-checkout-telegram/settings/draft')
+    .send({ ...config, qrSize: 321 })
+    .expect(422);
+
+  await admin.post('/api/horoshop-checkout-telegram/settings/publish')
+    .send({ ...config, mobileQrSize: 321 })
+    .expect(422);
+
+  const legacyConfig = { ...config };
+  delete legacyConfig.mobileButtonFontSize;
+  delete legacyConfig.mobileQrSize;
+  const legacyDraft = await admin.put('/api/horoshop-checkout-telegram/settings/draft')
+    .send(legacyConfig)
+    .expect(200);
+  assert.equal(legacyDraft.body.data.draftConfig.mobileQrSize, legacyConfig.qrSize);
+  assert.equal(legacyDraft.body.data.draftConfig.mobileButtonFontSize, legacyConfig.buttonFontSize);
+
   const draft = await admin.put('/api/horoshop-checkout-telegram/settings/draft')
     .send(config)
     .expect(200);
@@ -80,6 +101,8 @@ test('Telegram checkout settings validate, publish and serve a self-contained QR
   assert.equal(published.body.data.enabled, true);
   assert.equal(published.body.data.publishedVersion, 1);
   assert.equal(published.body.data.publishedConfig.telegramUrl, config.telegramUrl);
+  assert.equal(published.body.data.publishedConfig.mobileQrSize, config.mobileQrSize);
+  assert.equal(published.body.data.publishedConfig.mobileButtonFontSize, config.mobileButtonFontSize);
 
   const script = await request(app)
     .get('/api/public/horoshop-checkout-telegram/embed.js')
@@ -91,6 +114,7 @@ test('Telegram checkout settings validate, publish and serve a self-contained QR
   assert.match(script.text, /section\.checkout\.__success/u);
   assert.match(script.text, /\.checkout-success/u);
   assert.match(script.text, /Написати в Telegram/u);
+  assert.match(script.text, /--mt-checkout-telegram-qr-size: 208px/u);
   assert.doesNotMatch(script.text, /fetch\(/u);
 });
 
@@ -107,7 +131,12 @@ test('desktop adapter creates an isolated slot in the free area and preserves or
   root.getBoundingClientRect = () => ({ top: 100, right: 1600, bottom: 900, left: 160, width: 1440, height: 800, x: 160, y: 100, toJSON() {} });
   main.getBoundingClientRect = () => ({ top: 153, right: 1050, bottom: 850, left: 160, width: 890, height: 697, x: 160, y: 153, toJSON() {} });
   const originalOrder = order.outerHTML;
-  const script = checkoutTelegramEmbedScript({ ...config, version: 1, qrCodeDataUrl: 'data:image/png;base64,dGVzdA==' });
+  const script = checkoutTelegramEmbedScript({
+    ...config,
+    version: 1,
+    qrCodeDataUrl: 'data:image/png;base64,ZGVza3RvcA==',
+    mobileQrCodeDataUrl: 'data:image/png;base64,bW9iaWxl'
+  });
 
   dom.window.eval(script);
   dom.window.eval(script);
@@ -124,6 +153,8 @@ test('desktop adapter creates an isolated slot in the free area and preserves or
   assert.equal(card.querySelector('.mt-checkout-telegram__qr-link').href, config.telegramUrl);
   assert.equal(card.querySelector('.mt-checkout-telegram__button').href, config.telegramUrl);
   assert.equal(card.querySelector('.mt-checkout-telegram__button').textContent, config.buttonText);
+  assert.equal(card.querySelector('.mt-checkout-telegram__qr').width, config.qrSize);
+  assert.match(card.querySelector('.mt-checkout-telegram__qr').src, /ZGVza3RvcA==$/u);
   assert.equal(order.outerHTML, originalOrder);
   dom.window.close();
 });
@@ -132,7 +163,12 @@ test('mobile adapter mounts after its independent success block and ignores othe
   const mobile = new JSDOM(`<!doctype html><html><head></head><body>
     <main class="main wrapper"><section class="checkout-success">Ваше замовлення отримано</section><div class="order-details">Деталі</div></main>
   </body></html>`, { runScripts: 'outside-only', url: 'https://shop551651.horoshop.ua/checkout/complete/1416/' });
-  const script = checkoutTelegramEmbedScript({ ...config, version: 1, qrCodeDataUrl: 'data:image/png;base64,dGVzdA==' });
+  const script = checkoutTelegramEmbedScript({
+    ...config,
+    version: 1,
+    qrCodeDataUrl: 'data:image/png;base64,ZGVza3RvcA==',
+    mobileQrCodeDataUrl: 'data:image/png;base64,bW9iaWxl'
+  });
   mobile.window.eval(script);
 
   const success = mobile.window.document.querySelector('.checkout-success');
@@ -140,6 +176,8 @@ test('mobile adapter mounts after its independent success block and ignores othe
   assert.ok(card);
   assert.equal(card.previousElementSibling, success);
   assert.equal(card.getAttribute('data-mt-checkout-telegram-surface'), 'mobile');
+  assert.equal(card.querySelector('.mt-checkout-telegram__qr').width, config.mobileQrSize);
+  assert.match(card.querySelector('.mt-checkout-telegram__qr').src, /bW9iaWxl$/u);
   assert.equal(mobile.window.document.querySelector('.order-details').textContent, 'Деталі');
   mobile.window.close();
 
