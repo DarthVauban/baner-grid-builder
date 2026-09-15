@@ -48,6 +48,14 @@ export const toolCategories: ToolCategoryDefinition[] = [
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'horoshop_checkout_telegram',
+    name: 'Telegram після замовлення',
+    description: 'QR-код і кнопка переходу до Telegram-бота на сторінці успішного оформлення замовлення.',
+    path: '/tools/horoshop-checkout-telegram',
+    icon: 'qrCode',
+    category: 'horoshop'
+  },
+  {
     id: 'horoshop_title_labels',
     name: 'Лейбли товарів',
     description: 'Конструктор лейблів у назвах товарів за одним або кількома стікерами: сторінка товару, картки вітрини й кошик.',

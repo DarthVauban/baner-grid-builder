@@ -117,6 +117,9 @@ const HoroshopCartThemePage = lazy(() => import('../pages/HoroshopCartThemePage'
 const HoroshopTitleLabelsPage = lazy(() => import('../pages/HoroshopTitleLabelsPage').then((module) => ({
   default: module.HoroshopTitleLabelsPage
 })));
+const HoroshopCheckoutTelegramPage = lazy(() => import('../pages/HoroshopCheckoutTelegramPage').then((module) => ({
+  default: module.HoroshopCheckoutTelegramPage
+})));
 const AnalyticsPage = lazy(() => import('../pages/AnalyticsPage').then((module) => ({
   default: module.AnalyticsPage
 })));
@@ -260,6 +263,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="horoshop_title_labels" />}>
             <Route path="tools/horoshop-title-labels" element={<Suspense fallback={<LoadingScreen />}><HoroshopTitleLabelsPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="horoshop_checkout_telegram" />}>
+            <Route path="tools/horoshop-checkout-telegram" element={<Suspense fallback={<LoadingScreen />}><HoroshopCheckoutTelegramPage /></Suspense>} />
           </Route>
           <Route element={<AccessManagementRoute />}>
             <Route path="admin/users" element={<AdminUsersPage />} />

@@ -1,9 +1,9 @@
 # DOM-контракт вітрини Хорошоп: desktop і mobile
 
-Актуально станом на 2026-09-06. Це канонічний cross-cutting контракт для всіх скриптів, які
+Актуально станом на 2026-09-15. Це канонічний cross-cutting контракт для всіх скриптів, які
 вбудовуються у публічну вітрину Хорошопа: `popup-banners`, `horoshop-cart-theme`,
 `horoshop-catalog-menu`, `product-selections` та майбутніх storefront-адаптерів.
-`horoshop-title-labels` також підпорядковується цьому контракту.
+`horoshop-title-labels` і `horoshop-checkout-telegram` також підпорядковуються цьому контракту.
 
 Класи й структура DOM Хорошопа не є нашим публічним API та можуть змінитися після оновлення
 платформи або теми. Фактичний код і перевірена розмітка мають пріоритет, але будь-яка розбіжність
@@ -41,6 +41,7 @@ CSS media queries дозволено використовувати для ві�
 | Список товарів кошика | `.cart-content`, `.cart-items`, `.cart-section`, `.cart-item` | `.cart__block`, `.cart__body`, mobile cart items | Власником вертикального scroll має бути внутрішній контейнер відповідної surface |
 | Рекомендації кошика | `.j-cart-additional`, `.cart-recommended`, `.productsSlider*` | `.cart__related-goods`, `.carousel*`, `.catalog-card--small` | Desktop carousel controller не підключати до mobile carousel |
 | Оформлення замовлення | `.cart-btnOrder .btn` у `.cart-foot` | `.cart__order` | Не переносити desktop footer DOM у mobile drawer |
+| Підтвердження замовлення | `section.checkout.__success > .checkout-main`; ізольований slot створюється у вільній зоні праворуч | `.checkout-success` безпосередньо в `main.wrapper`; блок додається наступним sibling | Адаптери запускаються лише на `/checkout/complete/<id>/` і не читають дані замовлення |
 | Головний buy box товару | `.product-order__block--buy`, compatibility fallback-и `.product-order` і `.product__section--order` | `.product__block--orderBox [data-view-block="orderBox"] .product-card--main[itemprop="offers"] .product-card__buy-button` | Кнопка має бути scoped до головного товару |
 | Ціна на сторінці товару | box `.product-price__box`, поточна ціна `.product-price__item` | box `.product-card__price-box`, поточна ціна `.product-card__price` | Числове значення читається з `meta[itemprop="price"]`; desktop/mobile адаптери незалежні |
 | Назва сторінки товару | `h1.product-title[itemprop="name"]` | `h1.heading.heading--xl[itemprop="name"]` | Лейбл додається окремим першим дочірнім вузлом; текст заголовка не переписується |
@@ -196,6 +197,32 @@ Embed додає лише власний `span[data-mt-title-label="v1"]`, є id
 Текст записується через `textContent`, кольори проходять серверну валідацію `#RRGGBB`, а URL
 приймаються лише для домену підключеного магазину. Помилка або відсутній URL-мапінг означає
 fail-open: нативна назва залишається без змін.
+
+## Telegram-блок після замовлення
+
+`horoshop-checkout-telegram` працює лише на URL виду `/checkout/complete/<id>/`. Опублікована
+конфігурація містить одне HTTPS-посилання `t.me`/`telegram.me`, текст і візуальні параметри кнопки.
+Сервер генерує QR як self-contained `data:image/png` для того самого нормалізованого URL, тому
+клієнтський embed не звертається до стороннього QR-сервісу й не передає дані замовлення.
+
+Desktop і mobile використовують незалежні adapter families:
+
+- desktop: `section.checkout.__success` із прямим дочірнім `.checkout-main`; оскільки Хорошоп не
+  створює aside-вузол на success page, адаптер додає власний absolute slot у фактичну вільну зону
+  праворуч і перераховує її геометрію при resize, не змінюючи `.checkout-main`;
+- mobile: `.checkout-success` безпосередньо в `main.main.wrapper`; картка додається одразу після native
+  success-блоку й не використовує desktop `.checkout-aside`;
+- обидва посилання — QR і кнопка — ведуть на один опублікований Telegram URL та відкриваються з
+  `noopener noreferrer`;
+- marker `data-mt-checkout-telegram="v1"` гарантує idempotency. Відсутність потрібного кореня або
+  інший path означають fail-open без змін сторінки.
+
+Станом на 2026-09-15 live desktop checkout `1920×1080` підтвердив корінь
+`section.checkout.__success`, прямий `.checkout-main` шириною близько `890px` і вільну праву зону
+близько `550px`; штатного `.checkout-aside` на сторінці немає. Окремий mobile mode при viewport
+`390×844` підтвердив `.checkout-success` безпосередньо в `main.wrapper`. Регресійні fixtures не
+об’єднують ці поверхні; перевірка через примусовий mobile mode не підміняє окремий прогін із
+mobile User-Agent після зміни платформи.
 
 ## Discovery та fallback
 
@@ -355,6 +382,8 @@ Mobile-перевірка лише через DevTools viewport зі збере�
   decoy-кнопку, ID/quantity validation, native rejection, already-in-cart і підтверджений cart add;
 - `tests/horoshop-cart-theme.integration.test.js` перевіряє обидва корені кошика, збереження markup,
   links та listeners, desktop layout/carousel, mobile scroll і lifecycle overlay;
+- `tests/horoshop-checkout-telegram.integration.test.js` окремо перевіряє desktop completion slot,
+  mobile success sibling, єдиний URL для QR/кнопки, path guard та незмінність даних замовлення;
 - `docs/horoshop-catalog-menu/README.md` описує окремий `desktop-only` контракт меню каталогу.
 
 JSDOM fixtures є regression-контрактом репозиторію, але не замінюють live browser-перевірку після

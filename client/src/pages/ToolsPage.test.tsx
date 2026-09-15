@@ -207,6 +207,25 @@ describe('ToolsPage catalog', () => {
     expect(tile).toHaveAttribute('href', '/tools/horoshop-title-labels');
   });
 
+  it('shows the checkout Telegram block as a separate Horoshop tile', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
+      tools: [{
+        toolId: 'horoshop_checkout_telegram',
+        granted: true,
+        accessible: true,
+        blockedByTwoFactor: false,
+        requiresTwoFactor: false
+      }],
+      twoFactorEnabled: true
+    });
+
+    renderPage();
+
+    await expandCategory('Інструменти Хорошоп');
+    const tile = await screen.findByRole('link', { name: /Telegram після замовлення/u });
+    expect(tile).toHaveAttribute('href', '/tools/horoshop-checkout-telegram');
+  });
+
   it('groups the product selection builder under Horoshop tools', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
       tools: [{

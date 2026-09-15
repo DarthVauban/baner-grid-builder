@@ -45,6 +45,7 @@ assets, SPA fallbacks і централізований error handler.
 | `trade-in`, `store-map` | builder/API для Trade-in і карти магазинів |
 | `support-chat`, `popup-banners` | операторські інструменти та публічні віджети |
 | `horoshop-catalog-menu` | CSS-only оформлення штатного меню категорій Хорошопа |
+| `horoshop-checkout-telegram` | керований QR-код і Telegram CTA на сторінці успішного замовлення |
 | `integrations`, `backups` | encrypted settings, Telegram/Mailtrap і backup/restore |
 | `mobile` | пристрої, pairing, QR login, login approval і Firebase outbox |
 | `search/horoshop` | окремий Horoshop catalog, accessories і photo workflow |

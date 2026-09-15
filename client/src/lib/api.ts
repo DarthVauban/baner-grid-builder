@@ -147,6 +147,10 @@ import type {
   HoroshopCartThemeSettingsEnvelope
 } from '../types/horoshop-cart-theme';
 import type { HoroshopTitleLabelRule, HoroshopTitleLabelSettings } from '../types/horoshop-title-labels';
+import type {
+  HoroshopCheckoutTelegramConfig,
+  HoroshopCheckoutTelegramSettings
+} from '../types/horoshop-checkout-telegram';
 import type { PromoCode, PromoCodeInput, PromoCodeStatus } from '../types/promo-code';
 import type {
   PublicTradeInSettings,
@@ -238,6 +242,21 @@ export const api = {
     ),
     setEnabled: (enabled: boolean) => request<HoroshopTitleLabelSettings>(
       '/api/horoshop-title-labels/settings/enabled',
+      { method: 'PATCH', body: jsonBody({ enabled }) }
+    )
+  },
+  horoshopCheckoutTelegram: {
+    settings: () => request<HoroshopCheckoutTelegramSettings>('/api/horoshop-checkout-telegram/settings'),
+    saveDraft: (config: HoroshopCheckoutTelegramConfig) => request<HoroshopCheckoutTelegramSettings>(
+      '/api/horoshop-checkout-telegram/settings/draft',
+      { method: 'PUT', body: jsonBody(config) }
+    ),
+    publish: (config: HoroshopCheckoutTelegramConfig) => request<HoroshopCheckoutTelegramSettings>(
+      '/api/horoshop-checkout-telegram/settings/publish',
+      { method: 'POST', body: jsonBody(config) }
+    ),
+    setEnabled: (enabled: boolean) => request<HoroshopCheckoutTelegramSettings>(
+      '/api/horoshop-checkout-telegram/settings/enabled',
       { method: 'PATCH', body: jsonBody({ enabled }) }
     )
   },
