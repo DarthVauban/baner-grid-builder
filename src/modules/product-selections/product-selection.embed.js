@@ -106,6 +106,13 @@ const SELECTION_STYLES = `.mt-product-selection {
   cursor: pointer !important;
 }
 .mt-product-selection__buy:disabled { cursor: wait !important; opacity: .68 !important; }
+.mt-product-selection__buy.is-unavailable {
+  border-color: #e2e5ea !important;
+  background: #eef0f3 !important;
+  color: #7b8493 !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
 @media (hover: hover) and (pointer: fine) {
   .mt-product-selection__card:hover {
     border-color: #d2d7e0 !important;
@@ -437,23 +444,29 @@ export function productSelectionEmbedScript(selection, origin = '') {
     var buy = document.createElement("button");
     buy.className = "mt-product-selection__buy";
     buy.type = "button";
-    buy.textContent = payload.buttonLabel || "Купити";
-    buy.addEventListener("click", async function () {
-      track("buy_click", product);
+    if (product.available === false) {
+      buy.classList.add("is-unavailable");
       buy.disabled = true;
-      buy.textContent = "Додаємо…";
-      var result = await nativeBuy(product);
-      if (result === "added" || result === "already") {
-        track(result === "added" ? "add_to_cart" : "already_in_cart", product);
-        buy.textContent = "У кошику";
-        buy.title = "Товар уже в кошику.";
-      } else {
-        track("add_to_cart_error", product);
-        buy.disabled = false;
-        buy.textContent = "Спробувати ще";
-        buy.title = "Не вдалося додати товар. Повторіть спробу.";
-      }
-    });
+      buy.textContent = product.availability || "Немає в наявності";
+    } else {
+      buy.textContent = payload.buttonLabel || "Купити";
+      buy.addEventListener("click", async function () {
+        track("buy_click", product);
+        buy.disabled = true;
+        buy.textContent = "Додаємо…";
+        var result = await nativeBuy(product);
+        if (result === "added" || result === "already") {
+          track(result === "added" ? "add_to_cart" : "already_in_cart", product);
+          buy.textContent = "У кошику";
+          buy.title = "Товар уже в кошику.";
+        } else {
+          track("add_to_cart_error", product);
+          buy.disabled = false;
+          buy.textContent = "Спробувати ще";
+          buy.title = "Не вдалося додати товар. Повторіть спробу.";
+        }
+      });
+    }
     card.appendChild(media);
     card.appendChild(title);
     card.appendChild(price);

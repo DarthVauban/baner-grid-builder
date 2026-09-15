@@ -63,6 +63,45 @@ test('selection embed renders its own responsive cards without rewriting native 
   assert.doesNotMatch(code, /innerHTML/u);
 });
 
+test('selection embed disables out-of-stock purchase actions on desktop and mobile', () => {
+  for (const mobile of [false, true]) {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      runScripts: 'dangerously',
+      url: 'https://shop.example.com/article/'
+    });
+    dom.window.matchMedia = () => ({ matches: mobile });
+    const script = dom.window.document.createElement('script');
+    script.textContent = productSelectionEmbedScript({
+      id: `selection-${mobile ? 'mobile' : 'desktop'}`,
+      buttonLabel: 'Купити',
+      desktopColumns: 4,
+      mobileColumns: 2,
+      products: [{
+        productExternalId: 'poco-x7-pro',
+        modificationExternalId: null,
+        title: 'Смартфон POCO X7 Pro',
+        article: 'POCO-X7-PRO',
+        imageUrl: 'https://cdn.example.com/poco.webp',
+        pageUrl: 'https://shop.example.com/poco-x7-pro/',
+        price: '15999',
+        oldPrice: '',
+        currency: 'UAH',
+        buyId: '9002',
+        availability: 'Немає в наявності',
+        available: false,
+        highlightPrice: false
+      }]
+    }, 'https://workspace.example.com');
+    dom.window.document.body.appendChild(script);
+
+    const button = dom.window.document.querySelector('.mt-product-selection__buy');
+    assert.equal(button?.disabled, true);
+    assert.equal(button?.textContent, 'Немає в наявності');
+    assert.equal(button?.classList.contains('is-unavailable'), true);
+    dom.window.close();
+  }
+});
+
 test('promo loader uses the verified desktop price contract', async () => {
   const { dom, box, calls } = await evaluatePromo(`
     <div class="product-price__box" itemprop="offers">

@@ -440,7 +440,7 @@ export async function loadPublicProductSelection(publicId) {
   });
   const synthetic = row.price_mode !== 'none' && Number(row.price_value) > 0;
   const products = storedItems.filter((item) => (
-    !item.missing && item.visible && item.available && item.title && item.imageUrl && item.pageUrl && item.price
+    !item.missing && item.visible && item.title && item.imageUrl && item.pageUrl && item.price
   )).map((item) => {
     const current = numericValue(item.price);
     const calculated = syntheticOldPrice(current, row.price_mode, Number(row.price_value));
@@ -457,6 +457,8 @@ export async function loadPublicProductSelection(publicId) {
       oldPrice: oldPrice === null ? '' : String(oldPrice),
       currency: item.currency,
       buyId: item.buyId,
+      availability: item.availability,
+      available: item.available,
       highlightPrice: Boolean(row.highlight_promo_price && oldPrice !== null)
     };
   });

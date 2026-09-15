@@ -16,7 +16,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderPage() {
+function renderPage(items: unknown[] = []) {
   vi.spyOn(api.productSelections, 'list').mockResolvedValue([]);
   vi.spyOn(api.productSelections, 'catalog').mockResolvedValue({
     integration: {
@@ -24,7 +24,7 @@ function renderPage() {
       storeDomain: 'shop551651.horoshop.ua',
       lastSyncAt: '2026-09-01T08:00:00.000Z'
     },
-    items: [],
+    items,
     categories: []
   } as never);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -50,5 +50,40 @@ describe('ProductSelectionPage editor layout', () => {
     expect(await screen.findByText('Спочатку збережіть вибірку')).toBeInTheDocument();
     expect(screen.getByText('1. Код сторінки')).toBeInTheDocument();
     expect(screen.getByText('2. Глобальний promo loader')).toBeInTheDocument();
+  });
+
+  it('allows an out-of-stock product to be added and marks it unavailable in preview', async () => {
+    renderPage([{
+      id: 'product-id',
+      externalId: 'poco-x7-pro',
+      parentExternalId: null,
+      sku: 'POCO-X7-PRO',
+      titles: { uk: 'Смартфон POCO X7 Pro 8/256GB' },
+      brand: 'Poco',
+      categoryExternalId: 'smartphones',
+      price: '15999',
+      oldPrice: null,
+      currency: 'UAH',
+      availability: 'Немає в наявності',
+      visible: true,
+      active: true,
+      primaryImageUrl: 'https://cdn.example.com/poco.webp',
+      canonicalUrl: 'https://shop551651.horoshop.ua/poco-x7-pro/',
+      popularity: null,
+      conditionLabel: null,
+      horoshopCreatedAt: null,
+      hasPhotos: true,
+      updatedAt: '2026-09-15T08:00:00.000Z',
+      modifications: []
+    }]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Товари/u }));
+    expect(await screen.findByText('Смартфон POCO X7 Pro 8/256GB')).toBeInTheDocument();
+    const addButton = screen.getByRole('button', { name: /Додати/u });
+    expect(addButton).toBeEnabled();
+    fireEvent.click(addButton);
+
+    fireEvent.click(screen.getByRole('button', { name: /Перегляд/u }));
+    expect(await screen.findByRole('button', { name: 'Немає в наявності' })).toBeDisabled();
   });
 });

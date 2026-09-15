@@ -21,6 +21,7 @@ const admin = request.agent(app);
 const connectionId = randomUUID();
 const generation = randomUUID();
 const productId = randomUUID();
+const unavailableProductId = randomUUID();
 const syncId = randomUUID();
 
 function selectionInput(overrides = {}) {
@@ -64,6 +65,20 @@ before(async () => {
   `, [productId, connectionId, generation,
     JSON.stringify({ uk: 'Смартфон TECNO Spark 50 4/128GB' }),
     JSON.stringify({ id: 9001 }), syncId]);
+  await pool.query(`
+    INSERT INTO search_horoshop_products (
+      id, connection_id, generation, external_id, sku, titles, brand,
+      category_external_id, price, currency, availability, visible,
+      primary_image_url, canonical_url, source_data, active, last_seen_sync_id
+    ) VALUES (
+      $1, $2, $3, 'poco-x7-pro', 'POCO-X7-PRO', $4::JSONB, 'Poco',
+      'smartphones', '15999', 'UAH', 'Немає в наявності', TRUE,
+      'https://cdn.example.com/poco.webp', 'https://shop.example.com/poco-x7-pro/',
+      $5::JSONB, TRUE, $6
+    )
+  `, [unavailableProductId, connectionId, generation,
+    JSON.stringify({ uk: 'Смартфон POCO X7 Pro 8/256GB' }),
+    JSON.stringify({ id: 9002 }), syncId]);
 });
 after(async () => {
   await pool.end();
@@ -155,4 +170,26 @@ test('product selection validation rejects duplicate and stale catalog reference
   await admin.post('/api/product-selections').send(selectionInput({
     items: [{ productExternalId: 'missing-product', modificationExternalId: null }]
   })).expect(422);
+});
+
+test('out-of-stock products can be saved and remain visible in the public selection', async () => {
+  const catalog = await admin.get('/api/product-selections/catalog').query({ search: 'POCO' }).expect(200);
+  assert.equal(catalog.body.data.items.length, 1);
+  assert.equal(catalog.body.data.items[0].availability, 'Немає в наявності');
+
+  const created = await admin.post('/api/product-selections').send(selectionInput({
+    name: 'Очікувані новинки',
+    items: [{ productExternalId: 'poco-x7-pro', modificationExternalId: null }]
+  })).expect(201);
+  assert.equal(created.body.data.items.length, 1);
+  assert.equal(created.body.data.items[0].available, false);
+
+  const embed = await request(app)
+    .get(`/api/public/product-selections/${created.body.data.publicId}/embed.js`)
+    .expect(200);
+  assert.match(embed.text, /Смартфон POCO X7 Pro/u);
+  assert.match(embed.text, /"availability":"Немає в наявності"/u);
+  assert.match(embed.text, /"available":false/u);
+
+  await admin.delete(`/api/product-selections/${created.body.data.id}`).expect(204);
 });

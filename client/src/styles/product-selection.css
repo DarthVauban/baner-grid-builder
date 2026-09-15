@@ -153,7 +153,8 @@
 .product-selection-catalog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; max-height: 560px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 .product-selection-catalog-grid > article { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: center; gap: 11px; min-width: 0; padding: 11px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
 .product-selection-catalog-grid > article:hover { border-color: color-mix(in srgb, var(--brand) 27%, var(--line)); box-shadow: 0 8px 20px rgba(22, 30, 50, .06); transform: translateY(-1px); }
-.product-selection-catalog-grid > article.is-unavailable { opacity: .55; }
+.product-selection-catalog-grid > article.is-unavailable { border-color: #efd5a8; background: #fff9ed; }
+.product-selection-catalog-grid > article.is-unavailable .product-selection-availability { color: #a15c0b; }
 .product-selection-catalog-grid > article.is-added { border-color: color-mix(in srgb, var(--success) 30%, var(--line)); background: color-mix(in srgb, var(--success) 4%, var(--surface)); }
 .product-selection-catalog-grid > article > div:nth-child(2) { display: grid; min-width: 0; gap: 4px; }
 .product-selection-catalog-grid > article > button { grid-column: 1 / -1; width: 100%; }
@@ -199,6 +200,7 @@
 .product-selection-preview__grid p { color: #111827; font-size: 15px; font-weight: 850; }
 .product-selection-preview__grid p.is-promo { color: #dc2626; }
 .product-selection-preview__grid button { min-height: 40px; border: 0; border-radius: 9px; color: #111; background: #ffe101; font-weight: 800; }
+.product-selection-preview__grid button:disabled { color: #7b8493; background: #eef0f3; cursor: not-allowed; }
 .product-selection-preview__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; }
 
 .product-selection-install { display: grid; gap: 14px; }
