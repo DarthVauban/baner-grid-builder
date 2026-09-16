@@ -50,6 +50,13 @@ assets, SPA fallbacks і централізований error handler.
 | `mobile` | пристрої, pairing, QR login, login approval і Firebase outbox |
 | `search/horoshop` | окремий Horoshop catalog, accessories і photo workflow |
 
+Публічний віджет `store-map` рендерить векторну підкладку через MapLibre GL і стиль OpenFreeMap
+`positron`. Він не використовує community raster-сервер `tile.openstreetmap.org`, доступ до якого
+може бути заблокований без SLA. CSP віджета дозволяє мережеві запити лише до
+`tiles.openfreemap.org`; атрибуція OpenFreeMap/OpenMapTiles/OpenStreetMap надходить зі style JSON.
+Координати торгових точок залишаються у власному public feed, а провайдеру підкладки не
+передаються дані замовлень або користувацькі ідентифікатори.
+
 Старіші модулі можуть містити SQL безпосередньо в routes. Для нового коду рекомендований шаблон:
 
 ```text

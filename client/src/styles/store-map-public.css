@@ -34,15 +34,15 @@ button, input, select { font: inherit; }
 .store-map-widget__map-canvas { width: 100%; height: 100%; background: #eaf0e5; }
 .store-map-widget__count { position: absolute; z-index: 500; top: 14px; left: 14px; border-radius: 999px; padding: 7px 11px; color: #111827; background: rgba(255,255,255,.92); box-shadow: 0 6px 20px rgba(15,23,42,.12); font-size: 12px; font-weight: 800; }
 
-.store-map-leaflet-icon { background: transparent; border: 0; }
-.store-map-leaflet-icon__art { width: 100%; height: 100%; display: block; filter: drop-shadow(0 4px 4px rgba(15,23,42,.26)); transition: transform 160ms ease, filter 160ms ease; transform-origin: 50% 100%; }
-.store-map-leaflet-icon__art svg { width: 100%; height: 100%; display: block; }
-.store-map-leaflet-icon--selected .store-map-leaflet-icon__art { transform: scale(1.18); filter: drop-shadow(0 6px 7px rgba(15,23,42,.35)); }
-.leaflet-control-attribution { font-size: 9px; }
-.store-map-leaflet-popup .leaflet-popup-content-wrapper { overflow: hidden; border-radius: 14px; padding: 0; box-shadow: 0 16px 40px rgba(15,23,42,.2); }
-.store-map-leaflet-popup .leaflet-popup-content { margin: 0; }
-.store-map-leaflet-popup .leaflet-popup-close-button { top: 6px; right: 6px; z-index: 1; width: 28px; height: 28px; border-radius: 50%; color: #64748b; background: rgba(255,255,255,.9); font-size: 20px; line-height: 26px; }
-.store-map-leaflet-popup .leaflet-popup-tip { box-shadow: 3px 3px 8px rgba(15,23,42,.08); }
+.store-map-marker { appearance: none; display: block; border: 0; padding: 0; background: transparent; cursor: pointer; }
+.store-map-marker:focus-visible { border-radius: 50%; outline: 3px solid #2667e8; outline-offset: 3px; }
+.store-map-marker__art { width: 100%; height: 100%; display: block; filter: drop-shadow(0 4px 4px rgba(15,23,42,.26)); transition: transform 160ms ease, filter 160ms ease; transform-origin: 50% 100%; }
+.store-map-marker__art svg { width: 100%; height: 100%; display: block; }
+.store-map-marker--selected .store-map-marker__art { transform: scale(1.18); filter: drop-shadow(0 6px 7px rgba(15,23,42,.35)); }
+.maplibregl-ctrl-attrib { font-size: 9px; }
+.store-map-popup-shell .maplibregl-popup-content { min-width: 240px; overflow: hidden; border-radius: 14px; padding: 0; box-shadow: 0 16px 40px rgba(15,23,42,.2); }
+.store-map-popup-shell .maplibregl-popup-close-button { top: 6px; right: 6px; z-index: 1; width: 28px; height: 28px; border-radius: 50%; color: #64748b; background: rgba(255,255,255,.9); font-size: 20px; line-height: 26px; }
+.store-map-popup-shell .maplibregl-popup-tip { filter: drop-shadow(3px 3px 5px rgba(15,23,42,.08)); }
 .store-map-popup { display: grid; gap: 10px; padding: 16px; color: #172033; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .store-map-popup__heading { display: grid; gap: 8px; padding-right: 24px; }
 .store-map-popup__heading strong { font-size: 14px; line-height: 1.35; }

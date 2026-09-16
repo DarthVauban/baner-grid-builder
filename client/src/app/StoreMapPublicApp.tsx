@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import {
+  LngLatBounds,
+  Map as MapLibreMap,
+  Marker,
+  NavigationControl,
+  Popup,
+  setWorkerUrl
+} from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { StyledSelect } from '../components/StyledSelect';
 import type { PublicStoreMapData, StoreMapPoint, StoreMapSchedule } from '../types/store-map';
+
+setWorkerUrl(mapLibreWorkerUrl);
+
+export const storeMapStyleUrl = 'https://tiles.openfreemap.org/styles/positron';
 
 const defaultMarkerSvg = `<svg viewBox="0 0 42 52" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <path d="M21 1C10.5 1 2 9.5 2 20c0 14.8 19 31 19 31s19-16.2 19-31C40 9.5 31.5 1 21 1Z" fill="#FFE101" stroke="#111827" stroke-width="2"/>
@@ -85,9 +97,8 @@ function popupMarkup(point: StoreMapPoint) {
 
 export function StoreMapPublicApp() {
   const mapElementRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const markerLayerRef = useRef<L.LayerGroup | null>(null);
-  const markerRefs = useRef(new Map<string, L.Marker>());
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const markerRefs = useRef(new Map<string, Marker>());
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const [data, setData] = useState<PublicStoreMapData | null>(null);
   const [error, setError] = useState('');
@@ -146,85 +157,101 @@ export function StoreMapPublicApp() {
   }, [city, clock, data?.points, openFilter, search]);
   useEffect(() => {
     if (!data || !mapElementRef.current || mapRef.current) return;
-    const map = L.map(mapElementRef.current, {
-      center: [data.settings.centerLatitude, data.settings.centerLongitude],
+    const map = new MapLibreMap({
+      container: mapElementRef.current,
+      style: storeMapStyleUrl,
+      center: [data.settings.centerLongitude, data.settings.centerLatitude],
       zoom: data.settings.defaultZoom,
-      zoomControl: true,
-      scrollWheelZoom: true
+      attributionControl: { compact: true }
     });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-    markerLayerRef.current = L.layerGroup().addTo(map);
+    map.addControl(new NavigationControl({ showCompass: false }), 'top-left');
     mapRef.current = map;
-    window.setTimeout(() => map.invalidateSize(), 0);
+    window.setTimeout(() => map.resize(), 0);
     return () => {
       map.remove();
       mapRef.current = null;
-      markerLayerRef.current = null;
     };
   }, [data]);
 
   useEffect(() => {
-    if (!data || !mapRef.current || !markerLayerRef.current) return;
-    markerLayerRef.current.clearLayers();
-    markerRefs.current.clear();
+    const map = mapRef.current;
+    if (!data || !map) return;
+    const markers = markerRefs.current;
+    markers.forEach((marker) => marker.remove());
+    markers.clear();
     const svg = data.settings.markerSvg || defaultMarkerSvg;
     filteredPoints.forEach((point) => {
       const selected = point.id === selectedId;
-      const icon = L.divIcon({
-        className: `store-map-leaflet-icon${selected ? ' store-map-leaflet-icon--selected' : ''}`,
-        html: `<span class="store-map-leaflet-icon__art">${svg}</span>`,
-        iconSize: [data.settings.markerWidth, data.settings.markerHeight],
-        iconAnchor: [data.settings.markerAnchorX, data.settings.markerAnchorY]
+      const markerElement = document.createElement('button');
+      markerElement.type = 'button';
+      markerElement.className = `store-map-marker${selected ? ' store-map-marker--selected' : ''}`;
+      markerElement.title = point.name;
+      markerElement.setAttribute('aria-label', point.name);
+      markerElement.style.width = `${data.settings.markerWidth}px`;
+      markerElement.style.height = `${data.settings.markerHeight}px`;
+      markerElement.style.zIndex = selected ? '2' : '1';
+      markerElement.innerHTML = `<span class="store-map-marker__art">${svg}</span>`;
+
+      const popup = new Popup({
+        className: 'store-map-popup-shell',
+        maxWidth: '290px',
+        offset: [0, -8]
+      }).setHTML(popupMarkup(point));
+      const marker = new Marker({
+        element: markerElement,
+        anchor: 'bottom',
+        offset: [
+          data.settings.markerWidth / 2 - data.settings.markerAnchorX,
+          data.settings.markerHeight - data.settings.markerAnchorY
+        ]
       });
-      const marker = L.marker([point.latitude, point.longitude], {
-        icon,
-        title: point.name,
-        keyboard: true
-      }).addTo(markerLayerRef.current!);
-      marker.bindPopup(popupMarkup(point), {
-        className: 'store-map-leaflet-popup',
-        minWidth: 240,
-        maxWidth: 290,
-        offset: [0, -8],
-        autoPanPadding: [24, 24]
-      });
-      markerRefs.current.set(point.id, marker);
-      marker.on('click', () => {
+      marker
+        .setLngLat([point.longitude, point.latitude])
+        .setPopup(popup)
+        .addTo(map);
+      markers.set(point.id, marker);
+      markerElement.addEventListener('click', () => {
         setSelectedId(point.id);
         cardRefs.current.get(point.id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
-      if (selected) {
-        marker.setZIndexOffset(1000);
-        marker.openPopup();
-      }
+      if (selected) popup.addTo(map);
     });
+    return () => {
+      markers.forEach((marker) => marker.remove());
+      markers.clear();
+    };
   }, [clock, data, filteredPoints, selectedId]);
 
   useEffect(() => {
     if (!data || !mapRef.current) return;
     if (!filteredPoints.length) {
-      mapRef.current.setView(
-        [data.settings.centerLatitude, data.settings.centerLongitude],
-        data.settings.defaultZoom
-      );
+      mapRef.current.jumpTo({
+        center: [data.settings.centerLongitude, data.settings.centerLatitude],
+        zoom: data.settings.defaultZoom
+      });
       return;
     }
     if (filteredPoints.length === 1) {
-      mapRef.current.setView([filteredPoints[0].latitude, filteredPoints[0].longitude], 15);
+      mapRef.current.easeTo({
+        center: [filteredPoints[0].longitude, filteredPoints[0].latitude],
+        zoom: 15
+      });
       return;
     }
-    const bounds = L.latLngBounds(filteredPoints.map((point) => [point.latitude, point.longitude]));
-    mapRef.current.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 });
+    const bounds = new LngLatBounds();
+    filteredPoints.forEach((point) => bounds.extend([point.longitude, point.latitude]));
+    mapRef.current.fitBounds(bounds, { padding: 32, maxZoom: 14 });
   }, [data, filteredPoints]);
 
   function selectPoint(point: StoreMapPoint) {
     setSelectedId(point.id);
-    markerRefs.current.get(point.id)?.openPopup();
-    mapRef.current?.flyTo([point.latitude, point.longitude], Math.max(mapRef.current.getZoom(), 15), {
-      duration: 0.6
+    const map = mapRef.current;
+    const marker = markerRefs.current.get(point.id);
+    if (map) marker?.getPopup()?.addTo(map);
+    map?.flyTo({
+      center: [point.longitude, point.latitude],
+      zoom: Math.max(map.getZoom(), 15),
+      duration: 600
     });
   }
 

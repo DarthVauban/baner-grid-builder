@@ -80,6 +80,7 @@ const storefrontIndex = path.join(webDistDir, 'storefront.html');
 const tradeInIndex = path.join(webDistDir, 'trade-in.html');
 const storeMapIndex = path.join(webDistDir, 'store-map.html');
 const supportChatIndex = path.join(webDistDir, 'support-chat.html');
+export const storeMapWidgetContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors *";
 const app = express();
 
 app.set('trust proxy', 1);
@@ -357,7 +358,7 @@ app.get('/store-map/widget', (req, res) => {
   res.removeHeader('X-Frame-Options');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors *"
+    storeMapWidgetContentSecurityPolicy
   );
   res.setHeader('Cache-Control', 'no-cache');
   return sendBuiltHtml(res, storeMapIndex, 'Store map widget');

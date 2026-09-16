@@ -10,7 +10,7 @@ process.env.ADMIN_NAME = 'Store Map Admin';
 process.env.ADMIN_EMAIL = 'store-map-admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
 
-const { default: app } = await import('../src/app.js');
+const { default: app, storeMapWidgetContentSecurityPolicy } = await import('../src/app.js');
 const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
@@ -29,6 +29,10 @@ before(async () => {
 after(async () => pool.end());
 
 test('store map CRUD, public feed, settings and embed script work through REST API', async () => {
+  assert.match(storeMapWidgetContentSecurityPolicy, /connect-src 'self' https:\/\/tiles\.openfreemap\.org/u);
+  assert.match(storeMapWidgetContentSecurityPolicy, /worker-src 'self'/u);
+  assert.doesNotMatch(storeMapWidgetContentSecurityPolicy, /tile\.openstreetmap\.org/u);
+
   const created = await admin.post('/api/store-map/points').send({
     externalId: 'TT-001',
     name: 'м. Київ, Даринок',
