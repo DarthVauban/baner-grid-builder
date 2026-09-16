@@ -12,7 +12,9 @@ import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import { StyledSelect } from '../components/StyledSelect';
 import type { PublicStoreMapData, StoreMapPoint, StoreMapSchedule } from '../types/store-map';
 
-setWorkerUrl(mapLibreWorkerUrl);
+// Keep a stable cache-buster so deployments that change the worker response
+// CSP do not reuse a previously cached response with the old policy.
+setWorkerUrl(`${mapLibreWorkerUrl}?store-map-csp=2`);
 
 export const storeMapStyleUrl = 'https://tiles.openfreemap.org/styles/positron';
 

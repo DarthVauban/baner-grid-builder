@@ -54,6 +54,9 @@ assets, SPA fallbacks і централізований error handler.
 `positron`. Він не використовує community raster-сервер `tile.openstreetmap.org`, доступ до якого
 може бути заблокований без SLA. CSP віджета дозволяє мережеві запити лише до
 `tiles.openfreemap.org`; атрибуція OpenFreeMap/OpenMapTiles/OpenStreetMap надходить зі style JSON.
+Окремий MapLibre worker отримує таку саму CSP на власному hashed asset response, оскільки саме
+worker завантажує vector tiles, glyphs і sprites; URL worker містить cache-buster для оновлення
+політики після деплою.
 Координати торгових точок залишаються у власному public feed, а провайдеру підкладки не
 передаються дані замовлень або користувацькі ідентифікатори.
 

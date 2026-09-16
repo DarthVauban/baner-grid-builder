@@ -10,7 +10,11 @@ process.env.ADMIN_NAME = 'Store Map Admin';
 process.env.ADMIN_EMAIL = 'store-map-admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
 
-const { default: app, storeMapWidgetContentSecurityPolicy } = await import('../src/app.js');
+const {
+  default: app,
+  isStoreMapWorkerAsset,
+  storeMapWidgetContentSecurityPolicy
+} = await import('../src/app.js');
 const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
@@ -32,6 +36,8 @@ test('store map CRUD, public feed, settings and embed script work through REST A
   assert.match(storeMapWidgetContentSecurityPolicy, /connect-src 'self' https:\/\/tiles\.openfreemap\.org/u);
   assert.match(storeMapWidgetContentSecurityPolicy, /worker-src 'self'/u);
   assert.doesNotMatch(storeMapWidgetContentSecurityPolicy, /tile\.openstreetmap\.org/u);
+  assert.equal(isStoreMapWorkerAsset('/web-assets/maplibre-gl-worker-CD0Mhlp9.js'), true);
+  assert.equal(isStoreMapWorkerAsset('/web-assets/storeMap-BtXiPrSs.js'), false);
 
   const created = await admin.post('/api/store-map/points').send({
     externalId: 'TT-001',

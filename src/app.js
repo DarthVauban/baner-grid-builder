@@ -81,6 +81,9 @@ const tradeInIndex = path.join(webDistDir, 'trade-in.html');
 const storeMapIndex = path.join(webDistDir, 'store-map.html');
 const supportChatIndex = path.join(webDistDir, 'support-chat.html');
 export const storeMapWidgetContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors *";
+export function isStoreMapWorkerAsset(requestPath) {
+  return /^\/web-assets\/maplibre-gl-worker-[A-Za-z0-9_-]+\.js$/u.test(requestPath);
+}
 const app = express();
 
 app.set('trust proxy', 1);
@@ -260,6 +263,14 @@ app.use('/media/catalog', express.static(catalogMediaDir, {
 }));
 app.use('/media/catalog', (req, res) => {
   res.status(404).json({ error: { code: 'MEDIA_NOT_FOUND', message: 'Зображення не знайдено.' } });
+});
+app.use((req, res, next) => {
+  if (isStoreMapWorkerAsset(req.path)) {
+    // The worker fetches vector tiles, glyphs and sprites itself, so its own
+    // response CSP must permit the same provider as the widget document.
+    res.setHeader('Content-Security-Policy', storeMapWidgetContentSecurityPolicy);
+  }
+  next();
 });
 app.use(express.static(webDistDir, { index: false, maxAge: env.isProduction ? '1h' : 0 }));
 

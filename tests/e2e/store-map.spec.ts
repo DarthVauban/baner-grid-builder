@@ -72,10 +72,15 @@ test('store map loads OpenFreeMap on independent desktop and mobile surfaces', a
     const page = await context.newPage();
     const openFreeMapRequests: string[] = [];
     const legacyTileRequests: string[] = [];
+    const workerPolicies: string[] = [];
 
     page.on('request', (request) => {
       if (request.url().startsWith('https://tiles.openfreemap.org/')) openFreeMapRequests.push(request.url());
       if (request.url().includes('tile.openstreetmap.org')) legacyTileRequests.push(request.url());
+    });
+    page.on('response', (response) => {
+      if (!response.url().includes('/web-assets/maplibre-gl-worker-')) return;
+      workerPolicies.push(response.headers()['content-security-policy'] || '');
     });
     await page.route('**/api/public/store-map**', (route) => route.fulfill({
       status: 200,
@@ -94,6 +99,8 @@ test('store map loads OpenFreeMap on independent desktop and mobile surfaces', a
     await expect(page.locator('.store-map-widget-card')).toHaveCount(2);
     expect(openFreeMapRequests.some((url) => url.includes('/styles/positron'))).toBe(true);
     expect(legacyTileRequests).toEqual([]);
+    expect(workerPolicies).not.toEqual([]);
+    expect(workerPolicies.every((policy) => policy.includes('https://tiles.openfreemap.org'))).toBe(true);
 
     const mapBounds = await page.locator('.store-map-widget__map').boundingBox();
     const directoryBounds = await page.locator('.store-map-widget__directory').boundingBox();
