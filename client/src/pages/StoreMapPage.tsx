@@ -6,6 +6,7 @@ import { StyledSelect } from '../components/StyledSelect';
 import { TimeRangePicker } from '../components/TimeRangePicker';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
+import { downloadStoreMapExport } from '../lib/store-map-xlsx';
 import { useToast } from '../toast/ToastContext';
 import type {
   StoreMapImportPreview,
@@ -435,6 +436,20 @@ export function StoreMapPage() {
 
   const refreshPoints = () => queryClient.invalidateQueries({ queryKey: ['store-map-points'] });
 
+  function exportPoints() {
+    const allPoints = points.data || [];
+    if (!allPoints.length) {
+      showToast('Немає торгових точок для експорту.', 'error');
+      return;
+    }
+    try {
+      downloadStoreMapExport(allPoints);
+      showToast(`Експортовано ${allPoints.length} торгових точок у XLSX.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося сформувати XLSX.', 'error');
+    }
+  }
+
   async function removePoint(point: StoreMapPoint) {
     if (!await confirm({
       title: 'Видалити торгову точку?',
@@ -456,9 +471,10 @@ export function StoreMapPage() {
       <div>
         <p className="eyebrow">Окремий інструмент</p>
         <h1>Мапа магазинів</h1>
-        <p>Керуйте торговими точками, імпортуйте XLSX і налаштовуйте публічний віджет для сайту.</p>
+        <p>Керуйте торговими точками, імпортуйте й експортуйте XLSX та налаштовуйте публічний віджет для сайту.</p>
       </div>
       <div className="store-map-heading-actions">
+        <button className="button button--secondary" type="button" disabled={points.isLoading || !points.data?.length} onClick={exportPoints}><Icon name="download" size={18} /> Експорт XLSX</button>
         <button className="button button--secondary" type="button" onClick={() => setImportOpen(true)}><Icon name="upload" size={18} /> Імпортувати XLSX</button>
         <button className="button button--primary" type="button" onClick={() => setEditingPoint(null)}><Icon name="add" size={18} /> Додати ТТ</button>
       </div>
