@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
-import type { StickerCatalog, StickerOperation } from '../types/horoshop-sticker';
+import type { StickerCatalog, StickerOperation, StickerPreparationProgress } from '../types/horoshop-sticker';
 import { HoroshopStickersPage } from './HoroshopStickersPage';
 
 const productIds = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
@@ -46,6 +46,76 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('HoroshopStickersPage', () => {
+  it('shows live preparation progress across tabs and opens review only when preparation finishes', async () => {
+    let report: ((progress: StickerPreparationProgress) => void) | undefined;
+    let complete: ((operation: StickerOperation) => void) | undefined;
+    vi.mocked(api.horoshopStickers.preview).mockImplementation((_input, onProgress) => {
+      report = onProgress;
+      return new Promise((resolve) => { complete = resolve; });
+    });
+    renderPage();
+    await screen.findByLabelText('Обрати 0001');
+    fireEvent.click(screen.getByLabelText('Обрати 0001'));
+    await openStickers();
+    fireEvent.click(screen.getByLabelText('Додати стікери: Акція'));
+    fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
+    await screen.findByRole('heading', { name: 'Готуємо перегляд змін' });
+    expect(screen.getByRole('button', { name: 'Зняти вибір' })).toBeDisabled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await act(async () => report?.({ stage: 'catalog', total: 1, processed: 0, productsRead: 400, pagesRead: 2 }));
+    expect(screen.getByRole('status')).toHaveTextContent('Отримано товарів: 400 · сторінок: 2');
+    expect(screen.getByRole('progressbar')).not.toHaveAttribute('value');
+    fireEvent.click(screen.getByRole('tab', { name: 'Товари' }));
+    expect(screen.getByLabelText('Обрати 0001')).toBeDisabled();
+    expect(screen.getByRole('heading', { name: 'Готуємо перегляд змін' })).toBeInTheDocument();
+    await act(async () => report?.({ stage: 'comparing', total: 1, processed: 1, productsRead: 400, pagesRead: 2 }));
+    expect(screen.getByRole('progressbar')).toHaveAttribute('value', '1');
+    expect(screen.getByRole('status')).toHaveTextContent('1 / 1 товарних груп');
+    await act(async () => complete?.(structuredClone(preview)));
+    await screen.findByRole('dialog', { name: 'Зміна стікерів' });
+    expect(screen.queryByRole('heading', { name: 'Готуємо перегляд змін' })).not.toBeInTheDocument();
+    expect(api.horoshopStickers.action).not.toHaveBeenCalled();
+  });
+
+  it('clears preparation after failure and preserves the selected products and sticker actions for retry', async () => {
+    vi.mocked(api.horoshopStickers.preview).mockRejectedValueOnce(new Error('Хорошоп тимчасово недоступний.'));
+    renderPage();
+    await screen.findByLabelText('Обрати 0001');
+    fireEvent.click(screen.getByLabelText('Обрати 0001'));
+    await openStickers();
+    fireEvent.click(screen.getByLabelText('Додати стікери: Акція'));
+    fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
+    await screen.findByText('Хорошоп тимчасово недоступний.');
+    expect(screen.queryByRole('heading', { name: 'Готуємо перегляд змін' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Додати стікери: Акція')).toBeChecked();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Переглянути зміни' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
+    await screen.findByRole('dialog');
+    expect(vi.mocked(api.horoshopStickers.preview).mock.calls[1][0]).toMatchObject({ productIds: [productIds[0]], addIds: ['11'] });
+  });
+
+  it('shows rollback preparation inside the operation without publishing or losing its review', async () => {
+    const finished = { ...structuredClone(preview), status: 'completed' as const, counts: { succeeded: 1 } };
+    vi.mocked(api.horoshopStickers.detail).mockResolvedValue(finished);
+    let complete: ((operation: StickerOperation) => void) | undefined;
+    vi.mocked(api.horoshopStickers.action).mockImplementation((_id, _action, report) => {
+      report?.({ stage: 'catalog', total: 1, processed: 0, productsRead: 200, pagesRead: 1 });
+      return new Promise((resolve) => { complete = resolve; });
+    });
+    renderPage(`/tools/horoshop-stickers?operation=${operationId}`);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Повернути зміни' }));
+    await within(dialog).findByRole('heading', { name: 'Готуємо повернення стікерів' });
+    expect(within(dialog).getByRole('status')).toHaveTextContent('Отримано товарів: 200');
+    expect(within(dialog).getByRole('button', { name: 'Закрити операцію' })).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(dialog).toBeInTheDocument();
+    await act(async () => complete?.({ ...structuredClone(preview), kind: 'rollback' }));
+    expect(within(dialog).getByRole('button', { name: 'Застосувати зміни (1)' })).toBeInTheDocument();
+    expect(api.horoshopStickers.action).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.horoshopStickers.action).mock.calls[0][1]).toBe('rollback');
+  });
+
   it('immediately offers manual icons and requires reviewing before applying', async () => {
     renderPage();
     await screen.findByLabelText('Обрати 0001');
@@ -78,7 +148,7 @@ describe('HoroshopStickersPage', () => {
     await openStickers();
     fireEvent.click(screen.getByLabelText('Додати стікери: Акція'));
     fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
-    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds: [productIds[1]] })));
+    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds: [productIds[1]] }), expect.any(Function)));
   });
 
   it('resolves pasted articles, exposes unmatched entries and lets the user resolve ambiguity', async () => {
@@ -117,7 +187,7 @@ describe('HoroshopStickersPage', () => {
     expect(screen.queryByLabelText('Зняти стікери: Вживані товари')).not.toBeInTheDocument();
     expect(screen.queryByText(/Підтверджую, що вибрані стікери/u)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
-    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ addIds: ['12'] })));
+    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ addIds: ['12'] }), expect.any(Function)));
   });
 
   it('shows a useful empty directory state without a configuration step', async () => {
@@ -195,7 +265,7 @@ describe('HoroshopStickersPage', () => {
     await openStickers();
     expect(screen.getByLabelText('Зняти стікери: Акція')).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
-    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds, removeIds: ['11'] })));
+    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds, removeIds: ['11'] }), expect.any(Function)));
   });
 
   it('removes stale removal actions after the product selection changes and disables redundant additions', async () => {
@@ -216,7 +286,7 @@ describe('HoroshopStickersPage', () => {
     expect(screen.getByRole('button', { name: 'Переглянути зміни' })).toBeDisabled();
     fireEvent.click(screen.getByLabelText('Додати стікери: Акція'));
     fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
-    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds: [productIds[1]], removeIds: [] })));
+    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds: [productIds[1]], removeIds: [] }), expect.any(Function)));
   });
 
   it('shows an empty state before selection and supports keyboard navigation through the tabs', async () => {

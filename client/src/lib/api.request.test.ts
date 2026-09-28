@@ -7,6 +7,30 @@ afterEach(() => {
 });
 
 describe('API request recovery', () => {
+  it('reports sticker preparation while the response is still open and returns the final draft', async () => {
+    let writer: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const body = new ReadableStream<Uint8Array>({ start(controller) { writer = controller; } });
+    const encoder = new TextEncoder();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status: 200 })));
+    const report = vi.fn();
+    const input = { productIds: ['product-1'], addIds: ['11'], removeIds: [] };
+    const prepared = api.horoshopStickers.preview(input, report);
+    const progress = { stage: 'catalog', total: 1, processed: 0, productsRead: 200, pagesRead: 1 };
+    writer?.enqueue(encoder.encode(`${JSON.stringify({ type: 'progress', data: progress })}\n`));
+    await vi.waitFor(() => expect(report).toHaveBeenCalledWith(progress));
+    const operation = { id: 'draft-1', status: 'draft' };
+    writer?.enqueue(encoder.encode(`${JSON.stringify({ type: 'result', data: operation })}\n`));
+    writer?.close();
+    await expect(prepared).resolves.toEqual(operation);
+    expect(fetch).toHaveBeenCalledWith('/api/search/horoshop/stickers/operations/preview/stream', expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }));
+  });
+
+  it('uses streaming for rollback preparation and propagates upstream errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(`${JSON.stringify({ type: 'error', status: 409, error: { code: 'HOROSHOP_CATALOG_BUSY', message: 'Дочекайтеся завершення поточної операції.' } })}\n`, { status: 200 })));
+    await expect(api.horoshopStickers.action('operation-1', 'rollback', () => {})).rejects.toMatchObject({ status: 409, code: 'HOROSHOP_CATALOG_BUSY' });
+    expect(fetch).toHaveBeenCalledWith('/api/search/horoshop/stickers/operations/operation-1/rollback/stream', expect.objectContaining({ method: 'POST' }));
+  });
+
   it('stops a request that never responds instead of waiting forever', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn((_path: string, options?: RequestInit) => new Promise((_resolve, reject) => {

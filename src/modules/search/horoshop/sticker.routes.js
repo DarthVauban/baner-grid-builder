@@ -6,6 +6,7 @@ import { requireAuth } from '../../../middleware/auth.js';
 import { requireToolAccess } from '../../access/access.service.js';
 import { maximumStickerSelection } from './sticker.domain.js';
 import { horoshopStickerService } from './sticker.service.js';
+import { AppError } from '../../../lib/app-error.js';
 
 const id = z.string().uuid();
 const ids = z.array(id).min(1).max(maximumStickerSelection);
@@ -32,6 +33,32 @@ const previewSchema = z.object({ productIds: ids, addIds: stickerIds, removeIds:
 const selectionSchema = z.object({ name: z.string().trim().min(1).max(160), productIds: ids }).strict();
 const pagination = z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(10).max(100).default(50) });
 
+async function streamPreparation(res, prepare) {
+  res.status(200).set({ 'Content-Type': 'application/x-ndjson; charset=utf-8', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  const send = (event) => {
+    if (res.destroyed || res.writableEnded) return;
+    res.write(event ? `${JSON.stringify(event)}\n` : '\n');
+    if (typeof res.flush === 'function') res.flush();
+  };
+  // Keep the stream alive during slow upstream calls without inventing progress.
+  const heartbeat = setInterval(() => send(null), 10_000);
+  heartbeat.unref();
+  const stopHeartbeat = () => clearInterval(heartbeat);
+  res.once('close', stopHeartbeat);
+  try {
+    const data = await prepare((progress) => send({ type: 'progress', data: progress }));
+    send({ type: 'result', data });
+  } catch (error) {
+    const safeError = error instanceof AppError ? error : new AppError(500, 'INTERNAL_ERROR', 'Не вдалося підготувати операцію зі стікерами.');
+    send({ type: 'error', status: safeError.status, error: { code: safeError.code, message: safeError.message } });
+  } finally {
+    stopHeartbeat();
+    res.off('close', stopHeartbeat);
+    if (!res.destroyed && !res.writableEnded) res.end();
+  }
+}
+
 export function createStickerRouter(service = horoshopStickerService) {
   const router = Router();
   router.use(requireAuth, requireToolAccess('horoshop_stickers'));
@@ -52,6 +79,14 @@ export function createStickerRouter(service = horoshopStickerService) {
   router.delete('/selections/:id', asyncHandler(async (req, res) => res.json({ data: await service.removeSelection(parseInput(id, req.params.id), req.user.id) })));
   router.get('/operations', asyncHandler(async (req, res) => res.json({ data: await service.history() })));
   router.post('/operations/preview', asyncHandler(async (req, res) => res.status(201).json({ data: await service.preview(parseInput(previewSchema, req.body), req.user.id) })));
+  router.post('/operations/preview/stream', asyncHandler(async (req, res) => {
+    const input = parseInput(previewSchema, req.body);
+    await streamPreparation(res, (onProgress) => service.preview(input, req.user.id, onProgress));
+  }));
+  router.post('/operations/:id/rollback/stream', asyncHandler(async (req, res) => {
+    const operationId = parseInput(id, req.params.id);
+    await streamPreparation(res, (onProgress) => service.rollback(operationId, req.user.id, onProgress));
+  }));
   router.get('/operations/:id', asyncHandler(async (req, res) => {
     const input = parseInput(pagination, req.query);
     res.json({ data: await service.detail(parseInput(id, req.params.id), input.page, input.pageSize) });

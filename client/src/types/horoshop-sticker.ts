@@ -34,3 +34,7 @@ export interface StickerOperation extends StickerOperationSummary {
 export interface StickerResolution { productIds: string[]; duplicates: number; unmatched: string[]; ambiguous: Array<{ input: string; candidates: Array<{ id: string; sku: string; title: string }> }> }
 export interface StickerSelection { id: string; name: string; productIds: string[] }
 export interface StickerPreviewInput { productIds: string[]; addIds: string[]; removeIds: string[]; name?: string }
+export interface StickerPreparationProgress {
+  stage: 'checking' | 'authenticating' | 'directory' | 'catalog' | 'comparing' | 'saving';
+  total: number; processed: number; productsRead: number; pagesRead: number;
+}

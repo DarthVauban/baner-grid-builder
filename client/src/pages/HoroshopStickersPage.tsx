@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon';
 import { StyledSelect, type StyledSelectOption } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
-import type { Sticker, StickerDirectoryEntry, StickerFilters, StickerItemStatus, StickerOperation, StickerOperationStatus, StickerResolution } from '../types/horoshop-sticker';
+import type { Sticker, StickerDirectoryEntry, StickerFilters, StickerItemStatus, StickerOperation, StickerOperationStatus, StickerPreparationProgress, StickerResolution } from '../types/horoshop-sticker';
 import '../styles/horoshop-stickers.css';
 
 const operationLabels: Record<StickerOperationStatus, string> = { draft: 'Перегляд змін', queued: 'У черзі', running: 'Застосовується', completed: 'Завершено', partial: 'Є помилки або конфлікти', stopped: 'Зупинено' };
@@ -15,6 +15,11 @@ const dateLabel = (date: string) => new Intl.DateTimeFormat('uk-UA', { dateStyle
 const unique = (ids: string[]) => [...new Set(ids)];
 const workspaceTabs = [{ id: 'products', label: 'Товари' }, { id: 'stickers', label: 'Стікери' }, { id: 'selections', label: 'Збережені вибірки' }, { id: 'history', label: 'Історія' }] as const;
 type WorkspaceTab = typeof workspaceTabs[number]['id'];
+type Preparation = { kind: 'preview' | 'rollback'; startedAt: number; progress: StickerPreparationProgress };
+const preparationStages: Record<StickerPreparationProgress['stage'], string> = {
+  checking: 'Перевіряємо вибірку', authenticating: 'Підключаємося до Хорошоп', directory: 'Отримуємо ручні стікери',
+  catalog: 'Читаємо актуальний каталог', comparing: 'Порівнюємо стікери товарів', saving: 'Зберігаємо перегляд змін'
+};
 
 function FieldSelect({ label, value, options, searchable = false, onChange }: {
   label: string; value: string; options: StyledSelectOption[]; searchable?: boolean; onChange: (value: string) => void;
@@ -71,14 +76,39 @@ function StickerPicker({ label, directory, selected, disabledIds = [], disabled 
   </fieldset>;
 }
 
-function OperationDialog({ operation, pending, onAction, onClose, onPage }: {
-  operation: StickerOperation; pending: boolean; onAction: (action: 'apply' | 'stop' | 'retry' | 'rollback') => void; onClose: () => void; onPage: (page: number) => void;
+function PreparationProgress({ preparation }: { preparation: Preparation }) {
+  const ref = useRef<HTMLElement>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    const timer = globalThis.setInterval(() => setNow(Date.now()), 1_000);
+    return () => globalThis.clearInterval(timer);
+  }, []);
+  const { progress } = preparation;
+  const elapsed = Math.max(0, Math.floor((now - preparation.startedAt) / 1000));
+  const determinate = ['comparing', 'saving'].includes(progress.stage) && progress.total > 0;
+  return <section ref={ref} className="hs-sticker-preparation" aria-label="Підготовка операції">
+    <div className="hs-sticker-preparation-heading"><span className="hs-sticker-spinner" aria-hidden="true" /><div>
+      <h3>{preparation.kind === 'rollback' ? 'Готуємо повернення стікерів' : 'Готуємо перегляд змін'}</h3>
+      <p>Стікери товарів зміняться після перегляду та застосування.</p>
+    </div><span className="hs-sticker-elapsed" aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span></div>
+    <div role="status" aria-live="polite" aria-atomic="true"><strong>{preparationStages[progress.stage]}</strong>
+      <span>{determinate ? `${progress.processed.toLocaleString('uk-UA')} / ${progress.total.toLocaleString('uk-UA')} товарних груп`
+        : progress.stage === 'catalog' ? `Отримано товарів: ${progress.productsRead.toLocaleString('uk-UA')} · сторінок: ${progress.pagesRead}`
+        : 'Очікуємо відповідь…'}</span></div>
+    <progress aria-label={preparationStages[progress.stage]} max={determinate ? progress.total : 1} value={determinate ? progress.processed : undefined} />
+  </section>;
+}
+
+function OperationDialog({ operation, pending, preparation, onAction, onClose, onPage }: {
+  operation: StickerOperation; pending: boolean; preparation: Preparation | null; onAction: (action: 'apply' | 'stop' | 'retry' | 'rollback') => void; onClose: () => void; onPage: (page: number) => void;
 }) {
   const working = ['queued', 'running'].includes(operation.status);
   const completed = operation.total - (operation.counts.pending || 0) - (operation.counts.writing || 0);
   return <ModalShell labelledBy="hs-operation-title" onClose={onClose}>
     <header><div><span className="hs-sticker-eyebrow">{operationLabels[operation.status]}</span><h2 id="hs-operation-title">{operation.name}</h2><p>{operation.actorName} · {dateLabel(operation.createdAt)}</p></div>
-      <button className="button button--ghost" aria-label="Закрити операцію" onClick={onClose}><Icon name="close" /></button></header>
+      <button className="button button--ghost" aria-label="Закрити операцію" disabled={!!preparation} onClick={onClose}><Icon name="close" /></button></header>
+    {preparation && <PreparationProgress preparation={preparation} />}
     <div className="hs-sticker-operation-summary" aria-live="polite">
       <strong>{operation.total} товарних груп</strong><span>Зміняться: {operation.counts.pending || 0}</span><span>Успішно: {operation.counts.succeeded || 0}</span>
       <span>Без змін: {operation.counts.unchanged || 0}</span><span>Помилки: {(operation.counts.failed || 0) + (operation.counts.conflict || 0)}</span>
@@ -119,6 +149,7 @@ export function HoroshopStickersPage() {
   const [addIds, setAddIds] = useState<string[]>([]);
   const [removeIds, setRemoveIds] = useState<string[]>([]);
   const [savedId, setSavedId] = useState('');
+  const [preparation, setPreparation] = useState<Preparation | null>(null);
   const incompleteFilter = ['present', 'missing'].includes(filters.stickerMode || '') && !filters.stickerId;
   const catalog = useQuery({ queryKey: ['horoshop-sticker-catalog', filters], queryFn: ({ signal }) => api.horoshopStickers.catalog(filters, signal),
     enabled: !incompleteFilter, placeholderData: keepPreviousData });
@@ -166,9 +197,18 @@ export function HoroshopStickersPage() {
   }, [selected.length, selectionSummary.data, selectionSummary.isFetching]);
   const pageIds = data?.items.map((p) => p.id) || [];
   const busy = task.isPending;
-  const previewChanges = () => void run(async () => openOperation(await api.horoshopStickers.preview({ productIds: selected, addIds: activeAddIds, removeIds: activeRemoveIds, name: name || undefined })));
+  const prepare = (kind: Preparation['kind'], total: number, fn: (onProgress: (progress: StickerPreparationProgress) => void) => Promise<StickerOperation>) => void run(async () => {
+    setPreparation({ kind, startedAt: Date.now(), progress: { stage: 'checking', total, processed: 0, productsRead: 0, pagesRead: 0 } });
+    try {
+      const value = await fn((progress) => setPreparation((previous) => previous ? { ...previous, progress } : previous));
+      openOperation(value);
+    } finally { setPreparation(null); }
+  });
+  const previewChanges = () => prepare('preview', selected.length, (onProgress) => api.horoshopStickers.preview({ productIds: selected, addIds: activeAddIds, removeIds: activeRemoveIds, name: name || undefined }, onProgress));
   const previewDisabled = busy || !selected.length || !selectionReady || !(activeAddIds.length || activeRemoveIds.length);
-  const onAction = (action: 'apply' | 'stop' | 'retry' | 'rollback') => void run(async () => openOperation(await api.horoshopStickers.action(operationId, action)));
+  const onAction = (action: 'apply' | 'stop' | 'retry' | 'rollback') => action === 'rollback'
+    ? prepare('rollback', operation.data?.counts.succeeded || 0, (onProgress) => api.horoshopStickers.action(operationId, action, onProgress))
+    : void run(async () => openOperation(await api.horoshopStickers.action(operationId, action)));
 
   return <main className="hs-stickers" ref={workspaceRef}>
     <header className="hs-stickers-heading"><div><span className="hs-sticker-eyebrow">Інструменти Хорошоп</span><h1>Стікери Хорошоп</h1><p>Оберіть товарні групи, додайте або зніміть ручні стікери та перевірте результат.</p></div>
@@ -182,7 +222,8 @@ export function HoroshopStickersPage() {
           if (next === null) return;
           event.preventDefault(); switchTab(workspaceTabs[next].id); document.getElementById(`hs-tab-${workspaceTabs[next].id}`)?.focus();
         }}>{tab.label}{tab.id === 'stickers' && selected.length > 0 && <span>{selected.length}</span>}</button>)}
-    </div>{selected.length > 0 && <div className="hs-sticker-selection-summary"><strong>Обрано {selected.length} груп</strong><button onClick={() => { setSelected([]); setAddIds([]); setRemoveIds([]); }}>Зняти вибір</button>{activeTab === 'products' && <button className="button button--primary" onClick={() => switchTab('stickers')}>До стікерів <Icon name="chevronRight" /></button>}</div>}</div>
+    </div>{selected.length > 0 && <div className="hs-sticker-selection-summary"><strong>Обрано {selected.length} груп</strong><button disabled={busy} onClick={() => { setSelected([]); setAddIds([]); setRemoveIds([]); }}>Зняти вибір</button>{activeTab === 'products' && <button className="button button--primary" onClick={() => switchTab('stickers')}>До стікерів <Icon name="chevronRight" /></button>}</div>}</div>
+    {preparation && !(operation.data && operationId) && <PreparationProgress preparation={preparation} />}
     {activeTab === 'products' && <section role="tabpanel" id="hs-panel-products" aria-labelledby="hs-tab-products"><div className="hs-stickers-layout"><aside className="hs-sticker-filters">
       <h2>Знайти товари</h2>
       <label>Назва або артикул<input placeholder="Пошук у товарах і модифікаціях" value={filters.search || ''} onChange={(e) => updateFilter('search', e.target.value || undefined)} /></label>
@@ -218,9 +259,9 @@ export function HoroshopStickersPage() {
         })}>Вибрати всі {data?.total || 0} за фільтром</button></div>
       {catalog.isFetching && <p className="hs-sticker-loading" role="status">Завантажуємо товари…</p>}
       {incompleteFilter && <p className="hs-sticker-loading" role="status">Оберіть стікер для фільтра.</p>}
-      <div className="hs-sticker-table-wrap"><table><thead><tr><th><input type="checkbox" aria-label="Вибрати всі товари сторінки" disabled={catalog.isFetching || incompleteFilter} checked={!!pageIds.length && pageIds.every((id) => selected.includes(id))} onChange={(e) => setSelected((previous) => e.target.checked ? unique([...previous, ...pageIds]) : previous.filter((id) => !pageIds.includes(id)))} /></th><th>Товар</th><th>Наявність / ціна</th><th>Поточні стікери</th></tr></thead>
+      <div className="hs-sticker-table-wrap"><table><thead><tr><th><input type="checkbox" aria-label="Вибрати всі товари сторінки" disabled={busy || catalog.isFetching || incompleteFilter} checked={!!pageIds.length && pageIds.every((id) => selected.includes(id))} onChange={(e) => setSelected((previous) => e.target.checked ? unique([...previous, ...pageIds]) : previous.filter((id) => !pageIds.includes(id)))} /></th><th>Товар</th><th>Наявність / ціна</th><th>Поточні стікери</th></tr></thead>
         <tbody>{data?.items.map((product) => <tr key={product.id} className={selected.includes(product.id) ? 'is-selected' : ''}>
-          <td><input type="checkbox" aria-label={`Обрати ${product.sku}`} disabled={catalog.isFetching || incompleteFilter} checked={selected.includes(product.id)} onChange={() => toggle(product.id)} /></td>
+          <td><input type="checkbox" aria-label={`Обрати ${product.sku}`} disabled={busy || catalog.isFetching || incompleteFilter} checked={selected.includes(product.id)} onChange={() => toggle(product.id)} /></td>
           <td><div className="hs-sticker-product">{product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="hs-sticker-image-empty"><Icon name="productCard" /></span>}
             <div><strong>{titleFor(product.titles, product.sku)}</strong><small>{product.sku} · {product.brand || 'Без бренду'} · {data.categories.find((c) => c.externalId === product.categoryExternalId)?.title || 'Без категорії'}</small>
               {!!product.modifications.length && <details><summary>{product.modifications.length} модифікацій</summary>{product.modifications.map((m) => <small key={m.id}>{m.sku} · {titleFor(m.titles, m.sku)} · {m.availability || '—'}</small>)}</details>}
@@ -241,9 +282,8 @@ export function HoroshopStickersPage() {
           <div><p className="hs-sticker-picker-hint">Тільки ручні стікери, які є хоча б на одному вибраному товарі.</p>
           <StickerPicker label="Зняти стікери" directory={selectionReady ? removable : []} selected={activeRemoveIds} disabledIds={activeAddIds} disabled={!selectionReady || busy} counts={counts} total={selected.length}
             emptyMessage={selectionReady ? 'На вибраних товарах немає ручних стікерів для зняття.' : 'Очікуємо дані вибірки.'} onChange={setRemoveIds} /></div></div>
-        <footer className="hs-sticker-action-footer"><label>Назва операції<input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} placeholder="Наприклад, Осіння акція" /></label>
+        <footer className="hs-sticker-action-footer"><label>Назва операції<input value={name} disabled={busy} maxLength={160} onChange={(e) => setName(e.target.value)} placeholder="Наприклад, Осіння акція" /></label>
           <div><span>Додати: {activeAddIds.length} · зняти: {activeRemoveIds.length}</span><button className="button button--primary" disabled={previewDisabled} onClick={previewChanges}><Icon name="search" />{busy ? 'Перевіряємо…' : 'Переглянути зміни'}</button></div></footer>
-        {busy && <p role="status">Готуємо операцію. Читання великого каталогу Хорошоп може тривати кілька хвилин.</p>}
       </>}
     </section>}
     {activeTab === 'selections' && <section role="tabpanel" id="hs-panel-selections" aria-labelledby="hs-tab-selections" className="hs-sticker-selections">
@@ -264,6 +304,6 @@ export function HoroshopStickersPage() {
       {history.data?.map((op) => <button key={op.id} className="hs-sticker-history-row" onClick={() => { setOperationPage(1); setParams({ operation: op.id }); }}><strong>{op.name}</strong><span>{operationLabels[op.status]}</span><small>{op.actorName} · {dateLabel(op.createdAt)}</small><Icon name="chevronRight" /></button>)}
     </section>}
     {!!operationId && !operation.data && <div className="hs-sticker-notice" role="status">{operation.isError ? operation.error.message : 'Завантажуємо операцію…'} <button onClick={() => setParams({})}>Закрити</button></div>}
-    {operation.data && operationId && <OperationDialog operation={operation.data} pending={busy} onAction={onAction} onClose={() => { setParams({}); refresh(); }} onPage={setOperationPage} />}
+    {operation.data && operationId && <OperationDialog operation={operation.data} pending={busy} preparation={preparation} onAction={onAction} onClose={() => { if (!preparation) { setParams({}); refresh(); } }} onPage={setOperationPage} />}
   </main>;
 }

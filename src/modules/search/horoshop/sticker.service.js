@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { AppError } from '../../../lib/app-error.js';
 import { horoshopCatalogService } from './catalog.service.js';
 import { decryptHoroshopCredentials } from './credential-cipher.js';
@@ -13,6 +14,10 @@ const notEmpty = (ids) => {
   if (!ids.length || ids.length > maximumStickerSelection) throw new AppError(422, 'STICKER_SELECTION_INVALID', `Оберіть від 1 до ${maximumStickerSelection} товарів.`);
 };
 const terminal = (status) => ['completed', 'partial', 'stopped'].includes(status);
+const preparationReporter = (onProgress, total = 0) => {
+  let progress = { stage: 'checking', total, processed: 0, productsRead: 0, pagesRead: 0 };
+  return (update) => { progress = { ...progress, ...update }; onProgress?.(progress); };
+};
 
 export class HoroshopStickerService {
   constructor(options = {}) {
@@ -94,15 +99,18 @@ export class HoroshopStickerService {
     return resolveStickerArticles(entries, (await this.repository.catalog(connection)).products);
   }
 
-  async readRemote(connection) {
+  async readRemote(connection, onProgress = null) {
+    onProgress?.({ stage: 'authenticating' });
     const credentials = decryptHoroshopCredentials(connection.encryptedCredentials);
     const client = this.clientFactory(connection.storeDomain);
     const token = await client.authenticate(credentials.login, credentials.password);
+    onProgress?.({ stage: 'directory' });
     const directory = await client.exportStickers(token);
     const products = [];
     const fingerprints = new Set();
     const offsets = new Set();
     let offset = 0;
+    onProgress?.({ stage: 'catalog', productsRead: 0, pagesRead: 0 });
     for (let page = 0; page < 2000; page += 1) {
       if (offsets.has(offset)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює сторінку каталогу.');
       offsets.add(offset);
@@ -111,13 +119,16 @@ export class HoroshopStickerService {
       if (result.products.length && fingerprints.has(fingerprint)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює товари в експорті.');
       fingerprints.add(fingerprint);
       products.push(...result.products);
+      onProgress?.({ stage: 'catalog', productsRead: products.length, pagesRead: page + 1 });
       if (result.nextOffset === null) return { client, token, ...remoteStickerSnapshot(products, directory, connection.storeDomain) };
       offset = result.nextOffset;
     }
     throw new AppError(502, 'STICKER_EXPORT_LIMIT', 'Каталог перевищує межу безпечного експорту.');
   }
 
-  async preview({ productIds, addIds, removeIds, name }, actorId) {
+  async preview({ productIds, addIds, removeIds, name }, actorId, onProgress = null) {
+    const report = preparationReporter(onProgress, new Set(productIds).size);
+    report({ stage: 'checking' });
     return this.catalogService.runExclusiveExternalWrite(async () => {
       const connection = await this.repository.connection();
       const catalog = await this.repository.catalog(connection);
@@ -126,18 +137,26 @@ export class HoroshopStickerService {
       const selectedIds = new Set(ids);
       const selected = catalog.products.filter((p) => selectedIds.has(p.id));
       if (selected.length !== ids.length) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
-      const remote = await this.readRemote(connection);
+      const remote = await this.readRemote(connection, report);
       const additions = assertManualActions(addIds, removeIds, remote.directory);
-      const items = selected.map((p) => {
+      report({ stage: 'comparing', processed: 0 });
+      const items = [];
+      for (const p of selected) {
         const current = remote.groups.get(p.externalId);
         const before = current?.stickers || [];
         const after = applyStickerChange(before, additions, removeIds);
         const message = !current ? 'Товар відсутній в актуальному каталозі Хорошоп.' : current.error;
-        return { productId: p.id, externalId: p.externalId, article: current?.article || p.sku,
+        items.push({ productId: p.id, externalId: p.externalId, article: current?.article || p.sku,
           title: titleFor(p.titles, p.sku), membership: current?.membership || [], before, after,
-          addIds, removeIds, status: message ? 'conflict' : sameStickers(before, after) ? 'unchanged' : 'pending', message };
-      });
-      const id = await this.repository.createOperation(connection, { name: name || 'Зміна стікерів', actorId, items });
+          addIds, removeIds, status: message ? 'conflict' : sameStickers(before, after) ? 'unchanged' : 'pending', message });
+        if (items.length % 100 === 0 || items.length === selected.length) {
+          report({ processed: items.length });
+          if (onProgress) await yieldToEventLoop();
+        }
+      }
+      report({ stage: 'saving', processed: 0 });
+      const id = await this.repository.createOperation(connection, { name: name || 'Зміна стікерів', actorId, items,
+        onProgress: (processed) => report({ processed }) });
       return this.detail(id);
     });
   }
@@ -181,13 +200,20 @@ export class HoroshopStickerService {
     return this.detail(nextId);
   }
 
-  async rollback(id, actorId) {
+  async rollback(id, actorId, onProgress = null) {
+    const report = preparationReporter(onProgress);
+    report({ stage: 'checking' });
     return this.catalogService.runExclusiveExternalWrite(async () => {
       const connection = await this.repository.connection();
       const original = await this.repository.operation(id, connection);
       if (!terminal(original.status)) throw new AppError(409, 'STICKER_NOT_FINISHED', 'Спочатку дочекайтеся завершення операції.');
-      const remote = await this.readRemote(connection);
-      const items = original.items.filter((item) => item.status === 'succeeded').map((item) => {
+      const succeeded = original.items.filter((item) => item.status === 'succeeded');
+      notEmpty(succeeded);
+      report({ total: succeeded.length });
+      const remote = await this.readRemote(connection, report);
+      report({ stage: 'comparing', processed: 0 });
+      const items = [];
+      for (const item of succeeded) {
         const addIds = item.before.filter((s) => s.id && !item.after.some((a) => a.id === s.id)).map((s) => s.id);
         const removeIds = item.after.filter((s) => s.id && !item.before.some((a) => a.id === s.id)).map((s) => s.id);
         const current = remote.groups.get(item.externalId);
@@ -203,10 +229,16 @@ export class HoroshopStickerService {
           }
           after = applyStickerChange(before, additions, removeIds);
         } catch (error) { message = error instanceof AppError ? error.message : 'Не вдалося підготувати повернення.'; }
-        return { ...item, before, after, addIds, removeIds, status: message ? 'conflict' : 'pending', message };
-      });
+        items.push({ ...item, before, after, addIds, removeIds, status: message ? 'conflict' : 'pending', message });
+        if (items.length % 100 === 0 || items.length === succeeded.length) {
+          report({ processed: items.length });
+          if (onProgress) await yieldToEventLoop();
+        }
+      }
       notEmpty(items);
-      const nextId = await this.repository.createOperation(connection, { name: `Повернення: ${original.name}`.slice(0, 160), kind: 'rollback', parentId: id, actorId, items });
+      report({ stage: 'saving', processed: 0 });
+      const nextId = await this.repository.createOperation(connection, { name: `Повернення: ${original.name}`.slice(0, 160), kind: 'rollback', parentId: id, actorId, items,
+        onProgress: (processed) => report({ processed }) });
       return this.detail(nextId);
     });
   }

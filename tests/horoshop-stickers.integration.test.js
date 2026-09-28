@@ -89,6 +89,75 @@ async function apply(operation) {
   return (await admin.get(`${base}/operations/${operation.id}`).expect(200)).body.data;
 }
 
+const streamEvents = (text) => text.split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+
+test('preparation streams actual catalog progress before completion and creates only a reviewable draft', async () => {
+  const factory = service.clientFactory;
+  let releaseCatalog;
+  const catalogGate = new Promise((resolve) => { releaseCatalog = resolve; });
+  service.clientFactory = (...args) => ({ ...factory(...args), exportCatalog: async (_token, offset) => {
+    await catalogGate;
+    return { products: structuredClone(remoteProducts.slice(offset, offset + 1)), nextOffset: offset === 0 ? 1 : null };
+  } });
+  let sawProgressBeforeExport = false;
+  const response = await admin.post(`${base}/operations/preview/stream`).send({ productIds, addIds: ['11'], removeIds: ['1'] })
+    .buffer(true).parse((res, callback) => {
+      let text = '';
+      res.on('data', (chunk) => {
+        text += chunk.toString();
+        if (text.includes('"stage":"catalog"') && !sawProgressBeforeExport) {
+          sawProgressBeforeExport = true;
+          assert.equal(imports.length, 0);
+          releaseCatalog();
+        }
+      });
+      res.on('end', () => callback(null, streamEvents(text)));
+      res.on('error', callback);
+    }).timeout({ response: 5000, deadline: 10_000 }).expect(200).then((result) => result, (error) => { releaseCatalog(); throw error; });
+  assert.equal(sawProgressBeforeExport, true);
+  assert.match(response.headers['content-type'], /application\/x-ndjson/u);
+  assert.equal(response.headers['x-accel-buffering'], 'no');
+  assert.match(response.headers['cache-control'], /no-store/u);
+  const progress = response.body.filter((event) => event.type === 'progress').map((event) => event.data);
+  assert.deepEqual([...new Set(progress.map((item) => item.stage))], ['checking', 'authenticating', 'directory', 'catalog', 'comparing', 'saving']);
+  assert.deepEqual(progress.filter((item) => item.stage === 'catalog').map((item) => item.productsRead), [0, 1, 2]);
+  assert.deepEqual(progress.filter((item) => item.stage === 'catalog').map((item) => item.pagesRead), [0, 1, 2]);
+  assert.equal(progress.at(-1).processed, 2);
+  assert.equal(progress.at(-1).total, 2);
+  const operation = response.body.at(-1).data;
+  assert.equal(response.body.at(-1).type, 'result');
+  assert.equal(operation.status, 'draft');
+  assert.equal((await admin.get(`${base}/operations/${operation.id}`).expect(200)).body.data.total, 2);
+  assert.equal(imports.length, 0);
+  assert.equal(/fixture-token|password|encrypted|source_data/u.test(JSON.stringify(response.body)), false);
+});
+
+test('stream preparation validates access and input, reports errors and releases the catalog lock for retry', async () => {
+  await request(app).post(`${base}/operations/preview/stream`).send({ productIds, addIds: ['11'], removeIds: [] }).expect(401);
+  await admin.post(`${base}/operations/preview/stream`).send({ productIds: ['invalid'], addIds: [], removeIds: [] }).expect(422);
+  const failed = await admin.post(`${base}/operations/preview/stream`).send({ productIds, addIds: ['8'], removeIds: [] }).expect(200);
+  const events = streamEvents(failed.text);
+  assert.equal(events.at(-1).type, 'error');
+  assert.equal(events.at(-1).status, 409);
+  assert.equal(events.some((event) => event.type === 'result'), false);
+  assert.deepEqual((await admin.get(`${base}/operations`).expect(200)).body.data, []);
+  const valid = await admin.post(`${base}/operations/preview/stream`).send({ productIds, addIds: ['11'], removeIds: [] }).expect(200);
+  assert.equal(streamEvents(valid.text).at(-1).data.status, 'draft');
+  assert.equal(imports.length, 0);
+});
+
+test('rollback preparation streams progress and still requires explicitly applying the reverse draft', async () => {
+  const original = await apply(await preview());
+  const writes = imports.length;
+  const response = await admin.post(`${base}/operations/${original.id}/rollback/stream`).expect(200);
+  const events = streamEvents(response.text);
+  assert.ok(events.some((event) => event.type === 'progress' && event.data.stage === 'catalog'));
+  assert.equal(events.at(-1).data.status, 'draft');
+  assert.equal(events.at(-1).data.kind, 'rollback');
+  assert.equal(events.at(-1).data.parentId, original.id);
+  assert.equal(imports.length, writes);
+});
+
 test('catalog, exact article resolution and saved selection expose no credentials and keep leading zeros', async () => {
   await request(app).get(`${base}/catalog`).expect(401);
   const response = await admin.get(`${base}/catalog?stickerMode=present&stickerId=1`).expect(200);

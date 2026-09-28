@@ -158,7 +158,7 @@ export async function requestNdjson<TProgress, TResult>(
     }
     if (!response.body) {
       throw new ApiError(502, {
-        error: { code: 'INVALID_STREAM_RESPONSE', message: 'Сервер не повернув прогрес масової публікації.' }
+        error: { code: 'INVALID_STREAM_RESPONSE', message: 'Сервер не повернув прогрес операції.' }
       });
     }
 
@@ -173,7 +173,7 @@ export async function requestNdjson<TProgress, TResult>(
         event = JSON.parse(line) as ApiNdjsonEvent<TProgress, TResult>;
       } catch {
         throw new ApiError(502, {
-          error: { code: 'INVALID_STREAM_RESPONSE', message: 'Сервер повернув некоректний прогрес масової публікації.' }
+          error: { code: 'INVALID_STREAM_RESPONSE', message: 'Сервер повернув некоректний прогрес операції.' }
         });
       }
       if (event.type === 'progress') onProgress(event.data);
@@ -193,7 +193,7 @@ export async function requestNdjson<TProgress, TResult>(
     consumeLine(buffer);
     if (result === undefined) {
       throw new ApiError(502, {
-        error: { code: 'INCOMPLETE_STREAM_RESPONSE', message: 'З’єднання завершилось до закінчення масової публікації.' }
+        error: { code: 'INCOMPLETE_STREAM_RESPONSE', message: 'З’єднання завершилось до закінчення операції.' }
       });
     }
     return result;
@@ -202,7 +202,7 @@ export async function requestNdjson<TProgress, TResult>(
       throw new ApiError(408, {
         error: {
           code: 'REQUEST_TIMEOUT',
-          message: 'Сервер перестав надсилати прогрес масової публікації. Оновіть сторінку, щоб перевірити вже передані товари.'
+          message: 'Сервер перестав надсилати прогрес операції. Оновіть сторінку, щоб перевірити її стан.'
         }
       });
     }

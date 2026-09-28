@@ -92,7 +92,7 @@ export class HoroshopStickerRepository {
       VALUES ($1, $2, $3, $4, $5::jsonb)`, [connectionId, operationId, actorId, action, JSON.stringify(details)]);
   }
 
-  async createOperation(connection, { name, kind = 'change', parentId = null, actorId, items }) {
+  async createOperation(connection, { name, kind = 'change', parentId = null, actorId, items, onProgress = null }) {
     const id = randomUUID();
     await this.transaction(async (db) => {
       await this.assertConnection(db, connection);
@@ -109,6 +109,7 @@ export class HoroshopStickerRepository {
         await db.query(`INSERT INTO search_horoshop_sticker_operation_items
           (operation_id, product_id, external_id, article, title, membership, before_stickers, after_stickers, add_ids, remove_ids, status, message)
           VALUES ${placeholders.join(',')}`, values);
+        onProgress?.(Math.min(offset + 100, items.length));
       }
       await this.event(connection.id, id, actorId, 'preview_created', { kind, total: items.length }, db);
     });
