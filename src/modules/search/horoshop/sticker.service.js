@@ -6,7 +6,7 @@ import { HoroshopClient } from './horoshop.client.js';
 import { normalizeHoroshopStickers } from './catalog.normalizer.js';
 import { HoroshopStickerRepository, arrayValue, countItems } from './sticker.repository.js';
 import { applyStickerChange, assertManualActions, filterStickerProducts, maximumStickerSelection,
-  remoteStickerSnapshot, resolveStickerArticles, sameMembership, sameStickers, titleFor } from './sticker.domain.js';
+  remoteStickerSnapshot, resolveStickerArticles, sameMembership, sameStickers, summarizeStickerSelection, titleFor } from './sticker.domain.js';
 
 const lockId = 72914213;
 const notEmpty = (ids) => {
@@ -77,6 +77,16 @@ export class HoroshopStickerService {
     const products = filterStickerProducts(catalog.products, catalog.categories, filters, catalog.manualIds);
     notEmpty(products.map((p) => p.id));
     return { productIds: products.map((p) => p.id) };
+  }
+
+  async selectionSummary(productIds) {
+    const connection = await this.repository.connection();
+    const catalog = await this.repository.catalog(connection);
+    const ids = new Set(productIds);
+    notEmpty([...ids]);
+    const products = catalog.products.filter((product) => ids.has(product.id));
+    if (products.length !== ids.size) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
+    return summarizeStickerSelection(products, catalog.directory, catalog.manualIds);
   }
 
   async resolve(entries) {

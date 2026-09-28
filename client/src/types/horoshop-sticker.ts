@@ -1,5 +1,8 @@
 export interface Sticker { id: string; title: string }
 export interface StickerDirectoryEntry { externalId: string; title: string; enabled: boolean; manual: boolean }
+export interface StickerSelectionSummary {
+  total: number; stickers: Array<StickerDirectoryEntry & { productCount: number }>;
+}
 export interface StickerProduct {
   id: string; externalId: string; sku: string; titles: Record<string, string>; brand: string | null;
   categoryExternalId: string | null; price: string | null; availability: string | null; visible: boolean;

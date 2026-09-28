@@ -158,6 +158,43 @@ test('directory failures remain visible while the cached catalog and brands stay
   await admin.post(`${base}/directory/refresh`).expect(502);
 });
 
+test('selection summary counts groups across products and modifications and excludes absent stickers', async () => {
+  await pool.query('UPDATE search_horoshop_products SET stickers = $1::jsonb WHERE id = $2', [JSON.stringify([{ id: '1', title: 'Хіт' }]), productIds[1]]);
+  await pool.query('UPDATE search_horoshop_modifications SET stickers = $1::jsonb WHERE sku = $2', [JSON.stringify([{ id: '1', title: 'Хіт' }, { id: '3', title: 'Гарантія' }, { id: '9', title: 'Вимкнений' }]), '0001']);
+  service.clientFactory = () => { throw new Error('Selection summaries must only read the synchronized catalog'); };
+  const response = await admin.post(`${base}/selection/summary`).send({ productIds: [...productIds, productIds[0]] }).expect(200);
+  assert.match(response.headers['cache-control'], /no-store/u);
+  assert.equal(response.body.data.total, 2);
+  assert.deepEqual(response.body.data.stickers.map((s) => [s.externalId, s.productCount, s.manual, s.enabled]).sort((a, b) => a[0].localeCompare(b[0])), [['1', 2, true, true], ['3', 1, true, true], ['9', 1, true, false]]);
+  const first = (await admin.post(`${base}/selection/summary`).send({ productIds: [productIds[0]] }).expect(200)).body.data;
+  assert.equal(first.stickers.every((s) => s.productCount === 1), true);
+  assert.equal(first.stickers.some((s) => s.externalId === '2'), false);
+  assert.equal(/encrypted|password|token|source_data/u.test(JSON.stringify(response.body)), false);
+  assert.equal(imports.length, 0);
+});
+
+test('selection summary resolves cached title-only stickers only when their directory title is unique', async () => {
+  await pool.query('UPDATE search_horoshop_products SET stickers = $1::jsonb WHERE id = $2', ['[]', productIds[0]]);
+  await pool.query('UPDATE search_horoshop_modifications SET stickers = $1::jsonb WHERE product_id = $2', [JSON.stringify([{ id: '', title: 'Гарантія' }]), productIds[0]]);
+  const input = { productIds: [productIds[0]] };
+  const summary = (await admin.post(`${base}/selection/summary`).send(input).expect(200)).body.data;
+  assert.deepEqual(summary.stickers.map((s) => [s.externalId, s.productCount]), [['3', 1]]);
+  await pool.query(`INSERT INTO search_horoshop_stickers (connection_id, generation, external_id, title, enabled, last_seen_sync_id)
+    VALUES ($1, $2, 'duplicate-title', 'Гарантія', TRUE, $3)`, [connection, generation, randomUUID()]);
+  const ambiguous = (await admin.post(`${base}/selection/summary`).send(input).expect(200)).body.data;
+  assert.deepEqual(ambiguous.stickers, []);
+});
+
+test('selection summary validates selection and access and rejects missing or inactive products', async () => {
+  await request(app).post(`${base}/selection/summary`).send({ productIds }).expect(401);
+  await admin.post(`${base}/selection/summary`).send({ productIds: [] }).expect(422);
+  await admin.post(`${base}/selection/summary`).send({ productIds: ['invalid'] }).expect(422);
+  await admin.post(`${base}/selection/summary`).send({ productIds, extra: true }).expect(422);
+  await admin.post(`${base}/selection/summary`).send({ productIds: [randomUUID()] }).expect(409);
+  await pool.query('UPDATE search_horoshop_products SET active = FALSE WHERE id = $1', [productIds[0]]);
+  await admin.post(`${base}/selection/summary`).send({ productIds }).expect(409);
+});
+
 test('preview is read-only; applying merges manual icons, updates the whole group and verifies every product', async () => {
   const operation = await preview();
   assert.equal(imports.length, 0);

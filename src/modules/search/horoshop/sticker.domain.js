@@ -68,6 +68,27 @@ export function filterStickerProducts(products, categories, filters = {}, manual
   });
 }
 
+export function summarizeStickerSelection(products, directory, manualIds) {
+  const byId = new Map(directory.map((item) => [item.externalId, item]));
+  const byTitle = new Map();
+  for (const item of directory) {
+    const key = textKey(item.title);
+    byTitle.set(key, byTitle.has(key) ? null : item.externalId);
+  }
+  const counts = new Map();
+  for (const product of products) {
+    const present = new Set();
+    for (const offer of [product, ...product.modifications]) for (const sticker of offer.stickers) {
+      const id = byId.has(sticker.id) ? sticker.id : !sticker.id ? byTitle.get(textKey(sticker.title)) : null;
+      if (id) present.add(id);
+    }
+    for (const id of present) counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  const manual = new Set(manualIds);
+  return { total: products.length, stickers: directory.filter((item) => counts.has(item.externalId))
+    .map((item) => ({ ...item, manual: manual.has(item.externalId), productCount: counts.get(item.externalId) })) };
+}
+
 export function resolveStickerArticles(entries, products) {
   const index = new Map();
   for (const product of products) for (const sku of new Set([product.sku, ...product.modifications.map((m) => m.sku)])) {
