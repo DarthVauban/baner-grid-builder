@@ -22,7 +22,7 @@ const preview: StickerOperation = {
 };
 function renderPage(entry = '/tools/horoshop-stickers') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[entry]}><ToastProvider><HoroshopStickersPage /></ToastProvider></MemoryRouter></QueryClientProvider>);
+  return { ...render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[entry]}><ToastProvider><HoroshopStickersPage /></ToastProvider></MemoryRouter></QueryClientProvider>), queryClient: client };
 }
 async function openStickers() {
   fireEvent.click(screen.getByRole('tab', { name: 'Стікери' }));
@@ -95,14 +95,25 @@ describe('HoroshopStickersPage', () => {
   });
 
   it('shows rollback preparation inside the operation without publishing or losing its review', async () => {
-    const finished = { ...structuredClone(preview), status: 'completed' as const, counts: { succeeded: 1 } };
-    vi.mocked(api.horoshopStickers.detail).mockResolvedValue(finished);
+    const finished: StickerOperation = {
+      ...structuredClone(preview), status: 'completed', counts: { succeeded: 1 },
+      items: preview.items.map((item) => ({ ...structuredClone(item), status: 'succeeded' }))
+    };
+    const rollback: StickerOperation = {
+      ...structuredClone(preview), id: '44444444-4444-4444-8444-444444444444', name: 'Повернення стікерів', kind: 'rollback', parentId: operationId,
+      items: preview.items.map((item) => ({ ...structuredClone(item), before: structuredClone(item.after), after: structuredClone(item.before), addIds: [...item.removeIds], removeIds: [...item.addIds] }))
+    };
+    vi.mocked(api.horoshopStickers.detail).mockImplementation(async (id) => {
+      if (id === rollback.id) return structuredClone(rollback);
+      if (id === operationId) return structuredClone(finished);
+      throw new Error(`Unexpected operation: ${id}`);
+    });
     let complete: ((operation: StickerOperation) => void) | undefined;
     vi.mocked(api.horoshopStickers.action).mockImplementation((_id, _action, report) => {
       report?.({ stage: 'catalog', total: 1, processed: 0, productsRead: 200, pagesRead: 1 });
       return new Promise((resolve) => { complete = resolve; });
     });
-    renderPage(`/tools/horoshop-stickers?operation=${operationId}`);
+    const { queryClient } = renderPage(`/tools/horoshop-stickers?operation=${operationId}`);
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Повернути зміни' }));
     await within(dialog).findByRole('heading', { name: 'Готуємо повернення стікерів' });
@@ -110,10 +121,15 @@ describe('HoroshopStickersPage', () => {
     expect(within(dialog).getByRole('button', { name: 'Закрити операцію' })).toBeDisabled();
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(dialog).toBeInTheDocument();
-    await act(async () => complete?.({ ...structuredClone(preview), kind: 'rollback' }));
-    expect(within(dialog).getByRole('button', { name: 'Застосувати зміни (1)' })).toBeInTheDocument();
+    await act(async () => complete?.(structuredClone(rollback)));
+    const review = await screen.findByRole('dialog', { name: rollback.name });
+    await within(review).findByRole('button', { name: 'Застосувати зміни (1)' });
+    await act(async () => queryClient.refetchQueries({ queryKey: ['horoshop-sticker-operation', rollback.id, 1], exact: true }));
+    expect(api.horoshopStickers.detail).toHaveBeenCalledWith(rollback.id, 1);
+    expect(queryClient.getQueryData(['horoshop-sticker-operation', rollback.id, 1])).toMatchObject({ id: rollback.id, parentId: operationId, kind: 'rollback', status: 'draft' });
+    expect(within(screen.getByRole('dialog', { name: rollback.name })).getByRole('button', { name: 'Застосувати зміни (1)' })).toBeEnabled();
     expect(api.horoshopStickers.action).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(api.horoshopStickers.action).mock.calls[0][1]).toBe('rollback');
+    expect(api.horoshopStickers.action).toHaveBeenCalledWith(operationId, 'rollback', expect.any(Function));
   });
 
   it('immediately offers manual icons and requires reviewing before applying', async () => {
