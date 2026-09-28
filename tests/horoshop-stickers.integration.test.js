@@ -17,7 +17,7 @@ const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
 const { encryptHoroshopCredentials } = await import('../src/modules/search/horoshop/credential-cipher.js');
 const { horoshopStickerService: service } = await import('../src/modules/search/horoshop/sticker.service.js');
-const { applyStickerChange, assertManualActions, filterStickerProducts, remoteStickerSnapshot } = await import('../src/modules/search/horoshop/sticker.domain.js');
+const { applyStickerChange, assertManualActions, filterStickerProducts, manualStickerDirectory, remoteStickerSnapshot } = await import('../src/modules/search/horoshop/sticker.domain.js');
 const admin = request.agent(app);
 const base = '/api/search/horoshop/stickers';
 let connection;
@@ -39,7 +39,7 @@ beforeEach(async () => {
   connection = randomUUID(); generation = randomUUID(); productIds = [randomUUID(), randomUUID()];
   imports = []; importMode = 'normal';
   service.batchSize = 25;
-  directory = [{ id: 1, title: 'Хіт', enabled: 1 }, { id: 2, title: 'Акція', enabled: 1 }, { id: 3, title: 'Гарантія', enabled: 1 }, { id: 8, title: 'Автоматичний', enabled: 1 }, { id: 9, title: 'Вимкнений', enabled: 0 }];
+  directory = [{ id: 1, title: 'Хіт', enabled: 1 }, { id: 11, title: 'Акція', enabled: 1 }, { id: 3, title: 'Гарантія', enabled: 1 }, { id: 8, title: 'Автоматичний', enabled: 1 }, { id: 19, title: 'Вимкнений', enabled: 0 }];
   remoteProducts = [
     { id: 101, article: 'P1', title: { ua: 'Телефон' }, icons: ['Хіт', 'Гарантія'], modifications: [{ article: '0001', icons: ['Хіт', 'Гарантія'] }, { article: '0002', icons: ['Хіт', 'Гарантія'] }] },
     { id: 102, article: 'P2', title: { ua: 'Навушники' }, icons: [], modifications: [{ article: '0003', icons: [] }] }
@@ -58,7 +58,6 @@ beforeEach(async () => {
       (connection_id, generation, product_id, external_id, sku, titles, price, availability, stickers, last_seen_sync_id)
       VALUES ($1, $2, $3, $4, $5, $6::jsonb, '120', 'В наявності', $7::jsonb, $8)`, [connection, generation, productIds[i], `${product.id}:${modification.article}`, modification.article, JSON.stringify({ uk: product.title.ua }), JSON.stringify(stickers), syncId]);
   }
-  for (const id of ['1', '2', '3', '9']) await pool.query('INSERT INTO search_horoshop_manual_stickers (connection_id, external_id) VALUES ($1, $2)', [connection, id]);
   service.clientFactory = () => ({
     authenticate: async () => 'fixture-token',
     exportStickers: async () => structuredClone(directory),
@@ -80,7 +79,7 @@ beforeEach(async () => {
   });
 });
 
-async function preview(ids = productIds, addIds = ['2'], removeIds = ['1']) {
+async function preview(ids = productIds, addIds = ['11'], removeIds = ['1']) {
   const response = await admin.post(`${base}/operations/preview`).send({ name: 'Тестова акція', productIds: ids, addIds, removeIds }).expect(201);
   return response.body.data;
 }
@@ -95,7 +94,9 @@ test('catalog, exact article resolution and saved selection expose no credential
   const response = await admin.get(`${base}/catalog?stickerMode=present&stickerId=1`).expect(200);
   assert.equal(response.body.data.total, 1);
   assert.match(response.headers['cache-control'], /no-store/u);
-  assert.equal(response.body.data.directory.find((s) => s.externalId === '8').manual, false);
+  assert.equal(response.body.data.directory.some((s) => s.externalId === '8'), false);
+  assert.deepEqual(response.body.data.directory.map((s) => s.externalId).sort(), ['1', '11', '19', '3']);
+  assert.equal('canConfigure' in response.body.data, false);
   assert.equal(/encrypted|password|token|source_data/u.test(JSON.stringify(response.body)), false);
   const resolution = await admin.post(`${base}/resolve`).send({ entries: ['0001', '0002', '0001', 'missing'] }).expect(200);
   assert.deepEqual(resolution.body.data.productIds, [productIds[0]]);
@@ -135,7 +136,7 @@ test('directory is fetched without a full catalog sync, cached and refreshed exp
     return client;
   };
   const first = (await admin.get(`${base}/catalog`).expect(200)).body.data;
-  assert.equal(first.directory.length, directory.length);
+  assert.equal(first.directory.length, directory.length - 1);
   assert.equal(first.directoryWarning, null);
   await admin.get(`${base}/catalog?search=Телефон`).expect(200);
   assert.equal(calls, 1);
@@ -145,8 +146,13 @@ test('directory is fetched without a full catalog sync, cached and refreshed exp
   const refreshed = (await admin.get(`${base}/catalog`).expect(200)).body.data;
   assert.equal(calls, 2);
   assert.equal(refreshed.directory.some((s) => s.externalId === '3'), false);
-  assert.equal(refreshed.directory.find((s) => s.externalId === '12').manual, false);
+  assert.deepEqual(refreshed.directory.find((s) => s.externalId === '12'), { externalId: '12', title: 'Передзамовлення', enabled: true });
   assert.equal(imports.length, 0);
+  const labels = (await admin.get('/api/horoshop-title-labels/settings').expect(200)).body.data;
+  assert.ok(labels.stickerOptions.some((s) => s.id === '12'));
+  service.clientFactory = factory;
+  const operation = await preview([productIds[1]], ['12'], []);
+  assert.deepEqual(operation.items[0].after, [{ id: '12', title: 'Передзамовлення' }]);
 });
 
 test('directory failures remain visible while the cached catalog and brands stay usable', async () => {
@@ -160,15 +166,15 @@ test('directory failures remain visible while the cached catalog and brands stay
 
 test('selection summary counts groups across products and modifications and excludes absent stickers', async () => {
   await pool.query('UPDATE search_horoshop_products SET stickers = $1::jsonb WHERE id = $2', [JSON.stringify([{ id: '1', title: 'Хіт' }]), productIds[1]]);
-  await pool.query('UPDATE search_horoshop_modifications SET stickers = $1::jsonb WHERE sku = $2', [JSON.stringify([{ id: '1', title: 'Хіт' }, { id: '3', title: 'Гарантія' }, { id: '9', title: 'Вимкнений' }]), '0001']);
+  await pool.query('UPDATE search_horoshop_modifications SET stickers = $1::jsonb WHERE sku = $2', [JSON.stringify([{ id: '1', title: 'Хіт' }, { id: '3', title: 'Гарантія' }, { id: '19', title: 'Вимкнений' }, { id: '8', title: 'Автоматичний' }]), '0001']);
   service.clientFactory = () => { throw new Error('Selection summaries must only read the synchronized catalog'); };
   const response = await admin.post(`${base}/selection/summary`).send({ productIds: [...productIds, productIds[0]] }).expect(200);
   assert.match(response.headers['cache-control'], /no-store/u);
   assert.equal(response.body.data.total, 2);
-  assert.deepEqual(response.body.data.stickers.map((s) => [s.externalId, s.productCount, s.manual, s.enabled]).sort((a, b) => a[0].localeCompare(b[0])), [['1', 2, true, true], ['3', 1, true, true], ['9', 1, true, false]]);
+  assert.deepEqual(response.body.data.stickers.map((s) => [s.externalId, s.productCount, s.enabled]).sort((a, b) => a[0].localeCompare(b[0])), [['1', 2, true], ['19', 1, false], ['3', 1, true]]);
   const first = (await admin.post(`${base}/selection/summary`).send({ productIds: [productIds[0]] }).expect(200)).body.data;
   assert.equal(first.stickers.every((s) => s.productCount === 1), true);
-  assert.equal(first.stickers.some((s) => s.externalId === '2'), false);
+  assert.equal(first.stickers.some((s) => s.externalId === '11'), false);
   assert.equal(/encrypted|password|token|source_data/u.test(JSON.stringify(response.body)), false);
   assert.equal(imports.length, 0);
 });
@@ -207,7 +213,7 @@ test('preview is read-only; applying merges manual icons, updates the whole grou
   assert.deepEqual(imports.flatMap((entry) => entry.payloads.map((payload) => payload.article)).sort(), ['0001', '0002', '0003']);
   assert.equal(remoteProducts[0].modifications.every((m) => m.icons.includes('Гарантія') && m.icons.includes('Акція') && !m.icons.includes('Хіт')), true);
   const cache = await admin.get(`${base}/catalog`).expect(200);
-  assert.equal(cache.body.data.items.every((p) => p.stickers.some((s) => s.id === '2')), true);
+  assert.equal(cache.body.data.items.every((p) => p.stickers.some((s) => s.id === '11')), true);
   await admin.post(`${base}/operations/${operation.id}/apply`).expect(409);
 });
 
@@ -220,11 +226,36 @@ test('removing the last sticker sends an empty array and no-op products are skip
   assert.deepEqual(imports[0].payloads, [{ article: '0001', icons: [] }, { article: '0002', icons: [] }]);
 });
 
-test('unconfirmed automatic stickers, disabled additions and conflicting actions cannot be submitted', async () => {
-  for (const [addIds, removeIds, status] of [[['8'], [], 409], [['9'], [], 422], [['1'], ['1'], 422], [[], [], 422]]) {
+test('automatic stickers, disabled additions, missing stickers and conflicting actions cannot be submitted', async () => {
+  for (const [addIds, removeIds, status] of [[['8'], [], 409], [[], ['8'], 409], [['19'], [], 422], [['missing'], [], 409], [['1'], ['1'], 422], [[], [], 422]]) {
     await admin.post(`${base}/operations/preview`).send({ productIds, addIds, removeIds }).expect(status);
   }
   assert.equal(imports.length, 0);
+});
+
+test('legacy confirmations cannot expose or authorize renamed automatic icons', async () => {
+  directory.find((item) => item.id === 8).title = 'Спеціальна пропозиція';
+  await pool.query('INSERT INTO search_horoshop_manual_stickers (connection_id, external_id) VALUES ($1, $2)', [connection, '8']);
+  const catalog = (await admin.get(`${base}/catalog`).expect(200)).body.data;
+  assert.equal(catalog.directory.some((item) => item.externalId === '8'), false);
+  assert.ok(catalog.directory.some((item) => item.externalId === '11'));
+  await admin.post(`${base}/operations/preview`).send({ productIds, addIds: ['8'], removeIds: [] }).expect(409);
+  const operation = await preview();
+  await pool.query('UPDATE search_horoshop_sticker_operation_items SET add_ids = $1::jsonb WHERE operation_id = $2', ['["8"]', operation.id]);
+  const result = await apply(operation);
+  assert.equal(result.counts.conflict, 2);
+  assert.equal(imports.length, 0);
+});
+
+test('manual directory includes unused and disabled manual icons and excludes every native automatic icon independently of title', () => {
+  const directory = Array.from({ length: 12 }, (_, i) => ({ externalId: String(i + 1), title: `Перейменований ${i + 1}`, enabled: i !== 10 }));
+  assert.deepEqual(manualStickerDirectory(directory).map((item) => item.externalId), ['1', '3', '4', '10', '11', '12']);
+  assert.deepEqual(assertManualActions(['10', '12'], [], directory), [{ id: '10', title: 'Перейменований 10' }, { id: '12', title: 'Перейменований 12' }]);
+  assert.doesNotThrow(() => assertManualActions([], ['11'], directory));
+  for (const id of ['2', '5', '6', '7', '8', '9']) {
+    assert.throws(() => assertManualActions([id], [], directory), { code: 'STICKER_NOT_MANUAL' });
+    assert.throws(() => assertManualActions([], [id], directory), { code: 'STICKER_NOT_MANUAL' });
+  }
 });
 
 test('changed sticker sets, missing icon fields and changed modification membership block writes', async () => {
@@ -287,7 +318,7 @@ test('retry repairs a partially written modification group only when every set m
   assert.ok(remoteProducts[0].modifications.every((m) => m.icons.includes('Акція')));
 
   importMode = 'partial-offer';
-  const second = await apply(await preview([productIds[0]], ['1'], ['2']));
+  const second = await apply(await preview([productIds[0]], ['1'], ['11']));
   remoteProducts[0].modifications[1].icons.push('Автоматичний');
   const blocked = (await admin.post(`${base}/operations/${second.id}/retry`).expect(200)).body.data;
   const previousImports = imports.length;
@@ -330,7 +361,7 @@ test('rollback removes its own changes, preserves unrelated later stickers, and 
   assert.equal(conflict.counts.conflict, 1);
 });
 
-test('permission is independent of related-products access and configuring manual icons is administrator-only', async () => {
+test('editors with tool access can use all manual icons without administrator setup', async () => {
   const userId = randomUUID();
   const adminRow = await pool.query('SELECT password_hash FROM users WHERE email = $1', [process.env.ADMIN_EMAIL]);
   await pool.query(`INSERT INTO users (id, name, email, password_hash, role, status) VALUES ($1, 'Sticker Editor', 'sticker-editor@test.local', $2, 'editor', 'approved')`, [userId, adminRow.rows[0].password_hash]);
@@ -338,13 +369,17 @@ test('permission is independent of related-products access and configuring manua
   await editor.post('/api/auth/login').send({ email: 'sticker-editor@test.local', password: process.env.ADMIN_PASSWORD }).expect(200);
   await editor.get(`${base}/catalog`).expect(403);
   await pool.query(`INSERT INTO user_tool_access (user_id, tool_id) VALUES ($1, 'horoshop_stickers')`, [userId]);
-  await editor.get(`${base}/catalog`).expect(200);
+  const catalog = (await editor.get(`${base}/catalog`).expect(200)).body.data;
+  assert.ok(catalog.directory.some((s) => s.externalId === '11'));
   await editor.get('/api/search/horoshop/catalog').expect(403);
-  await editor.put(`${base}/manual`).send({ ids: ['1'], confirmManual: true }).expect(403);
-  await admin.put(`${base}/manual`).send({ ids: ['1'], confirmManual: false }).expect(422);
-  await admin.put(`${base}/manual`).send({ ids: ['1'], confirmManual: true }).expect(200);
-  const actor = await pool.query(`SELECT actor_user_id FROM search_horoshop_sticker_events WHERE action = 'manual_stickers_confirmed'`);
-  assert.ok(actor.rows[0].actor_user_id);
+  const operation = (await editor.post(`${base}/operations/preview`).send({ productIds, addIds: ['11'], removeIds: [] }).expect(201)).body.data;
+  await editor.post(`${base}/operations/${operation.id}/apply`).expect(202);
+  await service.runNext();
+  const result = (await editor.get(`${base}/operations/${operation.id}`).expect(200)).body.data;
+  assert.equal(result.counts.succeeded, 2);
+  const actor = await pool.query(`SELECT actor_user_id FROM search_horoshop_sticker_events WHERE operation_id = $1 AND action = 'preview_created'`, [operation.id]);
+  assert.equal(actor.rows[0].actor_user_id, userId);
+  await admin.put(`${base}/manual`).send({ ids: ['1'], confirmManual: true }).expect(404);
 });
 
 test('reports escape CSV formulas and old operations cannot target a new connection generation', async () => {
@@ -367,7 +402,7 @@ test('domain filtering honors category descendants and price ranges on the same 
   assert.equal(filterStickerProducts([product], categories, { priceMin: 100, priceMax: 220 }).length, 1);
   const before = [{ id: '1', title: 'Хіт' }, { id: '', title: 'Невідомий ручний' }];
   assert.equal(applyStickerChange(before, [], ['1'])[0].title, 'Невідомий ручний');
-  assert.throws(() => assertManualActions(['1'], [], [{ externalId: '1', title: 'X', enabled: true }, { externalId: '2', title: 'X', enabled: true }], ['1']));
+  assert.throws(() => assertManualActions(['1'], [], [{ externalId: '1', title: 'X', enabled: true }, { externalId: '11', title: 'X', enabled: true }]));
   const snapshot = remoteStickerSnapshot([{ id: 10, article: 'A', icons: [{ title: 'Невідомий ручний' }] }], [], 'shop.example.com');
   assert.equal(snapshot.groups.get('10').stickers[0].title, 'Невідомий ручний');
   const localized = remoteStickerSnapshot([{ id: 10, article: 'A', icons: [{ title: { ua: 'Хіт' } }] }], [{ id: 1, title: 'Хіт' }], 'shop.example.com');

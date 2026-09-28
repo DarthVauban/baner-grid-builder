@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../../lib/async-handler.js';
 import { parseInput } from '../../../lib/validation.js';
-import { requireAuth, requireRole } from '../../../middleware/auth.js';
+import { requireAuth } from '../../../middleware/auth.js';
 import { requireToolAccess } from '../../access/access.service.js';
 import { maximumStickerSelection } from './sticker.domain.js';
 import { horoshopStickerService } from './sticker.service.js';
@@ -36,7 +36,7 @@ export function createStickerRouter(service = horoshopStickerService) {
   const router = Router();
   router.use(requireAuth, requireToolAccess('horoshop_stickers'));
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-  router.get('/catalog', asyncHandler(async (req, res) => res.json({ data: await service.catalog(parseInput(stickerFiltersSchema, req.query), req.user) })));
+  router.get('/catalog', asyncHandler(async (req, res) => res.json({ data: await service.catalog(parseInput(stickerFiltersSchema, req.query)) })));
   router.post('/directory/refresh', asyncHandler(async (req, res) => res.json({ data: await service.refreshDirectory() })));
   router.post('/select', asyncHandler(async (req, res) => res.json({ data: await service.select(parseInput(stickerFiltersSchema, req.body)) })));
   router.post('/selection/summary', asyncHandler(async (req, res) => {
@@ -46,10 +46,6 @@ export function createStickerRouter(service = horoshopStickerService) {
   router.post('/resolve', asyncHandler(async (req, res) => {
     const input = parseInput(z.object({ entries: z.array(z.string().trim().min(1).max(200)).min(1).max(maximumStickerSelection) }).strict(), req.body);
     res.json({ data: await service.resolve(input.entries) });
-  }));
-  router.put('/manual', requireRole('admin'), asyncHandler(async (req, res) => {
-    const input = parseInput(z.object({ ids: stickerIds, confirmManual: z.literal(true) }).strict(), req.body);
-    res.json({ data: await service.configureManual(input.ids, req.user.id) });
   }));
   router.get('/selections', asyncHandler(async (req, res) => res.json({ data: await service.selections() })));
   router.post('/selections', asyncHandler(async (req, res) => res.status(201).json({ data: await service.saveSelection(parseInput(selectionSchema, req.body), req.user.id) })));

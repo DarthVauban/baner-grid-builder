@@ -1,5 +1,5 @@
 export interface Sticker { id: string; title: string }
-export interface StickerDirectoryEntry { externalId: string; title: string; enabled: boolean; manual: boolean }
+export interface StickerDirectoryEntry { externalId: string; title: string; enabled: boolean }
 export interface StickerSelectionSummary {
   total: number; stickers: Array<StickerDirectoryEntry & { productCount: number }>;
 }
@@ -16,7 +16,7 @@ export interface StickerFilters {
 }
 export interface StickerCatalog {
   items: StickerProduct[]; total: number; page: number; pageSize: number; pageCount: number;
-  storeDomain: string; lastSyncAt: string | null; canConfigure: boolean; directoryWarning?: string | null;
+  storeDomain: string; lastSyncAt: string | null; directoryWarning?: string | null;
   directory: StickerDirectoryEntry[]; categories: Array<{ externalId: string; parentExternalId: string | null; title: string }>;
   brands: string[]; availabilityOptions: string[];
 }

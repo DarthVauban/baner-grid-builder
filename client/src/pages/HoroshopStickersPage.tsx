@@ -118,8 +118,6 @@ export function HoroshopStickersPage() {
   const [resolution, setResolution] = useState<StickerResolution | null>(null);
   const [addIds, setAddIds] = useState<string[]>([]);
   const [removeIds, setRemoveIds] = useState<string[]>([]);
-  const [configure, setConfigure] = useState<string[] | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
   const [savedId, setSavedId] = useState('');
   const incompleteFilter = ['present', 'missing'].includes(filters.stickerMode || '') && !filters.stickerId;
   const catalog = useQuery({ queryKey: ['horoshop-sticker-catalog', filters], queryFn: ({ signal }) => api.horoshopStickers.catalog(filters, signal),
@@ -151,11 +149,10 @@ export function HoroshopStickersPage() {
   const toggle = (id: string) => setSelected((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]);
   const data = catalog.data;
   const directory = data?.directory || [];
-  const manual = directory.filter((item) => item.manual);
   const counts = new Map(selectionSummary.data?.stickers.map((item) => [item.externalId, item.productCount]) || []);
-  const removable = selectionSummary.data?.stickers.filter((item) => item.manual && manual.some((entry) => entry.externalId === item.externalId)) || [];
+  const removable = selectionSummary.data?.stickers.filter((item) => directory.some((entry) => entry.externalId === item.externalId)) || [];
   const activeRemoveIds = removeIds.filter((id) => removable.some((item) => item.externalId === id));
-  const activeAddIds = addIds.filter((id) => manual.some((item) => item.externalId === id && item.enabled) && counts.get(id) !== selected.length);
+  const activeAddIds = addIds.filter((id) => directory.some((item) => item.externalId === id && item.enabled) && counts.get(id) !== selected.length);
   const selectionReady = !!selectionSummary.data && !selectionSummary.isFetching && !selectionSummary.isError;
   useEffect(() => {
     if (!selected.length) {
@@ -164,10 +161,9 @@ export function HoroshopStickersPage() {
       return;
     }
     if (!selectionSummary.data || selectionSummary.isFetching) return;
-    const ids = new Set(selectionSummary.data.stickers.filter((item) => item.manual).map((item) => item.externalId));
+    const ids = new Set(selectionSummary.data.stickers.map((item) => item.externalId));
     setRemoveIds((previous) => previous.every((id) => ids.has(id)) ? previous : previous.filter((id) => ids.has(id)));
   }, [selected.length, selectionSummary.data, selectionSummary.isFetching]);
-  const openConfiguration = () => { setConfigure(manual.map((s) => s.externalId)); setConfirmed(false); };
   const pageIds = data?.items.map((p) => p.id) || [];
   const busy = task.isPending;
   const previewChanges = () => void run(async () => openOperation(await api.horoshopStickers.preview({ productIds: selected, addIds: activeAddIds, removeIds: activeRemoveIds, name: name || undefined })));
@@ -176,7 +172,7 @@ export function HoroshopStickersPage() {
 
   return <main className="hs-stickers" ref={workspaceRef}>
     <header className="hs-stickers-heading"><div><span className="hs-sticker-eyebrow">Інструменти Хорошоп</span><h1>Стікери Хорошоп</h1><p>Оберіть товарні групи, додайте або зніміть ручні стікери та перевірте результат.</p></div>
-      <div>{data && <span className="hs-sticker-store">{data.storeDomain}</span>}{data?.canConfigure && <button className="button button--ghost" onClick={openConfiguration}>Налаштувати ручні стікери</button>}<button className="button button--ghost" disabled={busy} onClick={() => void run(() => api.horoshopStickers.refreshDirectory())}><Icon name="refresh" />Оновити</button></div></header>
+      <div>{data && <span className="hs-sticker-store">{data.storeDomain}</span>}<button className="button button--ghost" disabled={busy} onClick={() => void run(() => api.horoshopStickers.refreshDirectory())}><Icon name="refresh" />Оновити</button></div></header>
     {catalog.isError && <div className="hs-sticker-notice is-error" role="alert">{catalog.error.message} <Link to="/admin/integrations">Підключення Хорошоп</Link></div>}
     {data?.directoryWarning && <div className="hs-sticker-notice" role="alert">{data.directoryWarning}</div>}
     <div className="hs-sticker-workspace-nav"><div className="hs-sticker-tabs" role="tablist" aria-label="Розділи інструмента стікерів">
@@ -239,10 +235,9 @@ export function HoroshopStickersPage() {
         <div className="hs-sticker-action-heading"><div><h2>Зміни для {selected.length} товарних груп</h2><p>Інші стікери збережуться. Зміни охоплюють усі модифікації товару.</p></div><button className="button button--ghost" onClick={() => switchTab('products')}>Змінити вибір товарів</button></div>
         {selectionSummary.isFetching && <p role="status">Перевіряємо стікери вибраних товарів…</p>}
         {selectionSummary.isError && <div className="hs-sticker-notice is-error" role="alert">{selectionSummary.error.message} <button onClick={() => void selectionSummary.refetch()}>Повторити</button></div>}
-        {data && !manual.length && <div className="hs-sticker-notice">Перед змінами позначте стікери зі способом активації «У властивостях товару». {data.canConfigure && <button className="button button--ghost" onClick={openConfiguration}>Оберіть ручні стікери</button>}</div>}
         <div className="hs-sticker-pair"><div><p className="hs-sticker-picker-hint">Доступні ручні стікери. Ті, що вже є на всіх товарах, додавати не потрібно.</p>
-          <StickerPicker label="Додати стікери" directory={manual.filter((item) => item.enabled)} selected={activeAddIds} disabledIds={activeRemoveIds} disabled={!selectionReady || busy} adding counts={counts} total={selected.length}
-            emptyMessage={manual.length ? 'Немає увімкнених ручних стікерів для додавання.' : 'Ручні стікери ще не налаштовано.'} onChange={setAddIds} /></div>
+          <StickerPicker label="Додати стікери" directory={directory.filter((item) => item.enabled)} selected={activeAddIds} disabledIds={activeRemoveIds} disabled={!selectionReady || busy} adding counts={counts} total={selected.length}
+            emptyMessage={directory.length ? 'Немає увімкнених ручних стікерів для додавання.' : 'Ручних стікерів немає. Натисніть «Оновити», щоб перечитати довідник Хорошоп.'} onChange={setAddIds} /></div>
           <div><p className="hs-sticker-picker-hint">Тільки ручні стікери, які є хоча б на одному вибраному товарі.</p>
           <StickerPicker label="Зняти стікери" directory={selectionReady ? removable : []} selected={activeRemoveIds} disabledIds={activeAddIds} disabled={!selectionReady || busy} counts={counts} total={selected.length}
             emptyMessage={selectionReady ? 'На вибраних товарах немає ручних стікерів для зняття.' : 'Очікуємо дані вибірки.'} onChange={setRemoveIds} /></div></div>
@@ -270,12 +265,5 @@ export function HoroshopStickersPage() {
     </section>}
     {!!operationId && !operation.data && <div className="hs-sticker-notice" role="status">{operation.isError ? operation.error.message : 'Завантажуємо операцію…'} <button onClick={() => setParams({})}>Закрити</button></div>}
     {operation.data && operationId && <OperationDialog operation={operation.data} pending={busy} onAction={onAction} onClose={() => { setParams({}); refresh(); }} onPage={setOperationPage} />}
-    {configure && <ModalShell className="hs-sticker-config" labelledBy="hs-config-title" onClose={() => setConfigure(null)}><header><div><h2 id="hs-config-title">Ручні стікери</h2><p>У Хорошоп відкрийте «Сайт → Стікери для товарів» і перевірте спосіб активації.</p></div><button aria-label="Закрити налаштування" onClick={() => setConfigure(null)}><Icon name="close" /></button></header>
-      <StickerPicker label="Дозволені ручні стікери" directory={data?.directory || []} selected={configure} onChange={setConfigure} />
-      <label className="hs-sticker-checkbox"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />Підтверджую, що вибрані стікери мають спосіб активації «У властивостях товару».</label>
-      <footer><button className="button button--primary" disabled={!confirmed || busy} onClick={() => void run(async () => {
-        await api.horoshopStickers.configureManual(configure); setAddIds((ids) => ids.filter((id) => configure.includes(id))); setRemoveIds((ids) => ids.filter((id) => configure.includes(id))); setConfigure(null);
-      })}>Зберегти ручні стікери</button></footer>
-    </ModalShell>}
   </main>;
 }

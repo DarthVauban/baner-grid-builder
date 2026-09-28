@@ -11,14 +11,14 @@ const productIds = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-
 const operationId = '33333333-3333-4333-8333-333333333333';
 const catalog: StickerCatalog = {
   items: [{ id: productIds[0], externalId: '101', sku: '0001', titles: { uk: 'Телефон' }, brand: 'Apple', categoryExternalId: 'phones', price: '100', availability: 'В наявності', visible: true, imageUrl: null, canonicalUrl: null, stickers: [{ id: '1', title: 'Хіт' }], horoshopCreatedAt: '2026-09-01', modifications: [] }],
-  total: 2, page: 1, pageSize: 25, pageCount: 2, storeDomain: 'shop.example.com', lastSyncAt: null, canConfigure: true,
+  total: 2, page: 1, pageSize: 25, pageCount: 2, storeDomain: 'shop.example.com', lastSyncAt: null,
   categories: [{ externalId: 'phones', parentExternalId: null, title: 'Телефони' }], brands: ['Apple'], availabilityOptions: ['В наявності'],
-  directory: [{ externalId: '1', title: 'Хіт', enabled: true, manual: true }, { externalId: '2', title: 'Акція', enabled: true, manual: true }, { externalId: '8', title: 'Автоматичний', enabled: true, manual: false }]
+  directory: [{ externalId: '1', title: 'Хіт', enabled: true }, { externalId: '11', title: 'Акція', enabled: true }]
 };
 const preview: StickerOperation = {
   id: operationId, name: 'Зміна стікерів', kind: 'change', parentId: null, actorName: 'Адмін', createdAt: '2026-09-28T10:00:00Z', startedAt: null, completedAt: null,
   status: 'draft', stopRequested: false, counts: { pending: 1 }, total: 1, page: 1, pageCount: 1,
-  items: [{ id: 'item', productId: productIds[0], externalId: '101', article: '0001', title: 'Телефон', membership: ['0001'], before: [{ id: '1', title: 'Хіт' }], after: [{ id: '1', title: 'Хіт' }, { id: '2', title: 'Акція' }], addIds: ['2'], removeIds: [], status: 'pending', message: '' }]
+  items: [{ id: 'item', productId: productIds[0], externalId: '101', article: '0001', title: 'Телефон', membership: ['0001'], before: [{ id: '1', title: 'Хіт' }], after: [{ id: '1', title: 'Хіт' }, { id: '11', title: 'Акція' }], addIds: ['11'], removeIds: [], status: 'pending', message: '' }]
 };
 function renderPage(entry = '/tools/horoshop-stickers') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -40,14 +40,13 @@ beforeEach(() => {
   vi.spyOn(api.horoshopStickers, 'preview').mockResolvedValue(structuredClone(preview));
   vi.spyOn(api.horoshopStickers, 'detail').mockResolvedValue(structuredClone(preview));
   vi.spyOn(api.horoshopStickers, 'action').mockResolvedValue({ ...structuredClone(preview), status: 'queued' });
-  vi.spyOn(api.horoshopStickers, 'configureManual').mockResolvedValue({ saved: true });
   vi.spyOn(api.horoshopStickers, 'refreshDirectory').mockResolvedValue({ refreshed: true });
   vi.spyOn(api.horoshopStickers, 'resolve').mockResolvedValue({ productIds: [productIds[0]], duplicates: 1, unmatched: ['missing'], ambiguous: [{ input: 'duplicate', candidates: [{ id: productIds[1], sku: '0002', title: 'Навушники' }] }] });
 });
 afterEach(() => vi.restoreAllMocks());
 
 describe('HoroshopStickersPage', () => {
-  it('only offers confirmed manual icons and requires reviewing before applying', async () => {
+  it('immediately offers manual icons and requires reviewing before applying', async () => {
     renderPage();
     await screen.findByLabelText('Обрати 0001');
     expect(screen.queryByRole('group', { name: 'Додати стікери' })).not.toBeInTheDocument();
@@ -59,7 +58,7 @@ describe('HoroshopStickersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
     const dialog = await screen.findByRole('dialog', { name: 'Зміна стікерів' });
     expect(api.horoshopStickers.action).not.toHaveBeenCalled();
-    expect(vi.mocked(api.horoshopStickers.preview).mock.calls[0][0]).toMatchObject({ productIds: [productIds[0]], addIds: ['2'], removeIds: [] });
+    expect(vi.mocked(api.horoshopStickers.preview).mock.calls[0][0]).toMatchObject({ productIds: [productIds[0]], addIds: ['11'], removeIds: [] });
     expect(within(dialog).getByText('+ Акція')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Застосувати зміни (1)' }));
     await waitFor(() => expect(api.horoshopStickers.action).toHaveBeenCalledWith(operationId, 'apply'));
@@ -106,22 +105,30 @@ describe('HoroshopStickersPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('requires explicit confirmation of manual activation before saving the administrator allowlist', async () => {
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Налаштувати ручні стікери' }));
-    const dialog = screen.getByRole('dialog', { name: 'Ручні стікери' });
-    const save = within(dialog).getByRole('button', { name: 'Зберегти ручні стікери' });
-    expect(save).toBeDisabled();
-    fireEvent.click(within(dialog).getByLabelText(/Підтверджую, що вибрані стікери/u));
-    fireEvent.click(save);
-    await waitFor(() => expect(api.horoshopStickers.configureManual).toHaveBeenCalledWith(['1', '2']));
-  });
-
-  it('keeps configuration unavailable for non-administrators', async () => {
-    vi.mocked(api.horoshopStickers.catalog).mockResolvedValue({ ...catalog, canConfigure: false });
+  it('offers every manual icon without confirmation or configuration', async () => {
+    vi.mocked(api.horoshopStickers.catalog).mockResolvedValue({ ...catalog, directory: [...catalog.directory, { externalId: '12', title: 'Вживані товари', enabled: true }] });
     renderPage();
     await screen.findByLabelText('Обрати 0001');
     expect(screen.queryByRole('button', { name: 'Налаштувати ручні стікери' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Обрати 0001'));
+    await openStickers();
+    expect(screen.getByLabelText('Додати стікери: Вживані товари')).toBeEnabled();
+    fireEvent.click(screen.getByLabelText('Додати стікери: Вживані товари'));
+    expect(screen.queryByLabelText('Зняти стікери: Вживані товари')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Підтверджую, що вибрані стікери/u)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
+    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ addIds: ['12'] })));
+  });
+
+  it('shows a useful empty directory state without a configuration step', async () => {
+    vi.mocked(api.horoshopStickers.catalog).mockResolvedValue({ ...catalog, directory: [] });
+    renderPage();
+    await screen.findByLabelText('Обрати 0001');
+    fireEvent.click(screen.getByLabelText('Обрати 0001'));
+    await openStickers();
+    expect(screen.getByText('Ручних стікерів немає. Натисніть «Оновити», щоб перечитати довідник Хорошоп.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Налаштувати ручні стікери' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Переглянути зміни' })).toBeDisabled();
   });
 
   it('keeps the manual directory available while the sticker filter awaits a choice', async () => {
@@ -133,22 +140,25 @@ describe('HoroshopStickersPage', () => {
     expect(screen.getByRole('button', { name: 'Вибрати всі 2 за фільтром' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Стікер для фільтра' }));
     fireEvent.click(screen.getByRole('option', { name: 'Акція' }));
-    await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenLastCalledWith(expect.objectContaining({ stickerMode: 'present', stickerId: '2' }), expect.anything()));
+    await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenLastCalledWith(expect.objectContaining({ stickerMode: 'present', stickerId: '11' }), expect.anything()));
   });
 
-  it('lists imported stickers for filtering before manual confirmation and keeps edits disabled', async () => {
-    vi.mocked(api.horoshopStickers.catalog).mockResolvedValue({ ...catalog, directory: catalog.directory.map((s) => ({ ...s, manual: false })) });
+  it('keeps disabled manual icons available for removal and filtering only', async () => {
+    const disabled = { externalId: '19', title: 'Вимкнений', enabled: false };
+    vi.mocked(api.horoshopStickers.catalog).mockResolvedValue({ ...catalog, directory: [...catalog.directory, disabled] });
+    vi.mocked(api.horoshopStickers.selectionSummary).mockResolvedValue({ total: 1, stickers: [{ ...disabled, productCount: 1 }] });
     renderPage();
     await screen.findByLabelText('Обрати 0001');
     fireEvent.click(screen.getByLabelText('Обрати 0001'));
     await openStickers();
-    expect(screen.queryByLabelText('Додати стікери: Акція')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Оберіть ручні стікери' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Додати стікери: Вимкнений')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Зняти стікери: Вимкнений')).toBeEnabled();
+    fireEvent.click(screen.getByLabelText('Зняти стікери: Вимкнений'));
     fireEvent.click(screen.getByRole('tab', { name: 'Товари' }));
     fireEvent.click(screen.getByRole('button', { name: 'Стікери' }));
     fireEvent.click(screen.getByRole('option', { name: 'Має вибраний стікер' }));
     fireEvent.click(screen.getByRole('button', { name: 'Стікер для фільтра' }));
-    expect(screen.getByRole('option', { name: 'Акція' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Вимкнений' })).toBeInTheDocument();
   });
 
   it('shows brands and explicitly refreshes the Horoshop directory', async () => {
@@ -185,7 +195,7 @@ describe('HoroshopStickersPage', () => {
     await openStickers();
     expect(screen.getByLabelText('Зняти стікери: Акція')).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Переглянути зміни' }));
-    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds, removeIds: ['2'] })));
+    await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds, removeIds: ['11'] })));
   });
 
   it('removes stale removal actions after the product selection changes and disables redundant additions', async () => {

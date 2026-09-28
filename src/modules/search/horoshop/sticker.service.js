@@ -26,21 +26,21 @@ export class HoroshopStickerService {
     this.directoryRefresh = null;
   }
 
-  async catalog(filters, actor) {
+  async catalog(filters) {
     const connection = await this.repository.connection();
     let directoryWarning = null;
     try { await this.ensureDirectory(connection); }
     catch (error) { directoryWarning = error instanceof AppError ? error.message : 'Не вдалося отримати довідник стікерів із Хорошоп. Натисніть «Оновити», щоб повторити.'; }
     const catalog = await this.repository.catalog(connection);
-    const products = filterStickerProducts(catalog.products, catalog.categories, filters, catalog.manualIds);
+    const products = filterStickerProducts(catalog.products, catalog.categories, filters, catalog.directory.map((item) => item.externalId));
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 25;
     return { items: products.slice((page - 1) * pageSize, page * pageSize), total: products.length, page, pageSize,
       pageCount: Math.ceil(products.length / pageSize), storeDomain: connection.storeDomain, lastSyncAt: connection.lastSyncAt,
-      categories: catalog.categories, directory: catalog.directory.map((item) => ({ ...item, manual: catalog.manualIds.includes(item.externalId) })),
+      categories: catalog.categories, directory: catalog.directory,
       brands: [...new Set(catalog.products.map((p) => p.brand).filter(Boolean))].sort(),
       availabilityOptions: [...new Set(catalog.products.flatMap((p) => [p.availability, ...p.modifications.map((m) => m.availability)]).filter(Boolean))].sort(),
-      canConfigure: actor.role === 'admin', directoryWarning };
+      directoryWarning };
   }
 
   async ensureDirectory(connection, force = false) {
@@ -74,7 +74,7 @@ export class HoroshopStickerService {
   async select(filters) {
     const connection = await this.repository.connection();
     const catalog = await this.repository.catalog(connection);
-    const products = filterStickerProducts(catalog.products, catalog.categories, filters, catalog.manualIds);
+    const products = filterStickerProducts(catalog.products, catalog.categories, filters, catalog.directory.map((item) => item.externalId));
     notEmpty(products.map((p) => p.id));
     return { productIds: products.map((p) => p.id) };
   }
@@ -86,20 +86,12 @@ export class HoroshopStickerService {
     notEmpty([...ids]);
     const products = catalog.products.filter((product) => ids.has(product.id));
     if (products.length !== ids.size) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
-    return summarizeStickerSelection(products, catalog.directory, catalog.manualIds);
+    return summarizeStickerSelection(products, catalog.directory);
   }
 
   async resolve(entries) {
     const connection = await this.repository.connection();
     return resolveStickerArticles(entries, (await this.repository.catalog(connection)).products);
-  }
-
-  async configureManual(ids, actorId) {
-    const connection = await this.repository.connection();
-    const catalog = await this.repository.catalog(connection);
-    if (ids.some((id) => !catalog.directory.some((item) => item.externalId === id))) throw new AppError(422, 'STICKER_UNKNOWN', 'Оновіть каталог: один зі стікерів не знайдено.');
-    await this.repository.configureManual(connection, [...new Set(ids)], actorId);
-    return { saved: true };
   }
 
   async readRemote(connection) {
@@ -135,7 +127,7 @@ export class HoroshopStickerService {
       const selected = catalog.products.filter((p) => selectedIds.has(p.id));
       if (selected.length !== ids.length) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
       const remote = await this.readRemote(connection);
-      const additions = assertManualActions(addIds, removeIds, remote.directory, catalog.manualIds);
+      const additions = assertManualActions(addIds, removeIds, remote.directory);
       const items = selected.map((p) => {
         const current = remote.groups.get(p.externalId);
         const before = current?.stickers || [];
@@ -195,7 +187,6 @@ export class HoroshopStickerService {
       const original = await this.repository.operation(id, connection);
       if (!terminal(original.status)) throw new AppError(409, 'STICKER_NOT_FINISHED', 'Спочатку дочекайтеся завершення операції.');
       const remote = await this.readRemote(connection);
-      const catalog = await this.repository.catalog(connection);
       const items = original.items.filter((item) => item.status === 'succeeded').map((item) => {
         const addIds = item.before.filter((s) => s.id && !item.after.some((a) => a.id === s.id)).map((s) => s.id);
         const removeIds = item.after.filter((s) => s.id && !item.before.some((a) => a.id === s.id)).map((s) => s.id);
@@ -205,7 +196,7 @@ export class HoroshopStickerService {
         let message = current?.error || (!current ? 'Товар відсутній у Хорошоп.' : '');
         let after = before;
         try {
-          const additions = assertManualActions(addIds, removeIds, remote.directory, catalog.manualIds);
+          const additions = assertManualActions(addIds, removeIds, remote.directory);
           if (!current || !sameMembership(current.membership, item.membership)
             || !sameStickers(before.filter((s) => touched.has(s.id)), item.after.filter((s) => touched.has(s.id)))) {
             message ||= 'Ці стікери або група модифікацій змінилися після операції. Повернення заблоковано.';
@@ -279,13 +270,12 @@ export class HoroshopStickerService {
     const operation = await this.repository.operation(id, connection);
     try {
       const remote = await this.readRemote(connection);
-      const catalog = await this.repository.catalog(connection);
       const writing = [];
       const ready = [];
       for (const item of operation.items.filter((item) => ['pending', 'writing'].includes(item.status))) {
         const current = remote.groups.get(item.externalId);
         try {
-          assertManualActions(item.addIds, item.removeIds, remote.directory, catalog.manualIds);
+          assertManualActions(item.addIds, item.removeIds, remote.directory);
           const recoveringPartial = (item.status === 'writing' || operation.kind === 'retry') && current?.inconsistent
             && current.stickerSets.every((set) => sameStickers(set, item.before) || sameStickers(set, item.after));
           if (!current || (current.error && !recoveringPartial) || current.article !== item.article || !sameMembership(current.membership, item.membership)) {
@@ -304,11 +294,10 @@ export class HoroshopStickerService {
         if (state.rows[0]?.stop_requested) break;
         const activeConnection = await this.repository.connection();
         if (activeConnection.generation !== connection.generation) throw new AppError(409, 'STICKER_CATALOG_STALE', 'Підключення змінилося.');
-        const manual = await this.pool.query('SELECT external_id FROM search_horoshop_manual_stickers WHERE connection_id = $1', [connection.id]);
         const payloads = [];
         for (const item of ready.slice(offset, offset + this.batchSize)) {
           try {
-            assertManualActions(item.addIds, item.removeIds, remote.directory, manual.rows.map((row) => row.external_id));
+            assertManualActions(item.addIds, item.removeIds, remote.directory);
             await this.repository.setItem(item.id, 'writing');
             writing.push(item);
             const icons = item.after.map((s) => remote.directory.find((d) => d.externalId === s.id)?.title || s.title);

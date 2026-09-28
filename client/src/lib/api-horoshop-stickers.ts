@@ -8,7 +8,6 @@ export const horoshopStickers = {
   select: (filters: StickerFilters) => request<{ productIds: string[] }>(`${base}/select`, { method: 'POST', body: jsonBody(filters) }),
   selectionSummary: (productIds: string[], signal?: AbortSignal) => request<StickerSelectionSummary>(`${base}/selection/summary`, { method: 'POST', body: jsonBody({ productIds }), signal }),
   resolve: (entries: string[]) => request<StickerResolution>(`${base}/resolve`, { method: 'POST', body: jsonBody({ entries }) }),
-  configureManual: (ids: string[]) => request<{ saved: boolean }>(`${base}/manual`, { method: 'PUT', body: jsonBody({ ids, confirmManual: true }) }),
   preview: (input: StickerPreviewInput) => request<StickerOperation>(`${base}/operations/preview`, { method: 'POST', body: jsonBody(input), timeoutMs: 600_000 }),
   history: () => request<StickerOperationSummary[]>(`${base}/operations`),
   detail: (id: string, page = 1) => request<StickerOperation>(`${base}/operations/${encodeURIComponent(id)}${queryString({ page })}`),

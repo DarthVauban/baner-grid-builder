@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pool as defaultPool } from '../../../db/pool.js';
 import { AppError } from '../../../lib/app-error.js';
 import { HoroshopCatalogRepository } from './catalog.repository.js';
-import { titleFor } from './sticker.domain.js';
+import { manualStickerDirectory, titleFor } from './sticker.domain.js';
 import { normalizeHoroshopBrand } from './catalog.normalizer.js';
 
 export const arrayValue = (value) => Array.isArray(value) ? value : JSON.parse(value || '[]');
@@ -26,7 +26,7 @@ export class HoroshopStickerRepository {
 
   async catalog(connection) {
     const params = [connection.id, connection.generation];
-    const [products, modifications, categories, stickers, manual] = await Promise.all([
+    const [products, modifications, categories, stickers] = await Promise.all([
       this.pool.query(`SELECT id, external_id, sku, titles, brand, category_external_id, price, availability,
         source_data->'brand' AS source_brand,
         visible, primary_image_url, canonical_url, stickers, COALESCE(horoshop_created_at, created_at) AS creation_time
@@ -36,8 +36,7 @@ export class HoroshopStickerRepository {
       this.pool.query(`SELECT external_id, parent_external_id, titles FROM search_horoshop_categories
         WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, params),
       this.pool.query(`SELECT external_id, title, enabled FROM search_horoshop_stickers
-        WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY title`, params),
-      this.pool.query('SELECT external_id FROM search_horoshop_manual_stickers WHERE connection_id = $1', [connection.id])
+        WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY title`, params)
     ]);
     const children = new Map();
     const childBrands = new Map();
@@ -55,8 +54,7 @@ export class HoroshopStickerRepository {
         canonicalUrl: row.canonical_url, stickers: arrayValue(row.stickers),
         horoshopCreatedAt: new Date(row.creation_time).toISOString(), modifications: children.get(row.id) || [] })),
       categories: categories.rows.map((row) => ({ externalId: row.external_id, parentExternalId: row.parent_external_id, title: titleFor(objectValue(row.titles), row.external_id) })),
-      directory: stickers.rows.map((row) => ({ externalId: row.external_id, title: row.title, enabled: row.enabled })),
-      manualIds: manual.rows.map((row) => row.external_id)
+      directory: manualStickerDirectory(stickers.rows.map((row) => ({ externalId: row.external_id, title: row.title, enabled: row.enabled })))
     };
   }
 
@@ -92,15 +90,6 @@ export class HoroshopStickerRepository {
   async event(connectionId, operationId, actorId, action, details = {}, db = this.pool) {
     await db.query(`INSERT INTO search_horoshop_sticker_events (connection_id, operation_id, actor_user_id, action, details)
       VALUES ($1, $2, $3, $4, $5::jsonb)`, [connectionId, operationId, actorId, action, JSON.stringify(details)]);
-  }
-
-  async configureManual(connection, ids, actorId) {
-    return this.transaction(async (db) => {
-      await this.assertConnection(db, connection);
-      await db.query('DELETE FROM search_horoshop_manual_stickers WHERE connection_id = $1', [connection.id]);
-      for (const id of ids) await db.query(`INSERT INTO search_horoshop_manual_stickers (connection_id, external_id, confirmed_by) VALUES ($1, $2, $3)`, [connection.id, id, actorId]);
-      await this.event(connection.id, null, actorId, 'manual_stickers_confirmed', { ids }, db);
-    });
   }
 
   async createOperation(connection, { name, kind = 'change', parentId = null, actorId, items }) {

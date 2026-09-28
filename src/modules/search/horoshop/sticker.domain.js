@@ -15,14 +15,17 @@ export function applyStickerChange(before, add, remove) {
   return result;
 }
 
-// Only an explicit administrator confirmation makes an icon eligible. Names and system IDs
-// cannot identify the activation mode: both can differ between Horoshop stores.
-export function assertManualActions(addIds, removeIds, directory, manualIds) {
-  const allowed = new Set(manualIds);
+// Native automatic icons: new-by-age, discount, video, countdown, PrivatBank and monobank.
+// The other native icons (hit, new and sale) and custom icons are assigned through product.icons.
+const automaticStickerIds = new Set(['2', '5', '6', '7', '8', '9']);
+export const manualStickerDirectory = (directory) => directory.filter((item) => !automaticStickerIds.has(item.externalId));
+
+export function assertManualActions(addIds, removeIds, directory) {
+  const allowed = new Set(manualStickerDirectory(directory).map((item) => item.externalId));
   const byId = new Map(directory.map((item) => [item.externalId, item]));
   if (!addIds.length && !removeIds.length) throw new AppError(422, 'STICKER_ACTION_EMPTY', 'Оберіть стікери для додавання або зняття.');
   for (const id of [...addIds, ...removeIds]) {
-    if (!allowed.has(id) || !byId.has(id)) throw new AppError(409, 'STICKER_NOT_MANUAL', 'Стікер не підтверджено як ручний або його вже немає в Хорошоп.');
+    if (!allowed.has(id) || !byId.has(id)) throw new AppError(409, 'STICKER_NOT_MANUAL', 'Стікер автоматичний або його вже немає в Хорошоп. Оновіть довідник.');
     if (addIds.includes(id) && (!byId.get(id).enabled || removeIds.includes(id))) {
       throw new AppError(422, 'STICKER_ACTION_INVALID', 'Вимкнений стікер не можна додати; той самий стікер не можна одночасно додати й зняти.');
     }
@@ -68,7 +71,7 @@ export function filterStickerProducts(products, categories, filters = {}, manual
   });
 }
 
-export function summarizeStickerSelection(products, directory, manualIds) {
+export function summarizeStickerSelection(products, directory) {
   const byId = new Map(directory.map((item) => [item.externalId, item]));
   const byTitle = new Map();
   for (const item of directory) {
@@ -84,9 +87,8 @@ export function summarizeStickerSelection(products, directory, manualIds) {
     }
     for (const id of present) counts.set(id, (counts.get(id) || 0) + 1);
   }
-  const manual = new Set(manualIds);
   return { total: products.length, stickers: directory.filter((item) => counts.has(item.externalId))
-    .map((item) => ({ ...item, manual: manual.has(item.externalId), productCount: counts.get(item.externalId) })) };
+    .map((item) => ({ ...item, productCount: counts.get(item.externalId) })) };
 }
 
 export function resolveStickerArticles(entries, products) {
