@@ -104,11 +104,14 @@ export function StyledSelect<T extends SelectValue = string>({
       const left = Math.min(Math.max(rect.left, gap), viewportWidth - width - gap);
       const belowSpace = viewportHeight - rect.bottom - gap;
       const aboveSpace = rect.top - gap;
-      const opensUp = belowSpace < 170 && aboveSpace > belowSpace;
-      const maxHeight = Math.max(96, Math.min(240, opensUp ? aboveSpace - 6 : belowSpace - 6));
+      const contentHeight = menuRef.current?.scrollHeight || 240;
+      const desiredHeight = Math.min(240, contentHeight);
+      const opensUp = belowSpace < desiredHeight + 6 && aboveSpace > belowSpace;
+      const maxHeight = Math.max(32, Math.min(240, opensUp ? aboveSpace - 6 : belowSpace - 6));
+      const height = Math.min(contentHeight, maxHeight);
       const top = opensUp
-        ? Math.max(gap, rect.top - maxHeight - 6)
-        : Math.min(rect.bottom + 6, viewportHeight - gap - maxHeight);
+        ? Math.max(gap, rect.top - height - 6)
+        : Math.min(rect.bottom + 6, viewportHeight - gap - height);
 
       setMenuStyle({ left, top, width, maxHeight });
     }

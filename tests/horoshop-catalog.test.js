@@ -201,6 +201,17 @@ test('normalizer keeps product modifications, stock, URLs and raw source data', 
   ]);
 });
 
+test('normalizer preserves object and localized brand names instead of dropping them', () => {
+  const raw = [
+    { id: 1, article: 'A', brand: { id: 20, title: { ua: 'Samsung', ru: 'Самсунг' } } },
+    { id: 2, article: 'B', brand: { ua: 'Apple', ru: 'Епл' } },
+    { id: 3, article: 'C', brand: { name: 'Xiaomi' } },
+    { id: 4, article: 'D', modifications: [{ article: 'D-1', brand: { title: 'Hoco' } }] },
+    { id: 5, article: 'E', brand: { id: 999 } }
+  ];
+  assert.deepEqual(normalizeHoroshopProducts(raw, 'shop.example.com').map((p) => p.brand), ['Samsung', 'Apple', 'Xiaomi', 'Hoco', null]);
+});
+
 test('Horoshop category sync expands a catalog root whose technical parent is absent from parent=0', async () => {
   const requestedParents = [];
   const pagesByParent = new Map([

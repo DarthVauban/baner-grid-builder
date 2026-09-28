@@ -111,6 +111,53 @@ test('catalog, exact article resolution and saved selection expose no credential
   await admin.get(`${base}/catalog?createdFrom=2026-02-31`).expect(422);
 });
 
+test('catalog recovers brand choices and filtering from previously synchronized raw brand objects', async () => {
+  await pool.query(`UPDATE search_horoshop_products SET brand = NULL, source_data = $1::jsonb WHERE id = $2`, [JSON.stringify({ brand: { id: 7, title: { ua: 'Samsung' } } }), productIds[0]]);
+  await pool.query(`UPDATE search_horoshop_products SET brand = NULL WHERE id = $1`, [productIds[1]]);
+  await pool.query(`UPDATE search_horoshop_modifications SET source_data = $1::jsonb WHERE product_id = $2`, [JSON.stringify({ brand: { name: 'Apple' } }), productIds[1]]);
+  const catalog = (await admin.get(`${base}/catalog`).expect(200)).body.data;
+  assert.deepEqual(catalog.brands, ['Apple', 'Samsung']);
+  assert.equal(catalog.items.find((p) => p.id === productIds[0]).brand, 'Samsung');
+  assert.equal(JSON.stringify(catalog).includes('source_brand'), false);
+  const filtered = (await admin.post(`${base}/select`).send({ brand: 'Samsung' }).expect(200)).body.data;
+  assert.deepEqual(filtered.productIds, [productIds[0]]);
+});
+
+test('directory is fetched without a full catalog sync, cached and refreshed explicitly', async () => {
+  await pool.query('DELETE FROM search_horoshop_stickers WHERE connection_id = $1', [connection]);
+  let calls = 0;
+  const factory = service.clientFactory;
+  service.clientFactory = (...args) => {
+    const client = factory(...args);
+    const original = client.exportStickers;
+    client.exportStickers = async (...input) => { calls += 1; return original(...input); };
+    client.exportCatalog = () => { throw new Error('Directory loading must not export the full catalog'); };
+    return client;
+  };
+  const first = (await admin.get(`${base}/catalog`).expect(200)).body.data;
+  assert.equal(first.directory.length, directory.length);
+  assert.equal(first.directoryWarning, null);
+  await admin.get(`${base}/catalog?search=Телефон`).expect(200);
+  assert.equal(calls, 1);
+  directory = directory.filter((item) => item.id !== 3);
+  directory.push({ id: 12, title: 'Передзамовлення', enabled: 1 });
+  await admin.post(`${base}/directory/refresh`).expect(200);
+  const refreshed = (await admin.get(`${base}/catalog`).expect(200)).body.data;
+  assert.equal(calls, 2);
+  assert.equal(refreshed.directory.some((s) => s.externalId === '3'), false);
+  assert.equal(refreshed.directory.find((s) => s.externalId === '12').manual, false);
+  assert.equal(imports.length, 0);
+});
+
+test('directory failures remain visible while the cached catalog and brands stay usable', async () => {
+  service.clientFactory = () => ({ authenticate: async () => { throw new Error('fixture API unavailable'); } });
+  const catalog = (await admin.get(`${base}/catalog`).expect(200)).body.data;
+  assert.ok(catalog.directoryWarning);
+  assert.equal(catalog.items.length, 2);
+  assert.deepEqual(catalog.brands, ['Apple']);
+  await admin.post(`${base}/directory/refresh`).expect(502);
+});
+
 test('preview is read-only; applying merges manual icons, updates the whole group and verifies every product', async () => {
   const operation = await preview();
   assert.equal(imports.length, 0);

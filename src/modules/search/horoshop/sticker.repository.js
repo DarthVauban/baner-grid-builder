@@ -3,6 +3,7 @@ import { pool as defaultPool } from '../../../db/pool.js';
 import { AppError } from '../../../lib/app-error.js';
 import { HoroshopCatalogRepository } from './catalog.repository.js';
 import { titleFor } from './sticker.domain.js';
+import { normalizeHoroshopBrand } from './catalog.normalizer.js';
 
 export const arrayValue = (value) => Array.isArray(value) ? value : JSON.parse(value || '[]');
 const objectValue = (value) => typeof value === 'string' ? JSON.parse(value) : value || {};
@@ -27,9 +28,10 @@ export class HoroshopStickerRepository {
     const params = [connection.id, connection.generation];
     const [products, modifications, categories, stickers, manual] = await Promise.all([
       this.pool.query(`SELECT id, external_id, sku, titles, brand, category_external_id, price, availability,
+        source_data->'brand' AS source_brand,
         visible, primary_image_url, canonical_url, stickers, COALESCE(horoshop_created_at, created_at) AS creation_time
         FROM search_horoshop_products WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY sku, id`, params),
-      this.pool.query(`SELECT id, product_id, sku, titles, price, availability, visible, stickers
+      this.pool.query(`SELECT id, product_id, sku, titles, price, availability, visible, stickers, source_data->'brand' AS source_brand
         FROM search_horoshop_modifications WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY sku, id`, params),
       this.pool.query(`SELECT external_id, parent_external_id, titles FROM search_horoshop_categories
         WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, params),
@@ -38,14 +40,17 @@ export class HoroshopStickerRepository {
       this.pool.query('SELECT external_id FROM search_horoshop_manual_stickers WHERE connection_id = $1', [connection.id])
     ]);
     const children = new Map();
+    const childBrands = new Map();
     for (const row of modifications.rows) {
+      const brand = normalizeHoroshopBrand(row.source_brand);
+      if (brand && !childBrands.has(row.product_id)) childBrands.set(row.product_id, brand);
       if (!children.has(row.product_id)) children.set(row.product_id, []);
       children.get(row.product_id).push({ id: row.id, sku: row.sku, titles: objectValue(row.titles), price: row.price,
         availability: row.availability, visible: row.visible, stickers: arrayValue(row.stickers) });
     }
     return {
       products: products.rows.map((row) => ({ id: row.id, externalId: row.external_id, sku: row.sku,
-        titles: objectValue(row.titles), brand: row.brand, categoryExternalId: row.category_external_id,
+        titles: objectValue(row.titles), brand: row.brand || normalizeHoroshopBrand(row.source_brand) || childBrands.get(row.id) || null, categoryExternalId: row.category_external_id,
         price: row.price, availability: row.availability, visible: row.visible, imageUrl: row.primary_image_url,
         canonicalUrl: row.canonical_url, stickers: arrayValue(row.stickers),
         horoshopCreatedAt: new Date(row.creation_time).toISOString(), modifications: children.get(row.id) || [] })),
@@ -60,6 +65,23 @@ export class HoroshopStickerRepository {
     try { await client.query('BEGIN'); const value = await callback(client); await client.query('COMMIT'); return value; }
     catch (error) { await client.query('ROLLBACK'); throw error; }
     finally { client.release(); }
+  }
+
+  async cacheDirectory(connection, directory) {
+    const marker = randomUUID();
+    await this.transaction(async (db) => {
+      await this.assertConnection(db, connection);
+      const ids = directory.map((item) => item.externalId);
+      await db.query(`UPDATE search_horoshop_stickers SET active = FALSE, updated_at = NOW()
+        WHERE connection_id = $1 AND generation = $2${ids.length ? ` AND external_id NOT IN (${ids.map((_, i) => `$${i + 3}`).join(',')})` : ''}`, [connection.id, connection.generation, ...ids]);
+      for (const item of directory) await db.query(`INSERT INTO search_horoshop_stickers
+        (connection_id, generation, external_id, title, enabled, source_data, last_seen_sync_id)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+        ON CONFLICT (connection_id, external_id) DO UPDATE SET generation = EXCLUDED.generation,
+          title = EXCLUDED.title, enabled = EXCLUDED.enabled, source_data = EXCLUDED.source_data,
+          active = TRUE, sync_signature = '', last_seen_sync_id = EXCLUDED.last_seen_sync_id, updated_at = NOW()`,
+      [connection.id, connection.generation, item.externalId, item.title, item.enabled, JSON.stringify(item.source), marker]);
+    });
   }
 
   async assertConnection(db, connection) {

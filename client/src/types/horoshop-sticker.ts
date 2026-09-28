@@ -13,7 +13,7 @@ export interface StickerFilters {
 }
 export interface StickerCatalog {
   items: StickerProduct[]; total: number; page: number; pageSize: number; pageCount: number;
-  storeDomain: string; lastSyncAt: string | null; canConfigure: boolean;
+  storeDomain: string; lastSyncAt: string | null; canConfigure: boolean; directoryWarning?: string | null;
   directory: StickerDirectoryEntry[]; categories: Array<{ externalId: string; parentExternalId: string | null; title: string }>;
   brands: string[]; availabilityOptions: string[];
 }

@@ -37,6 +37,7 @@ export function createStickerRouter(service = horoshopStickerService) {
   router.use(requireAuth, requireToolAccess('horoshop_stickers'));
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   router.get('/catalog', asyncHandler(async (req, res) => res.json({ data: await service.catalog(parseInput(stickerFiltersSchema, req.query), req.user) })));
+  router.post('/directory/refresh', asyncHandler(async (req, res) => res.json({ data: await service.refreshDirectory() })));
   router.post('/select', asyncHandler(async (req, res) => res.json({ data: await service.select(parseInput(stickerFiltersSchema, req.body)) })));
   router.post('/resolve', asyncHandler(async (req, res) => {
     const input = parseInput(z.object({ entries: z.array(z.string().trim().min(1).max(200)).min(1).max(maximumStickerSelection) }).strict(), req.body);

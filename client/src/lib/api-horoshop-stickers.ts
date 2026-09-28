@@ -3,6 +3,7 @@ import type { StickerCatalog, StickerFilters, StickerOperation, StickerOperation
 
 const base = '/api/search/horoshop/stickers';
 export const horoshopStickers = {
+  refreshDirectory: () => request<{ refreshed: boolean }>(`${base}/directory/refresh`, { method: 'POST', timeoutMs: 120_000 }),
   catalog: (filters: StickerFilters = {}, signal?: AbortSignal) => request<StickerCatalog>(`${base}/catalog${queryString({ ...filters, includeChildren: filters.includeChildren === undefined ? undefined : String(filters.includeChildren) })}`, { signal }),
   select: (filters: StickerFilters) => request<{ productIds: string[] }>(`${base}/select`, { method: 'POST', body: jsonBody(filters) }),
   resolve: (entries: string[]) => request<StickerResolution>(`${base}/resolve`, { method: 'POST', body: jsonBody({ entries }) }),

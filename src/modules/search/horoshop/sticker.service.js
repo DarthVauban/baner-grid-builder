@@ -3,6 +3,7 @@ import { AppError } from '../../../lib/app-error.js';
 import { horoshopCatalogService } from './catalog.service.js';
 import { decryptHoroshopCredentials } from './credential-cipher.js';
 import { HoroshopClient } from './horoshop.client.js';
+import { normalizeHoroshopStickers } from './catalog.normalizer.js';
 import { HoroshopStickerRepository, arrayValue, countItems } from './sticker.repository.js';
 import { applyStickerChange, assertManualActions, filterStickerProducts, maximumStickerSelection,
   remoteStickerSnapshot, resolveStickerArticles, sameMembership, sameStickers, titleFor } from './sticker.domain.js';
@@ -21,10 +22,15 @@ export class HoroshopStickerService {
     this.clientFactory = options.clientFactory || ((domain) => new HoroshopClient(domain));
     this.running = false;
     this.batchSize = options.batchSize || 25;
+    this.directoryCache = null;
+    this.directoryRefresh = null;
   }
 
   async catalog(filters, actor) {
     const connection = await this.repository.connection();
+    let directoryWarning = null;
+    try { await this.ensureDirectory(connection); }
+    catch (error) { directoryWarning = error instanceof AppError ? error.message : 'Не вдалося отримати довідник стікерів із Хорошоп. Натисніть «Оновити», щоб повторити.'; }
     const catalog = await this.repository.catalog(connection);
     const products = filterStickerProducts(catalog.products, catalog.categories, filters, catalog.manualIds);
     const page = filters.page || 1;
@@ -34,7 +40,35 @@ export class HoroshopStickerService {
       categories: catalog.categories, directory: catalog.directory.map((item) => ({ ...item, manual: catalog.manualIds.includes(item.externalId) })),
       brands: [...new Set(catalog.products.map((p) => p.brand).filter(Boolean))].sort(),
       availabilityOptions: [...new Set(catalog.products.flatMap((p) => [p.availability, ...p.modifications.map((m) => m.availability)]).filter(Boolean))].sort(),
-      canConfigure: actor.role === 'admin' };
+      canConfigure: actor.role === 'admin', directoryWarning };
+  }
+
+  async ensureDirectory(connection, force = false) {
+    const key = `${connection.id}:${connection.generation}`;
+    if (!force && this.directoryCache?.key === key && this.directoryCache.expiresAt > Date.now()) {
+      if (this.directoryCache.error) throw this.directoryCache.error;
+      return;
+    }
+    if (this.directoryRefresh?.key === key) return this.directoryRefresh.promise;
+    const promise = this.catalogService.runExclusiveExternalWrite(async () => {
+      const credentials = decryptHoroshopCredentials(connection.encryptedCredentials);
+      const client = this.clientFactory(connection.storeDomain);
+      const token = await client.authenticate(credentials.login, credentials.password);
+      const directory = normalizeHoroshopStickers(await client.exportStickers(token));
+      await this.repository.cacheDirectory(connection, directory);
+    }).then(() => { this.directoryCache = { key, expiresAt: Date.now() + 300_000, error: null }; })
+      .catch((error) => {
+        const safeError = error instanceof AppError ? error : new AppError(502, 'STICKER_DIRECTORY_UNAVAILABLE', 'Не вдалося отримати довідник стікерів із Хорошоп. Натисніть «Оновити», щоб повторити.');
+        this.directoryCache = { key, expiresAt: Date.now() + 30_000, error: safeError };
+        throw safeError;
+      }).finally(() => { if (this.directoryRefresh?.promise === promise) this.directoryRefresh = null; });
+    this.directoryRefresh = { key, promise };
+    return promise;
+  }
+
+  async refreshDirectory() {
+    await this.ensureDirectory(await this.repository.connection(), true);
+    return { refreshed: true };
   }
 
   async select(filters) {

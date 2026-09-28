@@ -46,19 +46,19 @@ function StickerChips({ stickers, compare, direction }: { stickers: Sticker[]; c
   }) : <span className="is-empty">Немає</span>}</div>;
 }
 
-function StickerPicker({ label, directory, selected, disabledIds = [], adding = false, onChange }: {
-  label: string; directory: StickerDirectoryEntry[]; selected: string[]; disabledIds?: string[]; adding?: boolean; onChange: (ids: string[]) => void;
+function StickerPicker({ label, directory, selected, disabledIds = [], adding = false, requireManual = false, onChange }: {
+  label: string; directory: StickerDirectoryEntry[]; selected: string[]; disabledIds?: string[]; adding?: boolean; requireManual?: boolean; onChange: (ids: string[]) => void;
 }) {
   const [search, setSearch] = useState('');
   return <fieldset className="hs-sticker-picker">
     <legend>{label} <small>{selected.length ? `· ${selected.length}` : ''}</small></legend>
     <input aria-label={`Пошук: ${label}`} placeholder="Знайти стікер…" value={search} onChange={(e) => setSearch(e.target.value)} />
     <div>{directory.filter((item) => item.title.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map((item) => <label key={item.externalId}>
-      <input type="checkbox" aria-label={`${label}: ${item.title}`} checked={selected.includes(item.externalId)} disabled={disabledIds.includes(item.externalId) || (adding && !item.enabled)}
+      <input type="checkbox" aria-label={`${label}: ${item.title}`} checked={selected.includes(item.externalId)} disabled={disabledIds.includes(item.externalId) || (adding && !item.enabled) || (requireManual && !item.manual)}
         onChange={(e) => onChange(e.target.checked ? [...selected, item.externalId] : selected.filter((id) => id !== item.externalId))} />
-      <span>{item.title}{!item.enabled && <small> · вимкнений у Хорошоп</small>}</span>
+      <span>{item.title}{!item.enabled && <small> · вимкнений у Хорошоп</small>}{requireManual && !item.manual && <small> · ручний тип ще не підтверджено</small>}</span>
     </label>)}</div>
-    {!directory.length && <p>Адміністратор ще не позначив ручні стікери.</p>}
+    {!directory.length && <p>Довідник стікерів порожній. Натисніть «Оновити», щоб завантажити його з Хорошоп.</p>}
   </fieldset>;
 }
 
@@ -134,16 +134,19 @@ export function HoroshopStickersPage() {
   const updateFilter = <K extends keyof StickerFilters>(key: K, value: StickerFilters[K]) => setFilters((previous) => ({ ...previous, [key]: value, page: 1 }));
   const toggle = (id: string) => setSelected((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]);
   const data = catalog.data;
-  const manual = data?.directory.filter((item) => item.manual) || [];
+  const directory = data?.directory || [];
+  const manual = directory.filter((item) => item.manual);
+  const openConfiguration = () => { setConfigure(manual.map((s) => s.externalId)); setConfirmed(false); };
   const pageIds = data?.items.map((p) => p.id) || [];
   const busy = task.isPending;
   const onAction = (action: 'apply' | 'stop' | 'retry' | 'rollback') => void run(async () => openOperation(await api.horoshopStickers.action(operationId, action)));
 
   return <main className="hs-stickers">
     <header className="hs-stickers-heading"><div><span className="hs-sticker-eyebrow">Інструменти Хорошоп</span><h1>Стікери Хорошоп</h1><p>Оберіть товарні групи, додайте або зніміть ручні стікери та перевірте результат.</p></div>
-      <div>{data && <span className="hs-sticker-store">{data.storeDomain}</span>}<button className="button button--ghost" onClick={refresh}><Icon name="refresh" />Оновити</button></div></header>
+      <div>{data && <span className="hs-sticker-store">{data.storeDomain}</span>}<button className="button button--ghost" disabled={busy} onClick={() => void run(() => api.horoshopStickers.refreshDirectory())}><Icon name="refresh" />Оновити</button></div></header>
     {catalog.isError && <div className="hs-sticker-notice is-error" role="alert">{catalog.error.message} <Link to="/admin/integrations">Підключення Хорошоп</Link></div>}
-    {data && !manual.length && <div className="hs-sticker-notice">Перед першою операцією адміністратор має позначити стікери зі способом активації «У властивостях товару».</div>}
+    {data?.directoryWarning && <div className="hs-sticker-notice" role="alert">{data.directoryWarning}</div>}
+    {data && directory.length > 0 && !manual.length && <div className="hs-sticker-notice">Стікери завантажено. Перед першою операцією позначте ті, що мають спосіб активації «У властивостях товару». {data.canConfigure && <button className="button button--ghost" onClick={openConfiguration}>Оберіть ручні стікери</button>}</div>}
     <div className="hs-stickers-layout"><aside className="hs-sticker-filters">
       <h2>Знайти товари</h2>
       <label>Назва або артикул<input placeholder="Пошук у товарах і модифікаціях" value={filters.search || ''} onChange={(e) => updateFilter('search', e.target.value || undefined)} /></label>
@@ -155,9 +158,9 @@ export function HoroshopStickersPage() {
       <div className="hs-sticker-pair"><label>Ціна від<input type="number" min="0" value={filters.priceMin ?? ''} onChange={(e) => updateFilter('priceMin', e.target.value === '' ? undefined : Number(e.target.value))} /></label><label>Ціна до<input type="number" min="0" value={filters.priceMax ?? ''} onChange={(e) => updateFilter('priceMax', e.target.value === '' ? undefined : Number(e.target.value))} /></label></div>
       <div className="hs-sticker-pair"><label>Додані від<input type="date" value={filters.createdFrom || ''} onChange={(e) => updateFilter('createdFrom', e.target.value || undefined)} /></label><label>Додані до<input type="date" value={filters.createdTo || ''} onChange={(e) => updateFilter('createdTo', e.target.value || undefined)} /></label></div>
       <FieldSelect label="Стікери" value={filters.stickerMode || 'all'} onChange={(value) => updateFilter('stickerMode', value as StickerFilters['stickerMode'])} options={[{ value: 'all', label: 'Будь-які стікери' }, { value: 'present', label: 'Має вибраний стікер' }, { value: 'missing', label: 'Не має вибраного стікера' }, { value: 'none', label: 'Без ручних стікерів' }]} />
-      {['present', 'missing'].includes(filters.stickerMode || '') && <FieldSelect label="Стікер для фільтра" value={filters.stickerId || ''} onChange={(value) => updateFilter('stickerId', value || undefined)} options={[{ value: '', label: 'Оберіть стікер' }, ...manual.map((s) => ({ value: s.externalId, label: s.title }))]} />}
+      {['present', 'missing'].includes(filters.stickerMode || '') && <FieldSelect label="Стікер для фільтра" value={filters.stickerId || ''} onChange={(value) => updateFilter('stickerId', value || undefined)} options={[{ value: '', label: 'Оберіть стікер' }, ...directory.map((s) => ({ value: s.externalId, label: s.title }))]} />}
       <button className="button button--ghost" onClick={() => setFilters({ page: 1, pageSize: 25 })}>Скинути фільтри</button>
-      {data?.canConfigure && <button className="button button--ghost" onClick={() => { setConfigure(manual.map((s) => s.externalId)); setConfirmed(false); }}>Налаштувати ручні стікери</button>}
+      {data?.canConfigure && <button className="button button--ghost" onClick={openConfiguration}>Налаштувати ручні стікери</button>}
     </aside><section className="hs-sticker-catalog">
       <details className="hs-sticker-import"><summary><Icon name="upload" />Вставити список артикулів</summary>
         <p>Скопіюйте стовпець артикулів із Excel. Артикул модифікації вибирає всю товарну групу.</p>
@@ -195,7 +198,7 @@ export function HoroshopStickersPage() {
     <section id="hs-sticker-actions" className="hs-sticker-actions"><div className="hs-sticker-action-heading"><div><h2>Зміни для {selected.length} товарних груп</h2><p>Інші стікери кожного товару збережуться. Зміни охоплюють усі його модифікації.</p></div>
       <button className="button button--primary" disabled={busy || !selected.length || !(addIds.length || removeIds.length)} onClick={() => void run(async () => openOperation(await api.horoshopStickers.preview({ productIds: selected, addIds, removeIds, name: name || undefined })))}><Icon name="search" />{busy ? 'Перевіряємо…' : 'Переглянути зміни'}</button></div>
       {busy && <p role="status">Готуємо операцію. Читання великого каталогу Хорошоп може тривати кілька хвилин.</p>}
-      <div className="hs-sticker-pair"><StickerPicker label="Додати стікери" directory={manual} selected={addIds} disabledIds={removeIds} adding onChange={setAddIds} /><StickerPicker label="Зняти стікери" directory={manual} selected={removeIds} disabledIds={addIds} onChange={setRemoveIds} /></div>
+      <div className="hs-sticker-pair"><StickerPicker label="Додати стікери" directory={directory} selected={addIds} disabledIds={removeIds} adding requireManual onChange={setAddIds} /><StickerPicker label="Зняти стікери" directory={directory} selected={removeIds} disabledIds={addIds} requireManual onChange={setRemoveIds} /></div>
       <div className="hs-sticker-saved"><label>Назва вибірки / операції<input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} placeholder="Наприклад, Осіння акція" /></label>
         <button className="button button--ghost" disabled={busy || !name.trim() || !selected.length} onClick={() => void run(() => api.horoshopStickers.saveSelection(name.trim(), selected))}><Icon name="save" />Зберегти вибірку</button>
         <FieldSelect label="Збережені вибірки" value={savedId} searchable onChange={setSavedId} options={[{ value: '', label: 'Оберіть вибірку' }, ...(selections.data?.map((s) => ({ value: s.id, label: `${s.name} · ${s.productIds.length}` })) || [])]} />

@@ -27,6 +27,10 @@ function localizedStringValue(value, depth = 0) {
   return null;
 }
 
+export function normalizeHoroshopBrand(value) {
+  return localizedStringValue(value);
+}
+
 function stickerTitleKey(value) {
   return String(value || '').trim().toLocaleLowerCase('uk-UA');
 }
@@ -307,7 +311,7 @@ export function normalizeHoroshopProducts(items, storeDomain, stickerDirectory =
           sku,
           titles: normalizeLocalizedText(source.title),
           descriptions: normalizeLocalizedText(source.description ?? source.short_description),
-          brand: stringValue(source.brand),
+          brand: normalizeHoroshopBrand(source.brand),
           categoryExternalId: stringValue(parent.id ?? source.parent_id),
           price: stringValue(source.price),
           oldPrice: stringValue(source.price_old ?? source.old_price),
@@ -341,6 +345,7 @@ export function normalizeHoroshopProducts(items, storeDomain, stickerDirectory =
       )
     );
     group.base.conditionLabel ??= localizedStringValue(source.condition_label ?? source.condition);
+    group.base.brand ??= normalizeHoroshopBrand(source.brand);
     group.base.hasPhotos ||= hasPhotoCollection(source.gallery_common);
     const creationTime = dateTimeValue(source.creation_time);
     if (creationTime && (!group.base.creationTime || creationTime < group.base.creationTime)) {
@@ -351,6 +356,7 @@ export function normalizeHoroshopProducts(items, storeDomain, stickerDirectory =
       ? source.modifications
       : Array.isArray(source.variants) ? source.variants : [];
     const modificationSources = sourceModifications.length > 0 ? sourceModifications : [source];
+    for (const modificationSource of modificationSources) group.base.brand ??= normalizeHoroshopBrand(record(modificationSource).brand);
     const inheritedAvailability = availabilityValue(source) ?? group.base.availability;
     for (const modificationSource of modificationSources) {
       const modification = normalizeModification(

@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.spyOn(api.horoshopStickers, 'detail').mockResolvedValue(structuredClone(preview));
   vi.spyOn(api.horoshopStickers, 'action').mockResolvedValue({ ...structuredClone(preview), status: 'queued' });
   vi.spyOn(api.horoshopStickers, 'configureManual').mockResolvedValue({ saved: true });
+  vi.spyOn(api.horoshopStickers, 'refreshDirectory').mockResolvedValue({ refreshed: true });
   vi.spyOn(api.horoshopStickers, 'resolve').mockResolvedValue({ productIds: [productIds[0]], duplicates: 1, unmatched: ['missing'], ambiguous: [{ input: 'duplicate', candidates: [{ id: productIds[1], sku: '0002', title: 'Навушники' }] }] });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -41,7 +42,7 @@ describe('HoroshopStickersPage', () => {
   it('only offers confirmed manual icons and requires reviewing before applying', async () => {
     renderPage();
     await screen.findByLabelText('Обрати 0001');
-    expect(screen.queryByLabelText('Додати стікери: Автоматичний')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Додати стікери: Автоматичний')).toBeDisabled();
     fireEvent.click(screen.getByLabelText('Обрати 0001'));
     fireEvent.click(screen.getByLabelText('Додати стікери: Акція'));
     expect(screen.getByLabelText('Зняти стікери: Акція')).toBeDisabled();
@@ -122,5 +123,27 @@ describe('HoroshopStickersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Стікер для фільтра' }));
     fireEvent.click(screen.getByRole('option', { name: 'Акція' }));
     await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenLastCalledWith(expect.objectContaining({ stickerMode: 'present', stickerId: '2' }), expect.anything()));
+  });
+
+  it('lists imported stickers for filtering before manual confirmation and keeps edits disabled', async () => {
+    vi.mocked(api.horoshopStickers.catalog).mockResolvedValue({ ...catalog, directory: catalog.directory.map((s) => ({ ...s, manual: false })) });
+    renderPage();
+    await screen.findByLabelText('Обрати 0001');
+    expect(screen.getByLabelText('Додати стікери: Акція')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Оберіть ручні стікери' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Стікери' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Має вибраний стікер' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Стікер для фільтра' }));
+    expect(screen.getByRole('option', { name: 'Акція' })).toBeInTheDocument();
+  });
+
+  it('shows brands and explicitly refreshes the Horoshop directory', async () => {
+    renderPage();
+    await screen.findByLabelText('Обрати 0001');
+    fireEvent.click(screen.getByRole('button', { name: 'Бренд' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Apple' }));
+    await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenLastCalledWith(expect.objectContaining({ brand: 'Apple' }), expect.anything()));
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(api.horoshopStickers.refreshDirectory).toHaveBeenCalledOnce());
   });
 });
