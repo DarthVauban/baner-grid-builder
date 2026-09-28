@@ -64,6 +64,15 @@ async function openStore(page: Page, url: string) {
   await page.clock.runFor(100);
 }
 
+async function expectTimerVisible(page: Page) {
+  // Response headers can arrive before response.json() schedules the render timeout.
+  // Keep the controlled clock moving until the browser actually displays the timer.
+  await expect.poll(async () => {
+    await page.clock.runFor(100);
+    return page.getByRole('timer').isVisible();
+  }, { message: 'The countdown should render while the controlled clock advances.' }).toBe(true);
+}
+
 for (const surface of [
   { name: 'desktop', device: devices['Desktop Chrome'] },
   { name: 'mobile', device: devices['iPhone 13'] }
@@ -86,7 +95,7 @@ for (const surface of [
       await expect(timer).toHaveCount(0);
       expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBeNull();
       await page.clock.runFor(1000);
-      await expect(timer).toBeVisible();
+      await expectTimerVisible(page);
       await expect(timer.locator('strong')).toHaveText(['00', '00', '01', '00']);
       const deadline = await page.evaluate((key) => localStorage.getItem(key), key);
       expect(Number(deadline)).toBeGreaterThan(0);
@@ -98,21 +107,30 @@ for (const surface of [
 
       await page.clock.fastForward(20000);
       await expect(timer.locator('strong').last()).toHaveText('40');
+      // Exercise the CI case where response-body processing finishes after the first clock tick.
+      await page.evaluate(() => {
+        const json = Response.prototype.json;
+        Response.prototype.json = async function () {
+          const body = await json.call(this);
+          if (this.url.includes('/api/public/popup-banners/resolve?')) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 250));
+          }
+          return body;
+        };
+      });
       data.campaign.revision = 'edited-copy';
       data.campaign.behavior.delayMs = 0;
       const resolved = page.waitForResponse('**/api/public/popup-banners/resolve?**');
       await page.evaluate(() => history.pushState({}, '', '/spa-product/'));
       await page.clock.runFor(1000);
       await resolved;
-      await page.clock.runFor(100);
-      await expect(timer).toBeVisible();
+      await expectTimerVisible(page);
       expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(deadline);
       await openStore(page, 'http://shop.example.test/another-product/');
-      await expect(timer).toBeVisible();
+      await expectTimerVisible(page);
       expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(deadline);
       await Promise.all([page.waitForResponse('**/api/public/popup-banners/resolve?**'), page.reload()]);
-      await page.clock.runFor(100);
-      await expect(timer).toBeVisible();
+      await expectTimerVisible(page);
       expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(deadline);
       await page.clock.fastForward(40000);
       await expect(page.locator('#mt-popup-banner-root')).toHaveCount(0);
@@ -128,7 +146,7 @@ for (const surface of [
       const events: string[] = [];
       await storefront(page, data, events);
       await openStore(page, 'http://shop.example.test/sale/');
-      await expect(page.getByRole('timer')).toBeVisible();
+      await expectTimerVisible(page);
       await page.clock.fastForward(4000);
       await expect(page.locator('#mt-popup-banner-root')).toHaveCount(0);
       const time = await page.evaluate(() => Date.now());
