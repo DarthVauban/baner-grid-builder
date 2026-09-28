@@ -80,10 +80,10 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # Keep both deploy-owned files directly in APP_DIR. Older servers may
+          # Keep deploy-owned files directly in APP_DIR. Older servers may
           # contain a root-owned docker/telegram-bot-api directory created by
           # Docker, which the unprivileged deployment account cannot overwrite.
-          source: docker-compose.yml,telegram-bot-api-runtime-entrypoint.sh
+          source: docker-compose.yml,telegram-bot-api-runtime-entrypoint.sh,telegram-bot-api-deploy-mode.sh
           target: ${{ env.APP_DIR }}
           overwrite: true
 
@@ -144,16 +144,6 @@ jobs:
             retry 5 10 docker pull "$IMAGE"
             EXPECTED_IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
             docker compose config --quiet
-            TELEGRAM_LOCAL_ENABLED="$(sed -n 's/^TELEGRAM_LOCAL_MODE=//p' .env | tail -n 1 | tr -d '\r"' | tr '[:upper:]' '[:lower:]')"
-            if [ "$TELEGRAM_LOCAL_ENABLED" = "true" ]; then
-              if [ -f .telegram-bot-api.env ]; then
-                test "$(stat -c '%a' .telegram-bot-api.env)" = "600"
-                grep -Eq '^TELEGRAM_API_ID=[0-9]+$' .telegram-bot-api.env
-                grep -Eq '^TELEGRAM_API_HASH=[a-fA-F0-9]{32}$' .telegram-bot-api.env
-              fi
-              docker compose --profile telegram-local config --quiet
-              retry 5 10 docker compose --profile telegram-local pull telegram-bot-api
-            fi
             MEDIA_BACKUP="$(mktemp -d)"
             deployment_cleanup() {
               status="$1"
@@ -204,12 +194,25 @@ jobs:
               docker compose restart db
               wait_for_database
             fi
+            TELEGRAM_LOCAL_ENABLED="$(sh ./telegram-bot-api-deploy-mode.sh)"
+            export TELEGRAM_LOCAL_MODE="$TELEGRAM_LOCAL_ENABLED"
+            echo "Telegram Local Bot API enabled: $TELEGRAM_LOCAL_ENABLED"
+            if [ "$TELEGRAM_LOCAL_ENABLED" = "true" ]; then
+              if [ -f .telegram-bot-api.env ]; then
+                test "$(stat -c '%a' .telegram-bot-api.env)" = "600"
+                grep -Eq '^TELEGRAM_API_ID=[0-9]+$' .telegram-bot-api.env
+                grep -Eq '^TELEGRAM_API_HASH=[a-fA-F0-9]{32}$' .telegram-bot-api.env
+              fi
+              docker compose --profile telegram-local config --quiet
+              retry 5 10 docker compose --profile telegram-local pull telegram-bot-api
+            fi
             docker compose up -d --no-build --force-recreate app
             docker compose ps app
             sleep 8
 
             CONTAINER_ID="$(docker compose ps -q app)"
             test -n "$CONTAINER_ID"
+            docker exec "$CONTAINER_ID" node --input-type=module -e 'import { env } from "./src/config/env.js"; if (String(env.telegramLocalMode) !== process.argv[1]) process.exit(1);' "$TELEGRAM_LOCAL_ENABLED"
             MEDIA_MOUNT_TYPE="$(docker inspect "$CONTAINER_ID" --format '{{range .Mounts}}{{if eq .Destination "/app/storage/catalog-media"}}{{.Type}}{{end}}{{end}}')"
             test "$MEDIA_MOUNT_TYPE" = "volume"
             docker exec "$CONTAINER_ID" test -w /app/storage/catalog-media

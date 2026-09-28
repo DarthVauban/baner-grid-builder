@@ -133,7 +133,10 @@ test('local Telegram Bot API is pinned, private, and reloads encrypted workspace
   assert.match(compose, /\.\/telegram-bot-api-runtime-entrypoint\.sh:\/opt\/mt\/runtime-entrypoint\.sh:ro/);
   assert.match(workflow, /source: docker-compose\.yml,telegram-bot-api-runtime-entrypoint\.sh/);
   assert.doesNotMatch(workflow, /source: [^\r\n]*docker\/telegram-bot-api\/runtime-entrypoint\.sh/);
-  assert.match(workflow, /TELEGRAM_LOCAL_ENABLED=.*TELEGRAM_LOCAL_MODE/);
+  assert.match(workflow, /source: [^\r\n]*telegram-bot-api-deploy-mode\.sh/);
+  assert.match(workflow, /wait_for_database[\s\S]*TELEGRAM_LOCAL_ENABLED="\$\(sh \.\/telegram-bot-api-deploy-mode\.sh\)"/);
+  assert.match(workflow, /export TELEGRAM_LOCAL_MODE="\$TELEGRAM_LOCAL_ENABLED"[\s\S]*docker compose up -d --no-build --force-recreate app/);
+  assert.match(workflow, /String\(env\.telegramLocalMode\) !== process\.argv\[1\]/);
   assert.match(workflow, /if \[ -f \.telegram-bot-api\.env \]; then/);
   assert.match(workflow, /stat -c '%a' \.telegram-bot-api\.env/);
   assert.match(workflow, /docker compose --profile telegram-local up -d --no-build telegram-bot-api/);
