@@ -18,6 +18,8 @@ import { ToolsPage } from '../pages/ToolsPage';
 import { ToolAccessRoute } from '../components/ToolAccessRoute';
 import { BlogPublicationsPage } from '../pages/BlogPublicationsPage';
 
+const HoroshopStickersPage = lazy(() => import('../pages/HoroshopStickersPage').then((module) => ({ default: module.HoroshopStickersPage })));
+
 const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({
   default: module.ChatPage
 })));
@@ -241,6 +243,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="horoshop_related_products" />}>
             <Route path="tools/horoshop-related-products" element={<Suspense fallback={<LoadingScreen />}><HoroshopRelatedProductsPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="horoshop_stickers" />}>
+            <Route path="tools/horoshop-stickers" element={<Suspense fallback={<LoadingScreen />}><HoroshopStickersPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="horoshop_photo_parser" />}>
             <Route path="tools/horoshop-photo-parser" element={<Suspense fallback={<LoadingScreen />}><HoroshopPhotoParserPage /></Suspense>} />

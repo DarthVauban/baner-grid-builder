@@ -48,6 +48,14 @@ export const toolCategories: ToolCategoryDefinition[] = [
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'horoshop_stickers',
+    name: 'Стікери Хорошоп',
+    description: 'Масове додавання та зняття ручних стікерів: вибірки товарів, перегляд змін, історія й повернення операцій.',
+    path: '/tools/horoshop-stickers',
+    icon: 'productCard',
+    category: 'horoshop'
+  },
+  {
     id: 'horoshop_checkout_telegram',
     name: 'Telegram після замовлення',
     description: 'QR-код і кнопка переходу до Telegram-бота на сторінці успішного оформлення замовлення.',

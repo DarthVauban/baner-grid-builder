@@ -1,4 +1,5 @@
 import type { HoroshopIntegration } from '../types/integration';
+import { horoshopStickers } from './api-horoshop-stickers';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
   HoroshopAccessoryCandidates,
@@ -27,6 +28,7 @@ import { jsonBody, queryString, request, requestNdjson } from './api-client';
 const HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS = 30_000;
 
 export const horoshopApi = {
+  horoshopStickers,
   horoshopCatalog: {
     list: (params: HoroshopCatalogParams = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
       `/api/search/horoshop/catalog${queryString({

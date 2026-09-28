@@ -50,6 +50,14 @@ describe('ToolsPage loading recovery', () => {
 });
 
 describe('ToolsPage catalog', () => {
+  it('shows bulk sticker management in the Horoshop tools category', async () => {
+    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({ tools: [{ toolId: 'horoshop_stickers', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false }], twoFactorEnabled: true });
+    renderPage();
+    await expandCategory('Інструменти Хорошоп');
+    const tile = await screen.findByRole('link', { name: /Стікери Хорошоп/u });
+    expect(tile).toHaveAttribute('href', '/tools/horoshop-stickers');
+    expect(tile.closest('details')).toHaveTextContent('Інструменти Хорошоп');
+  });
   it('keeps cached tools visible while a slow background refresh is pending', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(['tool-catalog'], {

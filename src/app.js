@@ -32,6 +32,7 @@ import facebookPublicationRoutes from './modules/facebook-publications/facebook-
 import mobileRoutes from './modules/mobile/mobile.routes.js';
 import horoshopIntegrationRoutes from './modules/search/horoshop/horoshop.routes.js';
 import horoshopCatalogRoutes from './modules/search/horoshop/catalog.routes.js';
+import horoshopStickerRoutes from './modules/search/horoshop/sticker.routes.js';
 import horoshopAccessoryRoutes from './modules/search/horoshop/accessory.routes.js';
 import horoshopPhotoRoutes from './modules/search/horoshop/photo.routes.js';
 import horoshopPhotoDesktopRoutes from './modules/search/horoshop/photo-desktop.routes.js';
@@ -211,6 +212,7 @@ app.get('/api/health', asyncHandler(async (req, res) => {
 }));
 app.use('/api/auth', authAttemptLimiter, authRoutes);
 app.use('/api/admin/integrations/horoshop', horoshopIntegrationRoutes);
+app.use('/api/search/horoshop/stickers', horoshopStickerRoutes);
 app.use('/api/search/horoshop', horoshopCatalogRoutes);
 app.use('/api/search/horoshop/accessories', horoshopAccessoryRoutes);
 app.use('/api/search/horoshop/photos', horoshopPhotoRoutes);
