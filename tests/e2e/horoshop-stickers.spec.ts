@@ -26,6 +26,68 @@ for (const surface of [
     test.use({ userAgent: surface.device.userAgent, viewport: surface.device.viewport,
       isMobile: surface.device.isMobile, hasTouch: surface.device.hasTouch, deviceScaleFactor: surface.device.deviceScaleFactor });
 
+    test('loads products and recovers sticker choices when a filter is opened during catalog loading', async ({ page }, testInfo) => {
+      await page.goto('/login');
+      await page.getByLabel('Email').fill('e2e-admin@test.local');
+      await page.locator('input[name="password"]').fill('E2E-admin-password-2026');
+      await page.getByRole('button', { name: 'Увійти' }).click();
+      await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
+
+      let releaseCatalog!: () => void;
+      const loadingCatalog = new Promise<void>((resolve) => { releaseCatalog = resolve; });
+      const catalogRequests: Array<{ mode: string | null; sticker: string | null }> = [];
+      let refreshed = false;
+      let writes = 0;
+      await page.route('**/api/users/tool-access', (route) => route.fulfill({ json: { data: ['horoshop_stickers'] } }));
+      await page.route('**/api/search/horoshop/stickers/**', async (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname.endsWith('/directory/refresh')) {
+          refreshed = true;
+          return route.fulfill({ json: { data: { refreshed: true } } });
+        }
+        if (url.pathname.endsWith('/catalog')) {
+          const mode = url.searchParams.get('stickerMode');
+          const sticker = url.searchParams.get('stickerId');
+          catalogRequests.push({ mode, sticker });
+          if (catalogRequests.length === 1) await loadingCatalog;
+          const items = catalog.items.filter((product) => mode === 'present' ? product.stickers.some((item) => item.id === sticker)
+            : mode === 'missing' ? !product.stickers.some((item) => item.id === sticker) : true);
+          return route.fulfill({ json: { data: { ...catalog, items, total: items.length, pageCount: items.length ? 1 : 0,
+            directory: refreshed ? catalog.directory : [], directoryWarning: refreshed ? null : 'Довідник тимчасово недоступний.' } } });
+        }
+        if (url.pathname.includes('/operations/')) writes += 1;
+        return route.fulfill({ json: { data: [] } });
+      });
+
+      await page.goto('/tools/horoshop-stickers');
+      await expect(page.getByText('Завантажуємо товари…')).toBeVisible();
+      await page.getByRole('button', { name: 'Стікери', exact: true }).click();
+      await page.getByRole('option', { name: 'Має вибраний стікер' }).click();
+      await expect(page.getByText('Оберіть стікер для фільтра.')).toBeVisible();
+      releaseCatalog();
+      await expect(page.getByLabel('Обрати 0001')).toBeDisabled();
+      await expect(page.getByText('1 товарних груп', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Вибрати всі 1 за фільтром' })).toBeDisabled();
+      await page.getByRole('button', { name: 'Оновити', exact: true }).click();
+      await expect(page.getByText('Довідник тимчасово недоступний.')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Стікер для фільтра', exact: true }).click();
+      await expect(page.getByRole('option', { name: 'Хіт', exact: true })).toBeVisible();
+      await expect(page.getByRole('option', { name: 'Акція', exact: true })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('sticker-options.png'), fullPage: true });
+      await page.getByRole('option', { name: 'Хіт', exact: true }).click();
+      await expect(page.getByLabel('Обрати 0001')).toBeEnabled();
+      await page.getByRole('button', { name: 'Стікери', exact: true }).click();
+      await page.getByRole('option', { name: 'Не має вибраного стікера' }).click();
+      await expect(page.getByText('За цими умовами товарів немає.')).toBeVisible();
+      await page.getByRole('button', { name: 'Стікер для фільтра', exact: true }).click();
+      await page.getByRole('option', { name: 'Акція', exact: true }).click();
+      await expect(page.getByLabel('Обрати 0001')).toBeEnabled();
+      expect(catalogRequests).toEqual(expect.arrayContaining([{ mode: 'present', sticker: '1' }, { mode: 'missing', sticker: '1' }, { mode: 'missing', sticker: '11' }]));
+      expect(catalogRequests.every(({ mode, sticker }) => !['present', 'missing'].includes(mode || '') || !!sticker)).toBe(true);
+      expect(writes).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    });
+
     test('keeps preparation visible through failed access checks, then reviews and applies once', async ({ page }, testInfo) => {
       await page.goto('/login');
       await page.getByLabel('Email').fill('e2e-admin@test.local');

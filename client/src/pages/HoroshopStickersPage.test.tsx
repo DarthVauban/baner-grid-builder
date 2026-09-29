@@ -229,6 +229,45 @@ describe('HoroshopStickersPage', () => {
     await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenLastCalledWith(expect.objectContaining({ stickerMode: 'present', stickerId: '11' }), expect.anything()));
   });
 
+  it.each(['present', 'missing'] as const)('finishes loading products and stickers when the %s filter is opened before the catalog arrives', async (mode) => {
+    let complete: ((value: StickerCatalog) => void) | undefined;
+    let loadingSignal: AbortSignal | undefined;
+    vi.mocked(api.horoshopStickers.catalog).mockImplementationOnce((_filters, signal) => {
+      loadingSignal = signal;
+      return new Promise((resolve) => { complete = resolve; });
+    });
+    renderPage();
+    await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: 'Стікери' }));
+    fireEvent.click(screen.getByRole('option', { name: mode === 'present' ? 'Має вибраний стікер' : 'Не має вибраного стікера' }));
+    expect(screen.getByText('Оберіть стікер для фільтра.')).toBeInTheDocument();
+    await act(async () => complete?.(structuredClone(catalog)));
+    expect(loadingSignal?.aborted).toBe(false);
+    await screen.findByLabelText('Обрати 0001');
+    expect(screen.getByRole('button', { name: 'Вибрати всі 2 за фільтром' })).toBeDisabled();
+    expect(screen.getByLabelText('Обрати 0001')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Стікер для фільтра' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Акція' }));
+    await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenLastCalledWith(expect.objectContaining({ stickerMode: mode, stickerId: '11' }), expect.anything()));
+    await waitFor(() => expect(screen.getByLabelText('Обрати 0001')).toBeEnabled());
+  });
+
+  it('refreshes an empty directory while the sticker filter is waiting for a choice', async () => {
+    vi.mocked(api.horoshopStickers.catalog).mockResolvedValueOnce({ ...structuredClone(catalog), directory: [], directoryWarning: 'Довідник тимчасово недоступний.' });
+    renderPage();
+    await screen.findByLabelText('Обрати 0001');
+    fireEvent.click(screen.getByRole('button', { name: 'Стікери' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Має вибраний стікер' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(api.horoshopStickers.refreshDirectory).toHaveBeenCalledOnce());
+    await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('Довідник тимчасово недоступний.')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Стікер для фільтра' }));
+    expect(await screen.findByRole('option', { name: 'Акція' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Обрати 0001')).toBeDisabled();
+    expect(api.horoshopStickers.action).not.toHaveBeenCalled();
+  });
+
   it('keeps disabled manual icons available for removal and filtering only', async () => {
     const disabled = { externalId: '19', title: 'Вимкнений', enabled: false };
     vi.mocked(api.horoshopStickers.catalog).mockResolvedValue({ ...catalog, directory: [...catalog.directory, disabled] });

@@ -151,8 +151,10 @@ export function HoroshopStickersPage() {
   const [savedId, setSavedId] = useState('');
   const [preparation, setPreparation] = useState<Preparation | null>(null);
   const incompleteFilter = ['present', 'missing'].includes(filters.stickerMode || '') && !filters.stickerId;
-  const catalog = useQuery({ queryKey: ['horoshop-sticker-catalog', filters], queryFn: ({ signal }) => api.horoshopStickers.catalog(filters, signal),
-    enabled: !incompleteFilter, placeholderData: keepPreviousData });
+  // The catalog also supplies filter options, so keep loading it until a sticker can be chosen.
+  const catalogFilters = incompleteFilter ? { ...filters, stickerMode: undefined, stickerId: undefined } : filters;
+  const catalog = useQuery({ queryKey: ['horoshop-sticker-catalog', catalogFilters], queryFn: ({ signal }) => api.horoshopStickers.catalog(catalogFilters, signal),
+    placeholderData: keepPreviousData });
   const history = useQuery({ queryKey: ['horoshop-sticker-history'], queryFn: api.horoshopStickers.history, refetchInterval: activeTab === 'history' ? 5_000 : false });
   const selections = useQuery({ queryKey: ['horoshop-sticker-selections'], queryFn: api.horoshopStickers.selections });
   const selectionSummary = useQuery({ queryKey: ['horoshop-sticker-selection-summary', [...selected].sort()],
