@@ -14,10 +14,21 @@ const notEmpty = (ids) => {
   if (!ids.length || ids.length > maximumStickerSelection) throw new AppError(422, 'STICKER_SELECTION_INVALID', `Оберіть від 1 до ${maximumStickerSelection} товарів.`);
 };
 const terminal = (status) => ['completed', 'partial', 'stopped'].includes(status);
+const sqlCatalogFilters = (filters) => !filters.search && !filters.brand
+  && filters.priceMin === undefined && filters.priceMax === undefined
+  && (!filters.stickerMode || filters.stickerMode === 'all');
 const preparationReporter = (onProgress, total = 0) => {
   let progress = { stage: 'checking', total, processed: 0, productsRead: 0, pagesRead: 0 };
   return (update) => { progress = { ...progress, ...update }; onProgress?.(progress); };
 };
+
+export function tuneStickerImportBatch(state, durationMs, error = null, ceiling = 25) {
+  if (error?.httpStatus === 429) return { size: 10, fastCount: 0 };
+  if (error || durationMs > 8_000) return { size: Math.max(10, state.size - 5), fastCount: 0 };
+  if (durationMs >= 2_000) return { ...state, fastCount: 0 };
+  const fastCount = state.fastCount + 1;
+  return fastCount >= 3 ? { size: Math.min(ceiling, state.size + 5), fastCount: 0 } : { ...state, fastCount };
+}
 
 export class HoroshopStickerService {
   constructor(options = {}) {
@@ -30,22 +41,35 @@ export class HoroshopStickerService {
     this.directoryCache = null;
     this.directoryRefresh = null;
     this.scopedExportCapability = null;
+    this.importBatchState = null;
   }
 
   async catalog(filters) {
     const connection = await this.repository.connection();
-    let directoryWarning = null;
-    try { await this.ensureDirectory(connection); }
-    catch (error) { directoryWarning = error instanceof AppError ? error.message : 'Не вдалося отримати довідник стікерів із Хорошоп. Натисніть «Оновити», щоб повторити.'; }
-    const catalog = await this.repository.catalog(connection);
-    const products = filterStickerProducts(catalog.products, catalog.categories, filters, catalog.directory.map((item) => item.externalId));
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 25;
-    return { items: products.slice((page - 1) * pageSize, page * pageSize), total: products.length, page, pageSize,
-      pageCount: Math.ceil(products.length / pageSize), storeDomain: connection.storeDomain, lastSyncAt: connection.lastSyncAt,
+    const sqlFilterable = sqlCatalogFilters(filters);
+    const load = () => sqlFilterable ? this.repository.catalogPage(connection, page, pageSize, filters) : this.repository.catalog(connection);
+    let catalog = await load();
+    let directoryWarning = null;
+    if (!catalog.directory.length) {
+      try { await this.ensureDirectory(connection); catalog = await load(); }
+      catch (error) { directoryWarning = error instanceof AppError ? error.message : 'Не вдалося отримати довідник стікерів із Хорошоп. Натисніть «Оновити», щоб повторити.'; }
+    } else {
+      const key = `${connection.id}:${connection.generation}`;
+      if (!this.directoryCache || this.directoryCache.key !== key) {
+        this.directoryCache = { key, expiresAt: 0, error: null };
+      }
+      if (this.directoryCache.expiresAt <= Date.now()) void this.ensureDirectory(connection).catch(() => {});
+      directoryWarning = this.directoryCache.error?.message || null;
+    }
+    const products = sqlFilterable ? catalog.products : filterStickerProducts(catalog.products, catalog.categories, filters, catalog.directory.map((item) => item.externalId));
+    const total = sqlFilterable ? catalog.total : products.length;
+    return { items: sqlFilterable ? products : products.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize,
+      pageCount: Math.ceil(total / pageSize), storeDomain: connection.storeDomain, lastSyncAt: connection.lastSyncAt,
       categories: catalog.categories, directory: catalog.directory,
-      brands: [...new Set(catalog.products.map((p) => p.brand).filter(Boolean))].sort(),
-      availabilityOptions: [...new Set(catalog.products.flatMap((p) => [p.availability, ...p.modifications.map((m) => m.availability)]).filter(Boolean))].sort(),
+      brands: sqlFilterable ? catalog.brands : [...new Set(catalog.products.map((p) => p.brand).filter(Boolean))].sort(),
+      availabilityOptions: sqlFilterable ? catalog.availabilityOptions : [...new Set(catalog.products.flatMap((p) => [p.availability, ...p.modifications.map((m) => m.availability)]).filter(Boolean))].sort(),
       directoryWarning };
   }
 
@@ -79,6 +103,11 @@ export class HoroshopStickerService {
 
   async select(filters) {
     const connection = await this.repository.connection();
+    if (sqlCatalogFilters(filters)) {
+      const productIds = await this.repository.selectIds(connection, filters);
+      notEmpty(productIds);
+      return { productIds };
+    }
     const catalog = await this.repository.catalog(connection);
     const products = filterStickerProducts(catalog.products, catalog.categories, filters, catalog.directory.map((item) => item.externalId));
     notEmpty(products.map((p) => p.id));
@@ -87,10 +116,10 @@ export class HoroshopStickerService {
 
   async selectionSummary(productIds) {
     const connection = await this.repository.connection();
-    const catalog = await this.repository.catalog(connection);
     const ids = new Set(productIds);
     notEmpty([...ids]);
-    const products = catalog.products.filter((product) => ids.has(product.id));
+    const catalog = await this.repository.catalogByIds(connection, [...ids]);
+    const products = catalog.products;
     if (products.length !== ids.size) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
     return summarizeStickerSelection(products, catalog.directory);
   }
@@ -222,7 +251,7 @@ export class HoroshopStickerService {
     const report = preparationReporter(onProgress, ids.length);
     report({ stage: 'checking' });
     const connection = await this.repository.connection();
-    const catalog = await this.repository.catalog(connection);
+    const catalog = await this.repository.catalogByIds(connection, ids);
     const selectedIds = new Set(ids);
     const selected = catalog.products.filter((p) => selectedIds.has(p.id));
     if (selected.length !== ids.length) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
@@ -263,11 +292,10 @@ export class HoroshopStickerService {
 
   async detail(id, page = 1, pageSize = 50) {
     const connection = await this.repository.connection();
-    const operation = await this.repository.operation(id, connection);
+    const operation = await this.repository.operation(id, connection, { page, pageSize });
     const { items, ...summary } = operation;
     delete summary.actorUserId;
-    return { ...summary, counts: countItems(items), total: items.length,
-      items: items.slice((page - 1) * pageSize, page * pageSize), page, pageCount: Math.ceil(items.length / pageSize) };
+    return { ...summary, items, page, pageSize, pageCount: Math.ceil(summary.total / pageSize) };
   }
 
   async history() { return this.repository.history(await this.repository.connection()); }
@@ -402,6 +430,10 @@ export class HoroshopStickerService {
   async processOperation(id, connection) {
     const operation = await this.repository.operation(id, connection);
     const apiOperations = { catalogExports: 0, stickerExports: 0, authentications: 0, imports: 0 };
+    const importMetrics = { batches: 0, articles: 0, durationMs: 0, maxDurationMs: 0, startingBatchSize: 0, endingBatchSize: 0 };
+    const batchKey = `${connection.id}:${connection.generation}`;
+    if (this.importBatchState?.key !== batchKey) this.importBatchState = { key: batchKey, size: this.batchSize, fastCount: 0 };
+    importMetrics.startingBatchSize = this.importBatchState.size;
     try {
       const selectedExternalIds = new Set(operation.items.filter((item) => ['pending', 'writing'].includes(item.status)).map((item) => item.externalId));
       const expected = new Map(operation.items.filter((item) => selectedExternalIds.has(item.externalId))
@@ -447,11 +479,21 @@ export class HoroshopStickerService {
             for (const article of item.membership.length ? item.membership : [item.article]) payloads.push({ article, icons });
           } catch (error) { await this.repository.setItem(item.id, 'conflict', error instanceof AppError ? error.message : 'Не вдалося перевірити ручні стікери.'); }
         }
-        for (let index = 0; index < payloads.length; index += this.batchSize) {
+        for (let index = 0; index < payloads.length;) {
           const latestConnection = await this.repository.connection();
           if (latestConnection.generation !== connection.generation) throw new AppError(409, 'STICKER_CATALOG_STALE', 'Підключення змінилося.');
-          try { apiOperations.imports += 1; await remote.client.importCatalog(remote.token, payloads.slice(index, index + this.batchSize), { maxAttempts: 1 }); }
-          catch { /* A transport error can follow a successful write. Only read-back decides the result. */ }
+          const batch = payloads.slice(index, index + this.importBatchState.size);
+          index += batch.length;
+          const startedAt = performance.now();
+          let importError = null;
+          try { apiOperations.imports += 1; await remote.client.importCatalog(remote.token, batch, { maxAttempts: 1 }); }
+          catch (error) { importError = error; /* A transport error can follow a successful write. Only read-back decides the result. */ }
+          const durationMs = Math.round(performance.now() - startedAt);
+          importMetrics.batches += 1;
+          importMetrics.articles += batch.length;
+          importMetrics.durationMs += durationMs;
+          importMetrics.maxDurationMs = Math.max(importMetrics.maxDurationMs, durationMs);
+          this.importBatchState = { key: batchKey, ...tuneStickerImportBatch(this.importBatchState, durationMs, importError, this.batchSize) };
         }
       }
       if (writing.length) {
@@ -476,9 +518,10 @@ export class HoroshopStickerService {
       WHERE operation_id = $1 AND status = 'pending'`, [id]);
     const final = await this.repository.operation(id, connection);
     const counts = countItems(final.items);
+    importMetrics.endingBatchSize = this.importBatchState.size;
     const status = final.stopRequested ? 'stopped' : counts.failed || counts.conflict ? 'partial' : 'completed';
     await this.pool.query('UPDATE search_horoshop_sticker_operations SET status = $2, completed_at = NOW() WHERE id = $1', [id, status]);
-    await this.repository.event(connection.id, id, operation.actorUserId || null, 'operation_finished', { status, counts, apiOperations });
+    await this.repository.event(connection.id, id, operation.actorUserId || null, 'operation_finished', { status, counts, apiOperations, importMetrics });
   }
 
   async report(id) {

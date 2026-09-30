@@ -14,8 +14,65 @@ export const itemFromRow = (row) => ({
 });
 export const countItems = (items) => items.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] || 0) + 1 }), {});
 
+function catalogFromRows(products, modifications, categories, stickers) {
+  const children = new Map();
+  const childBrands = new Map();
+  for (const row of modifications.rows) {
+    const brand = normalizeHoroshopBrand(row.source_brand);
+    if (brand && !childBrands.has(row.product_id)) childBrands.set(row.product_id, brand);
+    if (!children.has(row.product_id)) children.set(row.product_id, []);
+    children.get(row.product_id).push({ id: row.id, sku: row.sku, titles: objectValue(row.titles), price: row.price,
+      availability: row.availability, visible: row.visible, stickers: arrayValue(row.stickers) });
+  }
+  return {
+    products: products.rows.map((row) => ({ id: row.id, externalId: row.external_id, sku: row.sku,
+      titles: objectValue(row.titles), brand: row.brand || normalizeHoroshopBrand(row.source_brand) || childBrands.get(row.id) || null, categoryExternalId: row.category_external_id,
+      price: row.price, availability: row.availability, visible: row.visible, imageUrl: row.primary_image_url,
+      canonicalUrl: row.canonical_url, stickers: arrayValue(row.stickers),
+      horoshopCreatedAt: new Date(row.creation_time).toISOString(), modifications: children.get(row.id) || [] })),
+    categories: categories.rows.map((row) => ({ externalId: row.external_id, parentExternalId: row.parent_external_id, title: titleFor(objectValue(row.titles), row.external_id) })),
+    directory: manualStickerDirectory(stickers.rows.map((row) => ({ externalId: row.external_id, title: row.title, enabled: row.enabled })))
+  };
+}
+
+const productColumns = `id, external_id, sku, titles, brand, category_external_id, price, availability,
+  source_data->'brand' AS source_brand, visible, primary_image_url, canonical_url, stickers,
+  COALESCE(horoshop_created_at, created_at) AS creation_time`;
+const modificationColumns = `id, product_id, sku, titles, price, availability, visible, stickers,
+  source_data->'brand' AS source_brand`;
+
+function catalogPredicate(connection, filters, categories) {
+  const params = [connection.id, connection.generation];
+  const conditions = ['connection_id = $1', 'generation = $2', 'active = TRUE'];
+  const add = (value) => { params.push(value); return `$${params.length}`; };
+  if (filters.category) {
+    const ids = new Set([filters.category]);
+    if (filters.includeChildren !== false) {
+      let previous;
+      do {
+        previous = ids.size;
+        for (const category of categories) if (ids.has(category.parent_external_id)) ids.add(category.external_id);
+      } while (previous !== ids.size);
+    }
+    conditions.push(`category_external_id IN (${[...ids].map(add).join(',')})`);
+  }
+  if (filters.visibility === 'visible') conditions.push('visible = TRUE');
+  if (filters.visibility === 'hidden') conditions.push(`(visible = FALSE OR id IN (
+    SELECT product_id FROM search_horoshop_modifications WHERE connection_id = $1
+    AND generation = $2 AND active = TRUE AND visible = FALSE))`);
+  if (filters.availability) {
+    const match = add(filters.availability);
+    conditions.push(`(availability = ${match} OR id IN (
+      SELECT product_id FROM search_horoshop_modifications WHERE connection_id = $1
+      AND generation = $2 AND active = TRUE AND availability = ${match}))`);
+  }
+  if (filters.createdFrom) conditions.push(`COALESCE(horoshop_created_at, created_at) >= ${add(`${filters.createdFrom}T00:00:00Z`)}::timestamptz`);
+  if (filters.createdTo) conditions.push(`COALESCE(horoshop_created_at, created_at) < ${add(new Date(Date.parse(`${filters.createdTo}T00:00:00Z`) + 86_400_000).toISOString())}::timestamptz`);
+  return { params, where: conditions.join(' AND ') };
+}
+
 export class HoroshopStickerRepository {
-  constructor(pool = defaultPool) { this.pool = pool; this.catalogRepository = new HoroshopCatalogRepository(pool); }
+  constructor(pool = defaultPool) { this.pool = pool; this.catalogRepository = new HoroshopCatalogRepository(pool); this.catalogFacetsCache = null; }
 
   async connection() {
     const connection = await this.catalogRepository.getConnection();
@@ -27,35 +84,91 @@ export class HoroshopStickerRepository {
   async catalog(connection) {
     const params = [connection.id, connection.generation];
     const [products, modifications, categories, stickers] = await Promise.all([
-      this.pool.query(`SELECT id, external_id, sku, titles, brand, category_external_id, price, availability,
-        source_data->'brand' AS source_brand,
-        visible, primary_image_url, canonical_url, stickers, COALESCE(horoshop_created_at, created_at) AS creation_time
+      this.pool.query(`SELECT ${productColumns}
         FROM search_horoshop_products WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY sku, id`, params),
-      this.pool.query(`SELECT id, product_id, sku, titles, price, availability, visible, stickers, source_data->'brand' AS source_brand
+      this.pool.query(`SELECT ${modificationColumns}
         FROM search_horoshop_modifications WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY sku, id`, params),
       this.pool.query(`SELECT external_id, parent_external_id, titles FROM search_horoshop_categories
         WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, params),
       this.pool.query(`SELECT external_id, title, enabled FROM search_horoshop_stickers
         WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY title`, params)
     ]);
-    const children = new Map();
-    const childBrands = new Map();
+    return catalogFromRows(products, modifications, categories, stickers);
+  }
+
+  async catalogFacets(connection) {
+    const key = `${connection.id}:${connection.generation}:${connection.lastSyncAt}`;
+    if (this.catalogFacetsCache?.key === key && this.catalogFacetsCache.expiresAt > Date.now()) return this.catalogFacetsCache.value;
+    const params = [connection.id, connection.generation];
+    const [parents, modifications] = await Promise.all([
+      this.pool.query(`SELECT id, brand, source_data->'brand' AS source_brand, availability
+        FROM search_horoshop_products WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, params),
+      this.pool.query(`SELECT product_id, source_data->'brand' AS source_brand, availability
+        FROM search_horoshop_modifications WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY sku, id`, params)
+    ]);
+    const brands = new Map(parents.rows.map((row) => [row.id, row.brand || normalizeHoroshopBrand(row.source_brand) || null]));
+    const availability = new Set(parents.rows.map((row) => row.availability).filter(Boolean));
     for (const row of modifications.rows) {
-      const brand = normalizeHoroshopBrand(row.source_brand);
-      if (brand && !childBrands.has(row.product_id)) childBrands.set(row.product_id, brand);
-      if (!children.has(row.product_id)) children.set(row.product_id, []);
-      children.get(row.product_id).push({ id: row.id, sku: row.sku, titles: objectValue(row.titles), price: row.price,
-        availability: row.availability, visible: row.visible, stickers: arrayValue(row.stickers) });
+      if (!brands.get(row.product_id)) brands.set(row.product_id, normalizeHoroshopBrand(row.source_brand) || null);
+      if (row.availability) availability.add(row.availability);
     }
-    return {
-      products: products.rows.map((row) => ({ id: row.id, externalId: row.external_id, sku: row.sku,
-        titles: objectValue(row.titles), brand: row.brand || normalizeHoroshopBrand(row.source_brand) || childBrands.get(row.id) || null, categoryExternalId: row.category_external_id,
-        price: row.price, availability: row.availability, visible: row.visible, imageUrl: row.primary_image_url,
-        canonicalUrl: row.canonical_url, stickers: arrayValue(row.stickers),
-        horoshopCreatedAt: new Date(row.creation_time).toISOString(), modifications: children.get(row.id) || [] })),
-      categories: categories.rows.map((row) => ({ externalId: row.external_id, parentExternalId: row.parent_external_id, title: titleFor(objectValue(row.titles), row.external_id) })),
-      directory: manualStickerDirectory(stickers.rows.map((row) => ({ externalId: row.external_id, title: row.title, enabled: row.enabled })))
+    const value = {
+      brands: [...new Set([...brands.values()].filter(Boolean))].sort(),
+      availabilityOptions: [...availability].sort()
     };
+    this.catalogFacetsCache = { key, expiresAt: Date.now() + 300_000, value };
+    return value;
+  }
+
+  async catalogPage(connection, page, pageSize, filters = {}) {
+    const categories = await this.pool.query(`SELECT external_id, parent_external_id, titles FROM search_horoshop_categories
+      WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, [connection.id, connection.generation]);
+    const { params, where } = catalogPredicate(connection, filters, categories.rows);
+    const [count, products, stickers, facets] = await Promise.all([
+      this.pool.query(`SELECT COUNT(*)::int AS total FROM search_horoshop_products WHERE ${where}`, params),
+      this.pool.query(`SELECT ${productColumns} FROM search_horoshop_products
+        WHERE ${where} ORDER BY sku, id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, (page - 1) * pageSize]),
+      this.pool.query(`SELECT external_id, title, enabled FROM search_horoshop_stickers
+        WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY title`, [connection.id, connection.generation]),
+      this.catalogFacets(connection)
+    ]);
+    const ids = products.rows.map((row) => row.id);
+    const modifications = ids.length ? await this.pool.query(`SELECT ${modificationColumns} FROM search_horoshop_modifications
+      WHERE connection_id = $1 AND generation = $2 AND active = TRUE
+      AND product_id IN (${ids.map((_, index) => `$${index + 3}`).join(',')}) ORDER BY sku, id`, [connection.id, connection.generation, ...ids]) : { rows: [] };
+    return { ...catalogFromRows(products, modifications, categories, stickers), total: Number(count.rows[0]?.total || 0), ...facets };
+  }
+
+  async catalogByIds(connection, ids) {
+    const products = { rows: [] };
+    const modifications = { rows: [] };
+    for (let offset = 0; offset < ids.length; offset += 500) {
+      const batch = ids.slice(offset, offset + 500);
+      const selected = batch.map((_, index) => `$${index + 3}`).join(',');
+      const params = [connection.id, connection.generation, ...batch];
+      const [parents, offers] = await Promise.all([
+        this.pool.query(`SELECT ${productColumns} FROM search_horoshop_products
+          WHERE connection_id = $1 AND generation = $2 AND active = TRUE AND id IN (${selected})`, params),
+        this.pool.query(`SELECT ${modificationColumns} FROM search_horoshop_modifications
+          WHERE connection_id = $1 AND generation = $2 AND active = TRUE AND product_id IN (${selected})`, params)
+      ]);
+      products.rows.push(...parents.rows);
+      modifications.rows.push(...offers.rows);
+    }
+    products.rows.sort((a, b) => a.sku.localeCompare(b.sku) || a.id.localeCompare(b.id));
+    modifications.rows.sort((a, b) => a.sku.localeCompare(b.sku) || a.id.localeCompare(b.id));
+    const stickers = await this.pool.query(`SELECT external_id, title, enabled FROM search_horoshop_stickers
+      WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY title`, [connection.id, connection.generation]);
+    return catalogFromRows(products, modifications, { rows: [] }, stickers);
+  }
+
+  async selectIds(connection, filters) {
+    const categories = await this.pool.query(`SELECT external_id, parent_external_id FROM search_horoshop_categories
+      WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, [connection.id, connection.generation]);
+    const { params, where } = catalogPredicate(connection, filters, categories.rows);
+    const result = await this.pool.query(`SELECT id FROM search_horoshop_products WHERE ${where} ORDER BY sku, id`, params);
+    return result.rows.map((row) => row.id);
   }
 
   async cachedGroups(connection, products) {
@@ -159,15 +272,26 @@ export class HoroshopStickerRepository {
     return id;
   }
 
-  async operation(id, connection) {
+  async operation(id, connection, pagination = null) {
     const result = await this.pool.query(`SELECT operation.*, actor.name AS actor_name FROM search_horoshop_sticker_operations AS operation
       LEFT JOIN users AS actor ON actor.id = operation.actor_user_id WHERE operation.id = $1 AND operation.connection_id = $2 AND operation.generation = $3`, [id, connection.id, connection.generation]);
     const row = result.rows[0];
     if (!row) throw new AppError(404, 'STICKER_OPERATION_NOT_FOUND', 'Операцію не знайдено в поточному магазині.');
-    const items = await this.pool.query('SELECT * FROM search_horoshop_sticker_operation_items WHERE operation_id = $1 ORDER BY article, id', [id]);
+    const itemQuery = pagination
+      ? this.pool.query(`SELECT * FROM search_horoshop_sticker_operation_items
+        WHERE operation_id = $1 ORDER BY article, id LIMIT $2 OFFSET $3`,
+      [id, pagination.pageSize, (pagination.page - 1) * pagination.pageSize])
+      : this.pool.query('SELECT * FROM search_horoshop_sticker_operation_items WHERE operation_id = $1 ORDER BY article, id', [id]);
+    const countQuery = pagination
+      ? this.pool.query(`SELECT status, COUNT(*)::int AS count FROM search_horoshop_sticker_operation_items
+        WHERE operation_id = $1 GROUP BY status`, [id]) : null;
+    const [items, countsResult] = await Promise.all([itemQuery, countQuery]);
+    const counts = countsResult ? Object.fromEntries(countsResult.rows.map((item) => [item.status, Number(item.count)])) : null;
+    const total = counts ? Object.values(counts).reduce((sum, count) => sum + count, 0) : null;
     return { id: row.id, name: row.name, kind: row.kind, parentId: row.parent_id, status: row.status,
       actorName: row.actor_name || 'Користувач', actorUserId: row.actor_user_id, createdAt: row.created_at, startedAt: row.started_at,
-      completedAt: row.completed_at, stopRequested: row.stop_requested, items: items.rows.map(itemFromRow) };
+      completedAt: row.completed_at, stopRequested: row.stop_requested, items: items.rows.map(itemFromRow),
+      ...(pagination ? { counts, total } : {}) };
   }
 
   async history(connection) {

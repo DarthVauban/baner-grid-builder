@@ -46,6 +46,21 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('HoroshopStickersPage', () => {
+  it('waits for typing to settle before requesting the catalog search', async () => {
+    renderPage();
+    await screen.findByLabelText('Обрати 0001');
+    vi.mocked(api.horoshopStickers.catalog).mockClear();
+    const input = screen.getByPlaceholderText('Пошук у товарах і модифікаціях');
+    fireEvent.change(input, { target: { value: 'Т' } });
+    fireEvent.change(input, { target: { value: 'Те' } });
+    fireEvent.change(input, { target: { value: 'Телефон' } });
+    expect(api.horoshopStickers.catalog).not.toHaveBeenCalled();
+    await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenCalledWith(
+      expect.objectContaining({ search: 'Телефон' }), expect.anything()
+    ));
+    expect(api.horoshopStickers.catalog).toHaveBeenCalledTimes(1);
+  });
+
   it('collects several sticker actions into one reviewable operation', async () => {
     renderPage();
     await screen.findByLabelText('Обрати 0001');

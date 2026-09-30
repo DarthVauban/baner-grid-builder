@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
@@ -146,7 +146,15 @@ export function HoroshopStickersPage() {
   const operationId = params.get('operation') || '';
   const [operationPage, setOperationPage] = useState(1);
   const [filters, setFilters] = useState<StickerFilters>({ page: 1, pageSize: 25 });
+  const [searchInput, setSearchInput] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const selectionKey = useMemo(() => [...selected].sort(), [selected]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setFilters((previous) => previous.search === (searchInput || undefined)
+      ? previous : { ...previous, search: searchInput || undefined, page: 1 }), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('products');
   const workspaceRef = useRef<HTMLElement>(null);
   const switchTab = (tab: WorkspaceTab) => { setActiveTab(tab); workspaceRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); };
@@ -166,7 +174,7 @@ export function HoroshopStickersPage() {
     placeholderData: keepPreviousData });
   const history = useQuery({ queryKey: ['horoshop-sticker-history'], queryFn: api.horoshopStickers.history, refetchInterval: activeTab === 'history' ? 5_000 : false });
   const selections = useQuery({ queryKey: ['horoshop-sticker-selections'], queryFn: api.horoshopStickers.selections });
-  const selectionSummary = useQuery({ queryKey: ['horoshop-sticker-selection-summary', [...selected].sort()],
+  const selectionSummary = useQuery({ queryKey: ['horoshop-sticker-selection-summary', selectionKey],
     queryFn: ({ signal }) => api.horoshopStickers.selectionSummary(selected, signal), enabled: activeTab === 'stickers' && selected.length > 0 });
   const operation = useQuery({ queryKey: ['horoshop-sticker-operation', operationId, operationPage], queryFn: () => api.horoshopStickers.detail(operationId, operationPage), enabled: !!operationId,
     refetchInterval: (query) => ['queued', 'running'].includes(query.state.data?.status || '') ? 2_000 : false });
@@ -188,7 +196,12 @@ export function HoroshopStickersPage() {
     setParams({ operation: value.id });
   };
   const updateFilter = <K extends keyof StickerFilters>(key: K, value: StickerFilters[K]) => setFilters((previous) => ({ ...previous, [key]: value, page: 1 }));
-  const toggle = (id: string) => setSelected((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]);
+  const toggle = (id: string) => setSelected((previous) => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return [...next];
+  });
   const data = catalog.data;
   const directory = data?.directory || [];
   const counts = new Map(selectionSummary.data?.stickers.map((item) => [item.externalId, item.productCount]) || []);
@@ -207,6 +220,7 @@ export function HoroshopStickersPage() {
     setRemoveIds((previous) => previous.every((id) => ids.has(id)) ? previous : previous.filter((id) => ids.has(id)));
   }, [selected.length, selectionSummary.data, selectionSummary.isFetching]);
   const pageIds = data?.items.map((p) => p.id) || [];
+  const pageIdSet = new Set(pageIds);
   const busy = task.isPending;
   const prepare = (kind: Preparation['kind'], total: number, fn: (onProgress: (progress: StickerPreparationProgress) => void) => Promise<StickerOperation>) => void run(async () => {
     setPreparation({ kind, startedAt: Date.now(), progress: { stage: 'checking', total, processed: 0, productsRead: 0, pagesRead: 0 } });
@@ -247,7 +261,7 @@ export function HoroshopStickersPage() {
     {preparation && !(operation.data && operationId) && <PreparationProgress preparation={preparation} />}
     {activeTab === 'products' && <section role="tabpanel" id="hs-panel-products" aria-labelledby="hs-tab-products"><div className="hs-stickers-layout"><aside className="hs-sticker-filters">
       <h2>Знайти товари</h2>
-      <label>Назва або артикул<input placeholder="Пошук у товарах і модифікаціях" value={filters.search || ''} onChange={(e) => updateFilter('search', e.target.value || undefined)} /></label>
+      <label>Назва або артикул<input placeholder="Пошук у товарах і модифікаціях" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} /></label>
       <FieldSelect label="Категорія" value={filters.category || ''} searchable onChange={(value) => updateFilter('category', value || undefined)} options={[{ value: '', label: 'Усі категорії' }, ...(data?.categories.map((c) => ({ value: c.externalId, label: c.title })) || [])]} />
       <label className="hs-sticker-checkbox"><input type="checkbox" checked={filters.includeChildren !== false} onChange={(e) => updateFilter('includeChildren', e.target.checked)} />Включати підкатегорії</label>
       <FieldSelect label="Бренд" value={filters.brand || ''} searchable onChange={(value) => updateFilter('brand', value || undefined)} options={[{ value: '', label: 'Усі бренди' }, ...(data?.brands.map((b) => ({ value: b, label: b })) || [])]} />
@@ -257,7 +271,7 @@ export function HoroshopStickersPage() {
       <div className="hs-sticker-pair"><label>Додані від<input type="date" value={filters.createdFrom || ''} onChange={(e) => updateFilter('createdFrom', e.target.value || undefined)} /></label><label>Додані до<input type="date" value={filters.createdTo || ''} onChange={(e) => updateFilter('createdTo', e.target.value || undefined)} /></label></div>
       <FieldSelect label="Стікери" value={filters.stickerMode || 'all'} onChange={(value) => updateFilter('stickerMode', value as StickerFilters['stickerMode'])} options={[{ value: 'all', label: 'Будь-які стікери' }, { value: 'present', label: 'Має вибраний стікер' }, { value: 'missing', label: 'Не має вибраного стікера' }, { value: 'none', label: 'Без ручних стікерів' }]} />
       {['present', 'missing'].includes(filters.stickerMode || '') && <FieldSelect label="Стікер для фільтра" value={filters.stickerId || ''} onChange={(value) => updateFilter('stickerId', value || undefined)} options={[{ value: '', label: 'Оберіть стікер' }, ...directory.map((s) => ({ value: s.externalId, label: s.title }))]} />}
-      <button className="button button--ghost" onClick={() => setFilters({ page: 1, pageSize: 25 })}>Скинути фільтри</button>
+      <button className="button button--ghost" onClick={() => { setSearchInput(''); setFilters({ page: 1, pageSize: 25 }); }}>Скинути фільтри</button>
     </aside><section className="hs-sticker-catalog">
       <details className="hs-sticker-import"><summary><Icon name="upload" />Вставити список артикулів</summary>
         <p>Скопіюйте стовпець артикулів із Excel. Артикул модифікації вибирає всю товарну групу.</p>
@@ -280,9 +294,9 @@ export function HoroshopStickersPage() {
         })}>Вибрати всі {data?.total || 0} за фільтром</button></div>
       {catalog.isFetching && <p className="hs-sticker-loading" role="status">Завантажуємо товари…</p>}
       {incompleteFilter && <p className="hs-sticker-loading" role="status">Оберіть стікер для фільтра.</p>}
-      <div className="hs-sticker-table-wrap"><table><thead><tr><th><input type="checkbox" aria-label="Вибрати всі товари сторінки" disabled={busy || catalog.isFetching || incompleteFilter} checked={!!pageIds.length && pageIds.every((id) => selected.includes(id))} onChange={(e) => setSelected((previous) => e.target.checked ? unique([...previous, ...pageIds]) : previous.filter((id) => !pageIds.includes(id)))} /></th><th>Товар</th><th>Наявність / ціна</th><th>Поточні стікери</th></tr></thead>
-        <tbody>{data?.items.map((product) => <tr key={product.id} className={selected.includes(product.id) ? 'is-selected' : ''}>
-          <td><input type="checkbox" aria-label={`Обрати ${product.sku}`} disabled={busy || catalog.isFetching || incompleteFilter} checked={selected.includes(product.id)} onChange={() => toggle(product.id)} /></td>
+      <div className="hs-sticker-table-wrap"><table><thead><tr><th><input type="checkbox" aria-label="Вибрати всі товари сторінки" disabled={busy || catalog.isFetching || incompleteFilter} checked={!!pageIds.length && pageIds.every((id) => selectedSet.has(id))} onChange={(e) => setSelected((previous) => e.target.checked ? unique([...previous, ...pageIds]) : previous.filter((id) => !pageIdSet.has(id)))} /></th><th>Товар</th><th>Наявність / ціна</th><th>Поточні стікери</th></tr></thead>
+        <tbody>{data?.items.map((product) => <tr key={product.id} className={selectedSet.has(product.id) ? 'is-selected' : ''}>
+          <td><input type="checkbox" aria-label={`Обрати ${product.sku}`} disabled={busy || catalog.isFetching || incompleteFilter} checked={selectedSet.has(product.id)} onChange={() => toggle(product.id)} /></td>
           <td><div className="hs-sticker-product">{product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="hs-sticker-image-empty"><Icon name="productCard" /></span>}
             <div><strong>{titleFor(product.titles, product.sku)}</strong><small>{product.sku} · {product.brand || 'Без бренду'} · {data.categories.find((c) => c.externalId === product.categoryExternalId)?.title || 'Без категорії'}</small>
               {!!product.modifications.length && <details><summary>{product.modifications.length} модифікацій</summary>{product.modifications.map((m) => <small key={m.id}>{m.sku} · {titleFor(m.titles, m.sku)} · {m.availability || '—'}</small>)}</details>}

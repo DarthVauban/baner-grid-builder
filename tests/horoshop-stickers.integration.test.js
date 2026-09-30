@@ -16,7 +16,7 @@ const { pool } = await import('../src/db/pool.js');
 const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
 const { encryptHoroshopCredentials } = await import('../src/modules/search/horoshop/credential-cipher.js');
-const { horoshopStickerService: service } = await import('../src/modules/search/horoshop/sticker.service.js');
+const { horoshopStickerService: service, tuneStickerImportBatch } = await import('../src/modules/search/horoshop/sticker.service.js');
 const { HoroshopApiError } = await import('../src/modules/search/horoshop/horoshop.client.js');
 const { applyStickerChange, assertManualActions, filterStickerProducts, manualStickerDirectory, remoteStickerSnapshot } = await import('../src/modules/search/horoshop/sticker.domain.js');
 const admin = request.agent(app);
@@ -141,6 +141,18 @@ test('verified scoped export batches selected parent articles in one request', a
   assert.deepEqual(requests.map((call) => call.articles), [['P1', 'P2'], ['P1', 'P2']]);
 });
 
+test('import batch size recovers conservatively after fast responses and shrinks after slow or limited responses', () => {
+  let state = { size: 25, fastCount: 0 };
+  state = tuneStickerImportBatch(state, 9_000);
+  assert.equal(state.size, 20);
+  for (let count = 0; count < 3; count += 1) state = tuneStickerImportBatch(state, 900);
+  assert.equal(state.size, 25);
+  state = tuneStickerImportBatch(state, 100, new HoroshopApiError('api_rejected', 429));
+  assert.equal(state.size, 10);
+  for (let count = 0; count < 3; count += 1) state = tuneStickerImportBatch(state, 900);
+  assert.equal(state.size, 15);
+});
+
 test('a filtered export without the complete modification group stays on full catalog reads', async () => {
   const requests = pagedStickerExport(() => [{ id: 101, parent_article: 'P1', article: '0001', icons: ['Хіт', 'Гарантія'] }]);
   const completed = await apply(await preview([productIds[0]]));
@@ -250,6 +262,8 @@ test('several sticker selections share one verification cycle and overlapping ac
     WHERE operation_id = $1 AND action = 'operation_finished'`, [completed.id]);
   const details = typeof event.rows[0].details === 'string' ? JSON.parse(event.rows[0].details) : event.rows[0].details;
   assert.deepEqual(details.apiOperations, { catalogExports: 2, stickerExports: 2, authentications: 2, imports: 1 });
+  assert.equal(details.importMetrics.articles, 1);
+  assert.equal(details.importMetrics.batches, 1);
 });
 
 test('stream preparation validates access and input, reports errors and permits retry', async () => {
@@ -301,6 +315,85 @@ test('catalog, exact article resolution and saved selection expose no credential
   await admin.get(`${base}/catalog?createdFrom=2026-02-31`).expect(422);
 });
 
+test('unfiltered catalog paginates products in SQL and loads modifications only for that page', async () => {
+  const syncId = randomUUID();
+  for (let index = 0; index < 12; index += 1) {
+    await pool.query(`INSERT INTO search_horoshop_products
+      (id, connection_id, generation, external_id, sku, titles, brand, stickers, source_data, last_seen_sync_id)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'Other', '[]'::jsonb, '{}'::jsonb, $7)`,
+    [randomUUID(), connection, generation, `extra-${index}`, `Z-${String(index).padStart(2, '0')}`, JSON.stringify({ uk: `Додатковий ${index}` }), syncId]);
+  }
+  const queries = [];
+  const original = pool.query;
+  pool.query = function (...args) { queries.push(String(args[0])); return original.apply(this, args); };
+  try {
+    const page = (await admin.get(`${base}/catalog?page=2&pageSize=10`).expect(200)).body.data;
+    assert.equal(page.total, 14);
+    assert.equal(page.items.length, 4);
+    assert.deepEqual(page.brands, ['Apple', 'Other']);
+    assert.ok(page.items.every((item) => item.sku.startsWith('Z-')));
+    assert.ok(queries.some((query) => /FROM search_horoshop_products[\s\S]*ORDER BY sku, id LIMIT \$3 OFFSET \$4/u.test(query)));
+    assert.ok(queries.some((query) => /FROM search_horoshop_modifications[\s\S]*product_id IN/u.test(query)));
+  } finally { pool.query = original; }
+});
+
+test('catalog SQL filters keep category descendants, offer availability and visibility semantics', async () => {
+  const syncId = randomUUID();
+  for (const [externalId, parentExternalId] of [['root', null], ['child', 'root']]) {
+    await pool.query(`INSERT INTO search_horoshop_categories
+      (connection_id, generation, external_id, parent_external_id, titles, last_seen_sync_id)
+      VALUES ($1, $2, $3, $4, '{}'::jsonb, $5)`, [connection, generation, externalId, parentExternalId, syncId]);
+  }
+  await pool.query(`UPDATE search_horoshop_products SET category_external_id = 'child', visible = FALSE WHERE id = $1`, [productIds[0]]);
+  await pool.query(`UPDATE search_horoshop_modifications SET availability = 'Очікується' WHERE product_id = $1`, [productIds[1]]);
+  const category = (await admin.get(`${base}/catalog?category=root`).expect(200)).body.data;
+  assert.deepEqual(category.items.map((item) => item.id), [productIds[0]]);
+  const selected = (await admin.post(`${base}/select`).send({ category: 'root' }).expect(200)).body.data;
+  assert.deepEqual(selected.productIds, [productIds[0]]);
+  const direct = (await admin.get(`${base}/catalog?category=root&includeChildren=false`).expect(200)).body.data;
+  assert.equal(direct.total, 0);
+  const availability = (await admin.get(`${base}/catalog?availability=${encodeURIComponent('Очікується')}`).expect(200)).body.data;
+  assert.deepEqual(availability.items.map((item) => item.id), [productIds[1]]);
+  const hidden = (await admin.get(`${base}/catalog?visibility=hidden`).expect(200)).body.data;
+  assert.deepEqual(hidden.items.map((item) => item.id), [productIds[0]]);
+  await pool.query(`UPDATE search_horoshop_products SET horoshop_created_at = '2026-09-01T00:00:00Z' WHERE id = $1`, [productIds[0]]);
+  await pool.query(`UPDATE search_horoshop_products SET horoshop_created_at = '2026-10-01T00:00:00Z' WHERE id = $1`, [productIds[1]]);
+  const recent = (await admin.get(`${base}/catalog?createdFrom=2026-09-15`).expect(200)).body.data;
+  assert.deepEqual(recent.items.map((item) => item.id), [productIds[1]]);
+  const older = (await admin.get(`${base}/catalog?createdTo=2026-09-15`).expect(200)).body.data;
+  assert.deepEqual(older.items.map((item) => item.id), [productIds[0]]);
+});
+
+test('operation detail counts all statuses while loading only the requested item page', async () => {
+  const draft = await preview();
+  const queries = [];
+  const original = pool.query;
+  pool.query = function (...args) { queries.push(String(args[0])); return original.apply(this, args); };
+  try {
+    const page = await service.detail(draft.id, 2, 1);
+    assert.equal(page.total, 2);
+    assert.equal(page.items.length, 1);
+    assert.equal(page.pageCount, 2);
+    assert.equal(page.counts.pending, 2);
+    assert.ok(queries.some((query) => /search_horoshop_sticker_operation_items[\s\S]*LIMIT \$2 OFFSET \$3/u.test(query)));
+    assert.ok(queries.some((query) => /COUNT\(\*\)::int AS count[\s\S]*GROUP BY status/u.test(query)));
+  } finally { pool.query = original; }
+});
+
+test('selection summary and preview hydrate only selected product IDs', async () => {
+  const queries = [];
+  const original = pool.query;
+  pool.query = function (...args) { queries.push(String(args[0])); return original.apply(this, args); };
+  try {
+    await admin.post(`${base}/selection/summary`).send({ productIds: [productIds[0]] }).expect(200);
+    await preview([productIds[0]]);
+    const productReads = queries.filter((query) => /SELECT[\s\S]*FROM search_horoshop_products/u.test(query));
+    assert.ok(productReads.length >= 2);
+    assert.ok(productReads.every((query) => /id IN \(/u.test(query)));
+    assert.ok(queries.some((query) => /FROM search_horoshop_modifications[\s\S]*product_id IN \(/u.test(query)));
+  } finally { pool.query = original; }
+});
+
 test('catalog recovers brand choices and filtering from previously synchronized raw brand objects', async () => {
   await pool.query(`UPDATE search_horoshop_products SET brand = NULL, source_data = $1::jsonb WHERE id = $2`, [JSON.stringify({ brand: { id: 7, title: { ua: 'Samsung' } } }), productIds[0]]);
   await pool.query(`UPDATE search_horoshop_products SET brand = NULL WHERE id = $1`, [productIds[1]]);
@@ -347,9 +440,11 @@ test('directory is fetched without a full catalog sync, cached and refreshed exp
 test('directory failures remain visible while the cached catalog and brands stay usable', async () => {
   service.clientFactory = () => ({ authenticate: async () => { throw new Error('fixture API unavailable'); } });
   const catalog = (await admin.get(`${base}/catalog`).expect(200)).body.data;
-  assert.ok(catalog.directoryWarning);
   assert.equal(catalog.items.length, 2);
   assert.deepEqual(catalog.brands, ['Apple']);
+  await service.directoryRefresh?.promise.catch(() => {});
+  const refreshed = (await admin.get(`${base}/catalog`).expect(200)).body.data;
+  assert.ok(refreshed.directoryWarning);
   await admin.post(`${base}/directory/refresh`).expect(502);
 });
 
