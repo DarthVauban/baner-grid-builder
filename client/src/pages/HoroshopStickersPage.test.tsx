@@ -11,7 +11,7 @@ const productIds = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-
 const operationId = '33333333-3333-4333-8333-333333333333';
 const catalog: StickerCatalog = {
   items: [{ id: productIds[0], externalId: '101', sku: '0001', titles: { uk: 'Телефон' }, brand: 'Apple', categoryExternalId: 'phones', price: '100', availability: 'В наявності', visible: true, imageUrl: null, canonicalUrl: null, stickers: [{ id: '1', title: 'Хіт' }], horoshopCreatedAt: '2026-09-01', modifications: [] }],
-  total: 2, page: 1, pageSize: 25, pageCount: 2, storeDomain: 'shop.example.com', lastSyncAt: null,
+  total: 2, page: 1, pageSize: 25, pageCount: 2, storeDomain: 'shop.example.com', lastSyncAt: '2026-09-28T10:00:00Z',
   categories: [{ externalId: 'phones', parentExternalId: null, title: 'Телефони' }], brands: ['Apple'], availabilityOptions: ['В наявності'],
   directory: [{ externalId: '1', title: 'Хіт', enabled: true }, { externalId: '11', title: 'Акція', enabled: true }]
 };
@@ -55,6 +55,7 @@ describe('HoroshopStickersPage', () => {
     });
     renderPage();
     await screen.findByLabelText('Обрати 0001');
+    expect(screen.getByText(/Каталог синхронізовано:/u)).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Обрати 0001'));
     await openStickers();
     fireEvent.click(screen.getByLabelText('Додати стікери: Акція'));
@@ -62,17 +63,18 @@ describe('HoroshopStickersPage', () => {
     await screen.findByRole('heading', { name: 'Готуємо перегляд змін' });
     expect(screen.getByRole('button', { name: 'Зняти вибір' })).toBeDisabled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    await act(async () => report?.({ stage: 'catalog', total: 1, processed: 0, productsRead: 400, pagesRead: 2 }));
-    expect(screen.getByRole('status')).toHaveTextContent('Отримано товарів: 400 · сторінок: 2');
-    expect(screen.getByRole('progressbar')).not.toHaveAttribute('value');
+    await act(async () => report?.({ stage: 'comparing', total: 1, processed: 0, productsRead: 0, pagesRead: 0 }));
+    expect(screen.getByRole('status')).toHaveTextContent('0 / 1 товарних груп');
+    expect(screen.getByRole('progressbar')).toHaveAttribute('value', '0');
     fireEvent.click(screen.getByRole('tab', { name: 'Товари' }));
     expect(screen.getByLabelText('Обрати 0001')).toBeDisabled();
     expect(screen.getByRole('heading', { name: 'Готуємо перегляд змін' })).toBeInTheDocument();
-    await act(async () => report?.({ stage: 'comparing', total: 1, processed: 1, productsRead: 400, pagesRead: 2 }));
+    await act(async () => report?.({ stage: 'comparing', total: 1, processed: 1, productsRead: 0, pagesRead: 0 }));
     expect(screen.getByRole('progressbar')).toHaveAttribute('value', '1');
     expect(screen.getByRole('status')).toHaveTextContent('1 / 1 товарних груп');
     await act(async () => complete?.(structuredClone(preview)));
     await screen.findByRole('dialog', { name: 'Зміна стікерів' });
+    expect(screen.getByText(/Перегляд створено за останнім синхронізованим каталогом/u)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Готуємо перегляд змін' })).not.toBeInTheDocument();
     expect(api.horoshopStickers.action).not.toHaveBeenCalled();
   });

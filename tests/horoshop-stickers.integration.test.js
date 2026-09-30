@@ -52,11 +52,11 @@ beforeEach(async () => {
   for (let i = 0; i < productIds.length; i += 1) {
     const product = remoteProducts[i];
     const stickers = product.icons.map((title) => ({ id: String(directory.find((d) => d.title === title).id), title }));
-    await pool.query(`INSERT INTO search_horoshop_products (id, connection_id, generation, external_id, sku, titles, brand, price, availability, stickers, last_seen_sync_id)
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'Apple', '100', 'В наявності', $7::jsonb, $8)`, [productIds[i], connection, generation, String(product.id), product.article, JSON.stringify({ uk: product.title.ua }), JSON.stringify(stickers), syncId]);
+    await pool.query(`INSERT INTO search_horoshop_products (id, connection_id, generation, external_id, sku, titles, brand, price, availability, stickers, source_data, last_seen_sync_id)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'Apple', '100', 'В наявності', $7::jsonb, $8::jsonb, $9)`, [productIds[i], connection, generation, String(product.id), product.article, JSON.stringify({ uk: product.title.ua }), JSON.stringify(stickers), JSON.stringify(product), syncId]);
     for (const modification of product.modifications) await pool.query(`INSERT INTO search_horoshop_modifications
-      (connection_id, generation, product_id, external_id, sku, titles, price, availability, stickers, last_seen_sync_id)
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb, '120', 'В наявності', $7::jsonb, $8)`, [connection, generation, productIds[i], `${product.id}:${modification.article}`, modification.article, JSON.stringify({ uk: product.title.ua }), JSON.stringify(stickers), syncId]);
+      (connection_id, generation, product_id, external_id, sku, titles, price, availability, stickers, source_data, last_seen_sync_id)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, '120', 'В наявності', $7::jsonb, $8::jsonb, $9)`, [connection, generation, productIds[i], `${product.id}:${modification.article}`, modification.article, JSON.stringify({ uk: product.title.ua }), JSON.stringify(stickers), JSON.stringify(modification), syncId]);
   }
   service.clientFactory = () => ({
     authenticate: async () => 'fixture-token',
@@ -91,37 +91,28 @@ async function apply(operation) {
 
 const streamEvents = (text) => text.split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
 
-test('preparation streams actual catalog progress before completion and creates only a reviewable draft', async () => {
-  const factory = service.clientFactory;
-  let releaseCatalog;
-  const catalogGate = new Promise((resolve) => { releaseCatalog = resolve; });
-  service.clientFactory = (...args) => ({ ...factory(...args), exportCatalog: async (_token, offset) => {
-    await catalogGate;
-    return { products: structuredClone(remoteProducts.slice(offset, offset + 1)), nextOffset: offset === 0 ? 1 : null };
-  } });
-  let sawProgressBeforeExport = false;
+test('preparation streams cached catalog progress without calling Horoshop and creates a reviewable draft', async () => {
+  service.clientFactory = () => { throw new Error('Preview must only read the synchronized catalog'); };
+  let sawProgressBeforeResult = false;
   const response = await admin.post(`${base}/operations/preview/stream`).send({ productIds, addIds: ['11'], removeIds: ['1'] })
     .buffer(true).parse((res, callback) => {
       let text = '';
       res.on('data', (chunk) => {
         text += chunk.toString();
-        if (text.includes('"stage":"catalog"') && !sawProgressBeforeExport) {
-          sawProgressBeforeExport = true;
+        if (text.includes('"stage":"comparing"') && !sawProgressBeforeResult) {
+          sawProgressBeforeResult = true;
           assert.equal(imports.length, 0);
-          releaseCatalog();
         }
       });
       res.on('end', () => callback(null, streamEvents(text)));
       res.on('error', callback);
-    }).timeout({ response: 5000, deadline: 10_000 }).expect(200).then((result) => result, (error) => { releaseCatalog(); throw error; });
-  assert.equal(sawProgressBeforeExport, true);
+    }).timeout({ response: 5000, deadline: 10_000 }).expect(200);
+  assert.equal(sawProgressBeforeResult, true);
   assert.match(response.headers['content-type'], /application\/x-ndjson/u);
   assert.equal(response.headers['x-accel-buffering'], 'no');
   assert.match(response.headers['cache-control'], /no-store/u);
   const progress = response.body.filter((event) => event.type === 'progress').map((event) => event.data);
-  assert.deepEqual([...new Set(progress.map((item) => item.stage))], ['checking', 'authenticating', 'directory', 'catalog', 'comparing', 'saving']);
-  assert.deepEqual(progress.filter((item) => item.stage === 'catalog').map((item) => item.productsRead), [0, 1, 2]);
-  assert.deepEqual(progress.filter((item) => item.stage === 'catalog').map((item) => item.pagesRead), [0, 1, 2]);
+  assert.deepEqual([...new Set(progress.map((item) => item.stage))], ['checking', 'comparing', 'saving']);
   assert.equal(progress.at(-1).processed, 2);
   assert.equal(progress.at(-1).total, 2);
   const operation = response.body.at(-1).data;
@@ -132,7 +123,7 @@ test('preparation streams actual catalog progress before completion and creates 
   assert.equal(/fixture-token|password|encrypted|source_data/u.test(JSON.stringify(response.body)), false);
 });
 
-test('stream preparation validates access and input, reports errors and releases the catalog lock for retry', async () => {
+test('stream preparation validates access and input, reports errors and permits retry', async () => {
   await request(app).post(`${base}/operations/preview/stream`).send({ productIds, addIds: ['11'], removeIds: [] }).expect(401);
   await admin.post(`${base}/operations/preview/stream`).send({ productIds: ['invalid'], addIds: [], removeIds: [] }).expect(422);
   const failed = await admin.post(`${base}/operations/preview/stream`).send({ productIds, addIds: ['8'], removeIds: [] }).expect(200);
@@ -286,6 +277,32 @@ test('preview is read-only; applying merges manual icons, updates the whole grou
   await admin.post(`${base}/operations/${operation.id}/apply`).expect(409);
 });
 
+test('a second preview uses stickers cached after the previous write despite older raw sync data', async () => {
+  assert.equal((await apply(await preview([productIds[0]]))).counts.succeeded, 1);
+  service.clientFactory = () => { throw new Error('Preview must not read Horoshop'); };
+  const next = await preview([productIds[0]], ['1'], ['11']);
+  assert.deepEqual(next.items[0].before.map((sticker) => sticker.id).sort(), ['11', '3']);
+  assert.deepEqual(next.items[0].after.map((sticker) => sticker.id).sort(), ['1', '3']);
+  assert.equal(next.counts.pending, 1);
+});
+
+test('cached preview accepts stickers supplied by modifications when the parent export omitted the field', async () => {
+  const parent = structuredClone(remoteProducts[0]);
+  delete parent.icons;
+  await pool.query('UPDATE search_horoshop_products SET source_data = $1::jsonb, stickers = $2::jsonb WHERE id = $3',
+    [JSON.stringify(parent), '[]', productIds[0]]);
+  const operation = await preview([productIds[0]]);
+  assert.deepEqual(operation.items[0].before.map((sticker) => sticker.id).sort(), ['1', '3']);
+  assert.equal(operation.counts.pending, 1);
+});
+
+test('live offer order may differ from cached order without blocking an unchanged group', async () => {
+  remoteProducts[0].modifications.reverse();
+  const operation = await preview([productIds[0]]);
+  assert.equal(operation.items[0].article, '0001');
+  assert.equal((await apply(operation)).counts.succeeded, 1);
+});
+
 test('removing the last sticker sends an empty array and no-op products are skipped', async () => {
   const operation = await preview(productIds, [], ['1', '3']);
   assert.equal(operation.counts.unchanged, 1);
@@ -338,7 +355,9 @@ test('changed sticker sets, missing icon fields and changed modification members
   delete remoteProducts[0].icons;
   remoteProducts[0].modifications.forEach((m) => { delete m.icons; });
   const blocked = await preview([productIds[0]]);
-  assert.equal(blocked.counts.conflict, 1);
+  assert.equal(blocked.counts.pending, 1);
+  assert.equal((await apply(blocked)).counts.conflict, 1);
+  assert.equal(imports.length, 0);
 });
 
 test('transport timeout after success is reconciled, and an interrupted writing item is not sent twice', async () => {

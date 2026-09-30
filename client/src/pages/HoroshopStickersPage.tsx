@@ -115,6 +115,7 @@ function OperationDialog({ operation, pending, preparation, onAction, onClose, o
       {working && <><progress max={operation.total} value={completed} /><span>{completed} / {operation.total} · можна закрити це вікно та повернутися з історії</span></>}
       {operation.stopRequested && <span>Зупиняємо залишок і перевіряємо вже відправлені зміни.</span>}
     </div>
+    {operation.kind === 'change' && operation.status === 'draft' && <p className="hs-sticker-muted">Перегляд створено за останнім синхронізованим каталогом. Перед записом перевіримо актуальні стікери й склад товарів у Хорошоп; змінені позиції пропустимо.</p>}
     <div className="hs-sticker-table-wrap"><table><thead><tr><th>Товар / артикул</th><th>Було</th><th>Стане / результат</th><th>Статус</th></tr></thead>
       <tbody>{operation.items.map((item) => <tr key={item.id}><td><strong>{item.title}</strong><small>{item.article} · {item.membership.length} модифікацій</small></td>
         <td><StickerChips stickers={item.before} compare={item.after} direction="remove" /></td><td><StickerChips stickers={item.after} compare={item.before} direction="add" /></td>
@@ -213,7 +214,7 @@ export function HoroshopStickersPage() {
     : void run(async () => openOperation(await api.horoshopStickers.action(operationId, action)));
 
   return <main className="hs-stickers" ref={workspaceRef}>
-    <header className="hs-stickers-heading"><div><span className="hs-sticker-eyebrow">Інструменти Хорошоп</span><h1>Стікери Хорошоп</h1><p>Оберіть товарні групи, додайте або зніміть ручні стікери та перевірте результат.</p></div>
+    <header className="hs-stickers-heading"><div><span className="hs-sticker-eyebrow">Інструменти Хорошоп</span><h1>Стікери Хорошоп</h1><p>Оберіть товарні групи, додайте або зніміть ручні стікери та перевірте результат.</p>{data?.lastSyncAt && <p className="hs-sticker-sync-time">Каталог синхронізовано: {dateLabel(data.lastSyncAt)}</p>}</div>
       <div>{data && <span className="hs-sticker-store">{data.storeDomain}</span>}<button className="button button--ghost" disabled={busy} onClick={() => void run(() => api.horoshopStickers.refreshDirectory())}><Icon name="refresh" />Оновити</button></div></header>
     {catalog.isError && <div className="hs-sticker-notice is-error" role="alert">{catalog.error.message} <Link to="/admin/integrations">Підключення Хорошоп</Link></div>}
     {data?.directoryWarning && <div className="hs-sticker-notice" role="alert">{data.directoryWarning}</div>}

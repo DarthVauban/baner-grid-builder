@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pool as defaultPool } from '../../../db/pool.js';
 import { AppError } from '../../../lib/app-error.js';
 import { HoroshopCatalogRepository } from './catalog.repository.js';
-import { manualStickerDirectory, titleFor } from './sticker.domain.js';
+import { manualStickerDirectory, sameStickers, titleFor } from './sticker.domain.js';
 import { normalizeHoroshopBrand } from './catalog.normalizer.js';
 
 export const arrayValue = (value) => Array.isArray(value) ? value : JSON.parse(value || '[]');
@@ -56,6 +56,35 @@ export class HoroshopStickerRepository {
       categories: categories.rows.map((row) => ({ externalId: row.external_id, parentExternalId: row.parent_external_id, title: titleFor(objectValue(row.titles), row.external_id) })),
       directory: manualStickerDirectory(stickers.rows.map((row) => ({ externalId: row.external_id, title: row.title, enabled: row.enabled })))
     };
+  }
+
+  async cachedGroups(connection, products) {
+    const ids = products.map((product) => product.id);
+    if (!ids.length) return new Map();
+    const params = [connection.id, connection.generation, ...ids];
+    const selected = ids.map((_, index) => `$${index + 3}`).join(',');
+    const [parents, offers] = await Promise.all([
+      this.pool.query(`SELECT id, sku, source_data->'icons' AS source_icons, source_data->'stickers' AS source_stickers, stickers FROM search_horoshop_products
+        WHERE connection_id = $1 AND generation = $2 AND active = TRUE AND id IN (${selected})`, params),
+      this.pool.query(`SELECT product_id, sku, source_data->'icons' AS source_icons, source_data->'stickers' AS source_stickers, stickers FROM search_horoshop_modifications
+        WHERE connection_id = $1 AND generation = $2 AND active = TRUE AND product_id IN (${selected}) ORDER BY sku, id`, params)
+    ]);
+    const byProduct = new Map(parents.rows.map((row) => [row.id, [row]]));
+    for (const row of offers.rows) byProduct.get(row.product_id)?.push(row);
+    const groups = new Map();
+    for (const product of products) {
+      const rows = byProduct.get(product.id) || [];
+      const membership = [...new Set(rows.slice(1).map((row) => row.sku))].sort();
+      const withIcons = rows.filter((row) => row.source_icons != null || row.source_stickers != null);
+      const stickers = withIcons.length ? arrayValue(withIcons[0].stickers) : [];
+      let error = '';
+      if (!withIcons.length) error = 'У синхронізованому каталозі немає поля стікерів. Оновіть каталог.';
+      else if (withIcons.some((row) => !sameStickers(stickers, arrayValue(row.stickers)))) {
+        error = 'Стікери модифікацій відрізняються. Спочатку виправте групу в Хорошоп.';
+      }
+      groups.set(product.externalId, { article: rows[1]?.sku || rows[0]?.sku || product.sku, membership, stickers, error });
+    }
+    return groups;
   }
 
   async transaction(callback) {

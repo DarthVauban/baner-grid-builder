@@ -126,7 +126,7 @@ for (const surface of [
           const body = new ReadableStream<Uint8Array>({ start(writer) {
             preparationWindow.stickerWriter = writer;
             preparationWindow.stickerHeartbeat = window.setInterval(() => writer.enqueue(new TextEncoder().encode('\n')), 10_000);
-            writer.enqueue(new TextEncoder().encode(`${JSON.stringify({ type: 'progress', data: { stage: 'catalog', total: 1, processed: 0, productsRead: 200, pagesRead: 1 } })}\n`));
+            writer.enqueue(new TextEncoder().encode(`${JSON.stringify({ type: 'progress', data: { stage: 'comparing', total: 1, processed: 0, productsRead: 0, pagesRead: 0 } })}\n`));
           } });
           return new Response(body, { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } });
         };
@@ -140,7 +140,7 @@ for (const surface of [
       await page.getByRole('button', { name: 'Переглянути зміни' }).click();
       const preparation = page.getByRole('region', { name: 'Підготовка операції' });
       await expect(preparation).toBeVisible();
-      await expect(preparation.getByRole('status')).toContainText('Отримано товарів: 200 · сторінок: 1');
+      await expect(preparation.getByRole('status')).toContainText('0 / 1 товарних груп');
       await expect(page.getByRole('button', { name: 'Зняти вибір', exact: true })).toBeDisabled();
       expect(publications).toBe(0);
 
@@ -153,7 +153,7 @@ for (const surface of [
       await page.getByRole('tab', { name: 'Історія', exact: true }).click();
       await expect(preparation).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Історія операцій' })).toBeVisible();
-      const progress: StickerPreparationProgress = { stage: 'comparing', total: 1, processed: 1, productsRead: 400, pagesRead: 2 };
+      const progress: StickerPreparationProgress = { stage: 'comparing', total: 1, processed: 1, productsRead: 0, pagesRead: 0 };
       await page.evaluate((progress) => {
         (window as PreparationWindow).stickerWriter?.enqueue(new TextEncoder().encode(`${JSON.stringify({ type: 'progress', data: progress })}\n`));
       }, progress);
@@ -169,6 +169,7 @@ for (const surface of [
       }, preview);
       const dialog = page.getByRole('dialog', { name: 'Зміна стікерів' });
       await expect(dialog).toBeVisible();
+      await expect(dialog.getByText(/Перегляд створено за останнім синхронізованим каталогом/u)).toBeVisible();
       await expect(preparation).toHaveCount(0);
       expect(await page.evaluate(() => (window as PreparationWindow).stickerInput)).toMatchObject({ productIds: [productId], addIds: ['11'], removeIds: ['1'] });
       await expect(dialog.getByText('+ Акція')).toBeVisible();

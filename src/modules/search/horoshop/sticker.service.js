@@ -129,36 +129,34 @@ export class HoroshopStickerService {
   async preview({ productIds, addIds, removeIds, name }, actorId, onProgress = null) {
     const report = preparationReporter(onProgress, new Set(productIds).size);
     report({ stage: 'checking' });
-    return this.catalogService.runExclusiveExternalWrite(async () => {
-      const connection = await this.repository.connection();
-      const catalog = await this.repository.catalog(connection);
-      const ids = [...new Set(productIds)];
-      notEmpty(ids);
-      const selectedIds = new Set(ids);
-      const selected = catalog.products.filter((p) => selectedIds.has(p.id));
-      if (selected.length !== ids.length) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
-      const remote = await this.readRemote(connection, report);
-      const additions = assertManualActions(addIds, removeIds, remote.directory);
-      report({ stage: 'comparing', processed: 0 });
-      const items = [];
-      for (const p of selected) {
-        const current = remote.groups.get(p.externalId);
-        const before = current?.stickers || [];
-        const after = applyStickerChange(before, additions, removeIds);
-        const message = !current ? 'Товар відсутній в актуальному каталозі Хорошоп.' : current.error;
-        items.push({ productId: p.id, externalId: p.externalId, article: current?.article || p.sku,
-          title: titleFor(p.titles, p.sku), membership: current?.membership || [], before, after,
-          addIds, removeIds, status: message ? 'conflict' : sameStickers(before, after) ? 'unchanged' : 'pending', message });
-        if (items.length % 100 === 0 || items.length === selected.length) {
-          report({ processed: items.length });
-          if (onProgress) await yieldToEventLoop();
-        }
+    const connection = await this.repository.connection();
+    const catalog = await this.repository.catalog(connection);
+    const ids = [...new Set(productIds)];
+    notEmpty(ids);
+    const selectedIds = new Set(ids);
+    const selected = catalog.products.filter((p) => selectedIds.has(p.id));
+    if (selected.length !== ids.length) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
+    const groups = await this.repository.cachedGroups(connection, selected);
+    const additions = assertManualActions(addIds, removeIds, catalog.directory);
+    report({ stage: 'comparing', processed: 0 });
+    const items = [];
+    for (const p of selected) {
+      const current = groups.get(p.externalId);
+      const before = current?.stickers || [];
+      const after = applyStickerChange(before, additions, removeIds);
+      const message = !current ? 'Товар відсутній у синхронізованому каталозі. Оновіть каталог.' : current.error;
+      items.push({ productId: p.id, externalId: p.externalId, article: current?.article || p.sku,
+        title: titleFor(p.titles, p.sku), membership: current?.membership || [], before, after,
+        addIds, removeIds, status: message ? 'conflict' : sameStickers(before, after) ? 'unchanged' : 'pending', message });
+      if (items.length % 100 === 0 || items.length === selected.length) {
+        report({ processed: items.length });
+        if (onProgress) await yieldToEventLoop();
       }
-      report({ stage: 'saving', processed: 0 });
-      const id = await this.repository.createOperation(connection, { name: name || 'Зміна стікерів', actorId, items,
-        onProgress: (processed) => report({ processed }) });
-      return this.detail(id);
-    });
+    }
+    report({ stage: 'saving', processed: 0 });
+    const id = await this.repository.createOperation(connection, { name: name || 'Зміна стікерів', actorId, items,
+      onProgress: (processed) => report({ processed }) });
+    return this.detail(id);
   }
 
   async detail(id, page = 1, pageSize = 50) {
@@ -310,7 +308,8 @@ export class HoroshopStickerService {
           assertManualActions(item.addIds, item.removeIds, remote.directory);
           const recoveringPartial = (item.status === 'writing' || operation.kind === 'retry') && current?.inconsistent
             && current.stickerSets.every((set) => sameStickers(set, item.before) || sameStickers(set, item.after));
-          if (!current || (current.error && !recoveringPartial) || current.article !== item.article || !sameMembership(current.membership, item.membership)) {
+          const articleInGroup = current?.membership.length ? current.membership.includes(item.article) : current?.article === item.article;
+          if (!current || (current.error && !recoveringPartial) || !articleInGroup || !sameMembership(current.membership, item.membership)) {
             throw new AppError(409, 'STICKER_GROUP_CHANGED', current?.error || 'Товар або склад модифікацій змінився. Створіть новий перегляд змін.');
           }
           if ((item.status === 'writing' || operation.kind === 'retry') && !current.error && sameStickers(current.stickers, item.after)) {
