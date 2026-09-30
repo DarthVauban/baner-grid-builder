@@ -87,16 +87,23 @@ function PreparationProgress({ preparation }: { preparation: Preparation }) {
   const { progress } = preparation;
   const elapsed = Math.max(0, Math.floor((now - preparation.startedAt) / 1000));
   const determinate = ['comparing', 'saving'].includes(progress.stage) && progress.total > 0;
+  const completedUnits = (progress.stage === 'saving' ? progress.total : 0) + progress.processed;
+  const percentage = determinate ? Math.round(Math.min(progress.total * 2, Math.max(0, completedUnits)) / (progress.total * 2) * 100) : null;
   return <section ref={ref} className="hs-sticker-preparation" aria-label="Підготовка операції">
-    <div className="hs-sticker-preparation-heading"><span className="hs-sticker-spinner" aria-hidden="true" /><div>
+    <header><div>
       <h3>{preparation.kind === 'rollback' ? 'Готуємо повернення стікерів' : 'Готуємо перегляд змін'}</h3>
-      <p>Стікери товарів зміняться після перегляду та застосування.</p>
-    </div><span className="hs-sticker-elapsed" aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span></div>
-    <div role="status" aria-live="polite" aria-atomic="true"><strong>{preparationStages[progress.stage]}</strong>
-      <span>{determinate ? `${progress.processed.toLocaleString('uk-UA')} / ${progress.total.toLocaleString('uk-UA')} товарних груп`
-        : progress.stage === 'catalog' ? `Отримано товарів: ${progress.productsRead.toLocaleString('uk-UA')} · сторінок: ${progress.pagesRead}`
-        : 'Очікуємо відповідь…'}</span></div>
-    <progress aria-label={preparationStages[progress.stage]} max={determinate ? progress.total : 1} value={determinate ? progress.processed : undefined} />
+      <span>{preparationStages[progress.stage]}</span>
+    </div><b>{percentage === null ? 'Триває' : `${percentage}%`}</b></header>
+    <div className={`hs-sticker-preparation-track${percentage === null ? ' is-indeterminate' : ''}`}
+      role="progressbar" aria-label="Прогрес підготовки стікерів" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage ?? undefined}>
+      <span aria-hidden="true" style={{ width: percentage === null ? '38%' : `${percentage}%` }} />
+    </div>
+    <footer>
+      <span role="status" aria-live="polite" aria-atomic="true">{determinate ? `${progress.processed.toLocaleString('uk-UA')} / ${progress.total.toLocaleString('uk-UA')} товарних груп`
+        : progress.stage === 'catalog' ? `Отримано товарів: ${progress.productsRead.toLocaleString('uk-UA')}` : 'Очікуємо відповідь…'}</span>
+      {progress.stage === 'catalog' && <span>Сторінок: {progress.pagesRead}</span>}
+      <span aria-live="off">Час: {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
+    </footer>
   </section>;
 }
 

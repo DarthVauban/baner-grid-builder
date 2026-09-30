@@ -65,13 +65,17 @@ describe('HoroshopStickersPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await act(async () => report?.({ stage: 'comparing', total: 1, processed: 0, productsRead: 0, pagesRead: 0 }));
     expect(screen.getByRole('status')).toHaveTextContent('0 / 1 товарних груп');
-    expect(screen.getByRole('progressbar')).toHaveAttribute('value', '0');
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
     fireEvent.click(screen.getByRole('tab', { name: 'Товари' }));
     expect(screen.getByLabelText('Обрати 0001')).toBeDisabled();
     expect(screen.getByRole('heading', { name: 'Готуємо перегляд змін' })).toBeInTheDocument();
     await act(async () => report?.({ stage: 'comparing', total: 1, processed: 1, productsRead: 0, pagesRead: 0 }));
-    expect(screen.getByRole('progressbar')).toHaveAttribute('value', '1');
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
     expect(screen.getByRole('status')).toHaveTextContent('1 / 1 товарних груп');
+    await act(async () => report?.({ stage: 'saving', total: 1, processed: 0, productsRead: 0, pagesRead: 0 }));
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+    await act(async () => report?.({ stage: 'saving', total: 1, processed: 1, productsRead: 0, pagesRead: 0 }));
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
     await act(async () => complete?.(structuredClone(preview)));
     await screen.findByRole('dialog', { name: 'Зміна стікерів' });
     expect(screen.getByText(/Перегляд створено за останнім синхронізованим каталогом/u)).toBeInTheDocument();
@@ -120,6 +124,8 @@ describe('HoroshopStickersPage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Повернути зміни' }));
     await within(dialog).findByRole('heading', { name: 'Готуємо повернення стікерів' });
     expect(within(dialog).getByRole('status')).toHaveTextContent('Отримано товарів: 200');
+    expect(within(dialog).getByRole('progressbar')).not.toHaveAttribute('aria-valuenow');
+    expect(within(dialog).getByText('Триває')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Закрити операцію' })).toBeDisabled();
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(dialog).toBeInTheDocument();

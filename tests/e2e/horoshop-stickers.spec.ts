@@ -157,7 +157,8 @@ for (const surface of [
       await page.evaluate((progress) => {
         (window as PreparationWindow).stickerWriter?.enqueue(new TextEncoder().encode(`${JSON.stringify({ type: 'progress', data: progress })}\n`));
       }, progress);
-      await expect(preparation.getByRole('progressbar')).toHaveAttribute('value', '1');
+      await expect(preparation.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+      await expect(preparation.getByText('50%')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath('preparation.png'), fullPage: true });
 
