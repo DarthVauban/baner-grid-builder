@@ -15,6 +15,47 @@ export class HoroshopApiError extends Error {
 // catalog/export defaults to 500 records and does not accept a larger page.
 export const horoshopCatalogExportPageSize = 500;
 
+const hostQueues = new Map();
+const normalHostConcurrency = 4;
+
+function retryAfterMilliseconds(value, attempt) {
+  const seconds = Number(value);
+  if (value && Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
+  const date = value ? Date.parse(value) : NaN;
+  if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+  return Math.min(60_000, 2_000 * 2 ** (attempt - 1));
+}
+
+async function queueHostRequest(hostname, operation) {
+  let state = hostQueues.get(hostname);
+  if (!state) {
+    state = { active: 0, waiting: [], cooldownUntil: 0, reducedUntil: 0 };
+    hostQueues.set(hostname, state);
+  }
+  const concurrency = Date.now() < state.reducedUntil ? 1 : normalHostConcurrency;
+  if (state.active < concurrency) state.active += 1;
+  else await new Promise((resolve) => state.waiting.push(resolve));
+  try {
+    const wait = state.cooldownUntil - Date.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    return await operation();
+  } finally {
+    state.active -= 1;
+    const available = Date.now() < state.reducedUntil ? 1 : normalHostConcurrency;
+    while (state.waiting.length && state.active < available) {
+      state.active += 1;
+      state.waiting.shift()();
+    }
+  }
+}
+
+function coolDownHost(hostname, delay) {
+  const state = hostQueues.get(hostname);
+  if (!state) return;
+  state.cooldownUntil = Math.max(state.cooldownUntil, Date.now() + delay);
+  state.reducedUntil = Math.max(state.reducedUntil, state.cooldownUntil + 60_000);
+}
+
 function publicIpv4(address) {
   const octets = address.split('.').map(Number);
   if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
@@ -282,32 +323,38 @@ export class HoroshopClient {
     }
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
       try {
-        const response = await this.fetchImplementation(endpoint, {
-          method: 'POST',
-          headers: { accept: 'application/json', 'content-type': 'application/json; charset=utf-8' },
-          body: JSON.stringify(body),
-          redirect: 'error',
-          signal: controller.signal
+        return await queueHostRequest(this.hostname, async () => {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
+          try {
+            const response = await this.fetchImplementation(endpoint, {
+              method: 'POST',
+              headers: { accept: 'application/json', 'content-type': 'application/json; charset=utf-8' },
+              body: JSON.stringify(body),
+              redirect: 'error',
+              signal: controller.signal
+            });
+            if (response.status === 429) {
+              const delay = retryAfterMilliseconds(response.headers.get('retry-after'), attempt);
+              coolDownHost(this.hostname, delay);
+              console.warn(JSON.stringify({ event: 'horoshop_api_rate_limited', endpoint: functionName, retryAfterMs: delay }));
+            }
+            let payload;
+            try { payload = await response.json(); }
+            catch { throw new HoroshopApiError('invalid_response', response.status); }
+            if (!response.ok) {
+              throw new HoroshopApiError(errorCode(response.status, payload), response.status, responseMessage(payload));
+            }
+            const envelope = payload !== null && typeof payload === 'object' ? payload : {};
+            if (envelope.status === 'EMPTY') return {};
+            if (envelope.status === 'OK') return envelope.response || {};
+            if (Object.hasOwn(envelope, 'status')) {
+              throw new HoroshopApiError(errorCode(response.status, payload), response.status, responseMessage(payload));
+            }
+            return payload;
+          } finally { clearTimeout(timeout); }
         });
-        let payload;
-        try {
-          payload = await response.json();
-        } catch {
-          throw new HoroshopApiError('invalid_response', response.status);
-        }
-        if (!response.ok) {
-          throw new HoroshopApiError(errorCode(response.status, payload), response.status, responseMessage(payload));
-        }
-        const envelope = payload !== null && typeof payload === 'object' ? payload : {};
-        if (envelope.status === 'EMPTY') return {};
-        if (envelope.status === 'OK') return envelope.response || {};
-        if (Object.hasOwn(envelope, 'status')) {
-          throw new HoroshopApiError(errorCode(response.status, payload), response.status, responseMessage(payload));
-        }
-        return payload;
       } catch (error) {
         lastError = error;
         const unsafeResolution = error instanceof Error && error.code === 'EACCES';
@@ -315,9 +362,9 @@ export class HoroshopClient {
           && error.httpStatus !== null && error.httpStatus >= 400 && error.httpStatus < 500
           && error.httpStatus !== 429;
         if (attempt === maxAttempts || unsafeResolution || clientFailure) break;
-        await this.sleep(200 * 2 ** (attempt - 1));
-      } finally {
-        clearTimeout(timeout);
+        if (!(error instanceof HoroshopApiError && error.httpStatus === 429)) {
+          await this.sleep(200 * 2 ** (attempt - 1));
+        }
       }
     }
 

@@ -179,6 +179,43 @@ test('Horoshop catalog import does not retry transport failures when maxAttempts
   }
 });
 
+test('Horoshop requests share a host queue and respect Retry-After after a rate limit', async () => {
+  const releases = [];
+  let secondStarted = false;
+  const first = new HoroshopClient('queue-one.example.com', {
+    fetchImplementation: async () => new Promise((resolve) => {
+      releases.push(() => resolve(new Response(JSON.stringify({ status: 'OK', response: { token: 'first' } }))));
+    })
+  });
+  const second = new HoroshopClient('queue-one.example.com', {
+    fetchImplementation: async () => {
+      secondStarted = true;
+      return new Response(JSON.stringify({ status: 'OK', response: { token: 'second' } }));
+    }
+  });
+  const firstRequests = Array.from({ length: 4 }, () => first.authenticate('user', 'password'));
+  while (releases.length < 4) await new Promise((resolve) => setImmediate(resolve));
+  const secondRequest = second.authenticate('user', 'password');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(secondStarted, false);
+  for (const release of releases) release();
+  assert.deepEqual(await Promise.all([...firstRequests, secondRequest]), ['first', 'first', 'first', 'first', 'second']);
+
+  let attempts = 0;
+  const limited = new HoroshopClient('queue-two.example.com', {
+    fetchImplementation: async () => {
+      attempts += 1;
+      return attempts === 1
+        ? new Response('Rate limit', { status: 429, headers: { 'Retry-After': '0.02' } })
+        : new Response(JSON.stringify({ status: 'OK', response: { token: 'recovered' } }));
+    }
+  });
+  const started = Date.now();
+  assert.equal(await limited.authenticate('user', 'password'), 'recovered');
+  assert.equal(attempts, 2);
+  assert.ok(Date.now() - started >= 15);
+});
+
 test('normalizer keeps product modifications, stock, URLs and raw source data', () => {
   const stickers = normalizeHoroshopStickers([
     { id: 14, title: { ua: 'Вживаний' }, enabled: 1 },

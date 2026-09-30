@@ -46,6 +46,26 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('HoroshopStickersPage', () => {
+  it('collects several sticker actions into one reviewable operation', async () => {
+    renderPage();
+    await screen.findByLabelText('Обрати 0001');
+    fireEvent.click(screen.getByLabelText('Обрати 0001'));
+    await openStickers();
+    fireEvent.click(screen.getByLabelText('Додати стікери: Акція'));
+    fireEvent.click(screen.getByRole('button', { name: 'Додати до пакета' }));
+    expect(screen.getByRole('region', { name: 'Пакетна операція' })).toHaveTextContent('Набір 1');
+    fireEvent.click(screen.getByLabelText('Обрати 0001'));
+    await openStickers();
+    fireEvent.click(screen.getByLabelText('Зняти стікери: Хіт'));
+    fireEvent.click(screen.getByRole('button', { name: 'Додати до пакета' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Переглянути весь пакет' }));
+    await screen.findByRole('dialog', { name: 'Зміна стікерів' });
+    expect(api.horoshopStickers.preview).toHaveBeenCalledWith({ steps: [
+      { productIds: [productIds[0]], addIds: ['11'], removeIds: [] },
+      { productIds: [productIds[0]], addIds: [], removeIds: ['1'] }
+    ], name: undefined }, expect.any(Function));
+  });
+
   it('shows live preparation progress across tabs and opens review only when preparation finishes', async () => {
     let report: ((progress: StickerPreparationProgress) => void) | undefined;
     let complete: ((operation: StickerOperation) => void) | undefined;

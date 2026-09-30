@@ -29,7 +29,11 @@ export const stickerFiltersSchema = z.object({
   if (input.createdFrom && input.createdTo && input.createdFrom > input.createdTo) context.addIssue({ code: 'custom', path: ['createdTo'], message: 'Перевірте діапазон дат.' });
   if (['present', 'missing'].includes(input.stickerMode) && !input.stickerId) context.addIssue({ code: 'custom', path: ['stickerId'], message: 'Оберіть стікер для фільтра.' });
 });
-const previewSchema = z.object({ productIds: ids, addIds: stickerIds, removeIds: stickerIds, name: z.string().trim().max(160).optional() }).strict();
+const stickerStepSchema = z.object({ productIds: ids, addIds: stickerIds, removeIds: stickerIds }).strict();
+const previewSchema = z.union([
+  stickerStepSchema.extend({ name: z.string().trim().max(160).optional() }),
+  z.object({ steps: z.array(stickerStepSchema).min(1).max(100), name: z.string().trim().max(160).optional() }).strict()
+]);
 const selectionSchema = z.object({ name: z.string().trim().min(1).max(160), productIds: ids }).strict();
 const pagination = z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(10).max(100).default(50) });
 

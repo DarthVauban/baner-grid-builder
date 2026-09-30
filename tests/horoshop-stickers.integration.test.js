@@ -126,6 +126,34 @@ test('preparation streams cached catalog progress without calling Horoshop and c
   assert.equal(/fixture-token|password|encrypted|source_data/u.test(JSON.stringify(response.body)), false);
 });
 
+test('several sticker selections share one verification cycle and overlapping actions use the final state', async () => {
+  let exports = 0;
+  const clientFactory = service.clientFactory;
+  service.clientFactory = (...args) => {
+    const client = clientFactory(...args);
+    return { ...client, exportCatalog: async (...params) => {
+      exports += 1;
+      return client.exportCatalog(...params);
+    } };
+  };
+  const response = await admin.post(`${base}/operations/preview`).send({ name: 'Спільна зміна', steps: [
+    { productIds: [productIds[0]], addIds: ['11'], removeIds: ['1'] },
+    { productIds: [productIds[1]], addIds: ['11'], removeIds: [] },
+    { productIds: [productIds[0]], addIds: ['1'], removeIds: ['11'] }
+  ] }).expect(201);
+  assert.equal(response.body.data.total, 2);
+  assert.equal(response.body.data.counts.unchanged, 1);
+  assert.equal(response.body.data.counts.pending, 1);
+  const completed = await apply(response.body.data);
+  assert.equal(completed.counts.succeeded, 1);
+  assert.equal(exports, 2);
+  assert.deepEqual(imports.flatMap((entry) => entry.payloads.map((item) => item.article)), ['0003']);
+  const event = await pool.query(`SELECT details FROM search_horoshop_sticker_events
+    WHERE operation_id = $1 AND action = 'operation_finished'`, [completed.id]);
+  const details = typeof event.rows[0].details === 'string' ? JSON.parse(event.rows[0].details) : event.rows[0].details;
+  assert.deepEqual(details.apiOperations, { catalogExports: 2, stickerExports: 2, authentications: 2, imports: 1 });
+});
+
 test('stream preparation validates access and input, reports errors and permits retry', async () => {
   await request(app).post(`${base}/operations/preview/stream`).send({ productIds, addIds: ['11'], removeIds: [] }).expect(401);
   await admin.post(`${base}/operations/preview/stream`).send({ productIds: ['invalid'], addIds: [], removeIds: [] }).expect(422);

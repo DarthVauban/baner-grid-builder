@@ -99,7 +99,7 @@ export class HoroshopStickerService {
     return resolveStickerArticles(entries, (await this.repository.catalog(connection)).products);
   }
 
-  async readRemote(connection, onProgress = null) {
+  async readRemote(connection, onProgress = null, selectedExternalIds = null) {
     onProgress?.({ stage: 'authenticating' });
     const credentials = decryptHoroshopCredentials(connection.encryptedCredentials);
     const client = this.clientFactory(connection.storeDomain);
@@ -107,6 +107,7 @@ export class HoroshopStickerService {
     onProgress?.({ stage: 'directory' });
     const directory = await client.exportStickers(token);
     const products = [];
+    let productsRead = 0;
     const fingerprints = new Set();
     const offsets = new Set();
     let offset = 0;
@@ -118,32 +119,48 @@ export class HoroshopStickerService {
       const fingerprint = createHash('sha256').update(JSON.stringify(result.products)).digest('hex');
       if (result.products.length && fingerprints.has(fingerprint)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює товари в експорті.');
       fingerprints.add(fingerprint);
-      products.push(...result.products);
-      onProgress?.({ stage: 'catalog', productsRead: products.length, pagesRead: page + 1 });
-      if (result.nextOffset === null) return { client, token, ...remoteStickerSnapshot(products, directory, connection.storeDomain) };
+      productsRead += result.products.length;
+      products.push(...(selectedExternalIds ? result.products.filter((product) => selectedExternalIds.has(String(
+        product?.id ?? product?.external_id ?? product?.parent_article ?? product?.article ?? product?.sku
+      ))) : result.products));
+      onProgress?.({ stage: 'catalog', productsRead, pagesRead: page + 1 });
+      if (result.nextOffset === null) return { client, token, pagesRead: page + 1, ...remoteStickerSnapshot(products, directory, connection.storeDomain) };
       offset = result.nextOffset;
     }
     throw new AppError(502, 'STICKER_EXPORT_LIMIT', 'Каталог перевищує межу безпечного експорту.');
   }
 
-  async preview({ productIds, addIds, removeIds, name }, actorId, onProgress = null) {
-    const report = preparationReporter(onProgress, new Set(productIds).size);
+  async preview(input, actorId, onProgress = null) {
+    const steps = input.steps || [input];
+    const ids = [...new Set(steps.flatMap((step) => step.productIds))];
+    notEmpty(ids);
+    const report = preparationReporter(onProgress, ids.length);
     report({ stage: 'checking' });
     const connection = await this.repository.connection();
     const catalog = await this.repository.catalog(connection);
-    const ids = [...new Set(productIds)];
-    notEmpty(ids);
     const selectedIds = new Set(ids);
     const selected = catalog.products.filter((p) => selectedIds.has(p.id));
     if (selected.length !== ids.length) throw new AppError(409, 'STICKER_SELECTION_STALE', 'Деякі товари вже відсутні. Оновіть вибірку.');
     const groups = await this.repository.cachedGroups(connection, selected);
-    const additions = assertManualActions(addIds, removeIds, catalog.directory);
+    const actions = new Map();
+    for (const step of steps) {
+      const additions = assertManualActions(step.addIds, step.removeIds, catalog.directory);
+      for (const id of new Set(step.productIds)) {
+        if (!actions.has(id)) actions.set(id, []);
+        actions.get(id).push({ additions, removeIds: step.removeIds });
+      }
+    }
     report({ stage: 'comparing', processed: 0 });
     const items = [];
     for (const p of selected) {
       const current = groups.get(p.externalId);
       const before = current?.stickers || [];
-      const after = applyStickerChange(before, additions, removeIds);
+      let after = before;
+      for (const action of actions.get(p.id)) after = applyStickerChange(after, action.additions, action.removeIds);
+      const beforeKeys = new Set(before.map((sticker) => sticker.id || `title:${sticker.title}`));
+      const afterKeys = new Set(after.map((sticker) => sticker.id || `title:${sticker.title}`));
+      const addIds = after.filter((sticker) => sticker.id && !beforeKeys.has(sticker.id)).map((sticker) => sticker.id);
+      const removeIds = before.filter((sticker) => sticker.id && !afterKeys.has(sticker.id)).map((sticker) => sticker.id);
       const message = !current ? 'Товар відсутній у синхронізованому каталозі. Оновіть каталог.' : current.error;
       items.push({ productId: p.id, externalId: p.externalId, article: current?.article || p.sku,
         title: titleFor(p.titles, p.sku), membership: current?.membership || [], before, after,
@@ -154,7 +171,7 @@ export class HoroshopStickerService {
       }
     }
     report({ stage: 'saving', processed: 0 });
-    const id = await this.repository.createOperation(connection, { name: name || 'Зміна стікерів', actorId, items,
+    const id = await this.repository.createOperation(connection, { name: input.name || 'Зміна стікерів', actorId, items,
       onProgress: (processed) => report({ processed }) });
     return this.detail(id);
   }
@@ -208,7 +225,7 @@ export class HoroshopStickerService {
       const succeeded = original.items.filter((item) => item.status === 'succeeded');
       notEmpty(succeeded);
       report({ total: succeeded.length });
-      const remote = await this.readRemote(connection, report);
+      const remote = await this.readRemote(connection, report, new Set(succeeded.map((item) => item.externalId)));
       report({ stage: 'comparing', processed: 0 });
       const items = [];
       for (const item of succeeded) {
@@ -298,8 +315,13 @@ export class HoroshopStickerService {
 
   async processOperation(id, connection) {
     const operation = await this.repository.operation(id, connection);
+    const apiOperations = { catalogExports: 0, stickerExports: 0, authentications: 0, imports: 0 };
     try {
-      const remote = await this.readRemote(connection);
+      const selectedExternalIds = new Set(operation.items.filter((item) => ['pending', 'writing'].includes(item.status)).map((item) => item.externalId));
+      const remote = await this.readRemote(connection, null, selectedExternalIds);
+      apiOperations.catalogExports += remote.pagesRead;
+      apiOperations.stickerExports += 1;
+      apiOperations.authentications += 1;
       const writing = [];
       const ready = [];
       for (const item of operation.items.filter((item) => ['pending', 'writing'].includes(item.status))) {
@@ -340,12 +362,15 @@ export class HoroshopStickerService {
         for (let index = 0; index < payloads.length; index += this.batchSize) {
           const latestConnection = await this.repository.connection();
           if (latestConnection.generation !== connection.generation) throw new AppError(409, 'STICKER_CATALOG_STALE', 'Підключення змінилося.');
-          try { await remote.client.importCatalog(remote.token, payloads.slice(index, index + this.batchSize), { maxAttempts: 1 }); }
+          try { apiOperations.imports += 1; await remote.client.importCatalog(remote.token, payloads.slice(index, index + this.batchSize), { maxAttempts: 1 }); }
           catch { /* A transport error can follow a successful write. Only read-back decides the result. */ }
         }
       }
       if (writing.length) {
-        const verified = await this.readRemote(connection);
+        const verified = await this.readRemote(connection, null, new Set(writing.map((item) => item.externalId)));
+        apiOperations.catalogExports += verified.pagesRead;
+        apiOperations.stickerExports += 1;
+        apiOperations.authentications += 1;
         for (const item of writing) {
           const current = verified.groups.get(item.externalId);
           if (current && !current.error && sameMembership(current.membership, item.membership) && sameStickers(current.stickers, item.after)) {
@@ -364,7 +389,7 @@ export class HoroshopStickerService {
     const counts = countItems(final.items);
     const status = final.stopRequested ? 'stopped' : counts.failed || counts.conflict ? 'partial' : 'completed';
     await this.pool.query('UPDATE search_horoshop_sticker_operations SET status = $2, completed_at = NOW() WHERE id = $1', [id, status]);
-    await this.repository.event(connection.id, id, operation.actorUserId || null, 'operation_finished', { status, counts });
+    await this.repository.event(connection.id, id, operation.actorUserId || null, 'operation_finished', { status, counts, apiOperations });
   }
 
   async report(id) {

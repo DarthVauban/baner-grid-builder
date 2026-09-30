@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon';
 import { StyledSelect, type StyledSelectOption } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
-import type { Sticker, StickerDirectoryEntry, StickerFilters, StickerItemStatus, StickerOperation, StickerOperationStatus, StickerPreparationProgress, StickerResolution } from '../types/horoshop-sticker';
+import type { Sticker, StickerActionStep, StickerDirectoryEntry, StickerFilters, StickerItemStatus, StickerOperation, StickerOperationStatus, StickerPreparationProgress, StickerResolution } from '../types/horoshop-sticker';
 import '../styles/horoshop-stickers.css';
 
 const operationLabels: Record<StickerOperationStatus, string> = { draft: 'Перегляд змін', queued: 'У черзі', running: 'Застосовується', completed: 'Завершено', partial: 'Є помилки або конфлікти', stopped: 'Зупинено' };
@@ -156,6 +156,7 @@ export function HoroshopStickersPage() {
   const [resolution, setResolution] = useState<StickerResolution | null>(null);
   const [addIds, setAddIds] = useState<string[]>([]);
   const [removeIds, setRemoveIds] = useState<string[]>([]);
+  const [planSteps, setPlanSteps] = useState<StickerActionStep[]>([]);
   const [savedId, setSavedId] = useState('');
   const [preparation, setPreparation] = useState<Preparation | null>(null);
   const incompleteFilter = ['present', 'missing'].includes(filters.stickerMode || '') && !filters.stickerId;
@@ -216,6 +217,12 @@ export function HoroshopStickersPage() {
   });
   const previewChanges = () => prepare('preview', selected.length, (onProgress) => api.horoshopStickers.preview({ productIds: selected, addIds: activeAddIds, removeIds: activeRemoveIds, name: name || undefined }, onProgress));
   const previewDisabled = busy || !selected.length || !selectionReady || !(activeAddIds.length || activeRemoveIds.length);
+  const addPlanStep = () => {
+    setPlanSteps((previous) => [...previous, { productIds: [...selected], addIds: [...activeAddIds], removeIds: [...activeRemoveIds] }]);
+    setSelected([]); setAddIds([]); setRemoveIds([]); switchTab('products');
+  };
+  const previewPlan = () => prepare('preview', new Set(planSteps.flatMap((step) => step.productIds)).size,
+    (onProgress) => api.horoshopStickers.preview({ steps: planSteps, name: name || undefined }, onProgress));
   const onAction = (action: 'apply' | 'stop' | 'retry' | 'rollback') => action === 'rollback'
     ? prepare('rollback', operation.data?.counts.succeeded || 0, (onProgress) => api.horoshopStickers.action(operationId, action, onProgress))
     : void run(async () => openOperation(await api.horoshopStickers.action(operationId, action)));
@@ -233,6 +240,10 @@ export function HoroshopStickersPage() {
           event.preventDefault(); switchTab(workspaceTabs[next].id); document.getElementById(`hs-tab-${workspaceTabs[next].id}`)?.focus();
         }}>{tab.label}{tab.id === 'stickers' && selected.length > 0 && <span>{selected.length}</span>}</button>)}
     </div>{selected.length > 0 && <div className="hs-sticker-selection-summary"><strong>Обрано {selected.length} груп</strong><button disabled={busy} onClick={() => { setSelected([]); setAddIds([]); setRemoveIds([]); }}>Зняти вибір</button>{activeTab === 'products' && <button className="button button--primary" onClick={() => switchTab('stickers')}>До стікерів <Icon name="chevronRight" /></button>}</div>}</div>
+    {!!planSteps.length && <section className="hs-sticker-saved-card" aria-label="Пакетна операція"><h2>Пакетна операція</h2><p>{planSteps.length} наборів змін. Усі набори пройдуть одну спільну перевірку Хорошоп перед записом і одну після нього. Якщо товар входить до кількох наборів, дії застосуються в зазначеному порядку.</p>
+      {planSteps.map((step, index) => <div key={index} className="hs-sticker-plan-row"><strong>Набір {index + 1}: {step.productIds.length} груп</strong><span>Додати: {step.addIds.map((id) => directory.find((item) => item.externalId === id)?.title || id).join(', ') || '—'} · Зняти: {step.removeIds.map((id) => directory.find((item) => item.externalId === id)?.title || id).join(', ') || '—'}</span><button disabled={busy} onClick={() => setPlanSteps((previous) => previous.filter((_, itemIndex) => itemIndex !== index))}>Прибрати</button></div>)}
+      <button className="button button--primary" disabled={busy} onClick={previewPlan}>Переглянути весь пакет</button>
+    </section>}
     {preparation && !(operation.data && operationId) && <PreparationProgress preparation={preparation} />}
     {activeTab === 'products' && <section role="tabpanel" id="hs-panel-products" aria-labelledby="hs-tab-products"><div className="hs-stickers-layout"><aside className="hs-sticker-filters">
       <h2>Знайти товари</h2>
@@ -293,7 +304,7 @@ export function HoroshopStickersPage() {
           <StickerPicker label="Зняти стікери" directory={selectionReady ? removable : []} selected={activeRemoveIds} disabledIds={activeAddIds} disabled={!selectionReady || busy} counts={counts} total={selected.length}
             emptyMessage={selectionReady ? 'На вибраних товарах немає ручних стікерів для зняття.' : 'Очікуємо дані вибірки.'} onChange={setRemoveIds} /></div></div>
         <footer className="hs-sticker-action-footer"><label>Назва операції<input value={name} disabled={busy} maxLength={160} onChange={(e) => setName(e.target.value)} placeholder="Наприклад, Осіння акція" /></label>
-          <div><span>Додати: {activeAddIds.length} · зняти: {activeRemoveIds.length}</span><button className="button button--primary" disabled={previewDisabled} onClick={previewChanges}><Icon name="search" />{busy ? 'Перевіряємо…' : 'Переглянути зміни'}</button></div></footer>
+          <div><span>Додати: {activeAddIds.length} · зняти: {activeRemoveIds.length}</span><button className="button button--ghost" disabled={previewDisabled || planSteps.length >= 100} onClick={addPlanStep}>Додати до пакета</button><button className="button button--primary" disabled={previewDisabled} onClick={previewChanges}><Icon name="search" />{busy ? 'Перевіряємо…' : 'Переглянути зміни'}</button></div></footer>
       </>}
     </section>}
     {activeTab === 'selections' && <section role="tabpanel" id="hs-panel-selections" aria-labelledby="hs-tab-selections" className="hs-sticker-selections">
