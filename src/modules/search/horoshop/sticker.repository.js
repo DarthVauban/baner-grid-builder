@@ -87,6 +87,20 @@ export class HoroshopStickerRepository {
     return groups;
   }
 
+  async parentArticles(connection, externalIds) {
+    const result = new Map();
+    const ids = [...externalIds];
+    for (let offset = 0; offset < ids.length; offset += 500) {
+      const batch = ids.slice(offset, offset + 500);
+      const selected = batch.map((_, index) => `$${index + 3}`).join(',');
+      const rows = await this.pool.query(`SELECT external_id, sku FROM search_horoshop_products
+        WHERE connection_id = $1 AND generation = $2 AND active = TRUE AND external_id IN (${selected})`,
+      [connection.id, connection.generation, ...batch]);
+      for (const row of rows.rows) result.set(row.external_id, row.sku);
+    }
+    return result;
+  }
+
   async transaction(callback) {
     const client = await this.pool.connect();
     try { await client.query('BEGIN'); const value = await callback(client); await client.query('COMMIT'); return value; }

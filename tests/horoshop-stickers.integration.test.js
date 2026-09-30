@@ -17,6 +17,7 @@ const { runMigrations } = await import('../src/db/migrate.js');
 const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service.js');
 const { encryptHoroshopCredentials } = await import('../src/modules/search/horoshop/credential-cipher.js');
 const { horoshopStickerService: service } = await import('../src/modules/search/horoshop/sticker.service.js');
+const { HoroshopApiError } = await import('../src/modules/search/horoshop/horoshop.client.js');
 const { applyStickerChange, assertManualActions, filterStickerProducts, manualStickerDirectory, remoteStickerSnapshot } = await import('../src/modules/search/horoshop/sticker.domain.js');
 const admin = request.agent(app);
 const base = '/api/search/horoshop/stickers';
@@ -39,6 +40,7 @@ beforeEach(async () => {
   connection = randomUUID(); generation = randomUUID(); productIds = [randomUUID(), randomUUID()];
   imports = []; importMode = 'normal';
   service.batchSize = 25;
+  service.scopedExportCapability = null;
   directory = [{ id: 1, title: 'Хіт', enabled: 1 }, { id: 11, title: 'Акція', enabled: 1 }, { id: 3, title: 'Гарантія', enabled: 1 }, { id: 8, title: 'Автоматичний', enabled: 1 }, { id: 19, title: 'Вимкнений', enabled: 0 }];
   remoteProducts = [
     { id: 101, article: 'P1', title: { ua: 'Телефон' }, icons: ['Хіт', 'Гарантія'], modifications: [{ article: '0001', icons: ['Хіт', 'Гарантія'] }, { article: '0002', icons: ['Хіт', 'Гарантія'] }] },
@@ -93,6 +95,102 @@ async function apply(operation) {
 }
 
 const streamEvents = (text) => text.split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+
+function pagedStickerExport(scopedResponse = (articles) => remoteProducts.filter((product) => articles.includes(product.article))) {
+  const requests = [];
+  const factory = service.clientFactory;
+  service.clientFactory = (...args) => {
+    const client = factory(...args);
+    return { ...client, exportCatalog: async (_token, offset, limit, articles) => {
+      assert.equal(limit, 500);
+      requests.push({ offset, articles });
+      if (articles) return { products: structuredClone(scopedResponse(articles)), nextOffset: null };
+      return offset === 0
+        ? { products: structuredClone([remoteProducts[0]]), nextOffset: 500 }
+        : { products: structuredClone([remoteProducts[1]]), nextOffset: null };
+    } };
+  };
+  return requests;
+}
+
+test('complete parent-article export is probed once, then verifies the write with one scoped request', async () => {
+  const requests = pagedStickerExport();
+  const completed = await apply(await preview([productIds[0]]));
+  assert.equal(completed.counts.succeeded, 1);
+  assert.deepEqual(requests.map((call) => call.articles), [null, null, ['P1'], ['P1']]);
+  const event = await pool.query(`SELECT details FROM search_horoshop_sticker_events
+    WHERE operation_id = $1 AND action = 'operation_finished'`, [completed.id]);
+  const details = typeof event.rows[0].details === 'string' ? JSON.parse(event.rows[0].details) : event.rows[0].details;
+  assert.equal(details.apiOperations.catalogExports, 4);
+});
+
+test('a multi-offer product elsewhere in the full catalog can verify scoped reads for a single-offer selection', async () => {
+  const requests = pagedStickerExport();
+  const completed = await apply(await preview([productIds[1]], ['11'], []));
+  assert.equal(completed.counts.succeeded, 1);
+  assert.deepEqual(requests.map((call) => call.articles), [null, null, ['P1'], ['P2']]);
+});
+
+test('verified scoped export batches selected parent articles in one request', async () => {
+  const requests = pagedStickerExport();
+  service.scopedExportCapability = {
+    key: `${connection}:${generation}`, supported: true, fullPages: 2, expiresAt: Date.now() + 60_000
+  };
+  const completed = await apply(await preview(productIds, ['11'], []));
+  assert.equal(completed.counts.succeeded, 2);
+  assert.deepEqual(requests.map((call) => call.articles), [['P1', 'P2'], ['P1', 'P2']]);
+});
+
+test('a filtered export without the complete modification group stays on full catalog reads', async () => {
+  const requests = pagedStickerExport(() => [{ id: 101, parent_article: 'P1', article: '0001', icons: ['Хіт', 'Гарантія'] }]);
+  const completed = await apply(await preview([productIds[0]]));
+  assert.equal(completed.counts.succeeded, 1);
+  assert.deepEqual(requests.map((call) => call.articles), [null, null, ['P1'], null, null]);
+  assert.equal(service.scopedExportCapability.supported, false);
+});
+
+test('an incomplete scoped read falls back to the full export before confirming success', async () => {
+  let filteredReads = 0;
+  const requests = pagedStickerExport((articles) => {
+    filteredReads += 1;
+    const group = structuredClone(remoteProducts.find((product) => product.article === articles[0]));
+    if (filteredReads === 2) group.modifications.pop();
+    return [group];
+  });
+  const completed = await apply(await preview([productIds[0]]));
+  assert.equal(completed.counts.succeeded, 1);
+  assert.deepEqual(requests.map((call) => call.articles), [null, null, ['P1'], ['P1'], null, null]);
+  assert.equal(service.scopedExportCapability.supported, false);
+});
+
+test('rate limiting on a scoped read does not launch a full export', async () => {
+  let filteredReads = 0;
+  const requests = pagedStickerExport((articles) => {
+    filteredReads += 1;
+    if (filteredReads === 2) throw new HoroshopApiError('api_rejected', 429);
+    return remoteProducts.filter((product) => articles.includes(product.article));
+  });
+  const completed = await apply(await preview([productIds[0]]));
+  assert.equal(completed.counts.failed, 1);
+  assert.deepEqual(requests.map((call) => call.articles), [null, null, ['P1'], ['P1']]);
+});
+
+test('a changed modification set in scoped read is confirmed by a full export and blocks success', async () => {
+  const requests = pagedStickerExport();
+  const factory = service.clientFactory;
+  service.clientFactory = (...args) => {
+    const client = factory(...args);
+    return { ...client, importCatalog: async (...params) => {
+      const result = await client.importCatalog(...params);
+      remoteProducts[0].modifications.push({ article: '0004', icons: ['Акція', 'Гарантія'] });
+      return result;
+    } };
+  };
+  const completed = await apply(await preview([productIds[0]]));
+  assert.equal(completed.counts.failed, 1);
+  assert.deepEqual(requests.map((call) => call.articles), [null, null, ['P1'], ['P1'], null, null]);
+  assert.equal(service.scopedExportCapability.supported, false);
+});
 
 test('preparation streams cached catalog progress without calling Horoshop and creates a reviewable draft', async () => {
   service.clientFactory = () => { throw new Error('Preview must only read the synchronized catalog'); };

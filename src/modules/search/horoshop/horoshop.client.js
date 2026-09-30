@@ -282,8 +282,10 @@ export class HoroshopClient {
     return extractArray(response, ['icons', 'stickers']);
   }
 
-  async exportCatalog(token, offset = 0, limit = horoshopCatalogExportPageSize) {
-    const response = await this.post('catalog/export', { token, offset, limit });
+  async exportCatalog(token, offset = 0, limit = horoshopCatalogExportPageSize, articles = null) {
+    const response = await this.post('catalog/export', {
+      token, offset, limit, ...(articles ? { expr: { article: articles } } : {})
+    });
     const products = extractArray(response, ['products', 'catalog', 'items']);
     const source = response !== null && typeof response === 'object' ? response : {};
     const pagination = source.pagination !== null && typeof source.pagination === 'object'

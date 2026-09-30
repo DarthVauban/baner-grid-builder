@@ -110,6 +110,25 @@ test('catalog export defaults to 500 records and continues from the returned pag
   ]);
 });
 
+test('catalog export can filter by exact parent articles without changing unfiltered requests', async () => {
+  const requests = [];
+  const client = new HoroshopClient('shop.example.com', {
+    fetchImplementation: async (_url, init) => {
+      requests.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ status: 'OK', response: { products: [] } }), {
+        status: 200, headers: { 'content-type': 'application/json' }
+      });
+    },
+    lookupImplementation: async () => [{ address: '93.184.216.34', family: 4 }]
+  });
+  await client.exportCatalog('token');
+  await client.exportCatalog('token', 0, 500, ['P1', 'P2']);
+  assert.deepEqual(requests, [
+    { token: 'token', offset: 0, limit: 500 },
+    { token: 'token', offset: 0, limit: 500, expr: { article: ['P1', 'P2'] } }
+  ]);
+});
+
 test('Horoshop client preserves a safe API rejection message for diagnostics', async () => {
   const client = new HoroshopClient('shop.example.com', {
     fetchImplementation: async () => new Response(JSON.stringify({

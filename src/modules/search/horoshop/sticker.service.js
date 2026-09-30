@@ -3,7 +3,7 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { AppError } from '../../../lib/app-error.js';
 import { horoshopCatalogService } from './catalog.service.js';
 import { decryptHoroshopCredentials } from './credential-cipher.js';
-import { HoroshopClient, horoshopCatalogExportPageSize } from './horoshop.client.js';
+import { HoroshopApiError, HoroshopClient, horoshopCatalogExportPageSize } from './horoshop.client.js';
 import { normalizeHoroshopStickers } from './catalog.normalizer.js';
 import { HoroshopStickerRepository, arrayValue, countItems } from './sticker.repository.js';
 import { applyStickerChange, assertManualActions, filterStickerProducts, maximumStickerSelection,
@@ -29,6 +29,7 @@ export class HoroshopStickerService {
     this.batchSize = options.batchSize || 25;
     this.directoryCache = null;
     this.directoryRefresh = null;
+    this.scopedExportCapability = null;
   }
 
   async catalog(filters) {
@@ -99,35 +100,119 @@ export class HoroshopStickerService {
     return resolveStickerArticles(entries, (await this.repository.catalog(connection)).products);
   }
 
-  async readRemote(connection, onProgress = null, selectedExternalIds = null) {
+  async readRemote(connection, onProgress = null, selectedExternalIds = null, expectedMemberships = null) {
     onProgress?.({ stage: 'authenticating' });
     const credentials = decryptHoroshopCredentials(connection.encryptedCredentials);
     const client = this.clientFactory(connection.storeDomain);
     const token = await client.authenticate(credentials.login, credentials.password);
     onProgress?.({ stage: 'directory' });
     const directory = await client.exportStickers(token);
-    const products = [];
-    let productsRead = 0;
-    const fingerprints = new Set();
-    const offsets = new Set();
-    let offset = 0;
-    onProgress?.({ stage: 'catalog', productsRead: 0, pagesRead: 0 });
-    for (let page = 0; page < 2000; page += 1) {
-      if (offsets.has(offset)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює сторінку каталогу.');
-      offsets.add(offset);
-      const result = await client.exportCatalog(token, offset, horoshopCatalogExportPageSize);
-      const fingerprint = createHash('sha256').update(JSON.stringify(result.products)).digest('hex');
-      if (result.products.length && fingerprints.has(fingerprint)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює товари в експорті.');
-      fingerprints.add(fingerprint);
-      productsRead += result.products.length;
-      products.push(...(selectedExternalIds ? result.products.filter((product) => selectedExternalIds.has(String(
-        product?.id ?? product?.external_id ?? product?.parent_article ?? product?.article ?? product?.sku
-      ))) : result.products));
-      onProgress?.({ stage: 'catalog', productsRead, pagesRead: page + 1 });
-      if (result.nextOffset === null) return { client, token, pagesRead: page + 1, ...remoteStickerSnapshot(products, directory, connection.storeDomain) };
-      offset = result.nextOffset;
+    const key = `${connection.id}:${connection.generation}`;
+    const selected = selectedExternalIds?.size ? selectedExternalIds : null;
+    const parentArticles = selected ? await this.repository.parentArticles(connection, selected) : new Map();
+    const articleToExternalId = new Map();
+    for (const [externalId, article] of parentArticles) {
+      if (!article || articleToExternalId.has(article)) { articleToExternalId.clear(); break; }
+      articleToExternalId.set(article, externalId);
     }
-    throw new AppError(502, 'STICKER_EXPORT_LIMIT', 'Каталог перевищує межу безпечного експорту.');
+    let productsRead = 0;
+    let pagesRead = 0;
+    let fullProbeCandidate = null;
+    onProgress?.({ stage: 'catalog', productsRead: 0, pagesRead: 0 });
+    const readPages = async (articles = null) => {
+      const products = [];
+      const fingerprints = new Set();
+      const offsets = new Set();
+      let offset = 0;
+      for (let page = 0; page < 2000; page += 1) {
+        if (offsets.has(offset)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює сторінку каталогу.');
+        offsets.add(offset);
+        pagesRead += 1;
+        const result = await client.exportCatalog(token, offset, horoshopCatalogExportPageSize, articles);
+        const fingerprint = createHash('sha256').update(JSON.stringify(result.products)).digest('hex');
+        if (result.products.length && fingerprints.has(fingerprint)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює товари в експорті.');
+        fingerprints.add(fingerprint);
+        productsRead += result.products.length;
+        if (!articles && !fullProbeCandidate) fullProbeCandidate = result.products.find((product) =>
+          (product?.modifications ?? product?.variants)?.length > 1) || null;
+        products.push(...(articles || !selected ? result.products : result.products.filter((product) => selected.has(String(
+          product?.id ?? product?.external_id ?? product?.parent_article ?? product?.article ?? product?.sku
+        )))));
+        onProgress?.({ stage: 'catalog', productsRead, pagesRead });
+        if (result.nextOffset === null) return { products, pages: page + 1 };
+        offset = result.nextOffset;
+      }
+      throw new AppError(502, 'STICKER_EXPORT_LIMIT', 'Каталог перевищує межу безпечного експорту.');
+    };
+    const completeGroups = (products, expected) => {
+      if (products.length !== expected.size) return false;
+      const seen = new Set();
+      for (const product of products) {
+        const externalId = String(product?.id ?? product?.external_id ?? product?.parent_article ?? product?.article ?? product?.sku);
+        const article = String(product?.parent_article ?? product?.article ?? product?.sku);
+        if (expected.get(article) !== externalId || seen.has(article)
+          || !(Array.isArray(product?.modifications) || Array.isArray(product?.variants))) return false;
+        const modifications = product.modifications ?? product.variants;
+        if (!modifications.length) return false;
+        seen.add(article);
+      }
+      return seen.size === expected.size;
+    };
+    const capability = this.scopedExportCapability?.key === key
+      && this.scopedExportCapability.expiresAt > Date.now() ? this.scopedExportCapability : null;
+    let probeAllowed = capability?.supported !== false;
+    const articles = [...articleToExternalId.keys()];
+    if (selected && parentArticles.size === selected.size && articleToExternalId.size === selected.size
+      && capability?.supported && articles.length <= 1000
+      && Math.ceil(articles.length / 100) < capability.fullPages) {
+      try {
+        const products = [];
+        for (let start = 0; start < articles.length; start += 100) {
+          const batch = articles.slice(start, start + 100);
+          const scoped = await readPages(batch);
+          const expected = new Map(batch.map((article) => [article, articleToExternalId.get(article)]));
+          if (!completeGroups(scoped.products, expected)) throw new AppError(502, 'STICKER_SCOPED_EXPORT_INCOMPLETE', 'Вибірковий експорт повернув неповну групу.');
+          products.push(...scoped.products);
+        }
+        const snapshot = remoteStickerSnapshot(products, directory, connection.storeDomain);
+        if (expectedMemberships && [...expectedMemberships].some(([externalId, membership]) => {
+          const group = snapshot.groups.get(externalId);
+          return !group || group.error || !sameMembership(group.membership, membership);
+        })) throw new AppError(502, 'STICKER_SCOPED_EXPORT_INCOMPLETE', 'Вибірковий експорт не підтвердив склад групи.');
+        return { client, token, pagesRead, ...snapshot };
+      } catch (error) {
+        const unsupported = error instanceof HoroshopApiError
+          && [200, 400, 404, 422].includes(error.httpStatus);
+        const incomplete = error instanceof AppError
+          && ['STICKER_SCOPED_EXPORT_INCOMPLETE', 'STICKER_EXPORT_INVALID'].includes(error.code);
+        if (!incomplete && !unsupported) throw error;
+        this.scopedExportCapability = { key, supported: false, fullPages: capability.fullPages, expiresAt: Date.now() + 600_000 };
+        probeAllowed = false;
+      }
+    }
+    const full = await readPages();
+    const snapshot = remoteStickerSnapshot(full.products, directory, connection.storeDomain);
+    if (selected && full.pages > 1 && articleToExternalId.size === selected.size
+      && probeAllowed) {
+      const probe = fullProbeCandidate;
+      if (probe) {
+        const externalId = String(probe.id ?? probe.external_id ?? probe.parent_article ?? probe.article ?? probe.sku);
+        const article = String(probe.parent_article ?? probe.article ?? probe.sku);
+        try {
+          const scoped = await readPages([article]);
+          const group = remoteStickerSnapshot(scoped.products, directory, connection.storeDomain).groups.get(externalId);
+          const original = remoteStickerSnapshot([probe], directory, connection.storeDomain).groups.get(externalId);
+          const supported = completeGroups(scoped.products, new Map([[article, externalId]]))
+            && group && original && !group.error && !original.error
+            && sameMembership(group.membership, original.membership)
+            && sameStickers(group.stickers, original.stickers);
+          this.scopedExportCapability = { key, supported: !!supported, fullPages: full.pages, expiresAt: Date.now() + 600_000 };
+        } catch {
+          this.scopedExportCapability = { key, supported: false, fullPages: full.pages, expiresAt: Date.now() + 600_000 };
+        }
+      }
+    }
+    return { client, token, pagesRead, ...snapshot };
   }
 
   async preview(input, actorId, onProgress = null) {
@@ -225,7 +310,8 @@ export class HoroshopStickerService {
       const succeeded = original.items.filter((item) => item.status === 'succeeded');
       notEmpty(succeeded);
       report({ total: succeeded.length });
-      const remote = await this.readRemote(connection, report, new Set(succeeded.map((item) => item.externalId)));
+      const remote = await this.readRemote(connection, report, new Set(succeeded.map((item) => item.externalId)),
+        new Map(succeeded.map((item) => [item.externalId, item.membership])));
       report({ stage: 'comparing', processed: 0 });
       const items = [];
       for (const item of succeeded) {
@@ -318,7 +404,9 @@ export class HoroshopStickerService {
     const apiOperations = { catalogExports: 0, stickerExports: 0, authentications: 0, imports: 0 };
     try {
       const selectedExternalIds = new Set(operation.items.filter((item) => ['pending', 'writing'].includes(item.status)).map((item) => item.externalId));
-      const remote = await this.readRemote(connection, null, selectedExternalIds);
+      const expected = new Map(operation.items.filter((item) => selectedExternalIds.has(item.externalId))
+        .map((item) => [item.externalId, item.membership]));
+      const remote = await this.readRemote(connection, null, selectedExternalIds, expected);
       apiOperations.catalogExports += remote.pagesRead;
       apiOperations.stickerExports += 1;
       apiOperations.authentications += 1;
@@ -367,7 +455,8 @@ export class HoroshopStickerService {
         }
       }
       if (writing.length) {
-        const verified = await this.readRemote(connection, null, new Set(writing.map((item) => item.externalId)));
+        const verified = await this.readRemote(connection, null, new Set(writing.map((item) => item.externalId)),
+          new Map(writing.map((item) => [item.externalId, item.membership])));
         apiOperations.catalogExports += verified.pagesRead;
         apiOperations.stickerExports += 1;
         apiOperations.authentications += 1;
