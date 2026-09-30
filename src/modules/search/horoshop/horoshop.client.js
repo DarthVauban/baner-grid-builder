@@ -12,6 +12,9 @@ export class HoroshopApiError extends Error {
   }
 }
 
+// catalog/export defaults to 500 records and does not accept a larger page.
+export const horoshopCatalogExportPageSize = 500;
+
 function publicIpv4(address) {
   const octets = address.split('.').map(Number);
   if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
@@ -238,7 +241,7 @@ export class HoroshopClient {
     return extractArray(response, ['icons', 'stickers']);
   }
 
-  async exportCatalog(token, offset = 0, limit = 200) {
+  async exportCatalog(token, offset = 0, limit = horoshopCatalogExportPageSize) {
     const response = await this.post('catalog/export', { token, offset, limit });
     const products = extractArray(response, ['products', 'catalog', 'items']);
     const source = response !== null && typeof response === 'object' ? response : {};

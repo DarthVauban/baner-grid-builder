@@ -84,6 +84,10 @@ its contract or enabling search in production, reconfirm pagination, multilingua
 limits and order-event availability against official documentation and a staging account with
 non-destructive requests.
 
+Horoshop's [catalog/export documentation](https://horoshop.notion.site/1b6cc289707981e782b6e7c57c2fa526)
+sets the page limit at 500 records; catalog synchronization and sticker verification request 500
+records per page and continue from the returned pagination offset.
+
 ### 4.2 Imported data
 
 - external product and parent IDs;

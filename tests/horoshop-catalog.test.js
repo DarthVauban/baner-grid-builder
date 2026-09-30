@@ -85,6 +85,31 @@ test('Horoshop client validates public HTTPS domains and follows API envelopes a
   });
 });
 
+test('catalog export defaults to 500 records and continues from the returned page boundary', async () => {
+  const requests = [];
+  const client = new HoroshopClient('shop.example.com', {
+    fetchImplementation: async (_url, init) => {
+      const input = JSON.parse(init.body);
+      requests.push(input);
+      const products = Array.from({ length: input.offset === 0 ? 500 : 1 }, (_, index) => ({ id: input.offset + index + 1 }));
+      return new Response(JSON.stringify({ status: 'OK', response: { products, total: 501 } }), {
+        status: 200, headers: { 'content-type': 'application/json' }
+      });
+    },
+    lookupImplementation: async () => [{ address: '93.184.216.34', family: 4 }]
+  });
+
+  const first = await client.exportCatalog('token');
+  assert.equal(first.products.length, 500);
+  assert.equal(first.nextOffset, 500);
+  const second = await client.exportCatalog('token', first.nextOffset);
+  assert.deepEqual(second.products, [{ id: 501 }]);
+  assert.equal(second.nextOffset, null);
+  assert.deepEqual(requests.map(({ offset, limit }) => ({ offset, limit })), [
+    { offset: 0, limit: 500 }, { offset: 500, limit: 500 }
+  ]);
+});
+
 test('Horoshop client preserves a safe API rejection message for diagnostics', async () => {
   const client = new HoroshopClient('shop.example.com', {
     fetchImplementation: async () => new Response(JSON.stringify({
@@ -284,13 +309,14 @@ test('full import streams pages, reconciles missing rows and purges before anoth
     async exportStickers() {
       return stickerCatalogs.get(domain) || [];
     },
-    async exportCatalog(_token, offset) {
+    async exportCatalog(_token, offset, limit) {
+      assert.equal(limit, 500);
       const pages = catalogs.get(domain);
       const index = offset === 0 ? 0 : 1;
       const products = pages[index] || [];
       return {
         products,
-        nextOffset: index + 1 < pages.length ? 200 : null,
+        nextOffset: index + 1 < pages.length ? 500 : null,
         total: pages.reduce((sum, items) => sum + items.length, 0)
       };
     }

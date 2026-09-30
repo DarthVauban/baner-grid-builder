@@ -61,7 +61,10 @@ beforeEach(async () => {
   service.clientFactory = () => ({
     authenticate: async () => 'fixture-token',
     exportStickers: async () => structuredClone(directory),
-    exportCatalog: async () => ({ products: structuredClone(remoteProducts), nextOffset: null }),
+    exportCatalog: async (_token, _offset, limit) => {
+      assert.equal(limit, 500);
+      return { products: structuredClone(remoteProducts), nextOffset: null };
+    },
     importCatalog: async (_token, payloads, options) => {
       imports.push({ payloads: structuredClone(payloads), options });
       if (importMode === 'no-write') return { imported: 0 };

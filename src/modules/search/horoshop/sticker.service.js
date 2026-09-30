@@ -3,7 +3,7 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { AppError } from '../../../lib/app-error.js';
 import { horoshopCatalogService } from './catalog.service.js';
 import { decryptHoroshopCredentials } from './credential-cipher.js';
-import { HoroshopClient } from './horoshop.client.js';
+import { HoroshopClient, horoshopCatalogExportPageSize } from './horoshop.client.js';
 import { normalizeHoroshopStickers } from './catalog.normalizer.js';
 import { HoroshopStickerRepository, arrayValue, countItems } from './sticker.repository.js';
 import { applyStickerChange, assertManualActions, filterStickerProducts, maximumStickerSelection,
@@ -114,7 +114,7 @@ export class HoroshopStickerService {
     for (let page = 0; page < 2000; page += 1) {
       if (offsets.has(offset)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює сторінку каталогу.');
       offsets.add(offset);
-      const result = await client.exportCatalog(token, offset, 200);
+      const result = await client.exportCatalog(token, offset, horoshopCatalogExportPageSize);
       const fingerprint = createHash('sha256').update(JSON.stringify(result.products)).digest('hex');
       if (result.products.length && fingerprints.has(fingerprint)) throw new AppError(502, 'STICKER_EXPORT_INVALID', 'Хорошоп повторює товари в експорті.');
       fingerprints.add(fingerprint);

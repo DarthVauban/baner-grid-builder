@@ -2,7 +2,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { env } from '../../../config/env.js';
 import { AppError } from '../../../lib/app-error.js';
 import { decryptHoroshopCredentials, encryptHoroshopCredentials } from './credential-cipher.js';
-import { HoroshopApiError, HoroshopClient } from './horoshop.client.js';
+import { HoroshopApiError, HoroshopClient, horoshopCatalogExportPageSize } from './horoshop.client.js';
 import {
   normalizeHoroshopCategories,
   normalizeHoroshopProducts,
@@ -11,7 +11,6 @@ import {
 import { HoroshopCatalogRepository } from './catalog.repository.js';
 import { removeMediaImage } from '../../media/media.storage.js';
 
-const pageSize = 200;
 const maximumPages = 250;
 const categoryBranchConcurrency = 4;
 const maximumCategoryRoots = 1_000;
@@ -274,7 +273,7 @@ export class HoroshopCatalogService {
         this.assertNotAborted(signal);
         if (visitedOffsets.has(offset)) throw new Error('Horoshop pagination repeated an offset');
         visitedOffsets.add(offset);
-        const page = await client.exportCatalog(token, offset, pageSize);
+        const page = await client.exportCatalog(token, offset, horoshopCatalogExportPageSize);
         exportItemsReceived += page.products.length;
         if (Number.isInteger(page.total) && page.total >= 0) exportItemsTotal = page.total;
         const pageFingerprint = createHash('sha256').update(JSON.stringify(page.products)).digest('hex');
