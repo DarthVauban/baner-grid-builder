@@ -870,7 +870,7 @@ export function PopupBannersPage() {
   }, [campaignFilter, campaignSearch, campaigns.data]);
 
   useEffect(() => {
-    if (selectedId || isCreating || !campaigns.data) return;
+    if (selectedId || isCreating || tab === 'library' || !campaigns.data) return;
     const campaign = campaigns.data[0];
     if (!campaign) {
       setIsCreating(true);
@@ -883,7 +883,7 @@ export function PopupBannersPage() {
     setExcludedProductText((campaign.excludedProductTargets || []).map((item) => item.sku).join('\n'));
     setPromoProducts(campaign.promoProducts);
     setSelectedPromoCode(campaign.promoCode);
-  }, [campaigns.data, isCreating, selectedId]);
+  }, [campaigns.data, isCreating, selectedId, tab]);
 
   const promoCatalogOffers = useMemo(() => (promoCatalog.data?.items || []).flatMap((product) => {
     const modifications = product.modifications.filter((item) => item.active && item.visible);
@@ -1176,7 +1176,17 @@ export function PopupBannersPage() {
     try {
       await removeCampaign.mutateAsync(selectedId);
       await queryClient.invalidateQueries({ queryKey: ['popup-campaigns'] });
-      createNew();
+      setSelectedId('');
+      setIsCreating(false);
+      setChoosingType(false);
+      setDraft(emptyCampaign());
+      setProductText('');
+      setExcludedProductText('');
+      setPromoProducts([]);
+      setSelectedPromoCode(null);
+      setCampaignSearch('');
+      setCampaignFilter('all');
+      setTab('library');
       showToast('Кампанію видалено.', 'success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося видалити кампанію.', 'error');
@@ -1270,7 +1280,9 @@ export function PopupBannersPage() {
 
     <div className="popup-banners-workspace">
       <main className="popup-editor">
-        {choosingType ? <CampaignTypePicker onSelect={beginCampaign} /> : <>
+        {tab === 'library' && !selectedId && !isCreating
+          ? <div className="popup-editor__body is-library">{campaignLibrary}</div>
+          : choosingType ? <CampaignTypePicker onSelect={beginCampaign} /> : <>
         <header className="popup-editor__header">
           <div className="popup-editor__identity">
             <div><span className={`popup-status is-${selectedCampaign?.status || 'draft'}`}><i />{isCreating ? 'Нова кампанія' : statusLabels[selectedCampaign?.status || 'draft']}</span>{isDirty && <small className="popup-unsaved"><i /> Є незбережені зміни</small>}</div>

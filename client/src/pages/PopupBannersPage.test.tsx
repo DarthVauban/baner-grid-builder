@@ -332,6 +332,42 @@ describe('PopupBannersPage', () => {
     expect(screen.getByText('Нічого не знайдено')).toBeInTheDocument();
   });
 
+  it('returns to the campaign library after deleting a campaign', async () => {
+    vi.spyOn(api.popupBanners, 'remove').mockImplementation(async (id) => {
+      vi.mocked(api.popupBanners.list).mockResolvedValue([baseCampaign, secondCampaign].filter((campaign) => campaign.id !== id));
+    });
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Видалити кампанію' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Видалити' }));
+
+    await waitFor(() => expect(vi.mocked(api.popupBanners.remove).mock.calls[0]?.[0]).toBe(baseCampaign.id));
+    expect(await screen.findByText('БІБЛІОТЕКА')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Умови доставки великої техніки/u })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Попередження про вживаний товар/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Оберіть тип банера' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Умови доставки великої техніки/u }));
+    expect(screen.getByDisplayValue(secondCampaign.name)).toBeInTheDocument();
+  });
+
+  it('shows an empty library after deleting the last campaign', async () => {
+    vi.mocked(api.popupBanners.list).mockResolvedValue([baseCampaign]);
+    vi.spyOn(api.popupBanners, 'remove').mockImplementation(async () => {
+      vi.mocked(api.popupBanners.list).mockResolvedValue([]);
+    });
+    renderPage();
+    await screen.findByDisplayValue(baseCampaign.name);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Видалити кампанію' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Видалити' }));
+
+    expect(await screen.findByText('Кампаній ще немає')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Оберіть тип банера' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Видалити кампанію' })).not.toBeInTheDocument();
+  });
+
   it('navigates to targeting and exposes the branded rule controls', async () => {
     renderPage();
     await screen.findByDisplayValue(baseCampaign.name);
