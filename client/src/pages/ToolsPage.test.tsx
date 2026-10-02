@@ -117,7 +117,7 @@ describe('ToolsPage catalog', () => {
     expect(tile).toHaveAttribute('href', '/tools/horoshop-related-products');
   });
 
-  it('shows the popup banner constructor as a separate tool tile', async () => {
+  it('links to a dedicated Horoshop widget section', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
       tools: [{
         toolId: 'popup_banners',
@@ -131,12 +131,12 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Віджети для Хорошопа');
-    const tile = await screen.findByRole('link', { name: /Попап-банери/ });
-    expect(tile).toHaveAttribute('href', '/tools/popup-banners');
+    const entry = await screen.findByRole('link', { name: /Віджети для Хорошопа/ });
+    expect(entry).toHaveAttribute('href', '/tools/horoshop-widgets');
+    expect(screen.queryByRole('link', { name: /Попап-банери/ })).not.toBeInTheDocument();
   });
 
-  it('shows forms and storefront buttons as separate tool tiles', async () => {
+  it('keeps forms in workspace tools and sends storefront buttons to widgets', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
       tools: [{
         toolId: 'form_builder',
@@ -153,85 +153,8 @@ describe('ToolsPage catalog', () => {
     await expandCategory('Інструменти робочого простору');
     const tile = await screen.findByRole('link', { name: /Конструктор форм/u });
     expect(tile).toHaveAttribute('href', '/tools/forms');
-    await expandCategory('Віджети для Хорошопа');
-    const buttonsTile = await screen.findByRole('link', { name: /Кнопки форм/u });
-    expect(buttonsTile).toHaveAttribute('href', '/tools/form-buttons');
-  });
-
-  it('shows the Horoshop catalog menu visual tool as a separate tile', async () => {
-    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
-      tools: [{
-        toolId: 'horoshop_catalog_menu',
-        granted: true,
-        accessible: true,
-        blockedByTwoFactor: false,
-        requiresTwoFactor: false
-      }],
-      twoFactorEnabled: true
-    });
-
-    renderPage();
-
-    await expandCategory('Віджети для Хорошопа');
-    const tile = await screen.findByRole('link', { name: /Меню каталогу Хорошоп/u });
-    expect(tile).toHaveAttribute('href', '/tools/horoshop-catalog-menu');
-  });
-
-  it('shows the Horoshop cart appearance tool as a separate tile', async () => {
-    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
-      tools: [{
-        toolId: 'horoshop_cart_theme',
-        granted: true,
-        accessible: true,
-        blockedByTwoFactor: false,
-        requiresTwoFactor: false
-      }],
-      twoFactorEnabled: true
-    });
-
-    renderPage();
-
-    await expandCategory('Віджети для Хорошопа');
-    const tile = await screen.findByRole('link', { name: /Кошик Хорошоп/u });
-    expect(tile).toHaveAttribute('href', '/tools/horoshop-cart-theme');
-  });
-
-  it('shows the Horoshop title label constructor as a separate tile', async () => {
-    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
-      tools: [{
-        toolId: 'horoshop_title_labels',
-        granted: true,
-        accessible: true,
-        blockedByTwoFactor: false,
-        requiresTwoFactor: false
-      }],
-      twoFactorEnabled: true
-    });
-
-    renderPage();
-
-    await expandCategory('Віджети для Хорошопа');
-    const tile = await screen.findByRole('link', { name: /Лейбли товарів/u });
-    expect(tile).toHaveAttribute('href', '/tools/horoshop-title-labels');
-  });
-
-  it('shows the checkout Telegram block as a separate Horoshop tile', async () => {
-    vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
-      tools: [{
-        toolId: 'horoshop_checkout_telegram',
-        granted: true,
-        accessible: true,
-        blockedByTwoFactor: false,
-        requiresTwoFactor: false
-      }],
-      twoFactorEnabled: true
-    });
-
-    renderPage();
-
-    await expandCategory('Віджети для Хорошопа');
-    const tile = await screen.findByRole('link', { name: /Telegram після замовлення/u });
-    expect(tile).toHaveAttribute('href', '/tools/horoshop-checkout-telegram');
+    expect(await screen.findByRole('link', { name: /Віджети для Хорошопа/ })).toHaveAttribute('href', '/tools/horoshop-widgets');
+    expect(screen.queryByRole('link', { name: /Кнопки форм/u })).not.toBeInTheDocument();
   });
 
   it('groups the product selection builder under Horoshop tools', async () => {
@@ -254,7 +177,7 @@ describe('ToolsPage catalog', () => {
     expect(screen.queryByText('Інструменти робочого простору')).not.toBeInTheDocument();
   });
 
-  it('groups available tools into compact collapsed categories', async () => {
+  it('keeps workspace and API categories separate from the widget section', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
       tools: [
         { toolId: 'popup_banners', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false },
@@ -269,12 +192,9 @@ describe('ToolsPage catalog', () => {
     renderPage();
 
     expect(await screen.findByText('Керування Хорошопом через API')).toBeInTheDocument();
-    const widgetCategory = screen.getByText('Віджети для Хорошопа').closest('details');
-    expect(widgetCategory).not.toHaveAttribute('open');
+    const widgetEntry = screen.getByRole('link', { name: /Віджети для Хорошопа/ });
+    expect(widgetEntry).toHaveAttribute('href', '/tools/horoshop-widgets');
     expect(screen.getByText('Інструменти робочого простору')).toBeInTheDocument();
-
-    await expandCategory('Віджети для Хорошопа');
-    expect(widgetCategory).toHaveAttribute('open');
-    expect(await screen.findByRole('link', { name: /Онлайн-підтримка/ })).toHaveAttribute('href', '/tools/online-support');
+    expect(screen.queryByRole('link', { name: /Онлайн-підтримка/ })).not.toBeInTheDocument();
   });
 });

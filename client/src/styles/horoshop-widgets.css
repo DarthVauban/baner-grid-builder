@@ -1,0 +1,35 @@
+.horoshop-widgets-page { display: grid; gap: 22px; min-width: 0; }
+.horoshop-widgets-page__heading { margin-bottom: 0; }
+.horoshop-widgets-page__back { width: fit-content; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 16px; color: var(--muted); font-size: 12px; font-weight: 750; text-decoration: none; }
+.horoshop-widgets-page__back:hover { color: var(--brand); }
+.horoshop-widgets-setup { display: grid; gap: 18px; padding: 24px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); }
+.horoshop-widgets-setup__heading { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.horoshop-widgets-setup__icon { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 15px; color: var(--brand); background: var(--brand-soft); }
+.horoshop-widgets-setup__heading h2, .horoshop-widgets-list__heading h2 { margin: 2px 0 4px; color: var(--ink); font-size: 21px; }
+.horoshop-widgets-setup__heading p, .horoshop-widgets-list__heading p { margin: 0; }
+.horoshop-widgets-setup__heading > div > p:last-child { color: var(--muted); font-size: 12px; }
+.horoshop-widgets-setup__code { overflow: auto; margin: 0; border: 1px solid #28344c; border-radius: 14px; padding: 17px 19px; color: #eff4ff; background: #111b2d; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.horoshop-widgets-setup__steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.horoshop-widgets-setup__steps p { display: flex; align-items: flex-start; gap: 9px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.horoshop-widgets-setup__steps strong { flex: 0 0 22px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; color: var(--brand); background: var(--brand-soft); font-size: 11px; }
+.horoshop-widgets-setup__note { margin: 0; border-top: 1px solid var(--line); padding-top: 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.horoshop-widgets-list { display: grid; gap: 14px; }
+.horoshop-widgets-list__heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
+.horoshop-widgets-list__heading > span { border-radius: 999px; padding: 7px 11px; color: var(--brand); background: var(--brand-soft); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.horoshop-widgets-list__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.horoshop-widget-card { min-height: 116px; display: grid; grid-template-columns: 44px minmax(0, 1fr) 28px; align-items: start; gap: 12px; border: 1px solid var(--line); border-radius: 16px; padding: 18px; color: var(--ink); background: var(--surface); text-decoration: none; box-shadow: 0 5px 18px rgba(22,30,50,.03); }
+.horoshop-widget-card:hover { border-color: var(--brand); transform: translateY(-2px); box-shadow: var(--shadow); }
+.horoshop-widget-card__icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; color: var(--brand); background: var(--brand-soft); }
+.horoshop-widget-card__content { min-width: 0; display: grid; gap: 7px; }
+.horoshop-widget-card__content strong { font-size: 14px; }
+.horoshop-widget-card__content small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.horoshop-widget-card__arrow { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); background: var(--surface-soft); }
+.horoshop-widget-card--disabled { opacity: .72; cursor: not-allowed; }
+.horoshop-widget-card--disabled:hover { border-color: var(--line); transform: none; box-shadow: 0 5px 18px rgba(22,30,50,.03); }
+@media (max-width: 760px) {
+  .horoshop-widgets-setup { padding: 18px; }
+  .horoshop-widgets-setup__heading { grid-template-columns: 42px minmax(0, 1fr); }
+  .horoshop-widgets-setup__icon { width: 42px; height: 42px; }
+  .horoshop-widgets-setup__heading .button { grid-column: 1 / -1; justify-content: center; }
+  .horoshop-widgets-setup__steps { grid-template-columns: 1fr; }
+}

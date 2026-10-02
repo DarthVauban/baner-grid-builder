@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
-import { toolCategories, tools, workspaceSections } from '../lib/tools';
+import { horoshopWidgetTools, toolCategories, tools, workspaceSections } from '../lib/tools';
 
 export function ToolsPage() {
   const queryClient = useQueryClient();
@@ -45,11 +45,13 @@ export function ToolsPage() {
     .filter((tool) => tool.showInTools !== false)
     .filter((tool) => accessByTool.get(tool.accessToolId)?.granted);
   const visibleCategories = toolCategories
+    .filter((category) => category.id !== 'horoshop_widgets')
     .map((category) => ({
       ...category,
       tools: visibleTools.filter((tool) => tool.category === category.id)
     }))
     .filter((category) => category.tools.length > 0);
+  const visibleWidgets = horoshopWidgetTools.filter((widget) => accessByTool.get(widget.accessToolId)?.granted);
 
   return (
     <div className="tools-page">
@@ -65,6 +67,11 @@ export function ToolsPage() {
 
       {visibleTools.length > 0 && (
         <section className="tools-catalog" aria-label="Доступні інструменти">
+          {visibleWidgets.length > 0 && <Link className="tool-category tool-category--link" to="/tools/horoshop-widgets">
+            <span className="tool-category__icon"><Icon name="storefront" size={21} /></span>
+            <span className="tool-category__copy"><strong>Віджети для Хорошопа</strong><small>Спільний код встановлення та налаштування віджетів · {visibleWidgets.length}</small></span>
+            <span className="tool-category__arrow" aria-hidden="true"><Icon name="arrow" size={18} /></span>
+          </Link>}
           {visibleCategories.map((category) => (
             <details className="tool-category" key={category.id}>
               <summary className="tool-category__summary">

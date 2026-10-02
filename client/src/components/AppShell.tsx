@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
+import { horoshopWidgetTools } from '../lib/tools';
 import { showSupportDesktopNotification } from '../lib/support-desktop-notifications';
 import { roleLabels } from '../lib/user';
 import { Icon } from './Icon';
@@ -38,6 +39,9 @@ export function AppShell() {
   const hasTradeInAccess = toolAccess.data?.includes('trade_in') === true;
   const hasStoreMapAccess = toolAccess.data?.includes('store_map') === true;
   const hasOnlineSupportAccess = toolAccess.data?.includes('online_support') === true;
+  const hasHoroshopWidgetsAccess = horoshopWidgetTools.some((widget) => toolAccess.data?.includes(widget.accessToolId));
+  const isWidgetEditor = horoshopWidgetTools.some((widget) => widget.id !== 'product_promo' && location.pathname.startsWith(widget.path));
+  const isWidgetSection = location.pathname === '/tools/horoshop-widgets' || (isWidgetEditor && location.pathname !== '/tools/online-support');
   const hasAnalyticsAccess = toolAccess.data?.includes('product_selection') === true
     || toolAccess.data?.includes('popup_banners') === true;
   const chatUnread = useQuery({
@@ -289,13 +293,13 @@ export function AppShell() {
           </>}
 
           <p className="sidebar__label sidebar__label--spaced">Інструменти</p>
-          <NavLink aria-label="Інструменти" title="Інструменти" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools" onClick={closeSidebar}>
+          <NavLink aria-label="Інструменти" title="Інструменти" className={({ isActive }) => `sidebar__link${isActive && !isWidgetSection ? ' sidebar__link--active' : ''}`} to="/tools" onClick={closeSidebar}>
             <Icon name="tools" size={18} />
             <span>Інструменти</span>
           </NavLink>
-          {hasFormsAccess && <NavLink aria-label="Кнопки форм" title="Кнопки форм" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/tools/form-buttons" onClick={closeSidebar}>
-            <Icon name="productPage" size={18} />
-            <span>Кнопки форм</span>
+          {hasHoroshopWidgetsAccess && <NavLink aria-label="Віджети Хорошопа" title="Віджети Хорошопа" className={() => `sidebar__link${isWidgetSection ? ' sidebar__link--active' : ''}`} to="/tools/horoshop-widgets" onClick={closeSidebar}>
+            <Icon name="storefront" size={18} />
+            <span>Віджети Хорошопа</span>
           </NavLink>}
           {hasCatalogAccess && <NavLink aria-label="Каталог смартфонів" title="Каталог смартфонів" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`} to="/catalog/products" onClick={closeSidebar}>
             <Icon name="catalog" size={18} />
@@ -332,7 +336,7 @@ export function AppShell() {
           <button className="icon-button topbar__menu" type="button" onClick={() => setSidebarOpen(true)} aria-label="Відкрити меню">
             <Icon name="menu" />
           </button>
-          {isWorkspaceToolPath(location.pathname) && <ToolBackButton className="topbar__back" />}
+          {isWorkspaceToolPath(location.pathname) && <ToolBackButton className="topbar__back" fallbackPath={isWidgetEditor ? '/tools/horoshop-widgets' : '/tools'} />}
           <div className="topbar__spacer" />
           <button className="icon-button topbar__theme" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? 'Увімкнути фірмову темну тему' : 'Увімкнути світлу тему'} title={theme === 'light' ? 'Фірмова темна тема' : 'Світла тема'}>
             <Icon name={theme === 'light' ? 'darkMode' : 'lightMode'} />

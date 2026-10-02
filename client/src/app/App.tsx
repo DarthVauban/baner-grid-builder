@@ -19,6 +19,7 @@ import { ToolAccessRoute } from '../components/ToolAccessRoute';
 import { BlogPublicationsPage } from '../pages/BlogPublicationsPage';
 
 const HoroshopStickersPage = lazy(() => import('../pages/HoroshopStickersPage').then((module) => ({ default: module.HoroshopStickersPage })));
+const HoroshopWidgetsPage = lazy(() => import('../pages/HoroshopWidgetsPage').then((module) => ({ default: module.HoroshopWidgetsPage })));
 
 const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({
   default: module.ChatPage
@@ -211,6 +212,7 @@ export function App() {
           <Route path="analytics" element={<Suspense fallback={<LoadingScreen />}><AnalyticsPage /></Suspense>} />
           <Route path="analytics/:tool" element={<Suspense fallback={<LoadingScreen />}><AnalyticsPage /></Suspense>} />
           <Route path="tools" element={<ToolsPage />} />
+          <Route path="tools/horoshop-widgets" element={<Suspense fallback={<LoadingScreen />}><HoroshopWidgetsPage /></Suspense>} />
           <Route path="tools/chat" element={<Navigate to="/chat" replace />} />
           <Route element={<ToolAccessRoute tool="banner_grid" />}>
             <Route path="tools/banner-grid" element={<BannerBuilderPage />} />

@@ -225,3 +225,39 @@ export const workspaceSections: WorkspaceSectionDefinition[] = [
     category: 'workspace'
   }
 ];
+
+export interface HoroshopWidgetDefinition {
+  id: string;
+  accessToolId: ToolId;
+  name: string;
+  description: string;
+  path: string;
+  icon: IconName;
+}
+
+export const horoshopWidgetTools: HoroshopWidgetDefinition[] = [
+  ...tools.filter((tool) => tool.category === 'horoshop_widgets').map((tool) => ({
+    id: tool.id,
+    accessToolId: tool.id,
+    name: tool.name,
+    description: tool.description,
+    path: tool.path,
+    icon: tool.icon
+  })),
+  ...workspaceSections.filter((tool) => tool.category === 'horoshop_widgets').map((tool) => ({
+    id: tool.id,
+    accessToolId: tool.accessToolId,
+    name: tool.name,
+    description: tool.description,
+    path: tool.path,
+    icon: tool.icon
+  })),
+  {
+    id: 'product_promo',
+    accessToolId: 'product_selection',
+    name: 'Промооформлення добірок',
+    description: 'Глобальний модуль запускається за mt_promo. Код товарної добірки додається окремо на потрібну сторінку.',
+    path: '/tools/product-selection',
+    icon: 'productSelection'
+  }
+];
