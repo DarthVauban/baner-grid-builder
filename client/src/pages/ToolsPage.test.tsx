@@ -50,13 +50,13 @@ describe('ToolsPage loading recovery', () => {
 });
 
 describe('ToolsPage catalog', () => {
-  it('shows bulk sticker management in the Horoshop tools category', async () => {
+  it('shows bulk sticker management in the Horoshop API category', async () => {
     vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({ tools: [{ toolId: 'horoshop_stickers', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false }], twoFactorEnabled: true });
     renderPage();
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Керування Хорошопом через API');
     const tile = await screen.findByRole('link', { name: /Стікери Хорошоп/u });
     expect(tile).toHaveAttribute('href', '/tools/horoshop-stickers');
-    expect(tile.closest('details')).toHaveTextContent('Інструменти Хорошоп');
+    expect(tile.closest('details')).toHaveTextContent('Керування Хорошопом через API');
   });
   it('keeps cached tools visible while a slow background refresh is pending', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -74,7 +74,7 @@ describe('ToolsPage catalog', () => {
 
     renderPage(client);
 
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Керування Хорошопом через API');
     expect(await screen.findByRole('link', { name: /Фото товарів Хорошоп/ })).toBeInTheDocument();
     expect(screen.queryByText('Завантажуємо інструменти…')).not.toBeInTheDocument();
   });
@@ -93,7 +93,7 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Маркетингові інструменти');
+    await expandCategory('Інструменти робочого простору');
     const tile = await screen.findByRole('link', { name: /Публікації у міські Facebook-групи/ });
     expect(tile).toHaveAttribute('href', '/tools/facebook-publications');
   });
@@ -112,7 +112,7 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Керування Хорошопом через API');
     const tile = await screen.findByRole('link', { name: /Супутні товари Хорошоп/ });
     expect(tile).toHaveAttribute('href', '/tools/horoshop-related-products');
   });
@@ -131,7 +131,7 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Маркетингові інструменти');
+    await expandCategory('Віджети для Хорошопа');
     const tile = await screen.findByRole('link', { name: /Попап-банери/ });
     expect(tile).toHaveAttribute('href', '/tools/popup-banners');
   });
@@ -150,10 +150,10 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Функціональні інструменти');
+    await expandCategory('Інструменти робочого простору');
     const tile = await screen.findByRole('link', { name: /Конструктор форм/u });
     expect(tile).toHaveAttribute('href', '/tools/forms');
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Віджети для Хорошопа');
     const buttonsTile = await screen.findByRole('link', { name: /Кнопки форм/u });
     expect(buttonsTile).toHaveAttribute('href', '/tools/form-buttons');
   });
@@ -172,7 +172,7 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Віджети для Хорошопа');
     const tile = await screen.findByRole('link', { name: /Меню каталогу Хорошоп/u });
     expect(tile).toHaveAttribute('href', '/tools/horoshop-catalog-menu');
   });
@@ -191,7 +191,7 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Віджети для Хорошопа');
     const tile = await screen.findByRole('link', { name: /Кошик Хорошоп/u });
     expect(tile).toHaveAttribute('href', '/tools/horoshop-cart-theme');
   });
@@ -210,7 +210,7 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Віджети для Хорошопа');
     const tile = await screen.findByRole('link', { name: /Лейбли товарів/u });
     expect(tile).toHaveAttribute('href', '/tools/horoshop-title-labels');
   });
@@ -229,7 +229,7 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Віджети для Хорошопа');
     const tile = await screen.findByRole('link', { name: /Telegram після замовлення/u });
     expect(tile).toHaveAttribute('href', '/tools/horoshop-checkout-telegram');
   });
@@ -248,10 +248,10 @@ describe('ToolsPage catalog', () => {
 
     renderPage();
 
-    await expandCategory('Інструменти Хорошоп');
+    await expandCategory('Керування Хорошопом через API');
     const tile = await screen.findByRole('link', { name: /Вибірка товарів/u });
     expect(tile).toHaveAttribute('href', '/tools/product-selection');
-    expect(screen.queryByText('Маркетингові інструменти')).not.toBeInTheDocument();
+    expect(screen.queryByText('Інструменти робочого простору')).not.toBeInTheDocument();
   });
 
   it('groups available tools into compact collapsed categories', async () => {
@@ -259,20 +259,22 @@ describe('ToolsPage catalog', () => {
       tools: [
         { toolId: 'popup_banners', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false },
         { toolId: 'online_support', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false },
-        { toolId: 'horoshop_cart_theme', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false }
+        { toolId: 'horoshop_cart_theme', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false },
+        { toolId: 'blog_publications', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false },
+        { toolId: 'horoshop_stickers', granted: true, accessible: true, blockedByTwoFactor: false, requiresTwoFactor: false }
       ],
       twoFactorEnabled: true
     });
 
     renderPage();
 
-    expect(await screen.findByText('Маркетингові інструменти')).toBeInTheDocument();
-    const functionalCategory = screen.getByText('Функціональні інструменти').closest('details');
-    expect(functionalCategory).not.toHaveAttribute('open');
-    expect(screen.getByText('Інструменти Хорошоп')).toBeInTheDocument();
+    expect(await screen.findByText('Керування Хорошопом через API')).toBeInTheDocument();
+    const widgetCategory = screen.getByText('Віджети для Хорошопа').closest('details');
+    expect(widgetCategory).not.toHaveAttribute('open');
+    expect(screen.getByText('Інструменти робочого простору')).toBeInTheDocument();
 
-    await expandCategory('Функціональні інструменти');
-    expect(functionalCategory).toHaveAttribute('open');
+    await expandCategory('Віджети для Хорошопа');
+    expect(widgetCategory).toHaveAttribute('open');
     expect(await screen.findByRole('link', { name: /Онлайн-підтримка/ })).toHaveAttribute('href', '/tools/online-support');
   });
 });

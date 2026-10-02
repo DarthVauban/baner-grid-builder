@@ -94,7 +94,7 @@ test('constructor publishes ordered sticker rules and a current catalog URL map'
   const initial = await admin.get('/api/horoshop-title-labels/settings').expect(200);
   assert.equal(initial.body.data.enabled, false);
   assert.equal(initial.body.data.storeDomain, 'shop.example.com');
-  assert.match(initial.body.data.embedCode, /<script async src=".*horoshop-title-labels\/embed\.js\?site=/u);
+  assert.match(initial.body.data.embedCode, /<script async src=".*horoshop-widgets\/embed\.js"/u);
   assert.deepEqual(initial.body.data.stickerOptions.map((item) => item.title), ['Акція', 'Вживаний', 'Новинка']);
   assert.equal(initial.body.data.stickerOptions.find((item) => item.key === 'id:sale').productCount, 2);
   assert.equal(initial.body.data.stickerOptions.find((item) => item.key === 'id:new').productCount, 0);

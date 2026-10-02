@@ -16,7 +16,7 @@ const response: HoroshopCartThemeSettingsEnvelope = {
     storeDomain: 'mobiletrend.com.ua',
     updatedAt: '2026-08-28T08:00:00.000Z',
     publishedAt: '2026-08-28T08:00:00.000Z',
-    embedCode: '<script async src="https://workspace.example.com/api/public/horoshop-cart-theme/embed.js?site=71ca5c29-5a72-4af8-b5d7-4020e6ec1215"></script>'
+    embedCode: '<script async src="https://workspace.example.com/api/public/horoshop-widgets/embed.js"></script>'
   },
   themes: [
     { id: 'balanced-upsell', name: 'Збалансований допродаж', description: 'Широкий кошик і чотири картки.', recommended: true },

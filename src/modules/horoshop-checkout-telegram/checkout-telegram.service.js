@@ -2,6 +2,7 @@ import QRCode from 'qrcode';
 import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { checkoutTelegramEmbedScript } from './checkout-telegram.embed.js';
+import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
 
 export const horoshopCheckoutTelegramToolId = 'horoshop_checkout_telegram';
 
@@ -109,8 +110,8 @@ async function loadSettingsRow() {
   return result.rows[0];
 }
 
-function embedCode(origin, publicId) {
-  return `<script async src="${origin}/api/public/horoshop-checkout-telegram/embed.js?site=${encodeURIComponent(publicId)}"></script>`;
+function embedCode(origin) {
+  return horoshopWidgetEmbedCode(origin);
 }
 
 function serializeSettings(row, origin = '') {
@@ -123,7 +124,7 @@ function serializeSettings(row, origin = '') {
     storeDomain: row.store_domain || '',
     updatedAt: row.updated_at,
     publishedAt: row.published_at || null,
-    embedCode: origin ? embedCode(origin, row.public_id) : ''
+    embedCode: origin ? embedCode(origin) : ''
   };
 }
 

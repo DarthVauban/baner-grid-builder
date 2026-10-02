@@ -200,7 +200,7 @@ export function HoroshopCatalogMenuPage() {
 
     <div className="catalog-menu-tool-bottom-grid">
       <section className="catalog-menu-tool-section catalog-menu-install-card">
-        <header><div><p className="eyebrow">Встановлення</p><h2>Один код для всіх тем</h2><p>Додайте код у Хорошоп один раз перед <code>&lt;/body&gt;</code>. Наступні публікації не потребують заміни коду.</p></div></header>
+        <header><div><p className="eyebrow">Встановлення</p><h2>Спільний код віджетів</h2><p>Додайте код у глобальний шаблон Хорошопа перед <code>&lt;/body&gt;</code>. Він підключає всі опубліковані віджети; зміна теми меню не потребує заміни коду.</p></div></header>
         <pre>{settings.embedCode}</pre>
         <button className="button button--secondary" type="button" onClick={() => void copyEmbedCode()}><Icon name="copy" size={16} /> Копіювати код</button>
       </section>

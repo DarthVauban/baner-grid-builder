@@ -84,7 +84,7 @@ test('catalog menu settings publish a selected visual without exposing catalog d
     initial.body.data.themes.map((theme) => theme.id),
     ['compact-columns', 'flat-directory', 'grouped-sections']
   );
-  assert.match(initial.body.data.settings.embedCode, /horoshop-catalog-menu\/embed\.js\?site=/u);
+  assert.match(initial.body.data.settings.embedCode, /horoshop-widgets\/embed\.js/u);
 
   const publicId = initial.body.data.settings.publicId;
   const disabledScript = await request(app)

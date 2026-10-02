@@ -213,7 +213,7 @@ export function ProductSelectionPage() {
   const publicId = creating ? '' : selected.data?.publicId || '';
   const workspaceOrigin = typeof window === 'undefined' ? '' : window.location.origin;
   const pageCode = publicId ? `<script async src="${workspaceOrigin}/api/public/product-selections/${publicId}/embed.js"></script>` : '';
-  const globalCode = `<script async data-mt-product-promo-loader src="${workspaceOrigin}/api/public/product-selections/promo-loader.js"></script>`;
+  const globalCode = `<script async src="${workspaceOrigin}/api/public/horoshop-widgets/embed.js"></script>`;
 
   async function copy(value: string, message: string) {
     if (!value) return;
@@ -326,13 +326,13 @@ export function ProductSelectionPage() {
           </section>}
 
           {tab === 'install' && <div className="product-selection-install">
-            <div className="product-selection-install__intro"><span><Icon name={publicId ? 'check' : 'save'} size={22} /></span><div><strong>{publicId ? 'Вибірка готова до встановлення' : 'Спочатку збережіть вибірку'}</strong><p>{publicId ? 'Скопіюйте код сторінки та переконайтеся, що глобальний loader встановлено в обох шаблонах Хорошопа.' : 'Після збереження тут з’явиться персональний async-код цієї вибірки.'}</p></div></div>
+            <div className="product-selection-install__intro"><span><Icon name={publicId ? 'check' : 'save'} size={22} /></span><div><strong>{publicId ? 'Вибірка готова до встановлення' : 'Спочатку збережіть вибірку'}</strong><p>{publicId ? 'Скопіюйте код сторінки та переконайтеся, що спільний код віджетів встановлено в обох шаблонах Хорошопа.' : 'Після збереження тут з’явиться персональний async-код цієї вибірки.'}</p></div></div>
             <section className="product-selection-section product-selection-code">
               <header><span><Icon name="copy" size={18} /></span><div><h2>1. Код сторінки</h2><p>Вставте у режим «Джерело» потрібної новини або статті Хорошопа.</p></div><button className="button button--secondary button--small" type="button" disabled={!pageCode} onClick={() => void copy(pageCode, 'Код вибірки скопійовано.')}><Icon name="copy" size={16} /> Копіювати</button></header>
               <textarea value={pageCode || 'Код буде доступний після збереження вибірки.'} readOnly spellCheck={false} />
             </section>
             <section className="product-selection-section product-selection-code">
-              <header><span><Icon name="copy" size={18} /></span><div><h2>2. Глобальний promo loader</h2><p>Встановіть один раз окремо у desktop- і mobile-шаблон. Без <code>mt_promo</code> loader нічого не змінює.</p></div><button className="button button--secondary button--small" type="button" onClick={() => void copy(globalCode, 'Глобальний promo loader скопійовано.')}><Icon name="copy" size={16} /> Копіювати</button></header>
+              <header><span><Icon name="copy" size={18} /></span><div><h2>2. Спільний код віджетів</h2><p>Встановіть один раз у desktop- і mobile-шаблон Хорошопа. Промозавантажувач запускається лише за наявності <code>mt_promo</code>.</p></div><button className="button button--secondary button--small" type="button" onClick={() => void copy(globalCode, 'Спільний код віджетів скопійовано.')}><Icon name="copy" size={16} /> Копіювати</button></header>
               <textarea value={globalCode} readOnly spellCheck={false} />
             </section>
           </div>}

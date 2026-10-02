@@ -49,7 +49,7 @@ describe('ProductSelectionPage editor layout', () => {
     fireEvent.click(screen.getByRole('button', { name: /Встановлення/u }));
     expect(await screen.findByText('Спочатку збережіть вибірку')).toBeInTheDocument();
     expect(screen.getByText('1. Код сторінки')).toBeInTheDocument();
-    expect(screen.getByText('2. Глобальний promo loader')).toBeInTheDocument();
+    expect(screen.getByText('2. Спільний код віджетів')).toBeInTheDocument();
   });
 
   it('allows an out-of-stock product to be added and marks it unavailable in preview', async () => {

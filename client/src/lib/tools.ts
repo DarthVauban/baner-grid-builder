@@ -1,7 +1,7 @@
 import type { IconName } from '../components/Icon';
 import type { ToolId } from '../types/tool';
 
-export type ToolCategory = 'marketing' | 'functional' | 'horoshop';
+export type ToolCategory = 'workspace' | 'horoshop_widgets' | 'horoshop_api';
 
 export interface ToolCategoryDefinition {
   id: ToolCategory;
@@ -27,21 +27,21 @@ export interface WorkspaceSectionDefinition extends Omit<ToolDefinition, 'id'> {
 
 export const toolCategories: ToolCategoryDefinition[] = [
   {
-    id: 'marketing',
-    name: 'Маркетингові інструменти',
-    description: 'Банери, контент і публікації',
-    icon: 'publication'
-  },
-  {
-    id: 'functional',
-    name: 'Функціональні інструменти',
-    description: 'Сервіси для щоденної роботи',
+    id: 'workspace',
+    name: 'Інструменти робочого простору',
+    description: 'Командна робота, контент і локальні інструменти',
     icon: 'tools'
   },
   {
-    id: 'horoshop',
-    name: 'Інструменти Хорошоп',
-    description: 'Налаштування та дані магазину',
+    id: 'horoshop_widgets',
+    name: 'Віджети для Хорошопа',
+    description: 'Функції, що працюють на вітрині магазину',
+    icon: 'storefront'
+  },
+  {
+    id: 'horoshop_api',
+    name: 'Керування Хорошопом через API',
+    description: 'Каталог, товари й операції магазину',
     icon: 'storefront'
   }
 ];
@@ -53,7 +53,7 @@ export const tools: ToolDefinition[] = [
     description: 'Масове додавання та зняття ручних стікерів: вибірки товарів, перегляд змін, історія й повернення операцій.',
     path: '/tools/horoshop-stickers',
     icon: 'productCard',
-    category: 'horoshop'
+    category: 'horoshop_api'
   },
   {
     id: 'horoshop_checkout_telegram',
@@ -61,7 +61,7 @@ export const tools: ToolDefinition[] = [
     description: 'QR-код і кнопка переходу до Telegram-бота на сторінці успішного оформлення замовлення.',
     path: '/tools/horoshop-checkout-telegram',
     icon: 'qrCode',
-    category: 'horoshop'
+    category: 'horoshop_widgets'
   },
   {
     id: 'horoshop_title_labels',
@@ -69,7 +69,7 @@ export const tools: ToolDefinition[] = [
     description: 'Конструктор лейблів у назвах товарів за одним або кількома стікерами: сторінка товару, картки вітрини й кошик.',
     path: '/tools/horoshop-title-labels',
     icon: 'productCard',
-    category: 'horoshop'
+    category: 'horoshop_widgets'
   },
   {
     id: 'horoshop_cart_theme',
@@ -77,7 +77,7 @@ export const tools: ToolDefinition[] = [
     description: 'Широкий кошик із компактним замовленням і великими картками рекомендованих товарів. Окремі теми для десктопа та мобільної версії.',
     path: '/tools/horoshop-cart-theme',
     icon: 'storefront',
-    category: 'horoshop'
+    category: 'horoshop_widgets'
   },
   {
     id: 'horoshop_catalog_menu',
@@ -85,7 +85,7 @@ export const tools: ToolDefinition[] = [
     description: 'Компактне оформлення чинного меню категорій Хорошоп без зміни дерева, посилань та іконок.',
     path: '/tools/horoshop-catalog-menu',
     icon: 'catalog',
-    category: 'horoshop'
+    category: 'horoshop_widgets'
   },
   {
     id: 'popup_banners',
@@ -93,7 +93,7 @@ export const tools: ToolDefinition[] = [
     description: 'Конструктор попапів, точні товарні вибірки, правила за стікерами й каталогом, розклад та статистика показів.',
     path: '/tools/popup-banners',
     icon: 'popup',
-    category: 'marketing'
+    category: 'horoshop_widgets'
   },
   {
     id: 'online_support',
@@ -101,7 +101,7 @@ export const tools: ToolDefinition[] = [
     description: 'Діалоги з покупцями сайту, черга звернень, контакти та налаштування віджета.',
     path: '/tools/online-support',
     icon: 'chat',
-    category: 'functional'
+    category: 'horoshop_widgets'
   },
   {
     id: 'chat',
@@ -109,7 +109,7 @@ export const tools: ToolDefinition[] = [
     description: 'Особисті діалоги з колегами та інтерактивні картки справ і публікацій у повідомленнях.',
     path: '/chat',
     icon: 'chat',
-    category: 'functional'
+    category: 'workspace'
   },
   {
     id: 'blog_publications',
@@ -117,7 +117,7 @@ export const tools: ToolDefinition[] = [
     description: 'Планування статей, передача матеріалів і контроль публікацій команди.',
     path: '/tools/blog-publications',
     icon: 'blogPublications',
-    category: 'marketing'
+    category: 'workspace'
   },
   {
     id: 'applications',
@@ -125,7 +125,7 @@ export const tools: ToolDefinition[] = [
     description: 'Обробка заявок з форм, статуси, коментарі, товарний snapshot і шерінг у чат.',
     path: '/tools/applications',
     icon: 'tasks',
-    category: 'functional',
+    category: 'workspace',
     showInTools: false
   },
   {
@@ -134,7 +134,7 @@ export const tools: ToolDefinition[] = [
     description: 'Прості кастомні форми та покрокові сценарії з окремими редакторами й live preview.',
     path: '/tools/forms',
     icon: 'formBuilder',
-    category: 'functional'
+    category: 'workspace'
   },
   {
     id: 'used_smartphones_catalog',
@@ -142,7 +142,7 @@ export const tools: ToolDefinition[] = [
     description: 'Корпоративний каталог вживаних і відновлених смартфонів із залишками, імпортом, публікацією та заявками з вітрини.',
     path: '/catalog/products',
     icon: 'phone',
-    category: 'functional',
+    category: 'workspace',
     showInTools: false
   },
   {
@@ -151,7 +151,7 @@ export const tools: ToolDefinition[] = [
     description: 'Окремий простір для сценаріїв попередньої оцінки техніки та майбутньої обробки Trade-in заявок.',
     path: '/trade-in/overview',
     icon: 'tradeIn',
-    category: 'functional',
+    category: 'workspace',
     showInTools: false
   },
   {
@@ -160,7 +160,7 @@ export const tools: ToolDefinition[] = [
     description: 'Торгові точки, XLSX-імпорт, кастомна SVG-мітка та віджет карти для сайту.',
     path: '/tools/store-map',
     icon: 'location',
-    category: 'functional'
+    category: 'workspace'
   },
   {
     id: 'facebook_group_publications',
@@ -168,7 +168,7 @@ export const tools: ToolDefinition[] = [
     description: 'Підготовка локалізованих промопостів, ручна черга публікацій та історія роботи з міськими Facebook-групами.',
     path: '/tools/facebook-publications',
     icon: 'publication',
-    category: 'marketing',
+    category: 'workspace',
     showInTools: true
   },
   {
@@ -177,7 +177,7 @@ export const tools: ToolDefinition[] = [
     description: 'Імпортований каталог Хорошоп, дерево модифікацій і підготовка супутніх товарів.',
     path: '/tools/horoshop-related-products',
     icon: 'storefront',
-    category: 'horoshop'
+    category: 'horoshop_api'
   },
   {
     id: 'horoshop_photo_parser',
@@ -185,7 +185,7 @@ export const tools: ToolDefinition[] = [
     description: 'Вибірки за назвами й артикулами, парсинг фотографій, чернетки модифікацій та публікація у Хорошоп.',
     path: '/tools/horoshop-photo-parser',
     icon: 'savedBanners',
-    category: 'horoshop'
+    category: 'horoshop_api'
   },
   {
     id: 'banner_grid',
@@ -193,7 +193,7 @@ export const tools: ToolDefinition[] = [
     description: 'Створення банерних сіток, робота зі збереженими сітками та окремими банерами.',
     path: '/tools/banner-grid',
     icon: 'bannerGrid',
-    category: 'marketing'
+    category: 'workspace'
   },
   {
     id: 'product_selection',
@@ -201,7 +201,7 @@ export const tools: ToolDefinition[] = [
     description: 'Вибірки із синхронізованого каталогу Хорошоп, async-картки, кнопки купівлі та косметична стара ціна на сторінці товару.',
     path: '/tools/product-selection',
     icon: 'productSelection',
-    category: 'horoshop'
+    category: 'horoshop_api'
   }
 ];
 
@@ -213,7 +213,7 @@ export const workspaceSections: WorkspaceSectionDefinition[] = [
     description: 'Кнопки на сторінках товарів Хорошоп: вибір форми, дизайн, розміщення та правила показу за товарами, стікерами або категоріями.',
     path: '/tools/form-buttons',
     icon: 'productPage',
-    category: 'horoshop'
+    category: 'horoshop_widgets'
   },
   {
     id: 'promo_codes',
@@ -222,6 +222,6 @@ export const workspaceSections: WorkspaceSectionDefinition[] = [
     description: 'Бібліотека створених у Хорошоп промокодів, строки дії, статуси та кампанії, у яких вони використовуються.',
     path: '/tools/promo-codes',
     icon: 'copy',
-    category: 'marketing'
+    category: 'workspace'
   }
 ];

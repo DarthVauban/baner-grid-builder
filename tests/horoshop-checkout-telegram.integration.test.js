@@ -59,7 +59,7 @@ test('Telegram checkout settings validate, publish and serve a self-contained QR
   assert.equal(initial.body.data.draftConfig.mobileQrSize, initial.body.data.draftConfig.qrSize);
   assert.equal(initial.body.data.draftConfig.mobileButtonFontSize, initial.body.data.draftConfig.buttonFontSize);
   assert.equal(initial.body.data.storeDomain, 'shop551651.horoshop.ua');
-  assert.match(initial.body.data.embedCode, /horoshop-checkout-telegram\/embed\.js\?site=/u);
+  assert.match(initial.body.data.embedCode, /horoshop-widgets\/embed\.js/u);
 
   const publicId = initial.body.data.publicId;
   const disabled = await request(app)

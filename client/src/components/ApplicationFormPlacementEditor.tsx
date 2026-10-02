@@ -433,7 +433,7 @@ export function ApplicationFormPlacementEditor({ forms }: Props) {
           {!campaigns.isLoading && !campaigns.data?.length && <p>Кнопок ще немає. Створіть першу та прив’яжіть її до форми.</p>}
         </div>
         <div className="form-placement-embed">
-          <span><strong>Єдиний код для магазину</strong><small>Вставте один раз. Цільові товари керуються звідси.</small></span>
+          <span><strong>Спільний код віджетів</strong><small>Встановіть один раз у desktop- і mobile-шаблонах Хорошопа. Цільові товари керуються звідси.</small></span>
           <button className="button button--secondary button--small" type="button" disabled={!embedCode.data?.code} onClick={() => void copyEmbedCode()}><Icon name="copy" size={15} /> Скопіювати</button>
         </div>
       </section>

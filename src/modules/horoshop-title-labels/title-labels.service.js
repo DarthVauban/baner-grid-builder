@@ -1,6 +1,7 @@
 import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { titleLabelsEmbedScript } from './title-labels.embed.js';
+import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
 
 export const horoshopTitleLabelsToolId = 'horoshop_title_labels';
 
@@ -152,8 +153,8 @@ function assignmentsForRules(index, rules) {
     .map(([labelId, paths]) => ({ labelId, paths: paths.sort() }));
 }
 
-function embedCode(origin, publicId) {
-  return `<script async src="${origin}/api/public/horoshop-title-labels/embed.js?site=${encodeURIComponent(publicId)}"></script>`;
+function embedCode(origin) {
+  return horoshopWidgetEmbedCode(origin);
 }
 
 function serializeSettings(row, options, origin = '') {
@@ -167,7 +168,7 @@ function serializeSettings(row, options, origin = '') {
     lastCatalogSyncAt: row.last_sync_at || null,
     updatedAt: row.updated_at,
     publishedAt: row.published_at || null,
-    embedCode: origin ? embedCode(origin, row.public_id) : '',
+    embedCode: origin ? embedCode(origin) : '',
     stickerOptions: options
   };
 }

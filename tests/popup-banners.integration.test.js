@@ -464,7 +464,7 @@ test('sticker rules and the embeddable widget work without exact product targets
   assert.doesNotThrow(() => new Function(script.text));
 
   const code = await admin.get('/api/popup-banners/embed-code').expect(200);
-  assert.match(code.body.data.code, /popup-banners\/embed\.js/u);
+  assert.match(code.body.data.code, /horoshop-widgets\/embed\.js/u);
 });
 
 test('information popup persists exit intent as a display condition', async () => {

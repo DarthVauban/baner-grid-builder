@@ -5,6 +5,7 @@ import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { horoshopCatalogService } from '../search/horoshop/catalog.service.js';
+import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
 import {
   archiveFormCampaign,
   createFormCampaign,
@@ -96,8 +97,7 @@ router.get('/catalog', asyncHandler(async (req, res) => {
 }));
 
 router.get('/embed-code', (req, res) => {
-  const src = `${publicOrigin(req)}/api/public/application-form-campaigns/embed.js`;
-  res.json({ data: { code: `<script async src="${src}"></script>` } });
+  res.json({ data: { code: horoshopWidgetEmbedCode(publicOrigin(req)) } });
 });
 
 router.get('/', asyncHandler(async (req, res) => {

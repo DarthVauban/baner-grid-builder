@@ -118,7 +118,8 @@ function SettingsPanel() {
   if (settings.isLoading || !draft) return <div className="online-support-state">Завантажуємо налаштування…</div>;
   if (settings.isError) return <div className="online-support-state online-support-state--error">Не вдалося завантажити налаштування віджета.</div>;
 
-  const embedCode = `<script src="${window.location.origin}/api/public/support-chat/embed.js" data-site="${settings.data?.publicId || ''}" async></script>`;
+  const horoshopEmbedCode = `<script async src="${window.location.origin}/api/public/horoshop-widgets/embed.js"></script>`;
+  const standaloneEmbedCode = `<script src="${window.location.origin}/api/public/support-chat/embed.js" data-site="${settings.data?.publicId || ''}" async></script>`;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -211,9 +212,10 @@ function SettingsPanel() {
         {desktopPermission === 'unsupported' && <small>Системні сповіщення недоступні у цьому браузері.</small>}
       </section>
       <section className="online-support-card online-support-install">
-        <p className="eyebrow">Встановлення</p><h2>Код для сайту</h2><p>Додайте цей скрипт перед закривальним тегом <code>&lt;/body&gt;</code>.</p>
-        <pre>{embedCode}</pre>
-        <button className="button button--secondary" type="button" onClick={() => void navigator.clipboard.writeText(embedCode).then(() => showToast('Код віджета скопійовано.', 'success'))}><Icon name="copy" size={17} /> Копіювати</button>
+        <p className="eyebrow">Встановлення</p><h2>Хорошоп</h2><p>Додайте спільний код віджетів перед <code>&lt;/body&gt;</code> у desktop- і mobile-шаблонах.</p>
+        <pre>{horoshopEmbedCode}</pre>
+        <button className="button button--secondary" type="button" onClick={() => void navigator.clipboard.writeText(horoshopEmbedCode).then(() => showToast('Спільний код віджетів скопійовано.', 'success'))}><Icon name="copy" size={17} /> Копіювати</button>
+        <details><summary>Код для іншого сайту</summary><p>Якщо підтримка потрібна поза Хорошопом, встановіть окремий код на тому сайті.</p><pre>{standaloneEmbedCode}</pre><button className="button button--secondary" type="button" onClick={() => void navigator.clipboard.writeText(standaloneEmbedCode).then(() => showToast('Код підтримки скопійовано.', 'success'))}><Icon name="copy" size={17} /> Копіювати</button></details>
       </section>
       <section className="online-support-card online-support-preview">
         <header><div><p className="eyebrow">Preview</p><h2>Віджет покупця</h2></div><a href={`/support-chat/widget?site=${settings.data?.publicId}&open=1&embedOrigin=${encodeURIComponent(window.location.origin)}`} target="_blank" rel="noreferrer"><Icon name="openInNew" size={16} /></a></header>

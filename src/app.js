@@ -51,6 +51,7 @@ import horoshopTitleLabelsRoutes from './modules/horoshop-title-labels/title-lab
 import publicHoroshopTitleLabelsRoutes from './modules/horoshop-title-labels/title-labels.public.routes.js';
 import horoshopCheckoutTelegramRoutes from './modules/horoshop-checkout-telegram/checkout-telegram.routes.js';
 import publicHoroshopCheckoutTelegramRoutes from './modules/horoshop-checkout-telegram/checkout-telegram.public.routes.js';
+import publicHoroshopWidgetRoutes from './modules/horoshop-widgets/widget.public.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -173,6 +174,7 @@ if (env.APP_ORIGIN) {
     if (req.path.startsWith('/api/public/horoshop-catalog-menu')) return next();
     if (req.path.startsWith('/api/public/horoshop-cart-theme')) return next();
     if (req.path.startsWith('/api/public/horoshop-checkout-telegram')) return next();
+    if (req.path.startsWith('/api/public/horoshop-widgets')) return next();
     if (req.path.startsWith('/api/storefront')) return next();
     return cors({ origin: env.APP_ORIGIN, credentials: true })(req, res, next);
   });
@@ -256,6 +258,7 @@ app.use('/api/public/horoshop-catalog-menu', publicEmbedCors, publicHoroshopCata
 app.use('/api/public/horoshop-cart-theme', publicEmbedCors, publicHoroshopCartThemeRoutes);
 app.use('/api/public/horoshop-title-labels', publicEmbedCors, publicHoroshopTitleLabelsRoutes);
 app.use('/api/public/horoshop-checkout-telegram', publicEmbedCors, publicHoroshopCheckoutTelegramRoutes);
+app.use('/api/public/horoshop-widgets', publicEmbedCors, publicHoroshopWidgetRoutes);
 app.use('/api', notFoundHandler);
 
 app.use('/media/catalog', express.static(catalogMediaDir, {

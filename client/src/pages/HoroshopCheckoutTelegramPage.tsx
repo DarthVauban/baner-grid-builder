@@ -284,7 +284,7 @@ export function HoroshopCheckoutTelegramPage() {
 
     <div className="checkout-telegram-bottom-grid">
       <section className="checkout-telegram-panel checkout-telegram-install-card">
-        <header><div><p className="eyebrow">Встановлення</p><h2>Один код для обох версій</h2><p>Додайте його в Хорошоп один раз перед <code>&lt;/body&gt;</code>. Публікація нових налаштувань не потребує заміни коду.</p></div></header>
+        <header><div><p className="eyebrow">Встановлення</p><h2>Спільний код віджетів</h2><p>Додайте його в глобальний шаблон Хорошопа перед <code>&lt;/body&gt;</code>. Він підключає всі опубліковані віджети, зокрема Telegram після замовлення. Для окремих desktop і mobile шаблонів використайте той самий код.</p></div></header>
         <pre>{settings.embedCode}</pre>
         <button className="button button--secondary" type="button" onClick={() => void copyEmbedCode()}><Icon name="copy" size={16} /> Копіювати код</button>
       </section>

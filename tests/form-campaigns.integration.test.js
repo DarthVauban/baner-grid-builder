@@ -199,7 +199,7 @@ test('preorder placement targets an exact Horoshop modification and creates an a
 
   const embedCode = (await admin.get('/api/form-campaigns/embed-code')
     .set('Host', 'panel.example.com').set('X-Forwarded-Proto', 'https').expect(200)).body.data.code;
-  assert.equal(embedCode, '<script async src="https://panel.example.com/api/public/application-form-campaigns/embed.js"></script>');
+  assert.equal(embedCode, '<script async src="https://panel.example.com/api/public/horoshop-widgets/embed.js"></script>');
 
   const activationResponse = await admin.patch(`/api/form-campaigns/${campaign.id}/status`)
     .send({ status: 'active' });
@@ -207,6 +207,8 @@ test('preorder placement targets an exact Horoshop modification and creates an a
   const activated = activationResponse.body.data;
   assert.equal(activated.status, 'active');
   assert.ok(activated.publishedAt);
+  const sharedEmbed = await request(app).get('/api/public/horoshop-widgets/embed.js').expect(200);
+  assert.match(sharedEmbed.text, /application-form-campaigns\/embed\.js/u);
 
   const unrelatedModification = await request(app)
     .get('/api/public/application-form-campaigns/resolve')

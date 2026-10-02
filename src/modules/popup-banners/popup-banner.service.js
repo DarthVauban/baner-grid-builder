@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { loadPromoCodeRow, promoCodeSnapshot } from '../promo-codes/promo-code.service.js';
+import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
 import { createPopupTimerRuntime, isTimerExpired, normalizeTimerConfig } from './popup-timer.js';
 
 export const popupBannerToolId = 'popup_banners';
@@ -2776,5 +2777,5 @@ export function popupEmbedScript(origin) {
 }
 
 export function popupEmbedCode(origin) {
-  return `<script async src="${origin}/api/public/popup-banners/embed.js"></script>`;
+  return horoshopWidgetEmbedCode(origin);
 }

@@ -292,8 +292,8 @@ export function HoroshopTitleLabelsPage() {
 
     <div className="title-label-bottom-grid">
       <section className="title-label-bottom-card">
-        <header><div><p className="eyebrow">Встановлення</p><h2>Один асинхронний код</h2></div><Icon name="link" size={22} /></header>
-        <p>Додайте код у глобальний шаблон Хорошопа перед <code>&lt;/body&gt;</code>. Він містить окремі адаптери для desktop і mobile та не змінює нативні посилання товарів. Попередній кастомний код лейбла потрібно прибрати, щоб не створювати дублікати.</p>
+        <header><div><p className="eyebrow">Встановлення</p><h2>Спільний код віджетів</h2></div><Icon name="link" size={22} /></header>
+        <p>Додайте цей код у глобальний шаблон Хорошопа перед <code>&lt;/body&gt;</code>. Він підключає всі опубліковані віджети, зокрема лейбли. Якщо desktop і mobile мають окремі шаблони, використайте той самий код в обох. Старі індивідуальні скрипти приберіть після перевірки.</p>
         <pre>{settings.embedCode}</pre>
         <button className="button button--secondary" type="button" onClick={() => void copyEmbedCode()}><Icon name="copy" size={16} /> Копіювати код</button>
       </section>

@@ -1,6 +1,7 @@
 import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { cartThemeEmbedScript } from './cart-theme.embed.js';
+import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
 
 export const horoshopCartThemeToolId = 'horoshop_cart_theme';
 export const cartThemeIds = ['balanced-upsell', 'accessory-showcase', 'compact-wide'];
@@ -50,7 +51,7 @@ function serializeSettings(row, origin = '') {
     storeDomain: row.store_domain || '',
     updatedAt: row.updated_at,
     publishedAt: row.published_at || null,
-    embedCode: origin ? cartThemeEmbedCode(origin, row.public_id) : ''
+    embedCode: origin ? cartThemeEmbedCode(origin) : ''
   };
 }
 
@@ -135,8 +136,8 @@ export async function loadPublishedCartTheme(publicId) {
   };
 }
 
-export function cartThemeEmbedCode(origin, publicId) {
-  return `<script async src="${origin}/api/public/horoshop-cart-theme/embed.js?site=${encodeURIComponent(publicId)}"></script>`;
+export function cartThemeEmbedCode(origin) {
+  return horoshopWidgetEmbedCode(origin);
 }
 
 export { cartThemeEmbedScript };

@@ -137,7 +137,7 @@ export function HoroshopCartThemePage() {
 
     <div className="cart-theme-tool-bottom-grid">
       <section className="cart-theme-tool-section cart-theme-install-card">
-        <header><div><p className="eyebrow">Встановлення</p><h2>Один код для десктопа й мобільної версії</h2><p>Додайте код у Хорошоп один раз перед <code>&lt;/body&gt;</code>. Наступні публікації та вимкнення теми не потребують заміни коду.</p></div></header>
+        <header><div><p className="eyebrow">Встановлення</p><h2>Спільний код віджетів</h2><p>Додайте код у глобальний шаблон Хорошопа перед <code>&lt;/body&gt;</code>. Він підключає всі опубліковані віджети; окремий скрипт кошика більше не потрібен. Для окремих desktop і mobile шаблонів використайте той самий код.</p></div></header>
         <pre>{settings.embedCode}</pre>
         <button className="button button--secondary" type="button" onClick={() => void copyEmbedCode()}><Icon name="copy" size={16} /> Копіювати код</button>
       </section>

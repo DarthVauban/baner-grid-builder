@@ -49,7 +49,7 @@ test('cart theme settings publish one visual contract without exposing cart data
     initial.body.data.themes.map((theme) => theme.id),
     ['balanced-upsell', 'accessory-showcase', 'compact-wide']
   );
-  assert.match(initial.body.data.settings.embedCode, /horoshop-cart-theme\/embed\.js\?site=/u);
+  assert.match(initial.body.data.settings.embedCode, /horoshop-widgets\/embed\.js/u);
 
   const publicId = initial.body.data.settings.publicId;
   const disabledScript = await request(app)

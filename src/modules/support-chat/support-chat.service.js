@@ -196,6 +196,8 @@ export function supportWidgetEmbedScript(origin) {
   return `(() => {
   const script = document.currentScript;
   if (!script) return;
+  if (window.__mtSupportChatWidgetV1) return;
+  window.__mtSupportChatWidgetV1 = true;
   const siteId = script.dataset.site || '';
   const widgetOrigin = ${JSON.stringify(origin)};
   const frame = document.createElement('iframe');

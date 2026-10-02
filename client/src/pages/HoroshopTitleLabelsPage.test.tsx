@@ -30,7 +30,7 @@ const settings: HoroshopTitleLabelSettings = {
   lastCatalogSyncAt: '2026-09-01T08:00:00.000Z',
   updatedAt: '2026-09-01T08:00:00.000Z',
   publishedAt: '2026-09-01T08:00:00.000Z',
-  embedCode: '<script async src="https://workspace.example.com/api/public/horoshop-title-labels/embed.js?site=11111111-1111-4111-8111-111111111111"></script>',
+  embedCode: '<script async src="https://workspace.example.com/api/public/horoshop-widgets/embed.js"></script>',
   stickerOptions: [
     { key: 'id:used', id: 'used', title: 'Вживаний', productCount: 84 },
     { key: 'id:sale', id: 'sale', title: 'Акція', productCount: 16 }

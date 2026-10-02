@@ -18,7 +18,7 @@ const response: HoroshopCatalogMenuSettingsEnvelope = {
     storeDomain: 'mobiletrend.com.ua',
     updatedAt: '2026-08-23T08:00:00.000Z',
     publishedAt: '2026-08-23T08:00:00.000Z',
-    embedCode: '<script async src="https://workspace.example.com/api/public/horoshop-catalog-menu/embed.js?site=5caeedf8-8307-4cad-9668-bd9296603331"></script>'
+    embedCode: '<script async src="https://workspace.example.com/api/public/horoshop-widgets/embed.js"></script>'
   },
   themes: [
     { id: 'compact-columns', name: 'Компактні колонки', description: 'Щільний список категорій.', recommended: true },

@@ -1,6 +1,7 @@
 import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { catalogMenuEmbedScript } from './catalog-menu.embed.js';
+import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
 
 export const horoshopCatalogMenuToolId = 'horoshop_catalog_menu';
 export const catalogMenuThemeIds = ['compact-columns', 'flat-directory', 'grouped-sections'];
@@ -127,7 +128,7 @@ function serializeSettings(row, origin = '') {
     storeDomain: row.store_domain || '',
     updatedAt: row.updated_at,
     publishedAt: row.published_at || null,
-    embedCode: origin ? catalogMenuEmbedCode(origin, row.public_id) : ''
+    embedCode: origin ? catalogMenuEmbedCode(origin) : ''
   };
 }
 
@@ -218,8 +219,8 @@ export async function loadPublishedCatalogMenu(publicId) {
   };
 }
 
-export function catalogMenuEmbedCode(origin, publicId) {
-  return `<script async src="${origin}/api/public/horoshop-catalog-menu/embed.js?site=${encodeURIComponent(publicId)}"></script>`;
+export function catalogMenuEmbedCode(origin) {
+  return horoshopWidgetEmbedCode(origin);
 }
 
 export { catalogMenuEmbedScript };

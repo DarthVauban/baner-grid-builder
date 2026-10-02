@@ -32,7 +32,7 @@ const settings: HoroshopCheckoutTelegramSettings = {
   storeDomain: 'shop551651.horoshop.ua',
   updatedAt: '2026-09-15T08:00:00.000Z',
   publishedAt: null,
-  embedCode: '<script async src="https://workspace.example.com/api/public/horoshop-checkout-telegram/embed.js?site=71ca5c29-5a72-4af8-b5d7-4020e6ec1215"></script>'
+  embedCode: '<script async src="https://workspace.example.com/api/public/horoshop-widgets/embed.js"></script>'
 };
 
 function renderPage() {
