@@ -10,6 +10,7 @@ const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 
 const catalogMedia = readFileSync(new URL('../src/modules/catalog/catalog.media.js', import.meta.url), 'utf8');
 const telegramEntrypoint = readFileSync(new URL('../telegram-bot-api-runtime-entrypoint.sh', import.meta.url), 'utf8');
 const nginx = readFileSync(new URL('../nginx/nginx.conf', import.meta.url), 'utf8');
+const productionHostNginx = readFileSync(new URL('../nginx/mt-panel-host.conf', import.meta.url), 'utf8');
 const tradeInNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-host.conf', import.meta.url), 'utf8');
 const tradeInBootstrapNginx = readFileSync(new URL('../nginx/tradein.mobiletrend-bootstrap.conf', import.meta.url), 'utf8');
 const telegramService = compose.replace(/\r\n/g, '\n').match(
@@ -150,6 +151,12 @@ test('reverse proxy accepts Telegram backup restore archives', () => {
   assert.match(nginx, /client_max_body_size\s+520m/);
   assert.match(nginx, /location \/api\/admin\/backups\/\s*\{[\s\S]*client_body_timeout\s+900s/);
   assert.match(nginx, /location \/api\/admin\/backups\/\s*\{[\s\S]*proxy_read_timeout\s+900s/);
+});
+
+test('production host reads the Certbot-managed certificate directly', () => {
+  assert.match(productionHostNginx, /ssl_certificate \/etc\/letsencrypt\/live\/mt-panel\.sbs\/fullchain\.pem/);
+  assert.match(productionHostNginx, /ssl_certificate_key \/etc\/letsencrypt\/live\/mt-panel\.sbs\/privkey\.pem/);
+  assert.doesNotMatch(productionHostNginx, /\/opt\/mt-workspace\/prod\/tls\//);
 });
 
 test('standalone Trade-in domain has an ACME bootstrap and isolated HTTPS proxy', () => {
