@@ -21,7 +21,8 @@ describe('HoroshopCatalogSyncIndicator', () => {
     };
     vi.spyOn(api, 'horoshopCatalogSyncStatus').mockResolvedValue(status);
     renderIndicator();
-    expect(await screen.findByRole('status', { name: /Автосинхронізація через 5 хв/u })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: /Автосинхронізація через 00:05:/u })).toBeInTheDocument();
+    expect(screen.getByText(/^00:05:\d{2}$/u)).toHaveClass('topbar-catalog-sync__countdown');
   });
 
   it('shows live progress when the catalog is syncing', async () => {

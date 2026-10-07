@@ -9,8 +9,7 @@ function remainingTime(milliseconds: number) {
   const hours = Math.floor(seconds / 3_600);
   const minutes = Math.floor((seconds % 3_600) / 60);
   const rest = seconds % 60;
-  return hours > 0 ? `${hours} год ${String(minutes).padStart(2, '0')} хв`
-    : `${minutes} хв ${String(rest).padStart(2, '0')} с`;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
 export function HoroshopCatalogSyncIndicator() {
@@ -39,6 +38,7 @@ export function HoroshopCatalogSyncIndicator() {
   let description = 'Завантажуємо стан каталогу';
   let detail = 'Хорошоп';
   let state = 'loading';
+  let countdown: string | null = null;
   if (sync.isError && !data) {
     description = 'Стан каталогу недоступний';
     state = 'error';
@@ -59,17 +59,21 @@ export function HoroshopCatalogSyncIndicator() {
     description = data.status === 'disconnecting' ? 'Відключаємо каталог' : 'Помилка відключення';
     state = data.status === 'disconnecting' ? 'running' : 'error';
   } else if (remaining !== null && Number.isFinite(remaining)) {
-    description = remaining > 0
-      ? `Автосинхронізація через ${remainingTime(remaining)}`
-      : 'Очікуємо запуску синхронізації';
+    if (remaining > 0) {
+      description = 'Автосинхронізація через';
+      countdown = remainingTime(remaining);
+    } else {
+      description = 'Очікуємо запуску синхронізації';
+    }
     state = remaining > 0 ? 'scheduled' : 'pending';
   } else if (data?.status === 'connected') {
     description = 'Очікуємо першої синхронізації';
     state = 'pending';
   }
 
-  return <div className={`topbar-catalog-sync is-${state}`} role="status" aria-label={`Каталог Хорошоп: ${description}`} title={`Каталог Хорошоп · ${description}${detail !== 'Хорошоп' ? ` · ${detail}` : ''}`}>
+  const statusText = `${description}${countdown ? ` ${countdown}` : ''}`;
+  return <div className={`topbar-catalog-sync is-${state}`} role="status" aria-label={`Каталог Хорошоп: ${statusText}`} title={`Каталог Хорошоп · ${statusText}${detail !== 'Хорошоп' ? ` · ${detail}` : ''}`}>
     <span className="topbar-catalog-sync__icon"><Icon name={state === 'running' ? 'refresh' : state === 'error' ? 'alarm' : 'schedule'} size={17} /></span>
-    <span className="topbar-catalog-sync__text"><strong>{description}</strong><small>{detail}</small></span>
+    <span className="topbar-catalog-sync__text"><span className="topbar-catalog-sync__main"><strong>{description}</strong>{countdown && <b className="topbar-catalog-sync__countdown">{countdown}</b>}</span><small>{detail}</small></span>
   </div>;
 }

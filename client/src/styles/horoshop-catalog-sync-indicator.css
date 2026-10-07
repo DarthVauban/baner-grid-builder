@@ -1,6 +1,7 @@
 .topbar-catalog-sync {
   min-width: 0;
-  max-width: min(540px, 100%);
+  width: 340px;
+  flex: 0 1 340px;
   min-height: 42px;
   display: inline-flex;
   align-items: center;
@@ -15,8 +16,10 @@
   white-space: nowrap;
 }
 .topbar-catalog-sync__icon { display: grid; place-items: center; flex: none; color: var(--brand-dark); }
-.topbar-catalog-sync__text { min-width: 0; display: grid; gap: 2px; }
-.topbar-catalog-sync__text strong { overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.topbar-catalog-sync__text { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.topbar-catalog-sync__main { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.topbar-catalog-sync__main strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.topbar-catalog-sync__countdown { flex: none; width: 8ch; text-align: right; font-variant-numeric: tabular-nums; font-weight: 750; }
 .topbar-catalog-sync__text small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; font-size: 10px; }
 .topbar-catalog-sync.is-running { border-color: color-mix(in srgb, var(--brand) 38%, var(--line)); background: var(--brand-soft); }
 .topbar-catalog-sync.is-running .topbar-catalog-sync__icon { animation: topbar-catalog-spin 1.7s linear infinite; }
@@ -24,10 +27,11 @@
 @keyframes topbar-catalog-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .topbar-catalog-sync.is-running .topbar-catalog-sync__icon { animation: none; } }
 @media (max-width: 700px) {
-  .topbar-catalog-sync { max-width: min(235px, 100%); padding: 5px 9px; gap: 6px; }
+  .topbar-catalog-sync { width: 235px; flex-basis: 235px; padding: 5px 9px; gap: 6px; }
   .topbar-catalog-sync__text small { display: none; }
 }
 @media (max-width: 500px) {
-  .topbar-catalog-sync { flex: 1; max-width: none; }
+  .topbar-catalog-sync { width: 112px; flex: 0 1 112px; }
+  .topbar-catalog-sync.is-scheduled .topbar-catalog-sync__main strong { display: none; }
   .topbar-catalog-sync__text { max-width: 100%; }
 }
