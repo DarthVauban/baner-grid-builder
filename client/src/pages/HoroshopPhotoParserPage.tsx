@@ -535,6 +535,7 @@ export function HoroshopPhotoParserPage() {
     setCatalogSyncSnapshot(null);
     try {
       const result = await syncCatalog.mutateAsync();
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-catalog-sync-status'] });
       setCatalogSyncSnapshot(result.integration);
       const running = result.started
         || result.integration.status === 'syncing'

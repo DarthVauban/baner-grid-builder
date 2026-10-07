@@ -1,11 +1,11 @@
 import { horoshopCatalogService } from './catalog.service.js';
+import { nextHoroshopCatalogSyncAt } from './catalog.schedule.js';
 
 async function synchronizeIfDue() {
   const status = await horoshopCatalogService.status();
   if (!status.configured || ['disconnecting', 'purge_failed'].includes(status.status)) return;
-  const intervalMilliseconds = (status.pollingIntervalMinutes || 15) * 60_000;
-  const lastSync = status.lastSyncAt ? Date.parse(status.lastSyncAt) : 0;
-  if (status.status === 'connected' && lastSync && Date.now() - lastSync < intervalMilliseconds) return;
+  const nextSyncAt = nextHoroshopCatalogSyncAt(status);
+  if (nextSyncAt && Date.now() < Date.parse(nextSyncAt)) return;
   await horoshopCatalogService.startSync('scheduled');
 }
 

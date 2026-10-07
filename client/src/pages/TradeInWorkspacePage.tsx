@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
+import { HoroshopCatalogSyncIndicator } from '../components/HoroshopCatalogSyncIndicator';
 import { ToolBackButton } from '../components/ToolBackButton';
 import { UserAvatar } from '../components/UserAvatar';
 
@@ -88,6 +89,8 @@ export function TradeInWorkspacePage() {
       <div className="standalone-tool-workspace">
         <header className="standalone-tool-topbar">
           <ToolBackButton fallbackPath="/" />
+          <div className="topbar__spacer" />
+          <HoroshopCatalogSyncIndicator />
         </header>
         <main className="trade-in-workspace__content">
           <Outlet />

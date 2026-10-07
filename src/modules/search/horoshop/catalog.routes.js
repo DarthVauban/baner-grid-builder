@@ -5,6 +5,7 @@ import { parseInput } from '../../../lib/validation.js';
 import { requireAuth } from '../../../middleware/auth.js';
 import { requireToolAccess } from '../../access/access.service.js';
 import { horoshopCatalogService } from './catalog.service.js';
+import { nextHoroshopCatalogSyncAt } from './catalog.schedule.js';
 
 const router = Router();
 const catalogDateSchema = z.union([
@@ -32,11 +33,29 @@ const catalogQuerySchema = z.object({
   }
 });
 
-router.use(requireAuth, requireToolAccess('horoshop_related_products'));
+router.use(requireAuth);
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
+
+router.get('/sync-status', asyncHandler(async (_req, res) => {
+  const status = await horoshopCatalogService.syncStatus();
+  res.json({ data: {
+    configured: status.configured,
+    status: status.status,
+    serverNow: new Date().toISOString(),
+    nextScheduledSyncAt: nextHoroshopCatalogSyncAt(status),
+    latestRun: status.latestRun ? {
+      status: status.latestRun.status,
+      progressPercentage: status.latestRun.progressPercentage,
+      exportItemsReceived: status.latestRun.exportItemsReceived,
+      exportItemsTotal: status.latestRun.exportItemsTotal
+    } : null
+  } });
+}));
+
+router.use(requireToolAccess('horoshop_related_products'));
 
 router.get('/catalog', asyncHandler(async (req, res) => {
   const input = parseInput(catalogQuerySchema, req.query);

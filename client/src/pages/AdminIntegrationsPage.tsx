@@ -165,6 +165,7 @@ export function AdminIntegrationsPage() {
         pollingIntervalMinutes
       });
       await queryClient.invalidateQueries({ queryKey: ['admin-horoshop-integration'] });
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-catalog-sync-status'] });
       showToast('Магазин Хорошоп підключено. Повний імпорт каталогу запущено.');
     } catch (caught) {
       setHoroshopError(caught instanceof Error ? caught.message : 'Не вдалося підключити Хорошоп.');
@@ -176,6 +177,7 @@ export function AdminIntegrationsPage() {
     try {
       const result = await syncHoroshop.mutateAsync();
       await queryClient.invalidateQueries({ queryKey: ['admin-horoshop-integration'] });
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-catalog-sync-status'] });
       showToast(result.started ? 'Звірку каталогу запущено.' : 'Синхронізація вже виконується.');
     } catch (caught) {
       setHoroshopError(caught instanceof Error ? caught.message : 'Не вдалося запустити синхронізацію.');
@@ -188,6 +190,7 @@ export function AdminIntegrationsPage() {
     try {
       await updateHoroshopSettings.mutateAsync({ pollingIntervalMinutes });
       await queryClient.invalidateQueries({ queryKey: ['admin-horoshop-integration'] });
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-catalog-sync-status'] });
       showToast(`Автоматичну звірку каталогу налаштовано кожні ${pollingIntervalMinutes} хв.`);
     } catch (caught) {
       setHoroshopError(caught instanceof Error ? caught.message : 'Не вдалося зберегти інтервал синхронізації.');
@@ -199,6 +202,7 @@ export function AdminIntegrationsPage() {
     try {
       const result = await disconnectHoroshop.mutateAsync(disconnectDomain.trim());
       await queryClient.invalidateQueries({ queryKey: ['admin-horoshop-integration'] });
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-catalog-sync-status'] });
       showToast(`Інтеграцію відключено. Видалено ${result.deleted.stickers} стікерів, ${result.deleted.products} товарів і ${result.deleted.modifications} модифікацій.`);
       setActiveIntegration(null);
     } catch (caught) {

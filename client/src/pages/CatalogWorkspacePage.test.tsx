@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { api } from '../lib/api';
 import { CatalogWorkspacePage } from './CatalogWorkspacePage';
 
 vi.mock('../auth/AuthContext', () => ({
@@ -11,19 +13,27 @@ vi.mock('../auth/AuthContext', () => ({
 }));
 
 function renderCatalog() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={['/catalog/products']}>
+    <QueryClientProvider client={client}><MemoryRouter initialEntries={['/catalog/products']}>
       <Routes>
         <Route path="/catalog" element={<CatalogWorkspacePage />}>
           <Route path="products" element={<p>Товари каталогу</p>} />
         </Route>
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter></QueryClientProvider>
   );
 }
 
 describe('CatalogWorkspacePage', () => {
-  beforeEach(() => localStorage.removeItem('mt-catalog-sidebar-collapsed'));
+  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    localStorage.removeItem('mt-catalog-sidebar-collapsed');
+    vi.spyOn(api, 'horoshopCatalogSyncStatus').mockResolvedValue({
+      configured: false, status: 'disconnected', serverNow: new Date().toISOString(),
+      nextScheduledSyncAt: null, latestRun: null
+    });
+  });
 
   it('keeps history in the sidebar without separate import and preview entries', () => {
     renderCatalog();

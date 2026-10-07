@@ -208,7 +208,10 @@ export function HoroshopRelatedProductsPage() {
   });
   const syncCatalog = useMutation({
     mutationFn: () => api.horoshopCatalog.sync(),
-    onSuccess: async () => queryClient.invalidateQueries({ queryKey: ['horoshop-catalog'] })
+    onSuccess: async () => {
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-catalog-sync-status'] });
+      await queryClient.invalidateQueries({ queryKey: ['horoshop-catalog'] });
+    }
   });
   const data = catalog.data;
   const integration = data?.integration;

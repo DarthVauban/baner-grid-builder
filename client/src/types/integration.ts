@@ -86,6 +86,14 @@ export interface HoroshopIntegration {
   latestRun: HoroshopSyncRun | null;
 }
 
+export interface HoroshopCatalogSyncStatus {
+  configured: boolean;
+  status: HoroshopConnectionStatus;
+  serverNow: string;
+  nextScheduledSyncAt: string | null;
+  latestRun: Pick<HoroshopSyncRun, 'status' | 'progressPercentage' | 'exportItemsReceived' | 'exportItemsTotal'> | null;
+}
+
 export interface HoroshopIntegrationInput {
   storeDomain: string;
   login: string;

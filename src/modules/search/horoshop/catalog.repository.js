@@ -143,6 +143,34 @@ export class HoroshopCatalogRepository {
     return mapConnection(result.rows[0]);
   }
 
+  async getLatestRun(connectionId) {
+    const result = await this.pool.query(`
+      SELECT id, mode, status, categories_received, stickers_received, products_received, modifications_received,
+             pages_received, export_items_received, export_items_total, error_message,
+             started_at, completed_at
+      FROM search_horoshop_sync_runs
+      WHERE connection_id = $1
+      ORDER BY started_at DESC
+      LIMIT 1
+    `, [connectionId]);
+    return mapRun(result.rows[0]);
+  }
+
+  async getSyncStatus() {
+    const connection = await this.getConnection();
+    if (!connection) return {
+      configured: false, status: 'disconnected', pollingIntervalMinutes: null,
+      lastSyncAt: null, latestRun: null
+    };
+    return {
+      configured: true,
+      status: connection.status,
+      pollingIntervalMinutes: connection.pollingIntervalMinutes,
+      lastSyncAt: connection.lastSyncAt,
+      latestRun: await this.getLatestRun(connection.id)
+    };
+  }
+
   async getStatus() {
     const connection = await this.getConnection();
     if (!connection) {
@@ -157,7 +185,7 @@ export class HoroshopCatalogRepository {
         latestRun: null
       };
     }
-    const [countsResult, runResult] = await Promise.all([
+    const [countsResult, latestRun] = await Promise.all([
       this.pool.query(`
         SELECT
           (SELECT COUNT(*) FROM search_horoshop_categories WHERE connection_id = $1 AND active) AS categories,
@@ -165,15 +193,7 @@ export class HoroshopCatalogRepository {
           (SELECT COUNT(*) FROM search_horoshop_products WHERE connection_id = $1 AND active) AS products,
           (SELECT COUNT(*) FROM search_horoshop_modifications WHERE connection_id = $1 AND active) AS modifications
       `, [connection.id]),
-      this.pool.query(`
-        SELECT id, mode, status, categories_received, stickers_received, products_received, modifications_received,
-               pages_received, export_items_received, export_items_total, error_message,
-               started_at, completed_at
-        FROM search_horoshop_sync_runs
-        WHERE connection_id = $1
-        ORDER BY started_at DESC
-        LIMIT 1
-      `, [connection.id])
+      this.getLatestRun(connection.id)
     ]);
     const counts = countsResult.rows[0] || {};
     return {
@@ -189,7 +209,7 @@ export class HoroshopCatalogRepository {
         products: Number(counts.products || 0),
         modifications: Number(counts.modifications || 0)
       },
-      latestRun: mapRun(runResult.rows[0])
+      latestRun
     };
   }
 

@@ -81,6 +81,10 @@ export class HoroshopCatalogService {
     return this.repository.getStatus();
   }
 
+  async syncStatus() {
+    return this.repository.getSyncStatus();
+  }
+
   async catalog(input) {
     const [integration, catalog] = await Promise.all([
       this.status(),

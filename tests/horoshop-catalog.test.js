@@ -23,6 +23,7 @@ const {
 const {
   HoroshopCatalogService
 } = await import('../src/modules/search/horoshop/catalog.service.js');
+const { nextHoroshopCatalogSyncAt } = await import('../src/modules/search/horoshop/catalog.schedule.js');
 
 before(async () => {
   await runMigrations();
@@ -30,6 +31,16 @@ before(async () => {
 
 after(async () => {
   await pool.end();
+});
+
+test('automatic sync due time follows the configured interval and last successful run', () => {
+  const status = {
+    configured: true, status: 'connected', lastSyncAt: '2026-10-07T10:00:00.000Z', pollingIntervalMinutes: 30
+  };
+  assert.equal(nextHoroshopCatalogSyncAt(status), '2026-10-07T10:30:00.000Z');
+  assert.equal(nextHoroshopCatalogSyncAt({ ...status, status: 'syncing' }), null);
+  assert.equal(nextHoroshopCatalogSyncAt({ ...status, lastSyncAt: null }), null);
+  assert.equal(nextHoroshopCatalogSyncAt({ ...status, configured: false }), null);
 });
 
 test('Horoshop client validates public HTTPS domains and follows API envelopes and pagination', async () => {
@@ -395,6 +406,12 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   assert.equal(status.latestRun.exportItemsReceived, 2);
   assert.equal(status.latestRun.exportItemsTotal, 2);
   assert.equal(status.latestRun.progressPercentage, 100);
+  const syncStatus = await service.syncStatus();
+  assert.equal(syncStatus.status, 'connected');
+  assert.equal(syncStatus.latestRun.progressPercentage, 100);
+  assert.equal(syncStatus.pollingIntervalMinutes, 15);
+  assert.equal(Object.hasOwn(syncStatus, 'counts'), false);
+  assert.equal(Object.hasOwn(syncStatus, 'storeDomain'), false);
   const catalogMetadata = await query(`
     SELECT stickers, condition_label, horoshop_created_at
     FROM search_horoshop_products WHERE external_id = 'p-1'

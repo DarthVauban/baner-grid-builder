@@ -49,6 +49,26 @@ test('standalone storefront hostname exposes public APIs but blocks workspace ro
     .expect(401);
 });
 
+test('workspace catalog sync status is authenticated and exposes only display fields', async () => {
+  await request(app).get('/api/search/horoshop/sync-status').expect(401);
+  const member = request.agent(app);
+  const registration = await registerAndVerify({
+    firstName: 'Catalog', lastName: 'Viewer', email: 'catalog-viewer@test.local',
+    password: 'ViewerPassword123!'
+  });
+  assert.equal(registration.body.data.status, 'approved');
+  await member.post('/api/auth/login').send({ email: 'catalog-viewer@test.local', password: 'ViewerPassword123!' }).expect(200);
+  const response = await member.get('/api/search/horoshop/sync-status').expect(200);
+  assert.equal(response.headers['cache-control'], 'no-store');
+  assert.deepEqual(Object.keys(response.body.data).sort(), [
+    'configured', 'latestRun', 'nextScheduledSyncAt', 'serverNow', 'status'
+  ]);
+  assert.equal(response.body.data.configured, false);
+  assert.equal(response.body.data.nextScheduledSyncAt, null);
+  assert.equal(Date.parse(response.body.data.serverNow) > 0, true);
+  await member.get('/api/search/horoshop/catalog').expect(403);
+});
+
 async function registerAndVerify(input) {
   const registration = await request(app)
     .post('/api/auth/register')

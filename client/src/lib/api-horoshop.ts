@@ -1,4 +1,4 @@
-import type { HoroshopIntegration } from '../types/integration';
+import type { HoroshopCatalogSyncStatus, HoroshopIntegration } from '../types/integration';
 import { horoshopStickers } from './api-horoshop-stickers';
 import { horoshopPopularity } from './api-horoshop-popularity';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
@@ -29,6 +29,9 @@ import { jsonBody, queryString, request, requestNdjson } from './api-client';
 const HOROSHOP_PUBLICATION_IDLE_TIMEOUT_MS = 30_000;
 
 export const horoshopApi = {
+  horoshopCatalogSyncStatus: (signal?: AbortSignal) => request<HoroshopCatalogSyncStatus>(
+    '/api/search/horoshop/sync-status', { signal }
+  ),
   horoshopStickers,
   horoshopPopularity,
   horoshopCatalog: {

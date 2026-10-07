@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { api } from '../lib/api';
 import { TradeInWorkspacePage } from './TradeInWorkspacePage';
 
 vi.mock('../auth/AuthContext', () => ({
@@ -11,19 +13,27 @@ vi.mock('../auth/AuthContext', () => ({
 }));
 
 function renderWorkspace() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={['/trade-in/overview']}>
+    <QueryClientProvider client={client}><MemoryRouter initialEntries={['/trade-in/overview']}>
       <Routes>
         <Route path="/trade-in" element={<TradeInWorkspacePage />}>
           <Route path="overview" element={<p>Огляд Trade-in</p>} />
         </Route>
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter></QueryClientProvider>
   );
 }
 
 describe('TradeInWorkspacePage', () => {
-  beforeEach(() => localStorage.removeItem('mt-trade-in-sidebar-collapsed'));
+  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    localStorage.removeItem('mt-trade-in-sidebar-collapsed');
+    vi.spyOn(api, 'horoshopCatalogSyncStatus').mockResolvedValue({
+      configured: false, status: 'disconnected', serverNow: new Date().toISOString(),
+      nextScheduledSyncAt: null, latestRun: null
+    });
+  });
 
   it('provides its own navigation and remembers the collapsed state', async () => {
     const user = userEvent.setup();

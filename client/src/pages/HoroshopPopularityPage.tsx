@@ -300,6 +300,7 @@ export function HoroshopPopularityPage() {
     setBusy(true);
     try {
       const result = await api.horoshopPopularity.sync();
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-catalog-sync-status'] });
       showToast(result.started ? 'Синхронізацію каталогу запущено.' : 'Каталог уже синхронізується або зайнятий іншою операцією.', result.started ? 'success' : 'error');
       await catalog.refetch();
     } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося оновити каталог.', 'error'); }
