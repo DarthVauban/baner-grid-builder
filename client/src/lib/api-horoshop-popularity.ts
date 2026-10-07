@@ -11,11 +11,16 @@ export const horoshopPopularity = {
   catalog: (filters: PopularityFilters, page = 1, pageSize = 25, signal?: AbortSignal) => {
     const params = new URLSearchParams({
       search: filters.search, category: filters.category, availability: filters.availability,
-      popularity: filters.popularity, page: String(page), pageSize: String(pageSize)
+      popularity: filters.popularity, popularityMin: String(filters.popularityMin),
+      popularityMax: String(filters.popularityMax), page: String(page), pageSize: String(pageSize)
     });
     filters.brands.forEach((brand) => params.append('brand', brand));
     return request<PopularityCatalog>(`${base}/catalog?${params}`, { signal, timeoutMs: 60_000 });
   },
+  catalogSelection: (productIds: string[], filters: PopularityFilters, page = 1, pageSize = 25, signal?: AbortSignal) =>
+    request<PopularityCatalog>(`${base}/catalog/selection`, {
+      method: 'POST', body: jsonBody({ productIds, filters, page, pageSize }), signal, timeoutMs: 60_000
+    }),
   resolve: (entries: string[]) => request<PopularityResolution>(`${base}/resolve`, {
     method: 'POST', body: jsonBody({ entries }), timeoutMs: 60_000
   }),

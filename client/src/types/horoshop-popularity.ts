@@ -1,7 +1,7 @@
 import type { HoroshopIntegration } from './integration';
 
 export type PopularityAction = 'set' | 'add' | 'reset';
-export type PopularityFilter = 'all' | 'zero' | 'positive';
+export type PopularityFilter = 'all' | 'zero' | 'positive' | 'range';
 export type PopularityOperationStatus = 'draft' | 'queued' | 'running' | 'completed' | 'partial' | 'conflict' | 'failed';
 export type PopularityItemStatus = 'pending' | 'writing' | 'succeeded' | 'unchanged' | 'failed' | 'conflict' | 'cancelled';
 
@@ -11,6 +11,8 @@ export interface PopularityFilters {
   brands: string[];
   availability: string;
   popularity: PopularityFilter;
+  popularityMin: number;
+  popularityMax: number;
 }
 
 export interface PopularityProduct {
@@ -34,6 +36,8 @@ export interface PopularityCatalog {
   categories: Array<{ externalId: string; title: string }>;
   brands: string[];
   availabilityOptions: string[];
+  maximumPopularity: number;
+  matchingProductIds?: string[];
   total: number;
   page: number;
   pageSize: number;

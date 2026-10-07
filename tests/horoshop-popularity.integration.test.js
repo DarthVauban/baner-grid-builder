@@ -101,12 +101,32 @@ async function completed(id) {
 test('catalog filters by brand and popularity; pasted modification articles resolve to one parent', async () => {
   const response = await agent.get(`${base}/catalog?brand=Apple&popularity=positive`).expect(200);
   assert.equal(response.body.data.total, 1);
+  assert.equal(response.body.data.maximumPopularity, 5);
   assert.equal(response.body.data.items[0].sku, 'PHONE');
   assert.equal(response.body.data.items[0].modifications.length, 2);
   assert.deepEqual(response.body.data.brands, ['Apple', 'Samsung']);
   const resolution = await agent.post(`${base}/resolve`).send({ entries: ['PHONE-BLACK', 'Телефон', 'PHONE-BLACK', 'MISSING'] }).expect(200);
   assert.deepEqual(resolution.body.data.matched.map((item) => item.productId), [productIds[0]]);
   assert.deepEqual(resolution.body.data.unmatched, ['MISSING']);
+});
+
+test('saved-list catalog is scoped to its product IDs and a popularity range', async () => {
+  const scoped = await agent.post(`${base}/catalog/selection`).send({
+    productIds: [productIds[1], productIds[0]],
+    filters: { popularity: 'range', popularityMin: 1, popularityMax: 5 }
+  }).expect(200);
+  assert.equal(scoped.body.data.total, 1);
+  assert.deepEqual(scoped.body.data.matchingProductIds, [productIds[0]]);
+  assert.deepEqual(scoped.body.data.items.map((item) => item.sku), ['PHONE']);
+  assert.equal(scoped.body.data.maximumPopularity, 5);
+
+  const listOnly = await agent.post(`${base}/catalog/selection`).send({
+    productIds: [productIds[1]], filters: {}
+  }).expect(200);
+  assert.deepEqual(listOnly.body.data.items.map((item) => item.sku), ['HEADSET']);
+  assert.equal(listOnly.body.data.total, 1);
+
+  await agent.get(`${base}/catalog?popularity=range&popularityMin=5&popularityMax=1`).expect(422);
 });
 
 test('preview and apply one parent value to all its offers, then verify and cache it', async () => {

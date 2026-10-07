@@ -25,10 +25,20 @@ export class HoroshopPopularityService {
     const integration = await this.catalogService.status();
     if (!integration.configured || integration.status !== 'connected') {
       return { integration, items: [], categories: [], brands: [], availabilityOptions: [],
-        total: 0, page, pageSize, pageCount: 0 };
+        maximumPopularity: 0, total: 0, page, pageSize, pageCount: 0 };
     }
     const connection = await this.repository.connection();
     return { integration, ...await this.repository.catalog(connection, filters, page, pageSize) };
+  }
+
+  async catalogSelection(productIds, filters, page, pageSize) {
+    const integration = await this.catalogService.status();
+    if (!integration.configured || integration.status !== 'connected') {
+      return { integration, items: [], categories: [], brands: [], availabilityOptions: [],
+        maximumPopularity: 0, matchingProductIds: [], total: 0, page, pageSize, pageCount: 0 };
+    }
+    const connection = await this.repository.connection();
+    return { integration, ...await this.repository.catalogSelection(connection, productIds, filters, page, pageSize) };
   }
 
   async resolve(entries) {

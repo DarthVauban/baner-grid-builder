@@ -12,7 +12,8 @@ import type {
 import '../styles/horoshop-popularity.css';
 
 const initialFilters: PopularityFilters = {
-  search: '', category: '', brands: [], availability: '', popularity: 'all'
+  search: '', category: '', brands: [], availability: '', popularity: 'all',
+  popularityMin: 0, popularityMax: 0
 };
 const integerLimit = 1_000_000_000;
 const number = (value: number) => value.toLocaleString('uk-UA');
@@ -28,10 +29,10 @@ const operationLabels = {
 const actionLabel = (action: PopularityAction, value: number) => action === 'reset'
   ? 'Скинути до 0' : action === 'add' ? `Змінити на ${value >= 0 ? '+' : ''}${value}` : `Встановити ${value}`;
 
-function FilterSelect({ label, value, options, onChange }: {
-  label: string; value: string; options: StyledSelectOption[]; onChange: (value: string) => void;
+function FilterSelect({ label, value, options, searchable = false, onChange }: {
+  label: string; value: string; options: StyledSelectOption[]; searchable?: boolean; onChange: (value: string) => void;
 }) {
-  return <label><span>{label}</span><StyledSelect ariaLabel={label} value={value} options={options} onChange={onChange} /></label>;
+  return <label><span>{label}</span><StyledSelect ariaLabel={label} value={value} options={options} searchable={searchable} onChange={onChange} /></label>;
 }
 
 function OperationRows({ items }: { items: PopularityOperationItem[] }) {
@@ -59,7 +60,13 @@ export function HoroshopPopularityPage() {
   const [searchText, setSearchText] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [listProductIds, setListProductIds] = useState<string[] | null>(null);
+  const [brandSearch, setBrandSearch] = useState('');
+  const [popularityDraft, setPopularityDraft] = useState<PopularityFilters['popularity']>('all');
+  const [rangeMinDraft, setRangeMinDraft] = useState(0);
+  const [rangeMaxDraft, setRangeMaxDraft] = useState(0);
   const brandRef = useRef<HTMLDetailsElement>(null);
+  const popularityRef = useRef<HTMLDetailsElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLTextAreaElement>(null);
   const [page, setPage] = useState(1);
@@ -77,8 +84,10 @@ export function HoroshopPopularityPage() {
   const [busy, setBusy] = useState(false);
 
   const catalog = useQuery({
-    queryKey: ['horoshop-popularity-catalog', filters, page],
-    queryFn: ({ signal }) => api.horoshopPopularity.catalog(filters, page, 25, signal),
+    queryKey: ['horoshop-popularity-catalog', filters, page, listProductIds],
+    queryFn: ({ signal }) => listProductIds === null
+      ? api.horoshopPopularity.catalog(filters, page, 25, signal)
+      : api.horoshopPopularity.catalogSelection(listProductIds, filters, page, 25, signal),
     placeholderData: (previous) => previous,
     refetchInterval: (query) => query.state.data?.integration.status === 'syncing' ? 2_000 : false
   });
@@ -94,6 +103,12 @@ export function HoroshopPopularityPage() {
   });
   const operation = operationQuery.data || draftOperation;
   const catalogData = catalog.data;
+  const maximumPopularity = Math.max(0, Math.floor(catalogData?.maximumPopularity ?? 0));
+  const popularitySummary = filters.popularity === 'zero' ? 'Нульова'
+    : filters.popularity === 'positive' ? 'Вища за 0'
+      : filters.popularity === 'range' ? `${number(filters.popularityMin)}–${number(filters.popularityMax)}` : 'Усі значення';
+  const visibleBrands = catalogData?.brands.filter((brand) =>
+    brand.toLocaleLowerCase('uk-UA').includes(brandSearch.trim().toLocaleLowerCase('uk-UA'))) || [];
   const isPastedList = /\r?\n/u.test(searchDraft.trim());
   const searchSummary = /\r?\n/u.test(searchText.trim())
     ? `Список із ${searchText.split(/\r?\n/u).filter((line) => line.trim()).length} значень`
@@ -110,18 +125,23 @@ export function HoroshopPopularityPage() {
   }, [display, operationQuery.data, queryClient]);
 
   useEffect(() => {
-    const closeBrand = (event: Event) => {
-      if (brandRef.current && !brandRef.current.contains(event.target as Node)) brandRef.current.open = false;
+    const closeMenus = (event: Event) => {
+      if (brandRef.current && !brandRef.current.contains(event.target as Node)) {
+        brandRef.current.open = false;
+        setBrandSearch('');
+      }
+      if (popularityRef.current && !popularityRef.current.contains(event.target as Node)) popularityRef.current.open = false;
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && brandRef.current) brandRef.current.open = false;
+      if (event.key === 'Escape' && popularityRef.current) popularityRef.current.open = false;
     };
-    document.addEventListener('pointerdown', closeBrand);
-    document.addEventListener('focusin', closeBrand);
+    document.addEventListener('pointerdown', closeMenus);
+    document.addEventListener('focusin', closeMenus);
     document.addEventListener('keydown', closeOnEscape);
     return () => {
-      document.removeEventListener('pointerdown', closeBrand);
-      document.removeEventListener('focusin', closeBrand);
+      document.removeEventListener('pointerdown', closeMenus);
+      document.removeEventListener('focusin', closeMenus);
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, []);
@@ -161,6 +181,7 @@ export function HoroshopPopularityPage() {
   function applySearch() {
     const value = searchDraft.trim();
     setSearchText(value);
+    setListProductIds(null);
     changeFilters({ search: value });
     closeSearch();
   }
@@ -182,6 +203,7 @@ export function HoroshopPopularityPage() {
     try {
       const found = await api.horoshopPopularity.resolve(entries);
       setSearchText(value);
+      setListProductIds(found.matched.map((item) => item.productId));
       changeFilters({ search: '' });
       setResolution(found);
       setSelectedIds(new Set(found.matched.map((item) => item.productId)));
@@ -196,6 +218,29 @@ export function HoroshopPopularityPage() {
   function chooseAmbiguous(input: string, productId: string) {
     setResolvedAmbiguous((current) => ({ ...current, [input]: productId }));
     setSelectedIds((current) => new Set(current).add(productId));
+    setListProductIds((current) => current === null ? [productId] : [...new Set([...current, productId])]);
+  }
+
+  function clearList() {
+    setListProductIds(null);
+    setSearchText('');
+    changeFilters({ search: '' });
+  }
+
+  function openPopularity() {
+    setPopularityDraft(filters.popularity);
+    setRangeMinDraft(Math.min(filters.popularityMin, maximumPopularity));
+    setRangeMaxDraft(filters.popularity === 'range'
+      ? Math.min(filters.popularityMax, maximumPopularity) : maximumPopularity);
+  }
+
+  function applyPopularity() {
+    changeFilters({
+      popularity: popularityDraft,
+      popularityMin: popularityDraft === 'range' ? rangeMinDraft : 0,
+      popularityMax: popularityDraft === 'range' ? rangeMaxDraft : 0
+    });
+    if (popularityRef.current) popularityRef.current.open = false;
   }
 
   function openSingle(product: PopularityProduct) {
@@ -220,7 +265,9 @@ export function HoroshopPopularityPage() {
     }
     const selection = drawer === 'single' && singleProduct
       ? { productIds: [singleProduct.id] }
-      : allFiltered ? { filters } : { productIds: [...selectedIds] };
+      : allFiltered ? listProductIds === null ? { filters }
+        : { productIds: catalogData?.matchingProductIds || [] }
+        : { productIds: [...selectedIds] };
     setBusy(true);
     try {
       const created = await api.horoshopPopularity.preview(selection, action, value);
@@ -275,16 +322,26 @@ export function HoroshopPopularityPage() {
       {display === 'catalog' && <section className="hp-panel" aria-label="Каталог товарів">
         <div className="hp-filters">
           <div className="hp-search hp-filter-field"><span>Назва або артикул</span><button ref={searchTriggerRef} className="hp-search-trigger" type="button" aria-label="Назва або артикул" onClick={openSearch}><span>{searchSummary}</span><Icon name="chevronRight" size={16} /></button></div>
-          <FilterSelect label="Категорія" value={filters.category} options={[{ value: '', label: 'Усі категорії' }, ...catalogData.categories.map((item) => ({ value: item.externalId, label: item.title }))]} onChange={(value) => changeFilters({ category: value })} />
+          <FilterSelect label="Категорія" searchable value={filters.category} options={[{ value: '', label: 'Усі категорії' }, ...catalogData.categories.map((item) => ({ value: item.externalId, label: item.title }))]} onChange={(value) => changeFilters({ category: value })} />
           <details ref={brandRef} className="hp-brand-filter"><summary><span>Бренди</span><strong>{filters.brands.length ? filters.brands.join(', ') : 'Усі бренди'}<Icon name="chevronRight" size={16} /></strong></summary><div>
-            {catalogData.brands.map((brand) => <label key={brand}><input type="checkbox" checked={filters.brands.includes(brand)} onChange={(event) => changeFilters({ brands: event.target.checked ? [...filters.brands, brand] : filters.brands.filter((item) => item !== brand) })} />{brand}</label>)}
-            {!catalogData.brands.length && <p>Брендів у каталозі поки немає.</p>}
+            <input className="hp-brand-search" type="search" aria-label="Пошук бренду" placeholder="Знайти бренд" value={brandSearch} onChange={(event) => setBrandSearch(event.target.value)} />
+            {visibleBrands.map((brand) => <label key={brand}><input type="checkbox" checked={filters.brands.includes(brand)} onChange={(event) => changeFilters({ brands: event.target.checked ? [...filters.brands, brand] : filters.brands.filter((item) => item !== brand) })} />{brand}</label>)}
+            {!visibleBrands.length && <p>{catalogData.brands.length ? 'Брендів не знайдено.' : 'Брендів у каталозі поки немає.'}</p>}
             {filters.brands.length > 0 && <button type="button" onClick={() => changeFilters({ brands: [] })}>Очистити</button>}
           </div></details>
           <FilterSelect label="Наявність" value={filters.availability} options={[{ value: '', label: 'Будь-яка' }, ...catalogData.availabilityOptions.map((item) => ({ value: item, label: item }))]} onChange={(value) => changeFilters({ availability: value })} />
-          <FilterSelect label="Популярність" value={filters.popularity} options={[{ value: 'all', label: 'Усі значення' }, { value: 'zero', label: 'Нульова' }, { value: 'positive', label: 'Вища за 0' }]} onChange={(value) => changeFilters({ popularity: value as PopularityFilters['popularity'] })} />
+          <details ref={popularityRef} className="hp-brand-filter hp-popularity-filter"><summary onClick={openPopularity}><span>Популярність</span><strong>{popularitySummary}<Icon name="chevronRight" size={16} /></strong></summary><div>
+            <fieldset className="hp-popularity-options"><legend>Тип фільтра</legend>
+              {([['all', 'Усі значення'], ['zero', 'Нульова'], ['positive', 'Вища за 0'], ['range', 'Діапазон']] as const).map(([mode, label]) => <label key={mode}><input type="radio" name="popularity-mode" checked={popularityDraft === mode} onChange={() => setPopularityDraft(mode)} />{label}</label>)}
+            </fieldset>
+            {popularityDraft === 'range' && <div className="hp-range-controls"><p>Від 0 до {number(maximumPopularity)} у каталозі</p>
+              <label><span>Від: {number(rangeMinDraft)}</span><input type="range" aria-label="Мінімальна популярність" min={0} max={Math.max(1, maximumPopularity)} value={rangeMinDraft} disabled={maximumPopularity === 0} onChange={(event) => setRangeMinDraft(Math.min(Number(event.target.value), rangeMaxDraft))} /></label>
+              <label><span>До: {number(rangeMaxDraft)}</span><input type="range" aria-label="Максимальна популярність" min={0} max={Math.max(1, maximumPopularity)} value={rangeMaxDraft} disabled={maximumPopularity === 0} onChange={(event) => setRangeMaxDraft(Math.max(Number(event.target.value), rangeMinDraft))} /></label>
+            </div>}
+            <button className="hp-popularity-apply" type="button" onClick={applyPopularity}>Застосувати</button>
+          </div></details>
         </div>
-        {/\r?\n/u.test(searchText.trim()) && <div className="hp-paste-action"><span>Вибірка зі списку: {searchText.split(/\r?\n/u).filter((line) => line.trim()).length} рядків.</span><button className="button button--secondary" type="button" onClick={openSearch}>Редагувати список</button></div>}
+        {listProductIds !== null && <div className="hp-paste-action"><span>Вибірка зі списку: {searchText.split(/\r?\n/u).filter((line) => line.trim()).length} рядків.</span><div><button className="button button--secondary" type="button" onClick={openSearch}>Редагувати список</button><button className="button button--secondary" type="button" onClick={clearList}>Очистити вибірку</button></div></div>}
         {resolution && <div className="hp-resolution" aria-live="polite"><strong>Знайдено товарів: {resolution.matched.length}</strong>
           {resolution.ambiguous.map((entry) => <div key={entry.input}><span>«{entry.input}» — кілька збігів:</span>{entry.candidates.map((candidate) => <button className="button button--secondary" key={candidate.productId} type="button" disabled={Boolean(resolvedAmbiguous[entry.input])} onClick={() => chooseAmbiguous(entry.input, candidate.productId)}>{candidate.title} · {candidate.sku}{resolvedAmbiguous[entry.input] === candidate.productId ? ' ✓' : ''}</button>)}</div>)}
           {resolution.unmatched.length > 0 && <p>Не знайдено: {resolution.unmatched.join(', ')}</p>}

@@ -49,10 +49,16 @@ export class HoroshopPopularityRepository {
     return connection;
   }
 
-  predicate(connection, filters = {}) {
+  predicate(connection, filters = {}, scopeIds = null) {
     const values = [connection.id, connection.generation];
     const clauses = ['product.connection_id = $1', 'product.generation = $2', 'product.active = TRUE'];
     const add = (value) => { values.push(value); return `$${values.length}`; };
+    if (scopeIds !== null) {
+      const uniqueIds = [...new Set(scopeIds)];
+      clauses.push(uniqueIds.length
+        ? `product.id IN (${uniqueIds.map((id) => add(id)).join(', ')})`
+        : 'FALSE');
+    }
     if (filters.category) clauses.push(`product.category_external_id = ${add(filters.category)}`);
     if (filters.brands?.length) {
       const matches = filters.brands.map((brand) => add(brand.toLocaleLowerCase('uk-UA')));
@@ -66,9 +72,14 @@ export class HoroshopPopularityRepository {
           AND modification.generation = $2 AND modification.active = TRUE
           AND LOWER(COALESCE(modification.availability, '')) = ${match}))`);
     }
-    if (filters.popularity === 'zero' || filters.popularity === 'positive') {
+    if (filters.popularity !== 'all') {
       const number = `CASE WHEN product.popularity = '' THEN 0 ELSE COALESCE(product.popularity::numeric, 0) END`;
-      clauses.push(filters.popularity === 'zero' ? `(${number}) = 0` : `(${number}) > 0`);
+      if (filters.popularity === 'zero') clauses.push(`(${number}) = 0`);
+      if (filters.popularity === 'positive') clauses.push(`(${number}) > 0`);
+      if (filters.popularity === 'range') {
+        clauses.push(`(${number}) >= ${add(filters.popularityMin)}`);
+        clauses.push(`(${number}) <= ${add(filters.popularityMax)}`);
+      }
     }
     if (filters.search) {
       const match = add(`%${filters.search.toLocaleLowerCase('uk-UA')}%`);
@@ -85,7 +96,7 @@ export class HoroshopPopularityRepository {
 
   async facets(connection) {
     const values = [connection.id, connection.generation];
-    const [categories, brands, availability] = await Promise.all([
+    const [categories, brands, availability, popularity] = await Promise.all([
       this.pool.query(`SELECT external_id, titles FROM search_horoshop_categories
         WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY titles::text`, values),
       this.pool.query(`SELECT DISTINCT brand FROM search_horoshop_products
@@ -94,12 +105,15 @@ export class HoroshopPopularityRepository {
       this.pool.query(`SELECT DISTINCT availability FROM (
         SELECT availability FROM search_horoshop_products WHERE connection_id = $1 AND generation = $2 AND active = TRUE
         UNION SELECT availability FROM search_horoshop_modifications WHERE connection_id = $1 AND generation = $2 AND active = TRUE
-      ) AS statuses WHERE availability IS NOT NULL AND availability <> '' ORDER BY availability`, values)
+      ) AS statuses WHERE availability IS NOT NULL AND availability <> '' ORDER BY availability`, values),
+      this.pool.query(`SELECT MAX(CASE WHEN popularity = '' THEN 0 ELSE COALESCE(popularity::numeric, 0) END) AS maximum
+        FROM search_horoshop_products WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, values)
     ]);
     return {
       categories: categories.rows.map((row) => ({ externalId: row.external_id, title: titleOf(row.titles, row.external_id) })),
       brands: brands.rows.map((row) => row.brand),
-      availabilityOptions: availability.rows.map((row) => row.availability)
+      availabilityOptions: availability.rows.map((row) => row.availability),
+      maximumPopularity: Math.max(0, Number(popularity.rows[0]?.maximum || 0))
     };
   }
 
@@ -119,6 +133,22 @@ export class HoroshopPopularityRepository {
     return {
       items: ids.map((id) => byId.get(id)).filter(Boolean), ...facets,
       total, page, pageSize, pageCount: Math.ceil(total / pageSize)
+    };
+  }
+
+  async catalogSelection(connection, productIds, filters = {}, page = 1, pageSize = 25) {
+    const { values, where } = this.predicate(connection, filters, productIds);
+    const [rows, facets] = await Promise.all([
+      this.pool.query(`SELECT product.id FROM search_horoshop_products AS product WHERE ${where}
+        ORDER BY product.sku, product.id`, values),
+      this.facets(connection)
+    ]);
+    const matchingProductIds = rows.rows.map((row) => row.id);
+    const ids = matchingProductIds.slice((page - 1) * pageSize, page * pageSize);
+    return {
+      items: await this.productsByIds(connection, ids), ...facets,
+      matchingProductIds, total: matchingProductIds.length, page, pageSize,
+      pageCount: Math.ceil(matchingProductIds.length / pageSize)
     };
   }
 

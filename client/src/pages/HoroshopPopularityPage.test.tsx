@@ -14,8 +14,9 @@ const catalog: PopularityCatalog = {
     pollingIntervalMinutes: 15, lastSyncAt: '2026-10-07T10:00:00Z', lastError: null,
     counts: { categories: 1, stickers: 0, products: 2, modifications: 2 }, latestRun: null
   },
-  categories: [{ externalId: 'phones', title: 'Телефони' }],
+  categories: [{ externalId: 'phones', title: 'Телефони' }, { externalId: 'audio', title: 'Аудіо' }],
   brands: ['Apple', 'Samsung'], availabilityOptions: ['В наявності'],
+  maximumPopularity: 5,
   total: 2, page: 1, pageSize: 25, pageCount: 1,
   items: [
     { id: 'parent-a', externalId: '101', sku: 'PHONE', titles: { uk: 'Телефон' }, title: 'Телефон',
@@ -59,6 +60,10 @@ describe('HoroshopPopularityPage', () => {
     await user.click(screen.getByRole('button', { name: 'Категорія' }));
     expect(screen.getByText('Бренди').closest('details')).not.toHaveAttribute('open');
     await user.click(screen.getByText('Усі бренди'));
+    await user.type(screen.getByRole('searchbox', { name: 'Пошук бренду' }), 'Sam');
+    expect(screen.queryByRole('checkbox', { name: 'Apple' })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Samsung' })).toBeInTheDocument();
+    await user.clear(screen.getByRole('searchbox', { name: 'Пошук бренду' }));
     await user.click(screen.getByRole('checkbox', { name: 'Apple' }));
     expect(screen.getByRole('checkbox', { name: 'Samsung' })).toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'Samsung' }));
@@ -77,6 +82,9 @@ describe('HoroshopPopularityPage', () => {
       matched: [{ input: 'PHONE-BLACK', productId: 'parent-a', sku: 'PHONE', title: 'Телефон' }],
       ambiguous: [], unmatched: ['UNKNOWN']
     });
+    const scopedSpy = vi.spyOn(api.horoshopPopularity, 'catalogSelection').mockResolvedValue({
+      ...catalog, items: [catalog.items[0]], total: 1, matchingProductIds: ['parent-a']
+    });
     const previewSpy = vi.spyOn(api.horoshopPopularity, 'preview').mockResolvedValue(preview);
     vi.spyOn(api.horoshopPopularity, 'operation').mockResolvedValue(preview);
     renderPage();
@@ -89,7 +97,11 @@ describe('HoroshopPopularityPage', () => {
     expect(resolveSpy).toHaveBeenCalledWith(['PHONE-BLACK', 'UNKNOWN']);
     expect(screen.queryByRole('dialog', { name: 'Пошук за назвою або артикулом' })).not.toBeInTheDocument();
     expect(await screen.findByText('Не знайдено: UNKNOWN')).toBeInTheDocument();
+    expect(await screen.findByText('Товари · 1')).toBeInTheDocument();
+    expect(scopedSpy).toHaveBeenCalledWith(['parent-a'], expect.anything(), 1, 25, expect.anything());
+    expect(screen.queryByText('Навушники')).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: 'Вибрати всі 1 за фільтром' }));
     await user.click(screen.getByRole('button', { name: 'Масова дія' }));
     const dialog = screen.getByRole('dialog');
     await user.type(within(dialog).getByRole('spinbutton', { name: 'Нове значення' }), '20');
@@ -115,5 +127,28 @@ describe('HoroshopPopularityPage', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Застосувати пошук' }));
     expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'PHONE' }), 1, 25, expect.anything());
     expect(screen.getByRole('button', { name: 'Назва або артикул' })).toHaveTextContent('PHONE');
+  });
+
+  it('searches category options and applies a popularity range up to the catalog maximum', async () => {
+    const user = userEvent.setup();
+    const catalogSpy = vi.spyOn(api.horoshopPopularity, 'catalog').mockResolvedValue(catalog);
+    renderPage();
+    await screen.findByText('Телефон');
+
+    await user.click(screen.getByRole('button', { name: 'Категорія' }));
+    await user.type(screen.getByPlaceholderText('Пошук'), 'Тел');
+    expect(screen.getByRole('option', { name: 'Телефони' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Аудіо' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'Телефони' }));
+    expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'phones' }), 1, 25, expect.anything());
+
+    await user.click(screen.getByText('Популярність', { selector: '.hp-popularity-filter summary span' }).closest('summary')!);
+    await user.click(screen.getByRole('radio', { name: 'Діапазон' }));
+    expect(screen.getByText('Від 0 до 5 у каталозі')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('slider', { name: 'Мінімальна популярність' }), { target: { value: '1' } });
+    await user.click(screen.getByRole('button', { name: 'Застосувати' }));
+    expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({
+      category: 'phones', popularity: 'range', popularityMin: 1, popularityMax: 5
+    }), 1, 25, expect.anything());
   });
 });

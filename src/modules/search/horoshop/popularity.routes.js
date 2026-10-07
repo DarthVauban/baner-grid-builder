@@ -9,17 +9,34 @@ import { horoshopPopularityService } from './popularity.service.js';
 
 const uuid = z.string().uuid();
 const brands = z.array(z.string().trim().min(1).max(255)).max(100).default([]);
-const filters = z.object({
+const filterFields = {
   search: z.string().trim().max(160).default(''),
   category: z.string().trim().max(255).default(''),
   brands,
   availability: z.string().trim().max(200).default(''),
-  popularity: z.enum(['all', 'zero', 'positive']).default('all')
-}).strict();
-const catalogQuery = filters.omit({ brands: true }).extend({
+  popularity: z.enum(['all', 'zero', 'positive', 'range']).default('all'),
+  popularityMin: z.coerce.number().int().min(0).max(popularityLimit).default(0),
+  popularityMax: z.coerce.number().int().min(0).max(popularityLimit).default(0)
+};
+const filters = z.object(filterFields).strict().refine(
+  (input) => input.popularity !== 'range' || input.popularityMin <= input.popularityMax,
+  { message: 'Початок діапазону популярності має бути не більшим за кінець.' }
+);
+const catalogQuery = z.object({
+  search: filterFields.search,
+  category: filterFields.category,
+  availability: filterFields.availability,
+  popularity: filterFields.popularity,
+  popularityMin: filterFields.popularityMin,
+  popularityMax: filterFields.popularityMax,
   brand: z.union([z.string(), z.array(z.string())]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(10).max(100).default(25)
+}).strict();
+const selectionCatalogInput = z.object({
+  productIds: z.array(uuid).max(maximumPopularitySelection), filters,
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25)
 }).strict();
 const resolveInput = z.object({
   entries: z.array(z.string().trim().min(1).max(500)).min(1).max(2000)
@@ -49,7 +66,12 @@ export function createPopularityRouter(service = horoshopPopularityService) {
     const parsed = parseInput(brands, rawBrands);
     const { page, pageSize, brand, ...rest } = input;
     void brand;
-    res.json({ data: await service.catalog({ ...rest, brands: parsed }, page, pageSize) });
+    res.json({ data: await service.catalog(parseInput(filters, { ...rest, brands: parsed }), page, pageSize) });
+  }));
+
+  router.post('/catalog/selection', asyncHandler(async (req, res) => {
+    const input = parseInput(selectionCatalogInput, req.body);
+    res.json({ data: await service.catalogSelection(input.productIds, input.filters, input.page, input.pageSize) });
   }));
 
   router.post('/resolve', asyncHandler(async (req, res) => {
