@@ -1,0 +1,20 @@
+.horoshop-catalog-sync-progress { display: grid; gap: 10px; border: 1px solid #cfd7ff; border-radius: 17px; padding: 15px 17px; background: #f7f8ff; }
+.horoshop-catalog-sync-progress.is-complete { border-color: #ccebd7; background: #f7fcf9; }
+.horoshop-catalog-sync-progress.is-failed { border-color: #f2c8d1; background: #fff8fa; }
+.horoshop-catalog-sync-progress header { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.horoshop-catalog-sync-progress header > div { display: grid; gap: 3px; }
+.horoshop-catalog-sync-progress header strong { color: var(--ink); font-size: 13px; }
+.horoshop-catalog-sync-progress header span,
+.horoshop-catalog-sync-progress footer { color: var(--muted); font-size: 10px; }
+.horoshop-catalog-sync-progress header b { color: #5b50d8; font-size: 20px; }
+.horoshop-catalog-sync-progress.is-failed header b { color: #a62d47; }
+.horoshop-catalog-sync-progress__track { height: 7px; overflow: hidden; border-radius: 999px; background: #e5e8f5; }
+.horoshop-catalog-sync-progress__track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#7158ff,#4778ff); transition: width .25s ease; }
+.horoshop-catalog-sync-progress__track.is-indeterminate { position: relative; }
+.horoshop-catalog-sync-progress__track.is-indeterminate span { position: absolute; inset-block: 0; animation: horoshop-catalog-sync-progress 1.15s ease-in-out infinite; }
+.horoshop-catalog-sync-progress footer { display: flex; gap: 16px; flex-wrap: wrap; }
+
+@keyframes horoshop-catalog-sync-progress {
+  from { left: -38%; }
+  to { left: 100%; }
+}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { HoroshopCatalogSyncProgress } from '../components/HoroshopCatalogSyncProgress';
 import { Icon } from '../components/Icon';
 import { StyledSelect, type StyledSelectOption } from '../components/StyledSelect';
 import { api } from '../lib/api';
@@ -89,7 +90,9 @@ export function HoroshopPopularityPage() {
       ? api.horoshopPopularity.catalog(filters, page, 25, signal)
       : api.horoshopPopularity.catalogSelection(listProductIds, filters, page, 25, signal),
     placeholderData: (previous) => previous,
-    refetchInterval: (query) => query.state.data?.integration.status === 'syncing' ? 2_000 : false
+    refetchInterval: (query) => query.state.data?.integration.status === 'syncing'
+      || query.state.data?.integration.latestRun?.status === 'running' ? 2_000 : false,
+    refetchIntervalInBackground: true
   });
   const history = useQuery({
     queryKey: ['horoshop-popularity-history'], queryFn: ({ signal }) => api.horoshopPopularity.history(signal),
@@ -103,6 +106,8 @@ export function HoroshopPopularityPage() {
   });
   const operation = operationQuery.data || draftOperation;
   const catalogData = catalog.data;
+  const catalogSyncRunning = catalogData?.integration.status === 'syncing'
+    || catalogData?.integration.latestRun?.status === 'running';
   const maximumPopularity = Math.max(0, Math.floor(catalogData?.maximumPopularity ?? 0));
   const popularitySummary = filters.popularity === 'zero' ? 'Нульова'
     : filters.popularity === 'positive' ? 'Вища за 0'
@@ -308,15 +313,16 @@ export function HoroshopPopularityPage() {
   return <div className="hp-page">
     <header className="hp-heading"><div><p className="eyebrow">Інструменти / Хорошоп</p><h1>Популярність товарів</h1><p>Керуйте пріоритетом товарів у каталозі Хорошопа.</p></div>
       <div className="hp-heading-actions"><button className="button button--secondary" type="button" onClick={() => setDisplay('history')}>Історія змін</button>
-        <button className="button button--secondary" type="button" onClick={() => void sync()} disabled={busy || !catalogData?.integration.configured}><Icon name="refresh" size={16} /> Оновити каталог</button></div>
+        <button className="button button--secondary" type="button" onClick={() => void sync()} disabled={busy || catalogSyncRunning || !catalogData?.integration.configured}><Icon name="refresh" size={16} /> {busy ? 'Запускаємо…' : catalogSyncRunning ? 'Синхронізуємо…' : 'Оновити каталог'}</button></div>
     </header>
     {catalog.isLoading && <div className="hp-panel hp-center">Завантажуємо каталог…</div>}
     {catalog.isError && <div className="hp-panel hp-center is-error">Не вдалося завантажити каталог. <button className="button button--secondary" type="button" onClick={() => void catalog.refetch()}>Повторити</button></div>}
     {!catalog.isLoading && !catalog.isError && !catalogData?.integration.configured && <div className="hp-panel hp-empty"><Icon name="storefront" size={34} /><h2>Магазин Хорошоп ще не підключено</h2><p>Підключіть магазин у розділі інтеграцій і дочекайтеся першої синхронізації каталогу.</p><Link className="button button--primary" to="/admin/integrations">Перейти до інтеграцій</Link></div>}
     {!catalog.isLoading && !catalog.isError && catalogData?.integration.configured && <>
-      <div className="hp-status"><span className="hp-status-dot" />{catalogData.integration.status === 'syncing' ? 'Каталог синхронізується' : 'Магазин підключено'} · {number(catalogData.integration.counts?.products ?? catalogData.total)} товарів
+      <div className="hp-status"><span className="hp-status-dot" />{catalogSyncRunning ? 'Каталог синхронізується' : 'Магазин підключено'} · {number(catalogData.integration.counts?.products ?? catalogData.total)} товарів
         {catalogData.integration.lastSyncAt && <> · Синхронізовано {date(catalogData.integration.lastSyncAt)}</>}</div>
-      {catalogData.integration.status !== 'connected' && <p className="hp-note is-warning">Операції з популярністю будуть доступні після завершення синхронізації каталогу.</p>}
+      {catalogSyncRunning && <HoroshopCatalogSyncProgress integration={catalogData.integration} />}
+      {catalogData.integration.status !== 'connected' && !catalogSyncRunning && <p className="hp-note is-warning">Операції з популярністю будуть доступні після завершення синхронізації каталогу.</p>}
       <nav className="hp-tabs" aria-label="Розділи інструменту"><button className={display === 'history' ? '' : 'is-active'} type="button" onClick={() => setDisplay('catalog')}>Каталог</button><button className={display === 'history' ? 'is-active' : ''} type="button" onClick={() => setDisplay('history')}>Історія операцій</button></nav>
 
       {display === 'catalog' && <section className="hp-panel" aria-label="Каталог товарів">

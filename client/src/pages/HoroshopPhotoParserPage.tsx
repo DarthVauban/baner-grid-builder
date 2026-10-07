@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { HoroshopCatalogSyncProgress } from '../components/HoroshopCatalogSyncProgress';
 import { Icon } from '../components/Icon';
 import { DateTimePicker } from '../components/DateTimePicker';
 import { StyledSelect } from '../components/StyledSelect';
@@ -82,30 +83,6 @@ function BatchProgress({ batch }: { batch: HoroshopPhotoBatch }) {
       <span>Частково: {batch.counts.partial}</span>
       <span>Помилки: {batch.counts.failed}</span>
       <span>У черзі: {batch.counts.queued + batch.counts.running}</span>
-    </footer>
-  </section>;
-}
-
-function CatalogSyncProgress({ integration }: { integration: HoroshopIntegration }) {
-  const run = integration.latestRun;
-  const running = integration.status === 'syncing' || run?.status === 'running';
-  const failed = integration.status === 'error' || run?.status === 'failed';
-  const percentage = running ? run?.progressPercentage : failed ? run?.progressPercentage : 100;
-  return <section className={`horoshop-photo-progress horoshop-photo-catalog-sync${running ? ' is-running' : ''}${failed ? ' is-failed' : ' is-complete'}`} aria-live="polite">
-    <header>
-      <div>
-        <strong>{running ? 'Синхронізуємо каталог з Хорошопом' : failed ? 'Синхронізацію не завершено' : 'Каталог синхронізовано'}</strong>
-        <span>{running ? 'Отримуємо актуальні товари, модифікації та фотографії' : failed ? (run?.errorMessage || integration.lastError || 'Спробуйте запустити ще раз.') : `Останнє оновлення: ${integration.lastSyncAt ? new Date(integration.lastSyncAt).toLocaleString('uk-UA') : 'щойно'}`}</span>
-      </div>
-      <b>{percentage === null || percentage === undefined ? (running ? 'Триває' : failed ? 'Помилка' : 'Готово') : `${percentage}%`}</b>
-    </header>
-    <div className={`horoshop-photo-progress__track${running && percentage === null ? ' is-indeterminate' : ''}`}><span style={{ width: percentage === null || percentage === undefined ? '38%' : `${percentage}%` }} /></div>
-    <footer>
-      <span>Отримано: {run?.exportItemsReceived || 0}{run?.exportItemsTotal ? ` із ${run.exportItemsTotal}` : ''}</span>
-      <span>Сторінок: {run?.pagesReceived || 0}</span>
-      <span>Розділів: {run?.categoriesReceived || 0}</span>
-      <span>Товарів: {run?.productsReceived || 0}</span>
-      <span>Модифікацій: {run?.modificationsReceived || 0}</span>
     </footer>
   </section>;
 }
@@ -809,7 +786,7 @@ export function HoroshopPhotoParserPage() {
       </div>
     </header>
 
-    {catalogSyncIntegration && <CatalogSyncProgress integration={catalogSyncIntegration} />}
+    {catalogSyncIntegration && <HoroshopCatalogSyncProgress integration={catalogSyncIntegration} />}
 
     <section className="horoshop-photo-desktop">
       <div className="horoshop-photo-desktop__intro">

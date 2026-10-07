@@ -47,6 +47,32 @@ function renderPage() {
 }
 
 describe('HoroshopPopularityPage', () => {
+  it('shows catalog synchronization progress after refresh starts', async () => {
+    const user = userEvent.setup();
+    const syncingCatalog: PopularityCatalog = {
+      ...catalog,
+      integration: { ...catalog.integration, status: 'syncing', latestRun: {
+        id: 'sync-a', mode: 'manual', status: 'running', categoriesReceived: 12,
+        stickersReceived: 0, productsReceived: 300, modificationsReceived: 450,
+        pagesReceived: 2, exportItemsReceived: 300, exportItemsTotal: 600,
+        progressPercentage: 50, errorMessage: null,
+        startedAt: '2026-10-07T10:01:00Z', completedAt: null
+      } }
+    };
+    vi.spyOn(api.horoshopPopularity, 'catalog').mockResolvedValueOnce(catalog).mockResolvedValue(syncingCatalog);
+    vi.spyOn(api.horoshopPopularity, 'sync').mockResolvedValue({ started: true, integration: syncingCatalog.integration });
+    renderPage();
+    await screen.findByText('Телефон');
+
+    await user.click(screen.getByRole('button', { name: 'Оновити каталог' }));
+    const progress = await screen.findByRole('region', { name: 'Синхронізація каталогу Хорошоп' });
+    expect(within(progress).getByText('Синхронізуємо каталог з Хорошопом')).toBeInTheDocument();
+    expect(within(progress).getByText('50%')).toBeInTheDocument();
+    expect(within(progress).getByText('Отримано: 300 із 600')).toBeInTheDocument();
+    expect(within(progress).getByText('Модифікацій: 450')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Синхронізуємо…' })).toBeDisabled();
+  });
+
   it('filters by multiple brands and selects all products matching the filter', async () => {
     const user = userEvent.setup();
     let finishPendingRequest = () => {};
