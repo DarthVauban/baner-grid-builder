@@ -23,6 +23,10 @@ export function normalizePopularitySearch(value) {
   return String(value ?? '').normalize('NFKC').trim().replace(/\s+/gu, ' ').toLocaleLowerCase('uk-UA');
 }
 
+function normalizePopularityTitle(value) {
+  return normalizePopularitySearch(value).replace(/[^\p{L}\p{N}+]+/gu, ' ').trim().replace(/\s+/gu, ' ');
+}
+
 function titleOf(titles, fallback = '') {
   const source = titles && typeof titles === 'object' ? titles : {};
   return String(source.uk || source.ua || source.ru || source.en || Object.values(source)[0] || fallback).trim();
@@ -31,8 +35,8 @@ function titleOf(titles, fallback = '') {
 export function resolvePopularityEntries(entries, products) {
   const byArticle = new Map();
   const byTitle = new Map();
-  const add = (index, raw, product) => {
-    const key = normalizePopularitySearch(raw);
+  const add = (index, raw, product, normalize = normalizePopularitySearch) => {
+    const key = normalize(raw);
     if (!key) return;
     const found = index.get(key) || new Map();
     found.set(product.id, product);
@@ -40,10 +44,20 @@ export function resolvePopularityEntries(entries, products) {
   };
   for (const product of products) {
     add(byArticle, product.sku, product);
-    for (const title of Object.values(product.titles || {})) add(byTitle, title, product);
+    const parentTitles = Object.values(product.titles || {});
+    for (const title of parentTitles) add(byTitle, title, product, normalizePopularityTitle);
     for (const modification of product.modifications || []) {
       add(byArticle, modification.sku, product);
-      for (const title of Object.values(modification.titles || {})) add(byTitle, title, product);
+      for (const title of Object.values(modification.titles || {})) {
+        add(byTitle, title, product, normalizePopularityTitle);
+        for (const parentTitle of parentTitles) {
+          const parentKey = normalizePopularityTitle(parentTitle);
+          const modificationKey = normalizePopularityTitle(title);
+          if (parentKey && modificationKey && !modificationKey.includes(parentKey)) {
+            add(byTitle, `${parentTitle} ${title}`, product, normalizePopularityTitle);
+          }
+        }
+      }
     }
   }
   const matched = [];
@@ -56,7 +70,17 @@ export function resolvePopularityEntries(entries, products) {
     const key = normalizePopularitySearch(input);
     if (!key || seenInputs.has(key)) continue;
     seenInputs.add(key);
-    const candidates = [...(byArticle.get(key) || byTitle.get(key) || new Map()).values()];
+    const titleKey = normalizePopularityTitle(input);
+    let candidates = [...(byArticle.get(key) || byTitle.get(titleKey) || new Map()).values()];
+    if (!candidates.length && titleKey.length >= 8 && titleKey.includes(' ')) {
+      const partial = new Map();
+      for (const [storedTitle, matches] of byTitle) {
+        if (!storedTitle.startsWith(`${titleKey} `) && !storedTitle.includes(` ${titleKey} `)
+          && !storedTitle.endsWith(` ${titleKey}`)) continue;
+        for (const [id, product] of matches) partial.set(id, product);
+      }
+      candidates = [...partial.values()];
+    }
     if (!candidates.length) { unmatched.push(input); continue; }
     if (candidates.length > 1) {
       ambiguous.push({ input, candidates: candidates.map((product) => ({

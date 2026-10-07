@@ -110,6 +110,16 @@ test('catalog filters by brand and popularity; pasted modification articles reso
   assert.deepEqual(resolution.body.data.unmatched, ['MISSING']);
 });
 
+test('resolve endpoint finds a pasted title when the catalog title contains a variant suffix', async () => {
+  await pool.query('UPDATE search_horoshop_products SET titles = $2::jsonb WHERE id = $1',
+    [productIds[1], JSON.stringify({ uk: 'Миша бездротова Proove Gaming Buzz (Black)' })]);
+  const resolution = await agent.post(`${base}/resolve`).send({ entries: [
+    'PHONE-BLACK', 'Миша Бездротова Proove Gaming Buzz'
+  ] }).expect(200);
+  assert.deepEqual(resolution.body.data.matched.map((item) => item.productId), productIds);
+  assert.deepEqual(resolution.body.data.unmatched, []);
+});
+
 test('saved-list catalog is scoped to its product IDs and a popularity range', async () => {
   const scoped = await agent.post(`${base}/catalog/selection`).send({
     productIds: [productIds[1], productIds[0]],
@@ -185,4 +195,36 @@ test('domain rejects overflow and detects ambiguous titles and inconsistent remo
   assert.equal(resolution.ambiguous.length, 1);
   const groups = remotePopularityGroups([{ article: 'P', popularity: 5, modifications: [{ article: 'P-1', popularity: 7 }] }]);
   assert.equal(groups.get('P').inconsistent, true);
+});
+
+test('pasted articles and a title without a catalog suffix resolve to three parent products', () => {
+  const products = [
+    { id: 'keyboard', sku: 'П0000033989', titles: { uk: 'Клавіатура T' }, modifications: [] },
+    { id: 'logitech', sku: 'П0000039153', titles: { uk: 'Миша Logitech' }, modifications: [] },
+    { id: 'proove', sku: 'PROOVE', titles: { uk: 'Миша бездротова Proove Gaming Buzz (Black)' },
+      modifications: [{ sku: 'PROOVE-BLACK', titles: { uk: 'Black' } }] }
+  ];
+  const resolution = resolvePopularityEntries([
+    'П0000039153', 'П0000033989', 'Миша Бездротова Proove Gaming Buzz'
+  ], products);
+  assert.deepEqual(resolution.matched.map((item) => item.productId), ['logitech', 'keyboard', 'proove']);
+  assert.deepEqual(resolution.unmatched, []);
+
+  const combinedTitle = resolvePopularityEntries(['Миша бездротова Proove Gaming Buzz Black'], [
+    { id: 'proove', sku: 'PROOVE', titles: { uk: 'Миша бездротова Proove Gaming Buzz' },
+      modifications: [{ sku: 'PROOVE-BLACK', titles: { uk: 'Black' } }] }
+  ]);
+  assert.deepEqual(combinedTitle.matched.map((item) => item.productId), ['proove']);
+
+  const ambiguous = resolvePopularityEntries(['Миша Бездротова Proove Gaming Buzz'], [
+    products[2], { id: 'proove-white', sku: 'PROOVE-WHITE',
+      titles: { uk: 'Миша бездротова Proove Gaming Buzz White' }, modifications: [] }
+  ]);
+  assert.equal(ambiguous.ambiguous.length, 1);
+  assert.equal(ambiguous.matched.length, 0);
+
+  const plusModel = resolvePopularityEntries(['Samsung S25'], [
+    { id: 'plus', sku: 'S25-PLUS', titles: { uk: 'Samsung S25+' }, modifications: [] }
+  ]);
+  assert.deepEqual(plusModel.unmatched, ['Samsung S25']);
 });
