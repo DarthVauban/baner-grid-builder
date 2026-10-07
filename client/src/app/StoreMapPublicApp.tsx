@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LngLatBounds,
   Map as MapLibreMap,
@@ -101,6 +101,7 @@ export function StoreMapPublicApp() {
   const mapElementRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRefs = useRef(new Map<string, Marker>());
+  const popupRef = useRef<Popup | null>(null);
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const [data, setData] = useState<PublicStoreMapData | null>(null);
   const [error, setError] = useState('');
@@ -157,6 +158,37 @@ export function StoreMapPublicApp() {
         && (!needle || `${point.name} ${point.city}`.toLocaleLowerCase('uk-UA').includes(needle));
     });
   }, [city, clock, data?.points, openFilter, search]);
+
+  const selectPoint = useCallback((point: StoreMapPoint, source: 'map' | 'list') => {
+    const map = mapRef.current;
+    if (!map || !data) return;
+
+    popupRef.current?.remove();
+    popupRef.current = new Popup({
+      className: 'store-map-popup-shell',
+      maxWidth: '290px',
+      closeOnClick: false,
+      offset: [
+        data.settings.markerWidth / 2 - data.settings.markerAnchorX,
+        -data.settings.markerAnchorY - 8
+      ]
+    })
+      .setLngLat([point.longitude, point.latitude])
+      .setHTML(popupMarkup(point))
+      .addTo(map);
+    setSelectedId(point.id);
+
+    if (source === 'map') {
+      cardRefs.current.get(point.id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      map.flyTo({
+        center: [point.longitude, point.latitude],
+        zoom: Math.max(map.getZoom(), 15),
+        duration: 600
+      });
+    }
+  }, [data]);
+
   useEffect(() => {
     if (!data || !mapElementRef.current || mapRef.current) return;
     const map = new MapLibreMap({
@@ -170,6 +202,8 @@ export function StoreMapPublicApp() {
     mapRef.current = map;
     window.setTimeout(() => map.resize(), 0);
     return () => {
+      popupRef.current?.remove();
+      popupRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -183,22 +217,15 @@ export function StoreMapPublicApp() {
     markers.clear();
     const svg = data.settings.markerSvg || defaultMarkerSvg;
     filteredPoints.forEach((point) => {
-      const selected = point.id === selectedId;
       const markerElement = document.createElement('button');
       markerElement.type = 'button';
-      markerElement.className = `store-map-marker${selected ? ' store-map-marker--selected' : ''}`;
+      markerElement.className = 'store-map-marker';
       markerElement.title = point.name;
       markerElement.setAttribute('aria-label', point.name);
       markerElement.style.width = `${data.settings.markerWidth}px`;
       markerElement.style.height = `${data.settings.markerHeight}px`;
-      markerElement.style.zIndex = selected ? '2' : '1';
       markerElement.innerHTML = `<span class="store-map-marker__art">${svg}</span>`;
 
-      const popup = new Popup({
-        className: 'store-map-popup-shell',
-        maxWidth: '290px',
-        offset: [0, -8]
-      }).setHTML(popupMarkup(point));
       const marker = new Marker({
         element: markerElement,
         anchor: 'bottom',
@@ -209,20 +236,30 @@ export function StoreMapPublicApp() {
       });
       marker
         .setLngLat([point.longitude, point.latitude])
-        .setPopup(popup)
         .addTo(map);
       markers.set(point.id, marker);
-      markerElement.addEventListener('click', () => {
-        setSelectedId(point.id);
-        cardRefs.current.get(point.id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
-      if (selected) popup.addTo(map);
+      markerElement.addEventListener('click', () => selectPoint(point, 'map'));
     });
     return () => {
       markers.forEach((marker) => marker.remove());
       markers.clear();
     };
-  }, [clock, data, filteredPoints, selectedId]);
+  }, [data, filteredPoints, selectPoint]);
+
+  useEffect(() => {
+    markerRefs.current.forEach((marker, id) => {
+      const selected = id === selectedId;
+      const element = marker.getElement();
+      element.classList.toggle('store-map-marker--selected', selected);
+      element.style.zIndex = selected ? '2' : '1';
+      element.setAttribute('aria-pressed', String(selected));
+    });
+    if (selectedId && !markerRefs.current.has(selectedId)) {
+      popupRef.current?.remove();
+      popupRef.current = null;
+      setSelectedId(null);
+    }
+  }, [filteredPoints, selectedId]);
 
   useEffect(() => {
     if (!data || !mapRef.current) return;
@@ -244,18 +281,6 @@ export function StoreMapPublicApp() {
     filteredPoints.forEach((point) => bounds.extend([point.longitude, point.latitude]));
     mapRef.current.fitBounds(bounds, { padding: 32, maxZoom: 14 });
   }, [data, filteredPoints]);
-
-  function selectPoint(point: StoreMapPoint) {
-    setSelectedId(point.id);
-    const map = mapRef.current;
-    const marker = markerRefs.current.get(point.id);
-    if (map) marker?.getPopup()?.addTo(map);
-    map?.flyTo({
-      center: [point.longitude, point.latitude],
-      zoom: Math.max(map.getZoom(), 15),
-      duration: 600
-    });
-  }
 
   if (error) return <main className="store-map-widget-state store-map-widget-state--error"><strong>Мапа тимчасово недоступна</strong><span>{error}</span></main>;
   if (!data) return <main className="store-map-widget-state"><span className="store-map-widget-loader" /><strong>Завантажуємо мапу магазинів…</strong></main>;
@@ -286,12 +311,15 @@ export function StoreMapPublicApp() {
               else cardRefs.current.delete(point.id);
             }}
             className={`store-map-widget-card${selectedId === point.id ? ' store-map-widget-card--selected' : ''}`}
-            onClick={() => selectPoint(point)}
+            onClick={() => selectPoint(point, 'list')}
             key={point.id}
           >
             <div className="store-map-widget-card__heading">
               <h2>{point.name}</h2>
-              <span className={`store-map-widget-status store-map-widget-status--${status.modifier}`}>{status.label}</span>
+              <div className="store-map-widget-card__badges">
+                {selectedId === point.id && <span className="store-map-widget-card__selected-label">Обрано</span>}
+                <span className={`store-map-widget-status store-map-widget-status--${status.modifier}`}>{status.label}</span>
+              </div>
             </div>
             <p><span aria-hidden="true">⌖</span>{point.address}</p>
             <div className="store-map-widget-card__footer">

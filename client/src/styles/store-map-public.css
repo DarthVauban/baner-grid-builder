@@ -64,10 +64,13 @@ button, input, select { font: inherit; }
 .store-map-widget__filters .custom-select { min-width: 0; }
 .store-map-widget__filters .custom-select__button { min-height: 40px; border: 1px solid #dce3eb; border-radius: 10px; padding: 0 10px; color: #29364a; background: #f8fafc; }
 .store-map-widget__list { min-height: 0; display: grid; align-content: start; gap: 9px; overflow: auto; padding-right: 5px; scrollbar-color: #c9d3df transparent; scrollbar-width: thin; }
-.store-map-widget-card { border: 1px solid #e5eaf0; border-left: 4px solid #ffe101; border-radius: 12px; padding: 13px 13px 12px; background: #f8fafc; cursor: pointer; transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease; }
-.store-map-widget-card:hover, .store-map-widget-card--selected { border-color: #ffdf00; box-shadow: 0 8px 22px rgba(24,34,53,.09); transform: translateY(-1px); }
+.store-map-widget-card { border: 1px solid #e5eaf0; border-left: 4px solid #ffe101; border-radius: 12px; padding: 13px 13px 12px; background: #f8fafc; cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease; }
+.store-map-widget-card:hover { border-color: #ffdf00; box-shadow: 0 8px 22px rgba(24,34,53,.09); transform: translateY(-1px); }
+.store-map-widget-card--selected, .store-map-widget-card--selected:hover { border: 2px solid #d5aa00; border-left: 6px solid #111827; padding: 12px 12px 11px; background: #fff8cf; box-shadow: 0 0 0 3px rgba(255,225,1,.35), 0 10px 24px rgba(24,34,53,.14); transform: translateY(-1px); }
 .store-map-widget-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .store-map-widget-card h2 { min-width: 0; margin: 0; color: #172033; font-size: 14px; line-height: 1.35; }
+.store-map-widget-card__badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.store-map-widget-card__selected-label { flex: 0 0 auto; border-radius: 999px; padding: 4px 7px; color: #fff; background: #172033; font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .store-map-widget-status { flex: 0 0 auto; border-radius: 999px; padding: 4px 7px; color: #6b7b90; background: #dce4ed; font-size: 9px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .store-map-widget-status--schedule { color: #5141dc; background: #eceafe; }
 .store-map-widget-status--temporary { color: #9a5b00; background: #fff0cc; }
