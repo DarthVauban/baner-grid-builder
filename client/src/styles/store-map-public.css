@@ -40,6 +40,7 @@ button, input, select { font: inherit; }
 .store-map-marker__art svg { width: 100%; height: 100%; display: block; }
 .store-map-marker--selected .store-map-marker__art { transform: scale(1.18); filter: drop-shadow(0 6px 7px rgba(15,23,42,.35)); }
 .maplibregl-ctrl-attrib { font-size: 9px; }
+.store-map-popup-shell { z-index: 10; }
 .store-map-popup-shell .maplibregl-popup-content { min-width: 240px; overflow: hidden; border-radius: 14px; padding: 0; box-shadow: 0 16px 40px rgba(15,23,42,.2); }
 .store-map-popup-shell .maplibregl-popup-close-button { top: 6px; right: 6px; z-index: 1; width: 28px; height: 28px; border-radius: 50%; color: #64748b; background: rgba(255,255,255,.9); font-size: 20px; line-height: 26px; }
 .store-map-popup-shell .maplibregl-popup-tip { filter: drop-shadow(3px 3px 5px rgba(15,23,42,.08)); }

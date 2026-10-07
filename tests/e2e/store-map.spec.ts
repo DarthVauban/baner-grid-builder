@@ -102,6 +102,27 @@ test('store map loads OpenFreeMap on independent desktop and mobile surfaces', a
     const lvivCard = page.locator('.store-map-widget-card').filter({ hasText: 'м. Львів, Центр' });
     await kyivMarker.click();
     await expect(page.locator('.store-map-popup')).toContainText('вул. Хрещатик, 1');
+    const popupIsAboveMarker = await page.locator('.store-map-popup-shell .maplibregl-popup-content').evaluate((content) => {
+      const popup = content.closest('.store-map-popup-shell');
+      const markerLayer = document.querySelector('.maplibregl-canvas-container');
+      if (!popup || !markerLayer) return false;
+      const popupBounds = content.getBoundingClientRect();
+      const layerBounds = markerLayer.getBoundingClientRect();
+      const centerX = popupBounds.left + popupBounds.width / 2;
+      const centerY = popupBounds.top + popupBounds.height / 2;
+      const overlappingMarker = document.createElement('button');
+      overlappingMarker.className = 'store-map-marker maplibregl-marker';
+      overlappingMarker.style.left = `${centerX - layerBounds.left - 21}px`;
+      overlappingMarker.style.top = `${centerY - layerBounds.top - 26}px`;
+      overlappingMarker.style.width = '42px';
+      overlappingMarker.style.height = '52px';
+      overlappingMarker.style.zIndex = '2';
+      markerLayer.appendChild(overlappingMarker);
+      const topmost = document.elementFromPoint(centerX, centerY);
+      overlappingMarker.remove();
+      return topmost?.closest('.store-map-popup-shell') === popup;
+    });
+    expect(popupIsAboveMarker).toBe(true);
     await expect(kyivCard).toHaveClass(/store-map-widget-card--selected/u);
     await expect(kyivCard.locator('.store-map-widget-card__selected-label')).toHaveText('Обрано');
     const selectedBackground = await kyivCard.evaluate((node) => getComputedStyle(node).backgroundColor);
