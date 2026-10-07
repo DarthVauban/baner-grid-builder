@@ -352,10 +352,9 @@ export function HoroshopPopularityPage() {
           {resolution.ambiguous.map((entry) => <div key={entry.input}><span>«{entry.input}» — кілька збігів:</span>{entry.candidates.map((candidate) => <button className="button button--secondary" key={candidate.productId} type="button" disabled={Boolean(resolvedAmbiguous[entry.input])} onClick={() => chooseAmbiguous(entry.input, candidate.productId)}>{candidate.title} · {candidate.sku}{resolvedAmbiguous[entry.input] === candidate.productId ? ' ✓' : ''}</button>)}</div>)}
           {resolution.unmatched.length > 0 && <p>Не знайдено: {resolution.unmatched.join(', ')}</p>}
         </div>}
-        {catalog.isPlaceholderData ? <div className="hp-center">Оновлюємо список товарів…</div> : <>
+        {catalog.isPlaceholderData && !catalogSyncRunning ? <div className="hp-center">Оновлюємо список товарів…</div> : <>
         {catalogData.total > 0 && <div className="hp-selection"><strong>{selectedCount ? `${number(selectedCount)} товарів вибрано` : 'Виберіть товари для масової дії'}</strong><div><button type="button" onClick={() => setAllFiltered((current) => !current)}>{allFiltered ? 'Вибрано всі за фільтром' : `Вибрати всі ${number(catalogData.total)} за фільтром`}</button><button className="button button--primary" type="button" disabled={selectedCount === 0 || catalogData.integration.status !== 'connected'} onClick={openBulk}>Масова дія</button></div></div>}
         <div className="hp-list-meta"><strong>Товари · {number(catalogData.total)}</strong><span>Один рядок = товар з усіма модифікаціями</span></div>
-        {catalog.isFetching && <p className="hp-updating">Оновлюємо список…</p>}
         <div className="hp-table-wrap"><table><thead><tr><th><input type="checkbox" aria-label="Вибрати товари на сторінці" checked={catalogData.items.length > 0 && (allFiltered || catalogData.items.every((item) => selectedIds.has(item.id)))} onChange={(event) => {
           setAllFiltered(false); setSelectedIds((current) => { const next = new Set(current); catalogData.items.forEach((item) => { if (event.target.checked) next.add(item.id); else next.delete(item.id); }); return next; });
         }} /></th><th>Товар</th><th>Бренд / категорія</th><th>Наявність</th><th>Популярність</th><th></th></tr></thead><tbody>
@@ -364,7 +363,7 @@ export function HoroshopPopularityPage() {
             <td>{product.brand || '—'}<small>{categoryNames.get(product.categoryExternalId || '') || 'Без категорії'}</small></td>
             <td>{product.availability || 'Не вказано'}</td><td className="hp-number">{product.popularity ?? '0'}</td><td><button className="hp-link" type="button" disabled={catalogData.integration.status !== 'connected'} onClick={() => openSingle(product)}>Змінити</button></td></tr>)}
         </tbody></table></div>
-        {!catalogData.items.length && <div className="hp-center">За цими умовами товарів не знайдено.</div>}
+        {!catalogData.items.length && <div className="hp-center">{catalogSyncRunning ? 'Оновлюємо список…' : 'За цими умовами товарів не знайдено.'}</div>}
         <div className="hp-pager"><span>Сторінка {catalogData.page} із {catalogData.pageCount || 1}</span><div><button className="button button--secondary" type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Назад</button><button className="button button--secondary" type="button" disabled={page >= catalogData.pageCount} onClick={() => setPage(page + 1)}>Далі</button></div></div>
         </>}
       </section>}

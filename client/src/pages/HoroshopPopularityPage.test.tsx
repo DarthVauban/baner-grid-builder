@@ -41,9 +41,10 @@ afterEach(() => vi.restoreAllMocks());
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><MemoryRouter><ToastProvider>
+  const view = render(<QueryClientProvider client={client}><MemoryRouter><ToastProvider>
     <HoroshopPopularityPage />
   </ToastProvider></MemoryRouter></QueryClientProvider>);
+  return { ...view, client };
 }
 
 describe('HoroshopPopularityPage', () => {
@@ -51,6 +52,7 @@ describe('HoroshopPopularityPage', () => {
     const user = userEvent.setup();
     const syncingCatalog: PopularityCatalog = {
       ...catalog,
+      items: [], total: 0, pageCount: 0,
       integration: { ...catalog.integration, status: 'syncing', latestRun: {
         id: 'sync-a', mode: 'manual', status: 'running', categoriesReceived: 12,
         stickersReceived: 0, productsReceived: 300, modificationsReceived: 450,
@@ -61,7 +63,7 @@ describe('HoroshopPopularityPage', () => {
     };
     vi.spyOn(api.horoshopPopularity, 'catalog').mockResolvedValueOnce(catalog).mockResolvedValue(syncingCatalog);
     vi.spyOn(api.horoshopPopularity, 'sync').mockResolvedValue({ started: true, integration: syncingCatalog.integration });
-    renderPage();
+    const { client } = renderPage();
     await screen.findByText('Телефон');
 
     await user.click(screen.getByRole('button', { name: 'Оновити каталог' }));
@@ -71,6 +73,11 @@ describe('HoroshopPopularityPage', () => {
     expect(within(progress).getByText('Отримано: 300 із 600')).toBeInTheDocument();
     expect(within(progress).getByText('Модифікацій: 450')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Синхронізуємо…' })).toBeDisabled();
+    const updating = await screen.findByText('Оновлюємо список…');
+    expect(updating).toHaveClass('hp-center');
+    expect(screen.queryByText('За цими умовами товарів не знайдено.')).not.toBeInTheDocument();
+    await client.invalidateQueries({ queryKey: ['horoshop-popularity-catalog'] });
+    expect(screen.getByText('Оновлюємо список…')).toBe(updating);
   });
 
   it('filters by multiple brands and selects all products matching the filter', async () => {
