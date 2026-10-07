@@ -540,6 +540,19 @@ function TradeInWizard({
 
 export function TradeInPublicPage({ config, preview = false, compact = false, onSubmit }: TradeInPublicPageProps) {
   const rootRef = useRef<HTMLElement>(null);
+  const safeHeaderUrl = (value: string) => {
+    if (!value || value.length > 2000 || /[\u0000-\u001f\u007f]/.test(value)) return '';
+    try {
+      const url = new URL(value.trim());
+      return ['http:', 'https:'].includes(url.protocol) && url.hostname && !url.username && !url.password
+        ? url.href
+        : '';
+    } catch {
+      return '';
+    }
+  };
+  const logoLink = safeHeaderUrl(config.header.logoLink);
+  const storeButtonUrl = safeHeaderUrl(config.header.storeButtonUrl);
   const typographyStyle = Object.entries(config.typography).reduce<Record<string, string | number>>((variables, [section, typography]) => {
     variables[`--ti-${section}-heading-font`] = typography.headingFontFamily;
     variables[`--ti-${section}-heading-size`] = `${typography.headingFontSize}px`;
@@ -593,15 +606,20 @@ export function TradeInPublicPage({ config, preview = false, compact = false, on
       {config.header.visible && (
         <header className={`ti-header${config.header.sticky && !compact ? ' is-sticky' : ''}`}>
           <div className="ti-container">
-            <a className="ti-brand" href="#top" onClick={(event) => {
-              event.preventDefault();
-              rootRef.current?.scrollIntoView({ behavior: 'smooth' });
+            <a className="ti-brand" href={logoLink || '#top'} onClick={(event) => {
+              if (!logoLink) {
+                event.preventDefault();
+                rootRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }
             }}>
               <span>MT</span>
               <strong>{config.header.brandName}</strong>
               <small>{config.header.sectionLabel}</small>
             </a>
-            <button className="ti-button ti-button--primary ti-button--small" type="button" onClick={scrollToForm}>{config.header.ctaLabel}</button>
+            <div className={`ti-header__actions${storeButtonUrl ? ' ti-header__actions--with-store' : ''}`}>
+              {storeButtonUrl && <a className="ti-button ti-button--secondary ti-button--small" href={storeButtonUrl}>Повернутись до магазину</a>}
+              <button className="ti-button ti-button--primary ti-button--small" type="button" onClick={scrollToForm}>{config.header.ctaLabel}</button>
+            </div>
           </div>
         </header>
       )}

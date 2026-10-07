@@ -179,7 +179,7 @@ function PageEditor({ config, mutate }: {
         </div>
       </BuilderSection>
 
-      <BuilderSection title="Шапка сторінки" description="Бренд, назва розділу та головна кнопка.">
+      <BuilderSection title="Шапка сторінки" description="Бренд, посилання логотипа та кнопки навігації.">
         <TypographyEditor value={config.typography.header} onChange={(value) => mutate((next) => { next.typography.header = value; })} />
         <SwitchField label="Показувати шапку" checked={config.header.visible} onChange={(value) => mutate((next) => { next.header.visible = value; })} />
         <SwitchField label="Закріплювати під час прокрутки" checked={config.header.sticky} onChange={(value) => mutate((next) => { next.header.sticky = value; })} />
@@ -187,6 +187,8 @@ function PageEditor({ config, mutate }: {
           <TextField label="Назва бренду" value={config.header.brandName} onChange={(value) => mutate((next) => { next.header.brandName = value; })} />
           <TextField label="Назва розділу" value={config.header.sectionLabel} onChange={(value) => mutate((next) => { next.header.sectionLabel = value; })} />
           <TextField label="Текст кнопки" value={config.header.ctaLabel} onChange={(value) => mutate((next) => { next.header.ctaLabel = value; })} />
+          <TextField label="Посилання логотипа" type="url" value={config.header.logoLink} help="Повна адреса з http:// або https://. Якщо порожньо, логотип веде на початок сторінки." onChange={(value) => mutate((next) => { next.header.logoLink = value; })} />
+          <TextField label="Посилання кнопки «Повернутись до магазину»" type="url" value={config.header.storeButtonUrl} help="Повна адреса з http:// або https://. Кнопка зʼявиться після вказання посилання." onChange={(value) => mutate((next) => { next.header.storeButtonUrl = value; })} />
         </div>
       </BuilderSection>
 

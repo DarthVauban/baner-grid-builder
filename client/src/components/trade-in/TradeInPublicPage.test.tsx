@@ -114,6 +114,43 @@ describe('TradeInPublicPage preview', () => {
     expect(screen.getByText('Онлайн-анкета')).toBeInTheDocument();
   });
 
+  it('links the brand and store button to the configured destinations', () => {
+    const config = structuredClone(previewConfig) as TradeInConfig;
+    config.header = {
+      visible: true,
+      sticky: true,
+      brandName: 'Mobile Trend',
+      sectionLabel: 'Trade-in',
+      ctaLabel: 'Почати оцінку',
+      logoLink: 'https://mobiletrend.com.ua/?source=trade-in',
+      storeButtonUrl: 'https://mobiletrend.com.ua/catalog/'
+    };
+
+    render(<TradeInPublicPage config={config} preview compact />);
+
+    expect(screen.getByRole('link', { name: /Mobile Trend/ })).toHaveAttribute('href', config.header.logoLink);
+    expect(screen.getByRole('link', { name: 'Повернутись до магазину' })).toHaveAttribute('href', config.header.storeButtonUrl);
+    expect(screen.getByRole('button', { name: 'Почати оцінку' })).toBeInTheDocument();
+  });
+
+  it('keeps the local brand link and hides the store button without a safe URL', () => {
+    const config = structuredClone(previewConfig) as TradeInConfig;
+    config.header = {
+      visible: true,
+      sticky: true,
+      brandName: 'Mobile Trend',
+      sectionLabel: 'Trade-in',
+      ctaLabel: 'Почати оцінку',
+      logoLink: '',
+      storeButtonUrl: 'javascript:alert(1)'
+    };
+
+    render(<TradeInPublicPage config={config} preview compact />);
+
+    expect(screen.getByRole('link', { name: /Mobile Trend/ })).toHaveAttribute('href', '#top');
+    expect(screen.queryByRole('link', { name: 'Повернутись до магазину' })).not.toBeInTheDocument();
+  });
+
   it('keeps an embedded preview local when no submission handler is provided', async () => {
     const user = userEvent.setup();
 

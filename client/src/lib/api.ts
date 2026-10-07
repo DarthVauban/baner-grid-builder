@@ -155,8 +155,8 @@ import type { PromoCode, PromoCodeInput, PromoCodeStatus } from '../types/promo-
 import type {
   PublicTradeInSettings,
   TradeInAnswers,
-  TradeInConfig,
-  TradeInSettings
+  TradeInSettings,
+  TradeInSettingsInput
 } from '../types/trade-in';
 import type {
   PublicStoreMapData,
@@ -899,9 +899,9 @@ export const api = {
   tradeIn: {
     settings: () => request<TradeInSettings>('/api/trade-in/settings'),
     forms: () => request<ApplicationForm[]>('/api/trade-in/forms'),
-    save: (input: { publicOrigin: string; config: TradeInConfig }) =>
+    save: (input: TradeInSettingsInput) =>
       request<TradeInSettings>('/api/trade-in/settings', { method: 'PUT', body: jsonBody(input) }),
-    publish: (input: { publicOrigin: string; config: TradeInConfig }) =>
+    publish: (input: TradeInSettingsInput) =>
       request<TradeInSettings>('/api/trade-in/publish', { method: 'POST', body: jsonBody(input) }),
     previewSettings: () => request<PublicTradeInSettings>('/api/trade-in/preview-settings'),
     publicSettings: () => request<PublicTradeInSettings>('/api/public/trade-in/settings'),

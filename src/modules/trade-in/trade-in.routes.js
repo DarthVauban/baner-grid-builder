@@ -10,7 +10,7 @@ import { requireToolAccess } from '../access/access.service.js';
 import { cleanText, serializeForm } from '../applications/application.service.js';
 import { createPublicApplication } from '../applications/public.routes.js';
 import { cacheSavedTradeInOrigin, normalizeTradeInOrigin } from './trade-in.domain.js';
-import { normalizeTradeInConfig } from './trade-in.defaults.js';
+import { normalizeTradeInConfig, normalizeTradeInHeaderUrl } from './trade-in.defaults.js';
 import {
   ensureTradeInWorkflowForm,
   hydrateTradeInWorkflow,
@@ -24,7 +24,22 @@ const publicRouter = Router();
 
 const settingsSchema = z.object({
   publicOrigin: z.string().trim().max(500).default(''),
-  config: z.record(z.string(), z.unknown())
+  config: z.record(z.string(), z.unknown()).superRefine((config, context) => {
+    const header = config.header && typeof config.header === 'object' && !Array.isArray(config.header)
+      ? config.header
+      : {};
+    for (const key of ['logoLink', 'storeButtonUrl']) {
+      const value = header[key];
+      if (value === undefined || value === '') continue;
+      if (typeof value !== 'string' || !normalizeTradeInHeaderUrl(value)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['header', key],
+          message: 'Вкажіть повну адресу з http:// або https:// (до 2000 символів).'
+        });
+      }
+    }
+  })
 });
 const submissionSchema = z.object({
   values: z.record(z.string(), z.unknown()).default({}),

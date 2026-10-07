@@ -708,6 +708,27 @@ test('form builder and applications list have separate access and process public
   const tradeInSettings = await admin.get('/api/trade-in/settings').expect(200);
   assert.equal(tradeInSettings.body.data.status, 'draft');
   assert.ok(tradeInSettings.body.data.draftConfig.form.steps.length >= 5);
+  const linkedTradeInConfig = {
+    ...tradeInSettings.body.data.draftConfig,
+    header: {
+      ...tradeInSettings.body.data.draftConfig.header,
+      logoLink: 'https://mobiletrend.com.ua/?source=trade-in',
+      storeButtonUrl: 'https://mobiletrend.com.ua/catalog/'
+    }
+  };
+  await admin.put('/api/trade-in/settings').send({
+    publicOrigin: '',
+    config: { ...linkedTradeInConfig, header: { ...linkedTradeInConfig.header, logoLink: 'javascript:alert(1)' } }
+  }).expect(422).expect((response) => {
+    assert.equal(response.body.error.code, 'VALIDATION_ERROR');
+    assert.ok(response.body.error.details.some((detail) => detail.field === 'config.header.logoLink'));
+  });
+  const savedTradeIn = await admin.put('/api/trade-in/settings').send({
+    publicOrigin: '',
+    config: linkedTradeInConfig
+  }).expect(200);
+  assert.equal(savedTradeIn.body.data.draftConfig.header.logoLink, linkedTradeInConfig.header.logoLink);
+  assert.equal(savedTradeIn.body.data.draftConfig.header.storeButtonUrl, linkedTradeInConfig.header.storeButtonUrl);
   const demoTradeInValues = {
     category: 'smartphone',
     operation: 'exchange',
@@ -737,13 +758,15 @@ test('form builder and applications list have separate access and process public
 
   const publishedTradeIn = await admin.post('/api/trade-in/publish').send({
     publicOrigin: 'https://tradein.example.com',
-    config: tradeInSettings.body.data.draftConfig
+    config: savedTradeIn.body.data.draftConfig
   }).expect(200);
   assert.equal(publishedTradeIn.body.data.status, 'published');
   assert.equal(publishedTradeIn.body.data.publicOrigin, 'https://tradein.example.com');
 
   const publicTradeIn = await request(app).get('/api/public/trade-in/settings').expect(200);
   assert.equal(publicTradeIn.body.data.config.form.title, tradeInSettings.body.data.draftConfig.form.title);
+  assert.equal(publicTradeIn.body.data.config.header.logoLink, linkedTradeInConfig.header.logoLink);
+  assert.equal(publicTradeIn.body.data.config.header.storeButtonUrl, linkedTradeInConfig.header.storeButtonUrl);
   const tradeInSubmission = await request(app).post('/api/public/trade-in/applications').send({
     values: {
       category: 'smartphone',

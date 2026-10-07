@@ -46,7 +46,9 @@ export const defaultTradeInConfig = {
     sticky: true,
     brandName: 'Mobile Trend',
     sectionLabel: 'Trade-in',
-    ctaLabel: 'Почати оцінку'
+    ctaLabel: 'Почати оцінку',
+    logoLink: '',
+    storeButtonUrl: ''
   },
   hero: {
     visible: true,
@@ -423,6 +425,20 @@ function object(value) {
 
 function text(value, fallback = '', max = 4000) {
   return typeof value === 'string' ? value.trim().slice(0, max) : fallback;
+}
+
+export function normalizeTradeInHeaderUrl(value) {
+  if (typeof value !== 'string' || value.length > 2000 || /[\u0000-\u001f\u007f]/.test(value)) return '';
+  const candidate = value.trim();
+  if (!candidate) return '';
+  try {
+    const url = new URL(candidate);
+    return ['http:', 'https:'].includes(url.protocol) && url.hostname && !url.username && !url.password
+      ? url.href
+      : '';
+  } catch {
+    return '';
+  }
 }
 
 function boolean(value, fallback) {
@@ -811,7 +827,9 @@ export function normalizeTradeInConfig(value) {
       sticky: boolean(header.sticky, defaults.header.sticky),
       brandName: text(header.brandName, defaults.header.brandName, 120),
       sectionLabel: text(header.sectionLabel, defaults.header.sectionLabel, 120),
-      ctaLabel: pageText(header, 'ctaLabel', defaults.header.ctaLabel, 120)
+      ctaLabel: pageText(header, 'ctaLabel', defaults.header.ctaLabel, 120),
+      logoLink: normalizeTradeInHeaderUrl(header.logoLink),
+      storeButtonUrl: normalizeTradeInHeaderUrl(header.storeButtonUrl)
     },
     hero: {
       visible: boolean(hero.visible, defaults.hero.visible),

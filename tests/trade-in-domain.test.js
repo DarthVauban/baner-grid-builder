@@ -12,7 +12,8 @@ import {
 import {
   defaultTradeInConfig,
   matchesTradeInCondition,
-  normalizeTradeInConfig
+  normalizeTradeInConfig,
+  normalizeTradeInHeaderUrl
 } from '../src/modules/trade-in/trade-in.defaults.js';
 
 function fakeRequest({ host = 'mt-panel.sbs', forwardedHost = '', method = 'GET', path = '/' } = {}) {
@@ -83,6 +84,24 @@ test('normalizes Trade-in configuration and evaluates conditional scenarios', ()
   assert.ok(config.form.steps.length >= 5);
   assert.equal(matchesTradeInCondition({ fieldKey: 'category', operator: 'one_of', value: 'smartphone,apple' }, { category: 'apple' }), true);
   assert.equal(matchesTradeInCondition({ fieldKey: 'category', operator: 'equals', value: 'laptop' }, { category: 'apple' }), false);
+});
+
+test('preserves safe header destinations and defaults older Trade-in configs to local navigation', () => {
+  const config = normalizeTradeInConfig({
+    ...defaultTradeInConfig,
+    header: {
+      ...defaultTradeInConfig.header,
+      logoLink: ' https://mobiletrend.com.ua/brand?from=trade-in ',
+      storeButtonUrl: 'https://mobiletrend.com.ua/catalog/?category=phones'
+    }
+  });
+  assert.equal(config.header.logoLink, 'https://mobiletrend.com.ua/brand?from=trade-in');
+  assert.equal(config.header.storeButtonUrl, 'https://mobiletrend.com.ua/catalog/?category=phones');
+  assert.equal(normalizeTradeInConfig({ ...defaultTradeInConfig, header: { visible: true } }).header.logoLink, '');
+  assert.equal(normalizeTradeInConfig({ ...defaultTradeInConfig, header: { visible: true } }).header.storeButtonUrl, '');
+  for (const unsafe of ['javascript:alert(1)', '//mobiletrend.com.ua', 'https://user:pass@mobiletrend.com.ua', 'https://mobiletrend.com.ua\n']) {
+    assert.equal(normalizeTradeInHeaderUrl(unsafe), '');
+  }
 });
 
 test('upgrades the legacy Trade-in palette to Mobile Trend brand colors', () => {

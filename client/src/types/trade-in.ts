@@ -156,6 +156,8 @@ export interface TradeInConfig {
     brandName: string;
     sectionLabel: string;
     ctaLabel: string;
+    logoLink: string;
+    storeButtonUrl: string;
   };
   hero: {
     visible: boolean;
@@ -231,6 +233,11 @@ export interface TradeInSettings {
   publishedConfig: TradeInConfig | null;
   updatedAt: string | null;
   publishedAt: string | null;
+}
+
+export interface TradeInSettingsInput {
+  publicOrigin: string;
+  config: TradeInConfig;
 }
 
 export interface PublicTradeInSettings {
