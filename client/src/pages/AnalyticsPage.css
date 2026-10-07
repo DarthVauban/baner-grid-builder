@@ -104,13 +104,6 @@
 .analytics-error a { color: var(--brand-dark); font-size: 10px; font-weight: 800; }
 @keyframes analytics-spin { to { transform: rotate(360deg); } }
 
-:root[data-theme="brand"] .analytics-tool-tile,
-:root[data-theme="brand"] .analytics-filters,
-:root[data-theme="brand"] .analytics-metric,
-:root[data-theme="brand"] .analytics-panel { box-shadow: 0 11px 32px rgba(0,0,0,.16); }
-:root[data-theme="brand"] .analytics-product > span:first-child { background: #fff; }
-:root[data-theme="brand"] .analytics-period button.is-active { color: var(--brand); }
-
 @media (max-width: 1120px) {
   .analytics-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .analytics-grid--hero, .analytics-grid--tables { grid-template-columns: 1fr; }

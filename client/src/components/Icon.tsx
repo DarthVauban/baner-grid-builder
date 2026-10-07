@@ -16,7 +16,6 @@ import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded';
 import DownloadRounded from '@mui/icons-material/DownloadRounded';
 import DynamicFormRounded from '@mui/icons-material/DynamicFormRounded';
 import DashboardCustomizeRounded from '@mui/icons-material/DashboardCustomizeRounded';
-import DarkModeRounded from '@mui/icons-material/DarkModeRounded';
 import EditRounded from '@mui/icons-material/EditRounded';
 import FullscreenExitRounded from '@mui/icons-material/FullscreenExitRounded';
 import FullscreenRounded from '@mui/icons-material/FullscreenRounded';
@@ -30,7 +29,6 @@ import LogoutRounded from '@mui/icons-material/LogoutRounded';
 import MenuRounded from '@mui/icons-material/MenuRounded';
 import NotificationsNoneRounded from '@mui/icons-material/NotificationsNoneRounded';
 import LocationOnOutlined from '@mui/icons-material/LocationOnOutlined';
-import LightModeRounded from '@mui/icons-material/LightModeRounded';
 import MeetingRoomOutlined from '@mui/icons-material/MeetingRoomOutlined';
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
@@ -110,7 +108,6 @@ export type IconName =
   | 'delete'
   | 'deadline'
   | 'download'
-  | 'darkMode'
   | 'edit'
   | 'fullscreen'
   | 'fullscreenExit'
@@ -124,7 +121,6 @@ export type IconName =
   | 'memory'
   | 'monitor'
   | 'location'
-  | 'lightMode'
   | 'offlineMeeting'
   | 'onlineMeeting'
   | 'openInNew'
@@ -201,7 +197,6 @@ const icons: Record<IconName, SvgIconComponent> = {
   delete: DeleteOutlineRounded,
   deadline: FlagOutlined,
   download: DownloadRounded,
-  darkMode: DarkModeRounded,
   edit: EditRounded,
   fullscreen: FullscreenRounded,
   fullscreenExit: FullscreenExitRounded,
@@ -215,7 +210,6 @@ const icons: Record<IconName, SvgIconComponent> = {
   memory: MemoryRounded,
   monitor: MonitorHeartRounded,
   location: LocationOnOutlined,
-  lightMode: LightModeRounded,
   offlineMeeting: MeetingRoomOutlined,
   onlineMeeting: VideoCameraFrontOutlined,
   openInNew: OpenInNewRounded,

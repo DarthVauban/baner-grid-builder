@@ -822,12 +822,3 @@
   .popup-selected-code__value { grid-column: 1; }
   .popup-preview__promo-code { grid-template-columns: 1fr; }
 }
-
-:root[data-theme='brand'] .popup-connection.is-warning,
-:root[data-theme='brand'] .popup-rule-note { border-color: rgba(255, 225, 1, .3); color: #ffe87a; background: rgba(255, 225, 1, .08); }
-:root[data-theme='brand'] .popup-status.is-draft { color: #d1d1ca; background: #30302d; }
-:root[data-theme='brand'] .popup-status.is-active { color: #79dfb2; background: rgba(85, 201, 151, .13); }
-:root[data-theme='brand'] .popup-status.is-paused { color: #ffe87a; background: rgba(255, 225, 1, .11); }
-:root[data-theme='brand'] .popup-campaign-filters button.is-active,
-:root[data-theme='brand'] .popup-editor-tabs > button.is-active .popup-editor-tabs__number,
-:root[data-theme='brand'] .popup-target-mode > button.is-active > i { color: #080808; background: var(--brand); }

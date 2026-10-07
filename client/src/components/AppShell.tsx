@@ -10,12 +10,10 @@ import { Icon } from './Icon';
 import { NotificationCenter } from './NotificationCenter';
 import { HoroshopCatalogSyncIndicator } from './HoroshopCatalogSyncIndicator';
 import { isWorkspaceToolPath, ToolBackButton } from './ToolBackButton';
-import { useTheme } from '../theme/ThemeContext';
 import { UserAvatar } from './UserAvatar';
 
 export function AppShell() {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const queryClient = useQueryClient();
   const userId = user?.id;
@@ -340,9 +338,6 @@ export function AppShell() {
           {isWorkspaceToolPath(location.pathname) && <ToolBackButton className="topbar__back" fallbackPath={isWidgetEditor ? '/tools/horoshop-widgets' : '/tools'} />}
           <div className="topbar__spacer" />
           <HoroshopCatalogSyncIndicator />
-          <button className="icon-button topbar__theme" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? 'Увімкнути фірмову темну тему' : 'Увімкнути світлу тему'} title={theme === 'light' ? 'Фірмова темна тема' : 'Світла тема'}>
-            <Icon name={theme === 'light' ? 'darkMode' : 'lightMode'} />
-          </button>
           <NotificationCenter />
           <Link className="topbar__profile" to="/profile" title="Відкрити профіль"><UserAvatar name={user.name} avatarUrl={user.avatarUrl} /></Link>
         </header>

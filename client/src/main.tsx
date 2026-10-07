@@ -6,8 +6,10 @@ import { App } from './app/App';
 import { AuthProvider } from './auth/AuthContext';
 import { ConfirmDialogProvider } from './dialogs/ConfirmDialogContext';
 import { ToastProvider } from './toast/ToastContext';
-import { ThemeProvider } from './theme/ThemeContext';
+import { clearPortalThemePreference } from './theme/portal-theme';
 import './styles/app.css';
+
+clearPortalThemePreference();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,13 +26,11 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <ThemeProvider>
-            <ToastProvider>
-              <ConfirmDialogProvider>
-                <App />
-              </ConfirmDialogProvider>
-            </ToastProvider>
-          </ThemeProvider>
+          <ToastProvider>
+            <ConfirmDialogProvider>
+              <App />
+            </ConfirmDialogProvider>
+          </ToastProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

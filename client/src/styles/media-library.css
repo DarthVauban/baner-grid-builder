@@ -1,6 +1,5 @@
 .media-library-page { display: grid; gap: 18px; }
 .media-library-browser { --media-shadow: 0 5px 18px rgba(22,30,50,.07); display: grid; gap: 16px; min-width: 0; }
-:root[data-theme="brand"] .media-library-browser { --media-shadow: 0 6px 20px rgba(0,0,0,.28); }
 .media-upload-zone { min-height: 126px; position: relative; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 16px; overflow: hidden; border: 2px dashed var(--line); border-radius: 18px; padding: 22px; background: var(--surface); box-shadow: var(--media-shadow); transition: border-color .16s ease, background .16s ease; }
 .media-upload-zone--active { border-color: var(--brand); background: color-mix(in srgb,var(--brand) 8%,var(--surface)); }
 .media-upload-zone__icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 15px; color: var(--brand); background: var(--brand-soft); }
@@ -61,9 +60,7 @@
 .media-asset-card__select input:focus-visible + span { outline: 3px solid color-mix(in srgb,var(--brand) 35%,transparent); outline-offset: 2px; }
 .media-asset-card__select input:checked + span { border-color: var(--brand); color: #fff; background: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb,var(--brand) 22%,transparent),0 3px 10px rgba(0,0,0,.2); }
 .media-asset-card__select input:checked + span .icon { opacity: 1; transform: scale(1); }
-:root[data-theme="brand"] .media-asset-card__select input:checked + span { color: #080808; }
 .media-asset-card__selected-label { min-height: 25px; position: absolute; top: 8px; right: 9px; z-index: 3; display: inline-flex; align-items: center; gap: 4px; border: 1px solid color-mix(in srgb,var(--brand) 42%,transparent); border-radius: 99px; padding: 3px 8px; color: var(--brand-dark); background: color-mix(in srgb,var(--brand) 14%,var(--surface)); font-size: 9px; font-weight: 850; letter-spacing: .02em; }
-:root[data-theme="brand"] .media-asset-card__selected-label { color: var(--brand); }
 .media-asset-card__preview { width: 112px; min-height: 110px; display: grid; place-items: center; overflow: hidden; border-right: 1px solid var(--line); background: linear-gradient(135deg,var(--surface-soft),var(--surface)); }
 .media-asset-card__preview img { width: 100%; height: 100%; display: block; object-fit: contain; }
 .media-asset-card__body { min-width: 0; display: grid; align-content: space-between; gap: 8px; padding: 10px; }
