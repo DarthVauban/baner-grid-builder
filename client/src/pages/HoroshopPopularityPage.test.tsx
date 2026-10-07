@@ -48,13 +48,21 @@ function renderPage() {
 describe('HoroshopPopularityPage', () => {
   it('filters by multiple brands and selects all products matching the filter', async () => {
     const user = userEvent.setup();
-    const catalogSpy = vi.spyOn(api.horoshopPopularity, 'catalog').mockResolvedValue(catalog);
+    let finishPendingRequest = () => {};
+    const catalogSpy = vi.spyOn(api.horoshopPopularity, 'catalog').mockImplementation((filters) =>
+      filters.brands.length === 1 ? new Promise<PopularityCatalog>((resolve) => { finishPendingRequest = () => resolve(catalog); }) : Promise.resolve(catalog));
     renderPage();
     await screen.findByText('Телефон');
 
     await user.click(screen.getByText('Усі бренди'));
+    expect(screen.getByText('Бренди').closest('details')).toHaveAttribute('open');
+    await user.click(screen.getByRole('button', { name: 'Категорія' }));
+    expect(screen.getByText('Бренди').closest('details')).not.toHaveAttribute('open');
+    await user.click(screen.getByText('Усі бренди'));
     await user.click(screen.getByRole('checkbox', { name: 'Apple' }));
+    expect(screen.getByRole('checkbox', { name: 'Samsung' })).toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'Samsung' }));
+    finishPendingRequest();
     expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({ brands: ['Apple', 'Samsung'] }), 1, 25, expect.anything());
 
     await user.click(screen.getByRole('button', { name: 'Вибрати всі 2 за фільтром' }));
@@ -74,9 +82,12 @@ describe('HoroshopPopularityPage', () => {
     renderPage();
     await screen.findByText('Телефон');
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Назва або артикул' }), { target: { value: 'PHONE-BLACK\nUNKNOWN' } });
-    await user.click(screen.getByRole('button', { name: 'Створити вибірку зі списку' }));
+    await user.click(screen.getByRole('button', { name: 'Назва або артикул' }));
+    const searchDialog = screen.getByRole('dialog', { name: 'Пошук за назвою або артикулом' });
+    fireEvent.change(within(searchDialog).getByRole('textbox', { name: 'Назви або артикули' }), { target: { value: 'PHONE-BLACK\nUNKNOWN' } });
+    await user.click(within(searchDialog).getByRole('button', { name: 'Створити вибірку зі списку' }));
     expect(resolveSpy).toHaveBeenCalledWith(['PHONE-BLACK', 'UNKNOWN']);
+    expect(screen.queryByRole('dialog', { name: 'Пошук за назвою або артикулом' })).not.toBeInTheDocument();
     expect(await screen.findByText('Не знайдено: UNKNOWN')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Масова дія' }));
@@ -85,5 +96,24 @@ describe('HoroshopPopularityPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Перевірити зміни' }));
     expect(previewSpy).toHaveBeenCalledWith({ productIds: ['parent-a'] }, 'set', 20);
     expect(await screen.findByText('Перевірте зміни')).toBeInTheDocument();
+  });
+
+  it('applies one search term from the popup and keeps edits unapplied when cancelled', async () => {
+    const user = userEvent.setup();
+    const catalogSpy = vi.spyOn(api.horoshopPopularity, 'catalog').mockResolvedValue(catalog);
+    renderPage();
+    await screen.findByText('Телефон');
+
+    await user.click(screen.getByRole('button', { name: 'Назва або артикул' }));
+    const dialog = screen.getByRole('dialog', { name: 'Пошук за назвою або артикулом' });
+    await user.type(within(dialog).getByRole('textbox', { name: 'Назви або артикули' }), 'PHONE');
+    await user.click(within(dialog).getByRole('button', { name: 'Скасувати' }));
+    expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({ search: '' }), 1, 25, expect.anything());
+
+    await user.click(screen.getByRole('button', { name: 'Назва або артикул' }));
+    await user.type(within(screen.getByRole('dialog')).getByRole('textbox', { name: 'Назви або артикули' }), 'PHONE');
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Застосувати пошук' }));
+    expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'PHONE' }), 1, 25, expect.anything());
+    expect(screen.getByRole('button', { name: 'Назва або артикул' })).toHaveTextContent('PHONE');
   });
 });
