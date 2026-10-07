@@ -74,6 +74,7 @@ export function HoroshopCatalogSyncIndicator() {
   const statusText = `${description}${countdown ? ` ${countdown}` : ''}`;
   return <div className={`topbar-catalog-sync is-${state}`} role="status" aria-label={`Каталог Хорошоп: ${statusText}`} title={`Каталог Хорошоп · ${statusText}${detail !== 'Хорошоп' ? ` · ${detail}` : ''}`}>
     <span className="topbar-catalog-sync__icon"><Icon name={state === 'running' ? 'refresh' : state === 'error' ? 'alarm' : 'schedule'} size={17} /></span>
-    <span className="topbar-catalog-sync__text"><span className="topbar-catalog-sync__main"><strong>{description}</strong>{countdown && <b className="topbar-catalog-sync__countdown">{countdown}</b>}</span><small>{detail}</small></span>
+    <span className="topbar-catalog-sync__text"><strong>{description}</strong><small>{detail}</small></span>
+    {countdown && <b className="topbar-catalog-sync__countdown">{countdown}</b>}
   </div>;
 }
