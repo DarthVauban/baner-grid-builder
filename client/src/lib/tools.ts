@@ -48,6 +48,14 @@ export const toolCategories: ToolCategoryDefinition[] = [
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'horoshop_popularity',
+    name: 'Популярність товарів',
+    description: 'Точкова й масова зміна популярності товарів Хорошопа з перевіркою та історією операцій.',
+    path: '/tools/horoshop-popularity',
+    icon: 'analytics',
+    category: 'horoshop_api'
+  },
+  {
     id: 'horoshop_stickers',
     name: 'Стікери Хорошоп',
     description: 'Масове додавання та зняття ручних стікерів: вибірки товарів, перегляд змін, історія й повернення операцій.',

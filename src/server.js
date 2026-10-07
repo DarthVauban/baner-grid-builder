@@ -10,6 +10,7 @@ import { startPhotoParserWorker } from './modules/catalog/photo-parser.worker.js
 import { startMobilePushWorker } from './modules/mobile/mobile-push.worker.js';
 import { startHoroshopCatalogWorker } from './modules/search/horoshop/catalog.worker.js';
 import { startHoroshopStickerWorker } from './modules/search/horoshop/sticker.service.js';
+import { startHoroshopPopularityWorker } from './modules/search/horoshop/popularity.service.js';
 import { syncTelegramLocalApiRuntimeCredentials } from './modules/integrations/integration.service.js';
 
 await runMigrations();
@@ -28,6 +29,7 @@ const stopPhotoParserWorker = env.NODE_ENV === 'test' ? async () => {} : startPh
 const stopMobilePushWorker = env.NODE_ENV === 'test' ? async () => {} : startMobilePushWorker();
 const stopHoroshopCatalogWorker = env.NODE_ENV === 'test' ? () => {} : startHoroshopCatalogWorker();
 const stopHoroshopStickerWorker = env.NODE_ENV === 'test' ? async () => {} : startHoroshopStickerWorker();
+const stopHoroshopPopularityWorker = env.NODE_ENV === 'test' ? async () => {} : startHoroshopPopularityWorker();
 
 async function shutdown(signal) {
   console.log(`${signal} received. Shutting down...`);
@@ -38,6 +40,7 @@ async function shutdown(signal) {
   await stopMobilePushWorker();
   stopHoroshopCatalogWorker();
   await stopHoroshopStickerWorker();
+  await stopHoroshopPopularityWorker();
   server.close(async () => {
     await pool.end();
     process.exit(0);
