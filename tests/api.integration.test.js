@@ -319,6 +319,17 @@ test('approval flow and shared banner storage work through REST API', async () =
     .expect(201);
   assert.equal(createdBanner.body.data.banner.title, 'Sale -20%');
 
+  await request(app).get('/api/banners/link-templates').expect(401);
+  const createdTemplate = await user.post('/api/banners/link-templates')
+    .send({ name: 'Mobile Trend', baseUrl: 'https://mobiletrend.com.ua/' }).expect(201);
+  assert.equal(createdTemplate.body.data.baseUrl, 'https://mobiletrend.com.ua');
+  const templateId = createdTemplate.body.data.id;
+  await user.post('/api/banners/link-templates')
+    .send({ name: 'mobile trend', baseUrl: 'https://other.example.com' }).expect(409);
+  await user.post('/api/banners/link-templates')
+    .send({ name: 'Unsafe', baseUrl: 'javascript:alert(1)' }).expect(422);
+  assert.deepEqual((await user.get('/api/banners/link-templates').expect(200)).body.data.map((item) => item.name), ['Mobile Trend']);
+
   const createdGrid = await user
     .post('/api/grids')
     .send({ name: 'Main grid', shareDescription: 'Campaign', banners: [bannerData] })
@@ -367,6 +378,7 @@ test('approval flow and shared banner storage work through REST API', async () =
   await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({ tools: [] }).expect(200);
   await secondUser.get('/api/grids').expect(403)
     .expect((response) => assert.equal(response.body.error.code, 'TOOL_ACCESS_DENIED'));
+  await secondUser.get('/api/banners/link-templates').expect(403);
   await admin.put(`/api/admin/users/${secondPendingUser.id}/tool-access`).send({
     tools: ['banner_grid', 'blog_publications', 'product_selection'],
     canManageToolAccess: true
@@ -452,6 +464,9 @@ test('approval flow and shared banner storage work through REST API', async () =
   assert.equal(privateGrids.body.data.length, 0);
   const privateBanners = await secondUser.get('/api/banners?search=Sale').expect(200);
   assert.equal(privateBanners.body.data.length, 0);
+  assert.deepEqual((await secondUser.get('/api/banners/link-templates').expect(200)).body.data, []);
+  await secondUser.put(`/api/banners/link-templates/${templateId}`)
+    .send({ name: 'Changed', baseUrl: 'https://other.example.com' }).expect(404);
 
   await admin
     .patch('/api/admin/permissions')
@@ -485,6 +500,11 @@ test('approval flow and shared banner storage work through REST API', async () =
   await user.delete(`/api/grids/${gridId}`).expect(204);
   await request(app).get(`/api/public/banner-grids/${gridId}/embed.js`).expect(404);
   await user.delete(`/api/banners/${createdBanner.body.data.id}`).expect(204);
+  await user.put(`/api/banners/link-templates/${templateId}`)
+    .send({ name: 'Mobile Trend — promotions', baseUrl: 'https://mobiletrend.com.ua/promo/' })
+    .expect(200).expect((response) => assert.equal(response.body.data.baseUrl, 'https://mobiletrend.com.ua/promo'));
+  await secondUser.delete(`/api/banners/link-templates/${templateId}`).expect(404);
+  await user.delete(`/api/banners/link-templates/${templateId}`).expect(204);
   const securityUpdate = await admin.put(`/api/admin/users/${pendingUser.id}/tool-access`).send({
     tools: ['banner_grid', 'blog_publications', 'product_selection'],
     canManageToolAccess: false,

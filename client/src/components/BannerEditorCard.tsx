@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { isBannerExpired, isBannerValid } from '../lib/banner-generator';
-import type { BannerDraft } from '../types/workspace';
+import { bannerLinkPath, buildBannerTargetUrl, matchBannerLinkTemplate } from '../lib/banner-link-templates';
+import type { BannerDraft, BannerLinkTemplate } from '../types/workspace';
 import { Icon } from './Icon';
 import { MediaPickerDialog, resolveMediaAssetUrl } from './MediaLibraryBrowser';
+import { StyledSelect } from './StyledSelect';
 
 export function BannerEditorCard({
   banner,
   index,
   canRemove,
   pending,
+  linkTemplates = [],
   onChange,
   onRemove,
   onSave,
@@ -18,15 +21,21 @@ export function BannerEditorCard({
   index: number;
   canRemove: boolean;
   pending: boolean;
+  linkTemplates?: BannerLinkTemplate[];
   onChange: (patch: Partial<BannerDraft>) => void;
   onRemove: () => void;
   onSave: () => void;
   onCopy: () => void;
 }) {
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [linkMode, setLinkMode] = useState('auto');
   const valid = isBannerValid(banner);
   const expired = isBannerExpired(banner);
   const disabled = expired && banner.disableWhenExpired;
+  const inferredTemplate = matchBannerLinkTemplate(banner.targetUrl, linkTemplates)?.template;
+  const requestedTemplate = linkMode === 'auto' ? inferredTemplate : linkTemplates.find((item) => item.id === linkMode);
+  const templatePath = requestedTemplate ? bannerLinkPath(requestedTemplate.baseUrl, banner.targetUrl) : null;
+  const selectedTemplate = templatePath === null ? null : requestedTemplate;
 
   return (
     <article className="banner-editor-card">
@@ -56,7 +65,15 @@ export function BannerEditorCard({
             {banner.imageUrl && <button className="icon-button icon-button--danger banner-image-picker__remove" type="button" onClick={() => onChange({ imageUrl: '' })} aria-label="Прибрати зображення банера"><Icon name="delete" size={17} /></button>}
           </div>
         </div>
-        <label className="field banner-editor-card__wide"><span>Посилання банера *</span><input type="url" value={banner.targetUrl} maxLength={4000} onChange={(event) => onChange({ targetUrl: event.target.value })} placeholder="https://example.com/sale" /></label>
+        <div className="field banner-editor-card__wide banner-link-field"><span>Посилання банера *</span>
+          {linkTemplates.length > 0 && <div className="field"><span>Шаблон адреси</span><StyledSelect ariaLabel="Шаблон посилання банера" value={selectedTemplate?.id || 'full'} options={[{ value: 'full', label: 'Повне посилання' }, ...linkTemplates.map((template) => ({ value: template.id, label: `${template.name} · ${template.baseUrl}` }))]} onChange={(next) => {
+            setLinkMode(next);
+            const template = linkTemplates.find((item) => item.id === next);
+            if (template) onChange({ targetUrl: template.baseUrl });
+          }} /></div>}
+          {selectedTemplate ? <><label className="field"><span>Шлях сторінки</span><input type="text" value={templatePath ?? ''} maxLength={Math.max(0, 4000 - selectedTemplate.baseUrl.length)} onChange={(event) => onChange({ targetUrl: buildBannerTargetUrl(selectedTemplate.baseUrl, event.target.value) })} placeholder="/teplo-vyhidnykh-pokupok/" /></label><small>Підсумкове посилання: <output>{banner.targetUrl}</output></small></>
+            : <label className="field"><span>Повна адреса</span><input type="url" value={banner.targetUrl} maxLength={4000} onChange={(event) => onChange({ targetUrl: event.target.value })} placeholder="https://example.com/sale" /></label>}
+        </div>
         <label className="check-field banner-editor-card__wide"><input type="checkbox" checked={banner.disableWhenExpired} onChange={(event) => onChange({ disableWhenExpired: event.target.checked })} /><span>Вимикати банер після завершення акції</span></label>
       </div>
       <footer>

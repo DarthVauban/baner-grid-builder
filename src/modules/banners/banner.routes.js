@@ -24,6 +24,67 @@ const savedBannerSchema = z.object({
   name: z.string().trim().min(1).max(300),
   banner: bannerDataSchema
 });
+const linkTemplateSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  baseUrl: z.string().trim().min(1).max(2000).refine((value) => {
+    try {
+      const url = new URL(value);
+      return ['http:', 'https:'].includes(url.protocol) && Boolean(url.hostname)
+        && !url.username && !url.password && !url.search && !url.hash;
+    } catch { return false; }
+  }, 'Вкажіть адресу сайту або розділу з http:// чи https:// без параметрів і фрагмента.')
+}).strict();
+
+const normalizeBaseUrl = (value) => {
+  const url = new URL(value);
+  return `${url.origin}${url.pathname.replace(/\/+$/u, '')}`;
+};
+const serializeLinkTemplate = (row) => ({
+  id: row.id, name: row.name, baseUrl: row.base_url,
+  createdAt: row.created_at, updatedAt: row.updated_at
+});
+const templateConflict = (error) => {
+  if (error.code === '23505') throw new AppError(409, 'BANNER_LINK_TEMPLATE_EXISTS', 'Шаблон із такою назвою вже існує.');
+  throw error;
+};
+
+router.get('/link-templates', asyncHandler(async (req, res) => {
+  const result = await query(`SELECT id, name, base_url, created_at, updated_at
+    FROM banner_link_templates WHERE user_id = $1 ORDER BY lower(name), id`, [req.user.id]);
+  res.json({ data: result.rows.map(serializeLinkTemplate) });
+}));
+
+router.post('/link-templates', asyncHandler(async (req, res) => {
+  const input = parseInput(linkTemplateSchema, req.body);
+  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  if (baseUrl.length > 2000) throw new AppError(422, 'BANNER_LINK_TEMPLATE_URL_INVALID', 'Адреса шаблону занадто довга.');
+  try {
+    const result = await query(`INSERT INTO banner_link_templates (user_id, name, base_url)
+      VALUES ($1, $2, $3) RETURNING id, name, base_url, created_at, updated_at`, [req.user.id, input.name, baseUrl]);
+    res.status(201).json({ data: serializeLinkTemplate(result.rows[0]) });
+  } catch (error) { templateConflict(error); }
+}));
+
+router.put('/link-templates/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const input = parseInput(linkTemplateSchema, req.body);
+  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  if (baseUrl.length > 2000) throw new AppError(422, 'BANNER_LINK_TEMPLATE_URL_INVALID', 'Адреса шаблону занадто довга.');
+  try {
+    const result = await query(`UPDATE banner_link_templates SET name = $1, base_url = $2, updated_at = NOW()
+      WHERE id = $3 AND user_id = $4 RETURNING id, name, base_url, created_at, updated_at`,
+    [input.name, baseUrl, id, req.user.id]);
+    if (!result.rows[0]) throw new AppError(404, 'BANNER_LINK_TEMPLATE_NOT_FOUND', 'Шаблон посилання не знайдено.');
+    res.json({ data: serializeLinkTemplate(result.rows[0]) });
+  } catch (error) { templateConflict(error); }
+}));
+
+router.delete('/link-templates/:id', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const result = await query('DELETE FROM banner_link_templates WHERE id = $1 AND user_id = $2', [id, req.user.id]);
+  if (!result.rowCount) throw new AppError(404, 'BANNER_LINK_TEMPLATE_NOT_FOUND', 'Шаблон посилання не знайдено.');
+  res.status(204).end();
+}));
 
 router.get('/', asyncHandler(async (req, res) => {
   const search = String(req.query.search || '').trim();

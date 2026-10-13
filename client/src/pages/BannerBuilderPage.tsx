@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { buildBannerHtml, buildGridEmbedScriptTag, buildGridExport, copyToClipboard, isBannerValid, normalizeBanner } from '../lib/banner-generator';
 import { BannerEditorCard } from '../components/BannerEditorCard';
+import { BannerLinkTemplateManager } from '../components/BannerLinkTemplateManager';
 import { BannerPreview } from '../components/BannerPreview';
 import { Icon } from '../components/Icon';
 import { SavedGridsPage } from './SavedGridsPage';
@@ -21,6 +22,8 @@ export function BannerBuilderPage() {
   const generatedCode = useMemo(() => buildGridExport(validBanners, workspace.shareDescription), [validBanners, workspace.shareDescription]);
   const requestedTab = searchParams.get('tab');
   const activeTab = requestedTab === 'grids' || requestedTab === 'banners' ? requestedTab : 'builder';
+  const linkTemplates = useQuery({ queryKey: ['banner-link-templates'], queryFn: api.banners.linkTemplates.list,
+    enabled: activeTab === 'builder' });
 
   function setActiveTab(tab: 'builder' | 'grids' | 'banners') {
     setSearchParams(tab === 'builder' ? {} : { tab }, { replace: true });
@@ -70,7 +73,7 @@ export function BannerBuilderPage() {
       {activeTab === 'builder' && <>
       <section className="tool-workspace-bar"><label className="field"><span>Назва банерної сітки</span><input value={workspace.gridName} maxLength={160} onChange={(event) => workspace.setGridName(event.target.value)} placeholder="Наприклад, Літній розпродаж" /></label>{workspace.editingGridId && <span className="workspace-mode">Режим редагування</span>}</section>
       <div className="banner-builder-layout">
-        <section className="tool-panel"><header className="tool-panel__header"><div><p className="eyebrow">Крок 1</p><h2>Дані банерів</h2></div><span>{workspace.banners.length}</span></header><div className="banner-editor-list">{workspace.banners.map((banner, index) => <BannerEditorCard key={banner.localId} banner={banner} index={index} canRemove={workspace.banners.length > 1} pending={pending} onChange={(patch) => workspace.updateBanner(banner.localId, patch)} onRemove={() => workspace.removeBanner(banner.localId)} onSave={() => void saveBanner(banner.localId)} onCopy={() => void copy(buildBannerHtml(normalizeBanner(banner)), 'HTML банера скопійовано.')} />)}</div><button className="button button--add" type="button" onClick={() => workspace.addBanner()}><Icon name="add" size={18} /> Додати банер</button></section>
+        <section className="tool-panel"><header className="tool-panel__header"><div><p className="eyebrow">Крок 1</p><h2>Дані банерів</h2></div><span>{workspace.banners.length}</span></header><BannerLinkTemplateManager templates={linkTemplates.data || []} loading={linkTemplates.isLoading} error={linkTemplates.isError} onRetry={() => { void linkTemplates.refetch(); }} onChanged={() => queryClient.invalidateQueries({ queryKey: ['banner-link-templates'] })} /><div className="banner-editor-list">{workspace.banners.map((banner, index) => <BannerEditorCard key={banner.localId} banner={banner} index={index} canRemove={workspace.banners.length > 1} pending={pending} linkTemplates={linkTemplates.data || []} onChange={(patch) => workspace.updateBanner(banner.localId, patch)} onRemove={() => workspace.removeBanner(banner.localId)} onSave={() => void saveBanner(banner.localId)} onCopy={() => void copy(buildBannerHtml(normalizeBanner(banner)), 'HTML банера скопійовано.')} />)}</div><button className="button button--add" type="button" onClick={() => workspace.addBanner()}><Icon name="add" size={18} /> Додати банер</button></section>
         <section className="tool-panel banner-preview-panel"><header className="tool-panel__header"><div><p className="eyebrow">Крок 2</p><h2>Попередній перегляд</h2></div><span className="live-pill">Наживо</span></header><div className="banner-preview-grid">{workspace.banners.map((banner) => <BannerPreview key={banner.localId} banner={normalizeBanner(banner)} />)}</div></section>
       </div>
       <section className="tool-panel code-panel"><header className="tool-panel__header"><div><p className="eyebrow">Крок 3</p><h2>Код для вставки</h2><p>{validBanners.length ? `${validBanners.length} банерів у коді. HTML + CSS — ручний варіант, скрипт автоматично показує актуальну збережену сітку.` : 'Заповніть обов’язкові поля банера.'}</p></div><div className="code-panel__actions"><button className="button button--secondary" type="button" disabled={!workspace.editingGridId || !validBanners.length} title={workspace.editingGridId ? 'Скопіювати динамічний скрипт' : 'Спочатку збережіть сітку'} onClick={() => { if (workspace.editingGridId) void copy(buildGridEmbedScriptTag(workspace.editingGridId), 'Скрипт сітки скопійовано.'); }}><Icon name="copy" size={18} /> Копіювати скрипт</button><button className="button button--primary" type="button" disabled={!validBanners.length} onClick={() => void copy(generatedCode, 'HTML + CSS скопійовано.')}><Icon name="copy" size={18} /> Копіювати HTML + CSS</button></div></header><label className="field"><span>Опис для поширення посилання</span><textarea value={workspace.shareDescription} onChange={(event) => workspace.setShareDescription(event.target.value)} rows={2} placeholder="Короткий опис сторінки" /></label><textarea className="code-output" value={generatedCode} readOnly spellCheck={false} aria-label="Згенерований HTML та CSS" /></section>

@@ -17,6 +17,14 @@ export interface BannerDraft extends BannerData {
   savedBannerId?: string;
 }
 
+export interface BannerLinkTemplate {
+  id: string;
+  name: string;
+  baseUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SavedGrid {
   id: string;
   name: string;

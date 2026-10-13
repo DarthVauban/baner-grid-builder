@@ -44,6 +44,7 @@ import type {
 } from '../types/task';
 import type {
   BannerData,
+  BannerLinkTemplate,
   SavedBanner,
   SavedGrid
 } from '../types/workspace';
@@ -1069,6 +1070,12 @@ export const api = {
   },
   banners: {
     list: (search = '') => request<SavedBanner[]>(`/api/banners${queryString({ search })}`),
+    linkTemplates: {
+      list: () => request<BannerLinkTemplate[]>('/api/banners/link-templates'),
+      create: (input: Pick<BannerLinkTemplate, 'name' | 'baseUrl'>) => request<BannerLinkTemplate>('/api/banners/link-templates', { method: 'POST', body: jsonBody(input) }),
+      update: (id: string, input: Pick<BannerLinkTemplate, 'name' | 'baseUrl'>) => request<BannerLinkTemplate>(`/api/banners/link-templates/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }),
+      remove: (id: string) => request<void>(`/api/banners/link-templates/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    },
     create: (input: { name: string; banner: BannerData }) =>
       request<SavedBanner>('/api/banners', { method: 'POST', body: jsonBody(input) }),
     update: (id: string, input: { name: string; banner: BannerData }) =>
