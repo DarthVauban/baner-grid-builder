@@ -41,7 +41,7 @@ test('admin can save a banner grid through the browser', async ({ page }) => {
   });
   await expect(page.getByRole('heading', { name: 'Виберіть зображення' })).not.toBeVisible();
   await expect(page.getByRole('button', { name: 'Змінити зображення банера у медіасховищі' })).toBeVisible();
-  await page.getByLabel('Посилання банера *').fill('https://example.com/sale');
+  await page.getByRole('textbox', { name: 'Повна адреса' }).fill('https://example.com/sale');
   await page.getByRole('button', { name: 'Зберегти сітку' }).click();
 
   await expect(page.getByText('Сітку збережено.')).toBeVisible();
