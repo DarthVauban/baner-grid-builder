@@ -46,19 +46,24 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('HoroshopStickersPage', () => {
-  it('waits for typing to settle before requesting the catalog search', async () => {
+  it('opens list search in a dialog and scopes the catalog to the resolved parent', async () => {
+    const scoped = vi.spyOn(api.horoshopStickers, 'catalogSelection').mockResolvedValue({ ...catalog,
+      total: 1, pageCount: 1, matchingProductIds: [productIds[0]] });
+    vi.mocked(api.horoshopStickers.resolve).mockResolvedValueOnce({ productIds: [productIds[0]],
+      duplicates: 0, unmatched: [], ambiguous: [] });
     renderPage();
     await screen.findByLabelText('Обрати 0001');
-    vi.mocked(api.horoshopStickers.catalog).mockClear();
-    const input = screen.getByPlaceholderText('Пошук у товарах і модифікаціях');
-    fireEvent.change(input, { target: { value: 'Т' } });
-    fireEvent.change(input, { target: { value: 'Те' } });
-    fireEvent.change(input, { target: { value: 'Телефон' } });
-    expect(api.horoshopStickers.catalog).not.toHaveBeenCalled();
-    await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenCalledWith(
-      expect.objectContaining({ search: 'Телефон' }), expect.anything()
-    ));
-    expect(api.horoshopStickers.catalog).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('region', { name: 'Фільтри товарів' })).toBeInTheDocument();
+    expect(screen.queryByText('Ціна від')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Назва або артикул' }));
+    const dialog = screen.getByRole('dialog', { name: 'Вибірка за назвою або артикулом' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Назви або артикули' }), { target: { value: 'Телефон' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Створити вибірку зі списку' }));
+    await waitFor(() => expect(api.horoshopStickers.resolve).toHaveBeenCalledWith(['Телефон']));
+    await waitFor(() => expect(scoped).toHaveBeenCalledWith([productIds[0]], expect.objectContaining({ page: 1 }), expect.anything()));
+    expect(screen.getByText('Обрано: 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Очистити вибірку' }));
+    expect(screen.queryByText('Список: 1 значення')).not.toBeInTheDocument();
   });
 
   it('collects several sticker actions into one reviewable operation', async () => {
@@ -202,7 +207,8 @@ describe('HoroshopStickersPage', () => {
     await waitFor(() => expect(api.horoshopStickers.catalog).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }), expect.anything()));
     expect(await screen.findByLabelText('Обрати 0001')).toBeChecked();
     fireEvent.click(screen.getByLabelText('Обрати 0001'));
-    fireEvent.change(screen.getByLabelText('Назва або артикул'), { target: { value: 'новий фільтр' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Категорія' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Телефони' }));
     await screen.findByLabelText('Обрати 0001');
     await openStickers();
     fireEvent.click(screen.getByLabelText('Додати стікери: Акція'));
@@ -210,16 +216,27 @@ describe('HoroshopStickersPage', () => {
     await waitFor(() => expect(api.horoshopStickers.preview).toHaveBeenCalledWith(expect.objectContaining({ productIds: [productIds[1]] }), expect.any(Function)));
   });
 
-  it('resolves pasted articles, exposes unmatched entries and lets the user resolve ambiguity', async () => {
+  it('creates a scoped selection, warns about missing entries and lets the user resolve ambiguity', async () => {
+    const scoped = vi.spyOn(api.horoshopStickers, 'catalogSelection').mockImplementation(async (ids) => ({ ...catalog,
+      items: ids.map((id) => id === productIds[0] ? catalog.items[0] : { ...catalog.items[0], id, sku: '0002', titles: { uk: 'Навушники' } }),
+      total: ids.length, pageCount: 1, matchingProductIds: ids }));
     renderPage();
     await screen.findByLabelText('Обрати 0001');
-    fireEvent.change(screen.getByLabelText('Список артикулів'), { target: { value: '0001\nmissing\nduplicate' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Знайти й додати до вибірки' }));
-    expect(await screen.findByText('Не знайдено: missing')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Назва або артикул' }));
+    const dialog = screen.getByRole('dialog', { name: 'Вибірка за назвою або артикулом' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Назви або артикули' }), { target: { value: '0001\nmissing\nduplicate' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Створити вибірку зі списку' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не знайдено: missing. Вибірку створено без цих товарів.');
     expect(api.horoshopStickers.resolve).toHaveBeenCalledWith(['0001', 'missing', 'duplicate']);
+    expect(scoped).toHaveBeenCalledWith([productIds[0]], expect.anything(), expect.anything());
+    expect(screen.getByText('Обрано: 1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Навушники · 0002' }));
+    await waitFor(() => expect(scoped).toHaveBeenCalledWith(productIds, expect.anything(), expect.anything()));
     expect(screen.getByText('Обрано: 2')).toBeInTheDocument();
     expect(screen.queryByText('Уточніть «duplicate»:')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Вибрати всі 2 за фільтром' }));
+    await waitFor(() => expect(scoped).toHaveBeenCalledWith(productIds, expect.anything()));
+    expect(api.horoshopStickers.select).not.toHaveBeenCalled();
   });
 
   it('restores a running operation from its URL without publishing again and lets the user stop the remainder', async () => {

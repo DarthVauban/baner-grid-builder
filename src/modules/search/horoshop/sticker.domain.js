@@ -1,5 +1,6 @@
 import { AppError } from '../../../lib/app-error.js';
 import { normalizeHoroshopProducts, normalizeHoroshopStickers } from './catalog.normalizer.js';
+import { normalizePopularitySearch, resolvePopularityEntries } from './popularity.domain.js';
 
 export const maximumStickerSelection = 20_000;
 export const textKey = (value) => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase('uk-UA');
@@ -49,17 +50,11 @@ export function filterStickerProducts(products, categories, filters = {}, manual
   const manual = new Set(manualIds);
   return products.filter((product) => {
     const offers = [product, ...product.modifications];
-    if (filters.search && !textKey([product.brand, ...offers.flatMap((offer) => [offer.sku, ...Object.values(offer.titles)])].join(' ')).includes(textKey(filters.search))) return false;
     if (categoryIds.size && !categoryIds.has(product.categoryExternalId)) return false;
     if (filters.brand && product.brand !== filters.brand) return false;
     if (filters.availability && !offers.some((offer) => offer.availability === filters.availability)) return false;
     if (filters.visibility === 'visible' && !product.visible) return false;
     if (filters.visibility === 'hidden' && product.visible && !product.modifications.some((offer) => !offer.visible)) return false;
-    if (filters.priceMin !== undefined && !offers.some((offer) => offer.price !== null && Number(offer.price) >= filters.priceMin)) return false;
-    if (filters.priceMax !== undefined && !offers.some((offer) => offer.price !== null && Number(offer.price) <= filters.priceMax)) return false;
-    if ((filters.priceMin !== undefined || filters.priceMax !== undefined) && !offers.some((offer) => offer.price !== null
-      && (filters.priceMin === undefined || Number(offer.price) >= filters.priceMin)
-      && (filters.priceMax === undefined || Number(offer.price) <= filters.priceMax))) return false;
     const date = product.horoshopCreatedAt || '';
     if (filters.createdFrom && date.slice(0, 10) < filters.createdFrom) return false;
     if (filters.createdTo && date.slice(0, 10) > filters.createdTo) return false;
@@ -91,30 +86,16 @@ export function summarizeStickerSelection(products, directory) {
     .map((item) => ({ ...item, productCount: counts.get(item.externalId) })) };
 }
 
-export function resolveStickerArticles(entries, products) {
-  const index = new Map();
-  for (const product of products) for (const sku of new Set([product.sku, ...product.modifications.map((m) => m.sku)])) {
-    const key = textKey(sku);
-    if (!index.has(key)) index.set(key, new Map());
-    index.get(key).set(product.id, product);
-  }
-  const productIds = new Set();
-  const seen = new Set();
-  const unmatched = [];
-  const ambiguous = [];
-  let duplicates = 0;
-  for (const entry of entries) {
-    const key = textKey(entry);
-    if (!key) continue;
-    if (seen.has(key)) { duplicates += 1; continue; }
-    seen.add(key);
-    const candidates = [...(index.get(key)?.values() || [])];
-    if (!candidates.length) unmatched.push(entry);
-    else if (candidates.length > 1) ambiguous.push({ input: entry, candidates: candidates.map((p) => ({ id: p.id, sku: p.sku, title: titleFor(p.titles, p.sku) })) });
-    else if (productIds.has(candidates[0].id)) duplicates += 1;
-    else productIds.add(candidates[0].id);
-  }
-  return { productIds: [...productIds], unmatched, ambiguous, duplicates };
+export function resolveStickerEntries(entries, products) {
+  const { matched, unmatched, ambiguous } = resolvePopularityEntries(entries, products);
+  return {
+    productIds: matched.map((item) => item.productId), unmatched,
+    ambiguous: ambiguous.map((item) => ({ input: item.input, candidates: item.candidates.map((candidate) => ({
+      id: candidate.productId, sku: candidate.sku, title: candidate.title
+    })) })),
+    duplicates: entries.filter((entry) => normalizePopularitySearch(entry)).length
+      - matched.length - unmatched.length - ambiguous.length
+  };
 }
 
 function readIcons(value, directory) {

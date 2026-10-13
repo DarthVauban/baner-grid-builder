@@ -292,7 +292,7 @@ test('rollback preparation streams progress and still requires explicitly applyi
   assert.equal(imports.length, writes);
 });
 
-test('catalog, exact article resolution and saved selection expose no credentials and keep leading zeros', async () => {
+test('catalog, article resolution and saved selection expose no credentials and keep leading zeros', async () => {
   await request(app).get(`${base}/catalog`).expect(401);
   const response = await admin.get(`${base}/catalog?stickerMode=present&stickerId=1`).expect(200);
   assert.equal(response.body.data.total, 1);
@@ -305,13 +305,27 @@ test('catalog, exact article resolution and saved selection expose no credential
   assert.deepEqual(resolution.body.data.productIds, [productIds[0]]);
   assert.equal(resolution.body.data.duplicates, 2);
   assert.deepEqual(resolution.body.data.unmatched, ['missing']);
+  await pool.query(`UPDATE search_horoshop_modifications SET titles = $1::jsonb
+    WHERE connection_id = $2 AND sku = '0002'`, [JSON.stringify({ uk: 'Чорний' }), connection]);
+  const named = await admin.post(`${base}/resolve`).send({ entries: ['Телефон', '0002', 'Телефон Чорний', 'Навушники', 'missing'] }).expect(200);
+  assert.deepEqual(named.body.data.productIds, productIds);
+  assert.equal(named.body.data.duplicates, 2);
+  assert.deepEqual(named.body.data.unmatched, ['missing']);
+  const scoped = await admin.post(`${base}/catalog/selection`).send({ productIds: named.body.data.productIds,
+    filters: { stickerMode: 'present', stickerId: '1', page: 1, pageSize: 10 } }).expect(200);
+  assert.deepEqual(scoped.body.data.matchingProductIds, [productIds[0]]);
+  assert.equal(scoped.body.data.total, 1);
+  assert.equal(scoped.body.data.items[0].modifications.length, 2);
+  assert.equal(scoped.body.data.items[0].sku, 'P1');
+  const empty = await admin.post(`${base}/catalog/selection`).send({ productIds: [], filters: {} }).expect(200);
+  assert.equal(empty.body.data.total, 0);
   const selected = await admin.post(`${base}/select`).send({ brand: 'Apple' }).expect(200);
   assert.equal(selected.body.data.productIds.length, 2);
   const saved = await admin.post(`${base}/selections`).send({ name: 'Телефони', productIds: [productIds[0]] }).expect(201);
   assert.deepEqual(saved.body.data[0].productIds, [productIds[0]]);
   await admin.delete(`${base}/selections/${saved.body.data[0].id}`).expect(200);
   assert.deepEqual((await admin.get(`${base}/selections`).expect(200)).body.data, []);
-  await admin.get(`${base}/catalog?priceMin=200&priceMax=100`).expect(422);
+  await admin.get(`${base}/catalog?priceMin=100`).expect(422);
   await admin.get(`${base}/catalog?createdFrom=2026-02-31`).expect(422);
 });
 
@@ -420,7 +434,7 @@ test('directory is fetched without a full catalog sync, cached and refreshed exp
   const first = (await admin.get(`${base}/catalog`).expect(200)).body.data;
   assert.equal(first.directory.length, directory.length - 1);
   assert.equal(first.directoryWarning, null);
-  await admin.get(`${base}/catalog?search=Телефон`).expect(200);
+  await admin.get(`${base}/catalog?brand=Apple`).expect(200);
   assert.equal(calls, 1);
   directory = directory.filter((item) => item.id !== 3);
   directory.push({ id: 12, title: 'Передзамовлення', enabled: 1 });
@@ -705,13 +719,11 @@ test('reports escape CSV formulas and old operations cannot target a new connect
   assert.equal(imports.length, 0);
 });
 
-test('domain filtering honors category descendants and price ranges on the same offer', () => {
+test('domain filtering honors category descendants and sticker actions', () => {
   const product = { categoryExternalId: 'child', brand: 'Apple', sku: 'P', titles: {}, price: '50', availability: null, visible: true, stickers: [], modifications: [{ sku: 'M', titles: {}, price: '200', stickers: [] }], horoshopCreatedAt: '2026-01-01' };
   const categories = [{ externalId: 'child', parentExternalId: 'parent' }];
   assert.equal(filterStickerProducts([product], categories, { category: 'parent' }).length, 1);
   assert.equal(filterStickerProducts([product], categories, { category: 'parent', includeChildren: false }).length, 0);
-  assert.equal(filterStickerProducts([product], categories, { priceMin: 100, priceMax: 150 }).length, 0);
-  assert.equal(filterStickerProducts([product], categories, { priceMin: 100, priceMax: 220 }).length, 1);
   const before = [{ id: '1', title: 'Хіт' }, { id: '', title: 'Невідомий ручний' }];
   assert.equal(applyStickerChange(before, [], ['1'])[0].title, 'Невідомий ручний');
   assert.throws(() => assertManualActions(['1'], [], [{ externalId: '1', title: 'X', enabled: true }, { externalId: '11', title: 'X', enabled: true }]));

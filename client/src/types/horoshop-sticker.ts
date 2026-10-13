@@ -10,8 +10,8 @@ export interface StickerProduct {
   modifications: Array<{ id: string; sku: string; titles: Record<string, string>; price: string | null; availability: string | null; visible: boolean; stickers: Sticker[] }>;
 }
 export interface StickerFilters {
-  search?: string; category?: string; includeChildren?: boolean; brand?: string; availability?: string;
-  visibility?: 'all' | 'visible' | 'hidden'; priceMin?: number; priceMax?: number; createdFrom?: string; createdTo?: string;
+  category?: string; includeChildren?: boolean; brand?: string; availability?: string;
+  visibility?: 'all' | 'visible' | 'hidden'; createdFrom?: string; createdTo?: string;
   stickerMode?: 'all' | 'present' | 'missing' | 'none'; stickerId?: string; page?: number; pageSize?: number;
 }
 export interface StickerCatalog {
@@ -20,6 +20,7 @@ export interface StickerCatalog {
   directory: StickerDirectoryEntry[]; categories: Array<{ externalId: string; parentExternalId: string | null; title: string }>;
   brands: string[]; availabilityOptions: string[];
 }
+export interface StickerSelectionCatalog extends StickerCatalog { matchingProductIds: string[] }
 export type StickerItemStatus = 'pending' | 'writing' | 'succeeded' | 'unchanged' | 'failed' | 'conflict' | 'cancelled';
 export type StickerOperationStatus = 'draft' | 'queued' | 'running' | 'completed' | 'partial' | 'stopped';
 export interface StickerOperationSummary { id: string; name: string; kind: 'change' | 'rollback' | 'retry'; status: StickerOperationStatus; actorName: string; createdAt: string }

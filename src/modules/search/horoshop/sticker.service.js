@@ -7,16 +7,14 @@ import { HoroshopApiError, HoroshopClient, horoshopCatalogExportPageSize } from 
 import { normalizeHoroshopStickers } from './catalog.normalizer.js';
 import { HoroshopStickerRepository, arrayValue, countItems } from './sticker.repository.js';
 import { applyStickerChange, assertManualActions, filterStickerProducts, maximumStickerSelection,
-  remoteStickerSnapshot, resolveStickerArticles, sameMembership, sameStickers, summarizeStickerSelection, titleFor } from './sticker.domain.js';
+  remoteStickerSnapshot, resolveStickerEntries, sameMembership, sameStickers, summarizeStickerSelection, titleFor } from './sticker.domain.js';
 
 const lockId = 72914213;
 const notEmpty = (ids) => {
   if (!ids.length || ids.length > maximumStickerSelection) throw new AppError(422, 'STICKER_SELECTION_INVALID', `Оберіть від 1 до ${maximumStickerSelection} товарів.`);
 };
 const terminal = (status) => ['completed', 'partial', 'stopped'].includes(status);
-const sqlCatalogFilters = (filters) => !filters.search && !filters.brand
-  && filters.priceMin === undefined && filters.priceMax === undefined
-  && (!filters.stickerMode || filters.stickerMode === 'all');
+const sqlCatalogFilters = (filters) => !filters.brand && (!filters.stickerMode || filters.stickerMode === 'all');
 const preparationReporter = (onProgress, total = 0) => {
   let progress = { stage: 'checking', total, processed: 0, productsRead: 0, pagesRead: 0 };
   return (update) => { progress = { ...progress, ...update }; onProgress?.(progress); };
@@ -73,6 +71,19 @@ export class HoroshopStickerService {
       directoryWarning };
   }
 
+  async catalogSelection(productIds, filters) {
+    const connection = await this.repository.connection();
+    const base = await this.catalog({ page: 1, pageSize: 10 });
+    const selected = await this.repository.catalogByIds(connection, productIds);
+    const matching = filterStickerProducts(selected.products, base.categories, filters,
+      base.directory.map((item) => item.externalId));
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 25;
+    return { ...base, items: matching.slice((page - 1) * pageSize, page * pageSize),
+      total: matching.length, page, pageSize, pageCount: Math.ceil(matching.length / pageSize),
+      matchingProductIds: matching.map((item) => item.id) };
+  }
+
   async ensureDirectory(connection, force = false) {
     const key = `${connection.id}:${connection.generation}`;
     if (!force && this.directoryCache?.key === key && this.directoryCache.expiresAt > Date.now()) {
@@ -126,7 +137,7 @@ export class HoroshopStickerService {
 
   async resolve(entries) {
     const connection = await this.repository.connection();
-    return resolveStickerArticles(entries, (await this.repository.catalog(connection)).products);
+    return resolveStickerEntries(entries, (await this.repository.catalog(connection)).products);
   }
 
   async readRemote(connection, onProgress = null, selectedExternalIds = null, expectedMemberships = null) {

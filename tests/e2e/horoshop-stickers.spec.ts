@@ -41,6 +41,12 @@ for (const surface of [
       await page.route('**/api/users/tool-access', (route) => route.fulfill({ json: { data: ['horoshop_stickers'] } }));
       await page.route('**/api/search/horoshop/stickers/**', async (route) => {
         const url = new URL(route.request().url());
+        if (url.pathname.endsWith('/resolve')) {
+          return route.fulfill({ json: { data: { productIds: [productId], duplicates: 0, unmatched: ['UNKNOWN'], ambiguous: [] } } });
+        }
+        if (url.pathname.endsWith('/catalog/selection')) {
+          return route.fulfill({ json: { data: { ...catalog, matchingProductIds: [productId] } } });
+        }
         if (url.pathname.endsWith('/directory/refresh')) {
           refreshed = true;
           return route.fulfill({ json: { data: { refreshed: true } } });
@@ -84,6 +90,15 @@ for (const surface of [
       await expect(page.getByLabel('Обрати 0001')).toBeEnabled();
       expect(catalogRequests).toEqual(expect.arrayContaining([{ mode: 'present', sticker: '1' }, { mode: 'missing', sticker: '1' }, { mode: 'missing', sticker: '11' }]));
       expect(catalogRequests.every(({ mode, sticker }) => !['present', 'missing'].includes(mode || '') || !!sticker)).toBe(true);
+      const filters = await page.getByRole('region', { name: 'Фільтри товарів' }).boundingBox();
+      const productTable = await page.locator('.hs-sticker-catalog').boundingBox();
+      expect(filters && productTable && filters.y + filters.height <= productTable.y + 1).toBe(true);
+      await page.getByRole('button', { name: 'Назва або артикул' }).click();
+      const searchDialog = page.getByRole('dialog', { name: 'Вибірка за назвою або артикулом' });
+      await searchDialog.getByRole('textbox', { name: 'Назви або артикули' }).fill('0001\nUNKNOWN');
+      await searchDialog.getByRole('button', { name: 'Створити вибірку зі списку' }).click();
+      await expect(page.getByText('Не знайдено: UNKNOWN. Вибірку створено без цих товарів.')).toBeVisible();
+      await expect(page.getByText('Обрано: 1')).toBeVisible();
       expect(writes).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     });

@@ -1,10 +1,11 @@
 import { jsonBody, queryString, request, requestNdjson } from './api-client';
-import type { StickerCatalog, StickerFilters, StickerOperation, StickerOperationSummary, StickerPreparationProgress, StickerPreviewInput, StickerResolution, StickerSelection, StickerSelectionSummary } from '../types/horoshop-sticker';
+import type { StickerCatalog, StickerFilters, StickerOperation, StickerOperationSummary, StickerPreparationProgress, StickerPreviewInput, StickerResolution, StickerSelection, StickerSelectionCatalog, StickerSelectionSummary } from '../types/horoshop-sticker';
 
 const base = '/api/search/horoshop/stickers';
 export const horoshopStickers = {
   refreshDirectory: () => request<{ refreshed: boolean }>(`${base}/directory/refresh`, { method: 'POST', timeoutMs: 120_000 }),
   catalog: (filters: StickerFilters = {}, signal?: AbortSignal) => request<StickerCatalog>(`${base}/catalog${queryString({ ...filters, includeChildren: filters.includeChildren === undefined ? undefined : String(filters.includeChildren) })}`, { signal }),
+  catalogSelection: (productIds: string[], filters: StickerFilters, signal?: AbortSignal) => request<StickerSelectionCatalog>(`${base}/catalog/selection`, { method: 'POST', body: jsonBody({ productIds, filters }), signal }),
   select: (filters: StickerFilters) => request<{ productIds: string[] }>(`${base}/select`, { method: 'POST', body: jsonBody(filters) }),
   selectionSummary: (productIds: string[], signal?: AbortSignal) => request<StickerSelectionSummary>(`${base}/selection/summary`, { method: 'POST', body: jsonBody({ productIds }), signal }),
   resolve: (entries: string[]) => request<StickerResolution>(`${base}/resolve`, { method: 'POST', body: jsonBody({ entries }) }),

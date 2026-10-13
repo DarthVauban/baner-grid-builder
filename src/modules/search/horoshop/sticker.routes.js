@@ -16,16 +16,14 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).refine((value) => {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
 }, 'Вкажіть коректну дату.');
 export const stickerFiltersSchema = z.object({
-  search: z.string().trim().max(160).optional(), category: z.string().trim().max(255).optional(),
+  category: z.string().trim().max(255).optional(),
   includeChildren: z.preprocess((value) => value === 'false' ? false : value === 'true' ? true : value, z.boolean().default(true)),
   brand: z.string().trim().max(255).optional(), availability: z.string().trim().max(200).optional(),
   visibility: z.enum(['all', 'visible', 'hidden']).default('all'),
-  priceMin: z.coerce.number().finite().min(0).optional(), priceMax: z.coerce.number().finite().min(0).optional(),
   createdFrom: date.optional(), createdTo: date.optional(),
   stickerMode: z.enum(['all', 'present', 'missing', 'none']).default('all'), stickerId: z.string().max(255).optional(),
   page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(10).max(100).default(25)
 }).strict().superRefine((input, context) => {
-  if (input.priceMin !== undefined && input.priceMax !== undefined && input.priceMin > input.priceMax) context.addIssue({ code: 'custom', path: ['priceMax'], message: 'Максимальна ціна має бути не меншою за мінімальну.' });
   if (input.createdFrom && input.createdTo && input.createdFrom > input.createdTo) context.addIssue({ code: 'custom', path: ['createdTo'], message: 'Перевірте діапазон дат.' });
   if (['present', 'missing'].includes(input.stickerMode) && !input.stickerId) context.addIssue({ code: 'custom', path: ['stickerId'], message: 'Оберіть стікер для фільтра.' });
 });
@@ -68,6 +66,10 @@ export function createStickerRouter(service = horoshopStickerService) {
   router.use(requireAuth, requireToolAccess('horoshop_stickers'));
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   router.get('/catalog', asyncHandler(async (req, res) => res.json({ data: await service.catalog(parseInput(stickerFiltersSchema, req.query)) })));
+  router.post('/catalog/selection', asyncHandler(async (req, res) => {
+    const input = parseInput(z.object({ productIds: z.array(id).max(maximumStickerSelection), filters: stickerFiltersSchema }).strict(), req.body);
+    res.json({ data: await service.catalogSelection(input.productIds, input.filters) });
+  }));
   router.post('/directory/refresh', asyncHandler(async (req, res) => res.json({ data: await service.refreshDirectory() })));
   router.post('/select', asyncHandler(async (req, res) => res.json({ data: await service.select(parseInput(stickerFiltersSchema, req.body)) })));
   router.post('/selection/summary', asyncHandler(async (req, res) => {
@@ -75,7 +77,7 @@ export function createStickerRouter(service = horoshopStickerService) {
     res.json({ data: await service.selectionSummary(input.productIds) });
   }));
   router.post('/resolve', asyncHandler(async (req, res) => {
-    const input = parseInput(z.object({ entries: z.array(z.string().trim().min(1).max(200)).min(1).max(maximumStickerSelection) }).strict(), req.body);
+    const input = parseInput(z.object({ entries: z.array(z.string().trim().min(1).max(500)).min(1).max(maximumStickerSelection) }).strict(), req.body);
     res.json({ data: await service.resolve(input.entries) });
   }));
   router.get('/selections', asyncHandler(async (req, res) => res.json({ data: await service.selections() })));
