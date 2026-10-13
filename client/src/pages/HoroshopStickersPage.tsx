@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { HoroshopProductSearchDialog } from '../components/HoroshopProductSearchDialog';
 import { StyledSelect, type StyledSelectOption } from '../components/StyledSelect';
 import { api } from '../lib/api';
 import { useToast } from '../toast/ToastContext';
@@ -27,15 +28,15 @@ function FieldSelect({ label, value, options, searchable = false, onChange }: {
   return <label><span>{label}</span><StyledSelect ariaLabel={label} value={value} options={options} searchable={searchable} onChange={(value) => onChange(String(value))} /></label>;
 }
 
-function ModalShell({ children, labelledBy, className = '', focusSelector, onClose }: { children: ReactNode; labelledBy: string; className?: string; focusSelector?: string; onClose: () => void }) {
+function ModalShell({ children, labelledBy, className = '', onClose }: { children: ReactNode; labelledBy: string; className?: string; onClose: () => void }) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    (focusSelector ? ref.current?.querySelector<HTMLElement>(focusSelector) : ref.current)?.focus();
+    ref.current?.focus();
     return () => { document.body.style.overflow = overflow; if (previous instanceof HTMLElement) previous.focus(); };
-  }, [focusSelector]);
+  }, []);
   return <div className="hs-sticker-dialog-backdrop"><section ref={ref} tabIndex={-1} className={`hs-sticker-dialog ${className}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy} onKeyDown={(event) => {
     if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
     if (event.key !== 'Tab') return;
@@ -353,12 +354,12 @@ export function HoroshopStickersPage() {
       {!history.data?.length && <p>Підготовлені та виконані операції з’являться тут.</p>}
       {history.data?.map((op) => <button key={op.id} className="hs-sticker-history-row" onClick={() => { setOperationPage(1); setParams({ operation: op.id }); }}><strong>{op.name}</strong><span>{operationLabels[op.status]}</span><small>{op.actorName} · {dateLabel(op.createdAt)}</small><Icon name="chevronRight" /></button>)}
     </section>}
-    {searchOpen && <ModalShell labelledBy="hs-sticker-search-title" className="hs-sticker-search-dialog" focusSelector="textarea" onClose={() => { if (!busy) closeSearch(); }}>
-      <header><div><h2 id="hs-sticker-search-title">Вибірка за назвою або артикулом</h2><p>Вставте назви або артикули, по одному значенню на рядок. Артикул модифікації вибере основний товар з усіма модифікаціями.</p></div><button type="button" aria-label="Закрити пошук" disabled={busy} onClick={closeSearch}><Icon name="close" /></button></header>
-      <label>Назви або артикули<textarea rows={8} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder={'Артикул 1\nНазва товару 2'} /></label>
-      <p className="hs-sticker-search-count">У списку {searchDraft.split(/\r?\n/u).filter((entry) => entry.trim()).length} значень.</p>
-      <footer><button className="button button--ghost" type="button" disabled={busy} onClick={closeSearch}>Скасувати</button><button className="button button--primary" type="button" disabled={busy || !searchDraft.trim()} onClick={resolveList}>{busy ? 'Шукаємо…' : 'Створити вибірку зі списку'}</button></footer>
-    </ModalShell>}
+    {searchOpen && <HoroshopProductSearchDialog title="Вибірка за назвою або артикулом"
+      description="Вставте назви або артикули, по одному значенню на рядок. Артикул модифікації вибере основний товар з усіма модифікаціями."
+      value={searchDraft} onValueChange={setSearchDraft} placeholder={'Артикул 1\nНазва товару 2'}
+      countMessage={`У списку ${searchDraft.split(/\r?\n/u).filter((entry) => entry.trim()).length} значень.`}
+      confirmLabel={busy ? 'Шукаємо…' : 'Створити вибірку зі списку'} busy={busy} confirmDisabled={!searchDraft.trim()}
+      onConfirm={resolveList} onClose={closeSearch} />}
     {!!operationId && !operation.data && <div className="hs-sticker-notice" role="status">{operation.isError ? operation.error.message : 'Завантажуємо операцію…'} <button onClick={() => setParams({})}>Закрити</button></div>}
     {operation.data && operationId && <OperationDialog operation={operation.data} pending={busy} preparation={preparation} onAction={onAction} onClose={() => { if (!preparation) { setParams({}); refresh(); } }} onPage={setOperationPage} />}
   </main>;

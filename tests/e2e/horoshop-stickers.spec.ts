@@ -95,6 +95,10 @@ for (const surface of [
       expect(filters && productTable && filters.y + filters.height <= productTable.y + 1).toBe(true);
       await page.getByRole('button', { name: 'Назва або артикул' }).click();
       const searchDialog = page.getByRole('dialog', { name: 'Вибірка за назвою або артикулом' });
+      const dialogBox = await searchDialog.boundingBox();
+      expect(dialogBox?.width).toBe(Math.min(620, surface.device.viewport.width - 40));
+      expect(await searchDialog.evaluate((element) => getComputedStyle(element).boxSizing)).toBe('border-box');
+      await searchDialog.screenshot({ path: testInfo.outputPath('sticker-search-dialog.png') });
       await searchDialog.getByRole('textbox', { name: 'Назви або артикули' }).fill('0001\nUNKNOWN');
       await searchDialog.getByRole('button', { name: 'Створити вибірку зі списку' }).click();
       await expect(page.getByText('Не знайдено: UNKNOWN. Вибірку створено без цих товарів.')).toBeVisible();

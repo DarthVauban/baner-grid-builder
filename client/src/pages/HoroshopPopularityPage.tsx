@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { HoroshopCatalogSyncProgress } from '../components/HoroshopCatalogSyncProgress';
+import { HoroshopProductSearchDialog } from '../components/HoroshopProductSearchDialog';
 import { Icon } from '../components/Icon';
 import { StyledSelect, type StyledSelectOption } from '../components/StyledSelect';
 import { api } from '../lib/api';
@@ -68,8 +69,6 @@ export function HoroshopPopularityPage() {
   const [rangeMaxDraft, setRangeMaxDraft] = useState(0);
   const brandRef = useRef<HTMLDetailsElement>(null);
   const popularityRef = useRef<HTMLDetailsElement>(null);
-  const searchTriggerRef = useRef<HTMLButtonElement>(null);
-  const searchInputRef = useRef<HTMLTextAreaElement>(null);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [allFiltered, setAllFiltered] = useState(false);
@@ -151,19 +150,6 @@ export function HoroshopPopularityPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!searchOpen) return undefined;
-    searchInputRef.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setSearchOpen(false);
-        searchTriggerRef.current?.focus();
-      }
-    };
-    document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [searchOpen]);
-
   function changeFilters(change: Partial<PopularityFilters>) {
     setFilters((current) => ({ ...current, ...change }));
     setPage(1);
@@ -180,7 +166,6 @@ export function HoroshopPopularityPage() {
 
   function closeSearch() {
     setSearchOpen(false);
-    searchTriggerRef.current?.focus();
   }
 
   function applySearch() {
@@ -328,7 +313,7 @@ export function HoroshopPopularityPage() {
 
       {display === 'catalog' && <section className="hp-panel" aria-label="Каталог товарів">
         <div className="hp-filters">
-          <div className="hp-search hp-filter-field"><span>Назва або артикул</span><button ref={searchTriggerRef} className="hp-search-trigger" type="button" aria-label="Назва або артикул" onClick={openSearch}><span>{searchSummary}</span><Icon name="chevronRight" size={16} /></button></div>
+          <div className="hp-search hp-filter-field"><span>Назва або артикул</span><button className="hp-search-trigger" type="button" aria-label="Назва або артикул" onClick={openSearch}><span>{searchSummary}</span><Icon name="chevronRight" size={16} /></button></div>
           <FilterSelect label="Категорія" searchable value={filters.category} options={[{ value: '', label: 'Усі категорії' }, ...catalogData.categories.map((item) => ({ value: item.externalId, label: item.title }))]} onChange={(value) => changeFilters({ category: value })} />
           <details ref={brandRef} className="hp-brand-filter"><summary><span>Бренди</span><strong>{filters.brands.length ? filters.brands.join(', ') : 'Усі бренди'}<Icon name="chevronRight" size={16} /></strong></summary><div>
             <input className="hp-brand-search" type="search" aria-label="Пошук бренду" placeholder="Знайти бренд" value={brandSearch} onChange={(event) => setBrandSearch(event.target.value)} />
@@ -396,11 +381,12 @@ export function HoroshopPopularityPage() {
       </section>}
     </>}
 
-    {searchOpen && <div className="hp-search-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSearch(); }}><section className="hp-search-dialog" role="dialog" aria-modal="true" aria-labelledby="hp-search-title"><div className="hp-search-dialog-head"><div><h2 id="hp-search-title">Пошук за назвою або артикулом</h2><p>Введіть одне значення для пошуку або вставте список з таблиці — по одному значенню на рядок.</p></div><button type="button" aria-label="Закрити пошук" onClick={closeSearch}>×</button></div>
-      <label className="hp-search-input"><span>Назви або артикули</span><textarea ref={searchInputRef} rows={8} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Наприклад: PHONE-BLACK" /></label>
-      {isPastedList && <p className="hp-search-count">У списку {searchDraft.split(/\r?\n/u).filter((line) => line.trim()).length} значень. Модифікації будуть об’єднані з батьківськими товарами.</p>}
-      <div className="hp-search-actions"><button className="button button--secondary" type="button" onClick={closeSearch}>Скасувати</button><button className="button button--primary" type="button" disabled={busy} onClick={() => { if (isPastedList) void resolveList(); else applySearch(); }}>{isPastedList ? 'Створити вибірку зі списку' : 'Застосувати пошук'}</button></div>
-    </section></div>}
+    {searchOpen && <HoroshopProductSearchDialog title="Пошук за назвою або артикулом"
+      description="Введіть одне значення для пошуку або вставте список з таблиці — по одному значенню на рядок."
+      value={searchDraft} onValueChange={setSearchDraft} placeholder="Наприклад: PHONE-BLACK"
+      countMessage={isPastedList ? `У списку ${searchDraft.split(/\r?\n/u).filter((line) => line.trim()).length} значень. Модифікації будуть об’єднані з батьківськими товарами.` : undefined}
+      confirmLabel={isPastedList ? 'Створити вибірку зі списку' : 'Застосувати пошук'} busy={busy}
+      onConfirm={() => { if (isPastedList) void resolveList(); else applySearch(); }} onClose={closeSearch} />}
 
     {drawer && <div className="hp-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}><section className="hp-drawer" role="dialog" aria-modal="true" aria-labelledby="hp-drawer-title"><div className="hp-drawer-head"><div><h2 id="hp-drawer-title">{drawer === 'single' ? 'Змінити популярність' : 'Масова дія'}</h2><p>{drawer === 'single' ? 'Для товару та всіх модифікацій' : `${number(selectedCount)} товарів вибрано`}</p></div><button type="button" aria-label="Закрити" onClick={() => setDrawer(null)}>×</button></div>
       {drawer === 'single' && singleProduct && <><div className="hp-drawer-product"><strong>{singleProduct.title}</strong><small>{singleProduct.sku} · {singleProduct.modifications.length} модифікацій</small></div><div className="hp-current"><span>Зараз у Хорошопі</span><strong>{singleProduct.popularity ?? '0'}</strong></div></>}
