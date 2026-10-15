@@ -271,9 +271,9 @@ function ConversationsPanel() {
   const current = detail.data?.conversation;
 
   useEffect(() => {
-    if (!conversations.data?.length) { setSelectedId(null); return; }
-    if (selectedId && conversations.data.some((item) => item.id === selectedId)) return;
-    setSelectedId(conversations.data[0].id);
+    if (selectedId && conversations.data && !conversations.data.some((item) => item.id === selectedId)) {
+      setSelectedId(null);
+    }
   }, [conversations.data, selectedId]);
 
   useEffect(() => {

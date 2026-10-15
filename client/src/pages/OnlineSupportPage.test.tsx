@@ -94,7 +94,7 @@ describe('OnlineSupportPage', () => {
   it('changes a conversation status through the branded select', async () => {
     vi.spyOn(api.auth, 'me').mockResolvedValue(user);
     vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
-    vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValue(conversationDetail);
+    const loadConversation = vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValue(conversationDetail);
     vi.spyOn(api.onlineSupport, 'markRead').mockResolvedValue(undefined);
     const setStatus = vi.spyOn(api.onlineSupport, 'setStatus').mockResolvedValue({
       ...conversationDetail.conversation,
@@ -102,10 +102,29 @@ describe('OnlineSupportPage', () => {
     });
 
     renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    expect(loadConversation).toHaveBeenCalledWith(conversationDetail.conversation.id);
     fireEvent.click(await screen.findByRole('button', { name: 'Статус діалогу' }, { timeout: 5_000 }));
     fireEvent.click(await screen.findByRole('option', { name: 'Вирішені' }));
 
     await waitFor(() => expect(setStatus).toHaveBeenCalledWith(conversationDetail.conversation.id, 'RESOLVED'));
+  });
+
+  it('waits for a click before opening a conversation', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    const loadConversation = vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValue(conversationDetail);
+    const markRead = vi.spyOn(api.onlineSupport, 'markRead').mockResolvedValue(undefined);
+
+    renderPage();
+    const conversation = await screen.findByRole('button', { name: /Ірина/u });
+    expect(screen.getByRole('heading', { name: 'Оберіть діалог' })).toBeInTheDocument();
+    expect(loadConversation).not.toHaveBeenCalled();
+    expect(markRead).not.toHaveBeenCalled();
+
+    fireEvent.click(conversation);
+    expect(await screen.findByRole('button', { name: 'Статус діалогу' })).toBeInTheDocument();
+    expect(loadConversation).toHaveBeenCalledWith(conversationDetail.conversation.id);
   });
 
   it('shows the per-device Windows notification option in settings', async () => {
