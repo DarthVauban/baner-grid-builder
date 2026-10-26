@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { createFloatingWidgetLayoutRuntime } from '../horoshop-widgets/floating-layout.js';
 
 export const supportChatToolId = 'online_support';
 export const supportWorkingDayKeys = [
@@ -199,6 +200,8 @@ export function supportWidgetEmbedScript(origin) {
   if (window.__mtSupportChatWidgetV1) return;
   window.__mtSupportChatWidgetV1 = true;
   const siteId = script.dataset.site || '';
+  const floatingLayout = (${createFloatingWidgetLayoutRuntime.toString()})(window);
+  let open = false;
   const widgetOrigin = ${JSON.stringify(origin)};
   const frame = document.createElement('iframe');
   const widgetUrl = new URL('/support-chat/widget', widgetOrigin);
@@ -222,15 +225,21 @@ export function supportWidgetEmbedScript(origin) {
   frame.setAttribute('allow', 'clipboard-write');
   (document.body || document.documentElement).appendChild(frame);
 
+  floatingLayout.subscribe((bottomInset) => {
+    const smallScreen = window.matchMedia('(max-width: 600px)').matches;
+    const mobile = open && smallScreen;
+    frame.style.right = mobile ? '0' : '16px';
+    frame.style.bottom = mobile ? '0' : open ? '16px' : bottomInset > 0 ? bottomInset + 'px'
+      : smallScreen ? 'calc(16px + env(safe-area-inset-bottom, 0px))' : '16px';
+    frame.style.width = mobile ? '100vw' : open ? '420px' : '76px';
+    frame.style.height = mobile ? '100dvh' : open ? 'min(700px, calc(100vh - 32px))' : '76px';
+  });
+
   window.addEventListener('message', (event) => {
     if (event.origin !== widgetUrl.origin || event.source !== frame.contentWindow) return;
     if (event.data?.type !== 'mt-support-chat:frame') return;
-    const open = event.data.open === true;
-    const mobile = open && window.matchMedia('(max-width: 560px)').matches;
-    frame.style.right = mobile ? '0' : '16px';
-    frame.style.bottom = mobile ? '0' : '16px';
-    frame.style.width = mobile ? '100vw' : open ? '420px' : '76px';
-    frame.style.height = mobile ? '100dvh' : open ? 'min(700px, calc(100vh - 32px))' : '76px';
+    open = event.data.open === true;
+    floatingLayout.setSupportOpen(open);
   });
 })();`;
 }

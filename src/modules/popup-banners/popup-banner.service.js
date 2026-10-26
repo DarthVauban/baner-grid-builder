@@ -4,6 +4,7 @@ import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { loadPromoCodeRow, promoCodeSnapshot } from '../promo-codes/promo-code.service.js';
 import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
+import { createFloatingWidgetLayoutRuntime } from '../horoshop-widgets/floating-layout.js';
 import { createPopupTimerRuntime, isTimerExpired, normalizeTimerConfig } from './popup-timer.js';
 
 export const popupBannerToolId = 'popup_banners';
@@ -1773,6 +1774,7 @@ export function popupEmbedScript(origin) {
     try { previewPayload = JSON.parse(script.dataset.previewPayload); } catch {}
   }
   const previewMode = Boolean(previewPayload);
+  const floatingLayout = previewMode ? null : (${createFloatingWidgetLayoutRuntime.toString()})(window);
   const previewDevice = (script?.dataset.previewDevice || window.__MT_POPUP_PREVIEW_DEVICE__) === 'mobile' ? 'mobile' : 'desktop';
   const previewState = (script?.dataset.previewState || window.__MT_POPUP_PREVIEW_STATE__) === 'lead-success' ? 'lead-success' : 'form';
   const articleSelector = script?.dataset.articleSelector || '';
@@ -2165,20 +2167,25 @@ export function popupEmbedScript(origin) {
     });
     host.style.position = 'fixed';
     host.style.zIndex = '2147482990';
+    let positionPromoHost = null;
     if (isProductPromo) {
       const presetWidths = { notification: 380, compact: 460, standard: 640, wide: 860 };
       const promoWidth = promoFormat === 'custom' ? campaign.styles.maxWidth : (presetWidths[promoFormat] || 380);
-      const mobile = isMobileInteractionSurface();
-      const position = mobile ? campaign.styles.mobilePosition : campaign.styles.desktopPosition;
-      const edge = mobile ? '10px' : '18px';
-      if (mobile) {
-        host.style.left = '50%';
-        host.style.transform = 'translateX(-50%)';
-        host.style[position === 'top' ? 'top' : 'bottom'] = edge;
-      } else {
-        host.style[position?.startsWith('top') ? 'top' : 'bottom'] = edge;
-        host.style[position?.endsWith('left') ? 'left' : 'right'] = edge;
-      }
+      positionPromoHost = () => {
+        const mobile = isMobileInteractionSurface();
+        const position = mobile ? campaign.styles.mobilePosition : campaign.styles.desktopPosition;
+        for (const side of ['top', 'bottom', 'left', 'right']) host.style[side] = '';
+        host.style.transform = mobile ? 'translateX(-50%)' : '';
+        if (mobile) {
+          host.style.left = '50%';
+          host.style[position === 'top' ? 'top' : 'bottom'] = position === 'top'
+            ? '10px' : 'calc(10px + env(safe-area-inset-bottom, 0px))';
+        } else {
+          host.style[position?.startsWith('top') ? 'top' : 'bottom'] = '18px';
+          host.style[position?.endsWith('left') ? 'left' : 'right'] = '18px';
+        }
+      };
+      positionPromoHost();
       host.style.width = 'min(calc(100vw - 20px), ' + promoWidth + 'px)';
       host.style.pointerEvents = 'none';
     } else {
@@ -2588,6 +2595,11 @@ export function popupEmbedScript(origin) {
         } else showProduct(0);
       }
       backdrop.append(card); shadow.append(backdrop); document.body.append(host);
+      if (isProductPromo && floatingLayout) cleanupTasks.push(floatingLayout.registerPromo(host, {
+        position: positionPromoHost,
+        isMobile: isMobileInteractionSurface,
+        isBottom: () => campaign.styles.mobilePosition !== 'top'
+      }));
       currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
       if (!previewMode && campaign.behavior.autoCloseSeconds > 0) {
         const autoCloseTimer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
