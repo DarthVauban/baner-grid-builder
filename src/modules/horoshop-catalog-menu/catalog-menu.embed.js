@@ -14,12 +14,22 @@ const baseCss = String.raw`
 
   html.mt-catalog-menu-open,
   body.mt-catalog-menu-open {
-    overflow: hidden !important;
     overscroll-behavior: none !important;
   }
 
   html.mt-catalog-menu-open {
-    scrollbar-gutter: var(--mt-menu-page-gutter, auto);
+    overflow-x: hidden !important;
+    overflow-y: var(--mt-menu-page-overflow-y, hidden) !important;
+    scrollbar-gutter: auto;
+  }
+
+  body.mt-catalog-menu-open {
+    overflow: visible !important;
+    position: fixed !important;
+    top: var(--mt-menu-page-top, 0px) !important;
+    left: var(--mt-menu-page-left, 0px) !important;
+    width: 100% !important;
+    height: auto !important;
   }
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-submenu.__hasTabs {
@@ -423,20 +433,29 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCateg
   function setupViewportBehavior(root, menu) {
     let frame = 0;
     let pageLocked = false;
+    let scrollX = 0;
+    let scrollY = 0;
     const sync = () => {
       frame = 0;
       const desktop = window.innerWidth >= 1024;
       const open = desktop && menu.classList.contains('__visible') && !menu.hasAttribute('hidden');
       const page = document.documentElement;
       if (open && !pageLocked) {
-        // Preserve the existing viewport gutter once, without creating one on short pages.
-        page.style.setProperty('--mt-menu-page-gutter', window.innerWidth > page.clientWidth ? 'stable' : 'auto');
+        scrollX = window.scrollX;
+        scrollY = window.scrollY;
+        // Keep the real scrollbar, while the fixed body freezes the background.
+        page.style.setProperty('--mt-menu-page-overflow-y', window.innerWidth > page.clientWidth ? 'scroll' : 'hidden');
+        page.style.setProperty('--mt-menu-page-top', -scrollY + 'px');
+        page.style.setProperty('--mt-menu-page-left', -scrollX + 'px');
       }
-      syncMenuViewport(root, menu);
       page.classList.toggle(scrollLockClass, open);
       document.body?.classList.toggle(scrollLockClass, open);
-      if (!open) page.style.removeProperty('--mt-menu-page-gutter');
+      if (!open && pageLocked) {
+        for (const name of ['--mt-menu-page-overflow-y', '--mt-menu-page-top', '--mt-menu-page-left']) page.style.removeProperty(name);
+        if (window.scrollX !== scrollX || window.scrollY !== scrollY) window.scrollTo({ left: scrollX, top: scrollY, behavior: 'instant' });
+      }
       pageLocked = open;
+      syncMenuViewport(root, menu);
     };
     const scheduleSync = () => {
       if (frame) return;

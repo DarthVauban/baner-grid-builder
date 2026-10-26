@@ -151,7 +151,8 @@ test('catalog menu settings publish a selected visual without exposing catalog d
   assert.match(stylesheet.text, /width: var\(--mt-menu-viewport-width\) !important/u);
   assert.match(stylesheet.text, /height: var\(--mt-menu-viewport-height\) !important/u);
   assert.match(stylesheet.text, /\.productsMenu-tabs-list__tab \{[^}]*flex: 0 0 auto !important/us);
-  assert.match(stylesheet.text, /html\.mt-catalog-menu-open,[^}]*overflow: hidden !important/us);
+  assert.match(stylesheet.text, /html\.mt-catalog-menu-open\s*\{[^}]*overflow-y: var\(--mt-menu-page-overflow-y, hidden\) !important/us);
+  assert.match(stylesheet.text, /body\.mt-catalog-menu-open\s*\{[^}]*position: fixed !important/us);
   assert.doesNotMatch(stylesheet.text, /width: min\(1280px/u);
   assert.match(stylesheet.text, /\.productsMenu-tabs-switch \{[^}]*flex: 0 0 var\(--mt-menu-root-width\) !important[^}]*transform: none !important/us);
   assert.doesNotMatch(stylesheet.text, /\.productsMenu-tabs-switch \{[^}]*transform: scale\(/us);

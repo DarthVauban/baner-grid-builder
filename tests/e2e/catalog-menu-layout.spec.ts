@@ -53,12 +53,16 @@ for (const theme of ['compact-columns', 'flat-directory', 'grouped-sections']) {
     test(`${theme} preserves page width on a ${tall ? 'scrollable' : 'short'} desktop page`, async ({ page }, testInfo) => {
       await storefront(page, tall, false, theme);
       const before = await geometry(page);
-      if (tall) expect(await page.evaluate(() => innerWidth - document.documentElement.clientWidth)).toBeGreaterThan(0);
+      const scrollbarWidth = await page.evaluate(() => innerWidth - document.documentElement.clientWidth);
+      if (tall) expect(scrollbarWidth).toBeGreaterThan(0);
       const toggle = page.getByRole('button', { name: 'Каталог', exact: true });
       for (let attempt = 0; attempt < 2; attempt += 1) {
         await toggle.click();
         await expect(page.locator('html')).toHaveClass(/mt-catalog-menu-open/u);
         await expect.poll(() => geometry(page)).toEqual(before);
+        await expect(page.locator('html')).toHaveCSS('scrollbar-gutter', 'auto');
+        await expect(page.locator('html')).toHaveCSS('overflow-y', tall ? 'scroll' : 'hidden');
+        expect(await page.evaluate(() => innerWidth - document.documentElement.clientWidth)).toBe(scrollbarWidth);
         const list = page.locator('.productsMenu-tabs-list');
         await list.hover();
         await page.mouse.wheel(0, 400);
@@ -74,6 +78,28 @@ for (const theme of ['compact-columns', 'flat-directory', 'grouped-sections']) {
     });
   }
 }
+
+test('opening after scrolling restores the page position when the menu closes', async ({ page }) => {
+  await storefront(page, true);
+  await page.addStyleTag({ content: 'html,body{height:100%} header{position:sticky;top:0;z-index:2}' });
+  await page.mouse.move(800, 500);
+  await page.mouse.wheel(0, 500);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
+  const scrollBefore = await page.evaluate(() => scrollY);
+  const before = await geometry(page);
+  await page.getByRole('button', { name: 'Каталог', exact: true }).click();
+  await expect(page.locator('html')).toHaveClass(/mt-catalog-menu-open/u);
+  await expect.poll(() => geometry(page)).toEqual(before);
+  await expect(page.locator('html')).toHaveCSS('overflow-y', 'scroll');
+  await page.mouse.move(800, 750);
+  const frozenTop = await page.locator('main').evaluate((node) => node.getBoundingClientRect().top);
+  await page.mouse.wheel(0, 400);
+  expect(await page.locator('main').evaluate((node) => node.getBoundingClientRect().top)).toBe(frozenTop);
+  await page.getByRole('button', { name: 'Каталог', exact: true }).click();
+  await expect(page.locator('html')).not.toHaveClass(/mt-catalog-menu-open/u);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(scrollBefore);
+  await expect.poll(() => geometry(page)).toEqual(before);
+});
 
 test.describe('native mobile catalog', () => {
   const device = devices['iPhone 13'];
