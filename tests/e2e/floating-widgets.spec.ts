@@ -1,8 +1,14 @@
 import { devices, expect, test, type Locator, type Page } from '@playwright/test';
+import { createServer } from 'node:http';
 import type { PopupPreviewPayload } from '../../client/src/types/popup-banner';
 
 const panelOrigin = 'http://panel.example.test';
 const serverOrigin = 'http://localhost:4175';
+
+test.afterEach(async ({ page }) => {
+  // Module preloads can outlive the assertions; finish their proxies before page/context disposal.
+  await page.unrouteAll({ behavior: 'wait' });
+});
 
 function promoPayload(position: 'top' | 'bottom' = 'bottom'): PopupPreviewPayload {
   return {
@@ -96,6 +102,40 @@ async function expectAbove(frame: Locator, promo: Locator) {
     return gap >= 11.99 && gap <= 13.01;
   }, { message: 'The chat launcher should remain at least 12px above the promo.' }).toBe(true);
 }
+
+test('finishes pending chat asset proxies before disposing the page', async ({ page }) => {
+  const fixture = await storefront(page, false);
+  await fixture.load('support-chat');
+  const chat = page.frameLocator('iframe[title="Онлайн-підтримка"]');
+  await expect(chat.getByRole('button', { name: 'Відкрити онлайн-підтримку' })).toBeVisible();
+  let received!: () => void;
+  const requestReceived = new Promise<void>((resolve) => { received = resolve; });
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/javascript' });
+    response.write('// streaming preload\n');
+    received();
+    setTimeout(() => response.end('// complete\n'), 250);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing test asset server address');
+    const assetUrl = `${panelOrigin}/slow-chat-preload.js`;
+    await page.route(assetUrl, async (route) => route.fulfill({
+      response: await route.fetch({ url: `http://127.0.0.1:${address.port}/slow-chat-preload.js` })
+    }));
+    await chat.locator('body').evaluate((body, url) => {
+      const preload = body.ownerDocument.createElement('link');
+      preload.rel = 'modulepreload';
+      preload.href = url;
+      body.ownerDocument.head.append(preload);
+    }, assetUrl);
+    // End while route.fetch is reading the streamed body, as happened in CI.
+    await requestReceived;
+  } finally {
+    server.close();
+  }
+});
 
 for (const surface of [
   { name: 'desktop', device: devices['Desktop Chrome'] },
