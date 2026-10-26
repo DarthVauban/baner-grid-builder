@@ -16,7 +16,10 @@ const baseCss = String.raw`
   body.mt-catalog-menu-open {
     overflow: hidden !important;
     overscroll-behavior: none !important;
-    scrollbar-gutter: stable;
+  }
+
+  html.mt-catalog-menu-open {
+    scrollbar-gutter: var(--mt-menu-page-gutter, auto);
   }
 
   .j-products-menu[data-mt-catalog-menu="v1"] .productsMenu-submenu.__hasTabs {
@@ -419,13 +422,21 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCateg
 
   function setupViewportBehavior(root, menu) {
     let frame = 0;
+    let pageLocked = false;
     const sync = () => {
       frame = 0;
       const desktop = window.innerWidth >= 1024;
       const open = desktop && menu.classList.contains('__visible') && !menu.hasAttribute('hidden');
+      const page = document.documentElement;
+      if (open && !pageLocked) {
+        // Preserve the existing viewport gutter once, without creating one on short pages.
+        page.style.setProperty('--mt-menu-page-gutter', window.innerWidth > page.clientWidth ? 'stable' : 'auto');
+      }
       syncMenuViewport(root, menu);
-      document.documentElement.classList.toggle(scrollLockClass, open);
+      page.classList.toggle(scrollLockClass, open);
       document.body?.classList.toggle(scrollLockClass, open);
+      if (!open) page.style.removeProperty('--mt-menu-page-gutter');
+      pageLocked = open;
     };
     const scheduleSync = () => {
       if (frame) return;
