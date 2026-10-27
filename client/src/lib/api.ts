@@ -1,3 +1,4 @@
+import { storeMapRegistrationApi } from './api-store-map-registration';
 import type {
   LoginInput,
   LoginResponse,
@@ -816,6 +817,7 @@ export const api = {
       })
   },
   storeMap: {
+    registration: storeMapRegistrationApi,
     points: (params: { search?: string; publicationStatus?: StoreMapPublicationStatus | '' } = {}) =>
       request<StoreMapPoint[]>(`/api/store-map/points${queryString(params)}`),
     createPoint: (input: StoreMapPointInput) =>

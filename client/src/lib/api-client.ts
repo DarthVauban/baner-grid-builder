@@ -66,7 +66,7 @@ export async function request<T>(path: string, options: ApiRequestOptions = {}):
       ...fetchOptions,
       headers,
       body,
-      credentials: 'same-origin',
+      credentials: fetchOptions.credentials ?? 'same-origin',
       signal: controller.signal
     });
 
@@ -145,7 +145,7 @@ export async function requestNdjson<TProgress, TResult>(
     const response = await fetch(path, {
       ...fetchOptions,
       headers,
-      credentials: 'same-origin',
+      credentials: fetchOptions.credentials ?? 'same-origin',
       signal: controller.signal
     });
     if (!response.ok) {

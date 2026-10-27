@@ -14,11 +14,15 @@ export default defineConfig({
         storefront: 'client/storefront.html',
         tradeIn: 'client/trade-in.html',
         storeMap: 'client/store-map.html',
+        storeMapRegistration: 'client/store-map-registration.html',
         supportChat: 'client/support-chat.html'
       },
       output: {
         manualChunks(id) {
           const normalizedId = id.replaceAll('\\', '/');
+          if (normalizedId.includes('/node_modules/maplibre-gl/')) {
+            return 'maplibre';
+          }
           if (normalizedId.includes('/node_modules/@tiptap/')
             || normalizedId.includes('/node_modules/prosemirror-')) {
             return 'tiptap-editor';

@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { TimeRangePicker } from '../components/TimeRangePicker';
+import { StoreMapRequestsPanel } from '../components/StoreMapRequestsPanel';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { downloadStoreMapExport } from '../lib/store-map-xlsx';
@@ -422,7 +423,8 @@ export function StoreMapPage() {
   const [status, setStatus] = useState<'ALL' | StoreMapPublicationStatus>('ALL');
   const [editingPoint, setEditingPoint] = useState<StoreMapPoint | null | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'points' | 'widget'>('points');
+  const [activeTab, setActiveTab] = useState<'points' | 'requests' | 'widget'>('points');
+  const pendingRequests = useQuery({ queryKey: ['store-map-registration', 'pending'], queryFn: () => api.storeMap.registration.requests({ status: 'NEW' }), refetchInterval: 30_000 });
   const points = useQuery({ queryKey: ['store-map-points'], queryFn: () => api.storeMap.points() });
   const settings = useQuery({ queryKey: ['store-map-settings'], queryFn: api.storeMap.settings });
   const remove = useMutation({ mutationFn: api.storeMap.removePoint });
@@ -485,6 +487,9 @@ export function StoreMapPage() {
       <button type="button" role="tab" aria-selected={activeTab === 'points'} onClick={() => setActiveTab('points')}>
         <Icon name="location" size={18} /> Торгові точки <span>{points.data?.length || 0}</span>
       </button>
+      <button type="button" role="tab" aria-selected={activeTab === 'requests'} onClick={() => setActiveTab('requests')}>
+        <Icon name="tasks" size={18} /> Заявки <span>{pendingRequests.data?.pendingCount || 0}</span>
+      </button>
       <button type="button" role="tab" aria-selected={activeTab === 'widget'} onClick={() => setActiveTab('widget')}>
         <Icon name="storefront" size={18} /> Віджет
       </button>
@@ -525,6 +530,8 @@ export function StoreMapPage() {
         </div>}
       </section>
     </div>}
+
+    {activeTab === 'requests' && <div className="store-map-tab-panel" role="tabpanel"><StoreMapRequestsPanel /></div>}
 
     {activeTab === 'widget' && <div className="store-map-tab-panel" role="tabpanel">
       {settings.data && <WidgetSettings settings={settings.data} />}

@@ -91,3 +91,73 @@ export interface PublicStoreMapData {
   points: StoreMapPoint[];
   cities: string[];
 }
+
+export interface StoreMapPosition {
+  latitude: number;
+  longitude: number;
+}
+
+export interface StoreMapMeasurement extends StoreMapPosition {
+  accuracy: number;
+  observedAt: string;
+  sampleCount: number;
+  durationMs: number;
+  consistent: boolean;
+}
+
+export interface StoreMapRegistrationInput extends StoreMapPosition {
+  name: string;
+  city: string;
+  address: string;
+  hoursText: string;
+  comment: string;
+  confirmed: true;
+  measurement: StoreMapMeasurement;
+}
+
+export type StoreMapRequestStatus = 'NEW' | 'APPROVED' | 'REJECTED';
+
+export interface StoreMapRegistrationRequest extends StoreMapPosition {
+  id: string;
+  linkId: string;
+  status: StoreMapRequestStatus;
+  version: number;
+  name: string;
+  city: string;
+  address: string;
+  hoursText: string;
+  submittedData: Omit<StoreMapRegistrationInput, 'confirmed' | 'measurement'>;
+  measurement: StoreMapMeasurement;
+  reviewNote: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  pointId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoreMapRegistrationLink {
+  id: string;
+  label: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  usedAt: string | null;
+}
+
+export interface StoreMapRequestFeed {
+  items: StoreMapRegistrationRequest[];
+  total: number;
+  pendingCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface StoreMapRequestReview extends StoreMapPosition {
+  version: number;
+  name: string;
+  city: string;
+  address: string;
+  hoursText: string;
+  reviewNote: string;
+}

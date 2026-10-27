@@ -37,12 +37,13 @@ search-linguistics/     політики та майбутні proposal/export/s
 docker/                 похідні інфраструктурні образи
 ```
 
-Vite створює п’ять HTML entrypoint-ів:
+Vite створює шість HTML entrypoint-ів:
 
 - `workspace` — внутрішній кабінет;
 - `storefront` — публічна вітрина смартфонів;
 - `tradeIn` — публічна Trade-in сторінка;
 - `storeMap` — віджет карти магазинів;
+- `storeMapRegistration` — форма продавця та ізольована карта розгляду заявок;
 - `supportChat` — віджет онлайн-підтримки.
 
 ## Локальний запуск
@@ -86,6 +87,7 @@ npm run infra:search:stop
 - `/tools/applications`, `/tools/forms` — заявки та форми;
 - `/tools/blog-publications`, `/tools/blog-publications/media` — контент і медіа;
 - `/tools/store-map`, `/tools/online-support`, `/tools/popup-banners` — публічні віджети;
+- `/store-map/register#…` — одноразова форма реєстрації магазину продавцем; [сценарій і API](docs/store-map-registration.md);
 - `/tools/horoshop-related-products` — каталог і супутні товари Хорошоп;
 - `/tools/horoshop-photo-parser` — фото товарів Хорошоп;
 - `/tools/horoshop-catalog-menu` — оформлення штатного меню категорій Хорошопа;

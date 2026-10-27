@@ -1,13 +1,13 @@
 # Архітектура MT Workspace
 
-Актуально для міграцій `001–078` і коду станом на 2026-08-28.
+Реєстрація магазинів додана міграцією `100`; її поточний контракт описано в [окремому документі](store-map-registration.md).
 
 ## Загальна модель
 
 MT Workspace — модульний моноліт. Один Node.js/Express-процес:
 
 - надає захищені й публічні API;
-- віддає п’ять Vite-збірок та статичні медіафайли;
+- віддає шість Vite-збірок та статичні медіафайли;
 - формує SEO-HTML сторінок локального storefront;
 - запускає фонові workers;
 - використовує PostgreSQL як основне сховище.
@@ -124,8 +124,8 @@ React Router описує захищені workspace routes, admin routes і too
 confirm dialog і banner workspace використовують React contexts. Redux або окремого глобального
 store немає.
 
-П’ять Vite entrypoint-ів мають окремі HTML-файли й React roots: workspace, storefront, Trade-in,
-store map і support chat. Публічні API підключаються через явні `/api/public/*` або `/api/storefront/*`
+Шість Vite entrypoint-ів мають окремі HTML-файли й React roots: workspace, storefront, Trade-in,
+store map, store map registration і support chat. Публічні API підключаються через явні `/api/public/*` або `/api/storefront/*`
 маршрути.
 
 Меню каталогу Хорошопа не є окремим Vite entrypoint або iframe: публічний framework-free адаптер має

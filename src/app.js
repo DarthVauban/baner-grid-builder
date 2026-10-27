@@ -27,6 +27,7 @@ import photoParserRoutes from './modules/catalog/photo-parser.routes.js';
 import storefrontRoutes from './modules/catalog/storefront.routes.js';
 import tradeInRoutes, { publicTradeInRoutes } from './modules/trade-in/trade-in.routes.js';
 import storeMapRoutes, { publicStoreMapRoutes } from './modules/store-map/store-map.routes.js';
+import storeMapRegistrationRoutes, { publicStoreMapRegistrationRoutes } from './modules/store-map/registration.routes.js';
 import mediaRoutes from './modules/media/media.routes.js';
 import facebookPublicationRoutes from './modules/facebook-publications/facebook-publication.routes.js';
 import mobileRoutes from './modules/mobile/mobile.routes.js';
@@ -82,6 +83,7 @@ const webIndex = path.join(webDistDir, 'index.html');
 const storefrontIndex = path.join(webDistDir, 'storefront.html');
 const tradeInIndex = path.join(webDistDir, 'trade-in.html');
 const storeMapIndex = path.join(webDistDir, 'store-map.html');
+const storeMapRegistrationIndex = path.join(webDistDir, 'store-map-registration.html');
 const supportChatIndex = path.join(webDistDir, 'support-chat.html');
 export const storeMapWidgetContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors *";
 export function isStoreMapWorkerAsset(requestPath) {
@@ -244,6 +246,7 @@ app.use('/api/form-campaigns', formCampaignRoutes);
 app.use('/api/catalog/photo-parser', photoParserRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/trade-in', tradeInRoutes);
+app.use('/api/store-map/registration', storeMapRegistrationRoutes);
 app.use('/api/store-map', storeMapRoutes);
 app.use('/api/facebook-publications', facebookPublicationRoutes);
 app.use('/api/mobile', mobileRoutes);
@@ -251,6 +254,7 @@ app.use('/api/storefront', publicEmbedCors, storefrontRoutes);
 app.use('/api/public/application-forms', publicEmbedCors, publicApplicationRoutes);
 app.use('/api/public/application-form-campaigns', publicEmbedCors, publicFormCampaignRoutes);
 app.use('/api/public/trade-in', publicEmbedCors, publicTradeInRoutes);
+app.use('/api/public/store-map/registration', publicStoreMapRegistrationRoutes);
 app.use('/api/public/store-map', publicEmbedCors, publicStoreMapRoutes);
 app.use('/api/public/banner-grids', publicEmbedCors, publicGridRoutes);
 app.use('/api/public/support-chat', publicEmbedCors, publicSupportChatRoutes);
@@ -371,6 +375,17 @@ app.get('/trade-in', (req, res, next) => {
   if (!req.isStandaloneTradeIn) return next();
   return res.redirect(308, '/');
 });
+
+function sendStoreMapRegistrationHtml(req, res) {
+  res.setHeader('Content-Security-Policy', storeMapWidgetContentSecurityPolicy.replace('frame-ancestors *', "frame-ancestors 'self'"));
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'geolocation=(self)');
+  res.setHeader('Cache-Control', 'no-store');
+  return sendBuiltHtml(res, storeMapRegistrationIndex, 'Store map registration');
+}
+
+app.get('/store-map/register', sendStoreMapRegistrationHtml);
+app.get('/store-map/location-preview', requireAuth, requireToolAccess('store_map'), sendStoreMapRegistrationHtml);
 
 app.get('/store-map/widget', (req, res) => {
   res.removeHeader('X-Frame-Options');
