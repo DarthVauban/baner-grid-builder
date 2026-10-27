@@ -36,6 +36,7 @@ function RegistrationReview({ request, onClose, onReviewed, onReload }: {
   const [draft, setDraft] = useState({ name: request.name, city: request.city, address: request.address, hoursText: request.hoursText,
     latitude: String(request.latitude), longitude: String(request.longitude), reviewNote: request.reviewNote });
   const [pending, setPending] = useState(false);
+  const [mapMoving, setMapMoving] = useState(false);
   const [error, setError] = useState('');
   const editable = request.status === 'NEW';
   const coordinatesValid = draft.latitude.trim() !== '' && draft.longitude.trim() !== '' && Number.isFinite(Number(draft.latitude))
@@ -45,7 +46,7 @@ function RegistrationReview({ request, onClose, onReviewed, onReload }: {
   const adjusted = locationDistance(position, request.measurement) > 0.5;
 
   async function review(approve: boolean) {
-    if (pending || !editable) return;
+    if (pending || !editable || (approve && mapMoving)) return;
     if (approve && !coordinatesValid) { setError('Вкажіть коректні координати магазину.'); return; }
     setPending(true);
     setError('');
@@ -62,7 +63,7 @@ function RegistrationReview({ request, onClose, onReviewed, onReload }: {
     className="store-map-request-modal" closeDisabled={pending} onSubmit={(event) => { event.preventDefault(); void review(true); }}
     footer={<><button className="button button--secondary" type="button" onClick={onClose} disabled={pending}>Закрити</button>{editable && <>
       <button className="button button--danger" type="button" disabled={pending} onClick={() => void review(false)}>Відхилити</button>
-      <button className="button button--primary" type="submit" disabled={pending || !coordinatesValid}>{pending ? 'Зберігаємо…' : 'Схвалити й додати магазин'}</button></>}</>}>
+      <button className="button button--primary" type="submit" disabled={pending || mapMoving || !coordinatesValid}>{pending ? 'Зберігаємо…' : 'Схвалити й додати магазин'}</button></>}</>}>
     <div className="store-map-registration-stack">
       <div className="store-map-request-meta"><span className={`store-map-request-status store-map-request-status--${request.status.toLowerCase()}`}>{statusLabels[request.status]}</span><span>Подано {dateLabel(request.createdAt)}</span>{request.reviewedAt && <span>Розглянуто {dateLabel(request.reviewedAt)}</span>}</div>
       <div className="store-map-request-layout">
@@ -83,8 +84,8 @@ function RegistrationReview({ request, onClose, onReviewed, onReload }: {
           </div>
         </div>
         <div><StoreMapLocationFrame data={{ position, measurement: request.measurement, editable: editable && !pending }}
-          onChange={(next) => setDraft((current) => ({ ...current, latitude: next.latitude.toFixed(7), longitude: next.longitude.toFixed(7) }))} />
-          {editable && <button className="button button--secondary button--small" type="button" disabled={pending} onClick={() => setDraft({ ...draft, latitude: String(request.measurement.latitude), longitude: String(request.measurement.longitude) })}>Повернути маркер до заміру</button>}
+          onChange={(next) => setDraft((current) => ({ ...current, latitude: next.latitude.toFixed(7), longitude: next.longitude.toFixed(7) }))} onMovingChange={setMapMoving} />
+          {editable && <button className="button button--secondary button--small" type="button" disabled={pending} onClick={() => setDraft({ ...draft, latitude: String(request.measurement.latitude), longitude: String(request.measurement.longitude) })}>Повернути карту до заміру</button>}
           <a className="store-map-request-map-link" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${position.latitude},${position.longitude}`)}`} target="_blank" rel="noreferrer">Відкрити координати в Google Maps</a>
         </div>
       </div>

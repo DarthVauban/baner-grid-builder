@@ -19,6 +19,7 @@ function StoreMapRegistrationForm({ onNewForm }: { onNewForm: () => void }) {
   const [fields, setFields] = useState({ name: '', city: '', address: '', hoursText: '09:00 - 20:00', comment: '' });
   const [position, setPosition] = useState<StoreMapPosition | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [mapMoving, setMapMoving] = useState(false);
   const location = useStoreMapLocation();
 
   useEffect(() => {
@@ -50,9 +51,14 @@ function StoreMapRegistrationForm({ onNewForm }: { onNewForm: () => void }) {
     setConfirmed(false);
   }
 
+  function changeMapMovement(moving: boolean) {
+    setMapMoving(moving);
+    if (moving) setConfirmed(false);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!location.measurement || !position || !confirmed || location.running || pending) return;
+    if (!location.measurement || !position || !confirmed || location.running || mapMoving || pending) return;
     setPending(true);
     setError('');
     try {
@@ -102,21 +108,21 @@ function StoreMapRegistrationForm({ onNewForm }: { onNewForm: () => void }) {
           {!location.running && !measurement.consistent && <p>Немає кількох узгоджених вимірювань. Перевірте розташування на карті або повторіть замір.</p>}
         </div>}
         {measurement && position && <>
-          <StoreMapCoordinatePicker position={position} measurement={measurement} editable={!location.running && !pending} onChange={changePosition} />
+          <StoreMapCoordinatePicker position={position} measurement={measurement} editable={!location.running && !pending} onChange={changePosition} onMovingChange={changeMapMovement} />
           <p className="store-registration-coordinates">Маркер: {position.latitude.toFixed(7)}, {position.longitude.toFixed(7)}{adjusted ? ' · уточнено вручну' : ''}</p>
           <details className="store-registration-manual"><summary>Уточнити координати числами</summary><div className="store-registration-fields">
-            <label>Широта<input aria-label="Широта магазину" type="number" step="any" min={-90} max={90} value={position.latitude} disabled={location.running || pending} onChange={(event) => { if (event.target.value && Number.isFinite(event.target.valueAsNumber) && Math.abs(event.target.valueAsNumber) <= 90) changePosition({ ...position, latitude: event.target.valueAsNumber }); }} /></label>
-            <label>Довгота<input aria-label="Довгота магазину" type="number" step="any" min={-180} max={180} value={position.longitude} disabled={location.running || pending} onChange={(event) => { if (event.target.value && Number.isFinite(event.target.valueAsNumber) && Math.abs(event.target.valueAsNumber) <= 180) changePosition({ ...position, longitude: event.target.valueAsNumber }); }} /></label>
+            <label>Широта<input aria-label="Широта магазину" type="number" step="any" min={-90} max={90} value={position.latitude} disabled={location.running || mapMoving || pending} onChange={(event) => { if (event.target.value && Number.isFinite(event.target.valueAsNumber) && Math.abs(event.target.valueAsNumber) <= 90) changePosition({ ...position, latitude: event.target.valueAsNumber }); }} /></label>
+            <label>Довгота<input aria-label="Довгота магазину" type="number" step="any" min={-180} max={180} value={position.longitude} disabled={location.running || mapMoving || pending} onChange={(event) => { if (event.target.value && Number.isFinite(event.target.valueAsNumber) && Math.abs(event.target.valueAsNumber) <= 180) changePosition({ ...position, longitude: event.target.valueAsNumber }); }} /></label>
           </div></details>
-          {!location.running && <button className="store-registration-text-button" type="button" disabled={pending} onClick={() => changePosition({ latitude: measurement.latitude, longitude: measurement.longitude })}>Повернути маркер до заміру телефону</button>}
+          {!location.running && <button className="store-registration-text-button" type="button" disabled={pending} onClick={() => changePosition({ latitude: measurement.latitude, longitude: measurement.longitude })}>Повернути карту до заміру телефону</button>}
           {adjusted && <p className="store-registration-location-tip">Похибка стосується синього заміру телефону. Фіолетовий маркер уточнено вручну; обидві позиції побачить відповідальний.</p>}
         </>}
       </section>
       <section className="store-registration-card store-registration-submit">
-        <label className="store-registration-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={!measurement || location.running || pending} required /><span>Я перевірив дані та положення маркера магазину на карті.</span></label>
+        <label className="store-registration-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={!measurement || location.running || mapMoving || pending} required /><span>Я перевірив дані та положення маркера магазину на карті.</span></label>
         <p>Під час надсилання передамо координати й оцінку їх точності відповідальному за мапу. Автоматичного додавання магазину немає.</p>
         {error && <p className="store-registration-alert" role="alert">{error}</p>}
-        <button className="store-registration-button" type="submit" disabled={!measurement || !position || location.running || !confirmed || pending}>{pending ? 'Надсилаємо…' : 'Надіслати заявку'}</button>
+        <button className="store-registration-button" type="submit" disabled={!measurement || !position || location.running || mapMoving || !confirmed || pending}>{pending ? 'Надсилаємо…' : 'Надіслати заявку'}</button>
       </section>
     </form>}
     <footer className="store-registration-footer">Мапа магазинів · MT Workspace</footer>
@@ -140,6 +146,7 @@ export function StoreMapLocationPreviewApp() {
     window.parent.postMessage({ type: 'mt-store-map:location-ready' }, window.location.origin);
     return () => window.removeEventListener('message', message);
   }, []);
-  return data ? <StoreMapCoordinatePicker {...data} onChange={(position) => window.parent.postMessage({ type: 'mt-store-map:location-changed', position }, window.location.origin)} />
+  return data ? <StoreMapCoordinatePicker {...data} onChange={(position) => window.parent.postMessage({ type: 'mt-store-map:location-changed', position }, window.location.origin)}
+    onMovingChange={(moving) => window.parent.postMessage({ type: 'mt-store-map:location-moving', moving }, window.location.origin)} />
     : <p role="status">Завантажуємо координати заявки…</p>;
 }

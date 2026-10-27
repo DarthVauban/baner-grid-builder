@@ -38,8 +38,12 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
 .store-registration-accuracy--warning { border-color: #efd9a3; background: #fffaec; color: #77551b; }
 .store-registration-alert { border: 1px solid #f0c1c4; border-radius: 11px; padding: 14px 16px; background: #fff4f4; color: #a23740; line-height: 1.6; }
 .store-map-coordinate-picker { width: 100%; min-width: 0; }
+.store-map-coordinate-viewport { position: relative; }
 .store-map-coordinate-canvas { width: 100%; height: 370px; overflow: hidden; border: 1px solid #d4dae6; border-radius: 13px; }
-.store-map-coordinate-pin { width: 26px; height: 26px; border: 4px solid white; border-radius: 50%; background: #744ee8; box-shadow: 0 0 0 2px #744ee8, 0 3px 10px #0005; cursor: grab; }
+.store-map-coordinate-pin { position: absolute; top: 50%; left: 50%; z-index: 3; width: 26px; height: 26px; transform: translate(-50%, -50%); border: 4px solid white; border-radius: 50%; background: #744ee8; box-shadow: 0 0 0 2px #744ee8, 0 3px 10px #0005; pointer-events: none; }
+.store-map-coordinate-viewport .maplibregl-canvas { cursor: default; }
+.store-map-coordinate-viewport.is-editable .maplibregl-canvas { cursor: grab; }
+.store-map-coordinate-viewport.is-moving .maplibregl-canvas { cursor: grabbing; }
 .store-map-coordinate-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 12px 0 5px; color: #627084; font-size: 12px; }
 .store-map-coordinate-legend > span { color: #1674d1; }
 .store-map-coordinate-legend > b { margin-left: 10px; color: #744ee8; }
