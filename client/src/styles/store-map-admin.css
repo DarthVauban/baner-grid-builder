@@ -43,9 +43,10 @@
 .store-map-state--error { color: var(--danger); }
 .store-map-point-modal { width: min(760px, calc(100vw - 28px)); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
 .store-map-point-form { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
-.store-map-form-grid { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; overflow: auto; padding: 22px; }
+.store-map-form-grid { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; overflow: auto; padding: 22px; }
 .store-map-point-form .modal__footer, .store-map-import-modal > .modal__footer { padding: 18px 22px 22px; background: var(--surface); }
 .store-map-field--wide { grid-column: 1 / -1; }
+.store-map-field-hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .store-map-list-filters .custom-select__button { font: inherit; }
 .store-map-import-modal { width: min(1080px, calc(100vw - 28px)); max-height: min(860px, calc(100vh - 28px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 .store-map-import-content { min-height: 240px; display: grid; gap: 18px; overflow: auto; padding: 22px; }

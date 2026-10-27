@@ -114,8 +114,9 @@ function PointEditor({
             <input value={draft.city} onChange={(event) => setDraft({ ...draft, city: event.target.value })} required maxLength={120} />
           </label>
           <label className="field">
-            <span>ID із зовнішньої системи</span>
-            <input value={draft.externalId} onChange={(event) => setDraft({ ...draft, externalId: event.target.value })} maxLength={120} />
+            <span id="store-map-external-id-label">Код магазину (необов’язково)</span>
+            <input value={draft.externalId} onChange={(event) => setDraft({ ...draft, externalId: event.target.value })} maxLength={120} aria-labelledby="store-map-external-id-label" aria-describedby="store-map-external-id-hint" />
+            <small id="store-map-external-id-hint" className="store-map-field-hint">Допомагає оновлювати цей магазин під час імпорту Excel</small>
           </label>
           <label className="field store-map-field--wide">
             <span>Адреса</span>
