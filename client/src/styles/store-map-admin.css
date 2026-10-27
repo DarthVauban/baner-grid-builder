@@ -72,20 +72,23 @@
 .store-map-request-measurement p { margin: 0; color: var(--warning, #97701a); }
 .store-map-location-frame { display: block; width: 100%; height: 510px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
 .store-map-request-map-link { display: block; margin: 12px 0 0; color: var(--brand); font-size: 12px; }
-.store-map-submitted-data, .store-map-registration-links { border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
-.store-map-submitted-data summary, .store-map-registration-links summary { cursor: pointer; font-weight: 700; }
+.store-map-submitted-data { border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.store-map-submitted-data summary { cursor: pointer; font-weight: 700; }
 .store-map-submitted-data dl { display: grid; gap: 10px; margin: 16px 0 0; }
 .store-map-submitted-data dl > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; }
 .store-map-submitted-data dt { color: var(--muted); font-size: 12px; }
 .store-map-submitted-data dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-.store-map-registration-links > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0 0; }
-.store-map-registration-links > div > span { display: grid; gap: 5px; }
-.store-map-registration-links small { color: var(--muted); }
+.store-map-registration-link { display: grid; gap: 16px; border: 1px solid var(--line); border-radius: 14px; padding: 20px; background: var(--surface-soft); }
+.store-map-registration-link h3 { margin: 0; font-size: 16px; }
+.store-map-registration-link p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.store-map-registration-link-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.store-map-registration-link-controls .field { min-width: min(300px, 100%); flex: 1; }
+.store-map-registration-link-controls .button { min-height: 48px; }
 .store-map-request-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; }
 @media (max-width: 850px) {
   .store-map-request-layout { grid-template-columns: 1fr; }
   .store-map-submitted-data dl > div { grid-template-columns: 1fr; gap: 3px; }
-  .store-map-registration-links > div { align-items: flex-start; flex-direction: column; }
+  .store-map-registration-link-controls { align-items: stretch; flex-direction: column; }
 }
 .store-map-list-filters .custom-select__button { font: inherit; }
 .store-map-import-modal { width: min(1080px, calc(100vw - 28px)); max-height: min(860px, calc(100vh - 28px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }

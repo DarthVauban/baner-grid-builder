@@ -7,7 +7,7 @@
 
 - [Архітектура](architecture.md) — канонічна карта runtime, модулів, даних, безпеки та розширення.
 - [Форми й заявки](application-forms.md) — builder, public embed, submissions і realtime.
-- [Реєстрація магазинів](store-map-registration.md) — посилання продавцям, точна геолокація та розгляд заявок.
+- [Реєстрація магазинів](store-map-registration.md) — постійне посилання продавцям, точна геолокація та розгляд заявок.
 - [Мобільна інтеграція](mobile-workspace-integration.md) — pairing, push, mobile approval і QR-вхід.
 - [Standalone storefront](standalone-storefront-domain.md) — окремий домен локальної вітрини.
 - [Trade-in domain](trade-in-domain.md) — окремий публічний домен Trade-in.

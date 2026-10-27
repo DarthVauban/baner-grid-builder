@@ -29,6 +29,7 @@ const fields = {
   ...position
 };
 const submissionSchema = z.object({
+  submissionId: z.string().uuid().optional(),
   ...fields, comment: z.string().trim().max(2000).default(''), confirmed: z.literal(true),
   measurement: z.object({ ...position, accuracy: z.number().finite().positive().max(1_000_000),
     observedAt: z.iso.datetime(), sampleCount: z.number().int().min(1).max(120),
@@ -37,6 +38,7 @@ const submissionSchema = z.object({
 const reviewSchema = z.object({ version: z.number().int().positive(), reviewNote: z.string().trim().max(2000).default('') });
 
 function publicToken(req) {
+  if (!req.get('authorization')) return null;
   const token = String(req.get('authorization') || '').replace(/^Bearer /, '');
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new AppError(404, 'STORE_MAP_LINK_NOT_FOUND', 'Посилання недійсне. Попросіть нове посилання.');
   return token;
@@ -91,7 +93,7 @@ publicRouter.get('/', asyncHandler(async (req, res) => {
 }));
 publicRouter.post('/', asyncHandler(async (req, res) => {
   const token = publicToken(req);
-  const input = parseInput(submissionSchema, req.body);
+  const input = parseInput(token ? submissionSchema : submissionSchema.extend({ submissionId: idSchema }), req.body);
   res.status(201).json({ data: await submitRegistration(token, input) });
 }));
 

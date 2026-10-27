@@ -6,7 +6,13 @@ import { locationDistance, useStoreMapLocation } from '../lib/store-map-location
 import type { StoreMapPosition } from '../types/store-map';
 
 export function StoreMapRegistrationApp() {
+  const [formNumber, setFormNumber] = useState(0);
+  return <StoreMapRegistrationForm key={formNumber} onNewForm={() => setFormNumber((current) => current + 1)} />;
+}
+
+function StoreMapRegistrationForm({ onNewForm }: { onNewForm: () => void }) {
   const [token] = useState(() => window.location.hash.slice(1));
+  const [submissionId] = useState(() => crypto.randomUUID());
   const [state, setState] = useState<'LOADING' | 'OPEN' | 'SUBMITTED' | 'ERROR'>('LOADING');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -17,7 +23,7 @@ export function StoreMapRegistrationApp() {
 
   useEffect(() => {
     const controller = new AbortController();
-    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    if (token && !/^[A-Za-z0-9_-]{43}$/.test(token)) {
       setState('ERROR');
       setError('Посилання неповне або недійсне. Відкрийте повне посилання, отримане від відповідального.');
       return;
@@ -50,7 +56,7 @@ export function StoreMapRegistrationApp() {
     setPending(true);
     setError('');
     try {
-      await submitPublicRegistration(token, { ...fields, ...position, measurement: location.measurement, confirmed: true });
+      await submitPublicRegistration(token, { ...fields, ...position, submissionId, measurement: location.measurement, confirmed: true });
       setState('SUBMITTED');
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Не вдалося надіслати заявку. Спробуйте ще раз.');
@@ -67,7 +73,10 @@ export function StoreMapRegistrationApp() {
     </header>
     {state === 'LOADING' && <div className="store-registration-card" role="status">Перевіряємо посилання…</div>}
     {state === 'ERROR' && <div className="store-registration-card store-registration-alert" role="alert">{error}</div>}
-    {state === 'SUBMITTED' && <section className="store-registration-card store-registration-success"><span aria-hidden="true">✓</span><h2>Дякуємо за допомогу!</h2><p>Це посилання вже використано. Повторно надсилати заявку не потрібно.</p></section>}
+    {state === 'SUBMITTED' && <section className="store-registration-card store-registration-success"><span aria-hidden="true">✓</span><h2>Дякуємо за допомогу!</h2>
+      <p>{token ? 'Це посилання вже використано. Повторно надсилати заявку не потрібно.' : 'Заявку передано на перевірку. За цим самим посиланням можна зареєструвати інший магазин.'}</p>
+      {!token && <button className="store-registration-button" type="button" onClick={onNewForm}>Зареєструвати ще один магазин</button>}
+    </section>}
     {state === 'OPEN' && <form onSubmit={(event) => void submit(event)}>
       <section className="store-registration-card"><div className="store-registration-section-title"><span>01</span><div><h2>Дані магазину</h2><p>Так магазин буде представлений покупцям.</p></div></div>
         <div className="store-registration-fields">

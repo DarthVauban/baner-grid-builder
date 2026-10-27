@@ -87,7 +87,7 @@ npm run infra:search:stop
 - `/tools/applications`, `/tools/forms` — заявки та форми;
 - `/tools/blog-publications`, `/tools/blog-publications/media` — контент і медіа;
 - `/tools/store-map`, `/tools/online-support`, `/tools/popup-banners` — публічні віджети;
-- `/store-map/register#…` — одноразова форма реєстрації магазину продавцем; [сценарій і API](docs/store-map-registration.md);
+- `/store-map/register` — постійна багаторазова форма реєстрації магазину продавцем; [сценарій і API](docs/store-map-registration.md);
 - `/tools/horoshop-related-products` — каталог і супутні товари Хорошоп;
 - `/tools/horoshop-photo-parser` — фото товарів Хорошоп;
 - `/tools/horoshop-catalog-menu` — оформлення штатного меню категорій Хорошопа;

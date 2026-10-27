@@ -1,9 +1,8 @@
-import { useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { locationDistance } from '../lib/store-map-location';
 import { useToast } from '../toast/ToastContext';
-import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import type { StoreMapRegistrationRequest, StoreMapRequestStatus } from '../types/store-map';
 import { Icon } from './Icon';
 import { ModalDialog } from './ModalDialog';
@@ -13,30 +12,21 @@ import { StoreMapLocationFrame } from './StoreMapLocationFrame';
 const statusLabels = { NEW: 'Нова', APPROVED: 'Схвалена', REJECTED: 'Відхилена' };
 const dateLabel = (value: string) => new Date(value).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', dateStyle: 'short', timeStyle: 'short' });
 
-function RegistrationLinkDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => Promise<void> }) {
+function PermanentRegistrationLink() {
   const { showToast } = useToast();
-  const [label, setLabel] = useState('');
-  const create = useMutation({ mutationFn: () => api.storeMap.registration.createLink(label) });
-  const link = create.data ? `${window.location.origin}/store-map/register#${create.data.token}` : '';
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (create.isPending || create.data) return;
-    try { await create.mutateAsync(); await onCreated(); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося створити посилання.', 'error'); }
-  }
+  const link = `${window.location.origin}/store-map/register`;
   async function copy() {
     try { await navigator.clipboard.writeText(link); showToast('Посилання для продавця скопійовано.'); }
     catch { showToast('Не вдалося скопіювати. Виділіть і скопіюйте посилання з поля.', 'error'); }
   }
-  return <ModalDialog ariaLabelledBy="store-map-link-title" eyebrow="Реєстрація магазину" title="Посилання для продавця" onClose={onClose} onSubmit={(event) => void submit(event)} closeDisabled={create.isPending}
-    footer={create.data ? <><button className="button button--secondary" type="button" onClick={onClose}>Готово</button><button className="button button--primary" type="button" onClick={() => void copy()}><Icon name="copy" size={17} /> Копіювати посилання</button></>
-      : <><button className="button button--secondary" type="button" onClick={onClose}>Скасувати</button><button className="button button--primary" type="submit" disabled={create.isPending}>{create.isPending ? 'Створюємо…' : 'Створити посилання'}</button></>}>
-    {!create.data ? <div className="store-map-registration-stack"><p>Одноразове посилання діятиме 7 днів. Продавець заповнить форму зі смартфона без входу до робочого простору.</p>
-      <label className="field"><span>Примітка для вас (необов’язково)</span><input value={label} onChange={(event) => setLabel(event.target.value)} maxLength={180} placeholder="Наприклад, магазин на Хрещатику" /></label></div>
-      : <div className="store-map-registration-stack"><p>Надішліть продавцеві повне посилання разом із частиною після символу #.</p>
-        <label className="field"><span>Посилання на форму</span><input readOnly value={link} onFocus={(event) => event.target.select()} /></label>
-        <p className="store-map-field-hint">Діє до {dateLabel(create.data.expiresAt)} або до першої заявки. Скопіюйте зараз: після закриття це посилання повторно не показується.</p></div>}
-  </ModalDialog>;
+  return <section className="store-map-registration-link" aria-label="Постійне посилання для продавців">
+    <div><h3>Одне посилання для всіх продавців</h3><p>Постійне багаторазове посилання без строку дії. Продавці заповнюють форму без входу до робочого простору.</p></div>
+    <div className="store-map-registration-link-controls">
+      <label className="field"><span>Посилання на форму</span><input readOnly value={link} onFocus={(event) => event.target.select()} /></label>
+      <button className="button button--primary" type="button" onClick={() => void copy()}><Icon name="copy" size={17} /> Копіювати посилання</button>
+      <a className="button button--secondary" href={link} target="_blank" rel="noreferrer"><Icon name="openInNew" size={17} /> Відкрити форму</a>
+    </div>
+  </section>;
 }
 
 function RegistrationReview({ request, onClose, onReviewed, onReload }: {
@@ -120,28 +110,18 @@ function RequestDialog({ id, onClose, onReviewed }: { id: string; onClose: () =>
 
 export function StoreMapRequestsPanel() {
   const queryClient = useQueryClient();
-  const { showToast } = useToast();
-  const confirm = useConfirmDialog();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StoreMapRequestStatus | ''>('NEW');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);
-  const [linkOpen, setLinkOpen] = useState(false);
   const feed = useQuery({ queryKey: ['store-map-registration', 'requests', search, status, page], queryFn: () => api.storeMap.registration.requests({ search, status, page }), refetchInterval: 30_000 });
-  const links = useQuery({ queryKey: ['store-map-registration', 'links'], queryFn: api.storeMap.registration.links });
-  const revoke = useMutation({ mutationFn: api.storeMap.registration.revokeLink });
-  const activeLinks = (links.data || []).filter((link) => !link.revokedAt && !link.usedAt && new Date(link.expiresAt).getTime() > Date.now());
   async function refresh() {
     await Promise.all([queryClient.invalidateQueries({ queryKey: ['store-map-registration'] }), queryClient.invalidateQueries({ queryKey: ['store-map-points'] })]);
   }
-  async function revokeLink(id: string) {
-    if (!await confirm({ title: 'Відкликати посилання?', message: 'Продавець більше не зможе подати заявку за цим посиланням.', confirmLabel: 'Відкликати', tone: 'danger' })) return;
-    try { await revoke.mutateAsync(id); await refresh(); showToast('Посилання відкликано.'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося відкликати посилання.', 'error'); }
-  }
   return <section className="store-map-points-card store-map-registration-stack">
     <div className="store-map-section-heading"><div><p className="eyebrow">Реєстрація продавцями</p><h2>Заявки на додавання магазинів</h2><p>Перевірте дані, точність заміру та маркер перед публікацією.</p></div>
-      <button className="button button--primary" type="button" onClick={() => setLinkOpen(true)}><Icon name="add" size={18} /> Посилання для продавця</button></div>
+    </div>
+    <PermanentRegistrationLink />
     <div className="store-map-request-toolbar">
       <label className="store-map-search"><Icon name="search" size={18} /><input value={search} maxLength={240} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Пошук заявок" aria-label="Пошук заявок" /></label>
       <StyledSelect value={status} options={[{ value: '', label: 'Усі заявки' }, { value: 'NEW', label: 'Нові' }, { value: 'APPROVED', label: 'Схвалені' }, { value: 'REJECTED', label: 'Відхилені' }]} onChange={(value) => { setStatus(value as typeof status); setPage(1); }} ariaLabel="Статус заявки" />
@@ -149,7 +129,7 @@ export function StoreMapRequestsPanel() {
     </div>
     {feed.isLoading && <p role="status">Завантажуємо заявки…</p>}
     {feed.isError && <p className="store-map-state store-map-state--error" role="alert">Не вдалося завантажити заявки. Спробуйте оновити список.</p>}
-    {feed.data && !feed.data.items.length && <div className="store-map-state">Заявок за цими фільтрами немає. Створіть посилання й надішліть його продавцеві.</div>}
+    {feed.data && !feed.data.items.length && <div className="store-map-state">Заявок за цими фільтрами немає. Надішліть посилання на форму продавцям.</div>}
     <div className="store-map-request-list">{feed.data?.items.map((item) => <button className="store-map-request-card" key={item.id} type="button" onClick={() => setSelected(item.id)}>
       <div><strong>{item.name}</strong><span className={`store-map-request-status store-map-request-status--${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span></div>
       <p>{item.city} · {item.address}</p><small>{dateLabel(item.createdAt)} · Радіус похибки: {Math.ceil(item.measurement.accuracy)} м</small>
@@ -157,11 +137,6 @@ export function StoreMapRequestsPanel() {
     </button>)}</div>
     {feed.data && feed.data.total > feed.data.pageSize && <div className="store-map-request-pagination"><button className="button button--secondary button--small" type="button" disabled={page === 1} onClick={() => setPage(page - 1)}>Попередня</button>
       <span>{page} / {Math.ceil(feed.data.total / feed.data.pageSize)}</span><button className="button button--secondary button--small" type="button" disabled={page * feed.data.pageSize >= feed.data.total} onClick={() => setPage(page + 1)}>Наступна</button></div>}
-    <details className="store-map-registration-links"><summary>Невикористані посилання ({activeLinks.length})</summary>
-      {links.isError && <p role="alert">Не вдалося завантажити посилання.</p>}{activeLinks.map((link) => <div key={link.id}><span><strong>{link.label || 'Посилання для продавця'}</strong><small>Створено {dateLabel(link.createdAt)} · Діє до {dateLabel(link.expiresAt)}</small></span>
-        <button className="button button--danger button--small" type="button" disabled={revoke.isPending} onClick={() => void revokeLink(link.id)}>Відкликати</button></div>)}
-    </details>
-    {linkOpen && <RegistrationLinkDialog onClose={() => setLinkOpen(false)} onCreated={refresh} />}
     {selected && <RequestDialog id={selected} onClose={() => setSelected(null)} onReviewed={refresh} />}
   </section>;
 }

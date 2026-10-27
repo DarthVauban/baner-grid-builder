@@ -106,6 +106,7 @@ export interface StoreMapMeasurement extends StoreMapPosition {
 }
 
 export interface StoreMapRegistrationInput extends StoreMapPosition {
+  submissionId?: string;
   name: string;
   city: string;
   address: string;
@@ -119,7 +120,7 @@ export type StoreMapRequestStatus = 'NEW' | 'APPROVED' | 'REJECTED';
 
 export interface StoreMapRegistrationRequest extends StoreMapPosition {
   id: string;
-  linkId: string;
+  linkId: string | null;
   status: StoreMapRequestStatus;
   version: number;
   name: string;

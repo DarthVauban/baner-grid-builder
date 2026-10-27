@@ -21,14 +21,14 @@ export const storeMapRegistrationApi = {
     request<StoreMapRegistrationRequest>(`${base}/requests/${encodeURIComponent(id)}/reject`, post(input))
 };
 
-export function publicRegistrationState(token: string, signal?: AbortSignal) {
-  return request<{ status: 'OPEN' | 'SUBMITTED'; expiresAt: string }>('/api/public/store-map/registration', {
-    headers: { Authorization: `Bearer ${token}` }, credentials: 'omit', signal, cache: 'no-store'
+export function publicRegistrationState(token = '', signal?: AbortSignal) {
+  return request<{ status: 'OPEN' | 'SUBMITTED'; expiresAt: string | null; reusable?: boolean }>('/api/public/store-map/registration', {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: 'omit', signal, cache: 'no-store'
   });
 }
 
 export function submitPublicRegistration(token: string, input: StoreMapRegistrationInput) {
   return request<{ status: 'SUBMITTED' }>('/api/public/store-map/registration', {
-    ...post(input), headers: { Authorization: `Bearer ${token}` }, credentials: 'omit', cache: 'no-store'
+    ...post(input), headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: 'omit', cache: 'no-store'
   });
 }

@@ -15,3 +15,18 @@ it('public registration authenticates with its link token and omits workspace co
   await submitPublicRegistration('public-link-token', input);
   expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'POST', credentials: 'omit', body: JSON.stringify(input) });
 });
+
+it('the permanent form uses no bearer token or workspace session and submits its own retry key', async () => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+    data: { status: 'OPEN', expiresAt: null, reusable: true }
+  }), { status: 200 })));
+  vi.stubGlobal('fetch', fetch);
+  await expect(publicRegistrationState()).resolves.toMatchObject({ status: 'OPEN', expiresAt: null, reusable: true });
+  expect(new Headers(fetch.mock.calls[0][1].headers).has('Authorization')).toBe(false);
+  const input = { submissionId: crypto.randomUUID(), name: 'Магазин', city: 'Київ', address: 'Хрещатик, 1', hoursText: '09:00 - 20:00',
+    comment: '', confirmed: true as const, latitude: 50.45, longitude: 30.52,
+    measurement: { latitude: 50.45, longitude: 30.52, accuracy: 6, observedAt: new Date().toISOString(), sampleCount: 3, durationMs: 60000, consistent: true } };
+  await submitPublicRegistration('', input);
+  expect(new Headers(fetch.mock.calls[1][1].headers).has('Authorization')).toBe(false);
+  expect(fetch.mock.calls[1][1]).toMatchObject({ credentials: 'omit', body: JSON.stringify(input) });
+});

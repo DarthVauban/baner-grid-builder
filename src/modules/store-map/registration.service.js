@@ -40,6 +40,7 @@ function assertLinkAvailable(link) {
 }
 
 export async function registrationLinkState(token) {
+  if (!token) return { status: 'OPEN', expiresAt: null, reusable: true };
   const result = await query('SELECT * FROM store_map_registration_links WHERE token_hash = $1', [tokenHash(token)]);
   const link = result.rows[0];
   assertLinkAvailable(link);
@@ -63,24 +64,43 @@ async function transaction(action) {
 
 export async function submitRegistration(token, input) {
   return transaction(async (db) => {
-    const result = await db.query('SELECT * FROM store_map_registration_links WHERE token_hash = $1 FOR UPDATE', [tokenHash(token)]);
-    const link = result.rows[0];
-    assertLinkAvailable(link);
-    // Network retries never create another request or disclose an existing submission.
-    if (link.used_at) return { status: 'SUBMITTED' };
+    let link = null;
+    if (token) {
+      const result = await db.query('SELECT * FROM store_map_registration_links WHERE token_hash = $1 FOR UPDATE', [tokenHash(token)]);
+      link = result.rows[0];
+      assertLinkAvailable(link);
+      if (link.used_at) return { status: 'SUBMITTED' };
+    }
+    const submittedData = { name: input.name, city: input.city, address: input.address, hoursText: input.hoursText,
+      latitude: input.latitude, longitude: input.longitude, comment: input.comment };
+    const submissionId = link ? null : input.submissionId;
+    const submissionHash = link ? null : tokenHash(JSON.stringify({ ...submittedData, measurement: input.measurement }));
+    // Each new form gets its own key. Retrying that form must not create a duplicate or silently replace data.
+    const existingSubmission = async () => {
+      const existing = await db.query('SELECT submission_hash FROM store_map_registration_requests WHERE submission_id = $1', [submissionId]);
+      if (!existing.rows[0]) return false;
+      if (existing.rows[0].submission_hash !== submissionHash) {
+        throw new AppError(409, 'STORE_MAP_SUBMISSION_CHANGED', 'Цю заявку вже отримано з іншими даними. Відкрийте форму знову для нової заявки.');
+      }
+      return true;
+    };
+    if (submissionId && await existingSubmission()) return { status: 'SUBMITTED' };
     const age = Date.now() - new Date(input.measurement.observedAt).getTime();
     if (age > 15 * 60 * 1000 || age < -2 * 60 * 1000) {
       throw new AppError(422, 'STORE_MAP_LOCATION_STALE', 'Виміряйте місцезнаходження ще раз: потрібні свіжі координати. Перевірте час на телефоні.');
     }
     await db.query(
       `INSERT INTO store_map_registration_requests
-       (link_id, name, city, address, hours_text, latitude, longitude, submitted_data, measurement)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9::JSONB)`,
-      [link.id, input.name, input.city, input.address, input.hoursText, input.latitude, input.longitude,
-        JSON.stringify({ name: input.name, city: input.city, address: input.address, hoursText: input.hoursText,
-          latitude: input.latitude, longitude: input.longitude, comment: input.comment }), JSON.stringify(input.measurement)]
+       (link_id, name, city, address, hours_text, latitude, longitude, submitted_data, measurement, submission_id, submission_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9::JSONB, $10, $11)
+       ON CONFLICT (submission_id) DO NOTHING`,
+      [link?.id || null, input.name, input.city, input.address, input.hoursText, input.latitude, input.longitude,
+        JSON.stringify(submittedData), JSON.stringify(input.measurement), submissionId, submissionHash]
     );
-    await db.query('UPDATE store_map_registration_links SET used_at = NOW() WHERE id = $1', [link.id]);
+    if (submissionId && !await existingSubmission()) {
+      throw new AppError(409, 'STORE_MAP_SUBMISSION_RETRY', 'Не вдалося підтвердити заявку. Повторіть надсилання.');
+    }
+    if (link) await db.query('UPDATE store_map_registration_links SET used_at = NOW() WHERE id = $1', [link.id]);
     return { status: 'SUBMITTED' };
   });
 }

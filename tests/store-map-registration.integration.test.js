@@ -1,6 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
+import { randomUUID } from 'node:crypto';
 
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: 'pg-mem://store-map-registration-tests',
   JWT_SECRET: '0123456789abcdef0123456789abcdef', COOKIE_SECURE: 'false',
@@ -36,7 +37,8 @@ test('registration management requires authentication and store-map access; publ
   await manager.get(`${base}/requests`).expect(403);
   await manager.post(`${base}/links`).send({}).expect(403);
   await manager.get('/store-map/location-preview').expect(403);
-  await request(app).get(publicBase).expect(404);
+  const permanent = await request(app).get(publicBase).expect(200);
+  assert.deepEqual(permanent.body.data, { status: 'OPEN', expiresAt: null, reusable: true });
   await request(app).get(publicBase).set('Authorization', `Bearer ${'a'.repeat(43)}`).expect(404);
   const preflight = await request(app).options(publicBase).set('Origin', 'https://other.example.test')
     .set('Access-Control-Request-Method', 'POST').set('Access-Control-Request-Headers', 'authorization,content-type').expect(204);
@@ -128,4 +130,39 @@ test('expired and revoked links cannot be submitted; rejection never creates a p
   const details = await admin.get(`${base}/requests/${item.id}`).expect(200);
   assert.equal(details.body.data.status, 'REJECTED');
   await admin.get(`${base}/requests/not-a-uuid`).expect(422);
+});
+
+test('the permanent public form accepts independent submissions and deduplicates concurrent network retries', async () => {
+  const sendPublic = (input) => request(app).post(publicBase).send(input);
+  const first = { ...submission(), name: 'Постійне посилання — перший магазин', submissionId: randomUUID() };
+  await sendPublic(submission()).expect(422);
+  await sendPublic({ ...first, submissionId: 'not-a-uuid' }).expect(422);
+  await sendPublic({ ...first, externalId: 'not-allowed' }).expect(422);
+  await sendPublic({ ...first, measurement: { ...first.measurement, observedAt: new Date(Date.now() - 3600000).toISOString() } }).expect(422);
+  await Promise.all([sendPublic(first).expect(201), sendPublic(first).expect(201)]);
+  await sendPublic(first).expect(201);
+  const stored = await query('SELECT * FROM store_map_registration_requests WHERE submission_id = $1', [first.submissionId]);
+  assert.equal(stored.rows.length, 1);
+  assert.equal(stored.rows[0].link_id, null);
+  assert.equal(stored.rows[0].submission_hash.length, 64);
+  await sendPublic({ ...first, address: 'Інша адреса' }).expect(409);
+  const second = { ...submission(), name: 'Постійне посилання — другий магазин', submissionId: randomUUID() };
+  await sendPublic(second).expect(201);
+  const state = await request(app).get(publicBase).expect(200);
+  assert.deepEqual(state.body.data, { status: 'OPEN', expiresAt: null, reusable: true });
+  assert.equal(state.headers['cache-control'], 'no-store');
+  const feed = await admin.get(`${base}/requests?status=NEW`).expect(200);
+  assert.equal(feed.body.data.items.length, 2);
+  assert.ok(feed.body.data.items.every((item) => item.linkId === null));
+  const item = feed.body.data.items.find((candidate) => candidate.name === first.name);
+  assert.ok(item);
+  const approved = await admin.post(`${base}/requests/${item.id}/approve`).send({ version: item.version,
+    name: item.name, city: item.city, address: item.address, hoursText: item.hoursText,
+    latitude: item.latitude, longitude: item.longitude }).expect(200);
+  assert.equal(approved.body.data.status, 'APPROVED');
+  const publicPoints = (await request(app).get('/api/public/store-map')).body.data.points;
+  assert.ok(publicPoints.some((point) => point.name === first.name));
+  assert.ok(!publicPoints.some((point) => point.name === second.name));
+  await sendPublic(first).expect(201);
+  assert.equal((await admin.get(`${base}/requests?status=NEW`)).body.data.pendingCount, 1);
 });
