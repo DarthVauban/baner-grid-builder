@@ -32,7 +32,7 @@ function input(patch = {}) {
     styles: { layout: 'modal', accentColor: '#6d5dfc', backgroundColor: '#ffffff', textColor: '#172033', mutedColor: '#667085', borderRadius: 24, maxWidth: 880 },
     targeting: { mode: 'all_pages', match: 'all' },
     behavior: { trigger: 'delay', delayMs: 0, frequency: 'always', device: 'all', cooldownDays: 7, dismissible: true, requireAcknowledgement: false, buttonCount: 1 },
-    productPopup: { titleOverride: 'Назва лише для банера', showOldPrice: true, showSavings: true },
+    productPopup: { titleOverride: 'Назва лише для банера', showOldPrice: true, showSavings: true, mobileImageUrl: '/media/catalog/library/mobile-art.webp', mobileImageWidth: 1000, mobileImageHeight: 1000 },
     promoItems: [{ productExternalId: 'phone', modificationExternalId: null }], productEntries: [], ...patch
   };
 }
@@ -59,6 +59,9 @@ test('product popup persists config and reads fresh catalog prices, names and UR
   const campaign = created.body.data;
   assert.equal(campaign.campaignType, 'product_popup');
   assert.equal(campaign.productPopup.titleOverride, 'Назва лише для банера');
+  assert.equal(campaign.productPopup.mobileImageUrl, '/media/catalog/library/mobile-art.webp');
+  assert.equal(campaign.productPopup.mobileImageWidth, 1000);
+  assert.equal(campaign.productPopup.mobileImageHeight, 1000);
   assert.equal(campaign.promoProducts[0].title, 'Назва з каталогу');
   assert.equal(campaign.promoProducts[0].imageUrl, ''); // Own art does not require a catalog photo.
   await admin.patch(`/api/popup-banners/${campaign.id}/status`).send({ status: 'active' }).expect(200);
@@ -72,6 +75,7 @@ test('product popup persists config and reads fresh catalog prices, names and UR
   assert.equal(payload.products[0].title, 'Оновлена назва з каталогу');
   assert.equal(payload.products[0].pageUrl, 'https://shop.example.com/phone-updated/');
   assert.equal(payload.campaign.productPopup.titleOverride, 'Назва лише для банера');
+  assert.equal(payload.campaign.productPopup.mobileImageUrl, '/media/catalog/library/mobile-art.webp');
   const manual = input({ productPopup: { titleOverride: '', showOldPrice: false, showSavings: true, oldPriceSource: 'manual', manualOldPrice: '35000', elements: { price: { fontSize: 48, color: '#ee1122' } } } });
   await admin.put(`/api/popup-banners/${campaign.id}`).send(manual).expect(200);
   payload = await resolve();
@@ -81,6 +85,8 @@ test('product popup persists config and reads fresh catalog prices, names and UR
   assert.equal(payload.products[0].price, '25999');
   const version = await pool.query('SELECT snapshot FROM popup_banner_versions WHERE campaign_id = $1 ORDER BY version_number DESC LIMIT 1', [campaign.id]);
   assert.equal(version.rows[0].snapshot.productPopup.oldPriceSource, 'manual');
+  assert.equal(version.rows[0].snapshot.productPopup.mobileImageUrl, ''); // Legacy inputs retain the desktop fallback.
+  assert.equal(payload.campaign.productPopup.mobileImageUrl, '');
   for (const patch of ["active = FALSE", "visible = FALSE", "price = '0'", "canonical_url = 'https://another.example.com/phone/'"]) {
     await pool.query(`UPDATE search_horoshop_products SET ${patch} WHERE id = $1`, [productId]);
     assert.equal(await resolve(), null);
@@ -113,6 +119,8 @@ test('product popup validates one product, uploaded artwork, optional old prices
   for (const patch of [
     { promoItems: [] }, { promoItems: [{ productExternalId: 'phone' }, { productExternalId: 'phone' }] },
     { content: { ...input().content, imageUrl: 'https://catalog.example.com/image.webp' } },
+    { productPopup: { mobileImageUrl: 'https://catalog.example.com/mobile.webp' } },
+    { productPopup: { mobileImageUrl: '/media/catalog/library/../private.webp' } },
     { productPopup: { showOldPrice: true, oldPriceSource: 'manual', manualOldPrice: '' } },
     { productPopup: { showSavings: true, oldPriceSource: 'manual', manualOldPrice: '100' } },
     { productPopup: { elements: { heading: { color: 'url(https://example.com/x)', fontSize: 999 } } } }
@@ -172,6 +180,8 @@ for (const surface of ['desktop', 'mobile']) {
     assert.equal(shadow.querySelector('.product-popup-details').href, 'https://shop.example.com/phone/');
     assert.match(shadow.querySelector('.product-popup-savings').textContent, /5\s?000/u);
     assert.match(shadow.querySelector('.product-popup-image').src, /^https:\/\/panel.example.com\/media/u);
+    assert.equal(shadow.querySelector('.product-popup-media source').srcset, 'https://panel.example.com/media/catalog/library/mobile-art.webp');
+    assert.equal(shadow.querySelector('.product-popup-media source').media, '(max-width:640px)');
     assert.equal(shadow.querySelector('.card').getAttribute('aria-modal'), 'true');
     shadow.querySelector('.product-popup-buy').click();
     await new Promise((resolve) => setTimeout(resolve, 150));

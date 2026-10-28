@@ -3,7 +3,8 @@ export function createProductPopupRuntime(document) {
   const css = `
     .backdrop.is-product-popup{align-items:center;justify-content:center;padding:18px}
     .card.is-product-popup{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin:0;box-sizing:border-box;overscroll-behavior:contain;isolation:isolate}
-    .product-popup-image{display:block;width:100%;height:100%;min-height:440px;object-fit:cover;align-self:stretch;background:#f4f1ff}
+    .product-popup-media{display:block;min-width:0;min-height:440px;align-self:stretch;background:#f4f1ff}
+    .product-popup-image{display:block;width:100%;height:100%;min-height:440px;object-fit:cover}
     .product-popup-placeholder{display:grid;place-items:center;min-height:440px;padding:30px;box-sizing:border-box;color:#667085;text-align:center;background:#f4f1ff}
     .product-popup-content{display:flex;min-width:0;flex-direction:column;justify-content:center;box-sizing:border-box}
     .product-popup-element{box-sizing:border-box;max-width:100%;margin:0;line-height:1.25;overflow-wrap:anywhere;white-space:pre-line;letter-spacing:normal;text-transform:none}
@@ -18,8 +19,9 @@ export function createProductPopupRuntime(document) {
     @media(max-width:640px){
       .backdrop.is-product-popup{padding:12px}
       .card.is-product-popup{grid-template-columns:minmax(0,1fr);max-height:calc(100dvh - 24px);border-radius:var(--radius);margin:0}
-      .product-popup-image{height:min(200px,28vh);min-height:0;max-height:none;object-fit:contain}
-      .product-popup-placeholder{min-height:160px}
+      .product-popup-media{aspect-ratio:1;min-height:0;align-self:start}
+      .product-popup-image{aspect-ratio:1;height:auto;min-height:0;object-fit:cover}
+      .product-popup-placeholder{aspect-ratio:1;min-height:0}
       .card.is-product-popup .product-popup-element,.card.is-product-popup .close{font-size:var(--product-font-mobile)!important}
       .product-popup-content{padding:var(--product-padding-mobile)!important;gap:var(--product-gap-mobile)!important}
     }
@@ -63,8 +65,13 @@ export function createProductPopupRuntime(document) {
     const closeButton = card.querySelector('.close');
     if (closeButton) styleElement(closeButton, elements.closeButton);
     if (campaign.content.imageUrl) {
+      const picture = document.createElement('picture'); picture.className = 'product-popup-media';
+      if (config.mobileImageUrl) {
+        const source = document.createElement('source'); source.media = '(max-width:640px)';
+        source.srcset = imageUrl(config.mobileImageUrl); picture.append(source);
+      }
       const image = document.createElement('img'); image.className = 'product-popup-image';
-      image.src = imageUrl(campaign.content.imageUrl); image.alt = ''; card.append(image);
+      image.src = imageUrl(campaign.content.imageUrl); image.alt = ''; picture.append(image); card.append(picture);
     } else {
       const placeholder = document.createElement('div'); placeholder.className = 'product-popup-placeholder';
       placeholder.textContent = 'Завантажте зображення 880 × 1000 px'; card.append(placeholder);

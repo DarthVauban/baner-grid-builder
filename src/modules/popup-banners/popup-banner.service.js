@@ -2396,7 +2396,7 @@ export function popupEmbedScript(origin) {
           const timer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
           cleanupTasks.push(() => clearTimeout(timer));
         }
-        requestAnimationFrame(() => primary.focus());
+        requestAnimationFrame(() => primary.focus({ preventScroll: true }));
       }
       activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
       return;

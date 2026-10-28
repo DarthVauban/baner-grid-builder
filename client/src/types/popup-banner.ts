@@ -14,6 +14,7 @@ export interface PopupProductElementStyle {
 export interface PopupProductConfig {
   titleOverride: string; showOldPrice: boolean; oldPriceSource: 'catalog' | 'manual'; manualOldPrice: string;
   showSavings: boolean; savingsLabel: string; imageWidth: number; imageHeight: number;
+  mobileImageUrl: string; mobileImageWidth: number; mobileImageHeight: number;
   overlayColor: string; overlayOpacity: number; contentPadding: number; contentGap: number; contentPaddingMobile: number; contentGapMobile: number;
   borderColor: string; borderWidth: number; elements: Record<PopupProductElement, PopupProductElementStyle>;
 }

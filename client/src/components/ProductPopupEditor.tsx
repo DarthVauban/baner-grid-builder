@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { PopupToggle } from './PopupToggle';
 import { StyledSelect } from './StyledSelect';
 import { defaultProductPopupConfig, productPopupElementLabels } from '../lib/popup-product';
 import type { MediaAsset } from '../types/media';
 import type { PopupCampaignInput, PopupProductConfig, PopupProductElement, PopupProductElementStyle, PopupPromoProduct } from '../types/popup-banner';
+import '../styles/media-library.css';
+
+type ImageSurface = 'desktop' | 'mobile';
 
 interface Props {
   input: PopupCampaignInput;
@@ -11,8 +15,40 @@ interface Props {
   onChange: (patch: Partial<PopupCampaignInput>) => void;
   onChooseProduct: () => void;
   onUpload: (file: File) => Promise<MediaAsset>;
-  onImageUploaded: (asset: MediaAsset) => void;
+  onImageUploaded: (asset: MediaAsset, surface: ImageSurface) => void;
   uploading: boolean;
+}
+
+function ImageUpload({ surface, url, width, height, disabled, busy, onFile }: {
+  surface: ImageSurface; url: string; width: number; height: number;
+  disabled: boolean; busy: boolean; onFile: (file: File | undefined) => void;
+}) {
+  const id = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const mobile = surface === 'mobile';
+  const title = mobile ? 'Зображення банера для телефона' : 'Зображення банера для desktop';
+  return <div className="product-popup-upload">
+    <strong id={`${id}-label`}>{title}</strong>
+    <p id={`${id}-hint`}>{mobile ? 'Рекомендований розмір: 1000 × 1000 px (1:1)' : 'Рекомендований розмір: 880 × 1000 px (22:25)'}</p>
+    <section className={`media-upload-zone${dragActive ? ' media-upload-zone--active' : ''}`} aria-busy={busy}
+      onDragEnter={(event) => { event.preventDefault(); if (!disabled) setDragActive(true); }}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false); }}
+      onDrop={(event) => { event.preventDefault(); setDragActive(false); if (!disabled) onFile(event.dataTransfer.files[0]); }}>
+      {url ? <img src={url} alt={mobile ? 'Мобільне зображення банера' : 'Desktop-зображення банера'} /> : <span className="media-upload-zone__icon"><Icon name="upload" size={27} /></span>}
+      <div><strong>Перетягніть зображення сюди</strong><small>JPG, PNG або WebP, до 10 МБ.</small>
+        {width > 0 && <small>Завантажено: {width} × {height} px</small>}
+        {busy && <small role="status">Завантажуємо зображення…</small>}
+      </div>
+      <button className="button button--primary" type="button" disabled={disabled} onClick={() => input.current?.click()} aria-label={`${url ? 'Замінити' : 'Вибрати'} ${mobile ? 'мобільне' : 'desktop'} зображення`}>
+        <Icon name="upload" size={18} /> {url ? 'Замінити файл' : 'Вибрати файл'}
+      </button>
+      <input ref={input} className="media-upload-input" type="file" tabIndex={-1} accept="image/jpeg,image/png,image/webp" aria-labelledby={`${id}-label`} aria-describedby={`${id}-hint`} disabled={disabled}
+        onChange={(event) => { onFile(event.target.files?.[0]); event.target.value = ''; }} />
+    </section>
+    {mobile && <small>На телефоні зображення відображається квадратним, із кадруванням по центру. Якщо файл не завантажено, використовується desktop-зображення.</small>}
+  </div>;
 }
 
 function Color({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
@@ -26,6 +62,7 @@ export function ProductPopupEditor({ input, product, onChange, onChooseProduct, 
   const config = input.productPopup || defaultProductPopupConfig();
   const [element, setElement] = useState<PopupProductElement>('heading');
   const [uploadError, setUploadError] = useState('');
+  const [uploadSurface, setUploadSurface] = useState<ImageSurface | null>(null);
   const patch = (value: Partial<PopupProductConfig>) => onChange({ productPopup: { ...config, ...value } });
   const content = (value: Partial<PopupCampaignInput['content']>) => onChange({ content: { ...input.content, ...value } });
   const style = config.elements[element];
@@ -35,16 +72,18 @@ export function ProductPopupEditor({ input, product, onChange, onChooseProduct, 
   const manualInvalid = (config.showOldPrice || config.showSavings) && config.oldPriceSource === 'manual'
     && !(numeric(config.manualOldPrice) > numeric(product?.price));
 
-  async function upload(file: File | undefined) {
+  async function upload(file: File | undefined, surface: ImageSurface) {
     if (!file) return;
     setUploadError('');
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
       setUploadError('Оберіть JPG, PNG або WebP розміром до 10 МБ.'); return;
     }
+    setUploadSurface(surface);
     try {
       const asset = await onUpload(file);
-      onImageUploaded(asset);
+      onImageUploaded(asset, surface);
     } catch (error) { setUploadError(error instanceof Error ? error.message : 'Не вдалося завантажити зображення.'); }
+    finally { setUploadSurface(null); }
   }
 
   return <>
@@ -61,22 +100,15 @@ export function ProductPopupEditor({ input, product, onChange, onChooseProduct, 
         <label><span>Спеціальна пропозиція</span><input value={input.content.eyebrow} maxLength={120} onChange={(event) => content({ eyebrow: event.target.value })} /></label>
         <label className="is-full"><span>Головний заголовок</span><textarea rows={2} value={input.content.title} maxLength={240} onChange={(event) => content({ title: event.target.value })} /></label>
       </div>
-      <div className="product-popup-upload">
-        {input.content.imageUrl && <img src={input.content.imageUrl} alt="Завантажене зображення банера" />}
-        <label><span>Зображення банера</span><strong id="product-popup-image-hint">Рекомендований розмір: 880 × 1000 px (22:25)</strong>
-          <small>JPG, PNG або WebP, до 10 МБ. Завантажте власне зображення для лівої частини банера.</small>
-          <input type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="product-popup-image-hint" disabled={uploading} onChange={(event) => { void upload(event.target.files?.[0]); event.target.value = ''; }} />
-          {uploading && <span role="status">Завантажуємо зображення…</span>}
-          {config.imageWidth > 0 && <small>Завантажено: {config.imageWidth} × {config.imageHeight} px</small>}
-        </label>
-      </div>
+      <ImageUpload surface="desktop" url={input.content.imageUrl} width={config.imageWidth} height={config.imageHeight} disabled={uploading} busy={uploadSurface === 'desktop'} onFile={(file) => void upload(file, 'desktop')} />
+      <ImageUpload surface="mobile" url={config.mobileImageUrl} width={config.mobileImageWidth} height={config.mobileImageHeight} disabled={uploading} busy={uploadSurface === 'mobile'} onFile={(file) => void upload(file, 'mobile')} />
       {uploadError && <p className="product-popup-error" role="alert">{uploadError}</p>}
     </section>
 
     <section className="popup-form-section">
       <div className="product-popup-section-title"><Icon name="publication" size={22} /><div><h2>Ціни та вигода</h2><p>Актуальна ціна завжди береться з каталогу: {amount || 'товар ще не вибрано'}.</p></div></div>
-      <label className="product-popup-switch"><span>Показувати стару ціну</span><input type="checkbox" role="switch" checked={config.showOldPrice} onChange={(event) => patch({ showOldPrice: event.target.checked })} /></label>
-      <label className="product-popup-switch"><span>Показувати лейбл вигоди</span><input type="checkbox" role="switch" checked={config.showSavings} onChange={(event) => patch({ showSavings: event.target.checked })} /></label>
+      <PopupToggle label="Показувати стару ціну" role="switch" checked={config.showOldPrice} onChange={(showOldPrice) => patch({ showOldPrice })} />
+      <PopupToggle label="Показувати лейбл вигоди" role="switch" checked={config.showSavings} onChange={(showSavings) => patch({ showSavings })} />
       {(config.showOldPrice || config.showSavings) && <div className="popup-form-grid">
         <label><span>Джерело старої ціни</span><StyledSelect ariaLabel="Джерело старої ціни" value={config.oldPriceSource} options={[{ value: 'catalog', label: 'Автоматично з каталогу' }, { value: 'manual', label: 'Встановити вручну' }]} onChange={(oldPriceSource) => patch({ oldPriceSource })} /></label>
         {config.oldPriceSource === 'manual'

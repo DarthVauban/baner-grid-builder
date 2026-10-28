@@ -32,6 +32,8 @@ const configSchema = z.object({
   manualOldPrice: z.string().trim().max(24).refine((value) => !value || /^(?:0|[1-9]\d{0,9})(?:[.,]\d{1,2})?$/u.test(value), 'Вкажіть додатну ціну з максимум двома знаками після коми.'),
   showSavings: z.boolean(), savingsLabel: z.string().trim().max(60),
   imageWidth: z.number().int().min(0).max(40000), imageHeight: z.number().int().min(0).max(40000),
+  mobileImageUrl: z.string().max(2000).refine((value) => !value || /^\/media\/catalog\/library\/[a-zA-Z0-9_-]+\.webp$/u.test(value), 'Завантажте власне зображення для телефона.'),
+  mobileImageWidth: z.number().int().min(0).max(40000), mobileImageHeight: z.number().int().min(0).max(40000),
   overlayColor: color, overlayOpacity: z.number().min(0).max(90),
   contentPadding: z.number().min(12).max(64), contentGap: z.number().min(4).max(40),
   contentPaddingMobile: z.number().min(8).max(40), contentGapMobile: z.number().min(4).max(32),
@@ -45,6 +47,7 @@ export function normalizeProductPopupConfig(value) {
   return {
     titleOverride: '', showOldPrice: false, oldPriceSource: 'catalog', manualOldPrice: '',
     showSavings: false, savingsLabel: 'Вигода', imageWidth: 0, imageHeight: 0,
+    mobileImageUrl: '', mobileImageWidth: 0, mobileImageHeight: 0,
     overlayColor: '#0f172a', overlayOpacity: 56, contentPadding: 36, contentGap: 16, contentPaddingMobile: 24, contentGapMobile: 12,
     borderColor: '#e5e7eb', borderWidth: 0,
     ...source,

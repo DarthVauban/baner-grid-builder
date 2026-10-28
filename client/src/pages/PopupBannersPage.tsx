@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ProductPopupEditor } from '../components/ProductPopupEditor';
+import { PopupToggle as Toggle } from '../components/PopupToggle';
 import { defaultProductPopupConfig } from '../lib/popup-product';
 import { Icon } from '../components/Icon';
 import { ModalDialog } from '../components/ModalDialog';
@@ -479,18 +480,6 @@ function newLeadBlock(index: number): { block: PopupLeadBlock; field: PopupLeadF
 
 function formatDate(value: string | null) {
   return value ? new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Без обмеження';
-}
-
-function Toggle({ checked, label, description, onChange }: {
-  checked: boolean;
-  label: string;
-  description: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return <label className="popup-toggle">
-    <span className="popup-toggle__copy"><strong>{label}</strong><small>{description}</small></span>
-    <input className="switch" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-  </label>;
 }
 
 function SectionHeading({ icon, title, description, aside }: {
@@ -1372,7 +1361,16 @@ export function PopupBannersPage() {
             {tab === 'content' && (isProductPopup ? <ProductPopupEditor
               input={draft} product={promoProducts[0]} onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
               onChooseProduct={() => setTab('products')} onUpload={(file) => uploadProductImage.mutateAsync(file)} uploading={uploadProductImage.isPending}
-              onImageUploaded={(asset) => setDraft((current) => ({ ...current, content: { ...current.content, imageUrl: asset.url }, productPopup: { ...(current.productPopup || defaultProductPopupConfig()), imageWidth: asset.width, imageHeight: asset.height } }))}
+              onImageUploaded={(asset, surface) => setDraft((current) => ({
+                ...current,
+                content: surface === 'desktop' ? { ...current.content, imageUrl: asset.url } : current.content,
+                productPopup: {
+                  ...(current.productPopup || defaultProductPopupConfig()),
+                  ...(surface === 'mobile'
+                    ? { mobileImageUrl: asset.url, mobileImageWidth: asset.width, mobileImageHeight: asset.height }
+                    : { imageWidth: asset.width, imageHeight: asset.height })
+                }
+              }))}
             /> : <>
               <div className="popup-form-section">
                 <SectionHeading

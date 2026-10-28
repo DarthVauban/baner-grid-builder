@@ -7,6 +7,7 @@ type CartItem = { id: string; quantity: number; type: string };
 type CartTestWindow = Window & { __cartAppends: CartItem[]; AjaxCart: { getInstance: () => { appendProduct: (item: CartItem) => void; getProductById: (id: string) => CartItem | null } } };
 
 const art = () => sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="880" height="1000"><defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#e8e2ff"/><stop offset="1" stop-color="#f3f0ff"/></linearGradient></defs><rect width="880" height="1000" fill="url(#bg)"/><rect x="250" y="130" width="380" height="740" rx="55" fill="#172033"/><rect x="270" y="155" width="340" height="685" rx="40" fill="#8273bd"/><ellipse cx="440" cy="490" rx="170" ry="245" fill="#c7bde9"/><rect x="377" y="171" width="126" height="27" rx="14" fill="#172033"/></svg>')).png().toBuffer();
+const mobileArt = async () => sharp(await art()).resize(1000, 1000, { fit: 'contain', background: '#e8e2ff' }).png().toBuffer();
 const product = {
   id: 'product', productId: 'product', productExternalId: 'phone', modificationId: null, modificationExternalId: null, position: 0,
   sku: 'PHONE-1', article: 'PHONE-1', title: 'Apple iPhone 15 128 ГБ Black', price: '24999', oldPrice: '29999', currency: 'UAH',
@@ -20,7 +21,7 @@ function payload(input?: PopupCampaignInput) {
       content: input?.content || { eyebrow: 'Спеціальна пропозиція', title: 'Ваш новий iPhone', body: '', primaryLabel: 'Додати до кошика', secondaryLabel: 'Детальніше', imageUrl: '/media/catalog/library/test-art.webp' },
       styles: input?.styles || { layout: 'modal', maxWidth: 880, borderRadius: 24, backgroundColor: '#ffffff', textColor: '#172033', mutedColor: '#667085', accentColor: '#6d5dfc' },
       behavior: input?.behavior || { trigger: 'delay', delayMs: 0, frequency: 'always', device: 'all', cooldownDays: 7, maxShowsPerSession: 0, dismissible: true, requireAcknowledgement: false, buttonCount: 1 },
-      productPopup: input?.productPopup || { ...config, showOldPrice: true, showSavings: true },
+      productPopup: input?.productPopup || { ...config, showOldPrice: true, showSavings: true, mobileImageUrl: '/media/catalog/library/mobile-art.webp', mobileImageWidth: 1000, mobileImageHeight: 1000 },
       timerConfig: { mode: 'duration', durationMinutes: 15, deadlineAt: null }, formConfig: { fields: [] }, promoCode: null
     },
     product: null, recommendations: [], products: !input || input.promoItems?.length ? [product] : []
@@ -53,10 +54,17 @@ for (const surface of [
       await page.getByRole('button', { name: /Контент і дизайн/u }).click();
       await page.getByRole('textbox', { name: 'Головний заголовок', exact: true }).fill('Ваш новий iPhone');
       await page.getByRole('textbox', { name: /Назва товару на банері/u }).fill('iPhone для вашої акції');
-      await page.locator('input[type="file"]').setInputFiles({ name: 'product.png', mimeType: 'image/png', buffer: png });
+      await page.getByLabel('Зображення банера для desktop', { exact: true }).setInputFiles({ name: 'product.png', mimeType: 'image/png', buffer: png });
       await expect(page.getByText('Завантажено: 880 × 1000 px')).toBeVisible();
+      await page.getByLabel('Зображення банера для телефона', { exact: true }).setInputFiles({ name: 'mobile.png', mimeType: 'image/png', buffer: await mobileArt() });
+      await expect(page.getByText('Завантажено: 1000 × 1000 px')).toBeVisible();
+      await expect(page.getByLabel('Зображення банера для телефона', { exact: true })).toHaveCSS('width', '1px');
+      await page.locator('.popup-form-section').filter({ has: page.getByRole('heading', { name: 'Текст і зображення', exact: true }) }).screenshot({ path: testInfo.outputPath(`product-popup-upload-${surface.name}.png`) });
       await page.getByRole('switch', { name: 'Показувати стару ціну' }).check();
       await page.getByRole('switch', { name: 'Показувати лейбл вигоди' }).check();
+      await expect(page.getByRole('switch', { name: 'Показувати стару ціну' })).toHaveCSS('width', '40px');
+      await expect(page.getByRole('switch', { name: 'Показувати стару ціну' })).toHaveCSS('height', '22px');
+      await expect(page.getByRole('switch', { name: 'Показувати стару ціну' })).toHaveCSS('background-image', 'none');
       await page.getByRole('button', { name: 'Джерело старої ціни' }).click();
       await page.getByRole('option', { name: 'Встановити вручну' }).click();
       await page.getByRole('spinbutton', { name: 'Стара ціна', exact: true }).fill('34999');
@@ -65,13 +73,19 @@ for (const surface of [
       await expect(frame.locator('.product-popup-oldPrice')).toHaveText(/34\s?999/u);
       await expect(frame.locator('.product-popup-savings')).toHaveText(/10\s?000/u);
       await expect(frame.locator('.product-popup-details')).toHaveAttribute('href', product.pageUrl);
-      await expect(frame.locator('.product-popup-image')).toHaveJSProperty('naturalWidth', 880);
+      await expect(frame.locator('.product-popup-image')).toHaveJSProperty('naturalWidth', 1000);
       await page.getByRole('switch', { name: 'Показувати стару ціну' }).uncheck();
       await expect(frame.locator('.product-popup-oldPrice')).toHaveCount(0);
       await expect(frame.locator('.product-popup-savings')).toBeVisible();
+      await page.locator('.popup-form-section').filter({ has: page.getByRole('heading', { name: 'Ціни та вигода', exact: true }) }).screenshot({ path: testInfo.outputPath(`product-popup-switches-${surface.name}.png`) });
       await page.getByRole('button', { name: 'Відкрити прев’ю на весь екран' }).click();
       if (surface.name === 'mobile') await page.getByRole('button', { name: 'Телефон', exact: true }).click();
       await expect(frame.locator('.card.is-product-popup')).toBeVisible();
+      await expect(frame.locator('.product-popup-image')).toHaveJSProperty('naturalWidth', surface.name === 'mobile' ? 1000 : 880);
+      if (surface.name === 'mobile') {
+        const image = (await frame.locator('.product-popup-image').boundingBox())!;
+        expect(Math.abs(image.width - image.height)).toBeLessThan(1);
+      }
       await page.screenshot({ path: testInfo.outputPath(`product-popup-preview-${surface.name}.png`) });
       await expect(page.getByRole('button', { name: 'Закрити повноекранний перегляд' })).toBeVisible();
     });
@@ -81,6 +95,8 @@ for (const surface of [
       const script = await (await page.request.get('/api/public/popup-banners/embed.js', { headers: { 'x-forwarded-host': 'panel.example.test', 'x-forwarded-proto': 'http' } })).text();
       await page.route('http://panel.example.test/api/public/popup-banners/embed.js', (route) => route.fulfill({ contentType: 'application/javascript', body: script }));
       await page.route('http://panel.example.test/media/catalog/library/test-art.webp', (route) => route.fulfill({ contentType: 'image/png', body: png }));
+      const mobilePng = await mobileArt();
+      await page.route('http://panel.example.test/media/catalog/library/mobile-art.webp', (route) => route.fulfill({ contentType: 'image/png', body: mobilePng }));
       const nativeButton = '<button class="j-buy-button-add" id="j-buy-button-widget-1234" data-quantity="2" data-cartproducttype="product">Купити</button>';
       const productMarkup = surface.name === 'desktop'
         ? `<div class="product-order__block--buy">${nativeButton}</div>`
@@ -102,15 +118,21 @@ for (const surface of [
       await expect(card.locator('.product-popup-price')).toHaveText(/24\s?999/u);
       await expect(card.locator('.product-popup-oldPrice')).toHaveText(/29\s?999/u);
       await expect(card.locator('.product-popup-details')).toHaveAttribute('href', product.pageUrl);
-      await expect(card.locator('.product-popup-image')).toHaveJSProperty('naturalWidth', 880);
+      await expect(card.locator('.product-popup-image')).toHaveJSProperty('naturalWidth', surface.name === 'mobile' ? 1000 : 880);
+      await expect(card.locator('.product-popup-image')).toHaveJSProperty('currentSrc', `http://panel.example.test/media/catalog/library/${surface.name === 'mobile' ? 'mobile-art' : 'test-art'}.webp`);
       await expect(card).toHaveCSS('transform', 'none');
-      await expect(card.locator('.product-popup-details')).toBeInViewport({ ratio: 1 });
+      await expect(card).toHaveJSProperty('scrollTop', 0);
       const imageBounds = (await card.locator('.product-popup-image').boundingBox())!;
       const contentBounds = (await card.locator('.product-popup-content').boundingBox())!;
       if (surface.name === 'desktop') expect(contentBounds.x).toBeGreaterThan(imageBounds.x);
-      else expect(contentBounds.y).toBeGreaterThanOrEqual(imageBounds.y + imageBounds.height - 1);
+      else {
+        expect(contentBounds.y).toBeGreaterThanOrEqual(imageBounds.y + imageBounds.height - 1);
+        expect(Math.abs(imageBounds.width - imageBounds.height)).toBeLessThan(1);
+      }
       expect((await card.boundingBox())!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
       await page.screenshot({ path: testInfo.outputPath(`product-popup-storefront-${surface.name}.png`) });
+      await card.locator('.product-popup-details').scrollIntoViewIfNeeded();
+      await expect(card.locator('.product-popup-details')).toBeInViewport({ ratio: 1 });
       await card.locator('.product-popup-buy').click();
       await expect.poll(() => page.evaluate(() => (window as unknown as CartTestWindow).__cartAppends)).toEqual([{ type: 'product', quantity: 2, id: '1234' }]);
       await expect(card).toHaveCount(0);

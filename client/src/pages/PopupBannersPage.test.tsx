@@ -289,6 +289,7 @@ describe('PopupBannersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Попап із товаром/u }));
     expect(screen.getByText('Рекомендований розмір: 880 × 1000 px (22:25)')).toBeInTheDocument();
+    expect(screen.getByText('Рекомендований розмір: 1000 × 1000 px (1:1)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Обрати товар' }));
     const choose = await screen.findAllByRole('button', { name: 'Обрати' });
@@ -312,17 +313,23 @@ describe('PopupBannersPage', () => {
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту, px' }), { target: { value: '40' } });
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту на телефоні, px' }), { target: { value: '30' } });
     const file = new File(['image'], 'product.png', { type: 'image/png' });
-    fireEvent.change(screen.getByLabelText(/Зображення банера/u), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Зображення банера для desktop'), { target: { files: [file] } });
     await waitFor(() => expect(upload).toHaveBeenCalledWith(file));
     expect(await screen.findByText('Завантажено: 880 × 1000 px')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled());
+    upload.mockResolvedValueOnce({ ...(await upload.mock.results[0].value), url: '/media/catalog/library/mobile.webp', width: 1000 });
+    const mobileFile = new File(['mobile'], 'mobile.png', { type: 'image/png' });
+    fireEvent.drop(screen.getByLabelText('Зображення банера для телефона').closest('section')!, { dataTransfer: { files: [mobileFile] } });
+    await waitFor(() => expect(upload).toHaveBeenCalledWith(mobileFile));
+    expect(await screen.findByText('Завантажено: 1000 × 1000 px')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
       campaignType: 'product_popup', content: expect.objectContaining({ eyebrow: 'Пропозиція тижня', title: 'Обирайте вигідно', imageUrl: '/media/catalog/library/art.webp', primaryUrl: '' }),
-      productPopup: expect.objectContaining({ titleOverride: 'Назва для цієї акції', showOldPrice: false, showSavings: true, oldPriceSource: 'manual', manualOldPrice: '699', elements: expect.objectContaining({ price: expect.objectContaining({ fontSize: 40, fontSizeMobile: 30 }) }) }),
+      productPopup: expect.objectContaining({ mobileImageUrl: '/media/catalog/library/mobile.webp', mobileImageWidth: 1000, mobileImageHeight: 1000, imageWidth: 880, imageHeight: 1000, titleOverride: 'Назва для цієї акції', showOldPrice: false, showSavings: true, oldPriceSource: 'manual', manualOldPrice: '699', elements: expect.objectContaining({ price: expect.objectContaining({ fontSize: 40, fontSizeMobile: 30 }) }) }),
       promoItems: [{ productExternalId: 'promo-product-2', modificationExternalId: null }]
     }), expect.anything()));
-  });
+  }, 10_000);
 
   it('starts in the campaign library without mounting the editor or preview', async () => {
     renderPage();
