@@ -207,6 +207,11 @@ Process-local `running` flags запобігають overlap всередині 
 
 CI запускає verify і E2E окремими jobs для `dev` та `main`. Deployment повторює quality gate, будує
 immutable GHCR image із SHA й перевіряє revision через `/api/health`.
+Deploy runner завантажує цей образ із GHCR, створює gzip-архів `docker save` і передає його
+разом із SHA-256 checksum та конфігурацією через SSH. VPS перевіряє checksum і виконує
+`docker load` до заміни app-контейнера: завантаження великих шарів більше не залежить від
+мережевого маршруту VPS → GHCR. Невдала доставка або перевірка архіву зупиняє деплой
+до запуску нового контейнера. Перевірки image ID, revision і health залишаються обов’язковими.
 
 ## Типовий новий вертикальний зріз
 

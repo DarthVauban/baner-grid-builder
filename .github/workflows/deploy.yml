@@ -74,6 +74,32 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Authenticate image download on the runner
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare deployment image archive
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          REPOSITORY="$(echo 'ghcr.io/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE="$REPOSITORY:sha-${{ github.sha }}"
+          for attempt in 1 2 3; do
+            if docker pull "$IMAGE"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Image download failed after $attempt attempts." >&2
+              exit 1
+            fi
+            sleep "$((attempt * 10))"
+          done
+          docker save "$IMAGE" | gzip -1 > deployment-image.tar.gz
+          sha256sum deployment-image.tar.gz > deployment-image.tar.gz.sha256
+
       - name: Sync deployment configuration
         uses: appleboy/scp-action@v1
         with:
@@ -83,9 +109,12 @@ jobs:
           # Keep deploy-owned files directly in APP_DIR. Older servers may
           # contain a root-owned docker/telegram-bot-api directory created by
           # Docker, which the unprivileged deployment account cannot overwrite.
-          source: docker-compose.yml,telegram-bot-api-runtime-entrypoint.sh,telegram-bot-api-deploy-mode.sh
+          # Deliver the app image over the same SSH connection as its config.
+          # VPS-to-GHCR IPv6 connections can reset while downloading large layers.
+          source: docker-compose.yml,telegram-bot-api-runtime-entrypoint.sh,telegram-bot-api-deploy-mode.sh,deployment-image.tar.gz,deployment-image.tar.gz.sha256
           target: ${{ env.APP_DIR }}
           overwrite: true
+          command_timeout: 20m
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
@@ -136,13 +165,10 @@ jobs:
               done
             }
 
-            login_ghcr() {
-              printf '%s\n' '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
-            }
-
-            retry 4 5 login_ghcr
-            retry 5 10 docker pull "$IMAGE"
+            sha256sum --check deployment-image.tar.gz.sha256
+            docker load --input deployment-image.tar.gz
             EXPECTED_IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
+            rm -f -- deployment-image.tar.gz deployment-image.tar.gz.sha256
             docker compose config --quiet
             MEDIA_BACKUP="$(mktemp -d)"
             deployment_cleanup() {
