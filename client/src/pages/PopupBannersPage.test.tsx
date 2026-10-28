@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmDialogProvider } from '../dialogs/ConfirmDialogContext';
@@ -234,6 +234,10 @@ function renderPage() {
   );
 }
 
+async function openCampaign(campaign = baseCampaign) {
+  fireEvent.click(await screen.findByRole('button', { name: new RegExp(campaign.name, 'u') }));
+}
+
 beforeEach(() => {
   vi.spyOn(api.popupBanners, 'list').mockResolvedValue([baseCampaign, secondCampaign]);
   vi.spyOn(api.popupBanners, 'options').mockResolvedValue(options);
@@ -271,10 +275,94 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('PopupBannersPage', () => {
+  it('starts in the campaign library without mounting the editor or preview', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: /Попередження про вживаний товар/u })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Умови доставки великої техніки/u })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Розділи конструктора' })).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Живий перегляд банера')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(api.popupBanners.preview).not.toHaveBeenCalled();
+    expect(api.popupBanners.catalog).not.toHaveBeenCalled();
+  });
+
+  it('keeps an empty library visible until the user chooses to create a campaign', async () => {
+    vi.mocked(api.popupBanners.list).mockResolvedValue([]);
+    renderPage();
+
+    expect(await screen.findByText('Кампаній ще немає')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Створити кампанію' }));
+    expect(screen.getByRole('dialog', { name: 'Оберіть тип банера' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрити' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Кампаній ще немає')).toBeInTheDocument();
+  });
+
+  it('shows a load error without an empty library prompt or editor', async () => {
+    vi.mocked(api.popupBanners.list).mockRejectedValue(new Error('Unavailable'));
+    renderPage();
+
+    expect(await screen.findByText('Не вдалося завантажити кампанії.')).toBeInTheDocument();
+    expect(screen.queryByText('Кампаній ще немає')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    'Товарний промобанер', 'Банер із промокодом', 'Форма за промокод',
+    'Банер із таймером', 'Інформаційний попап', 'Альтернативи відсутнього товару'
+  ])('opens the editor after selecting %s in the new campaign dialog', async (label) => {
+    renderPage();
+    await screen.findByRole('button', { name: /Попередження про вживаний товар/u });
+    fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Оберіть тип банера' });
+    expect(within(dialog).getAllByRole('button')).toHaveLength(7);
+    expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: new RegExp(label, 'u') }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Назва кампанії' })).toBeInTheDocument();
+    const steps = within(screen.getByRole('navigation', { name: 'Розділи конструктора' }));
+    expect(steps.queryByRole('button', { name: /Бібліотека/u })).not.toBeInTheDocument();
+    expect(steps.getByRole('button', { name: /Контент і дизайн/u })).toHaveTextContent(/^1/u);
+  });
+
+  it('returns to the library and opens another campaign', async () => {
+    renderPage();
+    await openCampaign();
+    fireEvent.click(screen.getByRole('button', { name: 'До бібліотеки' }));
+
+    expect(await screen.findByRole('region', { name: 'Бібліотека кампаній' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
+    await openCampaign(secondCampaign);
+    expect(screen.getByDisplayValue(secondCampaign.name)).toBeInTheDocument();
+  });
+
+  it('preserves unsaved edits when the type dialog is closed or library navigation is cancelled', async () => {
+    renderPage();
+    await openCampaign();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Назва кампанії' }), { target: { value: 'Незбережена назва' } });
+    fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Незбережена назва')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'До бібліотеки' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Продовжити редагування' }));
+    expect(screen.getByDisplayValue('Незбережена назва')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'До бібліотеки' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'До бібліотеки' }));
+    expect(await screen.findByRole('region', { name: 'Бібліотека кампаній' })).toBeInTheDocument();
+  });
+
   it('opens an existing campaign in the redesigned workspace', async () => {
     renderPage();
 
-    expect(await screen.findByDisplayValue(baseCampaign.name)).toBeInTheDocument();
+    await openCampaign();
+    expect(screen.getByDisplayValue(baseCampaign.name)).toBeInTheDocument();
     expect(screen.getByText('Живий перегляд')).toBeInTheDocument();
     expect(screen.getAllByText('mobiletrend.com.ua')).toHaveLength(1);
     expect(screen.getByRole('button', { name: /Контент і дизайн/u })).toHaveClass('is-active');
@@ -299,6 +387,7 @@ describe('PopupBannersPage', () => {
 
   it('exits fullscreen with Escape inside a replacement preview frame and restores the workspace on unmount', async () => {
     const { container, unmount } = renderPage();
+    await openCampaign();
     await screen.findByTitle('Живий перегляд банера');
     const originalOverflow = document.body.style.overflow;
     container.inert = false;
@@ -321,9 +410,8 @@ describe('PopupBannersPage', () => {
 
   it('filters the campaign library by search and status', async () => {
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
-
-    fireEvent.click(screen.getByRole('button', { name: /Бібліотека/u }));
+    await screen.findByRole('region', { name: 'Бібліотека кампаній' });
+    await screen.findByRole('button', { name: /Умови доставки великої техніки/u });
     fireEvent.change(screen.getByRole('textbox', { name: 'Пошук кампаній' }), { target: { value: 'доставки' } });
     expect(screen.getByRole('button', { name: /Умови доставки великої техніки/u })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Попередження про вживаний товар/u })).not.toBeInTheDocument();
@@ -337,7 +425,7 @@ describe('PopupBannersPage', () => {
       vi.mocked(api.popupBanners.list).mockResolvedValue([baseCampaign, secondCampaign].filter((campaign) => campaign.id !== id));
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: 'Видалити кампанію' }));
     fireEvent.click(screen.getByRole('button', { name: 'Видалити' }));
@@ -358,7 +446,7 @@ describe('PopupBannersPage', () => {
       vi.mocked(api.popupBanners.list).mockResolvedValue([]);
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: 'Видалити кампанію' }));
     fireEvent.click(screen.getByRole('button', { name: 'Видалити' }));
@@ -370,7 +458,7 @@ describe('PopupBannersPage', () => {
 
   it('navigates to targeting and exposes the branded rule controls', async () => {
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
     fireEvent.click(screen.getByRole('radio', { name: /Умови каталогу/u }));
@@ -388,7 +476,7 @@ describe('PopupBannersPage', () => {
       productTargets: []
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
     fireEvent.click(screen.getByRole('radio', { name: /Цільова сторінка/u }));
@@ -424,7 +512,7 @@ describe('PopupBannersPage', () => {
       }]
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
     expect(screen.getByText('Де не показувати')).toBeInTheDocument();
@@ -458,7 +546,7 @@ describe('PopupBannersPage', () => {
       updatedAt: baseCampaign.updatedAt
     }));
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
     fireEvent.click(screen.getByRole('radio', { name: /Товар відсутній/u }));
@@ -480,7 +568,8 @@ describe('PopupBannersPage', () => {
 
   it('marks edited content as unsaved and enables saving', async () => {
     renderPage();
-    const name = await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
+    const name = screen.getByDisplayValue(baseCampaign.name);
 
     fireEvent.change(name, { target: { value: 'Оновлена кампанія' } });
 
@@ -490,7 +579,7 @@ describe('PopupBannersPage', () => {
 
   it('exposes button and acknowledgement colors in the branded editor', async () => {
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')).toHaveLength(2);
     expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')[0]).toHaveValue('#ffe101');
@@ -517,7 +606,7 @@ describe('PopupBannersPage', () => {
 
   it('configures exit intent as a display condition for an information popup', async () => {
     const { container } = renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
     fireEvent.click(screen.getByRole('button', { name: 'Умова появи' }));
@@ -552,7 +641,7 @@ describe('PopupBannersPage', () => {
       createdAt: baseCampaign.createdAt, updatedAt: baseCampaign.updatedAt, publishedAt: null
     }));
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     expect(screen.getByRole('heading', { name: 'Оберіть тип банера' })).toBeInTheDocument();
@@ -645,7 +734,7 @@ describe('PopupBannersPage', () => {
       publishedAt: null
     }));
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Банер із промокодом/u }));
@@ -690,7 +779,7 @@ describe('PopupBannersPage', () => {
       return saved;
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Банер із таймером/u }));
     expect(screen.getByText('Зворотний відлік')).toBeInTheDocument();
@@ -739,7 +828,7 @@ describe('PopupBannersPage', () => {
       publishedAt: null
     }));
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Форма за промокод/u }));
