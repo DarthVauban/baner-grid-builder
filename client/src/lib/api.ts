@@ -278,6 +278,9 @@ export const api = {
     )
   },
   popupBanners: {
+    uploadImage: (file: File, signal?: AbortSignal) => request<MediaAsset>('/api/popup-banners/image', {
+      method: 'POST', headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) }, body: file, signal, timeoutMs: 60_000
+    }),
     list: () => request<PopupCampaign[]>('/api/popup-banners'),
     options: () => request<PopupCampaignOptions>('/api/popup-banners/options'),
     catalog: (params: { search?: string; category?: string; page?: number; pageSize?: number } = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(

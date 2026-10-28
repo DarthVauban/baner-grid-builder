@@ -1,7 +1,22 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
 import type { PromoCodeSnapshot } from './promo-code';
 
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown' | 'product_popup';
+
+
+export type PopupProductElement = 'eyebrow' | 'heading' | 'productTitle' | 'price' | 'oldPrice' | 'savings' | 'buyButton' | 'detailsButton' | 'closeButton';
+export interface PopupProductElementStyle {
+  color: string; backgroundColor: string; backgroundOpacity: number;
+  fontSize: number; fontSizeMobile: number; fontWeight: number; fontFamily: 'Inter' | 'Arial' | 'Georgia' | 'system-ui';
+  textAlign: 'left' | 'center' | 'right'; borderColor: string; borderWidth: number;
+  borderRadius: number; paddingX: number; paddingY: number;
+}
+export interface PopupProductConfig {
+  titleOverride: string; showOldPrice: boolean; oldPriceSource: 'catalog' | 'manual'; manualOldPrice: string;
+  showSavings: boolean; savingsLabel: string; imageWidth: number; imageHeight: number;
+  overlayColor: string; overlayOpacity: number; contentPadding: number; contentGap: number; contentPaddingMobile: number; contentGapMobile: number;
+  borderColor: string; borderWidth: number; elements: Record<PopupProductElement, PopupProductElementStyle>;
+}
 
 export interface PopupTimerConfig {
   mode: 'deadline' | 'duration';
@@ -176,6 +191,7 @@ export interface PopupCampaign {
   promoCode: PromoCodeSnapshot | null;
   publishedPromoCode: PromoCodeSnapshot | null;
   timerConfig: PopupTimerConfig;
+  productPopup?: PopupProductConfig;
   formConfig: PopupLeadFormConfig;
   publishedFormConfig: PopupLeadFormConfig | null;
   stats: {
@@ -212,6 +228,7 @@ export interface PopupCampaignInput {
   promoItems: PopupPromoProductReference[];
   promoCodeId: string | null;
   timerConfig: PopupTimerConfig;
+  productPopup?: PopupProductConfig;
   formConfig: PopupLeadFormConfig;
 }
 
@@ -239,6 +256,7 @@ export interface PopupPreviewPayload {
     styles: PopupStyles;
     behavior: PopupBehavior;
     timerConfig: PopupTimerConfig;
+  productPopup?: PopupProductConfig;
     formConfig: PopupLeadFormConfig;
     promoCode: PromoCodeSnapshot | null;
   };

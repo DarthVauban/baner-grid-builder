@@ -198,6 +198,7 @@ function previewPayload(campaign: PopupCampaignInput): PopupPreviewPayload {
       styles: campaign.styles,
       behavior: campaign.behavior,
       timerConfig: campaign.timerConfig,
+      productPopup: campaign.productPopup,
       formConfig: campaign.formConfig,
       promoCode: campaign.promoCodeId ? {
         libraryId: promoCode.id,
@@ -275,6 +276,54 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('PopupBannersPage', () => {
+  it('configures a single-product popup with uploaded artwork, editable copy, independent price switches and element styles', async () => {
+    const upload = vi.spyOn(api.popupBanners, 'uploadImage').mockResolvedValue({
+      id: 'art', folderId: null, name: 'art.png', url: '/media/catalog/library/art.webp', mimeType: 'image/webp',
+      width: 880, height: 1000, size: 500, originalSize: 1000, altText: '', createdBy: null, createdAt: '', updatedAt: ''
+    });
+    const create = vi.spyOn(api.popupBanners, 'create').mockImplementation(async (input) => ({ ...structuredClone(baseCampaign), ...input, id: 'product-popup', status: 'draft' }));
+    renderPage();
+    await screen.findByRole('button', { name: /Попередження про вживаний товар/u });
+    fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
+    fireEvent.click(screen.getByRole('dialog').querySelector('button')!); // close without creating a draft
+    fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Попап із товаром/u }));
+    expect(screen.getByText('Рекомендований розмір: 880 × 1000 px (22:25)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Обрати товар' }));
+    const choose = await screen.findAllByRole('button', { name: 'Обрати' });
+    fireEvent.click(choose[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Обрати' })[0]); // choosing another replaces the single product
+    expect(screen.getByRole('button', { name: /Товар банера/u })).toHaveTextContent('1 із 1');
+    fireEvent.click(screen.getByRole('button', { name: /Контент і дизайн/u }));
+    expect(screen.getByRole('textbox', { name: 'Посилання «Детальніше» з каталогу' })).toHaveAttribute('readonly');
+    fireEvent.change(screen.getByRole('textbox', { name: /Назва товару на банері/u }), { target: { value: 'Назва для цієї акції' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Спеціальна пропозиція' }), { target: { value: 'Пропозиція тижня' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Головний заголовок' }), { target: { value: 'Обирайте вигідно' } });
+    fireEvent.click(screen.getByRole('switch', { name: 'Показувати стару ціну' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Показувати лейбл вигоди' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Джерело старої ціни' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Встановити вручну' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Стара ціна' }), { target: { value: '699' } });
+    fireEvent.click(screen.getByRole('switch', { name: 'Показувати стару ціну' }));
+    expect(screen.getByRole('switch', { name: 'Показувати лейбл вигоди' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Елемент банера' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Актуальна ціна' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту, px' }), { target: { value: '40' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту на телефоні, px' }), { target: { value: '30' } });
+    const file = new File(['image'], 'product.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText(/Зображення банера/u), { target: { files: [file] } });
+    await waitFor(() => expect(upload).toHaveBeenCalledWith(file));
+    expect(await screen.findByText('Завантажено: 880 × 1000 px')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      campaignType: 'product_popup', content: expect.objectContaining({ eyebrow: 'Пропозиція тижня', title: 'Обирайте вигідно', imageUrl: '/media/catalog/library/art.webp', primaryUrl: '' }),
+      productPopup: expect.objectContaining({ titleOverride: 'Назва для цієї акції', showOldPrice: false, showSavings: true, oldPriceSource: 'manual', manualOldPrice: '699', elements: expect.objectContaining({ price: expect.objectContaining({ fontSize: 40, fontSizeMobile: 30 }) }) }),
+      promoItems: [{ productExternalId: 'promo-product-2', modificationExternalId: null }]
+    }), expect.anything()));
+  });
+
   it('starts in the campaign library without mounting the editor or preview', async () => {
     renderPage();
 
@@ -311,7 +360,7 @@ describe('PopupBannersPage', () => {
   });
 
   it.each([
-    'Товарний промобанер', 'Банер із промокодом', 'Форма за промокод',
+    'Попап із товаром', 'Товарний промобанер', 'Банер із промокодом', 'Форма за промокод',
     'Банер із таймером', 'Інформаційний попап', 'Альтернативи відсутнього товару'
   ])('opens the editor after selecting %s in the new campaign dialog', async (label) => {
     renderPage();
@@ -319,7 +368,7 @@ describe('PopupBannersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
 
     const dialog = screen.getByRole('dialog', { name: 'Оберіть тип банера' });
-    expect(within(dialog).getAllByRole('button')).toHaveLength(7);
+    expect(within(dialog).getAllByRole('button')).toHaveLength(8);
     expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: new RegExp(label, 'u') }));
 

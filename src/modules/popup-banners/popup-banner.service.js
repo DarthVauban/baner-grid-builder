@@ -7,6 +7,9 @@ import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
 import { createFloatingWidgetLayoutRuntime } from '../horoshop-widgets/floating-layout.js';
 import { createPopupTimerRuntime, isTimerExpired, normalizeTimerConfig } from './popup-timer.js';
 
+import { normalizeProductPopupConfig, productPopupOfferIsUsable } from './popup-product.config.js';
+import { createProductPopupRuntime } from './popup-product.runtime.js';
+
 export const popupBannerToolId = 'popup_banners';
 
 const defaultContent = {
@@ -110,10 +113,10 @@ const eventStatsKey = {
 
 function normalizeCampaignType(value, targeting = {}) {
   if (value === 'exit_offer') return 'message';
-  if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown'].includes(value)) {
+  if (object(targeting).mode === 'out_of_stock' && !['product_promo', 'promo_code', 'lead_form', 'countdown', 'product_popup'].includes(value)) {
     return 'out_of_stock_recommendations';
   }
-  if (['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown'].includes(value)) return value;
+  if (['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown', 'product_popup'].includes(value)) return value;
   return 'message';
 }
 
@@ -203,7 +206,7 @@ function normalizeStyles(value) {
     buttonFontSize: Math.min(28, Math.max(10, Number(source.buttonFontSize) || defaultStyles.buttonFontSize)),
     buttonBorderRadius: Math.min(40, Math.max(0, Number.isFinite(Number(source.buttonBorderRadius))
       ? Number(source.buttonBorderRadius) : defaultStyles.buttonBorderRadius)),
-    borderRadius: Math.min(40, Math.max(0, Number(source.borderRadius) || defaultStyles.borderRadius)),
+    borderRadius: Math.min(40, Math.max(0, Number.isFinite(Number(source.borderRadius)) ? Number(source.borderRadius) : defaultStyles.borderRadius)),
     maxWidth: Math.min(1400, Math.max(320, Number(source.maxWidth) || defaultStyles.maxWidth))
   };
 }
@@ -258,6 +261,7 @@ function normalizeBehavior(value) {
 function campaignSnapshot(row, targets = [], promoProducts = [], excludedTargets = []) {
   return {
     timerConfig: normalizeTimerConfig(row.timer_config),
+    productPopup: normalizeProductPopupConfig(row.product_popup),
     campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
     name: row.name,
     status: row.status,
@@ -413,6 +417,7 @@ function serializePromoProduct(row) {
 function serializeCampaign(row, targets = [], promoProducts = [], excludedTargets = []) {
   return {
     timerConfig: normalizeTimerConfig(row.timer_config),
+    productPopup: normalizeProductPopupConfig(row.product_popup),
     id: row.id,
     publicId: row.public_id,
     campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
@@ -746,6 +751,7 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     const campaignType = normalizeCampaignType(input.campaignType, input.targeting);
     const content = normalizeContent(input.content);
     const styles = normalizeStyles(input.styles);
+    if (campaignType === 'product_popup') styles.layout = 'modal';
     const targeting = normalizeTargeting(input.targeting);
     validateTargetPage(targeting, connection.store_domain);
     const behavior = normalizeBehavior(input.behavior);
@@ -775,13 +781,13 @@ async function savePopupCampaign(existingId, input, actorUserId) {
               promo_code_published_snapshot = CASE WHEN $4::VARCHAR IN ('promo_code', 'lead_form') THEN promo_code_published_snapshot ELSE NULL END,
               form_config = $15::JSONB,
               form_published_snapshot = CASE WHEN $4::VARCHAR = 'lead_form' THEN form_published_snapshot ELSE NULL END,
-              timer_config = $17::JSONB, updated_by = $16, updated_at = NOW()
+              timer_config = $17::JSONB, product_popup = $18::JSONB, updated_by = $16, updated_at = NOW()
          WHERE id = $1 AND campaign_type <> 'block' RETURNING id`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
           draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
-          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig))]
+          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig)), JSON.stringify(normalizeProductPopupConfig(input.productPopup))]
       );
       if (!updated.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
     } else {
@@ -790,13 +796,13 @@ async function savePopupCampaign(existingId, input, actorUserId) {
         `INSERT INTO popup_banner_campaigns (
            id, connection_id, connection_generation, campaign_type, name, priority, content, styles,
             targeting, behavior, starts_at, ends_at, promo_code_id, promo_code_draft_snapshot,
-            form_config, created_by, updated_by, timer_config
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16, $17::JSONB)`,
+            form_config, created_by, updated_by, timer_config, product_popup
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB, $8::JSONB, $9::JSONB, $10::JSONB, $11, $12, $13, $14::JSONB, $15::JSONB, $16, $16, $17::JSONB, $18::JSONB)`,
         [id, connection.id, connection.generation, campaignType, input.name, input.priority,
           JSON.stringify(content), JSON.stringify(styles), JSON.stringify(targeting),
           JSON.stringify(behavior), startsAt, endsAt, selectedPromoCode?.id || null,
           draftPromoCodeSnapshot ? JSON.stringify(draftPromoCodeSnapshot) : null,
-          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig))]
+          JSON.stringify(formConfig), actorUserId, JSON.stringify(normalizeTimerConfig(input.timerConfig)), JSON.stringify(normalizeProductPopupConfig(input.productPopup))]
       );
     }
 
@@ -833,7 +839,7 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     }
 
     await client.query('DELETE FROM popup_banner_promo_products WHERE campaign_id = $1', [id]);
-    const promoResolution = campaignType === 'product_promo'
+    const promoResolution = ['product_promo', 'product_popup'].includes(campaignType)
       ? await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, client)
       : { items: [], unmatched: [] };
     for (const item of promoResolution.items) {
@@ -844,10 +850,18 @@ async function savePopupCampaign(existingId, input, actorUserId) {
         [id, item.productId, item.modificationId, item.itemKey, item.position]
       );
     }
+    if (campaignType === 'product_popup' && promoResolution.items.length !== 1) throw new AppError(422, 'POPUP_PRODUCT_REQUIRED', 'Оберіть один актуальний товар для попапа.');
     if (campaignType === 'product_promo' && promoResolution.items.length === 0) {
       throw new AppError(422, 'POPUP_PROMO_PRODUCTS_EMPTY', 'Додайте хоча б один товар до промобанера.', {
         unmatched: promoResolution.unmatched
       });
+    }
+    if (campaignType === 'product_popup') {
+      const config = normalizeProductPopupConfig(input.productPopup);
+      if ((config.showOldPrice || config.showSavings) && config.oldPriceSource === 'manual') {
+        const offer = (await loadPromoProducts(id, client)).map(serializePromoProduct)[0];
+        if (!(Number(config.manualOldPrice.replace(',', '.')) > numericValue(offer?.price))) throw new AppError(422, 'POPUP_OLD_PRICE_INVALID', 'Стара ціна має бути вищою за актуальну ціну товару.');
+      }
     }
     const campaign = await recordVersion(client, id, actorUserId);
     await client.query('COMMIT');
@@ -907,6 +921,10 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
       if (targeting.mode === 'products') {
         const targets = await client.query('SELECT 1 FROM popup_banner_product_targets WHERE campaign_id = $1 LIMIT 1', [id]);
         if (!targets.rows[0]) throw new AppError(422, 'POPUP_TARGETS_EMPTY', 'Додайте хоча б один товар до кампанії.');
+      }
+      if (campaignType === 'product_popup') {
+        const offers = (await loadPromoProducts(id, client)).filter((row) => row.product_active && row.product_visible !== false && row.product_generation === current.current_generation && (!row.modification_id || row.modification_active)).map(serializePromoProduct);
+        if (offers.length !== 1 || !productPopupOfferIsUsable(offers[0], current.current_store_domain) || !current.content?.imageUrl) throw new AppError(422, 'POPUP_PRODUCT_UNAVAILABLE', 'Перевірте товар і зображення перед публікацією.');
       }
       if (campaignType === 'product_promo') {
         const products = await client.query('SELECT 1 FROM popup_banner_promo_products WHERE campaign_id = $1 LIMIT 1', [id]);
@@ -1105,13 +1123,13 @@ async function loadPromoProducts(campaignId, db = { query }) {
             product.sku AS product_sku, product.titles AS product_titles,
             product.price AS product_price, product.old_price AS product_old_price,
             product.currency AS product_currency, product.availability AS product_availability,
-            product.visible AS product_visible, product.primary_image_url AS product_image_url,
+            product.visible AS product_visible, product.active AS product_active, product.generation AS product_generation, product.primary_image_url AS product_image_url,
             product.canonical_url AS product_page_url, product.source_data AS product_source_data,
             modification.external_id AS modification_external_id,
             modification.sku AS modification_sku, modification.titles AS modification_titles,
             modification.price AS modification_price, modification.old_price AS modification_old_price,
             modification.currency AS modification_currency, modification.availability AS modification_availability,
-            modification.visible AS modification_visible, modification.image_url AS modification_image_url,
+            modification.visible AS modification_visible, modification.active AS modification_active, modification.image_url AS modification_image_url,
             modification.page_url AS modification_page_url, modification.source_data AS modification_source_data
      FROM popup_banner_promo_products AS item
      JOIN search_horoshop_products AS product ON product.id = item.product_id
@@ -1307,10 +1325,11 @@ export async function previewPopupCampaign(input) {
   const formConfig = normalizeFormConfig(input.formConfig);
 
   let products = [];
-  if (campaignType === 'product_promo') {
+  if (['product_promo', 'product_popup'].includes(campaignType)) {
     const resolution = await resolvePromoItems(input.promoItems || [], connection.id, connection.generation, db);
     products = (await loadPreviewProductsByResolvedItems(resolution.items, db)).filter((item) => (
-      item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
+      campaignType === 'product_popup' ? productPopupOfferIsUsable(item, connection.store_domain)
+        : item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
     ));
   }
 
@@ -1338,6 +1357,7 @@ export async function previewPopupCampaign(input) {
     : null;
   const normalizedSnapshot = {
     timerConfig: normalizeTimerConfig(input.timerConfig),
+    productPopup: normalizeProductPopupConfig(input.productPopup),
     type: campaignType,
     content,
     styles,
@@ -1352,6 +1372,7 @@ export async function previewPopupCampaign(input) {
     campaign: {
       publicId: 'preview',
       timerConfig: normalizedSnapshot.timerConfig,
+      productPopup: normalizedSnapshot.productPopup,
       revision: `preview-${createHash('sha256').update(JSON.stringify(normalizedSnapshot)).digest('hex').slice(0, 16)}`,
       type: campaignType,
       mode: targeting.mode,
@@ -1409,12 +1430,15 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       ? await resolveOutOfStockRecommendations(connection, product, targeting.recommendationLimit)
       : [];
     if (targeting.mode === 'out_of_stock' && recommendations.length === 0) continue;
-    const promoProducts = campaignType === 'product_promo'
-      ? (await loadPromoProducts(campaign.id)).map(serializePromoProduct).filter((item) => (
-        item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
+    const promoProducts = ['product_promo', 'product_popup'].includes(campaignType)
+      ? (await loadPromoProducts(campaign.id)).filter((row) => campaignType !== 'product_popup' || (row.product_active && row.product_visible !== false && row.product_generation === connection.generation && (!row.modification_id || row.modification_active))).map(serializePromoProduct).filter((item) => (
+        campaignType === 'product_popup'
+          ? productPopupOfferIsUsable(item, connection.store_domain)
+          : item.available && item.visible && item.title && item.imageUrl && item.pageUrl && item.buyId
       ))
       : [];
     if (campaignType === 'product_promo' && promoProducts.length === 0) continue;
+    if (campaignType === 'product_popup' && (promoProducts.length !== 1 || !content.imageUrl)) continue;
     const publishedPromoCode = ['promo_code', 'lead_form'].includes(campaignType)
       ? object(campaign.promo_code_published_snapshot)
       : null;
@@ -1428,6 +1452,7 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       campaign: {
         publicId: campaign.public_id,
         timerConfig,
+        productPopup: normalizeProductPopupConfig(campaign.product_popup),
         revision: campaign.updated_at instanceof Date
           ? campaign.updated_at.toISOString()
           : String(campaign.updated_at || ''),
@@ -2154,6 +2179,7 @@ export function popupEmbedScript(origin) {
     const { campaign } = payload;
     const countdown = timerRuntime.start(campaign, previewMode);
     if (countdown?.expired) return;
+    const isProductPopup = campaign.type === 'product_popup';
     const isProductPromo = campaign.type === 'product_promo';
     const isPromoCode = campaign.type === 'promo_code';
     const isLeadForm = campaign.type === 'lead_form';
@@ -2261,7 +2287,7 @@ export function popupEmbedScript(origin) {
 @media(max-width:360px),(max-height:560px){.card.is-product-promo:not(.format-notification) .body{display:none}.card.is-product-promo:not(.format-notification) .recommendation{grid-template-columns:96px minmax(0,1fr)}.card.is-product-promo:not(.format-notification) .recommendation-image{height:96px}.card.is-product-promo.format-notification .recommendation{grid-template-columns:48px minmax(0,1fr) auto}.card.is-product-promo.format-notification .recommendation-media,.card.is-product-promo.format-notification .recommendation-image{width:48px;height:48px}}\`;
     shadow.append(style);
     const backdrop = document.createElement('div');
-    backdrop.className = isProductPromo ? 'product-promo-host' : 'backdrop ' + campaign.styles.layout;
+    backdrop.className = isProductPromo ? 'product-promo-host' : 'backdrop ' + (isProductPopup ? 'modal' : campaign.styles.layout);
     backdrop.style.setProperty('--accent', campaign.styles.accentColor);
     backdrop.style.setProperty('--bg', campaign.styles.backgroundColor);
     backdrop.style.setProperty('--text', campaign.styles.textColor);
@@ -2334,6 +2360,46 @@ export function popupEmbedScript(origin) {
       closeButton.className = 'close'; closeButton.type = 'button'; closeButton.setAttribute('aria-label', 'Закрити'); closeButton.textContent = '×';
       closeButton.addEventListener('click', () => { if (!previewMode) close('dismiss'); }); card.append(closeButton);
       if (!isProductPromo) backdrop.addEventListener('click', (clickEvent) => { if (!previewMode && clickEvent.target === backdrop) close('dismiss'); });
+    }
+    if (isProductPopup) {
+      const runtime = (${createProductPopupRuntime.toString()})(document);
+      const overflow = document.body.style.overflow;
+      let scrollLocked = false;
+      const releaseScroll = () => { if (scrollLocked) { document.body.style.overflow = overflow; scrollLocked = false; } };
+      style.textContent += runtime.css;
+      const offer = payload.products?.[0] || null;
+      const primary = runtime.render({ card, backdrop, campaign, product: offer, imageUrl: (value) => new URL(value, apiOrigin).href,
+        onBuy: async (button) => {
+          if (previewMode || !offer) return;
+          button.disabled = true; button.textContent = 'Додаємо…';
+          event(campaign.publicId, 'click', productArticle, { action: 'add_to_cart', recommendationProductId: offer.productId, modificationId: offer.modificationId, article: offer.article });
+          const isCurrent = () => currentHost === host && host.isConnected;
+          releaseScroll();
+          const result = await nativeBuy(offer, isCurrent);
+          if (!isCurrent()) return;
+          if (result === 'added' || result === 'already') close(null);
+          else { document.body.style.overflow = 'hidden'; scrollLocked = true; button.disabled = false; button.textContent = 'Спробувати ще'; button.title = 'Не вдалося додати товар. Повторіть спробу.'; }
+        },
+        onDetails: (clickEvent) => {
+          if (previewMode) { clickEvent.preventDefault(); return; }
+          event(campaign.publicId, 'click', productArticle, { action: 'open_product', recommendationProductId: offer.productId });
+        }
+      });
+      backdrop.append(card); shadow.append(backdrop); document.body.append(host);
+      currentHost = host; remember(payload); event(campaign.publicId, 'impression', productArticle);
+      if (!previewMode) {
+        document.body.style.overflow = 'hidden'; scrollLocked = true;
+        cleanupTasks.push(() => { releaseScroll(); if (document.activeElement === host && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); });
+        const onEscape = (keyEvent) => { if (keyEvent.key === 'Escape' && campaign.behavior.dismissible) close('dismiss'); };
+        document.addEventListener('keydown', onEscape); cleanupTasks.push(() => document.removeEventListener('keydown', onEscape));
+        if (campaign.behavior.autoCloseSeconds > 0) {
+          const timer = setTimeout(() => { if (currentHost === host) close('dismiss'); }, campaign.behavior.autoCloseSeconds * 1000);
+          cleanupTasks.push(() => clearTimeout(timer));
+        }
+        requestAnimationFrame(() => primary.focus());
+      }
+      activeCleanup = () => { for (const cleanup of cleanupTasks) cleanup(); };
+      return;
     }
     if (campaign.content.imageUrl && !(isProductPromo && promoFormat === 'notification')) {
       const image = document.createElement('img'); image.className = 'image'; image.src = imageUrl(campaign.content.imageUrl); image.alt = ''; card.append(image);

@@ -5,6 +5,30 @@
   padding-bottom: 36px;
 }
 
+.product-popup-section-title { display: flex; gap: 12px; align-items: flex-start; }
+.product-popup-section-title > svg { color: var(--brand); flex-shrink: 0; }
+.product-popup-section-title h2 { margin: 0 0 5px; font-size: 15px; }
+.product-popup-section-title p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.product-popup-catalog-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border-radius: 12px; background: var(--surface-soft); }
+.product-popup-catalog-summary > div { display: grid; gap: 6px; }
+.product-popup-catalog-summary strong { font-size: 13px; }
+.product-popup-catalog-summary span { color: var(--brand); font-size: 13px; font-weight: 700; }
+.product-popup-upload { display: flex; flex-wrap: wrap; gap: 16px; align-items: start; }
+.product-popup-upload > img { width: 110px; height: 125px; object-fit: contain; border-radius: 10px; background: var(--surface-soft); }
+.product-popup-upload > label { flex: 1 1 220px; }
+.product-popup-upload strong { color: var(--brand); font-size: 12px; }
+.product-popup-upload input[type='file'] { padding: 10px; }
+.product-popup-switch { display: flex!important; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; }
+.product-popup-switch input { position: relative; flex: 0 0 38px; width: 38px; height: 22px; margin: 0; appearance: none; border: 1px solid var(--line); border-radius: 999px; background: var(--muted); cursor: pointer; }
+.product-popup-switch input::before { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; content: ''; transition: transform .15s; }
+.product-popup-switch input:checked { border-color: var(--brand); background: var(--brand); }
+.product-popup-switch input:checked::before { transform: translateX(16px); }
+.product-popup-switch input:focus-visible { outline: 3px solid var(--brand-soft); outline-offset: 3px; }
+.product-popup-switch > span { color: var(--ink)!important; font-size: 12px!important; }
+.product-popup-color > div { display: flex; gap: 8px; }
+.product-popup-color input[type='color'] { flex: 0 0 44px; width: 44px; height: 42px; border: 1px solid var(--line); border-radius: 8px; }
+.product-popup-error { margin: 0; color: var(--danger); font-size: 12px; }
+
 .popup-banners-header {
   display: flex;
   align-items: flex-end;

@@ -19,7 +19,7 @@ async function setupPreview(page: Page, campaignType: 'product_promo' | 'lead_fo
       campaign: {
         publicId: 'preview', revision: 'preview-layout', type: input.campaignType, mode: input.targeting.mode,
         content: input.content, styles: input.styles, behavior: input.behavior,
-        timerConfig: input.timerConfig, formConfig: input.formConfig,
+        timerConfig: input.timerConfig, formConfig: input.formConfig, productPopup: input.productPopup,
         promoCode: input.campaignType === 'lead_form'
           ? { code: 'CONTACT15', type: 'percent_coupon', discountValue: 15, currency: '', scopeNote: 'Для першого замовлення' }
           : null
@@ -97,8 +97,8 @@ for (const surface of [
 
       const dialog = page.getByRole('dialog', { name: 'Оберіть тип банера' });
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole('button')).toHaveCount(7);
-      const firstType = dialog.getByRole('button', { name: /Товарний промобанер/u });
+      await expect(dialog.getByRole('button')).toHaveCount(8);
+      const firstType = dialog.getByRole('button', { name: /Попап із товаром/u });
       const lastType = dialog.getByRole('button', { name: /Альтернативи відсутнього товару/u });
       await expect(firstType).toBeFocused();
       await lastType.focus();
