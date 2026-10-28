@@ -17,7 +17,7 @@ const telegramService = compose.replace(/\r\n/g, '\n').match(
   /\n {2}telegram-bot-api:\n([\s\S]*?)(?=\n {2}[a-z0-9_-]+:\n|\n[a-z0-9_-]+:\n|$)/i
 )?.[1] || '';
 
-test('deployment publishes and pulls the same immutable full-SHA image', () => {
+test('deployment publishes and delivers the same immutable full-SHA image', () => {
   assert.match(workflow, /type=sha,prefix=sha-,format=long/);
   assert.match(workflow, /REPOSITORY="\$\(echo 'ghcr\.io\/\$\{\{ github\.repository \}\}' \| tr '\[:upper:\]' '\[:lower:\]'\)"/);
   assert.match(workflow, /IMAGE="\$REPOSITORY:sha-\$\{\{ github\.sha \}\}"/);
@@ -55,11 +55,18 @@ test('remote deployment fails fast and verifies the running revision', () => {
   assert.match(workflow, /grep -Fq 'id="storefront-root"' <<< "\$STOREFRONT"/);
 });
 
-test('remote deployment retries transient container registry failures', () => {
+test('deployment transfers a verified image archive instead of pulling GHCR layers from the VPS', () => {
   assert.match(workflow, /command_timeout: 20m/);
+  assert.match(workflow, /Prepare deployment image archive[\s\S]*for attempt in 1 2 3; do[\s\S]*docker pull "\$IMAGE"/);
+  assert.match(workflow, /docker save "\$IMAGE" \| gzip -1 > deployment-image\.tar\.gz/);
+  assert.match(workflow, /sha256sum deployment-image\.tar\.gz > deployment-image\.tar\.gz\.sha256/);
+  assert.match(workflow, /source: [^\r\n]*deployment-image\.tar\.gz,deployment-image\.tar\.gz\.sha256/);
+  const remoteScript = workflow.split('script: |')[1];
+  assert.match(remoteScript, /sha256sum --check deployment-image\.tar\.gz\.sha256[\s\S]*docker load --input deployment-image\.tar\.gz[\s\S]*EXPECTED_IMAGE_ID=/);
+  assert.doesNotMatch(remoteScript, /docker (?:pull|login) /);
+  // Keep retries for the independent, opt-in Telegram service.
   assert.match(workflow, /retry\(\) \{[\s\S]*until "\$@"; do[\s\S]*delay_seconds=\$\(\(delay_seconds \* 2\)\)/);
-  assert.match(workflow, /retry 4 5 login_ghcr/);
-  assert.match(workflow, /retry 5 10 docker pull "\$IMAGE"/);
+  assert.match(remoteScript, /retry 5 10 docker compose --profile telegram-local pull telegram-bot-api/);
 });
 
 test('remote deployment starts PostgreSQL, waits for readiness, and prints diagnostics on failure', () => {
