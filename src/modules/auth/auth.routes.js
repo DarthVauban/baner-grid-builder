@@ -13,6 +13,8 @@ import { verifyUserTwoFactor } from './two-factor.service.js';
 import { countUserPasskeys, finishPasskeyLogin, startPasskeyLogin } from './passkey.service.js';
 import qrLoginRoutes from './qr-login.routes.js';
 import { clearSessionCookie, setSessionCookie } from './session-cookie.js';
+import { getParentSession } from '../search/smart-search-sso.session.js';
+import { revokeParentSession } from '../search/smart-search-sso.service.js';
 import {
   cancelMobileLoginRequest,
   completeMobileLoginWithFallback,
@@ -251,10 +253,18 @@ router.post('/login/mobile/cancel', asyncHandler(async (req, res) => {
   res.status(204).end();
 }));
 
-router.post('/logout', (req, res) => {
+router.post('/logout', asyncHandler(async (req, res) => {
+  const parent = getParentSession(req);
+  if (parent) {
+    try {
+      await revokeParentSession(parent);
+    } catch {
+      throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Не вдалося підтвердити відкликання сесії. Повторіть вихід.');
+    }
+  }
   clearSessionCookie(res);
   res.status(204).end();
-});
+}));
 
 router.get('/me', requireAuth, (req, res) => {
   res.json({ data: req.user });

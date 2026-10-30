@@ -17,6 +17,7 @@ import { ProductSelectionPage } from '../pages/ProductSelectionPage';
 import { ToolsPage } from '../pages/ToolsPage';
 import { ToolAccessRoute } from '../components/ToolAccessRoute';
 import { BlogPublicationsPage } from '../pages/BlogPublicationsPage';
+import { getSmartSearchReturnPath } from '../search/smart-search-auth';
 
 const HoroshopStickersPage = lazy(() => import('../pages/HoroshopStickersPage').then((module) => ({ default: module.HoroshopStickersPage })));
 const HoroshopPopularityPage = lazy(() => import('../pages/HoroshopPopularityPage').then((module) => ({ default: module.HoroshopPopularityPage })));
@@ -142,9 +143,12 @@ function ProtectedRoute() {
 
 function AnonymousRoute() {
   const { status } = useAuth();
+  const location = useLocation();
   if (status === 'loading') return <LoadingScreen />;
   if (status === 'unavailable') return <ServiceUnavailableScreen />;
-  if (status === 'authenticated') return <Navigate to="/" replace />;
+  if (status === 'authenticated' && !(location.pathname === '/login' && getSmartSearchReturnPath(location.search))) {
+    return <Navigate to="/" replace />;
+  }
   return <Outlet />;
 }
 

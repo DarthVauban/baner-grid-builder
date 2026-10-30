@@ -1,9 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../lib/api';
 import { ToolsPage } from './ToolsPage';
+
+beforeEach(() => {
+  vi.spyOn(api.smartSearch, 'entry').mockResolvedValue({ url: null });
+});
 
 afterEach(() => {
   vi.useRealTimers();

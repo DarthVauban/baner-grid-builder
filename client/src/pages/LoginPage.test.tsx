@@ -15,7 +15,13 @@ const mocks = vi.hoisted(() => ({
   qrLoginConfig: vi.fn(),
   createQrLogin: vi.fn(),
   qrLoginStatus: vi.fn(),
-  cancelQrLogin: vi.fn()
+  cancelQrLogin: vi.fn(),
+  resumeSmartSearchAuthorization: vi.fn()
+}));
+
+vi.mock('../search/smart-search-auth', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../search/smart-search-auth')>(),
+  resumeSmartSearchAuthorization: mocks.resumeSmartSearchAuthorization
 }));
 
 vi.mock('../auth/AuthContext', () => ({
@@ -64,6 +70,16 @@ const mobileChallenge = {
     activeDeviceCount: 1
   }
 };
+
+const searchReturnPath = `/api/integrations/smart-search/authorize?${new URLSearchParams({
+  response_type: 'code', client_id: 'smart-search-dev',
+  redirect_uri: 'https://smart-search.mt-panel.sbs/auth/workspace/callback',
+  scope: 'smart-search:admin', state: 's'.repeat(43), code_challenge_method: 'S256', code_challenge: 'c'.repeat(43)
+})}`;
+
+function renderSearchLogin() {
+  return render(<MemoryRouter initialEntries={[`/login?${new URLSearchParams({ returnTo: searchReturnPath })}`]}><LoginPage /></MemoryRouter>);
+}
 
 async function startMobileLogin() {
   render(<MemoryRouter><LoginPage /></MemoryRouter>);
@@ -125,6 +141,57 @@ describe('LoginPage MT Workspace approval', () => {
       mobileChallenge.challengeToken
     ));
     expect(screen.getByRole('button', { name: 'Увійти' })).toBeInTheDocument();
+  });
+
+  it('resumes the exact Search authorization only after complete second-factor verification', async () => {
+    renderSearchLogin();
+    await userEvent.type(await screen.findByLabelText('Email'), mobileChallenge.email);
+    await userEvent.type(screen.getByLabelText('Пароль'), 'SecurePassword123!');
+    await userEvent.click(screen.getByRole('button', { name: 'Увійти' }));
+    expect(await screen.findByText('Очікуємо підтвердження')).toBeInTheDocument();
+    expect(mocks.resumeSmartSearchAuthorization).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: /Використати код/ }));
+    await userEvent.type(screen.getByLabelText('6-значний код або recovery code'), 'abcd-234567');
+    await userEvent.click(screen.getByRole('button', { name: 'Підтвердити код' }));
+    await waitFor(() => expect(mocks.resumeSmartSearchAuthorization).toHaveBeenCalledExactlyOnceWith(searchReturnPath));
+  });
+
+  it('resumes Search after successful password login without a second-factor challenge', async () => {
+    mocks.login.mockResolvedValue(null);
+    renderSearchLogin();
+    await userEvent.type(await screen.findByLabelText('Email'), mobileChallenge.email);
+    await userEvent.type(screen.getByLabelText('Пароль'), 'SecurePassword123!');
+    await userEvent.click(screen.getByRole('button', { name: 'Увійти' }));
+    await waitFor(() => expect(mocks.resumeSmartSearchAuthorization).toHaveBeenCalledExactlyOnceWith(searchReturnPath));
+  });
+
+  it('preserves Search state and PKCE through completed passkey verification', async () => {
+    mocks.login.mockResolvedValue({ ...mobileChallenge, passkeyAvailable: true });
+    mocks.startPasskeyLogin.mockResolvedValue({ challengeId: 'passkey-challenge', options: {} });
+    mocks.verifyLoginPasskey.mockResolvedValue(undefined);
+    renderSearchLogin();
+    await userEvent.type(await screen.findByLabelText('Email'), mobileChallenge.email);
+    await userEvent.type(screen.getByLabelText('Пароль'), 'SecurePassword123!');
+    await userEvent.click(screen.getByRole('button', { name: 'Увійти' }));
+    expect(await screen.findByText('Очікуємо підтвердження')).toBeInTheDocument();
+    expect(mocks.resumeSmartSearchAuthorization).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Увійти через Passkey' }));
+    await waitFor(() => expect(mocks.verifyLoginPasskey).toHaveBeenCalled());
+    expect(mocks.resumeSmartSearchAuthorization).toHaveBeenCalledExactlyOnceWith(searchReturnPath);
+  });
+
+  it('resumes Search only after the QR login has been consumed', async () => {
+    const deployment = { deploymentId: 'test-workspace', environment: 'test', displayName: 'MT Workspace Test', webOrigin: 'http://localhost:3000' };
+    mocks.qrLoginConfig.mockResolvedValue({ enabled: true, multiAccountPairingEnabled: true, ttlSeconds: 120, pollAfterMs: 10_000, deployment });
+    mocks.createQrLogin.mockResolvedValue({
+      challengeId: '30000000-0000-4000-8000-000000000001', browserToken: 'browser-secret',
+      qrPayload: 'mtw://login?v=1&c=challenge&s=scan', expiresAt: mobileChallenge.expiresAt, pollAfterMs: 10_000, deployment
+    });
+    mocks.qrLoginStatus.mockResolvedValue({ status: 'approved', expiresAt: mobileChallenge.expiresAt });
+    mocks.completeQrLogin.mockResolvedValue({ returnPath: '/' });
+    renderSearchLogin();
+    await waitFor(() => expect(mocks.completeQrLogin).toHaveBeenCalledWith('30000000-0000-4000-8000-000000000001', 'browser-secret'));
+    expect(mocks.resumeSmartSearchAuthorization).toHaveBeenCalledExactlyOnceWith(searchReturnPath);
   });
 
   it('shows QR login behind the feature flag and cancels it before password fallback', async () => {

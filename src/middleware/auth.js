@@ -5,14 +5,14 @@ import { verifyAccessToken } from '../lib/jwt.js';
 import { serializeUser } from '../lib/serializers.js';
 import { env } from '../config/env.js';
 
-function getToken(req) {
+export function getSessionToken(req) {
   const bearer = req.get('authorization');
   if (bearer && bearer.startsWith('Bearer ')) return bearer.slice(7).trim();
-  return req.cookies[env.COOKIE_NAME];
+  return req.cookies?.[env.COOKIE_NAME];
 }
 
 export const requireAuth = asyncHandler(async (req, res, next) => {
-  const token = getToken(req);
+  const token = getSessionToken(req);
   if (!token) throw new AppError(401, 'AUTH_REQUIRED', 'Потрібна авторизація.');
 
   let payload;

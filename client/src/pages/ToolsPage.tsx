@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
 import { horoshopWidgetTools, toolCategories, tools, workspaceSections } from '../lib/tools';
+import { SmartSearchEntry } from '../search/SmartSearchEntry';
 
 export function ToolsPage() {
   const queryClient = useQueryClient();
@@ -60,6 +61,8 @@ export function ToolsPage() {
         <h1>Інструменти</h1>
         <p>Усі доступні робочі інструменти зібрані в одному місці. Набір може відрізнятися залежно від наданих вам доступів.</p>
       </header>
+
+      <SmartSearchEntry />
 
       {catalog.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>{showRecovery ? 'Завантаження триває довше, ніж зазвичай.' : 'Завантажуємо інструменти…'}</p>{showRecovery && <button className="button button--secondary task-list-state__action" type="button" onClick={() => void restartCatalog()}>Перезапустити завантаження</button>}</div>}
       {catalog.isError && <div className="task-list-state task-list-state--error"><p>Не вдалося завантажити доступні інструменти.</p><button className="button button--secondary task-list-state__action" type="button" onClick={() => void restartCatalog()}>Спробувати ще</button></div>}
