@@ -1,16 +1,26 @@
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 import { env } from '../config/env.js';
 
 export function createAccessToken(user) {
   return jwt.sign(
-    { sub: user.id, role: user.role },
+    { sub: user.id, role: user.role, purpose: 'workspace_access' },
     env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN, issuer: 'mt-banner-builder' }
+    { expiresIn: env.JWT_EXPIRES_IN, issuer: 'mt-banner-builder', audience: 'mt-workspace', jwtid: randomUUID(), algorithm: 'HS256' }
   );
 }
 
 export function verifyAccessToken(token) {
-  return jwt.verify(token, env.JWT_SECRET, { issuer: 'mt-banner-builder' });
+  const payload = jwt.verify(token, env.JWT_SECRET, { issuer: 'mt-banner-builder', algorithms: ['HS256'] });
+  // Keep existing full login cookies valid, but never promote any challenge to a login.
+  const current = payload.purpose === 'workspace_access' && payload.aud === 'mt-workspace';
+  const legacy = payload.purpose === undefined && payload.aud === undefined;
+  if ((!current && !legacy) || typeof payload.sub !== 'string' || !payload.sub.length
+    || payload.sub.length > 128 || typeof payload.role !== 'string' || !payload.role.length
+    || !Number.isSafeInteger(payload.exp)) {
+    throw new Error('Invalid access token purpose');
+  }
+  return payload;
 }
 
 export function createTwoFactorLoginToken(user, { mobileLoginRequestId = null, jwtId } = {}) {

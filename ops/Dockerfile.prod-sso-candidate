@@ -1,0 +1,23 @@
+# Build-only delta image. BASE_IMAGE must be an immutable registry digest whose
+# manifest/platform/RootFS provenance matches the existing production image.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS client-build
+USER root
+WORKDIR /tmp/mt-workspace-sso-client-build
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
+COPY tsconfig.json vite.config.ts ./
+COPY client ./client
+RUN npm run build
+
+FROM ${BASE_IMAGE} AS runtime
+USER root
+# These are image build layers, not mounted runtime data or host directories.
+# Remove old generated assets so stale client bundles cannot remain reachable.
+RUN rm -rf /app/src /app/dist
+COPY src /app/src
+COPY --from=client-build /tmp/mt-workspace-sso-client-build/dist /app/dist
+ARG APP_BUILD_SHA
+ENV APP_BUILD_SHA=$APP_BUILD_SHA
+LABEL org.opencontainers.image.revision=$APP_BUILD_SHA
+USER nodeapp

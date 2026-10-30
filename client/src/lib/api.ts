@@ -193,10 +193,14 @@ import {
   type ApiSuccessPayload
 } from './api-client';
 import { horoshopApi } from './api-horoshop';
+import type { SmartSearchEntry } from '../search/types';
 
 export { ApiError } from './api-client';
 
 export const api = {
+  smartSearch: {
+    entry: (signal?: AbortSignal) => request<SmartSearchEntry>('/api/integrations/smart-search/entry', { signal })
+  },
   productSelections: {
     list: (search = '') => request<ProductSelection[]>(`/api/product-selections${queryString({ search })}`),
     catalog: (params: { search?: string; category?: string; availability?: string; page?: number; pageSize?: number } = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(

@@ -150,11 +150,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [clearSession]);
 
   const logout = useCallback(async () => {
-    try {
-      await api.auth.logout();
-    } finally {
-      clearSession();
-    }
+    // Keep the session available for retry until the server has durably revoked
+    // its Search grants and confirmed the browser logout.
+    await api.auth.logout();
+    clearSession();
   }, [clearSession]);
 
   const value = useMemo(() => ({

@@ -1,0 +1,418 @@
+name: Build production SSO candidate only
+
+# This workflow deliberately has no dispatch, deployment job, environment,
+# registry write, SSH credential or production server address.
+on:
+  push:
+    branches:
+      - codex/prod-workspace-sso-20261030
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-prod-sso-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/codex/prod-workspace-sso-20261030'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      nginx_fixture_image: ${{ steps.nginx-image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          # The upgrade test loads the exact deployed d5f33f source from Git.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+      - name: Verify exact candidate checkout
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF" = "refs/heads/codex/prod-workspace-sso-20261030"
+          test -f tests/smart-search-sso-upgrade.postgres.test.js
+      - run: npm ci
+      - run: npm run verify
+      - name: Prepare private disposable PostgreSQL fixture
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { randomBytes } from 'node:crypto';
+          import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          const name = 'mt-sso-pg-' + process.env.GITHUB_RUN_ID + '-' + process.env.GITHUB_RUN_ATTEMPT;
+          const directory = path.join(process.env.RUNNER_TEMP, name);
+          const password = randomBytes(32).toString('base64url');
+          const url = 'postgresql://sso_test:' + password + '@127.0.0.1:15432/workspace_sso_test';
+          // Runner masking commands are registered before any possible use.
+          // No plain credential/URL logging, shell argv or repository secret.
+          process.stdout.write('::add-mask::' + password + '\n');
+          process.stdout.write('::add-mask::' + url + '\n');
+          mkdirSync(directory, { mode: 0o700 });
+          const filename = path.join(directory, 'postgres.env');
+          writeFileSync(filename, [
+            'POSTGRES_USER=sso_test',
+            'POSTGRES_DB=workspace_sso_test',
+            'POSTGRES_PASSWORD=' + password,
+            'POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256',
+            ''
+          ].join('\n'), { mode: 0o600, flag: 'wx' });
+          appendFileSync(process.env.GITHUB_ENV, [
+            'CANDIDATE_PG_CONTAINER=' + name,
+            'CANDIDATE_PG_DIRECTORY=' + directory,
+            'CANDIDATE_PG_ENV_FILE=' + filename,
+            'CANDIDATE_SSO_DB_URL=' + url,
+            ''
+          ].join('\n'));
+          NODE
+      - name: Start PostgreSQL 16.14 on runner loopback
+        run: |
+          set -euo pipefail
+          docker run --detach --name "$CANDIDATE_PG_CONTAINER" \
+            --label "mt-workspace-ci-run=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --env-file "$CANDIDATE_PG_ENV_FILE" \
+            --publish 127.0.0.1:15432:5432 \
+            postgres:16.14-alpine3.24 >/dev/null
+          for attempt in $(seq 1 30); do
+            if docker exec "$CANDIDATE_PG_CONTAINER" \
+              pg_isready --quiet --username=sso_test --dbname=workspace_sso_test; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Disposable PostgreSQL fixture did not become ready." >&2
+          exit 1
+      - name: Verify exact disposable PostgreSQL version
+        env:
+          SMART_SEARCH_SSO_TEST_DATABASE_URL: ${{ env.CANDIDATE_SSO_DB_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import pg from 'pg';
+          const client = new pg.Client({ connectionString: process.env.SMART_SEARCH_SSO_TEST_DATABASE_URL });
+          try {
+            await client.connect();
+            const result = await client.query('SHOW server_version_num');
+            assert.equal(result.rows[0].server_version_num, '160014');
+            console.log('PostgreSQL 16.14 fixture version verified.');
+          } catch {
+            console.error('PostgreSQL fixture connection/version verification failed.');
+            process.exitCode = 1;
+          } finally {
+            await client.end().catch(() => {});
+          }
+          NODE
+      - name: Verify real PostgreSQL SSO and baseline upgrade/rollback
+        env:
+          SMART_SEARCH_SSO_TEST_DATABASE_URL: ${{ env.CANDIDATE_SSO_DB_URL }}
+          DATABASE_SSL: "false"
+        run: >-
+          node --import ./tests/test-env.js --test --test-concurrency=1
+          tests/smart-search-sso.integration.test.js
+          tests/smart-search-sso-upgrade.postgres.test.js
+      - name: Remove only this run's disposable PostgreSQL fixture
+        if: always()
+        run: |
+          set -euo pipefail
+          expected_name="mt-sso-pg-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          expected_directory="$RUNNER_TEMP/$expected_name"
+          if [ -n "${CANDIDATE_PG_CONTAINER:-}" ]; then
+            test "$CANDIDATE_PG_CONTAINER" = "$expected_name"
+            if docker inspect "$CANDIDATE_PG_CONTAINER" >/dev/null 2>&1; then
+              test "$(docker inspect --format '{{index .Config.Labels "mt-workspace-ci-run"}}' "$CANDIDATE_PG_CONTAINER")" = "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+              docker rm --force --volumes "$CANDIDATE_PG_CONTAINER" >/dev/null
+            fi
+          fi
+          if [ -n "${CANDIDATE_PG_DIRECTORY:-}" ] && [ -d "$CANDIDATE_PG_DIRECTORY" ]; then
+            test "$CANDIDATE_PG_DIRECTORY" = "$expected_directory"
+            test "$(realpath "$CANDIDATE_PG_DIRECTORY")" = "$expected_directory"
+            test ! -L "$CANDIDATE_PG_DIRECTORY/postgres.env"
+            rm -f -- "$CANDIDATE_PG_DIRECTORY/postgres.env"
+            rmdir -- "$CANDIDATE_PG_DIRECTORY"
+          fi
+      - name: Resolve only the official Nginx 1.24.0 fixture tag
+        id: nginx-image
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 --quiet nginx:1.24.0
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+          const image = JSON.parse(execFileSync('docker', ['image', 'inspect', 'nginx:1.24.0'], { encoding: 'utf8' }))[0];
+          assert.equal(image.Os, 'linux');
+          assert.equal(image.Architecture, 'amd64');
+          const digest = (image.RepoDigests || []).find(value => /^(?:docker\.io\/library\/)?nginx@sha256:[a-f0-9]{64}$/.test(value));
+          assert.ok(digest, 'The official Nginx fixture has no immutable digest.');
+          appendFileSync(process.env.GITHUB_OUTPUT, 'image=' + digest + '\n');
+          NODE
+      - name: Verify isolated Nginx auth logging and default-server scope
+        env:
+          NGINX_FIXTURE_IMAGE: ${{ steps.nginx-image.outputs.image }}
+        run: python3 tests/ops/nginx_sso_log_policy.py --image "$NGINX_FIXTURE_IMAGE"
+
+  e2e:
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  build:
+    needs: [quality, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: read
+    env:
+      BASE_IMAGE: ghcr.io/darthvauban/baner-grid-builder@sha256:fb31f27634b8b7490468cd83095a24daed40677a10c437b7901163216a02d88c
+      CANDIDATE_IMAGE: mt-workspace-prod-sso-candidate:sha-${{ github.sha }}
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+      DOCKER_BUILD_SUMMARY: "false"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Guard source and create a clean archive build context
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF" = "refs/heads/codex/prod-workspace-sso-20261030"
+          test "$(uname -m)" = "x86_64"
+          # Runtime dependencies must remain exactly those in the old image.
+          git diff --exit-code d5f33f76a7abdcaabb045023b9b0ceb3247850c8 HEAD -- package.json package-lock.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          const changes = execFileSync('git', ['diff', '--name-status',
+            'd5f33f76a7abdcaabb045023b9b0ceb3247850c8', 'HEAD', '--', 'src/migrations'], { encoding: 'utf8' });
+          assert.equal(changes.trim(), 'A\tsrc/migrations/103_smart_search_sso.sql');
+          NODE
+          mkdir -m 700 "$RUNNER_TEMP/prod-sso-build-context"
+          git archive --format=tar "$GITHUB_SHA" \
+            | tar -xf - -C "$RUNNER_TEMP/prod-sso-build-context"
+      - name: Authenticate read-only download of the existing base image
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull only the immutable base and verify manifest/platform/layers
+        id: base
+        run: |
+          set -euo pipefail
+          # No mutable-tag fallback if the pinned digest is unavailable.
+          docker pull --platform linux/amd64 --quiet "$BASE_IMAGE"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+          const expected = JSON.parse(readFileSync('ops/prod-sso-base-image-provenance.json', 'utf8'));
+          assert.equal(expected.registryReference, process.env.BASE_IMAGE);
+          const inspect = JSON.parse(execFileSync('docker', ['image', 'inspect', process.env.BASE_IMAGE], { encoding: 'utf8' }))[0];
+          assert.equal(inspect.Os, expected.os);
+          assert.equal(inspect.Architecture, expected.architecture);
+          assert.equal(inspect.Config.User, expected.user);
+          assert.equal(inspect.Config.WorkingDir, expected.workingDir);
+          assert.deepEqual(inspect.Config.Volumes ?? null, expected.declaredVolumes);
+          assert.deepEqual(inspect.RootFS.Layers, expected.rootfsDiffIds);
+          assert.equal(inspect.Config.Labels['org.opencontainers.image.revision'], expected.sourceRevision);
+          assert.ok((inspect.RepoDigests || []).includes(expected.registryReference));
+          // Engine-local IDs are not portable: containerd may report a manifest
+          // target while the classic store reports its configuration digest.
+          const prefix = 'ghcr.io/darthvauban/baner-grid-builder@sha256:';
+          assert.ok(process.env.BASE_IMAGE.startsWith(prefix));
+          const rawManifest = reference => JSON.parse(execFileSync('docker',
+            ['buildx', 'imagetools', 'inspect', '--raw', reference], { encoding: 'utf8' }));
+          let manifest = rawManifest(process.env.BASE_IMAGE);
+          let platformManifestDigest = 'sha256:' + process.env.BASE_IMAGE.slice(prefix.length);
+          if (Array.isArray(manifest.manifests)) {
+            const descriptors = manifest.manifests.filter(item => item.platform?.os === expected.os
+              && item.platform?.architecture === expected.architecture);
+            assert.equal(descriptors.length, 1, 'Expected exactly one matching base platform manifest.');
+            platformManifestDigest = descriptors[0].digest;
+            assert.match(platformManifestDigest, /^sha256:[a-f0-9]{64}$/);
+            manifest = rawManifest('ghcr.io/darthvauban/baner-grid-builder@' + platformManifestDigest);
+          }
+          assert.match(manifest.config?.digest || '', /^sha256:[a-f0-9]{64}$/);
+          assert.ok(Array.isArray(manifest.layers) && manifest.layers.length === expected.rootfsDiffIds.length);
+          const provenance = {
+            registryReference: expected.registryReference,
+            platformManifestDigest,
+            registryConfigDigest: manifest.config.digest,
+            registryLayerDescriptors: manifest.layers.map(item => ({ digest: item.digest, mediaType: item.mediaType, size: item.size })),
+            rootfsDiffIds: expected.rootfsDiffIds,
+            sourceRevision: expected.sourceRevision,
+            platform: expected.os + '/' + expected.architecture,
+            hostEngineLocalImageId: expected.hostEngineLocalImageId,
+            hostImageStoreDriver: expected.hostImageStoreDriver,
+            ciEngineLocalImageId: inspect.Id
+          };
+          writeFileSync(process.env.RUNNER_TEMP + '/prod-sso-base-image.json', JSON.stringify(inspect), { mode: 0o600 });
+          writeFileSync(process.env.RUNNER_TEMP + '/prod-sso-base-provenance.json', JSON.stringify(provenance));
+          appendFileSync(process.env.GITHUB_OUTPUT, 'image=' + expected.registryReference + '\n');
+          NODE
+      - name: Build delta image without upgrading the runtime base
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ runner.temp }}/prod-sso-build-context
+          file: ${{ runner.temp }}/prod-sso-build-context/ops/Dockerfile.prod-sso-candidate
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: ${{ env.CANDIDATE_IMAGE }}
+          build-args: |
+            BASE_IMAGE=${{ steps.base.outputs.image }}
+            APP_BUILD_SHA=${{ github.sha }}
+      - name: Verify preserved runtime configuration and write provenance
+        env:
+          VERIFIED_BASE_IMAGE: ${{ steps.base.outputs.image }}
+          BUILD_RESULT_METADATA: ${{ steps.image.outputs.metadata }}
+          NGINX_FIXTURE_IMAGE: ${{ needs.quality.outputs.nginx_fixture_image }}
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/prod-sso-release"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const base = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/prod-sso-base-image.json', 'utf8'));
+          const baseProvenance = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/prod-sso-base-provenance.json', 'utf8'));
+          const candidate = JSON.parse(execFileSync('docker', ['image', 'inspect', process.env.CANDIDATE_IMAGE], { encoding: 'utf8' }))[0];
+          assert.equal(candidate.Os, 'linux');
+          assert.equal(candidate.Architecture, 'amd64');
+          assert.match(candidate.Id, /^sha256:[a-f0-9]{64}$/);
+          assert.deepEqual(candidate.RootFS.Layers.slice(0, base.RootFS.Layers.length), base.RootFS.Layers);
+          const envMap = values => Object.fromEntries((values || []).map(value => {
+            const separator = value.indexOf('=');
+            return [value.slice(0, separator), value.slice(separator + 1)];
+          }));
+          const candidateEnv = envMap(candidate.Config.Env);
+          assert.equal(candidateEnv.APP_BUILD_SHA, process.env.GITHUB_SHA);
+          assert.equal(candidate.Config.Labels['org.opencontainers.image.revision'], process.env.GITHUB_SHA);
+          const normalized = config => {
+            const copy = structuredClone(config);
+            copy.Env = envMap(copy.Env);
+            delete copy.Env.APP_BUILD_SHA;
+            copy.Labels = { ...(copy.Labels || {}) };
+            delete copy.Labels['org.opencontainers.image.revision'];
+            return copy;
+          };
+          const stable = value => {
+            if (Array.isArray(value)) return value.map(stable);
+            if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+            return value;
+          };
+          // Never dump Config/Env values in an assertion failure.
+          assert.ok(JSON.stringify(stable(normalized(base.Config))) === JSON.stringify(stable(normalized(candidate.Config))),
+            'Runtime image configuration changed beyond APP_BUILD_SHA/OCI revision.');
+          const rawBuildResult = JSON.parse(process.env.BUILD_RESULT_METADATA || '{}');
+          const buildDigests = {};
+          for (const key of ['containerimage.config.digest', 'containerimage.digest']) {
+            if (rawBuildResult[key]) {
+              assert.match(rawBuildResult[key], /^sha256:[a-f0-9]{64}$/);
+              buildDigests[key] = rawBuildResult[key];
+            }
+          }
+          const provenance = {
+            schema: 'mt-workspace-prod-sso-candidate/v1',
+            repository: process.env.GITHUB_REPOSITORY,
+            sourceSha: process.env.GITHUB_SHA,
+            ref: process.env.GITHUB_REF,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            runUrl: process.env.GITHUB_SERVER_URL + '/' + process.env.GITHUB_REPOSITORY + '/actions/runs/' + process.env.GITHUB_RUN_ID,
+            platform: 'linux/amd64',
+            deployedSourceSha: 'd5f33f76a7abdcaabb045023b9b0ceb3247850c8',
+            base: baseProvenance,
+            image: process.env.CANDIDATE_IMAGE,
+            ciEngineLocalImageId: candidate.Id,
+            rootfsDiffIds: candidate.RootFS.Layers,
+            ociRevision: candidate.Config.Labels['org.opencontainers.image.revision'],
+            runtimeConfigPreserved: true,
+            qualityJobRequired: true,
+            e2eJobRequired: true,
+            postgresFixtureVersion: '16.14',
+            nginxFixtureImage: process.env.NGINX_FIXTURE_IMAGE,
+            nginxFixtureVersion: '1.24.0',
+            registryPush: false,
+            deploymentPerformed: false,
+            provenanceType: 'workflow metadata; not a signed SLSA attestation',
+            // Whitelist public digests; never upload arbitrary action metadata.
+            buildResult: buildDigests
+          };
+          writeFileSync(process.env.RUNNER_TEMP + '/prod-sso-candidate-image.json', JSON.stringify(candidate), { mode: 0o600 });
+          writeFileSync(process.env.RUNNER_TEMP + '/prod-sso-release/provenance.json', JSON.stringify(provenance, null, 2) + '\n');
+          NODE
+          docker image save "$CANDIDATE_IMAGE" \
+            | gzip -1 > "$RUNNER_TEMP/prod-sso-release/workspace-prod-sso-image.tar.gz"
+          # Verify the saved OCI configuration and uncompressed layer identities.
+          # Engine-local IDs can differ after loading the same archive elsewhere.
+          python3 <<'PY'
+          import hashlib, json, os, pathlib, tarfile
+          directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'prod-sso-release'
+          filename = directory / 'workspace-prod-sso-image.tar.gz'
+          with tarfile.open(filename, 'r:gz') as archive:
+              manifest_bytes = archive.extractfile('manifest.json').read()
+              entries = [item for item in json.loads(manifest_bytes)
+                         if os.environ['CANDIDATE_IMAGE'] in (item.get('RepoTags') or [])]
+              assert len(entries) == 1, 'Expected one saved candidate image.'
+              config_path = pathlib.PurePosixPath(entries[0]['Config'])
+              assert not config_path.is_absolute() and '..' not in config_path.parts
+              member = archive.getmember(str(config_path))
+              assert member.isfile() and member.size <= 2_000_000
+              config_bytes = archive.extractfile(member).read()
+          config_digest = 'sha256:' + hashlib.sha256(config_bytes).hexdigest()
+          config = json.loads(config_bytes)
+          provenance_path = directory / 'provenance.json'
+          provenance = json.loads(provenance_path.read_text())
+          assert config['os'] == 'linux' and config['architecture'] == 'amd64'
+          assert config['rootfs']['diff_ids'] == provenance['rootfsDiffIds']
+          config_env = dict(value.split('=', 1) for value in config['config']['Env'])
+          assert config_env['APP_BUILD_SHA'] == os.environ['GITHUB_SHA']
+          assert config['config']['Labels']['org.opencontainers.image.revision'] == os.environ['GITHUB_SHA']
+          metadata_digest = provenance['buildResult'].get('containerimage.config.digest')
+          assert not metadata_digest or metadata_digest == config_digest
+          provenance['archiveConfigDigest'] = config_digest
+          provenance['dockerArchiveManifestSha256'] = hashlib.sha256(manifest_bytes).hexdigest()
+          provenance['identityNote'] = 'Validate archive/config/rootfs/revision across stores; compare container.Image only with the image ID reported by that same server.'
+          provenance_path.write_text(json.dumps(provenance, indent=2) + '\n')
+          PY
+          cd "$RUNNER_TEMP/prod-sso-release"
+          sha256sum workspace-prod-sso-image.tar.gz provenance.json > SHA256SUMS
+      - name: Upload the reviewed image archive and provenance only
+        id: artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: workspace-prod-sso-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/prod-sso-release/workspace-prod-sso-image.tar.gz
+            ${{ runner.temp }}/prod-sso-release/provenance.json
+            ${{ runner.temp }}/prod-sso-release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          include-hidden-files: false

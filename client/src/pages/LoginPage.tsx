@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -9,6 +9,7 @@ import type { QrLoginConfig, TwoFactorLoginChallenge } from '../types/user';
 import { api } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { QrLoginPanel } from '../components/QrLoginPanel';
+import { getSmartSearchReturnPath, resumeSmartSearchAuthorization } from '../search/smart-search-auth';
 
 interface LocationState {
   from?: string;
@@ -16,10 +17,22 @@ interface LocationState {
 }
 
 export function LoginPage() {
-  const { login, verifyLoginTwoFactor, verifyLoginPasskey, verifyMobileLogin } = useAuth();
+  const { status, login, verifyLoginTwoFactor, verifyLoginPasskey, verifyMobileLogin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const state = (location.state || {}) as LocationState;
+  const smartSearchReturnPath = getSmartSearchReturnPath(location.search);
+  const resumedSearch = useRef(false);
+  const finishLogin = useCallback((fallbackPath?: string) => {
+    if (smartSearchReturnPath) {
+      if (!resumedSearch.current) {
+        resumedSearch.current = true;
+        resumeSmartSearchAuthorization(smartSearchReturnPath);
+      }
+      return;
+    }
+    navigate(fallbackPath || state.from || '/', { replace: true });
+  }, [navigate, smartSearchReturnPath, state.from]);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [email, setEmail] = useState('');
@@ -52,9 +65,13 @@ export function LoginPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (status === 'authenticated' && smartSearchReturnPath) finishLogin();
+  }, [status, smartSearchReturnPath, finishLogin]);
+
   const handleQrAuthenticated = useCallback((returnPath: string) => {
-    navigate(returnPath || state.from || '/', { replace: true });
-  }, [navigate, state.from]);
+    finishLogin(returnPath);
+  }, [finishLogin]);
 
   const mobileApproval = challenge?.twoFactorMethod === 'mt_workspace'
     ? challenge.mobileApproval
@@ -75,7 +92,7 @@ export function LoginPage() {
         });
         if (!active) return;
         if (result.status === 'approved' && result.user) {
-          navigate(state.from || '/', { replace: true });
+          finishLogin();
           return;
         }
         if (result.status === 'denied' || result.status === 'expired') {
@@ -101,7 +118,7 @@ export function LoginPage() {
       if (pollTimer) window.clearTimeout(pollTimer);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [challenge, mobileApproval, mobileStatus, navigate, state.from, verifyMobileLogin]);
+  }, [challenge, mobileApproval, mobileStatus, finishLogin, verifyMobileLogin]);
 
   useEffect(() => {
     if (!challenge) return undefined;
@@ -127,7 +144,7 @@ export function LoginPage() {
         setManualFallback(twoFactorChallenge.twoFactorMethod === 'mt_workspace'
           && (twoFactorChallenge.mobileApproval?.activeDeviceCount || 0) === 0);
       } else {
-        navigate(state.from || '/', { replace: true });
+        finishLogin();
       }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Не вдалося увійти.');
@@ -147,7 +164,7 @@ export function LoginPage() {
         challengeToken: challenge.challengeToken,
         code: twoFactorCode
       });
-      navigate(state.from || '/', { replace: true });
+      finishLogin();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Не вдалося підтвердити 2FA.');
     } finally {
@@ -167,7 +184,7 @@ export function LoginPage() {
       const passkeyChallenge = await api.auth.startPasskeyLogin(challenge.challengeToken);
       const response = await startAuthentication({ optionsJSON: passkeyChallenge.options });
       await verifyLoginPasskey(passkeyChallenge.challengeId, response);
-      navigate(state.from || '/', { replace: true });
+      finishLogin();
     } catch (passkeyError) {
       setError(passkeyError instanceof Error
         ? passkeyError.message

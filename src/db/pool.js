@@ -36,6 +36,14 @@ if (env.NODE_ENV === 'test' && env.DATABASE_URL.startsWith('pg-mem://')) {
       return typeof value === 'object' ? 'object' : typeof value;
     }
   });
+  memoryDb.public.registerOperator({
+    operator: '~', left: DataType.text, right: DataType.text,
+    returns: DataType.bool, implementation: (value, pattern) => new RegExp(pattern).test(value)
+  });
+  memoryDb.public.registerFunction({
+    name: 'length', args: [DataType.text], returns: DataType.integer,
+    implementation: (value) => value.length
+  });
   Pool = memoryDb.adapters.createPg().Pool;
 }
 

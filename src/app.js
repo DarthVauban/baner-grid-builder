@@ -8,6 +8,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './modules/auth/auth.routes.js';
+import smartSearchSsoRoutes from './modules/search/smart-search-sso.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import gridRoutes from './modules/grids/grid.routes.js';
 import publicGridRoutes from './modules/grids/grid.public.routes.js';
@@ -163,6 +164,9 @@ app.use(asyncHandler(async (req, res, next) => {
   }
   return res.status(404).type('text').send('Not found');
 }));
+
+// Isolated server-to-server transport: no credentialed CORS or global JSON parser.
+app.use('/api/integrations/smart-search', cookieParser(), smartSearchSsoRoutes);
 
 if (env.APP_ORIGIN) {
   app.use((req, res, next) => {

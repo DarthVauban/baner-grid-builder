@@ -11,13 +11,16 @@ import { NotificationCenter } from './NotificationCenter';
 import { HoroshopCatalogSyncIndicator } from './HoroshopCatalogSyncIndicator';
 import { isWorkspaceToolPath, ToolBackButton } from './ToolBackButton';
 import { UserAvatar } from './UserAvatar';
+import { useToast } from '../toast/ToastContext';
 
 export function AppShell() {
   const { user, logout } = useAuth();
+  const { showToast } = useToast();
   const location = useLocation();
   const queryClient = useQueryClient();
   const userId = user?.id;
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('mt-sidebar-collapsed') === 'true');
   const sidebarRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -160,6 +163,17 @@ export function AppShell() {
   }, [hasCatalogAccess, queryClient, userId]);
 
   const closeSidebar = () => setSidebarOpen(false);
+  const handleLogout = async () => {
+    if (logoutPending) return;
+    setLogoutPending(true);
+    try {
+      await logout();
+    } catch {
+      showToast('Не вдалося завершити вихід. Спробуйте ще раз.', 'error');
+    } finally {
+      setLogoutPending(false);
+    }
+  };
   const toggleSidebar = () => {
     if (window.matchMedia('(min-width: 921px)').matches && sidebarRef.current && contentRef.current) {
       previousLayoutRef.current = {
@@ -324,7 +338,7 @@ export function AppShell() {
             <UserAvatar name={user.name} avatarUrl={user.avatarUrl} />
             <span className="sidebar__profile-copy"><strong>{user.name}</strong><small>{roleLabels[user.role]}</small></span>
           </Link>
-          <button className="icon-button" type="button" onClick={() => void logout()} aria-label="Вийти">
+          <button className="icon-button" type="button" disabled={logoutPending} onClick={() => void handleLogout()} aria-label="Вийти">
             <Icon name="logout" size={18} />
           </button>
         </div>

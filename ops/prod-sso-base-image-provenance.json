@@ -1,0 +1,25 @@
+{
+  "registryReference": "ghcr.io/darthvauban/baner-grid-builder@sha256:fb31f27634b8b7490468cd83095a24daed40677a10c437b7901163216a02d88c",
+  "hostEngineLocalImageId": "sha256:fb31f27634b8b7490468cd83095a24daed40677a10c437b7901163216a02d88c",
+  "hostEngineServerVersion": "29.7.1",
+  "hostImageStoreDriver": "io.containerd.snapshotter.v1",
+  "sourceRevision": "d5f33f76a7abdcaabb045023b9b0ceb3247850c8",
+  "os": "linux",
+  "architecture": "amd64",
+  "user": "nodeapp",
+  "workingDir": "/app",
+  "declaredVolumes": null,
+  "rootfsDiffIds": [
+    "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1",
+    "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+    "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+    "sha256:afa543f85b4685a84338df3e2c429edca49bb372b0f49e0c5cc9724c820ad094",
+    "sha256:c95fd951d4f9ed5918e12c2b2ceb32037d647b6fe91656b0a38586733bed8f12",
+    "sha256:a5f45f51387ce53d5f43d053606acab2b3b9f3cc0dabc2e18b047ea4573b004c",
+    "sha256:cc11e00f4e6addcbf69231bd2febe674140e0a5d7d5fbd56dae081fe1bafac5a",
+    "sha256:0ca48ca2fe2e408e4865294baef1b4f56061a319673abdde4a420d5cc9a89aa3",
+    "sha256:612f8bbdea732aaeb81170703f7c7a5b405a59fb9e30e365498f010407fd8202",
+    "sha256:b630743f89a368f34d03b824c6b60e1052e72037a9f64447d498aeecd4ddc7de"
+  ],
+  "note": "Do not compare engine-local IDs across classic/config and containerd/manifest image stores; validate immutable manifest/config/platform/layer provenance and record IDs separately."
+}
