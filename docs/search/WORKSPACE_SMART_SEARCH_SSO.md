@@ -21,9 +21,10 @@ SMART_SEARCH_SSO_CLIENT_SECRET=<dedicated random 32-byte base64url secret>
 SMART_SEARCH_SSO_REDIRECT_URI=https://smart-search.mt-panel.sbs/auth/workspace/callback
 ```
 
-No secret is generated, printed, committed, or installed by this change. An operator
-must generate the dedicated secret and deliver the same value to both services using
-an approved secret channel. Do not reuse JWT, database, or Horoshop credentials.
+The provider source does not generate, print or install a client secret. Operational
+provisioning is separate; its verified dev status is recorded in the handoff below.
+Operators must deliver the same dedicated value to both services using an approved
+secret channel. Never commit or print it, or reuse JWT/database/Horoshop credentials.
 The existing Workspace Compose app already reads server settings through its env
 file; no Compose or server resources need changing for this implementation.
 
@@ -190,25 +191,63 @@ Verified live target:
   build SHA `16bc011f800295674d933d44c6f73a18b5edaf23`.
 - Public `/api/auth/login/qr/config` returns deployment environment `development`.
   This check does not create a login challenge.
-- Migration 103 has not been directly queried in the live database. Automatic
-  approval review rejected read-only container execution, referring to the separate
-  Search repository's container restriction. No alternative container-entry route
-  was used. Direct verification remains an operator/approval dependency.
+- Migration 103's ledger row has not been directly queried. Automatic approval
+  review rejected read-only container execution, referring to the separate Search
+  repository's container restriction. The later approved external operator checks
+  instead verified the configured, restarted provider through real database-backed
+  introspection, code lookup and revocation HTTP paths. Schema availability is
+  verified through those paths; the ledger row is not claimed as directly read.
+  No alternative container-entry route was used.
 
-Provisioning is **BLOCKED pending coordination**. All three `SMART_SEARCH_SSO_*`
-keys are absent from the audited dev runtime file. This does not establish whether
-an uninstalled dedicated secret already exists in an operator's secret manager.
-No approved transfer channel, receiving Search operator, or credential/TOTP vault
-has been confirmed. Do not generate a new secret until those prerequisites hold,
-and do not rotate a previously issued dedicated secret unilaterally.
+Provisioning is **DEV WORKSPACE + SEARCH CONFIGURED / VERIFIED**. The initial
+audit found all three `SMART_SEARCH_SSO_*` keys absent. The user subsequently
+authorized direct coordination with the existing Smart Search agent. Both sides
+confirmed no installed dedicated secret and agreed an operator-controlled channel:
+one short-lived root-owned regular file (mode 600, no symlink/hardlink) inside a new
+root-owned mode-700 directory under the audited Workspace dev directory, outside
+Git. Search accepted read-only access to that exact transfer file through its
+existing strict-known-host root SSH connection. It does not read Workspace `.env`,
+database, other credentials or containers. Neither the value nor its hash is sent
+in chat, argv, stdout, logs or screenshots. Verified import and bounded cleanup
+have both completed; the temporary transfer file and its empty private directory
+no longer exist.
 
-The existing Compose app consumes the runtime `.env`; exporting host variables or
-using Compose `--env-file` for interpolation alone does not inject new keys into
-the running app. The operator must preserve unrelated runtime settings and use an
-approved scoped dev provisioning/recreate procedure. The repository `.env` and all
-Search resources remain outside this agent's provisioning scope.
+Search first completed its own isolated callback logging and guarded app-only
+readiness update, then explicitly paused all mutations. Only after that READY and
+the Workspace preflight passed was **one** new dedicated value generated using
+host Node `crypto.randomBytes(32).toString('base64url')`. Protected source metadata,
+format and unchanged container snapshots passed. No second value was generated.
 
-Unauthenticated live smoke:
+The existing Compose app consumes the server runtime `.env`; exporting host
+variables or using Compose `--env-file` for interpolation alone does not inject new
+keys into the running app. The operator procedure added exactly the three agreed
+keys to `/opt/mt-workspace/dev/.env`, preserving every original byte, UID/GID
+1000:1000, mode 600 and extended attributes. A root-only mode-700 backup directory
+with a mode-600 original is retained under
+`/opt/mt-workspace/dev/.sso-runtime-backup-51bbafbb-f654-4f43-9327-71a8c0636058/`.
+The repository `.env` and all Search resources remain outside this agent's writes.
+
+The current app image and public health build before/after provisioning are
+`25551f52db55f34e6872cf9c6f78b7a538c65931`, a documentation-only successor of the
+provider implementation. The only app recreation used the exact audited Compose
+file/project and `up -d --no-deps --no-build --pull never app`, pinning that same
+existing image and image ID. All 14 non-app containers retained their exact IDs,
+images, StartedAt, health and ports around backup, env update and app recreation.
+No database/Telegram/production/Search container was recreated by Workspace.
+
+Compose 5.3.1's direct `config --hash` does not resolve `env_file` like `up`.
+Before any generation or write, a read-only diagnostic proved one exact matching
+resolved app model using canonical JSON passed through stdin, with no config or
+hash output. An installed-CLI synthetic literal-dollar probe verified that escaped
+values survive two different synthetic environments, while an unescaped negative
+control changes the hash. The source-native escaped-model round trip was selected.
+Only workflow-defined Telegram mode candidates were examined; the default model
+matched, so **no Telegram override or other setting changed**. The same exact
+resolved-model equality guarded apply, post-check and rollback. This method follows
+the versioned [Compose config implementation](https://github.com/docker/compose/blob/v5.3.1/cmd/compose/config.go)
+and [ServiceHash implementation](https://github.com/docker/compose/blob/v5.3.1/pkg/compose/hash.go).
+
+Initial unauthenticated live smoke before provisioning:
 
 | Check | Observed result |
 | --- | --- |
@@ -220,9 +259,24 @@ Unauthenticated live smoke:
 | Search session | 401 `workspace_auth_required` |
 | Search login | 503 while SSO is unconfigured |
 
-The authenticated Basic smoke with an unknown synthetic token must still be run
-after provisioning: expected 200 with only `{ "active": false }`, unwrapped and
-no-store. Never place the Basic value in command arguments or diagnostic output.
+Post-provisioning external HTTPS smoke is **PASS**. Basic credentials are read
+only in process memory from the protected source, never command arguments/output:
+
+| Check | Observed result |
+| --- | --- |
+| Correct Basic, random 43-character unknown token | 200, exactly `{ "active": false }`, real database lookup |
+| Missing / wrong Basic credentials | 401 `invalid_client` |
+| Correct Basic, valid-format unknown code/verifier | 400 `invalid_grant` |
+| Correct Basic, unknown token revoke | 200, empty body |
+| All back-channel smoke responses | no-store, expected unwrapped contract, no login redirect |
+| Health and public native QR config | 200, expected same build, development native identity |
+| Anonymous authorize with synthetic S256/state | 302 to exact local login/authorize return path; state/challenge preserved |
+| Unregistered callback / duplicate state | Local 400 without redirect |
+
+Short `unknown` strings were intentionally not used for introspection: they would
+be rejected before the actual database lookup. No real user session, authorization
+code, Search access token, native phone approval or account mutation was created by
+these synthetic provider checks.
 
 The active dev proxy is `/etc/nginx/sites-enabled/dev.mt-panel.sbs`, resolving to
 root-owned `/etc/nginx/sites-available/dev.mt-panel.sbs` (mode 644). It contains only
@@ -268,38 +322,107 @@ confirmed `off` / `/dev/null` on both dev vhosts and their locations. Raw config
 and auth log lines were never emitted. Canary checks did not simulate an upstream
 outage; error-log safety is established by its effective null destination.
 
-Search callback-log redaction is separately **UNCONFIRMED** and belongs to its
-operator. Real SSO must not start until both sides pass logging verification.
+Coordinated Search completion, reported and verified by its authorized agent:
 
-Dedicated account preparation is **BLOCKED** until controlled dev account ownership,
-inbox access, an authorized admin session, and secure password/TOTP storage are
-confirmed. No account IDs, roles, 2FA readiness, or usable browser sessions have
-been claimed or changed. The exact existing preparation/acceptance contract is:
+- Audited dev directory `/home/mtdeploy/search-platform/dev`, user `mtdeploy`
+  UID/GID 1000, project `search-platform-dev`, service `app`, loopback port 3201.
+- Only its new `.search-platform-workspace-auth.env` was provisioned: regular,
+  no symlink/hardlink, UID/GID 1000, mode 600, exactly the three agreed
+  newline-terminated unquoted settings. Its existing database/encryption secrets
+  were not changed. Workspace did not write any Search file.
+- Guarded app-only deployment completed on Search build
+  `e44e7540a2a504f31374a756af92767aa8374e4d`. Runtime SSO settings are active;
+  its actual app's Basic-authenticated, random 43-character unknown-token lookup
+  returned exactly 200 `{ "active": false }`. Missing/wrong client returned 401,
+  unknown grant 400, revoke empty 200, with no-store. This confirms both installed
+  clients use the same dedicated value without exposing or comparing it in chat.
+- Own readiness CLI reported ready/catalog indexes ready with one store. Its
+  guarded deployment preserved all 14 non-app containers and all 12 loaded Nginx
+  configurations. The Search agent reported all 177 local checks passing.
+- After its explicit verified-import/runtime ACK and renewed mutation pause,
+  Workspace removed only the exact source file with its recorded inode/owner/mode,
+  then its verified empty private parent. No content was read during cleanup.
+  Separate before/after snapshots for unlink and rmdir preserved all 15 containers,
+  including StartedAt, images, health and ports. No recursive deletion or secret
+  rotation occurred. Each service retains only its required protected runtime copy.
 
-- Register through `POST /api/auth/register`, then `POST /api/auth/register/verify`
-  with the code delivered to the controlled inbox. Development deployments do not
-  expose a test verification code. The current default role is `content_manager`,
-  a non-admin role, and verified registration becomes approved.
-- Use a separate authorized admin B. If a dedicated admin must be created, its
-  promotion uses the existing `PATCH /api/admin/users/<UUID>/role` contract with
-  `{ "role": "admin" }` after normal registration; never use direct SQL.
-- Account A uses real TOTP via the current `/profile` flow. Setup/confirmation
-  responses contain seeds, QR data, or recovery codes and must not be printed,
-  captured in screenshots, or stored outside the approved credential vault.
-- Safe 2FA status: `GET /api/users/profile/2fa`. Password login returns 202 without
-  a full cookie while a second factor is pending; successful
-  `POST /api/auth/login/2fa` completes the session. Create two independent fresh
-  browser logins, never copy a session cookie.
+Independent external anonymous Search protocol smoke also passed: health 200,
+session 401/no-store, and login 302/no-store to the exact dev Workspace authorize
+origin/path with registered client/callback/scope, valid state length and S256.
+No cookies, query values, authorization headers or full response bodies were
+printed, and no authenticated user login was performed.
+
+Search's authorized operator subsequently confirmed its own **LOGGING PASS**:
+only the two dev-domain blocks in `/etc/nginx/conf.d/smart-search.conf` were
+hardened to the same off/null policy; nginx test, graceful reload, public health
+and synthetic callback canary passed with zero matches. Its before/after guard
+verified all 15 containers and all 11 other loaded config files unchanged. Workspace
+did not edit any Search resource. Both sides' standard access/error-log verification
+is therefore complete; real user sign-in remains a separate phone-assisted step.
+
+The user clarified that **there is no test mailbox and sign-in uses only the
+proprietary MT Workspace authenticator**. The earlier mailbox/TOTP preparation
+assumption is withdrawn. Do not create email/TOTP test users, change authentication
+policy, emulate phone signing, or introduce a fallback to complete acceptance.
+Historical password/TOTP contract-test coverage above is not the live sign-in plan.
+
+The user confirmed an existing **DEV profile is available in the proprietary
+authenticator**. Account preparation still needs verified identities/roles for
+non-admin approved A and a separate approved admin B, plus the phone owner's
+participation. No account identity, 2FA readiness, or usable browser session has
+yet been established by the agents. Native pairing binds an existing user; it does not create
+one. No supported native mailbox-free user-creation endpoint was found, so missing
+profiles require the existing approved onboarding process rather than a workaround.
+
+The current firm-auth preparation/acceptance contract is:
+
+- Confirm `GET /api/auth/login/qr/config`: QR enabled, deployment
+  `mt-workspace-development`, environment `development`, webOrigin
+  `https://dev.mt-panel.sbs`. This metadata read creates no challenge.
+- Browser `POST /api/auth/login/qr` creates the short-lived challenge. The owner
+  scans the normal page QR with the proprietary app and selects the dev profile.
+  Phone `/api/mobile/qr-login/preview` and `/approve` require its active device and
+  an ES256 signature bound to the deployment, action, challenge and nonce. Do not
+  extract or simulate the phone's credentials.
+- Browser `/api/auth/login/qr/status` remains pending/scanned without a full cookie.
+  `/api/auth/login/qr/consume` creates the full session only after native approval
+  and rechecking the active device/current approved user. Create two independent
+  fresh native-approved browser logins; never copy cookies between contexts.
+- From an existing permitted session, project only safe fields from
+  `GET /api/auth/me`, `GET /api/users/profile/2fa`, and
+  `GET /api/users/profile/mobile-devices`: internal IDs, role, status, enabled
+  method, active-device count and QR-signing support. A must use method
+  `mt_workspace` and have an active QR-capable device. Do not print full profiles,
+  device tokens, live QR data or any credential/recovery response.
 - Later block/restore from admin B: `PATCH /api/admin/users/<A_UUID>/status` with
   `{ "status": "rejected" }`, then `{ "status": "approved" }`. There is no
   `blocked` status, and self-blocking is rejected. Do not block A during preparation.
-- A non-approved status also revokes mobile access, and restoring approved does
-  not restore mobile grants. A must therefore be a dedicated TOTP test account
-  without paired mobile devices. Record/restore its initial approved status during
-  the separate coordinated acceptance run.
+- A non-approved status revokes **all** mobile grants and cancels pending pairings,
+  mobile approvals and approved QR challenges. Restoring approved restores account
+  status only. Do not run the block test against an employee's real profile.
+- An unexpired A browser cookie can authenticate again after approved is restored,
+  but cannot by itself restore a revoked phone. Supported own-account
+  `POST /api/users/profile/mobile-pairings` with `purpose=add_device` requires a
+  valid code from the existing firm-app account secret or an unused recovery code.
+  No supported admin device-reactivation/2FA-reset override was found. Whether the
+  app retains/displays its confirmation code after revocation is not established
+  by this repository. Keep block/restore acceptance **BLOCKED** until a dedicated
+  dev profile has a proven approved recovery procedure; do not assume a second
+  phone, pre-created pairing, or restoring status alone is sufficient.
 
 Local preparation checks passed: 44 JWT/provider/deployment tests, zero failures;
 three PostgreSQL-specific cases were explicitly skipped in this pg-mem run. The
 previous real-PostgreSQL provider evidence remains the separate 22/22 result above.
+The current native QR and mobile-security cleanup suites also passed all 15 tests
+with zero failures; these isolated test fixtures do not replace phone approval.
 Full Search login/logout, other-browser isolation, blocking/restoration, Search
-revoke, and anonymous widget acceptance remain pending.
+revoke, and interactive storefront-widget acceptance remain pending. Reported
+public HTTP widget/config/query smokes are distinct from that browser acceptance.
+The owner must complete normal QR approval with the proprietary DEV profile for
+the first real sign-in. Phone approval, account IDs/roles and recovery capability
+must not be inferred from service-to-service smoke results.
+
+The final documentation-only handoff commit uses `[skip ci]` to avoid starting
+another automatic deployment during the coordinated freeze/phone-assisted handoff.
+That commit changes only documentation; application and workflow source are unchanged. See
+[GitHub's push-workflow skip documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs).
