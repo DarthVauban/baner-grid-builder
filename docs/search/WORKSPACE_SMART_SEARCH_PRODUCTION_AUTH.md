@@ -1,8 +1,8 @@
 # Production Workspace identity source for Smart Search
 
-Operational evidence date: 2026-10-30. Workspace provisioning and provider checks
-and Search configuration cutover are complete. Phone-assisted browser acceptance
-and one-time source cleanup are tracked separately below.
+Operational evidence date: 2026-10-30. Workspace provisioning, provider checks,
+Search configuration cutover, phone-assisted login/logout acceptance, and one-time
+source cleanup are complete.
 
 ## Scope and contract
 
@@ -97,16 +97,34 @@ files. Public widget/config/query checks returned HTTP 200; anonymous session wa
 401, and login returned 302 to the exact production authorize contract with S256
 and a secure transaction cookie. No real user session was created by those probes.
 
-Phone-assisted production login/logout is pending owner approval in the normal
-production login page. Its QR is shown only in the browser, without reading or
-forwarding its payload, codes, or credentials.
+Phone-assisted production login/logout passed in the owner's normal Chrome
+context after the owner confirmed the production authenticator action:
 
-The Search import/runtime acknowledgement is verified. Automatic approval review
-nevertheless rejected deletion of the one-time source because explicit human
-permission to destroy that file was absent. No cleanup command executed, and no
-alternate deletion mechanism was attempted. The source remains root-owned mode
-600 under its private mode-700 parent; exact file/empty-parent cleanup is held for
-owner permission. Required runtime copies and protected recovery state remain.
+1. Search opened its authenticated overview with **Вийти** visible; its ordinary
+   session endpoint rendered a user object. Only presence flags were recorded.
+2. Search **Вийти** reached the static signed-out page and denied its session,
+   while reloading the ordinary production Workspace home still showed **Вийти**.
+3. The explicit **Увійти через MT Workspace** link restored authenticated Search
+   and its session using the existing Workspace session, without another phone
+   approval.
+4. Ordinary Workspace logout reached `/login`. The retained Search session then
+   rendered `workspace_auth_required`; reloading protected Search redirected to
+   production Workspace login without authenticated UI.
+
+The agent did not extract/copy/manually clear cookies, read or forward QR payloads,
+or emit code/token-bearing URLs. Browser DOM/body observations do not independently
+measure HTTP status codes. Both services were left signed out, with Search's static
+signed-out page visible; extra agent-created diagnostic tabs were closed.
+
+After the verified Search import/runtime acknowledgement, automatic approval
+review initially rejected one-time source cleanup because explicit human deletion
+permission was absent. That attempt did not execute, and no alternate deletion
+mechanism was used. The owner then explicitly approved deletion of that exact file
+and its empty parent; the direct reply was verified before retrying the same scoped
+command. Cleanup removed only the recorded inode/ownership/mode/size-matched file
+and verified empty private parent, without reading its contents. Fresh before/after
+guards preserved all fifteen containers and all twelve proxy files. Runtime
+configuration and protected recovery state remain unchanged.
 
 Account blocking is excluded from this production acceptance. Earlier dev work
 established that rejecting a user revokes every mobile grant; restoring approved
