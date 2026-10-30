@@ -367,10 +367,12 @@ policy, emulate phone signing, or introduce a fallback to complete acceptance.
 Historical password/TOTP contract-test coverage above is not the live sign-in plan.
 
 The user confirmed an existing **DEV profile is available in the proprietary
-authenticator**. Account preparation still needs verified identities/roles for
-non-admin approved A and a separate approved admin B, plus the phone owner's
-participation. No account identity, 2FA readiness, or usable browser session has
-yet been established by the agents. Native pairing binds an existing user; it does not create
+authenticator**, then completed its normal sign-in. On 2026-10-30, the agent observed
+an authenticated Search catalog, a successful Search session response containing
+only its internal user ID, and the signed-in dev Workspace UI in the same browser.
+The observed Workspace UI identifies this existing account as an administrator;
+it does not establish a separate non-admin A/admin B pair or a safe account-recovery
+procedure. Native pairing binds an existing user; it does not create
 one. No supported native mailbox-free user-creation endpoint was found, so missing
 profiles require the existing approved onboarding process rather than a workaround.
 
@@ -415,12 +417,72 @@ three PostgreSQL-specific cases were explicitly skipped in this pg-mem run. The
 previous real-PostgreSQL provider evidence remains the separate 22/22 result above.
 The current native QR and mobile-security cleanup suites also passed all 15 tests
 with zero failures; these isolated test fixtures do not replace phone approval.
-Full Search login/logout, other-browser isolation, blocking/restoration, Search
-revoke, and interactive storefront-widget acceptance remain pending. Reported
-public HTTP widget/config/query smokes are distinct from that browser acceptance.
-The owner must complete normal QR approval with the proprietary DEV profile for
-the first real sign-in. Phone approval, account IDs/roles and recovery capability
-must not be inferred from service-to-service smoke results.
+Live browser acceptance on 2026-10-30 established native DEV sign-in and parent
+logout propagation. With both services signed in within the same browser context,
+the agent clicked the ordinary **Вийти** button on `https://dev.mt-panel.sbs`.
+Workspace returned to `/login`. Without performing Search logout or clearing its
+cookies, reloading Search's `GET /auth/workspace/session` changed its authenticated
+response to `workspace_auth_required` with the local login URL. This is live evidence
+that the retained Search session loses access after its parent Workspace logout.
+During this initial parent-logout check, no cookies, credentials, live QR data or
+authorization codes were extracted.
+
+Search build `e44e754` exposed the guarded POST endpoint but had no user-facing
+logout control. After the automatic approval review rejected expanding a
+verification-only request to a code
+change/deployment, the user explicitly authorized adding, testing and deploying
+the logout button **only to dev**. The authorized Search agent owns that fix; the
+Workspace agent does not modify Search runtime or code.
+
+The Search agent deployed commit `6ba6d2565d88717500b7377beb110d298f1fd160` with
+182 passing tests and the existing guarded app-only workflow. Its final read-only
+audit confirmed the exact healthy development build, database/search connectivity,
+and ready catalog indexes for one store. All 14 non-app containers and all 12 loaded
+Nginx configuration files matched the pre-push baseline. The agent reported no
+secret, encryption, proxy-policy, production or production-gate changes. An interim
+`catalog_index_pending` status cleared without manual rebuilds or database writes.
+
+Root's subsequent live UI acceptance passed in the existing dev Chrome context:
+
+1. After reloading `/catalog`, the new **Вийти** button was visible and the session
+   endpoint still rendered its authenticated response shape. Internal ID values
+   were not emitted during these checks.
+2. Clicking **Вийти** reached the static `/auth/workspace/signed-out` page with the
+   explicit **Увійти через MT Workspace** link. The Search session endpoint denied
+   access, while ordinary Workspace home remained signed in with **Вийти** visible.
+3. Clicking that sign-in link returned to authenticated Search overview `/` and an
+   authenticated session response, without another phone approval. The link's
+   default landing page is overview; the earlier explicit `return_to=/catalog`
+   flow reached the catalog.
+4. Clicking the ordinary Workspace logout button again returned Workspace to
+   `/login`. The retained Search session then denied access; reloading Search admin
+   redirected to the exact dev Workspace `/login` and did not expose authenticated
+   UI. Both sessions were left signed out; the final visible Search tab was placed
+   on its static signed-out page.
+
+The browser controller exposed rendered response bodies and UI state, not numeric
+HTTP status, so these observations do not claim independently measured 200/401
+codes. The Search agent's separate anonymous HTTP smokes did measure signed-out
+200/no-store and unauthenticated session 401, without using the owner's browser.
+
+Before the Search UI deployment, the owner approved a second normal native DEV
+login. Its first Search callback
+remained loading and Search's session read still denied access. Navigating to the
+ordinary Workspace home confirmed that its new full session had succeeded. A fresh
+normal Search login from that active Workspace session then reached the authenticated
+catalog without another phone approval. The cause of the first loading callback is
+unproven; successful re-entry must not be presented as a diagnosed callback fix.
+During diagnosis, a URL-derived callback tab title was accidentally emitted once
+with its single-use authorization code. Its maximum 60-second lifetime had elapsed
+before continuing. The value is not reproduced in this report. Subsequent browser
+inventory output was restricted to origin/path, omitting both titles and queries;
+no persistent client secret, cookie or phone credential was emitted.
+
+Other-browser isolation, blocking/restoration, and interactive storefront-widget
+acceptance remain pending. Reported public HTTP widget/config/query smokes are
+distinct from that browser acceptance. Recovery capability and a separate
+non-admin/admin account pair remain unverified and must not be inferred from this
+successful administrator login.
 
 The final documentation-only handoff commit uses `[skip ci]` to avoid starting
 another automatic deployment during the coordinated freeze/phone-assisted handoff.
