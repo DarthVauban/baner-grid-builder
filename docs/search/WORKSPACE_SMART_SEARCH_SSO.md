@@ -5,6 +5,11 @@ contract. Analytics, the Search repository/database/deployment, and public store
 search remain outside this change. Implementation and local contract verification do
 not constitute live integration acceptance or production approval.
 
+The subsequently authorized production identity-source rollout is recorded in
+[Production Workspace authentication](WORKSPACE_SMART_SEARCH_PRODUCTION_AUTH.md).
+The development registration and historical acceptance below remain specific to
+their original environment.
+
 ## Development registration and operator handoff
 
 The repository's development deployment origin is **https://dev.mt-panel.sbs**
