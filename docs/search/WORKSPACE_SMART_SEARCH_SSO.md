@@ -170,3 +170,136 @@ with `npm run test:web -- --maxWorkers=2`; the initial parallel `verify` run had
 the existing PopupBannersPage hook warning and jsdom CSS parse warnings remain.
 Build validation directs Vite output to a new task-owned `tmp/` directory using
 `npm run build -- --outDir ../tmp/<unique-build-directory>` to preserve `dist/`.
+
+## Dev operator preflight and acceptance handoff (2026-10-30)
+
+This is a preparation report, not live acceptance. No real SSO login, account
+blocking, secret generation, or Search-side mutation was performed during this
+preflight. Production configuration and its gate remain unchanged.
+
+Verified live target:
+
+- Origin: `https://dev.mt-panel.sbs`, resolving to `45.88.191.194` at audit time.
+- Physical directory: `/opt/mt-workspace/dev`, no symlink, owned by root, mode 2770.
+- Deployment user: `mtdeploy`, UID 1000. Runtime `.env` belongs to this user, is a
+  regular non-symlink file, and has mode 600. Its contents were never printed.
+- Docker socket: `/run/user/1000/docker.sock`; labels identify project
+  `mt-panel-dev`, service `app`, working directory `/opt/mt-workspace/dev`, and
+  config `/opt/mt-workspace/dev/docker-compose.yml`.
+- App bind: `127.0.0.1:3101` to container port 3000. `/api/health` returns 200 and
+  build SHA `16bc011f800295674d933d44c6f73a18b5edaf23`.
+- Public `/api/auth/login/qr/config` returns deployment environment `development`.
+  This check does not create a login challenge.
+- Migration 103 has not been directly queried in the live database. Automatic
+  approval review rejected read-only container execution, referring to the separate
+  Search repository's container restriction. No alternative container-entry route
+  was used. Direct verification remains an operator/approval dependency.
+
+Provisioning is **BLOCKED pending coordination**. All three `SMART_SEARCH_SSO_*`
+keys are absent from the audited dev runtime file. This does not establish whether
+an uninstalled dedicated secret already exists in an operator's secret manager.
+No approved transfer channel, receiving Search operator, or credential/TOTP vault
+has been confirmed. Do not generate a new secret until those prerequisites hold,
+and do not rotate a previously issued dedicated secret unilaterally.
+
+The existing Compose app consumes the runtime `.env`; exporting host variables or
+using Compose `--env-file` for interpolation alone does not inject new keys into
+the running app. The operator must preserve unrelated runtime settings and use an
+approved scoped dev provisioning/recreate procedure. The repository `.env` and all
+Search resources remain outside this agent's provisioning scope.
+
+Unauthenticated live smoke:
+
+| Check | Observed result |
+| --- | --- |
+| Workspace health | 200, expected provider build |
+| Workspace token/introspect/revoke, synthetic form | 503 `temporarily_unavailable`, JSON, no-store, no redirect |
+| Workspace `/api/auth/me` | 401 |
+| Workspace SSO entry | 401, no-store |
+| Search health | 200 |
+| Search session | 401 `workspace_auth_required` |
+| Search login | 503 while SSO is unconfigured |
+
+The authenticated Basic smoke with an unknown synthetic token must still be run
+after provisioning: expected 200 with only `{ "active": false }`, unwrapped and
+no-store. Never place the Basic value in command arguments or diagnostic output.
+
+The active dev proxy is `/etc/nginx/sites-enabled/dev.mt-panel.sbs`, resolving to
+root-owned `/etc/nginx/sites-available/dev.mt-panel.sbs` (mode 644). It contains only
+the two dev HTTP/HTTPS server blocks and proxies to `http://127.0.0.1:3101`.
+Before hardening, both blocks inherited combined access logging (`$request` and
+Referer) and the shared error log. Three synthetic canary requests produced three
+access-log matches; only counts were emitted, never raw logs.
+
+Dev logging hardening is **APPLIED / PASS**. Only the two dev server blocks received:
+
+```nginx
+access_log off;
+error_log /dev/null crit;
+```
+
+The policy covers both HTTP/HTTPS and inherited locations, preventing query strings
+and Referer from reaching shared logs. Other dev proxy/TLS directives are byte-for-byte
+preserved. Whole-vhost suppression also covers errors before an auth location is
+selected; dev request/error diagnostics at Nginx are intentionally disabled.
+Application audit records and fixed safe SSO event logging remain available.
+
+The active master was verified as `/usr/sbin/nginx` with no custom config/prefix.
+The guarded change passed ownership, exact-source-hash, extension-logging and
+configuration checks; a root-only original and metadata backup is retained at:
+`/opt/mt-workspace/dev/.sso-log-hardening-666586c8-a6eb-4b10-a778-6a88c0f9ef79/`.
+That directory is mode 700; its original config and metadata files are mode 600.
+The original file SHA-256 is
+`71f748520828d4c69da4d6863ee05c9072e03ee7b7ae887a73c162ef4f7e80a6`;
+the applied file SHA-256 is
+`c5a5c88654128466f1859e0552b52215caf20f7f5151b6f950a1e92d3a829a6d`.
+
+`nginx -t`, graceful reload, and the expected-build dev health check passed.
+Before/after snapshots around backup, replacement, and reload confirmed all 15
+running containers unchanged, including IDs, images, state, health, ports and
+StartedAt. All 11 other loaded Nginx configurations retained their exact metadata
+and hashes, including production and Search. No Docker exec or container mutation
+was used for this hardening. The guard's 16 synthetic local checks also passed.
+
+After reload, four synthetic requests covering authorize query, login returnTo,
+HTTP redirect, and a Referer-bearing health request returned 503/200/301/200;
+canary matches were **0 in access log / 0 in error log**. Effective-config audit
+confirmed `off` / `/dev/null` on both dev vhosts and their locations. Raw configuration
+and auth log lines were never emitted. Canary checks did not simulate an upstream
+outage; error-log safety is established by its effective null destination.
+
+Search callback-log redaction is separately **UNCONFIRMED** and belongs to its
+operator. Real SSO must not start until both sides pass logging verification.
+
+Dedicated account preparation is **BLOCKED** until controlled dev account ownership,
+inbox access, an authorized admin session, and secure password/TOTP storage are
+confirmed. No account IDs, roles, 2FA readiness, or usable browser sessions have
+been claimed or changed. The exact existing preparation/acceptance contract is:
+
+- Register through `POST /api/auth/register`, then `POST /api/auth/register/verify`
+  with the code delivered to the controlled inbox. Development deployments do not
+  expose a test verification code. The current default role is `content_manager`,
+  a non-admin role, and verified registration becomes approved.
+- Use a separate authorized admin B. If a dedicated admin must be created, its
+  promotion uses the existing `PATCH /api/admin/users/<UUID>/role` contract with
+  `{ "role": "admin" }` after normal registration; never use direct SQL.
+- Account A uses real TOTP via the current `/profile` flow. Setup/confirmation
+  responses contain seeds, QR data, or recovery codes and must not be printed,
+  captured in screenshots, or stored outside the approved credential vault.
+- Safe 2FA status: `GET /api/users/profile/2fa`. Password login returns 202 without
+  a full cookie while a second factor is pending; successful
+  `POST /api/auth/login/2fa` completes the session. Create two independent fresh
+  browser logins, never copy a session cookie.
+- Later block/restore from admin B: `PATCH /api/admin/users/<A_UUID>/status` with
+  `{ "status": "rejected" }`, then `{ "status": "approved" }`. There is no
+  `blocked` status, and self-blocking is rejected. Do not block A during preparation.
+- A non-approved status also revokes mobile access, and restoring approved does
+  not restore mobile grants. A must therefore be a dedicated TOTP test account
+  without paired mobile devices. Record/restore its initial approved status during
+  the separate coordinated acceptance run.
+
+Local preparation checks passed: 44 JWT/provider/deployment tests, zero failures;
+three PostgreSQL-specific cases were explicitly skipped in this pg-mem run. The
+previous real-PostgreSQL provider evidence remains the separate 22/22 result above.
+Full Search login/logout, other-browser isolation, blocking/restoration, Search
+revoke, and anonymous widget acceptance remain pending.
