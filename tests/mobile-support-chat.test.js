@@ -94,6 +94,7 @@ test('safe push routing, retry identity, old token registration and unsubscribe 
     assert.ok(message.data.pushId);
     assert.ok(message.data.conversationId);
     assert.ok(message.android.ttl <= 15 * 60_000);
+    assert.equal(message.android.notification.channelId, 'support_chat_v1');
     assert.equal(JSON.stringify(message).includes('subscribed message'), false);
   }
   await sendVisitor('cancel me').expect(201);
