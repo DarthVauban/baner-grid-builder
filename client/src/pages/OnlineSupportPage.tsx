@@ -77,6 +77,8 @@ function SettingsPanel() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const settings = useQuery({ queryKey: ['online-support-settings'], queryFn: api.onlineSupport.settings });
+  const preference = useQuery({ queryKey: ['online-support-notification-preference', user?.id], queryFn: api.onlineSupport.notificationPreference, refetchOnWindowFocus: true });
+  const changePreference = useMutation({ mutationFn: (enabled: boolean) => api.onlineSupport.setNotificationPreference(enabled, preference.data!.version) });
   const [draft, setDraft] = useState<SupportChatSettingsInput | null>(null);
   const [origins, setOrigins] = useState('');
   const save = useMutation({ mutationFn: api.onlineSupport.saveSettings });
@@ -159,6 +161,17 @@ function SettingsPanel() {
     showToast('Нові повідомлення підтримки з’являтимуться у центрі сповіщень Windows.', 'success');
   }
 
+  async function toggleSubscription(enabled: boolean) {
+    try {
+      await changePreference.mutateAsync(enabled);
+      await preference.refetch();
+      showToast(enabled ? 'Підписку на підтримку увімкнено для цього акаунта.' : 'Сповіщення підтримки вимкнено у браузерах і на телефонах.', 'success');
+    } catch (error) {
+      await preference.refetch();
+      showToast(error instanceof Error ? error.message : 'Не вдалося змінити підписку.', 'error');
+    }
+  }
+
   return <div className="online-support-settings" ref={panelRef}>
     <form className="online-support-settings__form" onSubmit={(event) => void submit(event)}>
       <section className="online-support-card">
@@ -205,6 +218,12 @@ function SettingsPanel() {
     </form>
 
     <aside className="online-support-settings__aside">
+      <section className="online-support-card">
+        <header><div><p className="eyebrow">Для цього акаунта</p><h2>Сповіщення підтримки</h2></div><label className="online-support-switch"><input aria-label="Підписка на сповіщення підтримки" type="checkbox" checked={preference.data?.enabled === true} disabled={!preference.data || changePreference.isPending} onChange={(event) => void toggleSubscription(event.target.checked)} /><span />{preference.data?.enabled ? 'Увімкнено' : 'Вимкнено'}</label></header>
+        <p>Єдина підписка для браузерів і MT Workspace на телефоні. Дозвіл ОС налаштовується окремо. Сповіщення про форми заявок не змінюються.</p>
+        {preference.data?.configured === false && <small>Підписку ще не обрано. Увімкніть її явно, щоб отримувати сповіщення підтримки.</small>}
+        {preference.isError && <button type="button" className="button button--secondary" onClick={() => void preference.refetch()}>Повторити завантаження підписки</button>}
+      </section>
       <section className="online-support-card online-support-desktop-notifications">
         <header><div><p className="eyebrow">На цьому пристрої</p><h2>Сповіщення Windows</h2></div><label className="online-support-switch"><input type="checkbox" checked={desktopNotifications && desktopPermission === 'granted'} disabled={desktopPermission === 'unsupported'} onChange={(event) => void toggleDesktopNotifications(event.target.checked)} /><span />{desktopNotifications && desktopPermission === 'granted' ? 'Увімкнено' : 'Вимкнено'}</label></header>
         <p>Нові повідомлення покупців з’являтимуться безпосередньо у центрі сповіщень Windows, навіть коли відкрита інша сторінка робочого простору.</p>
@@ -234,7 +253,7 @@ function ConversationListItem({ item, active, onSelect }: { item: SupportConvers
 }
 
 function MessageBubble({ item }: { item: SupportMessage }) {
-  return <article className={`online-support-message is-${item.senderType}${item.productCards.length ? ' has-product-card' : ''}`}>
+  return <article data-message-id={item.id} className={`online-support-message is-${item.senderType}${item.productCards.length ? ' has-product-card' : ''}`}>
     {item.senderType !== 'visitor' && <small>{item.senderName || 'Автоматична відповідь'}</small>}
     <SupportMessageText body={item.body} productCards={item.productCards} />
     {item.productCards.map((card) => <SupportProductCard card={card} key={`${item.id}-${card.id}`} />)}
@@ -253,6 +272,10 @@ function ConversationsPanel() {
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [customerDraft, setCustomerDraft] = useState<SupportCustomerInput>({ name: '', email: '', phone: '' });
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const tailVisible = useRef(true);
+  const pendingSend = useRef<{ id: string; body: string; clientMessageId: string } | null>(null);
+  const [older, setOlder] = useState<{ items: SupportMessage[]; cursor: string | null } | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const conversations = useQuery({
     queryKey: ['online-support-conversations', search, status],
     queryFn: () => api.onlineSupport.conversations({ search, status }),
@@ -264,7 +287,7 @@ function ConversationsPanel() {
     enabled: Boolean(selectedId),
     refetchOnMount: 'always'
   });
-  const send = useMutation({ mutationFn: ({ id, body }: { id: string; body: string }) => api.onlineSupport.sendMessage(id, body, crypto.randomUUID()) });
+  const send = useMutation({ mutationFn: ({ id, body, clientMessageId }: { id: string; body: string; clientMessageId: string }) => api.onlineSupport.sendMessage(id, body, clientMessageId) });
   const claim = useMutation({ mutationFn: api.onlineSupport.claim });
   const setConversationStatus = useMutation({ mutationFn: ({ id, next }: { id: string; next: SupportConversationStatus }) => api.onlineSupport.setStatus(id, next) });
   const updateCustomer = useMutation({ mutationFn: ({ id, input }: { id: string; input: SupportCustomerInput }) => api.onlineSupport.updateCustomer(id, input) });
@@ -277,16 +300,39 @@ function ConversationsPanel() {
   }, [conversations.data, selectedId]);
 
   useEffect(() => {
-    if (!selectedId || !detail.data) return;
-    void api.onlineSupport.markRead(selectedId).then(() => Promise.all([
+    const last = detail.data?.messages.at(-1);
+    if (!selectedId || !last) return;
+    const frame = requestAnimationFrame(() => {
+      const container = transcriptRef.current;
+      if (!container || !tailVisible.current || document.visibilityState !== 'visible') return;
+      container.scrollTop = container.scrollHeight;
+      const node = container.querySelector(`[data-message-id="${last.id}"]`);
+      if (!node || node.getBoundingClientRect().bottom > container.getBoundingClientRect().bottom + 1) return;
+      void api.onlineSupport.markRead(selectedId, last.id).then(() => Promise.all([
       queryClient.invalidateQueries({ queryKey: ['online-support-conversations'] }),
       queryClient.invalidateQueries({ queryKey: ['online-support-unread-count'] })
     ])).catch(() => undefined);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [detail.data, queryClient, selectedId]);
+
+  useEffect(() => { setOlder(null); }, [selectedId, detail.dataUpdatedAt]);
+  useEffect(() => { tailVisible.current = true; }, [selectedId]);
+
+  async function loadOlder() {
+    const cursor = older ? older.cursor : detail.data?.olderCursor;
+    if (!selectedId || !cursor || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const page = await api.onlineSupport.messages(selectedId, cursor);
+      setOlder((current) => ({ items: [...page.items, ...(current?.items || [])], cursor: page.nextCursor }));
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Не вдалося завантажити історію.', 'error'); }
+    finally { setLoadingOlder(false); }
+  }
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+      if (transcriptRef.current && tailVisible.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     });
     return () => cancelAnimationFrame(frame);
   }, [detail.data?.messages.length]);
@@ -313,7 +359,11 @@ function ConversationsPanel() {
     const body = message.trim();
     if (!selectedId || !body || send.isPending) return;
     try {
-      await send.mutateAsync({ id: selectedId, body });
+      if (pendingSend.current?.id !== selectedId || pendingSend.current.body !== body) {
+        pendingSend.current = { id: selectedId, body, clientMessageId: crypto.randomUUID() };
+      }
+      await send.mutateAsync(pendingSend.current);
+      pendingSend.current = null;
       setMessage('');
       await refreshCurrent();
     } catch (error) {
@@ -370,7 +420,7 @@ function ConversationsPanel() {
       {selectedId && detail.isLoading && <div className="online-support-state">Завантажуємо повідомлення…</div>}
       {current && <>
         <header className="online-support-dialog__header"><div><span className="online-support-avatar">{visitorLabel(current).slice(0, 1).toUpperCase()}</span><div><strong>{visitorLabel(current)}</strong><small>{current.visitor.lastPageTitle || 'Сторінку не визначено'}</small></div></div><div>{!current.assignedUser && <button className="button button--secondary" type="button" onClick={() => void claimCurrent()} disabled={claim.isPending}>Взяти в роботу</button>}<button className="button button--secondary online-support-customer-trigger" type="button" onClick={() => setCustomerPanelOpen(true)}>Покупець</button><StyledSelect compact className="online-support-status-select" value={current.status} options={statuses.filter((item): item is { value: SupportConversationStatus; label: string } => Boolean(item.value))} onChange={(next) => void changeStatus(next)} disabled={setConversationStatus.isPending} ariaLabel="Статус діалогу" /></div></header>
-        <div className="online-support-transcript" ref={transcriptRef}>{detail.data?.messages.map((item) => <MessageBubble item={item} key={item.id} />)}</div>
+        <div className="online-support-transcript" ref={transcriptRef} onScroll={(event) => { const node = event.currentTarget; tailVisible.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 32; }}>{(older ? older.cursor : detail.data?.olderCursor) && <button className="button button--secondary" type="button" disabled={loadingOlder} onClick={() => void loadOlder()}>Раніші повідомлення</button>}{[...(older?.items || []), ...(detail.data?.messages || [])].map((item) => <MessageBubble item={item} key={item.id} />)}</div>
         <form className="online-support-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Напишіть відповідь покупцю…" rows={2} maxLength={5000} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending}><Icon name="send" size={18} /> {send.isPending ? 'Надсилаємо…' : 'Надіслати'}</button></form>
       </>}
     </section>

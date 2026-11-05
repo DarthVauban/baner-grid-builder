@@ -54,6 +54,9 @@ const schema = z.object({
     z.string().min(32, 'MOBILE_TOKEN_PEPPER must contain at least 32 characters').optional()
   ),
   MOBILE_PUSH_ENABLED: z.enum(['true', 'false']).default('false'),
+  MOBILE_SUPPORT_CHAT_API_ENABLED: z.enum(['true', 'false']).default('true'),
+  MOBILE_SUPPORT_CHAT_PUSH_ENQUEUE_ENABLED: z.enum(['true', 'false']).default('false'),
+  MOBILE_SUPPORT_CHAT_PUSH_SEND_ENABLED: z.enum(['true', 'false']).default('false'),
   MOBILE_DEPLOYMENT_ID: z.preprocess(
     (value) => String(value || '').trim() || undefined,
     z.string().regex(/^[a-z0-9][a-z0-9._-]{2,159}$/).optional()
@@ -168,6 +171,9 @@ export const env = {
   telegramLocalCredentialsDir,
   mobileTokenPepper: result.data.MOBILE_TOKEN_PEPPER || result.data.JWT_SECRET,
   mobilePushEnabled: result.data.MOBILE_PUSH_ENABLED === 'true',
+  supportChatApiEnabled: result.data.MOBILE_SUPPORT_CHAT_API_ENABLED === 'true',
+  supportChatPushEnqueueEnabled: result.data.MOBILE_SUPPORT_CHAT_PUSH_ENQUEUE_ENABLED === 'true',
+  supportChatPushSendEnabled: result.data.MOBILE_SUPPORT_CHAT_PUSH_SEND_ENABLED === 'true',
   mobileDeploymentId: result.data.MOBILE_DEPLOYMENT_ID || `mt-workspace-${mobileEnvironment}`,
   mobileEnvironment,
   mobileDeploymentName: result.data.MOBILE_DEPLOYMENT_NAME || 'MT Workspace',

@@ -72,6 +72,8 @@ export interface SupportMessage {
   senderUserId: string | null;
   senderName: string;
   body: string;
+  clientMessageId?: string | null;
+  sequence?: string | null;
   productCards: SupportProductCard[];
   createdAt: string;
 }
@@ -101,11 +103,27 @@ export interface SupportConversation {
   firstResponseAt: string | null;
   createdAt: string;
   updatedAt: string;
+  readState?: { scope: 'team'; lastReadMessageId: string | null; lastReadSequence: string };
+}
+
+export interface SupportNotificationPreference {
+  enabled: boolean;
+  configured: boolean;
+  version: number;
+  updatedAt: string | null;
+}
+
+export interface SupportMessagePage {
+  items: SupportMessage[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 export interface SupportConversationDetail {
   conversation: SupportConversation;
   messages: SupportMessage[];
+  olderCursor?: string | null;
+  hasMore?: boolean;
 }
 
 export interface SupportChatSettingsInput {

@@ -133,6 +133,8 @@ export function serializeSupportMessage(row) {
     senderUserId: row.sender_user_id || null,
     senderName: row.sender_name || (row.sender_type === 'system' ? 'Автоматична відповідь' : ''),
     body: row.body,
+    clientMessageId: row.client_message_id || null,
+    sequence: row.message_sequence == null ? null : String(row.message_sequence),
     productCards: Array.isArray(row.product_cards) ? row.product_cards : [],
     createdAt: row.created_at
   };

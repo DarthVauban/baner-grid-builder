@@ -167,7 +167,8 @@ test('operator can claim, read, reply and change support conversation status', a
   assert.equal(claimed.body.data.status, 'OPEN');
   assert.equal(claimed.body.data.assignedUser.name, 'Support Admin');
 
-  await admin.post(`/api/support-chat/conversations/${conversationId}/read`).expect(204);
+  await admin.post(`/api/support-chat/conversations/${conversationId}/read`)
+    .send({ lastReadMessageId: detail.body.data.messages.at(-1).id }).expect(204);
   const read = await admin.get('/api/support-chat/unread-count').expect(200);
   assert.equal(read.body.data, 0);
 

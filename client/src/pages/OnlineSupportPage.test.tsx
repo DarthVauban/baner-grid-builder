@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
@@ -88,9 +88,76 @@ function renderPage() {
   );
 }
 
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  localStorage.clear();
+  vi.spyOn(api.onlineSupport, 'notificationPreference').mockResolvedValue({ enabled: false, configured: false, version: 0, updatedAt: null });
+});
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('OnlineSupportPage', () => {
+  it('never imports browser localStorage or OS permission as an account opt-in', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([]);
+    vi.spyOn(api.onlineSupport, 'settings').mockResolvedValue(settings);
+    const save = vi.spyOn(api.onlineSupport, 'setNotificationPreference');
+    localStorage.setItem(`mt-support-desktop-notifications:${user.id}`, 'true');
+    vi.stubGlobal('Notification', class { static permission = 'granted'; });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Налаштування' }));
+    expect(await screen.findByRole('checkbox', { name: 'Підписка на сповіщення підтримки' })).not.toBeChecked();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('uses the current server version for explicit opt-in', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([]);
+    vi.spyOn(api.onlineSupport, 'settings').mockResolvedValue(settings);
+    const save = vi.spyOn(api.onlineSupport, 'setNotificationPreference').mockResolvedValue({ enabled: true, configured: true, version: 1, updatedAt: settings.updatedAt });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Налаштування' }));
+    const checkbox = await screen.findByRole('checkbox', { name: 'Підписка на сповіщення підтримки' });
+    await waitFor(() => expect(checkbox).not.toBeDisabled());
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(save).toHaveBeenCalledWith(true, 0));
+  });
+
+  it('keeps the same clientMessageId when retrying a failed operator send', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValue(conversationDetail);
+    const send = vi.spyOn(api.onlineSupport, 'sendMessage').mockRejectedValueOnce(new Error('Network timeout')).mockResolvedValueOnce({
+      id: '00000000-0000-4000-8000-000000000099', conversationId: conversationDetail.conversation.id,
+      senderType: 'operator', senderUserId: user.id, senderName: user.name, body: 'Відповідь', productCards: [], createdAt: settings.updatedAt
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    const composer = await screen.findByPlaceholderText('Напишіть відповідь покупцю…');
+    fireEvent.change(composer, { target: { value: 'Відповідь' } });
+    fireEvent.submit(composer.closest('form')!);
+    await screen.findByText('Network timeout');
+    fireEvent.submit(composer.closest('form')!);
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls[0]?.[2]).toBe(send.mock.calls[1]?.[2]);
+  });
+
+  it.each(['visible', 'hidden', 'outside'] as const)('acknowledges only a rendered visible tail (%s)', async (visibility) => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(visibility === 'outside' ? 'visible' : visibility);
+    if (visibility === 'outside') vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { bottom: this.classList.contains('online-support-message') ? 200 : 100 } as DOMRect;
+    });
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    const message = { id: '00000000-0000-4000-8000-000000000098', conversationId: conversationDetail.conversation.id,
+      senderType: 'visitor' as const, senderUserId: null, senderName: '', body: 'Показане повідомлення', productCards: [], createdAt: settings.updatedAt };
+    vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValue({ ...conversationDetail, messages: [message] });
+    const read = vi.spyOn(api.onlineSupport, 'markRead').mockResolvedValue(undefined);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    await screen.findByText(message.body);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    if (visibility === 'visible') await waitFor(() => expect(read).toHaveBeenCalledWith(conversationDetail.conversation.id, message.id));
+    else expect(read).not.toHaveBeenCalled();
+  });
   it('changes a conversation status through the branded select', async () => {
     vi.spyOn(api.auth, 'me').mockResolvedValue(user);
     vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
