@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 
+process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'pg-mem://mobile-support-chat-tests';
 process.env.JWT_SECRET = 'mobile-support-contract-test-secret-123456789';
+process.env.COOKIE_SECURE = 'false';
+process.env.ADMIN_NAME = 'Support Mobile Admin';
 process.env.ADMIN_EMAIL = 'support-mobile@test.local';
 process.env.ADMIN_PASSWORD = 'SupportTestPassword123!';
+process.env.MOBILE_SUPPORT_CHAT_API_ENABLED = 'true';
 process.env.MOBILE_SUPPORT_CHAT_PUSH_ENQUEUE_ENABLED = 'true';
 process.env.MOBILE_SUPPORT_CHAT_PUSH_SEND_ENABLED = 'true';
 const { default: app } = await import('../src/app.js');
