@@ -147,7 +147,7 @@ function buildFirebaseMessage(row, token, now) {
     const ttl = Math.max(0, new Date(row.expires_at).getTime() - now.getTime());
     const notificationKey = 'mt-sc-' + createHash('sha256').update(`${env.mobileDeploymentId}:${row.device_id}:${row.id}`).digest('base64url');
     message.notification = { title: 'Нове повідомлення в онлайн-підтримці', body: 'Покупець написав у чат. Відкрийте MT Workspace, щоб відповісти.' };
-    message.android = { priority: 'high', ttl, notification: { tag: notificationKey } };
+    message.android = { priority: 'high', ttl, notification: { tag: notificationKey, channelId: 'support_chat_v1' } };
     message.apns = { headers: { 'apns-expiration': String(Math.floor(new Date(row.expires_at).getTime() / 1000)), 'apns-collapse-id': notificationKey } };
   }
   return message;

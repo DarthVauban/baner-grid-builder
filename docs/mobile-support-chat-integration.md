@@ -200,6 +200,7 @@ must ignore unknown kinds before any navigation. No claim is made that stale
 capabilities absolutely prevent delivery to downgraded binaries.
 
 FCM notification title/body are generic, with no names, contacts or message text.
+Before live rollout, new Flutter must create AndroidNotificationChannel `support_chat_v1` («Онлайн-підтримка», importance high) so support foreground and background notifications use the same channel (`android.notification.channelId` in Admin format, `android.notification.channel_id` in HTTP v1).
 Data values are strings:
 
 ```json

@@ -21,6 +21,11 @@ export async function createSupportPushTransport(messaging, fetchImpl = fetch) {
     async send(message) {
       const restMessage = { ...message, android: { ...message.android,
         priority: 'HIGH', ttl: `${Math.floor(message.android.ttl / 1000)}s` } };
+      if (message.android.notification) {
+        const { channelId, ...notification } = message.android.notification;
+        restMessage.android.notification = { ...notification,
+          ...(channelId === undefined ? {} : { channel_id: channelId }) };
+      }
       let response, payload;
       try {
         response = await fetchImpl(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`, {

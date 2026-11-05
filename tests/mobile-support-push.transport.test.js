@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { createSupportPushTransport } from '../src/modules/mobile/mobile-support-push.transport.js';
 
 const messaging = { app: { options: { projectId: 'support-test-project', credential: { getAccessToken: async () => ({ access_token: 'test-token' }) } } } };
-const message = { token: 'test-device-token', data: { kind: 'support_chat_message' }, android: { priority: 'high', ttl: 12345, notification: { tag: 'stable' } } };
+const message = { token: 'test-device-token', data: { kind: 'support_chat_message' }, android: { priority: 'high', ttl: 12345, notification: { tag: 'stable', channelId: 'support_chat_v1' } } };
 
-test('bounded FCM HTTP transport preserves notification identity and converts Admin TTL units', async () => {
+test('bounded FCM HTTP transport preserves notification identity and serializes the support channel and TTL', async () => {
   let calls = 0;
   const transport = await createSupportPushTransport(messaging, async (url, options) => {
     calls++;
@@ -15,11 +15,12 @@ test('bounded FCM HTTP transport preserves notification identity and converts Ad
     const sent = JSON.parse(options.body).message;
     assert.equal(sent.android.ttl, '12s');
     assert.equal(sent.android.priority, 'HIGH');
-    assert.equal(sent.android.notification.tag, 'stable');
+    assert.deepEqual(sent.android.notification, { tag: 'stable', channel_id: 'support_chat_v1' });
     return { ok: true, json: async () => ({ name: 'accepted' }) };
   });
   assert.equal(await transport.send(message), 'accepted');
   assert.equal(calls, 1);
+  assert.deepEqual(message.android.notification, { tag: 'stable', channelId: 'support_chat_v1' });
 });
 
 test('transport does not internally retry and only explicit UNREGISTERED invalidates a token', async () => {
