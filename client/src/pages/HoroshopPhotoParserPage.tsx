@@ -318,12 +318,17 @@ export function HoroshopPhotoParserPage() {
   const [catalogSyncTracking, setCatalogSyncTracking] = useState(false);
   const [dismissedResolutionIds, setDismissedResolutionIds] = useState<Set<string>>(() => new Set());
   const [targetPage, setTargetPage] = useState(1);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const completedBatch = useRef('');
   const synchronizedBatchRevision = useRef('');
   const previousSelectionId = useRef('');
   const reportedCatalogSync = useRef('');
 
   const selections = useQuery({ queryKey: ['horoshop-photo-selections'], queryFn: api.horoshopPhotos.selections });
+  const publicationHistory = useQuery({
+    queryKey: ['horoshop-photo-publications'], queryFn: () => api.horoshopPhotos.history(),
+    enabled: historyOpen, refetchInterval: historyOpen ? 10_000 : false
+  });
   const desktopDevices = useQuery({
     queryKey: ['horoshop-photo-desktop-devices'],
     queryFn: api.horoshopPhotos.desktopDevices,
@@ -664,6 +669,7 @@ export function HoroshopPhotoParserPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося передати фотографії.', 'error');
     } finally {
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-publications'] });
       setBusy(draft.id, false);
     }
   }
@@ -702,6 +708,7 @@ export function HoroshopPhotoParserPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Не вдалося опублікувати вибірку.', 'error');
     } finally {
+      void queryClient.invalidateQueries({ queryKey: ['horoshop-photo-publications'] });
       if (selectionCleared) {
         await queryClient.invalidateQueries({ queryKey: ['horoshop-photo-selections'], refetchType: 'none' }).catch(() => {});
       } else {
@@ -944,6 +951,21 @@ export function HoroshopPhotoParserPage() {
       </div>}
       {selection.data.resolution.unmatched.length > 0 && <div><h2>Не знайдено</h2><p>{selection.data.resolution.unmatched.join(' · ')}</p></div>}
     </section>}
+
+    <details className="horoshop-photo-history" onToggle={(event) => setHistoryOpen(event.currentTarget.open)}>
+      <summary>Історія передачі фотографій</summary>
+      <p>Останні 50 передач. Копії зі сховища видаляються після перевірки завантаження у Хорошопі.</p>
+      {publicationHistory.isLoading && <p>Завантажуємо історію…</p>}
+      {publicationHistory.isError && <p role="alert">Не вдалося завантажити історію. <button type="button" onClick={() => void publicationHistory.refetch()}>Повторити</button></p>}
+      {publicationHistory.data?.length === 0 && <p>Передач ще немає.</p>}
+      {publicationHistory.data?.map((item) => <article key={item.id}>
+        <div><strong>{item.article}</strong><small>{new Date(item.createdAt).toLocaleString('uk-UA')} · Фото: {item.photoCount} · {item.mode === 'replace' ? 'Заміна' : 'Додавання'}</small></div>
+        <div><b>{item.outcome === 'failed' ? 'Помилка передачі' : item.outcome === 'publishing' ? 'Передача розпочата' : item.verificationStatus === 'verified' ? 'Передачу перевірено' : 'Передано, перевірку не завершено'}</b>
+          <span>{item.cleanupStatus === 'completed' ? 'Копії зі сховища видалено' : item.cleanupStatus === 'retained' ? 'Фото залишено у сховищі' : 'Очищення очікується'}</span>
+          {item.errorMessage && <small>{item.errorMessage}</small>}
+        </div>
+      </article>)}
+    </details>
 
     <section className="horoshop-photo-products">
       {selection.isLoading && <div className="task-list-state"><span className="loading-screen__pulse" /><p>Завантажуємо вибірку…</p></div>}

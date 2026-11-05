@@ -1408,6 +1408,174 @@ test('desktop parser pairs securely, claims a selection and completes a reviewab
   );
 });
 
+test('verified publication removes only successful draft media, prunes empty folders and keeps durable history', async () => {
+  const removed = [];
+  let fixture;
+  const remote = new Map();
+  const service = new HoroshopPhotoService({
+    databasePool: pool, publicOrigin: 'https://panel.example',
+    removePublishedImage: async (key) => { removed.push(key); },
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() { return 'token'; },
+      async verifyPhotoFiles(urls) { assert.ok(urls.every((url) => url.startsWith('https://photo-shop.example/'))); },
+      async exportCatalog() { return { products: [{ article: fixture.productSku, modifications:
+        fixture.modifications.map((item) => ({ article: item.sku, images: remote.get(item.sku) || [] })) }], nextOffset: null }; },
+      async importCatalog(_token, [payload]) {
+        if (payload.article === fixture.modifications[1].sku) throw new Error('upstream failure');
+        remote.set(payload.article, ['https://photo-shop.example/content/images/upload.webp']);
+        return {};
+      }
+    })
+  });
+  fixture = await createPublicationFixture(service, 2);
+  const rootId = randomUUID();
+  const folderId = randomUUID();
+  try {
+    await pool.query("INSERT INTO media_library_folders (id, name) VALUES ($1, 'Cleanup root')", [rootId]);
+    await pool.query("INSERT INTO media_library_folders (id, name, parent_id) VALUES ($1, 'Cleanup product', $2)", [folderId, rootId]);
+    for (const draft of fixture.drafts) await addPublicationAsset(fixture, draft.id);
+    // An intentionally deselected photo is also temporary once its draft's
+    // selected gallery has been confirmed at the destination.
+    const extra = await addPublicationAsset(fixture, fixture.drafts[0].id);
+    await pool.query('UPDATE search_horoshop_photo_assets SET selected = FALSE WHERE id = $1', [extra.photoAssetId]);
+    await pool.query('UPDATE media_library_assets SET folder_id = $2 WHERE id IN ($1, $3)',
+      [fixture.mediaAssetIds[0], folderId, extra.mediaAssetId]);
+    await pool.query('UPDATE search_horoshop_photo_drafts SET media_folder_id = $2 WHERE id = $1', [fixture.drafts[0].id, folderId]);
+    const result = await service.publishSelection(fixture.selection.id, { mode: 'replace', userId: ids.admin });
+    assert.equal(result.publishedDrafts, 1);
+    assert.equal(result.failedDrafts, 1);
+    assert.equal(result.selectionCleared, false);
+    assert.equal(removed.length, 2);
+    assert.equal((await pool.query('SELECT id FROM media_library_assets WHERE id = $1', [fixture.mediaAssetIds[0]])).rows.length, 0);
+    assert.equal((await pool.query('SELECT id FROM media_library_assets WHERE id = $1', [fixture.mediaAssetIds[1]])).rows.length, 1);
+    assert.equal((await pool.query('SELECT id FROM media_library_folders WHERE id IN ($1, $2)', [rootId, folderId])).rows.length, 0);
+    const history = (await service.publicationHistory()).filter((item) => item.article.startsWith(fixture.productSku));
+    assert.equal(history.length, 2);
+    const success = history.find((item) => item.outcome === 'published');
+    assert.equal(success.photoCount, 1);
+    assert.equal(success.verificationStatus, 'verified');
+    assert.equal(success.cleanupStatus, 'completed');
+    assert.ok(success.publishedAt);
+    assert.ok(success.verifiedAt);
+    assert.equal(history.find((item) => item.outcome === 'failed').cleanupStatus, 'retained');
+    await removePublicationFixture(fixture);
+    assert.equal((await service.publicationHistory()).filter((item) => item.article.startsWith(fixture.productSku)).length, 2);
+  } finally { await removePublicationFixture(fixture); }
+});
+
+test('unconfirmed uploads keep media and are verified again without reimporting', async () => {
+  let fixture;
+  let imported = 0;
+  let confirmed = false;
+  let fileAvailable = false;
+  const service = new HoroshopPhotoService({
+    databasePool: pool, publicOrigin: 'https://panel.example', removePublishedImage: async () => {},
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() { return 'token'; },
+      async verifyPhotoFiles() { if (!fileAvailable) throw new Error('remote image is unavailable'); },
+      async exportCatalog() { return { products: [{ article: fixture.modifications[0].sku,
+        parent_article: fixture.productSku, images: [confirmed ? 'https://photo-shop.example/new.webp' : 'https://photo-shop.example/old.webp'] }], nextOffset: null }; },
+      async importCatalog() { imported += 1; return {}; }
+    })
+  });
+  fixture = await createPublicationFixture(service, 1);
+  try {
+    await addPublicationAsset(fixture, fixture.drafts[0].id);
+    await service.publishSelection(fixture.selection.id, { mode: 'replace', userId: ids.admin });
+    assert.equal((await pool.query('SELECT id FROM media_library_assets WHERE id = $1', [fixture.mediaAssetIds[0]])).rows.length, 1);
+    let record = (await service.publicationHistory()).find((row) => row.article === fixture.modifications[0].sku);
+    assert.equal(record.verificationStatus, 'pending');
+    confirmed = true;
+    await pool.query('UPDATE search_horoshop_photo_publications SET next_check_at = $2 WHERE id = $1', [record.id, new Date(Date.now() - 60_000)]);
+    await service.processPublicationCleanup();
+    assert.equal((await pool.query('SELECT id FROM media_library_assets WHERE id = $1', [fixture.mediaAssetIds[0]])).rows.length, 1);
+    fileAvailable = true;
+    await pool.query('UPDATE search_horoshop_photo_publications SET next_check_at = $2 WHERE id = $1', [record.id, new Date(Date.now() - 60_000)]);
+    await service.processPublicationCleanup();
+    assert.equal(imported, 1);
+    assert.equal((await pool.query('SELECT id FROM media_library_assets WHERE id = $1', [fixture.mediaAssetIds[0]])).rows.length, 0);
+    record = (await service.publicationHistory()).find((row) => row.id === record.id);
+    assert.equal(record.verificationStatus, 'verified');
+    assert.equal(record.cleanupStatus, 'completed');
+  } finally { await removePublicationFixture(fixture); }
+});
+
+test('physical cleanup retries after a filesystem failure without losing history or storage keys', async () => {
+  let fixture;
+  let uploaded = false;
+  let writable = false;
+  let attempts = 0;
+  const service = new HoroshopPhotoService({
+    databasePool: pool, publicOrigin: 'https://panel.example',
+    removePublishedImage: async () => { attempts += 1; if (!writable) throw new Error('disk unavailable'); },
+    catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+    clientFactory: () => ({
+      async authenticate() { return 'token'; },
+      async verifyPhotoFiles() {},
+      async exportCatalog() { return { products: [{ article: fixture.modifications[0].sku,
+        parent_article: fixture.productSku, images: uploaded ? ['https://photo-shop.example/new.webp'] : [] }], nextOffset: null }; },
+      async importCatalog() { uploaded = true; return {}; }
+    })
+  });
+  fixture = await createPublicationFixture(service, 1);
+  try {
+    await addPublicationAsset(fixture, fixture.drafts[0].id);
+    await service.publishSelection(fixture.selection.id, { mode: 'append', userId: ids.admin });
+    const history = (await service.publicationHistory()).find((row) => row.article === fixture.modifications[0].sku);
+    assert.equal(history.verificationStatus, 'verified');
+    assert.equal(history.cleanupStatus, 'pending');
+    assert.equal(attempts, 1);
+    writable = true;
+    await service.publicationCleanup.flushFiles();
+    assert.equal(attempts, 2);
+    assert.equal((await service.publicationHistory()).find((row) => row.id === history.id).cleanupStatus, 'completed');
+  } finally { await removePublicationFixture(fixture); }
+});
+
+test('cleanup preserves media referenced by another draft and media belonging to a new parse', async () => {
+  for (const changedDraft of [false, true]) {
+    let fixture;
+    let uploaded = false;
+    const removed = [];
+    const service = new HoroshopPhotoService({
+      databasePool: pool, publicOrigin: 'https://panel.example',
+      removePublishedImage: async (key) => { removed.push(key); },
+      catalogService: { runExclusiveExternalWrite: (operation) => operation() },
+      clientFactory: () => ({
+        async authenticate() { return 'token'; },
+        async exportCatalog() {
+          if (uploaded && changedDraft) await pool.query(
+            "UPDATE search_horoshop_photo_drafts SET parse_status = 'running' WHERE id = $1", [fixture.drafts[0].id]);
+          return { products: [{ article: fixture.modifications[0].sku, parent_article: fixture.productSku,
+            images: uploaded ? ['https://photo-shop.example/shared.webp'] : [] }], nextOffset: null };
+        },
+        async verifyPhotoFiles() {},
+        async importCatalog() { uploaded = true; return {}; }
+      })
+    });
+    fixture = await createPublicationFixture(service, 2);
+    try {
+      const asset = await addPublicationAsset(fixture, fixture.drafts[0].id);
+      if (!changedDraft) {
+        const source = (await pool.query('SELECT * FROM search_horoshop_photo_assets WHERE id = $1', [asset.photoAssetId])).rows[0];
+        await pool.query(`
+          INSERT INTO search_horoshop_photo_assets (draft_id, media_asset_id, source_url, content_sha256)
+          VALUES ($1, $2, $3, $4)
+        `, [fixture.drafts[1].id, asset.mediaAssetId, source.source_url, source.content_sha256]);
+      }
+      await service.publishDraft(fixture.drafts[0].id, { mode: 'replace', userId: ids.admin });
+      assert.equal(removed.length, 0);
+      assert.equal((await pool.query('SELECT id FROM media_library_assets WHERE id = $1', [asset.mediaAssetId])).rows.length, 1);
+      const record = (await service.publicationHistory()).find((row) => row.article === fixture.modifications[0].sku);
+      assert.equal(record.verificationStatus, 'verified');
+      assert.equal(record.cleanupStatus, 'retained');
+      assert.equal(record.retainedCount, 1);
+    } finally { await removePublicationFixture(fixture); }
+  }
+});
+
 test('disconnect removes selections, drafts and their generated media', async () => {
   const repository = new HoroshopCatalogRepository(pool);
   const service = new HoroshopCatalogService({ repository });
@@ -1420,6 +1588,8 @@ test('disconnect removes selections, drafts and their generated media', async ()
   }
 
   assert.deepEqual(result, { categories: 0, stickers: 0, products: 2, modifications: 2 });
+  assert.ok((await pool.query('SELECT id FROM search_horoshop_photo_publications LIMIT 1')).rows.length,
+    'publication history survives disconnect');
   for (const table of [
     'search_horoshop_photo_selections',
     'search_horoshop_photo_drafts',

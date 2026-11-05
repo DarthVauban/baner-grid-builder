@@ -53,6 +53,7 @@ export async function processHoroshopPhotoParserQueue({
 export function startPhotoParserWorker({ intervalMs = 1500 } = {}) {
   let stopped = false;
   let running = false;
+  let nextPublicationCleanup = 0;
 
   const tick = async () => {
     if (stopped || running || getMaintenanceReason()) return;
@@ -60,6 +61,10 @@ export function startPhotoParserWorker({ intervalMs = 1500 } = {}) {
     try {
       await processPhotoParserQueue();
       await processHoroshopPhotoParserQueue();
+      if (Date.now() >= nextPublicationCleanup) {
+        nextPublicationCleanup = Date.now() + 60_000;
+        await horoshopPhotoService.processPublicationCleanup();
+      }
     } catch (error) {
       console.error('Photo parser worker failed', error);
     } finally {

@@ -158,6 +158,36 @@ test('Horoshop client preserves a safe API rejection message for diagnostics', a
   });
 });
 
+test('photo file verification requires available images without redirects or credentials', async () => {
+  const calls = [];
+  const client = new HoroshopClient('shop.example.com', {
+    lookupImplementation: async () => [{ address: '93.184.216.34', family: 4 }],
+    fetchImplementation: async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(null, { status: 200, headers: { 'content-type': 'image/webp', 'content-length': '1000' } });
+    }
+  });
+  await client.verifyPhotoFiles(['https://cdn.example.com/photo.webp']);
+  assert.equal(calls[0].options.method, 'HEAD');
+  assert.equal(calls[0].options.redirect, 'error');
+  assert.deepEqual(calls[0].options.headers, { accept: 'image/*' });
+  for (const response of [
+    new Response(null, { status: 404 }),
+    new Response(null, { status: 302, headers: { location: 'https://workspace.example/source.webp' } }),
+    new Response(null, { status: 200, headers: { 'content-type': 'text/html' } }),
+    new Response(null, { status: 200, headers: { 'content-type': 'image/webp', 'content-length': '0' } })
+  ]) {
+    client.fetchImplementation = async () => response;
+    await assert.rejects(() => client.verifyPhotoFiles(['https://cdn.example.com/photo.webp']));
+  }
+  client.fetchImplementation = async () => new Response(null, { status: 200, headers: { 'content-type': 'image/webp' } });
+  for (const url of ['http://cdn.example.com/photo.webp', 'https://127.0.0.1/photo.webp', 'https://user:secret@cdn.example.com/photo.webp']) {
+    await assert.rejects(() => client.verifyPhotoFiles([url]));
+  }
+  client.lookupImplementation = async () => [{ address: '127.0.0.1', family: 4 }];
+  await assert.rejects(() => client.verifyPhotoFiles(['https://cdn.example.com/photo.webp']), { code: 'EACCES' });
+});
+
 test('Horoshop catalog import forwards request timeout and retry options', async () => {
   const client = new HoroshopClient('shop.example.com');
   let capturedCall = null;

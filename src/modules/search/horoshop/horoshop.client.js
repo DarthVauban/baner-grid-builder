@@ -309,6 +309,30 @@ export class HoroshopClient {
     });
   }
 
+  async verifyPhotoFiles(urls) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.min(this.timeoutMilliseconds, 20_000));
+    try {
+      for (const value of urls) {
+        controller.signal.throwIfAborted();
+        const url = new URL(value);
+        if (url.protocol !== 'https:' || url.username || url.password) throw new HoroshopApiError('invalid_response');
+        // Image probes carry no API token and use the same public-DNS-only
+        // transport as API requests, including for a separate Horoshop CDN.
+        normalizeHoroshopStoreDomain(url.origin);
+        if (this.lookupImplementation && isIP(url.hostname) === 0) {
+          const addresses = await this.lookupImplementation(url.hostname);
+          if (!addresses.length || addresses.some((entry) => !publicNetworkAddress(entry.address))) throw unsafeResolutionError();
+        }
+        const response = await this.fetchImplementation(url, {
+          method: 'HEAD', headers: { accept: 'image/*' }, redirect: 'error', signal: controller.signal
+        });
+        if (response.status !== 200 || !/^image\//iu.test(response.headers.get('content-type') || '')
+          || response.headers.get('content-length') === '0') throw new HoroshopApiError('invalid_response');
+      }
+    } finally { clearTimeout(timer); }
+  }
+
   async post(functionName, body, options = {}) {
     const endpoint = new URL(`/api/${functionName}/`, this.baseUrl);
     let lastError;

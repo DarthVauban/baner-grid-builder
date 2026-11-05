@@ -13,6 +13,7 @@ import { decryptHoroshopCredentials } from './credential-cipher.js';
 import { horoshopCatalogService } from './catalog.service.js';
 import { HoroshopClient } from './horoshop.client.js';
 import { resolveHoroshopPhotoSelection } from './photo-selection.js';
+import { HoroshopPhotoCleanupService } from './photo-cleanup.service.js';
 import {
   absoluteMediaUrl,
   contextualPublicationError,
@@ -184,6 +185,34 @@ export class HoroshopPhotoService {
     this.publicOrigin = options.publicOrigin ?? env.APP_ORIGIN ?? '';
     this.publicationHeartbeatMilliseconds = options.publicationHeartbeatMilliseconds
       ?? defaultPublicationHeartbeatMilliseconds;
+    this.publicationCleanup = new HoroshopPhotoCleanupService({
+      pool: this.pool,
+      deleteEmptyMediaFolders: (db, ids) => this.deleteEmptyMediaFolders(db, ids),
+      removeImage: options.removePublishedImage
+    });
+  }
+
+  async publicationHistory() {
+    const connection = await this.connection();
+    return this.publicationCleanup.history(connection.store_domain);
+  }
+
+  async processPublicationCleanup() {
+    await this.publicationCleanup.flushFiles();
+    const connection = await this.connection().catch(() => null);
+    if (!connection) return;
+    const pending = await this.publicationCleanup.pending(connection);
+    if (!pending.length) return;
+    try {
+      await this.catalogService.runExclusiveExternalWrite(async () => {
+        const client = this.clientFactory(connection.store_domain);
+        const credentials = decryptHoroshopCredentials(connection.encrypted_credentials);
+        const token = await client.authenticate(credentials.login, credentials.password);
+        await this.publicationCleanup.verify(pending, client, token);
+      });
+    } catch (error) {
+      if (error?.code !== 'HOROSHOP_CATALOG_BUSY') throw error;
+    }
   }
 
   async connection(db = this.pool) {
@@ -1873,6 +1902,7 @@ export class HoroshopPhotoService {
         productActive: row.product_active === true,
         modificationActive: row.modification_active === true,
         article: row.modification_sku || row.product_sku || '',
+        parentArticle: row.product_sku || '',
         assets: []
       };
       if (row.url) draft.assets.push({ url: row.url, sizeBytes: Number(row.size_bytes || 0) });
@@ -2056,10 +2086,16 @@ export class HoroshopPhotoService {
         const currentDraftPlaceholders = currentDraftIds.map((_, index) => `$${index + 1}`).join(', ');
         let failure = null;
         let claimed = false;
+        let publications = [];
         try {
           await this.claimPublicationDrafts(currentDrafts);
           claimed = true;
           report('publishing', groupedItem.article);
+          publications = await withPublicationHeartbeat(
+            () => this.publicationCleanup.begin({ connection, drafts: currentDrafts, mode,
+              publicOrigin: publicOrigin || this.publicOrigin, client, token, userId }),
+            () => report('publishing', groupedItem.article), this.publicationHeartbeatMilliseconds
+          );
           await withPublicationHeartbeat(
             () => client.importCatalog(token, [payload], {
               timeoutMilliseconds: 300_000,
@@ -2068,17 +2104,19 @@ export class HoroshopPhotoService {
             () => report('publishing', groupedItem.article),
             this.publicationHeartbeatMilliseconds
           );
-          await this.pool.query(`
-            UPDATE search_horoshop_photo_drafts
-            SET publish_status = 'published', published_at = NOW(), published_by = $${currentDraftIds.length + 1},
-                error_message = '', updated_at = NOW()
-            WHERE id IN (${currentDraftPlaceholders})
-          `, [...currentDraftIds, userId]);
+          await this.publicationCleanup.published(publications, userId);
           publishedDrafts += currentDraftIds.length;
           publishedArticles += 1;
+          // Verification/cleanup failures must never reclassify an accepted import
+          // as failed: retrying an append would upload the images a second time.
+          await withPublicationHeartbeat(
+            () => this.publicationCleanup.verify(publications, client, token),
+            () => report('publishing', groupedItem.article), this.publicationHeartbeatMilliseconds
+          ).catch(() => {});
         } catch (error) {
           const safeFailure = publicationError(error);
           failure = contextualPublicationError(safeFailure, groupedItem.article);
+          await this.publicationCleanup.failed(publications, failure.message).catch(() => {});
           if (claimed) {
             await this.pool.query(`
               UPDATE search_horoshop_photo_drafts

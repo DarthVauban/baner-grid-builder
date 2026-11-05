@@ -88,6 +88,12 @@ POST /api/search/horoshop/photos/selections/:id/publish/stream
 Mode — `append` або `replace`. Bulk endpoint повертає NDJSON progress. Publication повторно перевіряє
 active connection/generation і серіалізується з іншими Horoshop external writes.
 
+Міграція `104` додає незалежний журнал `search_horoshop_photo_publications` та durable unlink queue
+`search_horoshop_photo_cleanup_files`. Журнал містить артикул, ціль, режим, користувача, час, snapshot
+фото й результат передачі/перевірки/очищення. Він не видаляється разом із вибіркою, файлами,
+чернеткою чи підключенням. `GET /api/search/horoshop/photos/publications` повертає останні 50 передач
+поточного магазину без внутрішніх шляхів і source URLs; web показує їх у «Історія передачі фотографій».
+
 ## Security
 
 - source pages і image URLs мусять використовувати HTTPS;
@@ -102,6 +108,21 @@ active connection/generation і серіалізується з іншими Hor
 
 - revoke device повертає його active jobs у queue;
 - failed/expired staging uploads видаляються;
+- після успішного `catalog/import` виконується живий scoped `catalog/export`: звіряються точний
+  артикул/модифікація, окреме поле `images`/`gallery_common`, галереї до та після імпорту;
+- очищення дозволено тільки коли з’явилась повна кількість нових незалежних HTTPS-посилань;
+  `append` додатково має зберегти попередні фото, `replace` — повернути точну кількість переданих;
+- кожен новий файл має відповісти на HTTPS HEAD успішним image Content-Type; redirect, 404,
+  нульова довжина чи недоступність зберігають копії. Probes не передають API token та блокують private DNS;
+- незмінна галерея, неповний імпорт, невідома структура, відсутня baseline, workspace URL чи помилка
+  перевірки залишають фото у сховищі. Збіг лише кількості старих фото не підтверджує передачу;
+- після підтвердження видаляються лише snapshot assets успішної чернетки (включно з відхиленими
+  користувачем фото), потім порожні папки. Спільні assets інших чернеток/active runs зберігаються;
+- worker повторює непідтверджену перевірку до 5 разів з інтервалом щонайменше хвилину, без нового
+  імпорту. Відсутня baseline чи 5 невдалих перевірок дають `unconfirmed` і зберігають файли;
+- DB cleanup та постановка unlink у чергу транзакційні; фізичне видалення повторюється після
+  помилки файлової системи/перезапуску. Успішна передача не стає помилкою через cleanup;
+- старі публікації без snapshot/baseline автоматично не очищуються;
 - delete selection каскадно прибирає selection-based queue;
 - disconnect Horoshop видаляє selections, drafts, runs, pairings і connection-owned media;
 - generated/runtime media не додаються в Git.

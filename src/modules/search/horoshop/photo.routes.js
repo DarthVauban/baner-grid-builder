@@ -78,6 +78,10 @@ router.get('/selections', asyncHandler(async (_req, res) => {
   res.json({ data: await horoshopPhotoService.listSelections() });
 }));
 
+router.get('/publications', asyncHandler(async (_req, res) => {
+  res.json({ data: await horoshopPhotoService.publicationHistory() });
+}));
+
 router.get('/catalog/sync', asyncHandler(async (_req, res) => {
   res.json({ data: { integration: await horoshopCatalogService.status() } });
 }));
