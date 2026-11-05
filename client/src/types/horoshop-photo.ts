@@ -135,6 +135,23 @@ export interface HoroshopPhotoPublishResult {
   remainingTargets?: number;
 }
 
+export interface HoroshopPhotoPublication {
+  id: string;
+  article: string;
+  targetType: 'images' | 'gallery_common';
+  mode: HoroshopPhotoPublicationMode;
+  outcome: 'publishing' | 'published' | 'failed';
+  photoCount: number;
+  verificationStatus: 'pending' | 'verified' | 'unconfirmed';
+  cleanupStatus: 'pending' | 'completed' | 'retained';
+  retainedCount: number;
+  errorMessage: string;
+  createdAt: string;
+  publishedAt: string | null;
+  verifiedAt: string | null;
+  cleanedAt: string | null;
+}
+
 export interface HoroshopPhotoDesktopDevice {
   id: string;
   name: string;

@@ -194,6 +194,29 @@ beforeEach(() => {
 });
 
 describe('HoroshopPhotoParserPage', () => {
+  it('shows verified cleanup and retained failed photos in publication history', async () => {
+    vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([]);
+    const entry = { id: 'history-1', article: 'PHONE-SUCCESS', targetType: 'images' as const,
+      mode: 'replace' as const, outcome: 'published' as const, photoCount: 3,
+      verificationStatus: 'verified' as const, cleanupStatus: 'completed' as const, retainedCount: 0,
+      errorMessage: '', createdAt: summary.createdAt, publishedAt: summary.createdAt,
+      verifiedAt: summary.createdAt, cleanedAt: summary.createdAt };
+    const history = vi.spyOn(api.horoshopPhotos, 'history').mockResolvedValue([entry, {
+      ...entry, id: 'history-2', article: 'PHONE-FAILED', outcome: 'failed',
+      verificationStatus: 'unconfirmed', cleanupStatus: 'retained',
+      errorMessage: 'Хорошоп відхилив фотографії.', verifiedAt: null, cleanedAt: null
+    }]);
+    renderPage();
+    expect(history).not.toHaveBeenCalled();
+    const details = screen.getByText('Історія передачі фотографій').closest('details')!;
+    details.open = true;
+    fireEvent(details, new Event('toggle'));
+    expect(await screen.findByText('PHONE-SUCCESS')).toBeInTheDocument();
+    expect(screen.getByText('Передачу перевірено')).toBeInTheDocument();
+    expect(screen.getByText('Копії зі сховища видалено')).toBeInTheDocument();
+    expect(screen.getByText('PHONE-FAILED')).toBeInTheDocument();
+    expect(screen.getByText('Фото залишено у сховищі')).toBeInTheDocument();
+  });
   it('allows publishing ready drafts even when a parser batch is stale at 50 percent', async () => {
     vi.spyOn(api.horoshopPhotos, 'selections').mockResolvedValue([summary]);
     vi.spyOn(api.horoshopPhotos, 'selection').mockResolvedValue(readySelection());

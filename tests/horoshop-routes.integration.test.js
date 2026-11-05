@@ -31,6 +31,10 @@ after(async () => {
   await pool.end();
 });
 
+test('photo publication history requires authentication', async () => {
+  await request(app).get('/api/search/horoshop/photos/publications').expect(401);
+});
+
 test('Horoshop integration state is admin-only, non-cacheable and never contains credentials', async () => {
   await request(app).get('/api/admin/integrations/horoshop').expect(401);
   const response = await admin.get('/api/admin/integrations/horoshop').expect(200);
@@ -120,6 +124,24 @@ test('Horoshop catalog route returns product cards with nested modification tree
     .expect(200);
   assert.equal(matchedByModification.body.data.total, 1);
   assert.equal(matchedByModification.body.data.items[0].sku, '34208');
+
+  const publicationId = randomUUID();
+  await pool.query(`
+    INSERT INTO search_horoshop_photo_publications (
+      id, connection_id, generation, draft_id, store_domain, article, parent_article,
+      public_origin, target_type, mode, assets, outcome, verification_status, cleanup_status
+    ) VALUES ($1, $2, $3, $4, 'test-shop.example', '34208', '34208',
+      'https://workspace.example', 'gallery_common', 'replace', $5::jsonb, 'published', 'verified', 'completed')
+  `, [publicationId, connectionId, generation, randomUUID(), JSON.stringify([
+    { selected: true, storage_key: 'private-storage-key.webp', source_url: 'https://supplier.example/private-source' }
+  ])]);
+  const history = await admin.get('/api/search/horoshop/photos/publications').expect(200);
+  assert.match(history.headers['cache-control'], /no-store/u);
+  assert.equal(history.body.data[0].id, publicationId);
+  assert.equal(history.body.data[0].photoCount, 1);
+  assert.equal(history.body.data[0].cleanupStatus, 'completed');
+  assert.equal(JSON.stringify(history.body).includes('private-storage-key'), false);
+  assert.equal(JSON.stringify(history.body).includes('private-source'), false);
 
   const hidden = await admin
     .get('/api/search/horoshop/catalog?visibility=hidden&pageSize=10')

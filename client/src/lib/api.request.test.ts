@@ -7,6 +7,14 @@ afterEach(() => {
 });
 
 describe('API request recovery', () => {
+  it('loads photo publication history through the authenticated API client', async () => {
+    const history = [{ id: 'publication-1', article: 'PHONE-1', photoCount: 2,
+      verificationStatus: 'verified', cleanupStatus: 'completed' }];
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: history }), { status: 200 })));
+    await expect(api.horoshopPhotos.history()).resolves.toEqual(history);
+    expect(fetch).toHaveBeenCalledWith('/api/search/horoshop/photos/publications',
+      expect.objectContaining({ credentials: 'same-origin' }));
+  });
   it('reports sticker preparation while the response is still open and returns the final draft', async () => {
     let writer: ReadableStreamDefaultController<Uint8Array> | undefined;
     const body = new ReadableStream<Uint8Array>({ start(controller) { writer = controller; } });

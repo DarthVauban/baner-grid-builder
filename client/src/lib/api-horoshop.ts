@@ -19,6 +19,7 @@ import type {
   HoroshopPhotoDesktopDevice,
   HoroshopPhotoDesktopPairing,
   HoroshopPhotoPublicationMode,
+  HoroshopPhotoPublication,
   HoroshopPhotoPublishProgress,
   HoroshopPhotoPublishResult,
   HoroshopPhotoSelection,
@@ -99,6 +100,7 @@ export const horoshopApi = {
     )
   },
   horoshopPhotos: {
+    history: () => request<HoroshopPhotoPublication[]>('/api/search/horoshop/photos/publications'),
     catalogSyncStatus: () => request<{ integration: HoroshopIntegration }>(
       '/api/search/horoshop/photos/catalog/sync'
     ),
