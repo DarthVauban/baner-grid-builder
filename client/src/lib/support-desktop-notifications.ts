@@ -24,6 +24,14 @@ export function setSupportDesktopNotificationsEnabled(userId: string, enabled: b
   localStorage.setItem(storageKey(userId), enabled ? 'true' : 'false');
 }
 
+export async function withSupportNotificationSubscription(load: () => Promise<{ enabled: boolean }>, notify: () => void) {
+  try {
+    if (!(await load()).enabled) return false;
+    notify();
+    return true;
+  } catch { return false; }
+}
+
 export async function requestSupportDesktopNotificationPermission(): Promise<SupportDesktopNotificationPermission> {
   if (!notificationApiAvailable()) return 'unsupported';
   if (Notification.permission !== 'default') return Notification.permission;

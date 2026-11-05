@@ -91,7 +91,8 @@ export async function setMobileDevicePushToken(
   token,
   platform,
   installationId = null,
-  dbPool = pool
+  dbPool = pool,
+  supportChatContractVersion = 0
 ) {
   const client = await dbPool.connect();
   try {
@@ -116,9 +117,10 @@ export async function setMobileDevicePushToken(
       `UPDATE mobile_devices
        SET fcm_token_ciphertext = $1, fcm_token_iv = $2,
            fcm_token_tag = $3, fcm_token_hash = $4,
-           installation_id_hash = COALESCE($5, installation_id_hash)
+           installation_id_hash = COALESCE($5, installation_id_hash),
+           support_chat_contract_version = $7
        WHERE id = $6`,
-      [encrypted.ciphertext, encrypted.iv, encrypted.tag, tokenHash, installationIdHash, deviceId]
+      [encrypted.ciphertext, encrypted.iv, encrypted.tag, tokenHash, installationIdHash, deviceId, supportChatContractVersion]
     );
     await recordMobileSecurityEvent(client, {
       userId,

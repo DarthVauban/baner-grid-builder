@@ -44,6 +44,10 @@ if (env.NODE_ENV === 'test' && env.DATABASE_URL.startsWith('pg-mem://')) {
     name: 'length', args: [DataType.text], returns: DataType.integer,
     implementation: (value) => value.length
   });
+  memoryDb.public.registerFunction({
+    name: 'to_char', args: [DataType.timestamptz, DataType.text], returns: DataType.text,
+    implementation: (value) => new Date(value).toISOString()
+  });
   Pool = memoryDb.adapters.createPg().Pool;
 }
 

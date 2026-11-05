@@ -4,7 +4,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { horoshopWidgetTools } from '../lib/tools';
-import { showSupportDesktopNotification } from '../lib/support-desktop-notifications';
+import { showSupportDesktopNotification, withSupportNotificationSubscription } from '../lib/support-desktop-notifications';
 import { roleLabels } from '../lib/user';
 import { Icon } from './Icon';
 import { NotificationCenter } from './NotificationCenter';
@@ -111,13 +111,15 @@ export function AppShell() {
       if (payload.conversationId) void queryClient.invalidateQueries({ queryKey: ['online-support-conversation', payload.conversationId] });
       const isSupportPage = locationRef.current.pathname === '/tools/online-support';
       if (payload.type === 'message' && payload.senderType === 'visitor') {
-        if (!isSupportPage) {
-          sound.currentTime = 0;
-          void sound.play().catch(() => undefined);
-        }
-        if (!isSupportPage || document.visibilityState !== 'visible') {
-          showSupportDesktopNotification(userId, payload);
-        }
+        void withSupportNotificationSubscription(api.onlineSupport.notificationPreference, () => {
+          if (!isSupportPage) {
+            sound.currentTime = 0;
+            void sound.play().catch(() => undefined);
+          }
+          if (!isSupportPage || document.visibilityState !== 'visible') {
+            showSupportDesktopNotification(userId, payload);
+          }
+        });
       }
     };
     stream.addEventListener('support', refresh);

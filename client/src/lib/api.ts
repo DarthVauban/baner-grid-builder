@@ -61,7 +61,9 @@ import type {
   SupportConversation,
   SupportConversationDetail,
   SupportConversationStatus,
-  SupportMessage
+  SupportMessage,
+  SupportMessagePage,
+  SupportNotificationPreference
 } from '../types/support-chat';
 import type {
   BackupAdminState,
@@ -522,6 +524,10 @@ export const api = {
     markRead: (conversationId: string) => request<void>(`/api/chat/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST' })
   },
   onlineSupport: {
+    notificationPreference: () => request<SupportNotificationPreference>('/api/support-chat/notification-preference'),
+    setNotificationPreference: (enabled: boolean, expectedVersion: number) => request<SupportNotificationPreference>('/api/support-chat/notification-preference', {
+      method: 'PUT', body: jsonBody({ enabled, expectedVersion })
+    }),
     settings: () => request<SupportChatSettings>('/api/support-chat/settings'),
     saveSettings: (input: SupportChatSettingsInput) => request<SupportChatSettings>('/api/support-chat/settings', {
       method: 'PUT', body: jsonBody(input)
@@ -533,7 +539,10 @@ export const api = {
     conversation: (id: string) => request<SupportConversationDetail>(
       `/api/support-chat/conversations/${encodeURIComponent(id)}`
     ),
-    markRead: (id: string) => request<void>(`/api/support-chat/conversations/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+    messages: (id: string, cursor: string) => request<SupportMessagePage>(`/api/support-chat/conversations/${encodeURIComponent(id)}/messages${queryString({ cursor })}`),
+    markRead: (id: string, lastReadMessageId: string) => request<void>(`/api/support-chat/conversations/${encodeURIComponent(id)}/read`, {
+      method: 'POST', body: jsonBody({ lastReadMessageId })
+    }),
     claim: (id: string) => request<SupportConversation>(`/api/support-chat/conversations/${encodeURIComponent(id)}/claim`, { method: 'POST' }),
     updateCustomer: (id: string, input: SupportCustomerInput) => request<SupportConversation>(
       `/api/support-chat/conversations/${encodeURIComponent(id)}/customer`,

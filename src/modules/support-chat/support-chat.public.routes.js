@@ -6,6 +6,8 @@ import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { publishSupportChatUpdate, subscribeToSupportVisitorUpdates } from './support-chat.events.js';
+import { lockSupportConversation, nextSupportMessageSequence } from './support-chat.sequence.js';
+import { enqueueSupportMessagePush } from './support-chat.notifications.js';
 import {
   filterRepeatedPageReferences,
   hydrateSupportProductCards,
@@ -108,11 +110,11 @@ async function loadPublicConversation(visitorId) {
      FROM support_chat_messages AS message
      LEFT JOIN users ON users.id = message.sender_user_id
      WHERE message.conversation_id = $1
-     ORDER BY message.created_at, message.id
+      ORDER BY message.message_sequence DESC NULLS LAST, message.created_at DESC, message.id DESC
      LIMIT 300`,
     [conversation.id]
   );
-  const hydratedMessages = await hydrateSupportProductCards(messages.rows);
+  const hydratedMessages = await hydrateSupportProductCards(messages.rows.reverse());
   return {
     id: conversation.id,
     status: conversation.status,
@@ -207,26 +209,26 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
   const resolvedProductReferences = await resolveSupportProductReferences({ body: input.body, pageUrl });
   const client = await pool.connect();
   let conversationId;
+  let insertedMessageId = null;
   try {
     await client.query('BEGIN');
     const conversationResult = await client.query(
       `INSERT INTO support_chat_conversations (site_id, visitor_id)
        VALUES ($1, $2)
        ON CONFLICT (site_id, visitor_id)
-       DO UPDATE SET
-         status = CASE
-           WHEN support_chat_conversations.status IN ('RESOLVED', 'CLOSED') THEN 'NEW'
-           WHEN support_chat_conversations.status = 'WAITING_CUSTOMER' THEN 'OPEN'
-           ELSE support_chat_conversations.status
-         END,
-         resolved_at = NULL,
-         closed_at = NULL,
-         updated_at = NOW()
+        DO UPDATE SET visitor_id = EXCLUDED.visitor_id
        RETURNING *`,
       [visitor.site_id, visitor.id]
     );
-    const conversation = conversationResult.rows[0];
+    const conversation = await lockSupportConversation(client, conversationResult.rows[0].id);
     conversationId = conversation.id;
+    const existingMessage = (await client.query(
+      'SELECT * FROM support_chat_messages WHERE conversation_id = $1 AND client_message_id = $2',
+      [conversationId, input.clientMessageId]
+    )).rows[0];
+    if (existingMessage && (existingMessage.sender_type !== 'visitor' || existingMessage.body !== input.body)) {
+      throw new AppError(409, 'SUPPORT_CLIENT_MESSAGE_CONFLICT', 'Цей ідентифікатор уже використано для іншого повідомлення.');
+    }
     const previousReferences = await client.query(
       `SELECT product_references
        FROM support_chat_messages
@@ -234,15 +236,20 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
       [conversationId]
     );
     const productReferences = filterRepeatedPageReferences(resolvedProductReferences, previousReferences.rows);
-    const inserted = await client.query(
+    const inserted = existingMessage ? { rows: [] } : await client.query(
       `INSERT INTO support_chat_messages (
-         conversation_id, sender_type, body, client_message_id, product_references
-       ) VALUES ($1, 'visitor', $2, $3, $4::JSONB)
+         conversation_id, sender_type, body, client_message_id, product_references, message_sequence
+       ) VALUES ($1, 'visitor', $2, $3, $4::JSONB, $5)
        ON CONFLICT (conversation_id, client_message_id) DO NOTHING
        RETURNING id`,
-      [conversationId, input.body, input.clientMessageId, JSON.stringify(productReferences)]
+      [conversationId, input.body, input.clientMessageId, JSON.stringify(productReferences), await nextSupportMessageSequence(client, conversationId)]
     );
     if (inserted.rows[0]) {
+      insertedMessageId = inserted.rows[0].id;
+      await client.query(`UPDATE support_chat_conversations SET status = CASE
+        WHEN status IN ('RESOLVED', 'CLOSED') THEN 'NEW' WHEN status = 'WAITING_CUSTOMER' THEN 'OPEN' ELSE status END,
+        resolved_at = NULL, closed_at = NULL, updated_at = NOW() WHERE id = $1`, [conversationId]);
+      await enqueueSupportMessagePush(client, insertedMessageId);
       let replyText = '';
       if (!withinWorkingHours) {
         const offlineReplyBefore = new Date(Date.now() - 12 * 60 * 60 * 1000);
@@ -268,9 +275,9 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
       }
       if (replyText) {
         await client.query(
-          `INSERT INTO support_chat_messages (conversation_id, sender_type, body)
-           VALUES ($1, 'system', $2)`,
-          [conversationId, replyText]
+          `INSERT INTO support_chat_messages (conversation_id, sender_type, body, message_sequence)
+           VALUES ($1, 'system', $2, $3)`,
+          [conversationId, replyText, await nextSupportMessageSequence(client, conversationId)]
         );
       }
     }
@@ -289,8 +296,9 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
   } finally {
     client.release();
   }
-  publishSupportChatUpdate({
+  if (insertedMessageId) publishSupportChatUpdate({
     type: 'message',
+    messageId: insertedMessageId,
     conversationId,
     visitorId: visitor.id,
     senderType: 'visitor',

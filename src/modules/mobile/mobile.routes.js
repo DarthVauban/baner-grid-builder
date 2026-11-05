@@ -25,6 +25,7 @@ import {
   listMobileLoginRequests
 } from './mobile-login.service.js';
 import mobileQrLoginRoutes from './mobile-qr-login.routes.js';
+import mobileSupportChatRoutes from '../support-chat/support-chat.mobile.routes.js';
 
 const router = Router();
 const idSchema = z.string().uuid();
@@ -50,7 +51,8 @@ const pairingClaimSchema = z.object({
 const pushTokenSchema = z.object({
   token: z.string().trim().min(20, 'Push token недійсний.').max(4096),
   platform: z.enum(['android', 'ios']),
-  installationId: z.string().uuid('Ідентифікатор інсталяції недійсний.').optional()
+  installationId: z.string().uuid('Ідентифікатор інсталяції недійсний.').optional(),
+  supportChatContractVersion: z.union([z.literal(0), z.literal(1)]).optional().default(0)
 });
 const authKeyRegistrationSchema = authKeySchema.extend({
   totpCode: z.string().trim().min(6, 'Вкажіть код 2FA.').max(20, 'Код 2FA завеликий.')
@@ -120,7 +122,9 @@ router.put('/devices/:deviceId/push-token', requireMobileDeviceAuth, asyncHandle
     deviceId,
     input.token,
     input.platform,
-    input.installationId || null
+    input.installationId || null,
+    undefined,
+    input.supportChatContractVersion
   );
   res.status(204).end();
 }));
@@ -141,6 +145,7 @@ router.put('/devices/:deviceId/auth-key', requireMobileDeviceAuth, authKeyLimite
 }));
 
 router.use('/qr-login', requireMobileDeviceAuth, mobileQrLoginRoutes);
+router.use('/support-chat', requireMobileDeviceAuth, mobileSupportChatRoutes);
 
 router.get('/login-requests', requireMobileDeviceAuth, asyncHandler(async (req, res) => {
   res.json({ data: { items: await listMobileLoginRequests(req.user.id) } });
