@@ -199,25 +199,27 @@ possibly selecting the correctly routed account; it does not revoke it. New Flut
 must ignore unknown kinds before any navigation. No claim is made that stale
 capabilities absolutely prevent delivery to downgraded binaries.
 
-FCM `notification.title` is `<visitor label>: <short message excerpt>`; `notification.body`
-is a longer excerpt of that same visitor message. This explicitly replaces the
-previous generic-only notification copy. The worker reads the visitor and the
+FCM `notification.title` contains only the visitor's name or short ID;
+`notification.body` contains the visitor message excerpt. Message text is never
+appended to the title. The worker reads the visitor and the
 exact outbox `support_message_id` only after the current device/user/tool/2FA,
 subscription, lease and expiry checks under the delivery gate; it never selects
 the conversation's latest message. Missing/non-visitor source messages cancel
 the delivery rather than showing content from another message.
 
-The label uses the visitor's name, or `Відвідувач <first 6 characters of visitor UUID>`
-when the normalized name is empty; email and phone are not used as fallbacks.
-Name/label, title excerpt and body have limits of **40 / 60 / 180 graphemes**,
+The title uses the visitor's name, or only the first 6 characters of the visitor
+UUID when the normalized name is empty, without a label prefix. If both are
+unavailable, use `Клієнт`; email and phone are not used as fallbacks.
+Title and body have limits of **40 / 180 graphemes**,
 including a terminal `…` when truncated. Text is NFC-normalized; whitespace,
 control and bidi-control characters, zero-width spaces and BOMs become single
 spaces, with leading/trailing spaces removed. Emoji ZWJ sequences, flags, skin
 tones and combined accents are not split. Malformed UTF-16 becomes U+FFFD.
-Additional JSON-escaped UTF-8 content caps of **256 / 512 / 1536 bytes** leave
+Additional JSON-escaped UTF-8 content caps of **256 / 1536 bytes** leave
 room for routing within [FCM's 4096-byte payload limit](https://firebase.google.com/docs/cloud-messaging/customize-messages/set-message-type). If a single grapheme cannot
 fit, use the anonymous label or `Нове повідомлення`; normalized empty message
-text also uses `Нове повідомлення`. For example: title `Олександр: Підкажіть наявність…`.
+text also uses `Нове повідомлення`. For example: title `Олександр`, body
+`Підкажіть наявність…`; anonymous title `b0c94c`, body `Тест 2`.
 
 Names and message excerpts belong only to `notification.title/body`, never to
 `data`, SSE, outbox payloads or logs. Flutter may retain the received notification

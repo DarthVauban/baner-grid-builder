@@ -25,15 +25,14 @@ function excerpt(text, limit, byteLimit) {
 }
 
 export function buildSupportPushNotification({ visitorId, visitorName, body }) {
-  const anonymous = visitorId ? `Відвідувач ${String(visitorId).slice(0, 6)}` : 'Відвідувач';
+  const anonymous = singleLine(String(visitorId || '').slice(0, 6)) || 'Клієнт';
   const name = excerpt(singleLine(visitorName) || anonymous, 40, 256);
   const text = singleLine(body) || fallbackBody;
-  const titleExcerpt = excerpt(text, 60, 512);
   const bodyExcerpt = excerpt(text, 180, 1536);
   // JSON-escaped UTF-8 caps leave room for unchanged routing inside FCM's 4 KiB.
   // A single oversized grapheme is never split just to fit a preview.
   return {
-    title: `${name === '…' ? anonymous : name}: ${titleExcerpt === '…' ? fallbackBody : titleExcerpt}`,
+    title: name === '…' ? anonymous : name,
     body: bodyExcerpt === '…' ? fallbackBody : bodyExcerpt
   };
 }

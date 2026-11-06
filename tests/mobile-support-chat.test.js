@@ -99,7 +99,7 @@ test('safe push routing, retry identity, old token registration and unsubscribe 
     assert.equal(message.android.notification.channelId, 'support_chat_v1');
     const source = (await pool.query('SELECT body, conversation_id FROM support_chat_messages WHERE id = $1', [message.data.messageId])).rows[0];
     assert.equal(message.data.conversationId, source.conversation_id);
-    assert.deepEqual(message.notification, { title: `Олександр: ${source.body}`, body: source.body });
+    assert.deepEqual(message.notification, { title: 'Олександр', body: source.body });
     assert.deepEqual(Object.keys(message.data).sort(), ['kind', 'schemaVersion', 'pushId', 'conversationId', 'messageId', 'expiresAt', 'deploymentId', 'environment', 'targetDeviceId'].sort());
     assert.equal(JSON.stringify(message.data).includes('subscribed message'), false);
     assert.equal(JSON.stringify(message.data).includes('Олександр'), false);
@@ -119,7 +119,7 @@ test('safe push routing, retry identity, old token registration and unsubscribe 
   await processMobilePushOutbox({ now: new Date(now.getTime() + 31_000), lockRows: false,
     messaging: { send: async (message) => { anonymous.push(message); return 'accepted'; } } });
   assert.equal(anonymous.length, 2);
-  assert.deepEqual(anonymous[0].notification, { title: `Відвідувач ${visitorId.slice(0, 6)}: Анонімне питання`, body: 'Анонімне питання' });
+  assert.deepEqual(anonymous[0].notification, { title: visitorId.slice(0, 6), body: 'Анонімне питання' });
   assert.deepEqual(anonymous[1].notification, anonymous[0].notification);
   assert.equal(anonymous[1].data.pushId, anonymous[0].data.pushId);
   assert.equal(anonymous[1].android.notification.tag, anonymous[0].android.notification.tag);
