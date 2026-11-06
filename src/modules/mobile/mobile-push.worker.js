@@ -8,6 +8,7 @@ import { recordMobileSecurityEvent } from './mobile-security.service.js';
 import { createHash } from 'node:crypto';
 import { currentSupportPushTarget, withSupportNotificationGate } from '../support-chat/support-chat.notifications.js';
 import { createSupportPushTransport } from './mobile-support-push.transport.js';
+import { buildSupportPushNotification } from './mobile-support-push.notification.js';
 
 const firebaseAppName = 'mt-mobile-push';
 const processingLeaseMs = 5 * 60 * 1000;
@@ -146,7 +147,8 @@ function buildFirebaseMessage(row, token, now) {
   } else if (row.kind === 'support_chat_message') {
     const ttl = Math.max(0, new Date(row.expires_at).getTime() - now.getTime());
     const notificationKey = 'mt-sc-' + createHash('sha256').update(`${env.mobileDeploymentId}:${row.device_id}:${row.id}`).digest('base64url');
-    message.notification = { title: 'Нове повідомлення в онлайн-підтримці', body: 'Покупець написав у чат. Відкрийте MT Workspace, щоб відповісти.' };
+    message.notification = buildSupportPushNotification({ visitorId: row.support_visitor_id,
+      visitorName: row.support_visitor_name, body: row.support_message_body });
     message.android = { priority: 'high', ttl, notification: { tag: notificationKey, channelId: 'support_chat_v1' } };
     message.apns = { headers: { 'apns-expiration': String(Math.floor(new Date(row.expires_at).getTime() / 1000)), 'apns-collapse-id': notificationKey } };
   }
@@ -265,7 +267,9 @@ async function deliverSupportOutboxRow(row, messaging, currentTime, dbPool) {
     const transport = await createSupportPushTransport(messaging);
     return await withSupportNotificationGate(row.device_user_id, async (db) => {
       const fresh = (await db.query('SELECT * FROM mobile_push_outbox WHERE id = $1', [row.id])).rows[0];
-      if (!fresh || fresh.status !== 'processing' || Number(fresh.attempts) !== row.attempts) return 'failed';
+      if (!fresh || fresh.status !== 'processing' || Number(fresh.attempts) !== row.attempts
+        || fresh.kind !== 'support_chat_message' || fresh.device_id !== row.device_id
+        || fresh.support_message_id !== row.support_message_id) return 'failed';
       const now = currentTime();
       const target = await currentSupportPushTarget(db, row.device_id);
       if (!env.supportChatPushSendEnabled || !target || new Date(fresh.expires_at).getTime() <= now.getTime()) {
@@ -276,8 +280,23 @@ async function deliverSupportOutboxRow(row, messaging, currentTime, dbPool) {
         WHERE id = $2 AND status = 'processing' AND attempts = $3 RETURNING id`,
       [new Date(now.getTime() + processingLeaseMs), row.id, row.attempts]);
       if (!renewed.rowCount) return 'failed';
+      // Read display content only after authorization, from this exact outbox
+      // message. Never look up the conversation's latest message or persist PII
+      // in the outbox/data/SSE payloads.
+      const content = (await db.query(`SELECT message.conversation_id AS support_conversation_id,
+        message.body AS support_message_body, visitor.id AS support_visitor_id, visitor.name AS support_visitor_name
+        FROM support_chat_messages AS message
+        JOIN support_chat_conversations AS conversation ON conversation.id = message.conversation_id
+        JOIN support_chat_visitors AS visitor ON visitor.id = conversation.visitor_id
+        WHERE message.id = $1 AND message.sender_type = 'visitor'`, [fresh.support_message_id])).rows[0];
+      const deliveryNow = currentTime();
+      if (!content || new Date(fresh.expires_at).getTime() <= deliveryNow.getTime()) {
+        await finishOutboxRow(db, row, { status: 'cancelled', errorCode: 'SUPPORT_PUSH_MESSAGE_UNAVAILABLE' }, deliveryNow);
+        return 'failed';
+      }
+      Object.assign(row, content, { expires_at: fresh.expires_at });
       for (const key of ['fcm_token_ciphertext', 'fcm_token_iv', 'fcm_token_tag', 'fcm_token_hash']) row[key] = target[key];
-      return deliverOutboxRow(row, transport, now, db);
+      return deliverOutboxRow(row, transport, deliveryNow, db);
     }, dbPool);
   } catch {
     // A failed eligibility lookup is never permission to send. DB failure can

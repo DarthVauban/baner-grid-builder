@@ -193,13 +193,36 @@ New Flutter sends 1 together with its normal token registration. Old calls omit
 the field and clear the declaration. New pairing defaults to 0. Do not opt in the
 user as a side effect. A capability declaration is not proof of installed binary:
 after downgrade/backup, stale declaration may exist until the old client registers
-its token. Such a client can receive a generic alert; it cannot open support UI.
+its token. Such a client can receive an alert with the notification preview; it cannot open support UI.
 Current old Flutter handles an unknown kind by refreshing data and, on tap,
 possibly selecting the correctly routed account; it does not revoke it. New Flutter
 must ignore unknown kinds before any navigation. No claim is made that stale
 capabilities absolutely prevent delivery to downgraded binaries.
 
-FCM notification title/body are generic, with no names, contacts or message text.
+FCM `notification.title` is `<visitor label>: <short message excerpt>`; `notification.body`
+is a longer excerpt of that same visitor message. This explicitly replaces the
+previous generic-only notification copy. The worker reads the visitor and the
+exact outbox `support_message_id` only after the current device/user/tool/2FA,
+subscription, lease and expiry checks under the delivery gate; it never selects
+the conversation's latest message. Missing/non-visitor source messages cancel
+the delivery rather than showing content from another message.
+
+The label uses the visitor's name, or `Відвідувач <first 6 characters of visitor UUID>`
+when the normalized name is empty; email and phone are not used as fallbacks.
+Name/label, title excerpt and body have limits of **40 / 60 / 180 graphemes**,
+including a terminal `…` when truncated. Text is NFC-normalized; whitespace,
+control and bidi-control characters, zero-width spaces and BOMs become single
+spaces, with leading/trailing spaces removed. Emoji ZWJ sequences, flags, skin
+tones and combined accents are not split. Malformed UTF-16 becomes U+FFFD.
+Additional JSON-escaped UTF-8 content caps of **256 / 512 / 1536 bytes** leave
+room for routing within [FCM's 4096-byte payload limit](https://firebase.google.com/docs/cloud-messaging/customize-messages/set-message-type). If a single grapheme cannot
+fit, use the anonymous label or `Нове повідомлення`; normalized empty message
+text also uses `Нове повідомлення`. For example: title `Олександр: Підкажіть наявність…`.
+
+Names and message excerpts belong only to `notification.title/body`, never to
+`data`, SSE, outbox payloads or logs. Flutter may retain the received notification
+title/body for display, and must use the same copy for its foreground local alert
+after its existing access/subscription checks; navigation still uses only IDs.
 Before live rollout, new Flutter must create AndroidNotificationChannel `support_chat_v1` («Онлайн-підтримка», importance high) so support foreground and background notifications use the same channel (`android.notification.channelId` in Admin format, `android.notification.channel_id` in HTTP v1).
 Data values are strings:
 

@@ -107,7 +107,7 @@ test('PostgreSQL opt-out waits for active dispatch, cancels the rest, and retrie
   await notifications.setSupportNotificationPreference(user, { enabled: true, expectedVersion: 0 });
   const ids = [];
   for (let i = 0; i < 2; i++) await service.supportTransaction(async (db) => {
-    const message = await insert(db, id); ids.push(message.id); await notifications.enqueueSupportMessagePush(db, message.id);
+    const message = await insert(db, id, `PG preview ${i}`); ids.push(message.id); await notifications.enqueueSupportMessagePush(db, message.id);
   });
   let releaseSend, announceSend;
   const started = new Promise((resolve) => { announceSend = resolve; });
@@ -122,6 +122,9 @@ test('PostgreSQL opt-out waits for active dispatch, cancels the rest, and retrie
   try { await delay(80); assert.equal(unsubscribed, false); }
   finally { releaseSend(); await unsubscribe; await running; }
   assert.equal(sent.length, 1);
+  const visitorId = (await pool.query('SELECT visitor_id FROM support_chat_conversations WHERE id=$1', [id])).rows[0].visitor_id;
+  assert.equal(sent[0].data.messageId, ids[0]);
+  assert.deepEqual(sent[0].notification, { title: `Відвідувач ${visitorId.slice(0, 6)}: PG preview 0`, body: 'PG preview 0' });
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM mobile_push_outbox WHERE support_message_id = ANY($1::uuid[]) AND status = 'cancelled'", [ids])).rows[0].count, 1);
   await notifications.setSupportNotificationPreference(user, { enabled: true, expectedVersion: 2 });
   // The durable state after an ambiguous crash between FCM acceptance and ack.
