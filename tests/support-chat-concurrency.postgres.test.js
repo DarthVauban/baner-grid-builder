@@ -102,6 +102,73 @@ test('PostgreSQL cursors retain microseconds and initialize historical order/rea
   assert.equal(initialized.readState.lastReadMessageId, messages[0]);
 });
 
+test('PostgreSQL queue summaries use bounded reads without initializing history or waiting for writers', { skip: !enabled }, async (context) => {
+  const search = randomUUID();
+  const siteId = (await pool.query('SELECT id FROM support_chat_sites LIMIT 1')).rows[0].id;
+  await pool.query(`INSERT INTO support_chat_visitors(site_id,session_token_hash,name)
+    SELECT $1,$2 || n,$2 FROM generate_series(1,200) AS n`, [siteId,search]);
+  const ids = (await pool.query(`INSERT INTO support_chat_conversations(site_id,visitor_id,operator_last_read_at)
+    SELECT site_id,id,'2026-11-05 10:00:00.123456+00' FROM support_chat_visitors WHERE name=$1 RETURNING id`, [search])).rows.map((row) => row.id);
+  for (const [body, at] of [['read A','2026-11-05 10:00:00.123456+00'],['read B','2026-11-05 10:00:00.123456+00'],['unread','2026-11-05 10:00:00.123457+00']]) {
+    await pool.query(`INSERT INTO support_chat_messages(conversation_id,sender_type,body,created_at)
+      SELECT id,'visitor',$2,$3 FROM support_chat_conversations WHERE id=ANY($1::uuid[])`, [ids,body,at]);
+  }
+  const statements = [];
+  const measuredPool = { connect: async () => {
+    const db = await pool.connect();
+    return { query: (sql,...args) => { statements.push(sql); return db.query(sql,...args); }, release: () => db.release() };
+  } };
+  const started = performance.now();
+  await service.listSupportConversations({search,limit:1},measuredPool);
+  const smallCount = statements.length;
+  statements.length = 0;
+  const page = await service.listSupportConversations({search,limit:200},measuredPool);
+  assert.equal(statements.length,smallCount,'Page size must not multiply database round trips');
+  const reads = statements.filter((sql) => /^SELECT\b/i.test(sql.trim()));
+  assert.ok(reads.length <= 4);
+  assert.ok(statements.every((sql) => /^(SELECT|BEGIN|COMMIT)\b/i.test(sql.trim()) && !/FOR UPDATE/i.test(sql)));
+  assert.match(statements[0],/REPEATABLE READ READ ONLY/,'Summaries must share a snapshot when another request initializes history');
+  context.diagnostic(`200 legacy conversations: ${Math.round(performance.now()-started)}ms, ${reads.length} read queries`);
+  assert.equal(page.items.length,200);
+  assert.ok(page.items.every((item) => item.unreadCount===1 && item.lastMessage.body==='unread' && item.readState.lastReadSequence==='2'));
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM support_chat_conversations WHERE id=ANY($1::uuid[]) AND message_sequence_initialized=FALSE',[ids])).rows[0].count,200);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM support_chat_messages WHERE conversation_id=ANY($1::uuid[]) AND message_sequence IS NOT NULL',[ids])).rows[0].count,0);
+
+  const active = await conversation();
+  await service.supportTransaction((db) => insert(db,active));
+  const writer = await pool.connect();
+  let reading, completed;
+  try {
+    await writer.query('BEGIN');
+    await writer.query('SELECT id FROM support_chat_conversations WHERE id=ANY($1::uuid[]) FOR UPDATE',[[active,ids[0]]]);
+    reading = Promise.all([service.listSupportConversations({search,limit:200}),service.loadSupportConversation(active),service.listSupportMessages(active)]);
+    completed = await Promise.race([reading.then(() => true),delay(1000).then(() => false)]);
+  } finally { await writer.query('ROLLBACK'); writer.release(); }
+  await reading;
+  assert.equal(completed,true,'Queue and initialized history reads must not wait for a conversation writer');
+  const legacy = page.items.find((item) => item.id===ids[0]);
+  assert.deepEqual((await service.loadSupportConversation(ids[0])).readState,legacy.readState,'Projected legacy boundary must match transactional initialization, including timestamp ties');
+  let changed = false;
+  const racingPool = { connect: async () => {
+    const db = await pool.connect();
+    return { query: async (sql,...args) => {
+      const result = await db.query(sql,...args);
+      if (!changed && sql.includes('ORDER BY conversation.updated_at DESC')) {
+        changed = true;
+        await service.loadSupportConversation(ids[1]);
+        const history = await service.listSupportMessages(ids[1]);
+        await service.markSupportConversationRead(ids[1],history.items.at(-1).id);
+      }
+      return result;
+    }, release: () => db.release() };
+  } };
+  const snapshot = (await service.listSupportConversations({search,limit:200},racingPool)).items.find((item) => item.id===ids[1]);
+  assert.equal(snapshot.unreadCount,1,'A concurrent initialization/acknowledgment must not mix read boundaries within a queue page');
+  assert.equal(snapshot.readState.lastReadSequence,'2');
+  assert.ok(snapshot.readState.lastReadMessageId);
+  assert.equal((await service.loadSupportConversation(ids[1])).unreadCount,0);
+});
+
 test('PostgreSQL opt-out waits for active dispatch, cancels the rest, and retries preserve push identity', { skip: !enabled }, async () => {
   const id = await conversation();
   await notifications.setSupportNotificationPreference(user, { enabled: true, expectedVersion: 0 });

@@ -533,11 +533,11 @@ export const api = {
       method: 'PUT', body: jsonBody(input)
     }),
     unreadCount: () => request<number>('/api/support-chat/unread-count'),
-    conversations: (params: { search?: string; status?: SupportConversationStatus | '' } = {}) => request<SupportConversation[]>(
-      `/api/support-chat/conversations${queryString(params)}`
+    conversations: (params: { search?: string; status?: SupportConversationStatus | '' } = {}, signal?: AbortSignal) => request<SupportConversation[]>(
+      `/api/support-chat/conversations${queryString(params)}`, { signal }
     ),
-    conversation: (id: string) => request<SupportConversationDetail>(
-      `/api/support-chat/conversations/${encodeURIComponent(id)}`
+    conversation: (id: string, signal?: AbortSignal) => request<SupportConversationDetail>(
+      `/api/support-chat/conversations/${encodeURIComponent(id)}`, { signal }
     ),
     messages: (id: string, cursor: string) => request<SupportMessagePage>(`/api/support-chat/conversations/${encodeURIComponent(id)}/messages${queryString({ cursor })}`),
     markRead: (id: string, lastReadMessageId: string) => request<void>(`/api/support-chat/conversations/${encodeURIComponent(id)}/read`, {
