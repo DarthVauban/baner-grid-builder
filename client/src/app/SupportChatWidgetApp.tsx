@@ -1,8 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import type { SupportPublicConversation, SupportPublicSession, SupportVisitor } from '../types/support-chat';
+import type { SupportMessage, SupportPublicConversation, SupportPublicSession, SupportVisitor } from '../types/support-chat';
 import { SupportMessageText, SupportProductCard } from '../components/SupportProductCard';
 
 type ApiPayload<T> = { data?: T; error?: { message?: string } };
+type OutgoingVisitorMessage = {
+  input: { body: string; clientMessageId: string; pageUrl: string; pageTitle: string };
+  message: SupportMessage;
+  delivery: 'sending' | 'sent' | 'failed';
+  error?: string;
+};
+
+function matchesOutgoing(message: SupportMessage, outgoing: OutgoingVisitorMessage) {
+  return message.id === outgoing.message.id || (message.senderType === 'visitor'
+    && message.clientMessageId === outgoing.input.clientMessageId);
+}
+
+function mergeConversation(current: SupportPublicConversation | null, next: SupportPublicConversation | null) {
+  if (!next) return current;
+  if (!current || current.id !== next.id) return next;
+  // A slow POST or SSE refresh must not replace a newer history snapshot.
+  const messages = new Map([...current.messages, ...next.messages].map((item) => [item.id, item]));
+  const newest = current.updatedAt > next.updatedAt ? current : next;
+  return { ...newest, messages: [...messages.values()].sort((left, right) => {
+    if (left.sequence && right.sequence && left.sequence !== right.sequence) {
+      return BigInt(left.sequence) < BigInt(right.sequence) ? -1 : 1;
+    }
+    return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
+  }).slice(-300) };
+}
 
 const params = new URLSearchParams(window.location.search);
 const siteId = params.get('site') || '';
@@ -36,6 +61,7 @@ export function SupportChatWidgetApp() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [outgoing, setOutgoing] = useState<OutgoingVisitorMessage[]>([]);
   const [contactOpen, setContactOpen] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -45,9 +71,13 @@ export function SupportChatWidgetApp() {
   const [unread, setUnread] = useState(0);
   const messagesRef = useRef<HTMLDivElement>(null);
   const tokenRef = useRef('');
+  const sendingRef = useRef(false);
+  const sessionRef = useRef<SupportPublicSession | null>(null);
   const latestOperatorMessageRef = useRef('');
 
   const conversation = session?.conversation || null;
+  const sessionToken = session?.token || '';
+  const visibleOutgoing = outgoing.filter((item) => !conversation?.messages.some((message) => matchesOutgoing(message, item)));
   const outsideWorkingHours = Boolean(session?.settings.workingHoursEnabled && !session.settings.isWithinWorkingHours);
   const missingRequiredOfflineContact = Boolean(outsideWorkingHours && (!session?.visitor.name || !session.visitor.phone));
   const showContactForm = Boolean(
@@ -59,9 +89,27 @@ export function SupportChatWidgetApp() {
 
   const accentStyle = useMemo(() => ({ '--support-accent': session?.settings.accentColor || '#ffe000' }) as CSSProperties, [session?.settings.accentColor]);
 
+  const applySession = useCallback((next: SupportPublicSession) => {
+    const current = sessionRef.current;
+    const merged = current?.token === next.token && current.visitor.id === next.visitor.id
+      ? { ...next, conversation: mergeConversation(current.conversation, next.conversation) } : next;
+    sessionRef.current = merged;
+    setSession(merged);
+  }, []);
+
   function setConversation(next: SupportPublicConversation) {
-    setSession((current) => current ? { ...current, conversation: next } : current);
+    const current = sessionRef.current;
+    if (current) applySession({ ...current, conversation: next });
   }
+
+  useEffect(() => {
+    if (!conversation) return;
+    setOutgoing((items) => {
+      const next = items.filter((item) => item.delivery === 'sending'
+        || !conversation.messages.some((message) => matchesOutgoing(message, item)));
+      return next.length === items.length ? items : next;
+    });
+  }, [conversation, outgoing]);
 
   const refresh = useCallback(async (token = tokenRef.current) => {
     if (!token) return;
@@ -70,8 +118,8 @@ export function SupportChatWidgetApp() {
     const latestOperator = operatorMessages.at(-1)?.id || '';
     if (!open && latestOperator && latestOperator !== latestOperatorMessageRef.current) setUnread((value) => value + 1);
     latestOperatorMessageRef.current = latestOperator;
-    setSession(next);
-  }, [open]);
+    applySession(next);
+  }, [open, applySession]);
 
   useEffect(() => {
     window.parent.postMessage({ type: 'mt-support-chat:frame', open }, '*');
@@ -99,7 +147,7 @@ export function SupportChatWidgetApp() {
       if (cancelled) return;
       tokenRef.current = next.token;
       localStorage.setItem(storageKey, next.token);
-      setSession(next);
+      applySession(next);
       setName(next.visitor.name);
       setEmail(next.visitor.email);
       setPhone(next.visitor.phone);
@@ -108,11 +156,11 @@ export function SupportChatWidgetApp() {
       if (!cancelled) setError(reason instanceof Error ? reason.message : 'Чат тимчасово недоступний.');
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [applySession]);
 
   useEffect(() => {
-    const token = tokenRef.current;
-    if (!token || !session) return undefined;
+    const token = sessionToken;
+    if (!token) return undefined;
     const controller = new AbortController();
     let buffer = '';
     void fetch('/api/public/support-chat/stream', {
@@ -132,7 +180,7 @@ export function SupportChatWidgetApp() {
       }
     }).catch(() => undefined);
     return () => controller.abort();
-  }, [refresh, session]);
+  }, [refresh, sessionToken]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -140,31 +188,50 @@ export function SupportChatWidgetApp() {
       if (node) node.scrollTop = node.scrollHeight;
     });
     return () => cancelAnimationFrame(frame);
-  }, [conversation?.messages.length, open, showContactForm]);
+  }, [conversation?.messages.length, visibleOutgoing.length, open, showContactForm]);
+
+  async function deliver(item: OutgoingVisitorMessage) {
+    if (!tokenRef.current || sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    setError('');
+    setOutgoing((items) => items.some((current) => current.input.clientMessageId === item.input.clientMessageId)
+      ? items.map((current) => current.input.clientMessageId === item.input.clientMessageId ? { ...current, delivery: 'sending', error: '' } : current)
+      : [...items, { ...item, delivery: 'sending', error: '' }]);
+    try {
+      const next = await publicRequest<SupportPublicConversation>('/api/public/support-chat/messages', {
+        method: 'POST',
+        body: JSON.stringify(item.input)
+      }, tokenRef.current);
+      setConversation(next);
+      const confirmed = sessionRef.current?.conversation?.messages.find((message) => matchesOutgoing(message, item));
+      setOutgoing((items) => items.map((current) => current.input.clientMessageId === item.input.clientMessageId
+        ? { ...current, message: confirmed || current.message, delivery: 'sent' } : current));
+    } catch (reason) {
+      const confirmed = sessionRef.current?.conversation?.messages.find((message) => matchesOutgoing(message, item));
+      const failure = reason instanceof Error ? reason.message : 'Не вдалося надіслати повідомлення.';
+      setOutgoing((items) => items.map((current) => current.input.clientMessageId === item.input.clientMessageId
+        ? { ...current, message: confirmed || current.message, delivery: confirmed ? 'sent' : 'failed', error: confirmed ? '' : failure } : current));
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }
 
   async function send(event: FormEvent) {
     event.preventDefault();
     const body = message.trim();
-    if (!body || !tokenRef.current || sending) return;
-    setSending(true);
-    setError('');
-    try {
-      const next = await publicRequest<SupportPublicConversation>('/api/public/support-chat/messages', {
-        method: 'POST',
-        body: JSON.stringify({
-          body,
-          clientMessageId: crypto.randomUUID(),
-          pageUrl: initialPageUrl,
-          pageTitle: initialPageTitle
-        })
-      }, tokenRef.current);
-      setMessage('');
-      setConversation(next);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не вдалося надіслати повідомлення.');
-    } finally {
-      setSending(false);
-    }
+    if (!body || !tokenRef.current || sendingRef.current) return;
+    const clientMessageId = crypto.randomUUID();
+    const item: OutgoingVisitorMessage = {
+      input: { body, clientMessageId, pageUrl: initialPageUrl, pageTitle: initialPageTitle },
+      message: { id: `pending:${clientMessageId}`, conversationId: conversation?.id || '',
+        senderType: 'visitor', senderUserId: null, senderName: '', body, clientMessageId,
+        productCards: [], createdAt: new Date().toISOString() },
+      delivery: 'sending'
+    };
+    setMessage('');
+    await deliver(item);
   }
 
   async function saveContact(event: FormEvent) {
@@ -180,7 +247,7 @@ export function SupportChatWidgetApp() {
       const visitor = await publicRequest<SupportVisitor>('/api/public/support-chat/contact', {
         method: 'PUT', body: JSON.stringify({ name: name.trim(), email: email.trim(), phone: phone.trim() })
       }, tokenRef.current);
-      setSession((current) => current ? { ...current, visitor } : current);
+      if (sessionRef.current) applySession({ ...sessionRef.current, visitor });
       setContactSaved(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не вдалося зберегти контакти.');
@@ -208,7 +275,7 @@ export function SupportChatWidgetApp() {
 
       <div className="support-panel__messages" ref={messagesRef} aria-live="polite">
         {loading && <div className="support-widget-state"><span />Завантажуємо чат…</div>}
-        {!loading && !conversation?.messages.length && !error && <section className="support-welcome">
+        {!loading && !conversation?.messages.length && !visibleOutgoing.length && !error && <section className="support-welcome">
           <span><ChatMark /></span>
           <strong>Чим можемо допомогти?</strong>
           <p>{session?.settings.welcomeText || 'Напишіть повідомлення — оператор відповість якнайшвидше.'}</p>
@@ -218,6 +285,13 @@ export function SupportChatWidgetApp() {
           <SupportMessageText body={item.body} productCards={item.productCards} />
           {item.productCards.map((card) => <SupportProductCard card={card} key={`${item.id}-${card.id}`} />)}
           <time>{timeLabel(item.createdAt)}</time>
+        </article>)}
+        {visibleOutgoing.map((item) => <article className="support-message support-message--visitor" key={item.input.clientMessageId}>
+          <SupportMessageText body={item.message.body} productCards={item.message.productCards} />
+          {item.delivery === 'failed' && item.error && <span className="support-message__error">{item.error}</span>}
+          {item.delivery === 'sending' && <span className="support-message__delivery" role="status">Надсилання…</span>}
+          {item.delivery === 'failed' && <span className="support-message__delivery" role="status">Не надіслано <button type="button" onClick={() => void deliver(item)} disabled={sending}>Повторити надсилання</button></span>}
+          <time>{timeLabel(item.message.createdAt)}</time>
         </article>)}
 
         {showContactForm && <section className={`support-contact-card${outsideWorkingHours ? ' support-contact-card--required' : ''}`}>
