@@ -244,12 +244,18 @@ function SettingsPanel() {
   </div>;
 }
 
-function ConversationListItem({ item, active, onSelect }: { item: SupportConversation; active: boolean; onSelect: () => void }) {
-  return <button className={`online-support-conversation${active ? ' is-active' : ''}`} type="button" onClick={onSelect}>
+function ConversationListItem({ item, active, onSelect, onPrepare }: { item: SupportConversation; active: boolean; onSelect: () => void; onPrepare: () => void }) {
+  return <button className={`online-support-conversation${active ? ' is-active' : ''}`} type="button" onClick={onSelect} onPointerEnter={onPrepare} onFocus={onPrepare}>
     <span className="online-support-avatar">{visitorLabel(item).slice(0, 1).toUpperCase()}</span>
     <span className="online-support-conversation__copy"><span><strong>{visitorLabel(item)}</strong><time>{shortDate(item.updatedAt)}</time></span><small>{item.lastMessage?.body || 'Новий діалог'}</small><span><em className={`is-${item.status.toLowerCase()}`}>{statusLabels[item.status]}</em>{item.assignedUser && <b>{item.assignedUser.name}</b>}</span></span>
     {item.unreadCount > 0 && <i>{item.unreadCount > 99 ? '99+' : item.unreadCount}</i>}
   </button>;
+}
+
+function conversationQuery(id: string) {
+  return { queryKey: ['online-support-conversation', id],
+    queryFn: ({ signal }: { signal: AbortSignal }) => api.onlineSupport.conversation(id, signal),
+    staleTime: 30_000 };
 }
 
 function MessageBubble({ item }: { item: SupportMessage }) {
@@ -278,20 +284,19 @@ function ConversationsPanel() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const conversations = useQuery({
     queryKey: ['online-support-conversations', search, status],
-    queryFn: () => api.onlineSupport.conversations({ search, status }),
+    queryFn: ({ signal }) => api.onlineSupport.conversations({ search, status }, signal),
     refetchOnMount: 'always'
   });
   const detail = useQuery({
-    queryKey: ['online-support-conversation', selectedId],
-    queryFn: () => api.onlineSupport.conversation(selectedId!),
+    ...conversationQuery(selectedId || ''),
     enabled: Boolean(selectedId),
-    refetchOnMount: 'always'
+    refetchOnMount: true
   });
   const send = useMutation({ mutationFn: ({ id, body, clientMessageId }: { id: string; body: string; clientMessageId: string }) => api.onlineSupport.sendMessage(id, body, clientMessageId) });
   const claim = useMutation({ mutationFn: api.onlineSupport.claim });
   const setConversationStatus = useMutation({ mutationFn: ({ id, next }: { id: string; next: SupportConversationStatus }) => api.onlineSupport.setStatus(id, next) });
   const updateCustomer = useMutation({ mutationFn: ({ id, input }: { id: string; input: SupportCustomerInput }) => api.onlineSupport.updateCustomer(id, input) });
-  const current = detail.data?.conversation;
+  const current = detail.data?.conversation || conversations.data?.find((item) => item.id === selectedId);
 
   useEffect(() => {
     if (selectedId && conversations.data && !conversations.data.some((item) => item.id === selectedId)) {
@@ -411,17 +416,16 @@ function ConversationsPanel() {
       <div className="online-support-conversation-list">
         {conversations.isLoading && <p className="online-support-list-state">Завантажуємо звернення…</p>}
         {!conversations.isLoading && !conversations.data?.length && <p className="online-support-list-state">Діалогів за цим фільтром немає.</p>}
-        {conversations.data?.map((item) => <ConversationListItem item={item} active={selectedId === item.id} onSelect={() => setSelectedId(item.id)} key={item.id} />)}
+        {conversations.data?.map((item) => <ConversationListItem item={item} active={selectedId === item.id} onSelect={() => setSelectedId(item.id)} onPrepare={() => { void queryClient.prefetchQuery(conversationQuery(item.id)); }} key={item.id} />)}
       </div>
     </aside>
 
     <section className="online-support-dialog">
       {!selectedId && <div className="online-support-empty"><span><Icon name="chat" size={30} /></span><h2>Оберіть діалог</h2><p>Нові звернення покупців з’являтимуться у черзі зліва.</p></div>}
-      {selectedId && detail.isLoading && <div className="online-support-state">Завантажуємо повідомлення…</div>}
       {current && <>
         <header className="online-support-dialog__header"><div><span className="online-support-avatar">{visitorLabel(current).slice(0, 1).toUpperCase()}</span><div><strong>{visitorLabel(current)}</strong><small>{current.visitor.lastPageTitle || 'Сторінку не визначено'}</small></div></div><div>{!current.assignedUser && <button className="button button--secondary" type="button" onClick={() => void claimCurrent()} disabled={claim.isPending}>Взяти в роботу</button>}<button className="button button--secondary online-support-customer-trigger" type="button" onClick={() => setCustomerPanelOpen(true)}>Покупець</button><StyledSelect compact className="online-support-status-select" value={current.status} options={statuses.filter((item): item is { value: SupportConversationStatus; label: string } => Boolean(item.value))} onChange={(next) => void changeStatus(next)} disabled={setConversationStatus.isPending} ariaLabel="Статус діалогу" /></div></header>
-        <div className="online-support-transcript" ref={transcriptRef} onScroll={(event) => { const node = event.currentTarget; tailVisible.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 32; }}>{(older ? older.cursor : detail.data?.olderCursor) && <button className="button button--secondary" type="button" disabled={loadingOlder} onClick={() => void loadOlder()}>Раніші повідомлення</button>}{[...(older?.items || []), ...(detail.data?.messages || [])].map((item) => <MessageBubble item={item} key={item.id} />)}</div>
-        <form className="online-support-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Напишіть відповідь покупцю…" rows={2} maxLength={5000} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending}><Icon name="send" size={18} /> {send.isPending ? 'Надсилаємо…' : 'Надіслати'}</button></form>
+        <div className="online-support-transcript" ref={transcriptRef} onScroll={(event) => { const node = event.currentTarget; tailVisible.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 32; }}>{detail.isLoading && <p role="status">Завантажуємо повідомлення…</p>}{detail.isError && <div role="alert"><p>Не вдалося завантажити повідомлення.</p><button className="button button--secondary" type="button" onClick={() => void detail.refetch()}>Повторити завантаження</button></div>}{(older ? older.cursor : detail.data?.olderCursor) && <button className="button button--secondary" type="button" disabled={loadingOlder} onClick={() => void loadOlder()}>Раніші повідомлення</button>}{[...(older?.items || []), ...(detail.data?.messages || [])].map((item) => <MessageBubble item={item} key={item.id} />)}</div>
+        {detail.data && <form className="online-support-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Напишіть відповідь покупцю…" rows={2} maxLength={5000} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending}><Icon name="send" size={18} /> {send.isPending ? 'Надсилаємо…' : 'Надіслати'}</button></form>}
       </>}
     </section>
 

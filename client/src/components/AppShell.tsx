@@ -106,6 +106,7 @@ export function AppShell() {
         messagePreview?: string;
       } = {};
       try { payload = JSON.parse((event as MessageEvent).data || '{}'); } catch { /* ignore malformed event data */ }
+      if (payload.type === 'heartbeat') return;
       void queryClient.invalidateQueries({ queryKey: ['online-support-conversations'] });
       void queryClient.invalidateQueries({ queryKey: ['online-support-unread-count'] });
       if (payload.conversationId) void queryClient.invalidateQueries({ queryKey: ['online-support-conversation', payload.conversationId] });

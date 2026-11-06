@@ -7,10 +7,10 @@ import { hydrateSupportProductCards, resolveSupportProductReferences } from './s
 import { serializeSupportConversation, serializeSupportMessage } from './support-chat.service.js';
 import { lockSupportConversation, nextSupportMessageSequence } from './support-chat.sequence.js';
 
-export async function supportTransaction(work, dbPool = pool) {
+export async function supportTransaction(work, dbPool = pool, { readOnly = false } = {}) {
   const db = await dbPool.connect();
   try {
-    await db.query('BEGIN');
+    await db.query(readOnly ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
     const result = await work(db);
     await db.query('COMMIT');
     return result;
@@ -51,58 +51,91 @@ export function supportReadState(row) {
     lastReadSequence: String(row.operator_last_read_sequence || 0) };
 }
 
-async function hydrateConversation(row, db = pool) {
-  const latest = await db.query(
-    `SELECT body, sender_type, created_at FROM support_chat_messages WHERE conversation_id = $1
-     ORDER BY message_sequence DESC, created_at DESC, id DESC LIMIT 1`, [row.id]
-  );
-  const unread = await db.query(
-    `SELECT COUNT(*)::INTEGER AS count FROM support_chat_messages WHERE conversation_id = $1 AND sender_type = 'visitor'
-     AND (message_sequence > $2 OR (message_sequence IS NULL AND ($3::TIMESTAMPTZ IS NULL OR created_at > $3::TIMESTAMPTZ)))`,
-    [row.id, String(row.operator_last_read_sequence || 0), row.operator_last_read_at]
-  );
-  const last = latest.rows[0];
-  return { ...serializeSupportConversation({ ...row, last_message_body: last?.body,
-    last_message_sender_type: last?.sender_type, last_message_created_at: last?.created_at, unread_count: unread.rows[0].count }),
-  readState: supportReadState(row) };
+async function hydrateConversations(rows, db = pool) {
+  if (!rows.length) return [];
+  const ids = rows.map((row) => row.id);
+  const placeholders = ids.map((_, index) => `$${index + 1}`).join(',');
+  // A queue read must not initialize/lock every conversation. Fetch summaries
+  // for the entire page in a bounded number of queries, including legacy read
+  // boundaries projected without rewriting the historical messages.
+  const latest = await db.query(`SELECT DISTINCT ON (conversation_id) conversation_id, body, sender_type, created_at
+    FROM support_chat_messages WHERE conversation_id IN (${placeholders})
+    ORDER BY conversation_id, message_sequence DESC, created_at DESC, id DESC`, ids);
+  const counts = await db.query(`SELECT message.conversation_id,
+      SUM(CASE WHEN message.sender_type = 'visitor' AND
+        (message.message_sequence > conversation.operator_last_read_sequence OR
+         (message.message_sequence IS NULL AND (conversation.operator_last_read_at IS NULL OR message.created_at > conversation.operator_last_read_at)))
+        THEN 1 ELSE 0 END)::INTEGER AS unread_count,
+      SUM(CASE WHEN message.created_at <= conversation.operator_last_read_at THEN 1 ELSE 0 END)::BIGINT AS legacy_read_sequence
+      FROM support_chat_messages AS message
+      JOIN support_chat_conversations AS conversation ON conversation.id = message.conversation_id
+      WHERE message.conversation_id IN (${placeholders}) GROUP BY message.conversation_id`, ids);
+  const legacyRead = rows.some((row) => !row.message_sequence_initialized && row.operator_last_read_at)
+      ? await db.query(`SELECT DISTINCT ON (message.conversation_id) message.conversation_id, message.id
+          FROM support_chat_messages AS message
+          JOIN support_chat_conversations AS conversation ON conversation.id = message.conversation_id
+          WHERE message.conversation_id IN (${placeholders}) AND conversation.message_sequence_initialized = FALSE
+            AND message.created_at <= conversation.operator_last_read_at
+          ORDER BY message.conversation_id, message.created_at DESC, message.id DESC`, ids)
+      : { rows: [] };
+  const latestById = new Map(latest.rows.map((row) => [row.conversation_id, row]));
+  const countsById = new Map(counts.rows.map((row) => [row.conversation_id, row]));
+  const legacyReadById = new Map(legacyRead.rows.map((row) => [row.conversation_id, row.id]));
+  return rows.map((row) => {
+    const last = latestById.get(row.id);
+    const totals = countsById.get(row.id);
+    const readRow = row.message_sequence_initialized ? row : { ...row,
+      operator_last_read_sequence: totals?.legacy_read_sequence || 0,
+      operator_last_read_message_id: legacyReadById.get(row.id) || null };
+    return { ...serializeSupportConversation({ ...row, last_message_body: last?.body,
+      last_message_sender_type: last?.sender_type, last_message_created_at: last?.created_at,
+      unread_count: totals?.unread_count || 0 }), readState: supportReadState(readRow) };
+  });
 }
 
 export async function loadSupportConversation(id) {
-  await supportTransaction((db) => lockSupportConversation(db, id));
   const result = await pool.query(`${rowSql} WHERE conversation.id = $1`, [id]);
   if (!result.rows[0]) throw new AppError(404, 'SUPPORT_CONVERSATION_NOT_FOUND', 'Діалог онлайн-підтримки не знайдено.');
-  return hydrateConversation(result.rows[0]);
+  let row = result.rows[0];
+  if (!row.message_sequence_initialized) {
+    const initialized = await supportTransaction((db) => lockSupportConversation(db, id));
+    row = { ...row, ...initialized };
+  }
+  return (await hydrateConversations([row]))[0];
 }
 
-export async function listSupportConversations({ status = '', search = '', limit = 50, cursor = '' } = {}) {
+export async function listSupportConversations({ status = '', search = '', limit = 50, cursor = '' } = {}, dbPool = pool) {
   const scope = `conversations:${status}:${search}`;
   const after = decodeSupportCursor(cursor, scope);
   if (after && (typeof after.at !== 'string' || !Number.isFinite(Date.parse(after.at)) || !/^[0-9a-f-]{36}$/i.test(after.id))) {
     throw new AppError(422, 'SUPPORT_INVALID_CURSOR', 'Курсор сторінки недійсний.');
   }
-  const result = await pool.query(
-    `${rowSql} WHERE ($1 = '' OR conversation.status = $1)
+  return supportTransaction(async (db) => {
+    const result = await db.query(
+      `${rowSql} WHERE ($1 = '' OR conversation.status = $1)
      AND ($2 = '' OR COALESCE(visitor.name, '') ILIKE '%' || $2 || '%'
        OR COALESCE(visitor.email, '') ILIKE '%' || $2 || '%'
        OR COALESCE(visitor.phone, '') ILIKE '%' || $2 || '%' OR visitor.last_page_title ILIKE '%' || $2 || '%')
      AND ($3::TIMESTAMPTZ IS NULL OR conversation.updated_at < $3::TIMESTAMPTZ
        OR (conversation.updated_at = $3::TIMESTAMPTZ AND conversation.id < $4::UUID))
      ORDER BY conversation.updated_at DESC, conversation.id DESC LIMIT $5`,
-    [status, search, after?.at || null, after?.id || null, limit + 1]
-  );
-  const rows = result.rows.slice(0, limit);
-  const items = [];
-  for (const row of rows) items.push(await loadSupportConversation(row.id));
-  const last = rows.at(-1);
-  return { items, hasMore: result.rows.length > limit,
-    nextCursor: result.rows.length > limit ? encodeSupportCursor(scope, { at: last.cursor_updated_at, id: last.id }) : null };
+      [status, search, after?.at || null, after?.id || null, limit + 1]
+    );
+    const rows = result.rows.slice(0, limit);
+    const items = await hydrateConversations(rows, db);
+    const last = rows.at(-1);
+    return { items, hasMore: result.rows.length > limit,
+      nextCursor: result.rows.length > limit ? encodeSupportCursor(scope, { at: last.cursor_updated_at, id: last.id }) : null };
+  }, dbPool, { readOnly: true });
 }
 
 export async function listSupportMessages(id, { limit = 50, cursor = '' } = {}) {
-  await supportTransaction((db) => lockSupportConversation(db, id));
   const scope = `messages:${id}`;
   const before = decodeSupportCursor(cursor, scope);
   if (before && !/^[1-9][0-9]*$/.test(before.sequence)) throw new AppError(422, 'SUPPORT_INVALID_CURSOR', 'Курсор сторінки недійсний.');
+  const conversation = (await pool.query('SELECT message_sequence_initialized FROM support_chat_conversations WHERE id = $1', [id])).rows[0];
+  if (!conversation) throw new AppError(404, 'SUPPORT_CONVERSATION_NOT_FOUND', 'Діалог онлайн-підтримки не знайдено.');
+  if (!conversation.message_sequence_initialized) await supportTransaction((db) => lockSupportConversation(db, id));
   const result = await pool.query(
     `SELECT message.*, users.name AS sender_name FROM support_chat_messages AS message
      LEFT JOIN users ON users.id = message.sender_user_id

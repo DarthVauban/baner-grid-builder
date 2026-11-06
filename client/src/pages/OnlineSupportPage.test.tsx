@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
-import type { SupportChatSettings, SupportConversationDetail } from '../types/support-chat';
+import type { SupportChatSettings, SupportConversationDetail, SupportMessage } from '../types/support-chat';
 import type { User } from '../types/user';
 import { OnlineSupportPage } from './OnlineSupportPage';
 
@@ -88,6 +88,22 @@ function renderPage() {
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function operatorMessage(body: string, clientMessageId?: string): SupportMessage {
+  return { id: '00000000-0000-4000-8000-000000000099', conversationId: conversationDetail.conversation.id,
+    senderType: 'operator', senderUserId: user.id, senderName: user.name, body, clientMessageId,
+    productCards: [], createdAt: settings.updatedAt };
+}
+
 beforeEach(() => {
   localStorage.clear();
   vi.spyOn(api.onlineSupport, 'notificationPreference').mockResolvedValue({ enabled: false, configured: false, version: 0, updatedAt: null });
@@ -95,6 +111,62 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('OnlineSupportPage', () => {
+  it('prefetches focused chats once, shows selected customer immediately and waits to mark history read', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    const pending = deferred<SupportConversationDetail>();
+    const load = vi.spyOn(api.onlineSupport, 'conversation').mockReturnValue(pending.promise);
+    const read = vi.spyOn(api.onlineSupport, 'markRead').mockResolvedValue(undefined);
+    renderPage();
+    const item = await screen.findByRole('button', { name: /Ірина/u });
+    fireEvent.focus(item);
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    expect(read).not.toHaveBeenCalled();
+    fireEvent.click(item);
+    expect(screen.getByText('Завантажуємо повідомлення…')).toBeInTheDocument();
+    expect(document.querySelector('.online-support-dialog__header')).toHaveTextContent('Ірина');
+    expect(screen.queryByPlaceholderText('Напишіть відповідь покупцю…')).not.toBeInTheDocument();
+    expect(read).not.toHaveBeenCalled();
+    await act(async () => pending.resolve({ ...conversationDetail, messages: [operatorMessage('Історія чату')] }));
+    expect(await screen.findByText('Історія чату')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Напишіть відповідь покупцю…')).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts a discarded history request and does not show its response in the next chat', async () => {
+    const other = { ...conversationDetail, conversation: { ...conversationDetail.conversation,
+      id: '00000000-0000-4000-8000-000000000012', visitor: { ...conversationDetail.conversation.visitor, name: 'Олена' } }, messages: [operatorMessage('Історія Олени')] };
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation,other.conversation]);
+    const first = deferred<SupportConversationDetail>();
+    const second = deferred<SupportConversationDetail>();
+    const load = vi.spyOn(api.onlineSupport, 'conversation').mockImplementation((id) => id===other.conversation.id ? second.promise : first.promise);
+    vi.spyOn(api.onlineSupport, 'markRead').mockResolvedValue(undefined);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    const previousSignal = load.mock.calls[0][1]!;
+    fireEvent.click(screen.getByRole('button', { name: /Олена/u }));
+    await waitFor(() => expect(previousSignal.aborted).toBe(true));
+    expect(document.querySelector('.online-support-dialog__header')).toHaveTextContent('Олена');
+    await act(async () => first.resolve({ ...conversationDetail, messages: [operatorMessage('Історія Ірини')] }));
+    expect(screen.queryByText('Історія Ірини')).not.toBeInTheDocument();
+    await act(async () => second.resolve(other));
+    expect(await screen.findByText('Історія Олени')).toBeInTheDocument();
+    expect(screen.queryByText('Історія Ірини')).not.toBeInTheDocument();
+  });
+
+  it('offers a retry when chat history fails while retaining the selected customer', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    const load = vi.spyOn(api.onlineSupport, 'conversation').mockRejectedValueOnce(new Error('Timeout')).mockResolvedValueOnce(conversationDetail);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Повторити завантаження' }));
+    expect(await screen.findByPlaceholderText('Напишіть відповідь покупцю…')).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it('never imports browser localStorage or OS permission as an account opt-in', async () => {
     vi.spyOn(api.auth, 'me').mockResolvedValue(user);
     vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([]);
@@ -170,7 +242,7 @@ describe('OnlineSupportPage', () => {
 
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
-    expect(loadConversation).toHaveBeenCalledWith(conversationDetail.conversation.id);
+    expect(loadConversation).toHaveBeenCalledWith(conversationDetail.conversation.id, expect.any(AbortSignal));
     fireEvent.click(await screen.findByRole('button', { name: 'Статус діалогу' }, { timeout: 5_000 }));
     fireEvent.click(await screen.findByRole('option', { name: 'Вирішені' }));
 
@@ -191,7 +263,7 @@ describe('OnlineSupportPage', () => {
 
     fireEvent.click(conversation);
     expect(await screen.findByRole('button', { name: 'Статус діалогу' })).toBeInTheDocument();
-    expect(loadConversation).toHaveBeenCalledWith(conversationDetail.conversation.id);
+    expect(loadConversation).toHaveBeenCalledWith(conversationDetail.conversation.id, expect.any(AbortSignal));
   });
 
   it('shows the per-device Windows notification option in settings', async () => {
