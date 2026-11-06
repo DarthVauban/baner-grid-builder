@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { createSupportPushTransport } from '../src/modules/mobile/mobile-support-push.transport.js';
 
 const messaging = { app: { options: { projectId: 'support-test-project', credential: { getAccessToken: async () => ({ access_token: 'test-token' }) } } } };
-const message = { token: 'test-device-token', data: { kind: 'support_chat_message' }, android: { priority: 'high', ttl: 12345, notification: { tag: 'stable', channelId: 'support_chat_v1' } } };
+const message = { token: 'test-device-token', data: { kind: 'support_chat_message' },
+  notification: { title: 'Олександр: Підкажіть наявність…', body: 'Підкажіть наявність 👨‍👩‍👧‍👦' },
+  android: { priority: 'high', ttl: 12345, notification: { tag: 'stable', channelId: 'support_chat_v1' } } };
 
 test('bounded FCM HTTP transport preserves notification identity and serializes the support channel and TTL', async () => {
   let calls = 0;
@@ -16,6 +18,8 @@ test('bounded FCM HTTP transport preserves notification identity and serializes 
     assert.equal(sent.android.ttl, '12s');
     assert.equal(sent.android.priority, 'HIGH');
     assert.deepEqual(sent.android.notification, { tag: 'stable', channel_id: 'support_chat_v1' });
+    assert.deepEqual(sent.notification, message.notification);
+    assert.deepEqual(sent.data, { kind: 'support_chat_message' });
     return { ok: true, json: async () => ({ name: 'accepted' }) };
   });
   assert.equal(await transport.send(message), 'accepted');

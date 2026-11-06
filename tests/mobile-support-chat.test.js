@@ -85,6 +85,8 @@ test('operator send is idempotent and does not mark unseen visitor messages read
 });
 
 test('safe push routing, retry identity, old token registration and unsubscribe cancellation', async () => {
+  const visitorId = (await pool.query('SELECT visitor_id FROM support_chat_conversations WHERE id = $1', [conversationId])).rows[0].visitor_id;
+  await pool.query('UPDATE support_chat_visitors SET name = $1 WHERE id = $2', ['Олександр', visitorId]);
   const captured = [];
   await processMobilePushOutbox({ messaging: { send: async (message) => { captured.push(message); return 'accepted'; } }, lockRows: false });
   assert.equal(captured.length, 2);
@@ -95,8 +97,33 @@ test('safe push routing, retry identity, old token registration and unsubscribe 
     assert.ok(message.data.conversationId);
     assert.ok(message.android.ttl <= 15 * 60_000);
     assert.equal(message.android.notification.channelId, 'support_chat_v1');
-    assert.equal(JSON.stringify(message).includes('subscribed message'), false);
+    const source = (await pool.query('SELECT body, conversation_id FROM support_chat_messages WHERE id = $1', [message.data.messageId])).rows[0];
+    assert.equal(message.data.conversationId, source.conversation_id);
+    assert.deepEqual(message.notification, { title: `Олександр: ${source.body}`, body: source.body });
+    assert.deepEqual(Object.keys(message.data).sort(), ['kind', 'schemaVersion', 'pushId', 'conversationId', 'messageId', 'expiresAt', 'deploymentId', 'environment', 'targetDeviceId'].sort());
+    assert.equal(JSON.stringify(message.data).includes('subscribed message'), false);
+    assert.equal(JSON.stringify(message.data).includes('Олександр'), false);
   }
+  assert.deepEqual(new Set(captured.map((message) => message.notification.body)), new Set(['subscribed message', 'arrived after fetch']));
+  const stored = (await pool.query('SELECT payload FROM mobile_push_outbox')).rows;
+  assert.ok(stored.every((row) => JSON.stringify(row.payload) === JSON.stringify({ kind: 'support_chat_message' })));
+
+  await pool.query("UPDATE support_chat_visitors SET name = '' WHERE id = $1", [visitorId]);
+  await sendVisitor('Анонімне\nпитання').expect(201);
+  const anonymous = [];
+  const now = new Date();
+  const first = await processMobilePushOutbox({ now, lockRows: false, messaging: { send: async (message) => {
+    anonymous.push(message); throw Object.assign(new Error('fixture transient failure'), { code: 'messaging/server-unavailable' });
+  } } });
+  assert.equal(first.retried, 1);
+  await processMobilePushOutbox({ now: new Date(now.getTime() + 31_000), lockRows: false,
+    messaging: { send: async (message) => { anonymous.push(message); return 'accepted'; } } });
+  assert.equal(anonymous.length, 2);
+  assert.deepEqual(anonymous[0].notification, { title: `Відвідувач ${visitorId.slice(0, 6)}: Анонімне питання`, body: 'Анонімне питання' });
+  assert.deepEqual(anonymous[1].notification, anonymous[0].notification);
+  assert.equal(anonymous[1].data.pushId, anonymous[0].data.pushId);
+  assert.equal(anonymous[1].android.notification.tag, anonymous[0].android.notification.tag);
+  assert.ok(anonymous[1].android.ttl < anonymous[0].android.ttl);
   await sendVisitor('cancel me').expect(201);
   await mobile('put', '/notification-preference').send({ enabled: false, expectedVersion: 1 }).expect(200);
   const before = captured.length;
@@ -114,22 +141,51 @@ test('eligibility lookup failure defers delivery and disabled send flag cannot c
   const preference = (await mobile('get', '/notification-preference')).body.data;
   await mobile('put', '/notification-preference').send({ enabled: true, expectedVersion: preference.version }).expect(200);
   await sendVisitor('eligibility lookup failure').expect(201);
-  let sends = 0;
+  let sends = 0, previewReads = 0;
   const failLookupPool = { query: (...args) => pool.query(...args), connect: async () => {
     const db = await pool.connect();
     return { release: (...args) => db.release(...args), query: (sql, args) => {
+      if (sql.includes('AS support_visitor_name')) previewReads++;
       if (sql === 'SELECT * FROM users WHERE id = $1') throw new Error('temporary DB lookup failure');
       return db.query(sql, args);
     } };
   } };
   const summary = await processMobilePushOutbox({ messaging: { send: async () => { sends++; } }, dbPool: failLookupPool, lockRows: false });
-  assert.equal(summary.retried, 1); assert.equal(sends, 0);
+  assert.equal(summary.retried, 1); assert.equal(sends, 0); assert.equal(previewReads, 0);
   await sendVisitor('paused send flag').expect(201);
   env.supportChatPushSendEnabled = false;
   try {
     const paused = await processMobilePushOutbox({ messaging: { send: async () => { sends++; } }, lockRows: false });
     assert.equal(paused.claimed, 0); assert.equal(sends, 0);
   } finally { env.supportChatPushSendEnabled = true; }
+});
+
+test('missing source, content lookup failure and expiry during lookup never send a preview', async () => {
+  for (const mode of ['missing', 'failure', 'expired']) {
+    await pool.query("UPDATE mobile_push_outbox SET status='cancelled' WHERE status IN ('pending','retry','processing')");
+    await sendVisitor(`source ${mode}`).expect(201);
+    const now = new Date();
+    let sends = 0;
+    const guardedPool = { query: (...args) => pool.query(...args), connect: async () => {
+      const db = await pool.connect();
+      return { release: (...args) => db.release(...args), query: (sql, args) => {
+        if (sql.includes('AS support_visitor_name')) {
+          if (mode === 'missing') return { rows: [] };
+          if (mode === 'failure') throw new Error('fixture-private-message-must-not-be-logged');
+          now.setTime(now.getTime() + 16 * 60_000);
+        }
+        return db.query(sql, args);
+      } };
+    } };
+    const result = await processMobilePushOutbox({ now, lockRows: false, dbPool: guardedPool,
+      messaging: { send: async () => { sends++; } } });
+    assert.equal(sends, 0);
+    assert.equal(mode === 'failure' ? result.retried : result.failed, 1);
+    const row = (await pool.query('SELECT status,last_error,payload FROM mobile_push_outbox ORDER BY created_at DESC LIMIT 1')).rows[0];
+    assert.equal(row.status, mode === 'failure' ? 'retry' : 'cancelled');
+    assert.equal(row.last_error, mode === 'failure' ? 'SUPPORT_ELIGIBILITY_UNAVAILABLE' : 'SUPPORT_PUSH_MESSAGE_UNAVAILABLE');
+    assert.equal(JSON.stringify(row).includes('fixture-private-message'), false);
+  }
 });
 
 test('mobile SSE exposes IDs only and closes after tool access is revoked', async () => {
