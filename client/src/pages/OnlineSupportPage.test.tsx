@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { ToastProvider } from '../toast/ToastContext';
-import type { SupportChatSettings, SupportConversationDetail } from '../types/support-chat';
+import type { SupportChatSettings, SupportConversationDetail, SupportMessage } from '../types/support-chat';
 import type { User } from '../types/user';
 import { OnlineSupportPage } from './OnlineSupportPage';
 
@@ -77,7 +77,7 @@ const settings: SupportChatSettings = {
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <ToastProvider>
@@ -86,6 +86,23 @@ function renderPage() {
       </AuthProvider>
     </QueryClientProvider>
   );
+  return { ...result, queryClient };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function operatorMessage(body: string, clientMessageId?: string): SupportMessage {
+  return { id: '00000000-0000-4000-8000-000000000099', conversationId: conversationDetail.conversation.id,
+    senderType: 'operator', senderUserId: user.id, senderName: user.name, body, clientMessageId,
+    productCards: [], createdAt: settings.updatedAt };
 }
 
 beforeEach(() => {
@@ -135,9 +152,135 @@ describe('OnlineSupportPage', () => {
     fireEvent.change(composer, { target: { value: 'Відповідь' } });
     fireEvent.submit(composer.closest('form')!);
     await screen.findByText('Network timeout');
-    fireEvent.submit(composer.closest('form')!);
+    expect(composer).toHaveValue('');
+    expect(screen.getByText('Не надіслано')).toBeInTheDocument();
+    expect(screen.getAllByText('Відповідь')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Повторити надсилання' }));
     await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
     expect(send.mock.calls[0]?.[2]).toBe(send.mock.calls[1]?.[2]);
+  });
+
+  it('clears the composer and shows the reply on Enter before the server answers', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    const refresh = deferred<SupportConversationDetail>();
+    vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValueOnce(conversationDetail).mockReturnValue(refresh.promise);
+    const read = vi.spyOn(api.onlineSupport, 'markRead').mockResolvedValue(undefined);
+    const request = deferred<SupportMessage>();
+    const send = vi.spyOn(api.onlineSupport, 'sendMessage').mockReturnValue(request.promise);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    const composer = await screen.findByPlaceholderText('Напишіть відповідь покупцю…');
+    fireEvent.change(composer, { target: { value: 'Миттєва відповідь' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(composer).toHaveValue('');
+    expect(screen.getByText('Миттєва відповідь')).toBeInTheDocument();
+    expect(screen.getByText('Надсилання…')).toBeInTheDocument();
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+    expect(read).not.toHaveBeenCalled();
+
+    fireEvent.change(composer, { target: { value: 'Наступна чернетка' } });
+    const sent = operatorMessage('Миттєва відповідь', send.mock.calls[0]?.[2]);
+    await act(async () => request.resolve(sent));
+    await waitFor(() => expect(screen.queryByText('Надсилання…')).not.toBeInTheDocument());
+    expect(composer).toHaveValue('Наступна чернетка');
+    expect(screen.getAllByText(sent.body)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Надіслати' })).not.toBeDisabled();
+    await act(async () => refresh.resolve({ ...conversationDetail, messages: [sent] }));
+    expect(screen.getAllByText(sent.body)).toHaveLength(1);
+  });
+
+  it('keeps a newer draft when a send fails and retries the original reply separately', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValue(conversationDetail);
+    const request = deferred<SupportMessage>();
+    const send = vi.spyOn(api.onlineSupport, 'sendMessage').mockReturnValueOnce(request.promise)
+      .mockResolvedValueOnce(operatorMessage('Перша відповідь'));
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    const composer = await screen.findByPlaceholderText('Напишіть відповідь покупцю…');
+    fireEvent.change(composer, { target: { value: 'Перша відповідь' } });
+    fireEvent.submit(composer.closest('form')!);
+    fireEvent.change(composer, { target: { value: 'Нова чернетка' } });
+    await act(async () => request.reject(new Error('Мережа недоступна')));
+    await screen.findByText('Мережа недоступна');
+    expect(composer).toHaveValue('Нова чернетка');
+    expect(screen.getByText('Перша відповідь')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Повторити надсилання' }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls[1]).toEqual(send.mock.calls[0]);
+    expect(composer).toHaveValue('Нова чернетка');
+    await waitFor(() => expect(screen.queryByText('Не надіслано')).not.toBeInTheDocument());
+  });
+
+  it('does not overwrite another conversation draft when the previous send finishes', async () => {
+    const other = { ...conversationDetail, conversation: { ...conversationDetail.conversation,
+      id: '00000000-0000-4000-8000-000000000012', visitor: { ...conversationDetail.conversation.visitor, name: 'Олена' } } };
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation, other.conversation]);
+    const load = vi.spyOn(api.onlineSupport, 'conversation').mockImplementation(async (id) => id === other.conversation.id ? other : conversationDetail);
+    const request = deferred<SupportMessage>();
+    vi.spyOn(api.onlineSupport, 'sendMessage').mockReturnValue(request.promise);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    let composer = await screen.findByPlaceholderText('Напишіть відповідь покупцю…');
+    fireEvent.change(composer, { target: { value: 'Відповідь Ірині' } });
+    fireEvent.submit(composer.closest('form')!);
+    fireEvent.click(screen.getByRole('button', { name: /Олена/u }));
+    await waitFor(() => expect(load).toHaveBeenCalledWith(other.conversation.id));
+    composer = await screen.findByPlaceholderText('Напишіть відповідь покупцю…');
+    fireEvent.change(composer, { target: { value: 'Чернетка для Олени' } });
+    await act(async () => request.resolve(operatorMessage('Відповідь Ірині')));
+    expect(composer).toHaveValue('Чернетка для Олени');
+    expect(screen.queryByText('Відповідь Ірині')).not.toBeInTheDocument();
+  });
+
+  it.each(['success', 'timeout'])('merges a live history update without duplicates or false failures (%s)', async (outcome) => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    const load = vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValue(conversationDetail);
+    vi.spyOn(api.onlineSupport, 'markRead').mockResolvedValue(undefined);
+    const request = deferred<SupportMessage>();
+    const send = vi.spyOn(api.onlineSupport, 'sendMessage').mockReturnValue(request.promise);
+    const { queryClient } = renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    const composer = await screen.findByPlaceholderText('Напишіть відповідь покупцю…');
+    fireEvent.change(composer, { target: { value: 'Відповідь через SSE' } });
+    fireEvent.submit(composer.closest('form')!);
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    const sent = operatorMessage('Відповідь через SSE', send.mock.calls[0]?.[2]);
+    const updated = { ...conversationDetail, messages: [sent] };
+    load.mockResolvedValue(updated);
+    act(() => queryClient.setQueryData(['online-support-conversation', conversationDetail.conversation.id], updated));
+    expect(screen.getAllByText(sent.body)).toHaveLength(1);
+    await act(async () => {
+      if (outcome === 'success') request.resolve(sent);
+      else request.reject(new Error('Timeout after commit'));
+    });
+    expect(screen.getAllByText(sent.body)).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Повторити надсилання' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Timeout after commit')).not.toBeInTheDocument();
+  });
+
+  it('keeps an accepted reply visible when refreshing the history fails', async () => {
+    vi.spyOn(api.auth, 'me').mockResolvedValue(user);
+    vi.spyOn(api.onlineSupport, 'conversations').mockResolvedValue([conversationDetail.conversation]);
+    const load = vi.spyOn(api.onlineSupport, 'conversation').mockResolvedValueOnce(conversationDetail)
+      .mockRejectedValue(new Error('Помилка оновлення історії'));
+    vi.spyOn(api.onlineSupport, 'sendMessage').mockResolvedValue(operatorMessage('Збережена відповідь'));
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Ірина/u }));
+    const composer = await screen.findByPlaceholderText('Напишіть відповідь покупцю…');
+    fireEvent.change(composer, { target: { value: 'Збережена відповідь' } });
+    fireEvent.submit(composer.closest('form')!);
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Збережена відповідь')).toBeInTheDocument();
+    expect(screen.queryByText('Не надіслано')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Повторити надсилання' })).not.toBeInTheDocument();
+    expect(composer).toHaveValue('');
   });
 
   it.each(['visible', 'hidden', 'outside'] as const)('acknowledges only a rendered visible tail (%s)', async (visibility) => {

@@ -17,6 +17,7 @@ import type {
   SupportChatSettingsInput,
   SupportCustomerInput,
   SupportConversation,
+  SupportConversationDetail,
   SupportConversationStatus,
   SupportMessage,
   SupportWorkingDayKey
@@ -252,17 +253,36 @@ function ConversationListItem({ item, active, onSelect }: { item: SupportConvers
   </button>;
 }
 
-function MessageBubble({ item }: { item: SupportMessage }) {
+type OutgoingSupportMessage = {
+  input: { id: string; body: string; clientMessageId: string };
+  message: SupportMessage;
+  delivery: 'sending' | 'sent' | 'failed';
+};
+
+function matchesOutgoingMessage(message: SupportMessage, outgoing: OutgoingSupportMessage) {
+  return message.id === outgoing.message.id || (message.senderType === 'operator'
+    && message.clientMessageId === outgoing.input.clientMessageId);
+}
+
+function MessageBubble({ item, delivery, onRetry, retryDisabled }: {
+  item: SupportMessage;
+  delivery?: OutgoingSupportMessage['delivery'];
+  onRetry?: () => void;
+  retryDisabled?: boolean;
+}) {
   return <article data-message-id={item.id} className={`online-support-message is-${item.senderType}${item.productCards.length ? ' has-product-card' : ''}`}>
     {item.senderType !== 'visitor' && <small>{item.senderName || 'Автоматична відповідь'}</small>}
     <SupportMessageText body={item.body} productCards={item.productCards} />
     {item.productCards.map((card) => <SupportProductCard card={card} key={`${item.id}-${card.id}`} />)}
+    {delivery === 'sending' && <span className="online-support-message__delivery" role="status">Надсилання…</span>}
+    {delivery === 'failed' && <span className="online-support-message__delivery" role="status">Не надіслано <button type="button" onClick={onRetry} disabled={retryDisabled}>Повторити надсилання</button></span>}
     <time>{messageTime(item.createdAt)}</time>
   </article>;
 }
 
 function ConversationsPanel() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<SupportConversationStatus | ''>('');
@@ -273,7 +293,8 @@ function ConversationsPanel() {
   const [customerDraft, setCustomerDraft] = useState<SupportCustomerInput>({ name: '', email: '', phone: '' });
   const transcriptRef = useRef<HTMLDivElement>(null);
   const tailVisible = useRef(true);
-  const pendingSend = useRef<{ id: string; body: string; clientMessageId: string } | null>(null);
+  const sendInFlight = useRef(false);
+  const [outgoing, setOutgoing] = useState<OutgoingSupportMessage[]>([]);
   const [older, setOlder] = useState<{ items: SupportMessage[]; cursor: string | null } | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const conversations = useQuery({
@@ -292,6 +313,18 @@ function ConversationsPanel() {
   const setConversationStatus = useMutation({ mutationFn: ({ id, next }: { id: string; next: SupportConversationStatus }) => api.onlineSupport.setStatus(id, next) });
   const updateCustomer = useMutation({ mutationFn: ({ id, input }: { id: string; input: SupportCustomerInput }) => api.onlineSupport.updateCustomer(id, input) });
   const current = detail.data?.conversation;
+  const persistedMessages = [...(older?.items || []), ...(detail.data?.messages || [])];
+  const visibleOutgoing = outgoing.filter((item) => item.input.id === selectedId
+    && !persistedMessages.some((message) => matchesOutgoingMessage(message, item)));
+
+  useEffect(() => {
+    if (!detail.data || !selectedId) return;
+    setOutgoing((items) => {
+      const next = items.filter((item) => item.input.id !== selectedId || item.delivery === 'sending'
+        || !detail.data.messages.some((message) => matchesOutgoingMessage(message, item)));
+      return next.length === items.length ? items : next;
+    });
+  }, [detail.data, selectedId]);
 
   useEffect(() => {
     if (selectedId && conversations.data && !conversations.data.some((item) => item.id === selectedId)) {
@@ -335,7 +368,7 @@ function ConversationsPanel() {
       if (transcriptRef.current && tailVisible.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     });
     return () => cancelAnimationFrame(frame);
-  }, [detail.data?.messages.length]);
+  }, [detail.data?.messages.length, visibleOutgoing.length]);
 
   useEffect(() => {
     if (!current || editingCustomer) return;
@@ -346,29 +379,55 @@ function ConversationsPanel() {
     });
   }, [current, editingCustomer]);
 
-  async function refreshCurrent() {
+  async function refreshCurrent(id = selectedId) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['online-support-conversations'] }),
-      queryClient.invalidateQueries({ queryKey: ['online-support-conversation', selectedId] }),
+      queryClient.invalidateQueries({ queryKey: ['online-support-conversation', id] }),
       queryClient.invalidateQueries({ queryKey: ['online-support-unread-count'] })
     ]);
+  }
+
+  async function deliver(outgoingMessage: OutgoingSupportMessage) {
+    if (sendInFlight.current) return;
+    sendInFlight.current = true;
+    const { input } = outgoingMessage;
+    setOutgoing((items) => items.some((item) => item.input.clientMessageId === input.clientMessageId)
+      ? items.map((item) => item.input.clientMessageId === input.clientMessageId ? { ...item, delivery: 'sending' } : item)
+      : [...items, { ...outgoingMessage, delivery: 'sending' }]);
+    tailVisible.current = true;
+    try {
+      const sent = await send.mutateAsync(input);
+      setOutgoing((items) => items.map((item) => item.input.clientMessageId === input.clientMessageId
+        ? { ...item, message: sent, delivery: 'sent' } : item));
+      // The POST already confirmed the send. A delayed/failed history refresh
+      // must not hide the message or turn it into a failed send.
+      void refreshCurrent(input.id).catch(() => undefined);
+    } catch (error) {
+      const confirmed = queryClient.getQueryData<SupportConversationDetail>(['online-support-conversation', input.id])
+        ?.messages.find((message) => matchesOutgoingMessage(message, outgoingMessage));
+      setOutgoing((items) => items.map((item) => item.input.clientMessageId === input.clientMessageId
+        ? { ...item, message: confirmed || item.message, delivery: confirmed ? 'sent' : 'failed' } : item));
+      if (confirmed) return;
+      showToast(error instanceof Error ? error.message : 'Не вдалося надіслати відповідь.', 'error');
+    } finally {
+      sendInFlight.current = false;
+    }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const body = message.trim();
-    if (!selectedId || !body || send.isPending) return;
-    try {
-      if (pendingSend.current?.id !== selectedId || pendingSend.current.body !== body) {
-        pendingSend.current = { id: selectedId, body, clientMessageId: crypto.randomUUID() };
-      }
-      await send.mutateAsync(pendingSend.current);
-      pendingSend.current = null;
-      setMessage('');
-      await refreshCurrent();
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Не вдалося надіслати відповідь.', 'error');
-    }
+    if (!selectedId || !body || sendInFlight.current) return;
+    const clientMessageId = crypto.randomUUID();
+    const next: OutgoingSupportMessage = {
+      input: { id: selectedId, body, clientMessageId },
+      message: { id: `pending:${clientMessageId}`, conversationId: selectedId,
+        senderType: 'operator', senderUserId: user?.id || null, senderName: user?.name || 'Ви',
+        body, clientMessageId, productCards: [], createdAt: new Date().toISOString() },
+      delivery: 'sending'
+    };
+    setMessage('');
+    await deliver(next);
   }
 
   async function claimCurrent() {
@@ -420,7 +479,7 @@ function ConversationsPanel() {
       {selectedId && detail.isLoading && <div className="online-support-state">Завантажуємо повідомлення…</div>}
       {current && <>
         <header className="online-support-dialog__header"><div><span className="online-support-avatar">{visitorLabel(current).slice(0, 1).toUpperCase()}</span><div><strong>{visitorLabel(current)}</strong><small>{current.visitor.lastPageTitle || 'Сторінку не визначено'}</small></div></div><div>{!current.assignedUser && <button className="button button--secondary" type="button" onClick={() => void claimCurrent()} disabled={claim.isPending}>Взяти в роботу</button>}<button className="button button--secondary online-support-customer-trigger" type="button" onClick={() => setCustomerPanelOpen(true)}>Покупець</button><StyledSelect compact className="online-support-status-select" value={current.status} options={statuses.filter((item): item is { value: SupportConversationStatus; label: string } => Boolean(item.value))} onChange={(next) => void changeStatus(next)} disabled={setConversationStatus.isPending} ariaLabel="Статус діалогу" /></div></header>
-        <div className="online-support-transcript" ref={transcriptRef} onScroll={(event) => { const node = event.currentTarget; tailVisible.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 32; }}>{(older ? older.cursor : detail.data?.olderCursor) && <button className="button button--secondary" type="button" disabled={loadingOlder} onClick={() => void loadOlder()}>Раніші повідомлення</button>}{[...(older?.items || []), ...(detail.data?.messages || [])].map((item) => <MessageBubble item={item} key={item.id} />)}</div>
+        <div className="online-support-transcript" ref={transcriptRef} onScroll={(event) => { const node = event.currentTarget; tailVisible.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 32; }}>{(older ? older.cursor : detail.data?.olderCursor) && <button className="button button--secondary" type="button" disabled={loadingOlder} onClick={() => void loadOlder()}>Раніші повідомлення</button>}{persistedMessages.map((item) => <MessageBubble item={item} key={item.id} />)}{visibleOutgoing.map((item) => <MessageBubble item={item.message} delivery={item.delivery} onRetry={() => void deliver(item)} retryDisabled={send.isPending} key={item.input.clientMessageId} />)}</div>
         <form className="online-support-composer" onSubmit={(event) => void submit(event)}><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Напишіть відповідь покупцю…" rows={2} maxLength={5000} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button className="button button--primary" type="submit" disabled={!message.trim() || send.isPending}><Icon name="send" size={18} /> {send.isPending ? 'Надсилаємо…' : 'Надіслати'}</button></form>
       </>}
     </section>
