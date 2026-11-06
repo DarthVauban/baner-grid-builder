@@ -191,7 +191,7 @@ test('PostgreSQL opt-out waits for active dispatch, cancels the rest, and retrie
   assert.equal(sent.length, 1);
   const visitorId = (await pool.query('SELECT visitor_id FROM support_chat_conversations WHERE id=$1', [id])).rows[0].visitor_id;
   assert.equal(sent[0].data.messageId, ids[0]);
-  assert.deepEqual(sent[0].notification, { title: `Відвідувач ${visitorId.slice(0, 6)}: PG preview 0`, body: 'PG preview 0' });
+  assert.deepEqual(sent[0].notification, { title: visitorId.slice(0, 6), body: 'PG preview 0' });
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM mobile_push_outbox WHERE support_message_id = ANY($1::uuid[]) AND status = 'cancelled'", [ids])).rows[0].count, 1);
   await notifications.setSupportNotificationPreference(user, { enabled: true, expectedVersion: 2 });
   // The durable state after an ambiguous crash between FCM acceptance and ack.
