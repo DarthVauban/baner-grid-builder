@@ -40,6 +40,12 @@ if (env.NODE_ENV === 'test' && env.DATABASE_URL.startsWith('pg-mem://')) {
     operator: '~', left: DataType.text, right: DataType.text,
     returns: DataType.bool, implementation: (value, pattern) => new RegExp(pattern).test(value)
   });
+  memoryDb.public.registerOperator({
+    operator: '?', left: DataType.jsonb, right: DataType.text,
+    returns: DataType.bool,
+    implementation: (value, key) => Array.isArray(value) ? value.includes(key)
+      : value !== null && typeof value === 'object' ? Object.hasOwn(value, key) : value === key
+  });
   memoryDb.public.registerFunction({
     name: 'length', args: [DataType.text], returns: DataType.integer,
     implementation: (value) => value.length

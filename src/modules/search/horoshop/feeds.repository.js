@@ -109,6 +109,14 @@ export class HoroshopFeedRepository {
   }
 
   async catalog(connection, filters = {}, page = 1, pageSize = 25) {
+    if (filters.google || filters.facebook) {
+      const [matchingIds, facets] = await Promise.all([
+        this.matchingIds(connection, filters), this.facets(connection)
+      ]);
+      const ids = matchingIds.slice((page - 1) * pageSize, page * pageSize);
+      return { items: await this.productsByIds(connection, ids), ...facets,
+        total: matchingIds.length, page, pageSize, pageCount: Math.ceil(matchingIds.length / pageSize) };
+    }
     const { values, where } = this.predicate(connection, filters);
     const [count, rows, facets] = await Promise.all([
       this.pool.query(`SELECT COUNT(*)::integer AS total FROM search_horoshop_products AS product WHERE ${where}`, values),
@@ -128,13 +136,10 @@ export class HoroshopFeedRepository {
   }
 
   async catalogSelection(connection, productIds, filters = {}, page = 1, pageSize = 25) {
-    const { values, where } = this.predicate(connection, filters, productIds);
-    const [rows, facets] = await Promise.all([
-      this.pool.query(`SELECT product.id FROM search_horoshop_products AS product WHERE ${where}
-        ORDER BY product.sku, product.id`, values),
+    const [matchingProductIds, facets] = await Promise.all([
+      this.matchingIds(connection, filters, productIds),
       this.facets(connection)
     ]);
-    const matchingProductIds = rows.rows.map((row) => row.id);
     const ids = matchingProductIds.slice((page - 1) * pageSize, page * pageSize);
     return {
       items: await this.productsByIds(connection, ids), ...facets,
@@ -144,13 +149,46 @@ export class HoroshopFeedRepository {
   }
 
   async selectedIds(connection, filters, scopeIds = null) {
-    const { values, where } = this.predicate(connection, filters, scopeIds);
-    const result = await this.pool.query(`SELECT product.id FROM search_horoshop_products AS product
-      WHERE ${where} ORDER BY product.sku, product.id LIMIT ${maximumFeedSelection + 1}`, values);
-    if (result.rows.length > maximumFeedSelection) {
+    const ids = await this.matchingIds(connection, filters, scopeIds, maximumFeedSelection + 1);
+    if (ids.length > maximumFeedSelection) {
       throw new AppError(422, 'HOROSHOP_FEEDS_SELECTION_LIMIT', `За один раз можна змінити не більш ніж ${maximumFeedSelection} товарів.`);
     }
-    return result.rows.map((row) => row.id);
+    return ids;
+  }
+
+  async matchingIds(connection, filters = {}, scopeIds = null, limit = null) {
+    const { values, where } = this.predicate(connection, filters, scopeIds);
+    const filterFeeds = Boolean(filters.google || filters.facebook);
+    const rowLimit = !filterFeeds && limit !== null ? ` LIMIT ${limit}` : '';
+    const result = await this.pool.query(`SELECT product.id${filterFeeds
+      ? ", product.source_data -> 'export_to_marketplace' AS marketplaces" : ''}
+      FROM search_horoshop_products AS product WHERE ${where} ORDER BY product.sku, product.id${rowLimit}`, values);
+    if (!filterFeeds) return result.rows.map((row) => row.id);
+    // Read only feed fields for all candidates; descriptions/images are loaded only for the displayed page.
+    const byId = new Map(result.rows.map((row) => [row.id, {
+      marketplaces: marketplaceNames(row.marketplaces), offers: []
+    }]));
+    const ids = result.rows.map((row) => row.id);
+    for (let offset = 0; offset < ids.length; offset += 500) {
+      const batch = ids.slice(offset, offset + 500);
+      const children = await this.pool.query(`SELECT product_id,
+        source_data -> 'export_to_marketplace' AS marketplaces,
+        source_data ? 'export_to_marketplace' AS has_marketplaces
+        FROM search_horoshop_modifications WHERE connection_id = $1 AND generation = $2 AND active = TRUE
+          AND product_id IN (${batch.map((_, index) => `$${index + 3}`).join(', ')})`,
+      [connection.id, connection.generation, ...batch]);
+      for (const row of children.rows) {
+        const parent = byId.get(row.product_id);
+        parent.offers.push({ marketplaces: row.has_marketplaces ? marketplaceNames(row.marketplaces) : parent.marketplaces });
+      }
+    }
+    const matching = ids.filter((id) => {
+      const product = byId.get(id);
+      const offers = product.offers.length ? product.offers : [{ marketplaces: product.marketplaces }];
+      return (!filters.google || feedState(offers, 'google') === filters.google)
+        && (!filters.facebook || feedState(offers, 'facebook') === filters.facebook);
+    });
+    return limit === null ? matching : matching.slice(0, limit);
   }
 
   async productsByIds(connection, ids) {

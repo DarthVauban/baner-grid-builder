@@ -8,12 +8,16 @@ import { ModalDialog } from '../../components/ModalDialog';
 import { StyledSelect } from '../../components/StyledSelect';
 import { api } from '../../lib/api';
 import { useToast } from '../../toast/ToastContext';
-import type { FeedAction, FeedChoice, FeedFilters, FeedOperation, FeedProduct, FeedResolution } from '../../types/horoshop-feeds';
+import type { FeedAction, FeedChoice, FeedFilters, FeedOperation, FeedProduct, FeedResolution, FeedState } from '../../types/horoshop-feeds';
 import { FeedOperationRows, actionLabel, choices, feedLabels, stateLabels, statusLabels } from './FeedOperationRows';
 import '../../styles/horoshop-popularity.css';
 import '../../styles/horoshop-feeds.css';
 
-const emptyFilters: FeedFilters = { search: '', category: '', brands: [], availability: '' };
+const emptyFilters: FeedFilters = { search: '', category: '', brands: [], availability: '', google: '', facebook: '' };
+const feedStatusOptions: Array<{ value: FeedState | ''; label: string }> = [
+  { value: '', label: 'Усі статуси' },
+  ...(['enabled', 'disabled', 'mixed', 'unknown'] as const).map((value) => ({ value, label: stateLabels[value] }))
+];
 const number = (value: number) => value.toLocaleString('uk-UA');
 const date = (value: string) => new Date(value).toLocaleString('uk-UA');
 const active = (status?: string) => status === 'queued' || status === 'running';
@@ -83,6 +87,13 @@ export function HoroshopFeedsPage() {
     void queryClient.invalidateQueries({ queryKey: ['horoshop-feeds-catalog'] });
     void queryClient.invalidateQueries({ queryKey: ['horoshop-feeds-history'] });
   }, [operationQuery.data, display, queryClient]);
+
+  useEffect(() => {
+    if (listIds === null || catalog.isPlaceholderData || !data?.matchingProductIds) return;
+    const matching = new Set(data.matchingProductIds);
+    setSelected((current) => [...current].every((id) => matching.has(id)) ? current
+      : new Set([...current].filter((id) => matching.has(id))));
+  }, [listIds, catalog.isPlaceholderData, data?.matchingProductIds]);
 
   useEffect(() => {
     const close = (event: Event) => {
@@ -183,6 +194,7 @@ export function HoroshopFeedsPage() {
             {!visibleBrands.length && <p>Брендів не знайдено.</p>}{filters.brands.length > 0 && <button type="button" onClick={() => changeFilters({ brands: [] })}>Очистити</button>}
           </div></details>
           <label><span>Наявність</span><StyledSelect ariaLabel="Наявність" disabled={busy} value={filters.availability} options={[{ value: '', label: 'Будь-яка' }, ...(data?.availabilityOptions || []).map((value) => ({ value, label: value }))]} onChange={(availability) => changeFilters({ availability })} /></label>
+          {(['google', 'facebook'] as const).map((channel) => <label key={channel}><span>{feedLabels[channel]}</span><StyledSelect ariaLabel={`Статус: ${feedLabels[channel]}`} disabled={busy} value={filters[channel]} options={feedStatusOptions} onChange={(value) => changeFilters({ [channel]: value })} /></label>)}
         </div>
         {listIds !== null && <div className="hp-paste-action"><span>Вибірка зі списку: {listIds.length} товарів.</span><div><button className="button button--secondary" type="button" onClick={openSearch}>Редагувати список</button><button className="button button--secondary" type="button" onClick={() => { setListIds(null); setSearchText(''); changeFilters({ search: '' }); }}>Очистити вибірку</button></div></div>}
         {resolution && <div className="hp-resolution" aria-live="polite"><strong>Знайдено товарів: {resolution.matched.length}</strong>

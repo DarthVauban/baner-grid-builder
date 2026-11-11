@@ -133,7 +133,7 @@ describe('HoroshopFeedsPage', () => {
     expect(screen.getByRole('checkbox', { name: 'Вибрати HEADSET' })).toBeChecked();
     expect((screen.getByRole('checkbox', { name: 'Вибрати товари на сторінці' }) as HTMLInputElement).indeterminate).toBe(true);
     await user.click(screen.getByRole('button', { name: 'Вибрати всі 2 за фільтром' }));
-    expect(selectSpy).toHaveBeenCalledWith({ search: '', category: '', brands: [], availability: '' }, undefined);
+    expect(selectSpy).toHaveBeenCalledWith({ search: '', category: '', brands: [], availability: '', google: '', facebook: '' }, undefined);
     await chooseGoogle(user);
     await user.click(screen.getByRole('button', { name: 'Перевірити зміни' }));
     expect(previewSpy).toHaveBeenCalledWith({ productIds: ['parent-0', 'parent-1'] }, { google: 'enable', facebook: 'keep' });
@@ -150,5 +150,54 @@ describe('HoroshopFeedsPage', () => {
     renderPage();
     expect(await screen.findByRole('heading', { name: 'Підключіть магазин Хорошоп' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Перевірити зміни' })).not.toBeInTheDocument();
+  });
+
+  it('combines independent feed filters, clears selection and forwards the filters to select-all', async () => {
+    const user = userEvent.setup();
+    const catalogSpy = vi.spyOn(api.horoshopFeeds, 'catalog').mockImplementation(async (filters) => {
+      const products: FeedCatalog['items'] = [
+        { ...catalog.items[0], google: 'enabled', facebook: 'disabled' },
+        { ...catalog.items[1], google: 'enabled', facebook: 'enabled' }
+      ];
+      const items = products.filter((item) => (!filters.google || item.google === filters.google) && (!filters.facebook || item.facebook === filters.facebook));
+      return { ...catalog, items, total: items.length };
+    });
+    const selectSpy = vi.spyOn(api.horoshopFeeds, 'select').mockResolvedValue({ productIds: ['parent-0'] });
+    renderPage(); await screen.findByText('Телефон');
+    await user.click(screen.getByRole('checkbox', { name: 'Вибрати PHONE' }));
+    await user.click(screen.getByRole('button', { name: 'Статус: Google Merchant Center' }));
+    expect(screen.getByRole('option', { name: 'Немає даних' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Частина модифікацій' })).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'Увімкнено' }));
+    expect(await screen.findByText('Виберіть товари для масової дії')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Статус: Facebook' }));
+    await user.click(screen.getByRole('option', { name: 'Вимкнено' }));
+    const selectAll = await screen.findByRole('button', { name: 'Вибрати всі 1 за фільтром' });
+    expect(screen.queryByText('Навушники')).not.toBeInTheDocument();
+    expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({ google: 'enabled', facebook: 'disabled' }), 1, 25, expect.anything());
+    await user.click(selectAll);
+    expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({ google: 'enabled', facebook: 'disabled' }), undefined);
+    expect(await screen.findByText('1 товарів вибрано')).toBeInTheDocument();
+  });
+
+  it('keeps pasted-list auto-selection within active feed filters', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api.horoshopFeeds, 'catalog').mockResolvedValue(catalog);
+    vi.spyOn(api.horoshopFeeds, 'resolve').mockResolvedValue({
+      matched: catalog.items.map((item) => ({ input: item.sku, productId: item.id, sku: item.sku, title: item.title })),
+      ambiguous: [], unmatched: []
+    });
+    const selectionSpy = vi.spyOn(api.horoshopFeeds, 'catalogSelection').mockResolvedValue({
+      ...catalog, items: [catalog.items[0]], total: 1, matchingProductIds: ['parent-0']
+    });
+    renderPage(); await screen.findByText('Телефон');
+    await user.click(screen.getByRole('button', { name: 'Статус: Facebook' }));
+    await user.click(screen.getByRole('option', { name: 'Вимкнено' }));
+    await user.click(screen.getByRole('button', { name: 'Назва або артикул' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Назви або артикули' }), { target: { value: 'PHONE\nHEADSET' } });
+    await user.click(screen.getByRole('button', { name: 'Створити вибірку зі списку' }));
+    expect(await screen.findByText('1 товарів вибрано')).toBeInTheDocument();
+    expect(selectionSpy).toHaveBeenCalledWith(['parent-0', 'parent-1'], expect.objectContaining({ facebook: 'disabled' }), 1, 25, expect.anything());
+    expect(screen.queryByRole('checkbox', { name: 'Вибрати HEADSET' })).not.toBeInTheDocument();
   });
 });
