@@ -48,6 +48,7 @@ export function HoroshopFeedsPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const [action, setAction] = useState<FeedAction>({ google: 'keep', facebook: 'keep' });
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [tab, setTab] = useState<'catalog' | 'history'>('catalog');
   const [draft, setDraft] = useState<FeedOperation | null>(null);
   const [operationId, setOperationId] = useState('');
@@ -108,7 +109,7 @@ export function HoroshopFeedsPage() {
     setBusy(true);
     try {
       const result = await api.horoshopFeeds.preview(selection, action);
-      setOperationId(''); setDraft(result); setOperationOpen(true);
+      setOperationId(''); setDraft(result); setBulkActionOpen(false); setOperationOpen(true);
     } catch (error) { fail(error); } finally { setBusy(false); }
   }
   async function apply() {
@@ -151,8 +152,16 @@ export function HoroshopFeedsPage() {
           const ids = [...new Set([...resolution.matched.map((item) => item.productId), ...Object.values(chosen)])];
           setListIds(ids); setSelected(new Set(ids)); setAllFiltered(false); setPage(1);
         }} /></label>)}</div>}
+        <div className="hp-selection" role="region" aria-label="Дії з вибіркою">
+          <strong>{selectedCount ? `${selectedCount.toLocaleString('uk-UA')} товарів вибрано` : 'Виберіть товари для масової дії'}</strong>
+          <div>
+            {selectedCount > 0 && <button type="button" onClick={() => { setSelected(new Set()); setAllFiltered(false); }}>Зняти вибір</button>}
+            <button type="button" disabled={!canSelect || !data?.total || data.total > 5000} onClick={() => { setAllFiltered(true); setSelected(new Set()); }}>Вибрати всі {data?.total?.toLocaleString('uk-UA') || 0} за фільтром</button>
+            <button className="button button--primary" type="button" disabled={!canSelect || !selectedCount || selectedCount > 5000} onClick={() => { setAction({ google: 'keep', facebook: 'keep' }); setBulkActionOpen(true); }}>Масова дія</button>
+          </div>
+        </div>
       </section>
-      <section className="hp-panel"><div className="hp-section-head"><div><h2>Товари · {data?.total || 0}</h2><p>Опції за останнім збереженим станом каталогу.</p></div><button className="button button--secondary" disabled={!canSelect || !data?.total || data.total > 5000} onClick={() => { setAllFiltered(true); setSelected(new Set()); }}>Вибрати всі {data?.total || 0} за фільтром</button></div>
+      <section className="hp-panel"><div className="hp-section-head"><div><h2>Товари · {data?.total || 0}</h2><p>Опції за останнім збереженим станом каталогу.</p></div></div>
         {catalog.isFetching && <p role="status">Оновлюємо список…</p>}
         {!catalog.isFetching && !data?.items.length && <p className="hp-center">За цими умовами товарів не знайдено.</p>}
         <div className="hp-table-wrap"><table><thead><tr><th>Вибір</th><th>Товар</th><th>Google Merchant Center</th><th>Facebook</th><th>Наявність</th></tr></thead><tbody>{data?.items.map((product) => <tr key={product.id}>
@@ -162,11 +171,6 @@ export function HoroshopFeedsPage() {
         </tr>)}</tbody></table></div>
         <div className="hp-pager"><button className="button button--secondary" disabled={page <= 1 || catalog.isFetching} onClick={() => setPage((current) => current - 1)}>Назад</button><span>Сторінка {page} із {data?.pageCount || 1}</span><button className="button button--secondary" disabled={!data || page >= data.pageCount || catalog.isFetching} onClick={() => setPage((current) => current + 1)}>Далі</button></div>
       </section>
-      <section className="hp-panel"><div className="hp-section-head"><h2>{selectedCount} товарів вибрано</h2><button className="hp-link" onClick={() => { setSelected(new Set()); setAllFiltered(false); }}>Зняти вибір</button></div>
-        <div className="hf-actions">{(['google', 'facebook'] as const).map((channel) => <label key={channel}><span>{channel === 'google' ? 'Google Merchant Center' : 'Facebook'}</span><StyledSelect ariaLabel={`Дія: ${channel === 'google' ? 'Google Merchant Center' : 'Facebook'}`} value={action[channel]} options={choices} onChange={(value) => setAction((current) => ({ ...current, [channel]: value }))} /></label>)}
-          <button className="button button--primary" disabled={!canSelect || !selectedCount || selectedCount > 5000 || (action.google === 'keep' && action.facebook === 'keep')} onClick={() => void preview()}>{busy ? 'Перевіряємо…' : 'Перевірити зміни'}</button></div>
-        <p className="hp-note">До 5 000 товарів за операцію. Зміни потраплять у XML після наступної генерації фіда в Хорошопі.</p>
-      </section>
     </>}
     {tab === 'history' && <section className="hp-panel"><h2>Історія операцій</h2>
       {history.isLoading && <p>Завантажуємо історію…</p>}{history.isError && <p role="alert">Не вдалося завантажити історію. <button className="hp-link" onClick={() => void history.refetch()}>Повторити</button></p>}
@@ -174,6 +178,13 @@ export function HoroshopFeedsPage() {
       <div className="hp-table-wrap"><table><thead><tr><th>Дата</th><th>Дія</th><th>Підтверджено</th><th>Стан</th><th>Деталі</th></tr></thead><tbody>{history.data?.map((item) => <tr key={item.id}><td>{date(item.createdAt)}</td><td>{actionLabel(item.action)}</td><td>{item.confirmed} із {item.total}</td><td>{statusLabels[item.status]}</td><td><button className="hp-link" onClick={() => { setDraft(null); setOperationId(item.id); setOperationOpen(true); }}>Переглянути</button></td></tr>)}</tbody></table></div>
     </section>}
     {searchOpen && <HoroshopProductSearchDialog title="Пошук за назвою або артикулом" description="Введіть назву або артикул. Для вибірки зі списку вставте значення по одному на рядок." value={searchDraft} onValueChange={setSearchDraft} placeholder="Назви або артикули" busy={busy} confirmLabel={searchDraft.trim().includes('\n') ? 'Створити вибірку зі списку' : 'Застосувати пошук'} onConfirm={() => void search()} onClose={() => setSearchOpen(false)} />}
+    {bulkActionOpen && <ModalDialog ariaLabelledBy="hf-bulk-action-title" eyebrow="Товарні фіди" title="Масова дія" className="hf-bulk-action" onClose={() => setBulkActionOpen(false)} closeDisabled={busy}
+      footer={<><button className="button button--secondary" type="button" disabled={busy} onClick={() => setBulkActionOpen(false)}>Скасувати</button><button className="button button--primary" type="button" disabled={!canSelect || !selectedCount || selectedCount > 5000 || (action.google === 'keep' && action.facebook === 'keep')} onClick={() => void preview()}>{busy ? 'Перевіряємо…' : 'Перевірити зміни'}</button></>}>
+      <p className="hf-bulk-action-count">{selectedCount.toLocaleString('uk-UA')} товарів вибрано</p>
+      <div className="hf-actions">{(['google', 'facebook'] as const).map((channel) => <label key={channel}><span>{channel === 'google' ? 'Google Merchant Center' : 'Facebook'}</span><StyledSelect ariaLabel={`Дія: ${channel === 'google' ? 'Google Merchant Center' : 'Facebook'}`} value={action[channel]} options={choices} disabled={busy} onChange={(value) => setAction((current) => ({ ...current, [channel]: value }))} /></label>)}</div>
+      <p className="hp-note">Виберіть дію для кожного фіда. Інші майданчики та опції «Не змінювати» збережуться для всіх модифікацій товарів.</p>
+      <p className="hp-note">До 5 000 товарів за операцію. Зміни потраплять у XML після наступної генерації фіда в Хорошопі.</p>
+    </ModalDialog>}
     {operationOpen && <ModalDialog ariaLabelledBy="hf-operation-title" eyebrow="Товарні фіди" title={operation?.status === 'draft' ? 'Перевірте зміни' : 'Результат операції'} className="hf-operation" onClose={() => setOperationOpen(false)} closeDisabled={busy}
       footer={<><button className="button button--secondary" disabled={busy} onClick={() => setOperationOpen(false)}>Закрити</button>{operation?.status === 'draft' && <button className="button button--primary" disabled={busy} onClick={() => void apply()}>Застосувати зміни</button>}</>}>
       {!operation && <p role={operationQuery.isError ? 'alert' : 'status'}>{operationQuery.isError ? 'Не вдалося завантажити операцію.' : 'Завантажуємо операцію…'}</p>}

@@ -33,6 +33,7 @@ function renderPage() {
   return render(<QueryClientProvider client={client}><MemoryRouter><ToastProvider><HoroshopFeedsPage /></ToastProvider></MemoryRouter></QueryClientProvider>);
 }
 async function chooseGoogle(user: ReturnType<typeof userEvent.setup>) {
+  if (!screen.queryByRole('dialog', { name: 'Масова дія' })) await user.click(screen.getByRole('button', { name: 'Масова дія' }));
   await user.click(screen.getByRole('button', { name: 'Дія: Google Merchant Center' }));
   await user.click(screen.getByRole('option', { name: 'Додати до фіда' }));
 }
@@ -47,13 +48,23 @@ describe('HoroshopFeedsPage', () => {
     vi.spyOn(api.horoshopFeeds, 'operation').mockResolvedValue(completed);
     renderPage();
     await screen.findByText('Телефон');
-    expect(screen.getByRole('button', { name: 'Перевірити зміни' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Масова дія' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Перевірити зміни' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'Вибрати PHONE' }));
+    await user.click(screen.getByRole('button', { name: 'Масова дія' }));
+    expect(screen.getByRole('button', { name: 'Перевірити зміни' })).toBeDisabled();
+    await chooseGoogle(user);
+    await user.click(screen.getByRole('button', { name: 'Скасувати' }));
+    expect(screen.queryByRole('dialog', { name: 'Масова дія' })).not.toBeInTheDocument();
+    expect(previewSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('checkbox', { name: 'Вибрати PHONE' })).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Масова дія' }));
     expect(screen.getByRole('button', { name: 'Перевірити зміни' })).toBeDisabled();
     await chooseGoogle(user);
     await user.click(screen.getByRole('button', { name: 'Перевірити зміни' }));
     expect(previewSpy).toHaveBeenCalledWith({ productIds: ['parent-0'] }, { google: 'enable', facebook: 'keep' });
     const dialog = await screen.findByRole('dialog', { name: 'Перевірте зміни' });
+    expect(screen.queryByRole('dialog', { name: 'Масова дія' })).not.toBeInTheDocument();
     expect(within(dialog).getByText('Google Feed for Merchant Center; Rozetka Feed')).toBeInTheDocument();
     expect(applySpy).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole('button', { name: 'Застосувати зміни' }));
@@ -81,8 +92,8 @@ describe('HoroshopFeedsPage', () => {
     await user.click(within(await screen.findByRole('dialog', { name: 'Перевірте зміни' })).getAllByRole('button', { name: 'Закрити' })[0]);
     await user.click(screen.getByRole('button', { name: 'Бренд' }));
     await user.click(screen.getByRole('option', { name: 'Apple' }));
-    expect(await screen.findByText('0 товарів вибрано')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Перевірити зміни' })).toBeDisabled();
+    expect(await screen.findByText('Виберіть товари для масової дії')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Масова дія' })).toBeDisabled();
   });
 
   it('uses server-side filter selection for all products and does not apply a failed preview', async () => {
@@ -96,7 +107,7 @@ describe('HoroshopFeedsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Перевірити зміни' }));
     expect(previewSpy).toHaveBeenCalledWith({ filters: { search: '', category: '', brands: [], availability: '' } }, { google: 'enable', facebook: 'keep' });
     expect(await screen.findByText('API не повертає поточні фіди.')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Масова дія' })).toBeInTheDocument();
     expect(applySpy).not.toHaveBeenCalled();
   });
 
