@@ -11,6 +11,7 @@ import { startMobilePushWorker } from './modules/mobile/mobile-push.worker.js';
 import { startHoroshopCatalogWorker } from './modules/search/horoshop/catalog.worker.js';
 import { startHoroshopStickerWorker } from './modules/search/horoshop/sticker.service.js';
 import { startHoroshopPopularityWorker } from './modules/search/horoshop/popularity.service.js';
+import { startHoroshopFeedWorker } from './modules/search/horoshop/feeds.service.js';
 import { startSmartSearchSsoCleanupWorker } from './modules/search/smart-search-sso.worker.js';
 import { syncTelegramLocalApiRuntimeCredentials } from './modules/integrations/integration.service.js';
 
@@ -31,6 +32,7 @@ const stopMobilePushWorker = env.NODE_ENV === 'test' ? async () => {} : startMob
 const stopHoroshopCatalogWorker = env.NODE_ENV === 'test' ? () => {} : startHoroshopCatalogWorker();
 const stopHoroshopStickerWorker = env.NODE_ENV === 'test' ? async () => {} : startHoroshopStickerWorker();
 const stopHoroshopPopularityWorker = env.NODE_ENV === 'test' ? async () => {} : startHoroshopPopularityWorker();
+const stopHoroshopFeedWorker = env.NODE_ENV === 'test' ? async () => {} : startHoroshopFeedWorker();
 const stopSmartSearchSsoCleanupWorker = env.NODE_ENV === 'test' ? () => {} : startSmartSearchSsoCleanupWorker();
 
 async function shutdown(signal) {
@@ -43,6 +45,7 @@ async function shutdown(signal) {
   stopHoroshopCatalogWorker();
   await stopHoroshopStickerWorker();
   await stopHoroshopPopularityWorker();
+  await stopHoroshopFeedWorker();
   stopSmartSearchSsoCleanupWorker();
   server.close(async () => {
     await pool.end();

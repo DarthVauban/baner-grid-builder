@@ -15,6 +15,9 @@
 
 ## Хорошоп
 
+- [Товарні фіди](search/horoshop-feeds.md) — масове керування Google Merchant Center і Facebook
+  зі збереженням інших майданчиків, preview, чергою та перевіркою результату.
+
 - [Спільне підключення віджетів](horoshop-widgets.md) — один глобальний код,
   умови завантаження, сумісність зі старими скриптами та перевірка desktop/mobile.
 - [Практичний handoff-гайд з розмітки та embed-скриптів](HOROSHOP_MARKUP_HANDOFF.md) —

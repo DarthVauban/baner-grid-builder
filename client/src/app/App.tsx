@@ -19,6 +19,7 @@ import { ToolAccessRoute } from '../components/ToolAccessRoute';
 import { BlogPublicationsPage } from '../pages/BlogPublicationsPage';
 import { getSmartSearchReturnPath } from '../search/smart-search-auth';
 
+const HoroshopFeedsPage = lazy(() => import('../pages/HoroshopFeedsPage').then((module) => ({ default: module.HoroshopFeedsPage })));
 const HoroshopStickersPage = lazy(() => import('../pages/HoroshopStickersPage').then((module) => ({ default: module.HoroshopStickersPage })));
 const HoroshopPopularityPage = lazy(() => import('../pages/HoroshopPopularityPage').then((module) => ({ default: module.HoroshopPopularityPage })));
 const HoroshopWidgetsPage = lazy(() => import('../pages/HoroshopWidgetsPage').then((module) => ({ default: module.HoroshopWidgetsPage })));
@@ -253,6 +254,9 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="horoshop_stickers" />}>
             <Route path="tools/horoshop-stickers" element={<Suspense fallback={<LoadingScreen />}><HoroshopStickersPage /></Suspense>} />
+          </Route>
+          <Route element={<ToolAccessRoute tool="horoshop_feeds" />}>
+            <Route path="tools/horoshop-feeds" element={<Suspense fallback={<LoadingScreen />}><HoroshopFeedsPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="horoshop_popularity" />}>
             <Route path="tools/horoshop-popularity" element={<Suspense fallback={<LoadingScreen />}><HoroshopPopularityPage /></Suspense>} />

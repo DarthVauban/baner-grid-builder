@@ -48,6 +48,14 @@ export const toolCategories: ToolCategoryDefinition[] = [
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'horoshop_feeds',
+    name: 'Товарні фіди',
+    description: 'Масове додавання та виключення товарів із фідів Google Merchant Center і Facebook з перевіркою та історією.',
+    path: '/tools/horoshop-feeds',
+    icon: 'storefront',
+    category: 'horoshop_api'
+  },
+  {
     id: 'horoshop_popularity',
     name: 'Популярність товарів',
     description: 'Точкова й масова зміна популярності товарів Хорошопа з перевіркою та історією операцій.',

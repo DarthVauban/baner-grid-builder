@@ -1,6 +1,7 @@
 import type { HoroshopCatalogSyncStatus, HoroshopIntegration } from '../types/integration';
 import { horoshopStickers } from './api-horoshop-stickers';
 import { horoshopPopularity } from './api-horoshop-popularity';
+import { horoshopFeeds } from './api-horoshop-feeds';
 import type { HoroshopCatalogFeed, HoroshopCatalogParams } from '../types/horoshop-catalog';
 import type {
   HoroshopAccessoryCandidates,
@@ -35,6 +36,7 @@ export const horoshopApi = {
   ),
   horoshopStickers,
   horoshopPopularity,
+  horoshopFeeds,
   horoshopCatalog: {
     list: (params: HoroshopCatalogParams = {}, signal?: AbortSignal) => request<HoroshopCatalogFeed>(
       `/api/search/horoshop/catalog${queryString({
