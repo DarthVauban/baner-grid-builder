@@ -22,7 +22,10 @@ function itemFromRow(row) {
   return {
     id: row.id, productId: row.product_id, externalId: row.external_id,
     article: row.article, title: row.title, articles: arrayValue(row.articles),
-    before: arrayValue(row.before_value), target: arrayValue(row.target_value), observed: row.observed_value === null ? null : arrayValue(row.observed_value),
+    before: arrayValue(row.before_value), target: arrayValue(row.target_value),
+    resolvedBefore: row.resolved_before == null ? null : arrayValue(row.resolved_before),
+    resolvedTarget: row.resolved_target == null ? null : arrayValue(row.resolved_target),
+    observed: row.observed_value === null ? null : arrayValue(row.observed_value),
     status: row.status, message: row.message
   };
 }
@@ -40,10 +43,10 @@ export class HoroshopFeedRepository {
     this.catalogRepository = new HoroshopCatalogRepository(pool);
   }
 
-  async connection() {
+  async connection({ readOnly = false } = {}) {
     const connection = await this.catalogRepository.getConnection();
     if (!connection) throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Спочатку підключіть магазин Хорошоп.');
-    if (connection.status !== 'connected') {
+    if (!readOnly && connection.status !== 'connected') {
       throw new AppError(409, 'HOROSHOP_CONNECTION_NOT_READY', 'Дочекайтеся завершення синхронізації каталогу Хорошоп.');
     }
     return connection;
@@ -140,8 +143,8 @@ export class HoroshopFeedRepository {
     };
   }
 
-  async selectedIds(connection, filters) {
-    const { values, where } = this.predicate(connection, filters);
+  async selectedIds(connection, filters, scopeIds = null) {
+    const { values, where } = this.predicate(connection, filters, scopeIds);
     const result = await this.pool.query(`SELECT product.id FROM search_horoshop_products AS product
       WHERE ${where} ORDER BY product.sku, product.id LIMIT ${maximumFeedSelection + 1}`, values);
     if (result.rows.length > maximumFeedSelection) {
@@ -189,7 +192,10 @@ export class HoroshopFeedRepository {
       const offers = product.modifications.length ? product.modifications.map((offer) => ({
         ...offer, marketplaces: offer.inheritsMarketplaces ? product.marketplaces : offer.marketplaces
       })) : [{ marketplaces: product.marketplaces }];
-      return { ...product, google: feedState(offers, 'google'), facebook: feedState(offers, 'facebook') };
+      return { ...product, modifications: product.modifications.map((offer) => ({
+        id: offer.id, sku: offer.sku, titles: offer.titles,
+        marketplaces: offer.inheritsMarketplaces ? product.marketplaces : offer.marketplaces
+      })), google: feedState(offers, 'google'), facebook: feedState(offers, 'facebook') };
     });
   }
 
@@ -264,12 +270,18 @@ export class HoroshopFeedRepository {
     [connection.id, connection.generation]);
     if (!result.rows.length) return [];
     const ids = result.rows.map((row) => row.id);
-    const totals = await this.pool.query(`SELECT operation_id, COUNT(*)::integer AS total,
-      COUNT(*) FILTER (WHERE status IN ('succeeded', 'unchanged'))::integer AS confirmed,
-      COUNT(*) FILTER (WHERE status IN ('failed', 'conflict'))::integer AS problems
+    const totals = await this.pool.query(`SELECT operation_id, status, COUNT(*)::integer AS total
       FROM search_horoshop_feed_operation_items
-      WHERE operation_id IN (${ids.map((_, index) => `$${index + 1}`).join(', ')}) GROUP BY operation_id`, ids);
-    const byId = new Map(totals.rows.map((row) => [row.operation_id, row]));
+      WHERE operation_id IN (${ids.map((_, index) => `$${index + 1}`).join(', ')}) GROUP BY operation_id, status`, ids);
+    const byId = new Map();
+    for (const row of totals.rows) {
+      const counts = byId.get(row.operation_id) || { total: 0, confirmed: 0, problems: 0 };
+      const count = Number(row.total);
+      counts.total += count;
+      if (['succeeded', 'unchanged'].includes(row.status)) counts.confirmed += count;
+      if (['failed', 'conflict'].includes(row.status)) counts.problems += count;
+      byId.set(row.operation_id, counts);
+    }
     return result.rows.map((row) => ({
       id: row.id, action: objectValue(row.action), status: row.status,
       actorUserId: row.actor_user_id, createdAt: row.created_at, startedAt: row.started_at,
@@ -289,6 +301,12 @@ export class HoroshopFeedRepository {
     await this.pool.query(`UPDATE search_horoshop_feed_operation_items
       SET status = $2, message = $3, observed_value = $4::jsonb, updated_at = NOW() WHERE id = $1`,
     [id, status, message, observed === null ? null : JSON.stringify(observed)]);
+  }
+
+  async resolveItem(id, before, target) {
+    await this.pool.query(`UPDATE search_horoshop_feed_operation_items
+      SET resolved_before = $2::jsonb, resolved_target = $3::jsonb, updated_at = NOW()
+      WHERE id = $1 AND status = 'pending'`, [id, JSON.stringify(before), JSON.stringify(target)]);
   }
 
   async finish(id, status, message = '') {

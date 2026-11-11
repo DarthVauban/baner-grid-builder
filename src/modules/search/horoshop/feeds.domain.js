@@ -15,12 +15,18 @@ export function marketplaceNames(value) {
 }
 
 export function targetMarketplaces(before, action) {
+  if (before === null) return null;
   const names = new Set(before);
   for (const [channel, name] of Object.entries(feedNames)) {
     if (action[channel] === 'enable') names.add(name);
     if (action[channel] === 'disable') names.delete(name);
   }
   return [...names].sort();
+}
+
+export function matchesKnownFeedSnapshot(before, current) {
+  const known = before.filter((offer) => offer.marketplaces !== null);
+  return sameFeedSnapshot(known, current.filter((offer) => known.some((item) => item.article === offer.article)));
 }
 
 export function sameFeedSnapshot(left, right) {

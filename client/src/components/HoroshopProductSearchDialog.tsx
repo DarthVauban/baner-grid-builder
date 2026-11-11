@@ -8,6 +8,7 @@ interface HoroshopProductSearchDialogProps {
   onValueChange: (value: string) => void;
   placeholder: string;
   countMessage?: string;
+  errorMessage?: string;
   confirmLabel: string;
   busy?: boolean;
   confirmDisabled?: boolean;
@@ -16,7 +17,7 @@ interface HoroshopProductSearchDialogProps {
 }
 
 export function HoroshopProductSearchDialog({ title, description, value, onValueChange, placeholder,
-  countMessage, confirmLabel, busy = false, confirmDisabled = false, onConfirm, onClose }: HoroshopProductSearchDialogProps) {
+  countMessage, errorMessage, confirmLabel, busy = false, confirmDisabled = false, onConfirm, onClose }: HoroshopProductSearchDialogProps) {
   const titleId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const closeRef = useRef(onClose);
@@ -50,6 +51,7 @@ export function HoroshopProductSearchDialog({ title, description, value, onValue
     <header className="horoshop-product-search-dialog__head"><div><h2 id={titleId}>{title}</h2><p>{description}</p></div><button className="button horoshop-product-search-dialog__close" type="button" aria-label="Закрити пошук" disabled={busy} onClick={onClose}>×</button></header>
     <label className="horoshop-product-search-dialog__input"><span>Назви або артикули</span><textarea ref={inputRef} rows={8} value={value} onChange={(event) => onValueChange(event.target.value)} placeholder={placeholder} /></label>
     {countMessage && <p className="horoshop-product-search-dialog__count">{countMessage}</p>}
+    {errorMessage && <p className="horoshop-product-search-dialog__error" role="alert">{errorMessage}</p>}
     <footer className="horoshop-product-search-dialog__actions"><button className="button button--secondary" type="button" disabled={busy} onClick={onClose}>Скасувати</button><button className="button button--primary" type="button" disabled={busy || confirmDisabled} onClick={onConfirm}>{confirmLabel}</button></footer>
   </section></div>;
 }

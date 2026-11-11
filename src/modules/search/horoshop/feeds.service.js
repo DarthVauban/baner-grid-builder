@@ -5,7 +5,7 @@ import { horoshopCatalogService } from './catalog.service.js';
 import { HoroshopClient, horoshopCatalogExportPageSize } from './horoshop.client.js';
 import { resolveCatalogEntries } from './catalog-selection.domain.js';
 import { HoroshopFeedRepository } from './feeds.repository.js';
-import { maximumFeedSelection, remoteFeedGroups, sameFeedSnapshot, targetMarketplaces } from './feeds.domain.js';
+import { maximumFeedSelection, remoteFeedGroups, sameFeedSnapshot, matchesKnownFeedSnapshot, targetMarketplaces } from './feeds.domain.js';
 
 const externalWriteLockId = 72914213;
 
@@ -44,6 +44,10 @@ export class HoroshopFeedService {
     return resolveCatalogEntries(entries, await this.repository.allProductsForResolve(await this.repository.connection()));
   }
 
+  async select(filters, productIds = null) {
+    return { productIds: await this.repository.selectedIds(await this.repository.connection(), filters, productIds) };
+  }
+
   async sync(actorId) {
     const started = await this.catalogService.startSync('manual', actorId);
     return { started, integration: await this.catalogService.status() };
@@ -57,7 +61,8 @@ export class HoroshopFeedService {
     for (let page = 0; page < 250; page += 1) {
       if (offsets.has(offset)) throw new AppError(502, 'HOROSHOP_FEEDS_EXPORT_INVALID', 'Хорошоп повторює сторінку каталогу.');
       offsets.add(offset);
-      const result = await client.exportCatalog(token, offset, horoshopCatalogExportPageSize);
+      const result = await client.exportCatalog(token, offset, horoshopCatalogExportPageSize, null,
+        { includedParams: ['export_to_marketplace'] });
       const fingerprint = createHash('sha256').update(JSON.stringify(result.products)).digest('hex');
       if (result.products.length && fingerprints.has(fingerprint)) {
         throw new AppError(502, 'HOROSHOP_FEEDS_EXPORT_INVALID', 'Хорошоп повторює товари в експорті.');
@@ -71,39 +76,35 @@ export class HoroshopFeedService {
   }
 
   async preview(selection, action, actorId) {
-    return this.catalogService.runExclusiveExternalWrite(async () => {
-      const connection = await this.repository.connection();
-      const ids = selection.productIds ? [...new Set(selection.productIds)]
-        : await this.repository.selectedIds(connection, selection.filters);
-      if (!ids.length || ids.length > maximumFeedSelection) {
-        throw new AppError(422, 'HOROSHOP_FEEDS_SELECTION', `Виберіть від 1 до ${maximumFeedSelection} товарів.`);
+    const connection = await this.repository.connection();
+    const ids = selection.productIds ? [...new Set(selection.productIds)]
+      : await this.repository.selectedIds(connection, selection.filters);
+    if (!ids.length || ids.length > maximumFeedSelection) {
+      throw new AppError(422, 'HOROSHOP_FEEDS_SELECTION', `Виберіть від 1 до ${maximumFeedSelection} товарів.`);
+    }
+    const products = await this.repository.productsByIds(connection, ids);
+    if (products.length !== ids.length) throw new AppError(409, 'HOROSHOP_FEEDS_SELECTION_STALE', 'Деякі товари зникли з каталогу. Оновіть вибірку.');
+    const seen = new Set();
+    const parents = new Set();
+    const items = products.map((product) => {
+      const articles = (product.modifications.length ? product.modifications.map((offer) => offer.sku) : [product.sku]).sort();
+      if (!product.sku || parents.has(product.sku) || !articles.length || new Set(articles).size !== articles.length
+        || articles.some((article) => !article || seen.has(article))) {
+        throw new AppError(409, 'HOROSHOP_FEEDS_ARTICLES', `Артикули товару «${product.title}» відсутні або перетинаються. Оновіть каталог.`);
       }
-      const products = await this.repository.productsByIds(connection, ids);
-      if (products.length !== ids.length) throw new AppError(409, 'HOROSHOP_FEEDS_SELECTION_STALE', 'Деякі товари зникли з каталогу. Оновіть вибірку.');
-      const credentials = decryptHoroshopCredentials(connection.encryptedCredentials);
-      const client = this.clientFactory(connection.storeDomain);
-      const token = await client.authenticate(credentials.login, credentials.password);
-      const remote = await this.readRemote(client, token);
-      const seen = new Set();
-      const parents = new Set();
-      const items = products.map((product) => {
-        const articles = (product.modifications.length ? product.modifications.map((offer) => offer.sku) : [product.sku]).sort();
-        const current = remote.get(product.sku);
-        if (!product.sku || parents.has(product.sku) || !articles.length || new Set(articles).size !== articles.length
-          || articles.some((article) => !article || seen.has(article)) || !sameMembership(current, articles)) {
-          throw new AppError(409, 'HOROSHOP_FEEDS_STATE_UNKNOWN', `Не вдалося надійно прочитати фіди та модифікації товару «${product.title}». Оновіть каталог. Якщо API не повертає export_to_marketplace, запис недоступний.`);
-        }
-        parents.add(product.sku);
-        articles.forEach((article) => seen.add(article));
-        return { productId: product.id, externalId: product.externalId, article: product.sku,
-          title: product.title, articles, before: current.offers,
-          target: current.offers.map((offer) => ({ article: offer.article, marketplaces: targetMarketplaces(offer.marketplaces, action) })) };
-      });
-      if ((await this.repository.connection()).generation !== connection.generation) {
-        throw new AppError(409, 'HOROSHOP_FEEDS_CONNECTION_CHANGED', 'Підключення до Хорошопа змінилося.');
-      }
-      return this.repository.createDraft(connection, actorId, action, items);
+      parents.add(product.sku);
+      articles.forEach((article) => seen.add(article));
+      const before = product.modifications.length ? product.modifications.map((offer) => ({
+        article: offer.sku, marketplaces: offer.marketplaces
+      })) : [{ article: product.sku, marketplaces: product.marketplaces }];
+      return { productId: product.id, externalId: product.externalId, article: product.sku,
+        title: product.title, articles, before,
+        target: before.map((offer) => ({ article: offer.article, marketplaces: targetMarketplaces(offer.marketplaces, action) })) };
     });
+    if ((await this.repository.connection()).generation !== connection.generation) {
+      throw new AppError(409, 'HOROSHOP_FEEDS_CONNECTION_CHANGED', 'Підключення до Хорошопа змінилося.');
+    }
+    return this.repository.createDraft(connection, actorId, action, items);
   }
 
   async apply(id) {
@@ -115,8 +116,8 @@ export class HoroshopFeedService {
     return this.repository.operation(id, connection);
   }
 
-  async operation(id) { return this.repository.operation(id, await this.repository.connection()); }
-  async history() { return this.repository.history(await this.repository.connection()); }
+  async operation(id) { return this.repository.operation(id, await this.repository.connection({ readOnly: true })); }
+  async history() { return this.repository.history(await this.repository.connection({ readOnly: true })); }
 
   async processOperation(id, connection) {
     const operation = await this.repository.operation(id, connection);
@@ -127,9 +128,15 @@ export class HoroshopFeedService {
       const remote = await this.readRemote(client, token);
       const ready = [];
       let conflict = false;
-      for (const item of operation.items.filter((entry) => ['pending', 'writing'].includes(entry.status))) {
+      let unavailable = false;
+      for (const original of operation.items.filter((entry) => ['pending', 'writing'].includes(entry.status))) {
+        let item = { ...original, before: original.resolvedBefore || original.before,
+          target: original.resolvedTarget || original.target };
         const current = remote.get(item.article);
-        if (!sameMembership(current, item.articles)) {
+        if (current?.offers.some((offer) => offer.marketplaces === null)) {
+          unavailable = true;
+          await this.repository.setItem(item.id, 'failed', 'Хорошоп не повернув поточні налаштування фідів. Запис не розпочато, інші майданчики не змінено.');
+        } else if (!sameMembership(current, item.articles)) {
           conflict = true;
           await this.repository.setItem(item.id, 'conflict', 'Товар, модифікації або доступність даних фідів змінилися. Створіть новий перегляд.');
         } else if (item.status === 'writing' && sameFeedSnapshot(current.offers, item.target)) {
@@ -140,18 +147,27 @@ export class HoroshopFeedService {
           // Never replay it: doing so could overwrite an independent store edit.
           conflict = true;
           await this.repository.setItem(item.id, 'conflict', 'Попередній запис завершився частково або дані змінилися. Перевірте модифікації та створіть новий перегляд.', current.offers);
-        } else if (!sameFeedSnapshot(current.offers, item.before)) {
+        } else if (!matchesKnownFeedSnapshot(item.before, current.offers)) {
           conflict = true;
           await this.repository.setItem(item.id, 'conflict', 'Список фідів змінився після перегляду. Створіть новий перегляд.', current.offers);
-        } else if (sameFeedSnapshot(item.before, item.target)) {
-          await this.repository.setItem(item.id, 'unchanged', 'Потрібні опції вже встановлено.', current.offers);
-          await this.repository.cacheFeeds(connection, item);
-        } else ready.push(item);
+        } else {
+          if (item.before.some((offer) => offer.marketplaces === null)) {
+            const target = current.offers.map((offer) => ({ article: offer.article,
+              marketplaces: targetMarketplaces(offer.marketplaces, operation.action) }));
+            await this.repository.resolveItem(item.id, current.offers, target);
+            item = { ...item, before: current.offers, target };
+          }
+          if (sameFeedSnapshot(item.before, item.target)) {
+            await this.repository.setItem(item.id, 'unchanged', 'Потрібні опції вже встановлено.', current.offers);
+            await this.repository.cacheFeeds(connection, item);
+          } else ready.push(item);
+        }
       }
-      if (conflict) {
-        for (const item of ready) await this.repository.setItem(item.id, 'cancelled', 'Запис не розпочато через конфлікт у вибірці.');
+      if (conflict || unavailable) {
+        for (const item of ready) await this.repository.setItem(item.id, 'cancelled', 'Запис не розпочато: не всі товари пройшли перевірку.');
         const latest = await this.repository.operation(id, connection);
-        await this.repository.finish(id, latest.counts.succeeded ? 'partial' : 'conflict');
+        await this.repository.finish(id, latest.counts.succeeded ? 'partial' : unavailable ? 'failed' : 'conflict',
+          unavailable ? 'API Хорошопа не надав поточні налаштування фідів. Жодні нові зміни не записано.' : 'Дані товарів змінилися після перегляду.');
         return;
       }
       for (let offset = 0; offset < ready.length; offset += 20) {

@@ -1,90 +1,95 @@
 import { devices, expect, test } from '@playwright/test';
-import type { FeedCatalog, FeedOperation } from '../../client/src/types/horoshop-feeds';
-
-const productId = '11111111-1111-4111-8111-111111111111';
-const operationId = '33333333-3333-4333-8333-333333333333';
-const catalog: FeedCatalog = {
-  integration: { configured: true, status: 'connected', storeDomain: 'shop.example.com', pollingIntervalMinutes: 15,
-    lastSyncAt: '2026-11-11T10:00:00Z', lastError: null, counts: { categories: 1, stickers: 0, products: 1, modifications: 1 }, latestRun: null },
-  items: [{ id: productId, externalId: '101', sku: 'PHONE', titles: { uk: 'Телефон' }, title: 'Телефон', brand: 'Apple',
-    categoryExternalId: 'phones', availability: 'В наявності', imageUrl: null, pageUrl: null, marketplaces: ['Rozetka Feed'],
-    google: 'disabled', facebook: 'disabled', modifications: [] }],
-  categories: [{ externalId: 'phones', title: 'Телефони' }], brands: ['Apple'], availabilityOptions: ['В наявності'],
-  total: 1, page: 1, pageSize: 25, pageCount: 1
-};
-const preview: FeedOperation = {
-  id: operationId, action: { google: 'enable', facebook: 'disable' }, status: 'draft', errorMessage: '', actorUserId: null,
-  createdAt: '2026-11-11T10:00:00Z', startedAt: null, completedAt: null, total: 1, counts: { pending: 1 },
-  items: [{ id: 'item', productId, externalId: '101', article: 'PHONE', title: 'Телефон', articles: ['PHONE'],
-    before: [{ article: 'PHONE', marketplaces: ['Rozetka Feed', 'Facebook Feed'] }],
-    target: [{ article: 'PHONE', marketplaces: ['Google Feed for Merchant Center', 'Rozetka Feed'] }],
-    observed: null, status: 'pending', message: '' }]
-};
 
 for (const surface of [
   { name: 'desktop', device: devices['Desktop Chrome'] },
   { name: 'mobile', device: devices['iPhone 13'] }
 ]) {
-  test.describe(`feed tool ${surface.name}`, () => {
+  test.describe(`feed workflow ${surface.name}`, () => {
     test.use({ userAgent: surface.device.userAgent, viewport: surface.device.viewport,
       isMobile: surface.device.isMobile, hasTouch: surface.device.hasTouch, deviceScaleFactor: surface.device.deviceScaleFactor });
-    test('previews two independent feed changes before applying and shows the verified result', async ({ page }, testInfo) => {
+
+    test.beforeEach(async ({ page, request }) => {
+      await request.post('/__e2e/horoshop-feeds/reset', { data: {} });
       await page.goto('/login');
       await page.getByLabel('Email').fill('e2e-admin@test.local');
       await page.locator('input[name="password"]').fill('E2E-admin-password-2026');
       await page.getByRole('button', { name: 'Увійти' }).click();
       await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
-      let writes = 0;
-      let previewInput: unknown;
-      const completed: FeedOperation = { ...preview, status: 'completed', counts: { succeeded: 1 }, items: preview.items.map((item) => ({ ...item, status: 'succeeded', observed: item.target })) };
-      await page.route('**/api/users/tool-access', (route) => route.fulfill({ json: { data: ['horoshop_feeds'] } }));
-      await page.route('**/api/search/horoshop/feeds/**', async (route) => {
-        const path = new URL(route.request().url()).pathname;
-        if (path.endsWith('/operations/preview')) {
-          previewInput = route.request().postDataJSON();
-          return route.fulfill({ json: { data: preview } });
-        }
-        if (path.endsWith('/apply')) { writes += 1; return route.fulfill({ json: { data: completed } }); }
-        if (path.endsWith(`/operations/${operationId}`)) return route.fulfill({ json: { data: completed } });
-        if (path.endsWith('/operations')) return route.fulfill({ json: { data: [] } });
-        return route.fulfill({ json: { data: catalog } });
-      });
       await page.goto('/tools/horoshop-feeds');
       await expect(page.getByRole('heading', { name: 'Товарні фіди' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Масова дія' })).toBeDisabled();
-      await expect(page.getByRole('button', { name: 'Перевірити зміни' })).toHaveCount(0);
-      const selectionBar = page.getByRole('region', { name: 'Дії з вибіркою' });
-      const barBox = await selectionBar.boundingBox();
-      const tableBox = await page.getByRole('table').boundingBox();
-      expect(barBox!.y + barBox!.height).toBeLessThan(tableBox!.y);
-      await page.getByRole('button', { name: 'Вибрати всі 1 за фільтром' }).click();
-      await page.getByRole('button', { name: 'Масова дія' }).click();
-      const drawer = page.getByRole('dialog', { name: 'Масова дія' });
-      await expect(drawer).toBeVisible();
-      const drawerBox = await drawer.boundingBox();
-      const viewport = page.viewportSize()!;
-      expect(drawerBox!.x + drawerBox!.width).toBeCloseTo(viewport.width, 0);
-      expect(drawerBox!.y).toBe(0);
-      expect(drawerBox!.height).toBeCloseTo(viewport.height, 0);
-      await expect(drawer.getByRole('button', { name: 'Перевірити зміни' })).toBeDisabled();
-      await expect(drawer.getByRole('button', { name: 'Перевірити зміни' })).toBeInViewport();
-      await page.getByRole('button', { name: 'Дія: Google Merchant Center' }).click();
-      await page.getByRole('option', { name: 'Додати до фіда' }).click();
-      await page.getByRole('button', { name: 'Дія: Facebook' }).click();
-      await page.getByRole('option', { name: 'Прибрати з фіда' }).click();
-      await page.screenshot({ path: testInfo.outputPath(`feeds-${surface.name}-bulk-action.png`) });
-      await page.getByRole('button', { name: 'Перевірити зміни' }).click();
-      const dialog = page.getByRole('dialog', { name: 'Перевірте зміни' });
+      await expect(page.getByText('Товари · 27', { exact: true })).toBeVisible();
+    });
+    test.afterEach(async ({ request }) => { await request.post('/__e2e/horoshop-feeds/clear'); });
+
+    test('selects a page or the entire filtered catalog and retains other selections when a row is removed', async ({ page }, testInfo) => {
+      const allOnPage = page.getByRole('checkbox', { name: 'Вибрати товари на сторінці' });
+      await allOnPage.check();
+      await expect(page.getByRole('region', { name: 'Дії з вибіркою' })).toContainText('25 товарів вибрано');
+      await page.getByRole('checkbox', { name: 'Вибрати FEED-001', exact: true }).uncheck();
+      await expect(page.getByRole('region', { name: 'Дії з вибіркою' })).toContainText('24 товарів вибрано');
+      await expect(allOnPage).not.toBeChecked();
+      expect(await allOnPage.evaluate((element: HTMLInputElement) => element.indeterminate)).toBe(true);
+      await page.getByRole('button', { name: 'Вибрати всі 27 за фільтром' }).click();
+      await expect(page.getByRole('region', { name: 'Дії з вибіркою' })).toContainText('27 товарів вибрано');
+      await page.getByRole('checkbox', { name: 'Вибрати FEED-001', exact: true }).uncheck();
+      await expect(page.getByRole('region', { name: 'Дії з вибіркою' })).toContainText('26 товарів вибрано');
+      await page.getByRole('button', { name: 'Далі', exact: true }).click();
+      await expect(page.getByRole('checkbox', { name: 'Вибрати FEED-027', exact: true })).toBeChecked();
+      await page.getByRole('button', { name: 'Масова дія', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Масова дія', exact: true })).toContainText('26 товарів вибрано');
+      await page.getByRole('button', { name: 'Скасувати', exact: true }).click();
+      await expect(page.getByRole('region', { name: 'Дії з вибіркою' })).toContainText('26 товарів вибрано');
+      await page.screenshot({ path: testInfo.outputPath(`feeds-${surface.name}-selection.png`) });
+    });
+
+    test('uses real preview, apply, worker, verification and history routes without intercepted application responses', async ({ page, request }, testInfo) => {
+      await page.getByRole('checkbox', { name: 'Вибрати товари на сторінці' }).check();
+      await page.getByRole('button', { name: 'Масова дія', exact: true }).click();
+      const drawer = page.getByRole('dialog', { name: 'Масова дія', exact: true });
+      await drawer.getByRole('button', { name: 'Дія: Google Merchant Center' }).click();
+      await page.getByRole('option', { name: 'Додати до фіда', exact: true }).click();
+      await drawer.getByRole('button', { name: 'Дія: Facebook', exact: true }).click();
+      await page.getByRole('option', { name: 'Прибрати з фіда', exact: true }).click();
+      await drawer.getByRole('button', { name: 'Перевірити зміни', exact: true }).click();
+      const preview = page.getByRole('region', { name: 'Перегляд майбутніх змін' });
+      await expect(page.getByRole('heading', { name: 'Перевірте зміни', exact: true })).toBeVisible();
       await expect(drawer).toHaveCount(0);
-      await expect(dialog.getByText('Google Feed for Merchant Center; Rozetka Feed', { exact: true })).toBeVisible();
-      expect(writes).toBe(0);
-      expect(previewInput).toEqual({ selection: { filters: { search: '', category: '', brands: [], availability: '' } }, action: { google: 'enable', facebook: 'disable' } });
+      await expect(preview.getByRole('button', { name: 'Застосувати зміни', exact: true })).toBeEnabled();
+      await expect(preview).toContainText('Буде: Увімкнено');
+      await expect(preview).toContainText('Буде: Вимкнено');
+      const before = await (await request.get('/__e2e/horoshop-feeds/state')).json();
+      expect(before.exports).toBe(0);
+      expect(before.imports).toEqual([]);
       await page.screenshot({ path: testInfo.outputPath(`feeds-${surface.name}-preview.png`) });
-      await dialog.getByRole('button', { name: 'Застосувати зміни' }).click();
-      await expect(page.getByRole('dialog').getByText('Завершено', { exact: true })).toBeVisible();
-      expect(writes).toBe(1);
-      await page.getByRole('dialog').getByRole('button', { name: 'Закрити', exact: true }).last().click();
-      await expect(page.getByRole('heading', { name: 'Товарні фіди' })).toBeVisible();
+      await preview.getByRole('button', { name: 'Застосувати зміни', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Результат операції', exact: true })).toBeVisible();
+      await expect(page.getByText('Завершено', { exact: true }).first()).toBeVisible();
+      const after = await (await request.get('/__e2e/horoshop-feeds/state')).json();
+      expect(after.exports).toBeGreaterThanOrEqual(2);
+      expect(after.imports.flat()).toHaveLength(26);
+      expect(after.remote.find((offer: { article: string }) => offer.article === 'FEED-001-BLACK').export_to_marketplace).toBe('Google Feed for Merchant Center;Rozetka Feed');
+      expect(after.remote.find((offer: { article: string }) => offer.article === 'FEED-027').export_to_marketplace).toBe('Facebook Feed;Rozetka Feed');
+      await page.getByRole('button', { name: 'До історії', exact: true }).click();
+      await expect(page.getByRole('table').getByRole('row').filter({ hasText: 'Завершено' })).toContainText('25 із 25');
+      await page.getByRole('button', { name: 'Деталі', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Результат операції', exact: true })).toBeVisible();
+      await expect(page.getByRole('table')).toContainText('Було: Увімкнено');
+    });
+
+    test('shows an actionable failure and records it in history when Horoshop cannot provide feed settings', async ({ page, request }) => {
+      await request.post('/__e2e/horoshop-feeds/reset', { data: { mode: 'missing' } });
+      await page.reload();
+      await page.getByRole('row').filter({ hasText: 'FEED-001' }).getByRole('button', { name: 'Змінити', exact: true }).click();
+      await page.getByRole('button', { name: 'Дія: Google Merchant Center', exact: true }).click();
+      await page.getByRole('option', { name: 'Додати до фіда', exact: true }).click();
+      await page.getByRole('button', { name: 'Перевірити зміни', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Перевірте зміни', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Застосувати зміни', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Результат операції', exact: true })).toBeVisible();
+      await expect(page.getByRole('alert')).toContainText('API Хорошопа не надав поточні налаштування фідів');
+      expect((await (await request.get('/__e2e/horoshop-feeds/state')).json()).imports).toEqual([]);
+      await page.getByRole('button', { name: 'До історії', exact: true }).click();
+      await expect(page.getByRole('table').getByRole('row').filter({ hasText: 'Помилка' })).toContainText('0 із 1');
     });
   });
 }

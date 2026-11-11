@@ -12,3 +12,4 @@
 .horoshop-product-search-dialog button:disabled{opacity:.45;cursor:not-allowed}
 .horoshop-product-search-dialog button:focus-visible,.horoshop-product-search-dialog textarea:focus-visible{outline:2px solid var(--brand,#6d5dfc);outline-offset:2px}
 @media(max-width:430px){.horoshop-product-search-dialog{padding:16px}}
+.horoshop-product-search-dialog__error{margin:0;padding:12px 14px;border-radius:9px;background:#fff0f2;color:#a62940;font-size:13px;line-height:1.5}
