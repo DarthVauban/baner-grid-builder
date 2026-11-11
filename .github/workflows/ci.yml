@@ -68,7 +68,6 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Install Chromium and system dependencies
-        timeout-minutes: 10
-        run: bash .github/scripts/install-playwright.sh
-      - run: npm run test:e2e
+      - name: Run E2E in Playwright image
+        timeout-minutes: 20
+        run: bash .github/scripts/run-playwright.sh
