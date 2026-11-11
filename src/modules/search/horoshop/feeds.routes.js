@@ -69,6 +69,11 @@ export function createFeedRouter(service = horoshopFeedService) {
     res.json({ data: await service.resolve(input.entries) });
   }));
 
+  router.post('/select', asyncHandler(async (req, res) => {
+    const input = parseInput(z.object({ filters, productIds: z.array(uuid).max(maximumFeedSelection).optional() }).strict(), req.body);
+    res.json({ data: await service.select(input.filters, input.productIds) });
+  }));
+
   router.post('/sync', asyncHandler(async (req, res) => {
     res.status(202).json({ data: await service.sync(req.user.id) });
   }));

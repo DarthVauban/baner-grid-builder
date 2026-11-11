@@ -34,9 +34,11 @@ export default async function globalSetup() {
 
   await migrationModule.runMigrations();
   await userModule.ensureBootstrapAdmin();
+  const { createFeedFixtureApplication } = await import('./horoshop-feeds-fixture.js');
+  const fixture = createFeedFixtureApplication(appModule.default);
 
   const server = await new Promise<Server>((resolve, reject) => {
-    const instance = appModule.default.listen(port, () => resolve(instance));
+    const instance = fixture.app.listen(port, () => resolve(instance));
     instance.once('error', reject);
   });
 
@@ -45,6 +47,7 @@ export default async function globalSetup() {
       server.close((error) => error ? reject(error) : resolve());
     });
     await poolModule.pool.end();
+    fixture.restore();
     await rm(mediaDir, { recursive: true, force: true });
   };
 }

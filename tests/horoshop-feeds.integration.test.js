@@ -27,6 +27,7 @@ let remote;
 let imports;
 let skipWrite;
 let throwAfterWrite;
+let apiCalls;
 
 before(async () => {
   await runMigrations();
@@ -41,7 +42,7 @@ beforeEach(async () => {
   const generation = randomUUID();
   const syncId = randomUUID();
   productIds = [randomUUID(), randomUUID()];
-  imports = []; skipWrite = false; throwAfterWrite = false;
+  imports = []; skipWrite = false; throwAfterWrite = false; apiCalls = 0;
   remote = [
     { id: 101, article: 'PHONE', export_to_marketplace: `${google};Rozetka Feed`, modifications: [
       { article: 'PHONE-BLACK', export_to_marketplace: `${google};Rozetka Feed`, price: 100 },
@@ -73,9 +74,11 @@ beforeEach(async () => {
     }
   }
   service.clientFactory = () => ({
-    authenticate: async () => 'fixture-token',
-    exportCatalog: async (_token, _offset, limit) => {
+    authenticate: async () => { apiCalls += 1; return 'fixture-token'; },
+    exportCatalog: async (_token, _offset, limit, _articles, options) => {
+      apiCalls += 1;
       assert.equal(limit, 500);
+      assert.deepEqual(options.includedParams, ['export_to_marketplace']);
       return { products: structuredClone(remote), nextOffset: null };
     },
     importCatalog: async (_token, payload, options) => {
@@ -125,15 +128,15 @@ test('catalog, saved-list scope, filters and variant resolution use the Horoshop
   assert.deepEqual(resolved.body.data.unmatched, ['UNKNOWN']);
 });
 
-test('preview is read-only, uses fresh values, and preserves each variant other marketplaces', async () => {
-  remote[0].modifications[0].export_to_marketplace += ';Prom Feed';
+test('preview uses only the synchronized catalog and apply preserves each variant other marketplaces', async () => {
   const plan = await preview({ google: 'enable', facebook: 'disable' }, [productIds[0]]);
   assert.equal(plan.status, 'draft');
   assert.equal(imports.length, 0);
-  assert.ok(plan.items[0].before[0].marketplaces.includes('Prom Feed'));
+  assert.equal(apiCalls, 0, 'review must not wait for an external API request');
+  assert.ok(plan.items[0].before[0].marketplaces.includes('Rozetka Feed'));
   const result = await apply(plan);
   assert.equal(result.status, 'completed');
-  assert.deepEqual(marketplaceNames(remote[0].modifications[0].export_to_marketplace), [google, 'Prom Feed', 'Rozetka Feed'].sort());
+  assert.deepEqual(marketplaceNames(remote[0].modifications[0].export_to_marketplace), [google, 'Rozetka Feed'].sort());
   assert.deepEqual(marketplaceNames(remote[0].modifications[1].export_to_marketplace), [google, 'Hotline Feed'].sort());
   assert.equal(remote[0].modifications[0].price, 100);
   assert.equal(imports.flat().some((item) => item.article === 'PHONE-BLACK'), false, 'unchanged offer needs no import');
@@ -159,6 +162,8 @@ test('both channels can be enabled across a filtered selection and keep is indep
 
 test('removing the last selected feed sends an explicit empty string and verifies it', async () => {
   remote[1].modifications[0].export_to_marketplace = google;
+  await pool.query('UPDATE search_horoshop_modifications SET source_data = $2::jsonb WHERE product_id = $1',
+    [productIds[1], JSON.stringify(remote[1].modifications[0])]);
   const plan = await preview({ google: 'disable', facebook: 'disable' }, [productIds[1]]);
   const result = await apply(plan);
   assert.equal(result.status, 'completed');
@@ -175,13 +180,62 @@ test('a remote marketplace edit blocks every new write, including unrelated mark
   assert.equal(imports.length, 0);
 });
 
-test('unknown feed values and missing or duplicate modifications block preview', async () => {
+test('unknown catalog values remain reviewable but unreadable remote values block every import and appear in history', async () => {
+  await pool.query('UPDATE search_horoshop_modifications SET source_data = $2::jsonb WHERE product_id = $1',
+    [productIds[0], JSON.stringify({ export_to_marketplace: null })]);
   delete remote[0].export_to_marketplace;
   delete remote[0].modifications[0].export_to_marketplace;
-  await agent.post(`${base}/operations/preview`).send({ selection: { productIds }, action: { google: 'enable', facebook: 'keep' } }).expect(409);
-  remote[0].modifications[0].export_to_marketplace = '';
-  remote[0].modifications.push({ article: 'PHONE-NEW', export_to_marketplace: '' });
-  await agent.post(`${base}/operations/preview`).send({ selection: { productIds }, action: { google: 'enable', facebook: 'keep' } }).expect(409);
+  const plan = await preview();
+  assert.equal(plan.items.find((item) => item.productId === productIds[0]).before[0].marketplaces, null);
+  assert.equal(apiCalls, 0);
+  const result = await apply(plan);
+  assert.equal(result.status, 'failed');
+  assert.match(result.errorMessage, /не надав поточні налаштування/u);
+  assert.equal(imports.length, 0);
+  const history = (await agent.get(`${base}/operations`).expect(200)).body.data;
+  assert.equal(history[0].id, plan.id);
+  assert.equal(history[0].status, 'failed');
+  assert.equal(history[0].confirmed, 0);
+  assert.equal(history[0].problems, 1);
+});
+
+test('unknown cache values are resolved before import, retained separately, and preserve other channels', async () => {
+  await pool.query('UPDATE search_horoshop_modifications SET source_data = $2::jsonb WHERE product_id = $1',
+    [productIds[0], JSON.stringify({ export_to_marketplace: null })]);
+  const plan = await preview({ google: 'enable', facebook: 'disable' }, [productIds[0]]);
+  assert.ok(plan.items[0].before.every((offer) => offer.marketplaces === null));
+  assert.equal(plan.items[0].resolvedBefore, null);
+  const result = await apply(plan);
+  assert.equal(result.status, 'completed');
+  assert.ok(result.items[0].before.every((offer) => offer.marketplaces === null), 'the reviewed snapshot is immutable');
+  assert.deepEqual(result.items[0].resolvedBefore[0].marketplaces, [google, 'Rozetka Feed'].sort());
+  assert.deepEqual(result.items[0].resolvedTarget[1].marketplaces, [google, 'Hotline Feed'].sort());
+  assert.deepEqual(marketplaceNames(remote[0].modifications[1].export_to_marketplace), [google, 'Hotline Feed'].sort());
+});
+
+test('unknown offers cannot bypass a conflict in another known offer of the same product', async () => {
+  await pool.query('UPDATE search_horoshop_modifications SET source_data = $2::jsonb WHERE product_id = $1 AND sku = $3',
+    [productIds[0], JSON.stringify({ export_to_marketplace: null }), 'PHONE-WHITE']);
+  const plan = await preview({ google: 'enable', facebook: 'disable' }, [productIds[0]]);
+  remote[0].modifications[0].export_to_marketplace += ';Other Feed';
+  assert.equal((await apply(plan)).status, 'conflict');
+  assert.equal(imports.length, 0);
+});
+
+test('recovery uses persisted resolved snapshots after writing an initially unknown product', async () => {
+  await pool.query('UPDATE search_horoshop_modifications SET source_data = $2::jsonb WHERE product_id = $1',
+    [productIds[0], JSON.stringify({ export_to_marketplace: null })]);
+  const plan = await preview({ google: 'enable', facebook: 'disable' }, [productIds[0]]);
+  const before = remote[0].modifications.map((offer) => ({ article: offer.article, marketplaces: marketplaceNames(offer.export_to_marketplace) }));
+  const target = before.map((offer) => ({ article: offer.article, marketplaces: [...new Set([...offer.marketplaces.filter((name) => name !== facebook), google])].sort() }));
+  await service.repository.resolveItem(plan.items[0].id, before, target);
+  await pool.query("UPDATE search_horoshop_feed_operations SET status = 'running' WHERE id = $1", [plan.id]);
+  await pool.query("UPDATE search_horoshop_feed_operation_items SET status = 'writing' WHERE operation_id = $1", [plan.id]);
+  for (const offer of remote[0].modifications) offer.export_to_marketplace = target.find((item) => item.article === offer.article).marketplaces.join(';');
+  await service.runNext();
+  const result = await completed(plan.id);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.counts.succeeded, 1);
   assert.equal(imports.length, 0);
 });
 
@@ -235,11 +289,37 @@ test('restart recovery refuses to replay a partially written product', async () 
   assert.equal(imports.length, 0);
 });
 
-test('repeated export pages cannot create a preview', async () => {
+test('repeated export pages fail the confirmed operation without writing', async () => {
   service.clientFactory = () => ({ authenticate: async () => 'fixture-token', exportCatalog: async (_token, offset) => ({ products: structuredClone(remote), nextOffset: offset + 500 }) });
-  const response = await agent.post(`${base}/operations/preview`).send({ selection: { productIds }, action: { google: 'enable', facebook: 'keep' } }).expect(502);
-  assert.equal(response.body.error.code, 'HOROSHOP_FEEDS_EXPORT_INVALID');
+  const result = await apply(await preview());
+  assert.equal(result.status, 'failed');
   assert.equal(imports.length, 0);
+});
+
+test('select-all returns the exact filtered IDs and respects a pasted-list scope', async () => {
+  const selected = (await agent.post(`${base}/select`).send({ filters: { brands: ['Apple'] } }).expect(200)).body.data;
+  assert.deepEqual(selected.productIds, [productIds[0]]);
+  const scoped = (await agent.post(`${base}/select`).send({ filters: {}, productIds: [productIds[1]] }).expect(200)).body.data;
+  assert.deepEqual(scoped.productIds, [productIds[1]]);
+});
+
+test('history and operation details remain readable during catalog synchronization', async () => {
+  const plan = await preview();
+  await apply(plan);
+  await pool.query("UPDATE search_horoshop_connections SET status = 'syncing'");
+  await agent.get(`${base}/operations/${plan.id}`).expect(200);
+  assert.equal((await agent.get(`${base}/operations`).expect(200)).body.data[0].id, plan.id);
+  await agent.post(`${base}/operations/preview`).send({ selection: { productIds }, action: { google: 'enable', facebook: 'keep' } }).expect(409);
+});
+
+test('feed export explicitly requests marketplace data through the real client serializer', async () => {
+  const { HoroshopClient } = await import('../src/modules/search/horoshop/horoshop.client.js');
+  const client = new HoroshopClient('fixture.example.com', { fetchImplementation: async (_url, init) => {
+    assert.deepEqual(JSON.parse(init.body), { token: 'fixture', offset: 0, limit: 500, includedParams: ['export_to_marketplace'] });
+    return new Response(JSON.stringify({ status: 'OK', response: { products: [{ article: 'P', parent_article: 'P', export_to_marketplace: '' }] } }));
+  } });
+  const result = await client.exportCatalog('fixture', 0, 500, null, { includedParams: ['export_to_marketplace'] });
+  assert.equal(result.products[0].export_to_marketplace, '');
 });
 
 test('stale previews, double apply and connection replacement are rejected', async () => {

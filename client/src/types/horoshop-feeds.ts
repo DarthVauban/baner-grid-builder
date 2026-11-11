@@ -6,7 +6,7 @@ export type FeedState = 'enabled' | 'disabled' | 'mixed' | 'unknown';
 export type FeedOperationStatus = 'draft' | 'queued' | 'running' | 'completed' | 'partial' | 'conflict' | 'failed';
 export type FeedItemStatus = 'pending' | 'writing' | 'succeeded' | 'unchanged' | 'failed' | 'conflict' | 'cancelled';
 export interface FeedFilters { search: string; category: string; brands: string[]; availability: string }
-export interface FeedOffer { article: string; marketplaces: string[] }
+export interface FeedOffer { article: string; marketplaces: string[] | null }
 export interface FeedProduct {
   id: string; externalId: string; sku: string; title: string; titles: Record<string, string>;
   brand: string | null; categoryExternalId: string | null; availability: string | null;
@@ -27,6 +27,7 @@ export interface FeedResolution {
 export interface FeedOperationItem {
   id: string; productId: string; externalId: string; article: string; title: string; articles: string[];
   before: FeedOffer[]; target: FeedOffer[]; observed: Array<{ article: string; marketplaces: string[] | null }> | null;
+  resolvedBefore: FeedOffer[] | null; resolvedTarget: FeedOffer[] | null;
   status: FeedItemStatus; message: string;
 }
 export interface FeedHistoryItem {
