@@ -148,6 +148,43 @@ test('preview uses only the synchronized catalog and apply preserves each varian
   assert.deepEqual(history[0].action, plan.action);
 });
 
+test('real id/value marketplace exports support catalog, preview, independent updates and read-back', async () => {
+  // Shape observed from the connected store's catalog/export, including with includedParams.
+  const exportedFeeds = (value) => value.split(';').filter(Boolean).map((name, index) => ({
+    id: name === facebook ? 4 : name === google ? 1 : index + 10, value: name
+  }));
+  const fixtureClient = service.clientFactory();
+  service.clientFactory = () => ({ ...fixtureClient, exportCatalog: async (...args) => {
+    const result = await fixtureClient.exportCatalog(...args);
+    result.products = result.products.map((product) => ({ ...product,
+      export_to_marketplace: exportedFeeds(product.export_to_marketplace),
+      modifications: product.modifications.map((offer) => ({ ...offer,
+        export_to_marketplace: exportedFeeds(offer.export_to_marketplace) }))
+    }));
+    return result;
+  } });
+  for (const product of remote) {
+    for (const offer of product.modifications) {
+      await pool.query('UPDATE search_horoshop_modifications SET source_data = $2::jsonb WHERE sku = $1',
+        [offer.article, JSON.stringify({ ...offer, export_to_marketplace: exportedFeeds(offer.export_to_marketplace) })]);
+    }
+  }
+  const catalog = (await agent.get(`${base}/catalog?brand=Apple`).expect(200)).body.data;
+  assert.equal(catalog.items[0].google, 'mixed');
+  assert.equal(catalog.items[0].facebook, 'mixed');
+  const empty = (await agent.get(`${base}/catalog?brand=Samsung`).expect(200)).body.data;
+  assert.equal(empty.items[0].google, 'disabled');
+  const plan = await preview({ google: 'enable', facebook: 'disable' }, [productIds[0]]);
+  assert.deepEqual(plan.items[0].before[1].marketplaces, [facebook, 'Hotline Feed'].sort());
+  const result = await apply(plan);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.counts.succeeded, 1);
+  assert.deepEqual(imports.flat(), [{ article: 'PHONE-WHITE', export_to_marketplace: `${google};Hotline Feed` }]);
+  assert.deepEqual(result.items[0].observed[1].marketplaces, [google, 'Hotline Feed'].sort());
+  const history = (await agent.get(`${base}/operations`).expect(200)).body.data;
+  assert.equal(history[0].confirmed, 1);
+});
+
 test('both channels can be enabled across a filtered selection and keep is independent', async () => {
   const plan = (await agent.post(`${base}/operations/preview`).send({
     selection: { filters: { brands: ['Samsung'] } }, action: { google: 'enable', facebook: 'enable' }
@@ -368,6 +405,11 @@ test('normalization supports flat/nested exports and explicit emptiness without 
   assert.equal(marketplaceNames([1]), null);
   assert.deepEqual(marketplaceNames(''), []);
   assert.deepEqual(marketplaceNames([{ title: google }, { name: facebook }]), [google, facebook].sort());
+  assert.deepEqual(marketplaceNames([{ id: 4, value: facebook }]), [facebook]);
+  assert.deepEqual(marketplaceNames([{ id: 1, value: google }, { id: 4, value: facebook }]), [google, facebook].sort());
+  assert.deepEqual(marketplaceNames([]), []);
+  assert.equal(marketplaceNames([{ id: 4 }]), null);
+  assert.equal(marketplaceNames([{ id: 4, value: 4 }]), null);
   const groups = remoteFeedGroups([
     { parent_article: 'P', article: 'P-1', export_to_marketplace: google },
     { parent_article: 'P', article: 'P-2', export_to_marketplace: '' },

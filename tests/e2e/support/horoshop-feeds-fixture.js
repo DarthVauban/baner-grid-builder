@@ -26,11 +26,12 @@ export function createFeedFixtureApplication(app) {
       if (url.pathname.endsWith('/auth/')) return response({ token: 'fixture-token' });
       if (url.pathname.endsWith('/catalog/export/')) {
         exportCalls += 1;
-        // Match a store which excludes feed settings from its default export.
-        const includeFeeds = body.includedParams?.includes('export_to_marketplace');
+        assert.deepEqual(body.includedParams, ['export_to_marketplace']);
         const products = remote.slice(body.offset, body.offset + body.limit).map((offer) => {
           const result = { parent_article: offer.parent_article, article: offer.article };
-          if (includeFeeds && mode !== 'missing') result.export_to_marketplace = offer.export_to_marketplace;
+          // Actual connected-store response: [{ id: 4, value: 'Facebook Feed' }].
+          if (mode !== 'missing') result.export_to_marketplace = offer.export_to_marketplace.split(';')
+            .filter(Boolean).map((value) => ({ id: value === 'Facebook Feed' ? 4 : value === 'Google Feed for Merchant Center' ? 1 : 7, value }));
           return result;
         });
         return response({ products, total: remote.length });
