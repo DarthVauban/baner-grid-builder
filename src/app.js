@@ -36,6 +36,7 @@ import horoshopIntegrationRoutes from './modules/search/horoshop/horoshop.routes
 import horoshopCatalogRoutes from './modules/search/horoshop/catalog.routes.js';
 import horoshopStickerRoutes from './modules/search/horoshop/sticker.routes.js';
 import horoshopPopularityRoutes from './modules/search/horoshop/popularity.routes.js';
+import horoshopFeedRoutes from './modules/search/horoshop/feeds.routes.js';
 import horoshopAccessoryRoutes from './modules/search/horoshop/accessory.routes.js';
 import horoshopPhotoRoutes from './modules/search/horoshop/photo.routes.js';
 import horoshopPhotoDesktopRoutes from './modules/search/horoshop/photo-desktop.routes.js';
@@ -223,6 +224,7 @@ app.use('/api/auth', authAttemptLimiter, authRoutes);
 app.use('/api/admin/integrations/horoshop', horoshopIntegrationRoutes);
 app.use('/api/search/horoshop/stickers', horoshopStickerRoutes);
 app.use('/api/search/horoshop/popularity', horoshopPopularityRoutes);
+app.use('/api/search/horoshop/feeds', horoshopFeedRoutes);
 app.use('/api/search/horoshop', horoshopCatalogRoutes);
 app.use('/api/search/horoshop/accessories', horoshopAccessoryRoutes);
 app.use('/api/search/horoshop/photos', horoshopPhotoRoutes);
