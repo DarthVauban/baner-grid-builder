@@ -7,7 +7,7 @@ export function marketplaceNames(value) {
   if (!entries) return null;
   const names = [];
   for (const entry of entries) {
-    const name = typeof entry === 'string' ? entry : entry?.title ?? entry?.name;
+    const name = typeof entry === 'string' ? entry : entry?.value ?? entry?.title ?? entry?.name;
     if (typeof name !== 'string' || name.includes(';')) return null;
     if (name.trim()) names.push(name.trim());
   }
