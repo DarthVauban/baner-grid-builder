@@ -97,7 +97,7 @@ test('continuous integration verifies types, server, web and production build', 
   assert.match(ciWorkflow, /npm run test:server/);
   assert.match(ciWorkflow, /npm run test:web/);
   assert.match(ciWorkflow, /npm run build/);
-  assert.match(ciWorkflow, /playwright install --with-deps chromium/);
+  assert.match(ciWorkflow, /bash \.github\/scripts\/install-playwright\.sh/);
   assert.match(ciWorkflow, /npm run test:e2e/);
   assert.match(workflow, /quality:[\s\S]*npm run verify/);
   assert.match(workflow, /quality:[\s\S]*npm run test:e2e/);
