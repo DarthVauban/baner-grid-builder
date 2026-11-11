@@ -6,7 +6,8 @@ const base = '/api/search/horoshop/feeds';
 export const horoshopFeeds = {
   catalog: (filters: FeedFilters, page = 1, pageSize = 25, signal?: AbortSignal) => {
     const params = new URLSearchParams({ search: filters.search, category: filters.category,
-      availability: filters.availability, page: String(page), pageSize: String(pageSize) });
+      availability: filters.availability, google: filters.google, facebook: filters.facebook,
+      page: String(page), pageSize: String(pageSize) });
     filters.brands.forEach((brand) => params.append('brand', brand));
     return request<FeedCatalog>(`${base}/catalog?${params}`, { signal, timeoutMs: 60_000 });
   },

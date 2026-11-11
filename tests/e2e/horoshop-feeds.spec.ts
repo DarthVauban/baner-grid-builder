@@ -91,5 +91,45 @@ for (const surface of [
       await page.getByRole('button', { name: 'До історії', exact: true }).click();
       await expect(page.getByRole('table').getByRole('row').filter({ hasText: 'Помилка' })).toContainText('0 із 1');
     });
+
+    test('combines Google and Facebook status filters and selects only matching products for preview', async ({ page, request }, testInfo) => {
+      if (surface.name === 'desktop') await page.setViewportSize({ width: 1920, height: 1080 });
+      await request.post('/__e2e/horoshop-feeds/reset', { data: { withFeedStatuses: true } });
+      await page.reload();
+      const setStatus = async (channel: string, label: string) => {
+        await page.getByRole('button', { name: `Статус: ${channel}`, exact: true }).click();
+        await page.getByRole('option', { name: label, exact: true }).click();
+      };
+      await setStatus('Google Merchant Center', 'Частина модифікацій');
+      await setStatus('Facebook', 'Увімкнено');
+      await expect(page.getByText('Товари · 1', { exact: true })).toBeVisible();
+      await expect(page.getByRole('checkbox', { name: 'Вибрати FEED-001', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Вибрати всі 1 за фільтром', exact: true }).click();
+      await expect(page.getByRole('region', { name: 'Дії з вибіркою' })).toContainText('1 товарів вибрано');
+      await setStatus('Google Merchant Center', 'Увімкнено');
+      await expect(page.getByText('Товари · 0', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Масова дія', exact: true })).toBeDisabled();
+      await setStatus('Facebook', 'Вимкнено');
+      await expect(page.getByText('Товари · 1', { exact: true })).toBeVisible();
+      await expect(page.getByRole('checkbox', { name: 'Вибрати FEED-003', exact: true })).toBeVisible();
+      await expect(page.getByRole('checkbox', { name: 'Вибрати FEED-001', exact: true })).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath(`feeds-${surface.name}-status-filters.png`), fullPage: true });
+      await page.getByRole('button', { name: 'Вибрати всі 1 за фільтром', exact: true }).click();
+      await page.getByRole('button', { name: 'Масова дія', exact: true }).click();
+      await page.getByRole('button', { name: 'Дія: Facebook', exact: true }).click();
+      await page.getByRole('option', { name: 'Додати до фіда', exact: true }).click();
+      await page.getByRole('button', { name: 'Перевірити зміни', exact: true }).click();
+      const preview = page.getByRole('region', { name: 'Перегляд майбутніх змін' });
+      await expect(preview).toContainText('FEED-003');
+      await expect(preview).not.toContainText('FEED-001');
+      await expect(preview).toContainText('Було: Вимкнено');
+      const before = await (await request.get('/__e2e/horoshop-feeds/state')).json();
+      expect(before.exports).toBe(0); expect(before.imports).toEqual([]);
+      await preview.getByRole('button', { name: 'Повернутися', exact: true }).click();
+      await setStatus('Facebook', 'Усі статуси');
+      await setStatus('Google Merchant Center', 'Немає даних');
+      await expect(page.getByText('Товари · 1', { exact: true })).toBeVisible();
+      await expect(page.getByRole('checkbox', { name: 'Вибрати FEED-004', exact: true })).toBeVisible();
+    });
   });
 }

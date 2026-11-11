@@ -20,6 +20,8 @@ export function createFeedFixtureApplication(app) {
   const response = (data) => new Response(JSON.stringify({ status: 'OK', response: data }), {
     headers: { 'content-type': 'application/json' }
   });
+  const exportMarketplaces = (value) => value.split(';').filter(Boolean)
+    .map((name) => ({ id: name === 'Facebook Feed' ? 4 : name === 'Google Feed for Merchant Center' ? 1 : 7, value: name }));
   horoshopFeedService.clientFactory = () => new HoroshopClient('feeds-fixture.example.com', {
     fetchImplementation: async (url, init) => {
       const body = JSON.parse(init.body);
@@ -30,8 +32,7 @@ export function createFeedFixtureApplication(app) {
         const products = remote.slice(body.offset, body.offset + body.limit).map((offer) => {
           const result = { parent_article: offer.parent_article, article: offer.article };
           // Actual connected-store response: [{ id: 4, value: 'Facebook Feed' }].
-          if (mode !== 'missing') result.export_to_marketplace = offer.export_to_marketplace.split(';')
-            .filter(Boolean).map((value) => ({ id: value === 'Facebook Feed' ? 4 : value === 'Google Feed for Merchant Center' ? 1 : 7, value }));
+          if (mode !== 'missing') result.export_to_marketplace = exportMarketplaces(offer.export_to_marketplace);
           return result;
         });
         return response({ products, total: remote.length });
@@ -70,11 +71,19 @@ export function createFeedFixtureApplication(app) {
           index % 2 ? 'Apple' : 'Samsung', JSON.stringify({ article: sku }), run]);
         const offers = index === 1 ? [`${sku}-BLACK`, `${sku}-WHITE`] : [sku];
         for (const article of offers) {
-          remote.push({ parent_article: sku, article, export_to_marketplace: 'Facebook Feed;Rozetka Feed' });
+          let marketplaces = 'Facebook Feed;Rozetka Feed';
+          if (req.body.withFeedStatuses) {
+            if (index === 1 && article.endsWith('-BLACK')) marketplaces += ';Google Feed for Merchant Center';
+            if (index === 2) marketplaces = '';
+            if (index === 3) marketplaces = 'Google Feed for Merchant Center';
+          }
+          remote.push({ parent_article: sku, article, export_to_marketplace: marketplaces });
+          const source = { article, ...(req.body.withFeedStatuses
+            ? { export_to_marketplace: index === 4 ? null : exportMarketplaces(marketplaces) } : {}) };
           await pool.query(`INSERT INTO search_horoshop_modifications
             (connection_id, generation, product_id, external_id, sku, titles, source_data, last_seen_sync_id)
             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)`,
-          [connection, generation, id, `${index}:${article}`, article, JSON.stringify({ uk: article }), JSON.stringify({ article }), run]);
+          [connection, generation, id, `${index}:${article}`, article, JSON.stringify({ uk: article }), JSON.stringify(source), run]);
         }
       }
       res.json({ productIds });

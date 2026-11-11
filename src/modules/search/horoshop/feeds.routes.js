@@ -9,17 +9,22 @@ import { horoshopFeedService } from './feeds.service.js';
 
 const uuid = z.string().uuid();
 const brands = z.array(z.string().trim().min(1).max(255)).max(100).default([]);
+const feedStatus = z.enum(['', 'enabled', 'disabled', 'mixed', 'unknown']).default('');
 const filterFields = {
   search: z.string().trim().max(160).default(''),
   category: z.string().trim().max(255).default(''),
   brands,
-  availability: z.string().trim().max(200).default('')
+  availability: z.string().trim().max(200).default(''),
+  google: feedStatus,
+  facebook: feedStatus
 };
 const filters = z.object(filterFields).strict();
 const catalogQuery = z.object({
   search: filterFields.search,
   category: filterFields.category,
   availability: filterFields.availability,
+  google: filterFields.google,
+  facebook: filterFields.facebook,
   brand: z.union([z.string(), z.array(z.string())]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(10).max(100).default(25)

@@ -5,7 +5,10 @@ export type FeedAction = Record<'google' | 'facebook', FeedChoice>;
 export type FeedState = 'enabled' | 'disabled' | 'mixed' | 'unknown';
 export type FeedOperationStatus = 'draft' | 'queued' | 'running' | 'completed' | 'partial' | 'conflict' | 'failed';
 export type FeedItemStatus = 'pending' | 'writing' | 'succeeded' | 'unchanged' | 'failed' | 'conflict' | 'cancelled';
-export interface FeedFilters { search: string; category: string; brands: string[]; availability: string }
+export interface FeedFilters {
+  search: string; category: string; brands: string[]; availability: string;
+  google: FeedState | ''; facebook: FeedState | '';
+}
 export interface FeedOffer { article: string; marketplaces: string[] | null }
 export interface FeedProduct {
   id: string; externalId: string; sku: string; title: string; titles: Record<string, string>;

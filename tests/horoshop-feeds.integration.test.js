@@ -340,6 +340,76 @@ test('select-all returns the exact filtered IDs and respects a pasted-list scope
   assert.deepEqual(scoped.productIds, [productIds[1]]);
 });
 
+test('feed filters share the displayed modification states across catalog, scoped selection, select-all and preview', async () => {
+  const filtered = (await agent.get(`${base}/catalog?google=mixed&facebook=mixed&brand=Apple`).expect(200)).body.data;
+  assert.equal(filtered.total, 1);
+  assert.deepEqual(filtered.items.map((item) => item.id), [productIds[0]]);
+  assert.equal(filtered.items[0].google, 'mixed');
+  assert.equal((await agent.get(`${base}/catalog?google=enabled`).expect(200)).body.data.total, 0);
+  const scoped = (await agent.post(`${base}/catalog/selection`).send({ productIds,
+    filters: { facebook: 'disabled' } }).expect(200)).body.data;
+  assert.deepEqual(scoped.matchingProductIds, [productIds[1]]);
+  const selected = (await agent.post(`${base}/select`).send({ filters: { google: 'mixed', facebook: 'mixed' } }).expect(200)).body.data;
+  assert.deepEqual(selected.productIds, [productIds[0]]);
+  const outsideScope = (await agent.post(`${base}/select`).send({ productIds: [productIds[1]],
+    filters: { google: 'mixed' } }).expect(200)).body.data;
+  assert.deepEqual(outsideScope.productIds, []);
+  const plan = (await agent.post(`${base}/operations/preview`).send({
+    selection: { filters: { google: 'mixed', facebook: 'mixed' } }, action: { google: 'enable', facebook: 'keep' }
+  }).expect(201)).body.data;
+  assert.deepEqual(plan.items.map((item) => item.productId), [productIds[0]]);
+  const connection = await service.repository.connection();
+  assert.deepEqual(await service.repository.matchingIds(connection, { google: 'mixed' }, null, 1), [productIds[0]]);
+  assert.equal(apiCalls, 0);
+});
+
+test('feed filtering respects inherited values, explicit unknowns and inactive modifications', async () => {
+  await pool.query('UPDATE search_horoshop_modifications SET source_data = $2::jsonb WHERE product_id = $1',
+    [productIds[0], JSON.stringify({})]);
+  await pool.query('UPDATE search_horoshop_modifications SET active = FALSE, source_data = $2::jsonb WHERE sku = $1',
+    ['PHONE-WHITE', JSON.stringify({ export_to_marketplace: facebook })]);
+  await pool.query('UPDATE search_horoshop_modifications SET source_data = $2::jsonb WHERE product_id = $1',
+    [productIds[1], JSON.stringify({ export_to_marketplace: null })]);
+  const known = (await agent.get(`${base}/catalog?google=enabled&facebook=disabled`).expect(200)).body.data;
+  assert.deepEqual(known.items.map((item) => item.id), [productIds[0]]);
+  assert.equal(known.items[0].google, 'enabled');
+  const unknown = (await agent.get(`${base}/catalog?google=unknown&facebook=unknown`).expect(200)).body.data;
+  assert.deepEqual(unknown.items.map((item) => item.id), [productIds[1]]);
+  assert.equal(unknown.items[0].facebook, 'unknown');
+  assert.equal((await agent.get(`${base}/catalog?google=disabled`).expect(200)).body.data.total, 0);
+});
+
+test('feed filtering runs before pagination and selection limits, including products without modifications', async () => {
+  const connection = await service.repository.connection();
+  const expected = [];
+  for (let index = 0; index < 22; index += 1) {
+    const id = randomUUID();
+    if (index % 2 === 0) expected.push(id);
+    await pool.query(`INSERT INTO search_horoshop_products
+      (id, connection_id, generation, external_id, sku, titles, source_data, last_seen_sync_id)
+      VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6::jsonb, $7)`,
+    [id, connection.id, connection.generation, `filter-${index}`, `FILTER-${String(index).padStart(2, '0')}`,
+      JSON.stringify({ export_to_marketplace: index % 2 ? [] : [{ id: 1, value: google }] }), randomUUID()]);
+  }
+  const second = (await agent.get(`${base}/catalog?google=enabled&facebook=disabled&pageSize=10&page=2`).expect(200)).body.data;
+  assert.equal(second.total, 11);
+  assert.equal(second.pageCount, 2);
+  assert.deepEqual(second.items.map((item) => item.id), expected.slice(10));
+  const selected = (await agent.post(`${base}/select`).send({ filters: { google: 'enabled', facebook: 'disabled' } }).expect(200)).body.data;
+  assert.deepEqual(selected.productIds, expected);
+  assert.deepEqual(await service.repository.matchingIds(connection, { google: 'enabled' }, null, 1), expected.slice(0, 1));
+});
+
+test('feed status validation rejects unsupported values on every filter input', async () => {
+  for (const channel of ['google', 'facebook']) {
+    await agent.get(`${base}/catalog?${channel}=invalid`).expect(422);
+    await agent.post(`${base}/select`).send({ filters: { [channel]: 'invalid' } }).expect(422);
+    await agent.post(`${base}/catalog/selection`).send({ productIds, filters: { [channel]: 'invalid' } }).expect(422);
+    await agent.post(`${base}/operations/preview`).send({ selection: { filters: { [channel]: 'invalid' } },
+      action: { google: 'enable', facebook: 'keep' } }).expect(422);
+  }
+});
+
 test('history and operation details remain readable during catalog synchronization', async () => {
   const plan = await preview();
   await apply(plan);
