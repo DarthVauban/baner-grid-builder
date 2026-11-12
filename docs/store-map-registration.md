@@ -112,6 +112,17 @@ cross-origin CORS і мають IP rate limit. Форма не передає co
 доступом `store_map`. Дані передаються лише через перевірені origin/source `postMessage`,
 без координат у URL. CSP дозволяє OpenFreeMap лише для сторінки карти та MapLibre worker.
 
+## Production-бандл MapLibre
+
+Vite збирає офіційні production ESM-модулі встановленої версії MapLibre. Плагін
+`build/maplibre-shaders.ts` через AST переносить великі статичні GLSL-рядки в окремий
+модуль, зберігаючи їхні вихідні літерали та source maps.
+Шаблони з інтерполяцією та tagged templates не переносяться. Основний код, спільний
+модуль і шейдери кешуються окремими чанками, кожен менше стандартного порога Vite
+500 кБ. Бюджет перевіряє `tests/maplibre-build.test.js`, включно з відсутністю MapLibre
+в початкових імпортах workspace. Worker залишається окремим self-hosted бандлом
+з чинною CSP. Docker build-stage копіює плагін разом із конфігурацією Vite.
+
 ## Перевірки
 
 `tests/store-map-registration.integration.test.js` перевіряє багаторазові й одночасні подання,

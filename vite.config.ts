@@ -1,9 +1,10 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { mapLibreShaderChunks, resolvedShaderModuleId } from './build/maplibre-shaders.ts';
 
 export default defineConfig({
   root: 'client',
-  plugins: [react()],
+  plugins: [react(), mapLibreShaderChunks()],
   build: {
     outDir: '../dist/web',
     emptyOutDir: true,
@@ -18,31 +19,45 @@ export default defineConfig({
         supportChat: 'client/support-chat.html'
       },
       output: {
-        manualChunks(id) {
-          const normalizedId = id.replaceAll('\\', '/');
-          if (normalizedId.includes('/node_modules/maplibre-gl/')) {
-            return 'maplibre';
-          }
-          if (normalizedId.includes('/node_modules/@tiptap/')
-            || normalizedId.includes('/node_modules/prosemirror-')) {
-            return 'tiptap-editor';
-          }
-          if (normalizedId.includes('/node_modules/@lezer/')
-            || normalizedId.includes('/node_modules/@codemirror/language/')
-            || normalizedId.includes('/node_modules/@codemirror/lang-')) {
-            return 'codemirror-language';
-          }
-          if (normalizedId.includes('/node_modules/@codemirror/state/')
-            || normalizedId.includes('/node_modules/@codemirror/view/')) {
-            return 'codemirror-core';
-          }
-          if (normalizedId.includes('/node_modules/@codemirror/')) {
-            return 'codemirror-features';
-          }
-          if (normalizedId.includes('/node_modules/@uiw/react-codemirror/')) {
-            return 'react-codemirror';
-          }
-          return undefined;
+        codeSplitting: {
+          groups: [
+            {
+              // Preserve MapLibre's acyclic ESM boundaries instead of folding its
+              // shaders and shared code back into the main module.
+              includeDependenciesRecursively: false,
+              name(id) {
+                const normalizedId = id.replaceAll('\\', '/');
+                if (id === resolvedShaderModuleId) return 'maplibre-shaders';
+                if (normalizedId.includes('/node_modules/maplibre-gl/dist/maplibre-gl-shared.mjs')) return 'maplibre-shared';
+                if (normalizedId.includes('/node_modules/maplibre-gl/')) return 'maplibre';
+              }
+            },
+            {
+              name(id) {
+                const normalizedId = id.replaceAll('\\', '/');
+                if (normalizedId.includes('/node_modules/@tiptap/')
+                  || normalizedId.includes('/node_modules/prosemirror-')) {
+                  return 'tiptap-editor';
+                }
+                if (normalizedId.includes('/node_modules/@lezer/')
+                  || normalizedId.includes('/node_modules/@codemirror/language/')
+                  || normalizedId.includes('/node_modules/@codemirror/lang-')) {
+                  return 'codemirror-language';
+                }
+                if (normalizedId.includes('/node_modules/@codemirror/state/')
+                  || normalizedId.includes('/node_modules/@codemirror/view/')) {
+                  return 'codemirror-core';
+                }
+                if (normalizedId.includes('/node_modules/@codemirror/')) {
+                  return 'codemirror-features';
+                }
+                if (normalizedId.includes('/node_modules/@uiw/react-codemirror/')) {
+                  return 'react-codemirror';
+                }
+                return undefined;
+              }
+            }
+          ]
         }
       }
     }
