@@ -1,5 +1,8 @@
 .hf-page .hf-filters{display:grid;grid-template-columns:1.4fr repeat(5,minmax(150px,1fr));gap:14px;align-items:end}
 .hf-filters .hp-search{grid-column:auto}
+.hf-feed-filter-title{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.hf-feed-filter-title>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--hp-muted);font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:.04em}
+.hf-feed-filter-title .hp-link{padding:0;font-size:12px;flex:none}
 .hf-filters>label,.hf-actions>label,.hf-resolution>label{display:grid;gap:7px;min-width:0}
 .hf-filters>label>span,.hf-actions>label>span{color:var(--hp-muted);font-size:13px}
 .hf-filters .button{min-height:48px;justify-content:flex-start;overflow:hidden;text-overflow:ellipsis}
