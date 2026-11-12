@@ -36,6 +36,7 @@ export default [
   {
     files: [
       'client/src/**/*.{ts,tsx}',
+      'build/**/*.ts',
       'vite.config.ts',
       'playwright.config.ts',
       'tests/e2e/**/*.ts'
