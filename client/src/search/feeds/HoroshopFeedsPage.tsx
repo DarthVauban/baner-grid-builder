@@ -14,10 +14,8 @@ import '../../styles/horoshop-popularity.css';
 import '../../styles/horoshop-feeds.css';
 
 const emptyFilters: FeedFilters = { search: '', category: '', brands: [], availability: '', google: '', facebook: '' };
-const feedStatusOptions: Array<{ value: FeedState | ''; label: string }> = [
-  { value: '', label: 'Усі статуси' },
-  ...(['enabled', 'disabled', 'mixed', 'unknown'] as const).map((value) => ({ value, label: stateLabels[value] }))
-];
+const feedStatusOptions: Array<{ value: FeedState | ''; label: string }> =
+  (['enabled', 'disabled'] as const).map((value) => ({ value, label: stateLabels[value] }));
 const number = (value: number) => value.toLocaleString('uk-UA');
 const date = (value: string) => new Date(value).toLocaleString('uk-UA');
 const active = (status?: string) => status === 'queued' || status === 'running';
@@ -194,7 +192,10 @@ export function HoroshopFeedsPage() {
             {!visibleBrands.length && <p>Брендів не знайдено.</p>}{filters.brands.length > 0 && <button type="button" onClick={() => changeFilters({ brands: [] })}>Очистити</button>}
           </div></details>
           <label><span>Наявність</span><StyledSelect ariaLabel="Наявність" disabled={busy} value={filters.availability} options={[{ value: '', label: 'Будь-яка' }, ...(data?.availabilityOptions || []).map((value) => ({ value, label: value }))]} onChange={(availability) => changeFilters({ availability })} /></label>
-          {(['google', 'facebook'] as const).map((channel) => <label key={channel}><span>{feedLabels[channel]}</span><StyledSelect ariaLabel={`Статус: ${feedLabels[channel]}`} disabled={busy} value={filters[channel]} options={feedStatusOptions} onChange={(value) => changeFilters({ [channel]: value })} /></label>)}
+          {(['google', 'facebook'] as const).map((channel) => <div key={channel} className="hp-filter-field">
+            <div className="hf-feed-filter-title"><span>{feedLabels[channel]}</span>{filters[channel] && <button className="hp-link" type="button" aria-label={`Скинути фільтр: ${feedLabels[channel]}`} disabled={busy} onClick={() => changeFilters({ [channel]: '' })}>Скинути</button>}</div>
+            <StyledSelect ariaLabel={`Статус: ${feedLabels[channel]}`} disabled={busy} value={filters[channel]} placeholder="Оберіть статус" options={feedStatusOptions} onChange={(value) => changeFilters({ [channel]: value })} />
+          </div>)}
         </div>
         {listIds !== null && <div className="hp-paste-action"><span>Вибірка зі списку: {listIds.length} товарів.</span><div><button className="button button--secondary" type="button" onClick={openSearch}>Редагувати список</button><button className="button button--secondary" type="button" onClick={() => { setListIds(null); setSearchText(''); changeFilters({ search: '' }); }}>Очистити вибірку</button></div></div>}
         {resolution && <div className="hp-resolution" aria-live="polite"><strong>Знайдено товарів: {resolution.matched.length}</strong>

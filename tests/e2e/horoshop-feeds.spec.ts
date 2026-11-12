@@ -98,15 +98,16 @@ for (const surface of [
       await page.reload();
       const setStatus = async (channel: string, label: string) => {
         await page.getByRole('button', { name: `Статус: ${channel}`, exact: true }).click();
+        await expect(page.getByRole('option')).toHaveText(['Увімкнено', 'Вимкнено']);
         await page.getByRole('option', { name: label, exact: true }).click();
       };
-      await setStatus('Google Merchant Center', 'Частина модифікацій');
-      await setStatus('Facebook', 'Увімкнено');
+      await setStatus('Google Merchant Center', 'Увімкнено');
+      await setStatus('Facebook', 'Вимкнено');
       await expect(page.getByText('Товари · 1', { exact: true })).toBeVisible();
-      await expect(page.getByRole('checkbox', { name: 'Вибрати FEED-001', exact: true })).toBeVisible();
+      await expect(page.getByRole('checkbox', { name: 'Вибрати FEED-003', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Вибрати всі 1 за фільтром', exact: true }).click();
       await expect(page.getByRole('region', { name: 'Дії з вибіркою' })).toContainText('1 товарів вибрано');
-      await setStatus('Google Merchant Center', 'Увімкнено');
+      await setStatus('Facebook', 'Увімкнено');
       await expect(page.getByText('Товари · 0', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Масова дія', exact: true })).toBeDisabled();
       await setStatus('Facebook', 'Вимкнено');
@@ -126,9 +127,12 @@ for (const surface of [
       const before = await (await request.get('/__e2e/horoshop-feeds/state')).json();
       expect(before.exports).toBe(0); expect(before.imports).toEqual([]);
       await preview.getByRole('button', { name: 'Повернутися', exact: true }).click();
-      await setStatus('Facebook', 'Усі статуси');
-      await setStatus('Google Merchant Center', 'Немає даних');
+      await page.getByRole('button', { name: 'Скинути фільтр: Facebook', exact: true }).click();
       await expect(page.getByText('Товари · 1', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Статус: Facebook', exact: true })).toHaveText('Оберіть статус');
+      await page.getByRole('button', { name: 'Скинути фільтр: Google Merchant Center', exact: true }).click();
+      await expect(page.getByText('Товари · 27', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Статус: Google Merchant Center', exact: true })).toHaveText('Оберіть статус');
       await expect(page.getByRole('checkbox', { name: 'Вибрати FEED-004', exact: true })).toBeVisible();
     });
   });

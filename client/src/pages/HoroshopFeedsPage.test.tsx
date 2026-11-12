@@ -165,12 +165,13 @@ describe('HoroshopFeedsPage', () => {
     const selectSpy = vi.spyOn(api.horoshopFeeds, 'select').mockResolvedValue({ productIds: ['parent-0'] });
     renderPage(); await screen.findByText('Телефон');
     await user.click(screen.getByRole('checkbox', { name: 'Вибрати PHONE' }));
+    expect(screen.getByRole('button', { name: 'Статус: Google Merchant Center' })).toHaveTextContent('Оберіть статус');
     await user.click(screen.getByRole('button', { name: 'Статус: Google Merchant Center' }));
-    expect(screen.getByRole('option', { name: 'Немає даних' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Частина модифікацій' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Увімкнено', 'Вимкнено']);
     await user.click(screen.getByRole('option', { name: 'Увімкнено' }));
     expect(await screen.findByText('Виберіть товари для масової дії')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Статус: Facebook' }));
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Увімкнено', 'Вимкнено']);
     await user.click(screen.getByRole('option', { name: 'Вимкнено' }));
     const selectAll = await screen.findByRole('button', { name: 'Вибрати всі 1 за фільтром' });
     expect(screen.queryByText('Навушники')).not.toBeInTheDocument();
@@ -178,6 +179,14 @@ describe('HoroshopFeedsPage', () => {
     await user.click(selectAll);
     expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({ google: 'enabled', facebook: 'disabled' }), undefined);
     expect(await screen.findByText('1 товарів вибрано')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Скинути фільтр: Google Merchant Center' }));
+    expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({ google: '', facebook: 'disabled' }), 1, 25, expect.anything());
+    expect(screen.getByRole('button', { name: 'Статус: Google Merchant Center' })).toHaveTextContent('Оберіть статус');
+    expect(await screen.findByText('Виберіть товари для масової дії')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Скинути фільтр: Facebook' }));
+    expect(await screen.findByText('Навушники')).toBeInTheDocument();
+    expect(catalogSpy).toHaveBeenLastCalledWith(expect.objectContaining({ google: '', facebook: '' }), 1, 25, expect.anything());
+    expect(screen.getByRole('button', { name: 'Статус: Facebook' })).toHaveTextContent('Оберіть статус');
   });
 
   it('keeps pasted-list auto-selection within active feed filters', async () => {

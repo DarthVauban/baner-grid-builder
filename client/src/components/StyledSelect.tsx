@@ -22,6 +22,7 @@ interface StyledSelectProps<T extends SelectValue = string> {
   compact?: boolean;
   searchable?: boolean;
   searchPlaceholder?: string;
+  placeholder?: string;
 }
 
 function sameValue(left: SelectValue, right: SelectValue) {
@@ -37,7 +38,8 @@ export function StyledSelect<T extends SelectValue = string>({
   className = '',
   compact = false,
   searchable = false,
-  searchPlaceholder = 'Пошук'
+  searchPlaceholder = 'Пошук',
+  placeholder
 }: StyledSelectProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -54,8 +56,8 @@ export function StyledSelect<T extends SelectValue = string>({
   const selectedIndex = Math.max(0, filteredOptions.findIndex((option) => sameValue(option.value, value)));
   const [highlighted, setHighlighted] = useState(selectedIndex);
   const selected = useMemo(
-    () => options.find((option) => sameValue(option.value, value)) || options[0],
-    [options, value]
+    () => options.find((option) => sameValue(option.value, value)) || (placeholder === undefined ? options[0] : undefined),
+    [options, value, placeholder]
   );
 
   useEffect(() => setHighlighted(selectedIndex), [selectedIndex]);
@@ -220,7 +222,7 @@ export function StyledSelect<T extends SelectValue = string>({
       onClick={() => !disabled && setOpen((current) => !current)}
       onKeyDown={handleKeyDown}
     >
-      <span>{selected?.label || ''}</span>
+      <span>{selected?.label || placeholder || ''}</span>
       <Icon name="chevronRight" size={17} />
     </button>
     {open && createPortal(menu, document.body)}
