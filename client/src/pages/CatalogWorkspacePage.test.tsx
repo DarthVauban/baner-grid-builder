@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { CatalogWorkspacePage } from './CatalogWorkspacePage';
+import { ToastProvider } from '../toast/ToastContext';
 
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({
@@ -15,13 +16,13 @@ vi.mock('../auth/AuthContext', () => ({
 function renderCatalog() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={client}><MemoryRouter initialEntries={['/catalog/products']}>
+    <QueryClientProvider client={client}><ToastProvider><MemoryRouter initialEntries={['/catalog/products']}>
       <Routes>
         <Route path="/catalog" element={<CatalogWorkspacePage />}>
           <Route path="products" element={<p>Товари каталогу</p>} />
         </Route>
       </Routes>
-    </MemoryRouter></QueryClientProvider>
+    </MemoryRouter></ToastProvider></QueryClientProvider>
   );
 }
 
@@ -30,8 +31,8 @@ describe('CatalogWorkspacePage', () => {
   beforeEach(() => {
     localStorage.removeItem('mt-catalog-sidebar-collapsed');
     vi.spyOn(api, 'horoshopCatalogSyncStatus').mockResolvedValue({
-      configured: false, status: 'disconnected', serverNow: new Date().toISOString(),
-      nextScheduledSyncAt: null, counts: { products: 0, modifications: 0 }, latestRun: null
+      configured: false, canSync: false, status: 'disconnected', serverNow: new Date().toISOString(),
+      nextScheduledSyncAt: null, counts: { stickers: 0, products: 0, modifications: 0 }, latestRun: null
     });
   });
 

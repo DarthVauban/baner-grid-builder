@@ -23,7 +23,6 @@
   white-space: nowrap;
 }
 .topbar-catalog-counts__item--stickers { grid-column: 1; }
-/* Keep the sticker slot reserved between syncs so the other badges stay in place. */
 .topbar-catalog-counts__item--products { grid-column: 2; }
 .topbar-catalog-counts__item--modifications { grid-column: 3; }
 .topbar-catalog-counts__item small { color: var(--muted); font-size: 10px; }

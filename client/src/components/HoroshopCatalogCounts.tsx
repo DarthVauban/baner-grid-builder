@@ -7,7 +7,7 @@ export function HoroshopCatalogCounts({ status }: { status?: HoroshopCatalogSync
   const running = status?.status === 'syncing';
   const run = running ? status?.latestRun : null;
   const items = [
-    ...(running ? [{ key: 'stickers', label: 'Стікери', value: run?.stickersReceived ?? 0 }] : []),
+    { key: 'stickers', label: 'Стікери', value: running ? run?.stickersReceived ?? 0 : status?.configured ? status.counts?.stickers : null },
     { key: 'products', label: 'Товари', value: running ? run?.productsReceived ?? 0 : status?.configured ? status.counts?.products : null },
     { key: 'modifications', label: 'Модифікації', value: running ? run?.modificationsReceived ?? 0 : status?.configured ? status.counts?.modifications : null }
   ];

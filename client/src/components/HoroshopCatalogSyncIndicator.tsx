@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { useToast } from '../toast/ToastContext';
 import { Icon } from './Icon';
 import { HoroshopCatalogCounts } from './HoroshopCatalogCounts';
 import '../styles/horoshop-catalog-sync-indicator.css';
@@ -14,6 +15,8 @@ function remainingTime(milliseconds: number) {
 }
 
 export function HoroshopCatalogSyncIndicator() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [now, setNow] = useState(() => Date.now());
   const sync = useQuery({
     queryKey: ['horoshop-catalog-sync-status'],
@@ -21,6 +24,16 @@ export function HoroshopCatalogSyncIndicator() {
     refetchInterval: (query) => query.state.data?.status === 'syncing' ? 2_000 : 15_000,
     refetchIntervalInBackground: true,
     refetchOnReconnect: true
+  });
+  const startSync = useMutation({
+    mutationFn: () => api.horoshopCatalog.sync(),
+    onSuccess: async (result) => {
+      showToast(result.started ? 'Звірку каталогу запущено.' : 'Каталог зайнятий. Дочекайтеся завершення поточної операції.', result.started ? 'success' : 'error');
+      await Promise.all(['horoshop-catalog-sync-status', 'admin-horoshop-integration', 'horoshop-catalog',
+        'horoshop-feeds-catalog', 'horoshop-popularity-catalog', 'horoshop-sticker-catalog']
+        .map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+    },
+    onError: (error) => showToast(error instanceof Error ? error.message : 'Не вдалося запустити синхронізацію.', 'error')
   });
 
   useEffect(() => {
@@ -73,6 +86,8 @@ export function HoroshopCatalogSyncIndicator() {
   }
 
   const statusText = `${description}${countdown ? ` ${countdown}` : ''}`;
+  const syncBlocked = !data?.configured || !['connected', 'error'].includes(data.status);
+  const syncButtonLabel = startSync.isPending ? 'Запускаємо синхронізацію' : data?.status === 'syncing' ? 'Синхронізація триває' : 'Синхронізувати зараз';
   return <>
     <HoroshopCatalogCounts status={data} />
     <div className={`topbar-catalog-sync is-${state}`} role="status" aria-label={`Каталог Хорошоп: ${statusText}`} title={`Каталог Хорошоп · ${statusText}${detail !== 'Хорошоп' ? ` · ${detail}` : ''}`}>
@@ -80,5 +95,8 @@ export function HoroshopCatalogSyncIndicator() {
       <span className="topbar-catalog-sync__text"><strong>{description}</strong><small>{detail}</small></span>
       {countdown && <b className="topbar-catalog-sync__countdown">{countdown}</b>}
     </div>
+    {data?.canSync && <button className={`topbar-catalog-sync-button${startSync.isPending ? ' is-pending' : ''}`} type="button"
+      aria-label={syncButtonLabel} title={syncButtonLabel} disabled={syncBlocked || startSync.isPending}
+      onClick={() => startSync.mutate()}><Icon name="refresh" size={19} /></button>}
   </>;
 }

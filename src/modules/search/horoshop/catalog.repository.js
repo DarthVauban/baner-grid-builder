@@ -160,11 +160,12 @@ export class HoroshopCatalogRepository {
     const connection = await this.getConnection();
     if (!connection) return {
       configured: false, status: 'disconnected', pollingIntervalMinutes: null,
-      lastSyncAt: null, counts: { products: 0, modifications: 0 }, latestRun: null
+      lastSyncAt: null, counts: { stickers: 0, products: 0, modifications: 0 }, latestRun: null
     };
     const [countsResult, latestRun] = await Promise.all([
       this.pool.query(`
         SELECT
+          (SELECT COUNT(*) FROM search_horoshop_stickers WHERE connection_id = $1 AND active) AS stickers,
           (SELECT COUNT(*) FROM search_horoshop_products WHERE connection_id = $1 AND active) AS products,
           (SELECT COUNT(*) FROM search_horoshop_modifications WHERE connection_id = $1 AND active) AS modifications
       `, [connection.id]),
@@ -176,7 +177,7 @@ export class HoroshopCatalogRepository {
       status: connection.status,
       pollingIntervalMinutes: connection.pollingIntervalMinutes,
       lastSyncAt: connection.lastSyncAt,
-      counts: { products: Number(counts.products || 0), modifications: Number(counts.modifications || 0) },
+      counts: { stickers: Number(counts.stickers || 0), products: Number(counts.products || 0), modifications: Number(counts.modifications || 0) },
       latestRun
     };
   }

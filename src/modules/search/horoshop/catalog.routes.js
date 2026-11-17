@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../../../lib/async-handler.js';
 import { parseInput } from '../../../lib/validation.js';
 import { requireAuth } from '../../../middleware/auth.js';
-import { requireToolAccess } from '../../access/access.service.js';
+import { getUserToolAccess, requireToolAccess } from '../../access/access.service.js';
 import { horoshopCatalogService } from './catalog.service.js';
 import { nextHoroshopCatalogSyncAt } from './catalog.schedule.js';
 
@@ -39,14 +39,17 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get('/sync-status', asyncHandler(async (_req, res) => {
-  const status = await horoshopCatalogService.syncStatus();
+router.get('/sync-status', asyncHandler(async (req, res) => {
+  const [status, tools] = await Promise.all([
+    horoshopCatalogService.syncStatus(), getUserToolAccess(req.user)
+  ]);
   res.json({ data: {
     configured: status.configured,
+    canSync: tools.includes('horoshop_related_products'),
     status: status.status,
     serverNow: new Date().toISOString(),
     nextScheduledSyncAt: nextHoroshopCatalogSyncAt(status),
-    counts: { products: status.counts.products, modifications: status.counts.modifications },
+    counts: { stickers: status.counts.stickers, products: status.counts.products, modifications: status.counts.modifications },
     latestRun: status.latestRun ? {
       status: status.latestRun.status,
       progressPercentage: status.latestRun.progressPercentage,

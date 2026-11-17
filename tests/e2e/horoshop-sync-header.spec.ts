@@ -13,9 +13,9 @@ for (const surface of [
     await page.clock.install({ time: now });
     let elapsed = 0;
     let payload: HoroshopCatalogSyncStatus = {
-      configured: true, status: 'connected', serverNow: now.toISOString(),
+      configured: true, canSync: true, status: 'connected', serverNow: now.toISOString(),
       nextScheduledSyncAt: new Date(now.getTime() + 300_000).toISOString(),
-      counts: { products: 1586, modifications: 5042 }, latestRun: null
+      counts: { stickers: 15, products: 1586, modifications: 5042 }, latestRun: null
     };
     await page.route('**/api/search/horoshop/sync-status', (route) => route.fulfill({
       contentType: 'application/json', body: JSON.stringify({ data: payload })
@@ -33,24 +33,32 @@ for (const surface of [
     await page.goto('/tools');
     const counts = page.locator('.topbar-catalog-counts');
     await expect(counts.getByLabel('Товари: 1 586', { exact: true })).toBeVisible();
-    await expect(counts.locator('.topbar-catalog-counts__item')).toHaveCount(2);
+    await expect(counts.getByLabel('Стікери: 15', { exact: true })).toBeVisible();
+    await expect(counts.locator('.topbar-catalog-counts__item')).toHaveCount(3);
     await expect(page.locator('.topbar-catalog-sync__countdown')).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
-    const measure = () => page.locator('.topbar-catalog-counts, .topbar-catalog-counts__item--products, .topbar-catalog-counts__item--modifications, .topbar-catalog-sync')
+    const measure = () => page.locator('.topbar-catalog-counts, .topbar-catalog-counts__item, .topbar-catalog-sync, .topbar-catalog-sync-button')
       .evaluateAll((elements) => elements.map((element) => {
         const { x, y, width, height } = element.getBoundingClientRect();
         return { x, y, width, height };
       }));
     const initial = await measure();
-    payload.counts = { products: 9_999_999, modifications: 9_999_999 };
+    payload.counts = { stickers: 9_999_999, products: 9_999_999, modifications: 9_999_999 };
     await tick(16_000);
     await expect(counts.getByLabel('Товари: 9 999 999', { exact: true })).toBeVisible();
     expect(await measure()).toEqual(initial);
-    payload = { ...payload, status: 'syncing', nextScheduledSyncAt: null, latestRun: {
-      status: 'running', progressPercentage: null, exportItemsReceived: 0, exportItemsTotal: null,
-      stickersReceived: 0, productsReceived: 0, modificationsReceived: 0
-    } };
-    await tick(16_000);
+    let starts = 0;
+    await page.route('**/api/search/horoshop/sync', (route) => {
+      starts += 1;
+      payload = { ...payload, status: 'syncing', nextScheduledSyncAt: null, latestRun: {
+        status: 'running', progressPercentage: null, exportItemsReceived: 0, exportItemsTotal: null,
+        stickersReceived: 0, productsReceived: 0, modificationsReceived: 0
+      } };
+      return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ data: { started: true } }) });
+    });
+    await page.getByRole('button', { name: 'Синхронізувати зараз', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Синхронізація триває', exact: true })).toBeDisabled();
+    expect(starts).toBe(1);
     await expect(counts.getByLabel('Стікери: 0', { exact: true })).toBeVisible();
     expect(await measure()).toEqual(initial);
     payload.latestRun = { ...payload.latestRun!, stickersReceived: 15, productsReceived: 431, modificationsReceived: 500 };
@@ -65,11 +73,13 @@ for (const surface of [
     await expect(counts.getByLabel('Стікери: 9 999 999', { exact: true })).toBeVisible();
     expect(await measure()).toEqual(initial);
     expect(await counts.locator('.topbar-catalog-counts__item--stickers').boundingBox()).toEqual(stickerSize);
-    payload = { ...payload, status: 'connected', counts: { products: 1732, modifications: 4129 },
+    payload = { ...payload, status: 'connected', counts: { stickers: 17, products: 1732, modifications: 4129 },
       nextScheduledSyncAt: new Date(now.getTime() + 600_000).toISOString(), latestRun: { ...payload.latestRun!, status: 'succeeded' } };
     await tick(2100);
     await expect(counts.getByLabel('Товари: 1 732', { exact: true })).toBeVisible();
-    await expect(counts.locator('.topbar-catalog-counts__item')).toHaveCount(2);
+    await expect(counts.getByLabel('Стікери: 17', { exact: true })).toBeVisible();
+    await expect(counts.locator('.topbar-catalog-counts__item')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: 'Синхронізувати зараз', exact: true })).toBeEnabled();
     expect(await measure()).toEqual(initial);
     expect(await page.locator('.topbar').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
     expect(await counts.locator('strong').first().evaluate((element) => getComputedStyle(element).fontVariantNumeric)).toContain('tabular-nums');
@@ -82,7 +92,7 @@ for (const surface of [
     await page.goto('/catalog/products');
     await expect(counts.getByLabel('Товари: 1 732', { exact: true })).toBeVisible();
     const standalone = await measure();
-    payload.counts = { products: 1, modifications: 2 };
+    payload.counts = { stickers: 1, products: 1, modifications: 2 };
     await tick(16_000);
     await expect(counts.getByLabel('Товари: 1', { exact: true })).toBeVisible();
     expect(await measure()).toEqual(standalone);
