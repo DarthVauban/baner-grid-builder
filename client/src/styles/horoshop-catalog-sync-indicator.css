@@ -24,8 +24,14 @@
 .topbar-catalog-sync.is-running { border-color: color-mix(in srgb, var(--brand) 38%, var(--line)); background: var(--brand-soft); }
 .topbar-catalog-sync.is-running .topbar-catalog-sync__icon { animation: topbar-catalog-spin 1.7s linear infinite; }
 .topbar-catalog-sync.is-error .topbar-catalog-sync__icon { color: var(--danger); }
+.topbar-catalog-sync-button { box-sizing: border-box; width: 42px; height: 42px; flex: none; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--brand-dark); cursor: pointer; }
+.topbar-catalog-sync-button:hover:not(:disabled) { border-color: var(--brand); background: var(--brand-soft); }
+.topbar-catalog-sync-button:focus-visible { outline: 3px solid var(--brand-soft); outline-offset: 2px; }
+.topbar-catalog-sync-button:disabled { opacity: .5; cursor: default; }
+.topbar-catalog-sync-button.is-pending svg { animation: topbar-catalog-spin 1.7s linear infinite; }
+.standalone-tool-topbar > .topbar-catalog-sync-button { margin-inline-start: 10px; }
 @keyframes topbar-catalog-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .topbar-catalog-sync.is-running .topbar-catalog-sync__icon { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .topbar-catalog-sync.is-running .topbar-catalog-sync__icon, .topbar-catalog-sync-button.is-pending svg { animation: none; } }
 @media (max-width: 700px) {
   .topbar-catalog-sync { max-width: min(235px, 100%); padding: 5px 9px; gap: 6px; }
   .topbar-catalog-sync__text small { display: none; }

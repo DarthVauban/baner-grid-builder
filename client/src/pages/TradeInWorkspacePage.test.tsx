@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { TradeInWorkspacePage } from './TradeInWorkspacePage';
+import { ToastProvider } from '../toast/ToastContext';
 
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({
@@ -15,13 +16,13 @@ vi.mock('../auth/AuthContext', () => ({
 function renderWorkspace() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={client}><MemoryRouter initialEntries={['/trade-in/overview']}>
+    <QueryClientProvider client={client}><ToastProvider><MemoryRouter initialEntries={['/trade-in/overview']}>
       <Routes>
         <Route path="/trade-in" element={<TradeInWorkspacePage />}>
           <Route path="overview" element={<p>Огляд Trade-in</p>} />
         </Route>
       </Routes>
-    </MemoryRouter></QueryClientProvider>
+    </MemoryRouter></ToastProvider></QueryClientProvider>
   );
 }
 
@@ -30,8 +31,8 @@ describe('TradeInWorkspacePage', () => {
   beforeEach(() => {
     localStorage.removeItem('mt-trade-in-sidebar-collapsed');
     vi.spyOn(api, 'horoshopCatalogSyncStatus').mockResolvedValue({
-      configured: false, status: 'disconnected', serverNow: new Date().toISOString(),
-      nextScheduledSyncAt: null, counts: { products: 0, modifications: 0 }, latestRun: null
+      configured: false, canSync: false, status: 'disconnected', serverNow: new Date().toISOString(),
+      nextScheduledSyncAt: null, counts: { stickers: 0, products: 0, modifications: 0 }, latestRun: null
     });
   });
 

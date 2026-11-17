@@ -440,7 +440,7 @@ test('full import streams pages, reconciles missing rows and purges before anoth
   assert.equal(syncStatus.status, 'connected');
   assert.equal(syncStatus.latestRun.progressPercentage, 100);
   assert.equal(syncStatus.pollingIntervalMinutes, 15);
-  assert.deepEqual(syncStatus.counts, { products: 2, modifications: 3 });
+  assert.deepEqual(syncStatus.counts, { stickers: 3, products: 2, modifications: 3 });
   assert.equal(Object.hasOwn(syncStatus, 'storeDomain'), false);
   const catalogMetadata = await query(`
     SELECT stickers, condition_label, horoshop_created_at

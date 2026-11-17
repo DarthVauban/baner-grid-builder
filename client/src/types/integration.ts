@@ -88,10 +88,11 @@ export interface HoroshopIntegration {
 
 export interface HoroshopCatalogSyncStatus {
   configured: boolean;
+  canSync: boolean;
   status: HoroshopConnectionStatus;
   serverNow: string;
   nextScheduledSyncAt: string | null;
-  counts: Pick<HoroshopIntegration['counts'], 'products' | 'modifications'>;
+  counts: Pick<HoroshopIntegration['counts'], 'stickers' | 'products' | 'modifications'>;
   latestRun: Pick<HoroshopSyncRun, 'status' | 'progressPercentage' | 'exportItemsReceived' | 'exportItemsTotal'
     | 'stickersReceived' | 'productsReceived' | 'modificationsReceived'> | null;
 }
