@@ -160,14 +160,24 @@ export class HoroshopCatalogRepository {
     const connection = await this.getConnection();
     if (!connection) return {
       configured: false, status: 'disconnected', pollingIntervalMinutes: null,
-      lastSyncAt: null, latestRun: null
+      lastSyncAt: null, counts: { products: 0, modifications: 0 }, latestRun: null
     };
+    const [countsResult, latestRun] = await Promise.all([
+      this.pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM search_horoshop_products WHERE connection_id = $1 AND active) AS products,
+          (SELECT COUNT(*) FROM search_horoshop_modifications WHERE connection_id = $1 AND active) AS modifications
+      `, [connection.id]),
+      this.getLatestRun(connection.id)
+    ]);
+    const counts = countsResult.rows[0] || {};
     return {
       configured: true,
       status: connection.status,
       pollingIntervalMinutes: connection.pollingIntervalMinutes,
       lastSyncAt: connection.lastSyncAt,
-      latestRun: await this.getLatestRun(connection.id)
+      counts: { products: Number(counts.products || 0), modifications: Number(counts.modifications || 0) },
+      latestRun
     };
   }
 

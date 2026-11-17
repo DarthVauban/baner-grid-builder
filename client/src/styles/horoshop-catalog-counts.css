@@ -1,0 +1,53 @@
+.topbar-catalog-counts {
+  display: grid;
+  grid-template-columns: repeat(3, 112px);
+  gap: 8px;
+  width: 352px;
+  height: 42px;
+  flex: none;
+}
+.topbar-catalog-counts__item {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.topbar-catalog-counts__item--stickers { grid-column: 1; }
+/* Keep the sticker slot reserved between syncs so the other badges stay in place. */
+.topbar-catalog-counts__item--products { grid-column: 2; }
+.topbar-catalog-counts__item--modifications { grid-column: 3; }
+.topbar-catalog-counts__item small { color: var(--muted); font-size: 10px; }
+.topbar-catalog-counts__item strong { font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.topbar-catalog-counts__item small, .topbar-catalog-counts__item strong { overflow: hidden; text-overflow: ellipsis; }
+.topbar-catalog-counts.is-running .topbar-catalog-counts__item { border-color: color-mix(in srgb, var(--brand) 38%, var(--line)); background: var(--brand-soft); }
+.standalone-tool-topbar > .topbar-catalog-counts { margin-inline-end: 10px; }
+@media (max-width: 1200px) {
+  .app-shell__content:has(> .topbar > .topbar-catalog-counts) { --workspace-topbar-height: 118px; }
+  .topbar:has(.topbar-catalog-counts), .standalone-tool-topbar:has(.topbar-catalog-counts) {
+    box-sizing: border-box;
+    height: 118px;
+    padding-block-end: 50px;
+  }
+  .topbar-catalog-counts {
+    position: absolute;
+    inset-inline: 20px;
+    bottom: 8px;
+    width: auto;
+    grid-template-columns: repeat(3, minmax(0, 112px));
+    justify-content: end;
+  }
+  .standalone-tool-topbar > .topbar-catalog-counts { margin-inline-end: 0; }
+}
+@media (max-width: 500px) {
+  .topbar-catalog-counts__item { padding-inline: 8px; }
+}

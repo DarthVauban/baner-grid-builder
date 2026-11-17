@@ -31,7 +31,7 @@ describe('TradeInWorkspacePage', () => {
     localStorage.removeItem('mt-trade-in-sidebar-collapsed');
     vi.spyOn(api, 'horoshopCatalogSyncStatus').mockResolvedValue({
       configured: false, status: 'disconnected', serverNow: new Date().toISOString(),
-      nextScheduledSyncAt: null, latestRun: null
+      nextScheduledSyncAt: null, counts: { products: 0, modifications: 0 }, latestRun: null
     });
   });
 

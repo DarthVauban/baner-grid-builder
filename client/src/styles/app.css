@@ -1605,7 +1605,7 @@ input[type="checkbox"].switch:disabled { opacity: .55; cursor: not-allowed; }
 .workflow-form-builder__canvas { min-width: 0; min-height: 0; }
 @media (min-width: 861px) {
   .page-container:has(> .forms-builder-page--workflow-builder) {
-    height: calc(100vh - 68px);
+    height: calc(100vh - var(--workspace-topbar-height, 68px));
     max-width: none;
     overflow: hidden;
     padding-top: 18px;

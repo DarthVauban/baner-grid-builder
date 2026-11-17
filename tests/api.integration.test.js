@@ -61,12 +61,47 @@ test('workspace catalog sync status is authenticated and exposes only display fi
   const response = await member.get('/api/search/horoshop/sync-status').expect(200);
   assert.equal(response.headers['cache-control'], 'no-store');
   assert.deepEqual(Object.keys(response.body.data).sort(), [
-    'configured', 'latestRun', 'nextScheduledSyncAt', 'serverNow', 'status'
+    'configured', 'counts', 'latestRun', 'nextScheduledSyncAt', 'serverNow', 'status'
   ]);
   assert.equal(response.body.data.configured, false);
+  assert.deepEqual(response.body.data.counts, { products: 0, modifications: 0 });
   assert.equal(response.body.data.nextScheduledSyncAt, null);
   assert.equal(Date.parse(response.body.data.serverNow) > 0, true);
   await member.get('/api/search/horoshop/catalog').expect(403);
+
+  const connectionId = crypto.randomUUID();
+  const generation = crypto.randomUUID();
+  const runId = crypto.randomUUID();
+  const productId = crypto.randomUUID();
+  try {
+    await query(`INSERT INTO search_horoshop_connections (id, generation, store_domain, encrypted_credentials, status)
+      VALUES ($1, $2, 'header.example.test', 'fixture-only', 'syncing')`, [connectionId, generation]);
+    await query(`INSERT INTO search_horoshop_sync_runs
+      (id, connection_id, generation, mode, stickers_received, products_received, modifications_received, pages_received)
+      VALUES ($1, $2, $3, 'manual', 15, 431, 500, 9)`, [runId, connectionId, generation]);
+    await query(`INSERT INTO search_horoshop_products
+      (id, connection_id, generation, external_id, sku, last_seen_sync_id, active)
+      VALUES ($1, $2, $3, 'ACTIVE', 'ACTIVE', $4, TRUE), ($5, $2, $3, 'ARCHIVED', 'ARCHIVED', $4, FALSE)`,
+    [productId, connectionId, generation, runId, crypto.randomUUID()]);
+    await query(`INSERT INTO search_horoshop_modifications
+      (connection_id, generation, product_id, external_id, sku, last_seen_sync_id, active)
+      VALUES ($1, $2, $3, 'M1', 'M1', $4, TRUE), ($1, $2, $3, 'M2', 'M2', $4, TRUE),
+             ($1, $2, $3, 'M3', 'M3', $4, FALSE)`, [connectionId, generation, productId, runId]);
+    const running = await member.get('/api/search/horoshop/sync-status').expect(200);
+    assert.deepEqual(running.body.data.counts, { products: 1, modifications: 2 });
+    assert.deepEqual(running.body.data.latestRun, {
+      status: 'running', progressPercentage: null, exportItemsReceived: 0, exportItemsTotal: null,
+      stickersReceived: 15, productsReceived: 431, modificationsReceived: 500
+    });
+    assert.deepEqual(Object.keys(running.body.data).sort(), Object.keys(response.body.data).sort());
+    await query("UPDATE search_horoshop_connections SET status = 'connected', last_sync_at = NOW() WHERE id = $1", [connectionId]);
+    await query("UPDATE search_horoshop_sync_runs SET status = 'succeeded', completed_at = NOW() WHERE id = $1", [runId]);
+    const idle = await member.get('/api/search/horoshop/sync-status').expect(200);
+    assert.deepEqual(idle.body.data.counts, { products: 1, modifications: 2 });
+    assert.ok(idle.body.data.nextScheduledSyncAt);
+  } finally {
+    await query('DELETE FROM search_horoshop_connections WHERE id = $1', [connectionId]);
+  }
 });
 
 async function registerAndVerify(input) {
