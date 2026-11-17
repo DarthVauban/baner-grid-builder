@@ -1,8 +1,8 @@
 .topbar-catalog-sync {
   min-width: 0;
-  width: max-content;
+  width: 300px;
   max-width: min(100%, 320px);
-  flex: 0 1 auto;
+  flex: 0 1 300px;
   min-height: 42px;
   display: inline-flex;
   align-items: center;

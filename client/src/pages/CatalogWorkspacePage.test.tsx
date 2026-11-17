@@ -31,7 +31,7 @@ describe('CatalogWorkspacePage', () => {
     localStorage.removeItem('mt-catalog-sidebar-collapsed');
     vi.spyOn(api, 'horoshopCatalogSyncStatus').mockResolvedValue({
       configured: false, status: 'disconnected', serverNow: new Date().toISOString(),
-      nextScheduledSyncAt: null, latestRun: null
+      nextScheduledSyncAt: null, counts: { products: 0, modifications: 0 }, latestRun: null
     });
   });
 

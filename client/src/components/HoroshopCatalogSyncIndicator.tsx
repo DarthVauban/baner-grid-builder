@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Icon } from './Icon';
+import { HoroshopCatalogCounts } from './HoroshopCatalogCounts';
 import '../styles/horoshop-catalog-sync-indicator.css';
 
 function remainingTime(milliseconds: number) {
@@ -72,9 +73,12 @@ export function HoroshopCatalogSyncIndicator() {
   }
 
   const statusText = `${description}${countdown ? ` ${countdown}` : ''}`;
-  return <div className={`topbar-catalog-sync is-${state}`} role="status" aria-label={`Каталог Хорошоп: ${statusText}`} title={`Каталог Хорошоп · ${statusText}${detail !== 'Хорошоп' ? ` · ${detail}` : ''}`}>
-    <span className="topbar-catalog-sync__icon"><Icon name={state === 'running' ? 'refresh' : state === 'error' ? 'alarm' : 'schedule'} size={17} /></span>
-    <span className="topbar-catalog-sync__text"><strong>{description}</strong><small>{detail}</small></span>
-    {countdown && <b className="topbar-catalog-sync__countdown">{countdown}</b>}
-  </div>;
+  return <>
+    <HoroshopCatalogCounts status={data} />
+    <div className={`topbar-catalog-sync is-${state}`} role="status" aria-label={`Каталог Хорошоп: ${statusText}`} title={`Каталог Хорошоп · ${statusText}${detail !== 'Хорошоп' ? ` · ${detail}` : ''}`}>
+      <span className="topbar-catalog-sync__icon"><Icon name={state === 'running' ? 'refresh' : state === 'error' ? 'alarm' : 'schedule'} size={17} /></span>
+      <span className="topbar-catalog-sync__text"><strong>{description}</strong><small>{detail}</small></span>
+      {countdown && <b className="topbar-catalog-sync__countdown">{countdown}</b>}
+    </div>
+  </>;
 }

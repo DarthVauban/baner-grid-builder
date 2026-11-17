@@ -46,11 +46,15 @@ router.get('/sync-status', asyncHandler(async (_req, res) => {
     status: status.status,
     serverNow: new Date().toISOString(),
     nextScheduledSyncAt: nextHoroshopCatalogSyncAt(status),
+    counts: { products: status.counts.products, modifications: status.counts.modifications },
     latestRun: status.latestRun ? {
       status: status.latestRun.status,
       progressPercentage: status.latestRun.progressPercentage,
       exportItemsReceived: status.latestRun.exportItemsReceived,
-      exportItemsTotal: status.latestRun.exportItemsTotal
+      exportItemsTotal: status.latestRun.exportItemsTotal,
+      stickersReceived: status.latestRun.stickersReceived,
+      productsReceived: status.latestRun.productsReceived,
+      modificationsReceived: status.latestRun.modificationsReceived
     } : null
   } });
 }));

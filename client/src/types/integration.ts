@@ -91,7 +91,9 @@ export interface HoroshopCatalogSyncStatus {
   status: HoroshopConnectionStatus;
   serverNow: string;
   nextScheduledSyncAt: string | null;
-  latestRun: Pick<HoroshopSyncRun, 'status' | 'progressPercentage' | 'exportItemsReceived' | 'exportItemsTotal'> | null;
+  counts: Pick<HoroshopIntegration['counts'], 'products' | 'modifications'>;
+  latestRun: Pick<HoroshopSyncRun, 'status' | 'progressPercentage' | 'exportItemsReceived' | 'exportItemsTotal'
+    | 'stickersReceived' | 'productsReceived' | 'modificationsReceived'> | null;
 }
 
 export interface HoroshopIntegrationInput {
