@@ -300,18 +300,18 @@
   overflow-wrap: anywhere;
 }
 
-.site-themes__bar-inner > span:first-child {
+.site-themes__bar-message {
+  min-width: 0;
   white-space: pre-wrap;
 }
 
 .site-themes__bar-button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   max-width: 100%;
   min-height: 36px;
-  padding: 4px 12px;
   border-radius: 6px;
-  font-weight: 600;
 }
 
 .site-themes__store-header {
@@ -503,9 +503,25 @@
   font-size: 12px;
 }
 
-.site-themes__padding-fields {
+.site-themes__style-group {
+  display: grid;
+  gap: 13px;
+}
+
+.site-themes__style-group + .site-themes__style-group {
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.site-themes__style-group h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.site-themes__style-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
   gap: 9px;
 }
 

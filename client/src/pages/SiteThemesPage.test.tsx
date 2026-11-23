@@ -30,7 +30,7 @@ function renderTool() {
 
 afterEach(() => vi.restoreAllMocks());
 
-it('publishes a saved draft before activation and applies device settings to the draft preview', async () => {
+it('previews typography and device settings before publishing and activating the saved draft', async () => {
   let saved: SiteTheme | undefined;
   vi.spyOn(api.siteThemes, 'list').mockImplementation(async () => saved ? [saved] : []);
   const create = vi.spyOn(api.siteThemes, 'create').mockImplementation(async (input) => {
@@ -61,9 +61,28 @@ it('publishes a saved draft before activation and applies device settings to the
   fireEvent.click(screen.getByRole('button', { name: 'Створити тему' }));
   fireEvent.change(screen.getByLabelText('Назва теми'), { target: { value: 'Знижки' } });
   fireEvent.change(screen.getByLabelText('Текст промосмуги'), { target: { value: 'Знижки на смартфони' } });
+  fireEvent.change(screen.getByLabelText('Текст кнопки'), { target: { value: 'До акцій' } });
+  fireEvent.change(screen.getByLabelText(/^Посилання кнопки/u), { target: { value: '/aktsii/' } });
   const preview = within(screen.getByRole('region', { name: 'Попередній перегляд' }));
-  expect(preview.getByText('Знижки на смартфони')).toBeVisible();
+  const previewMessage = preview.getByText('Знижки на смартфони');
+  const previewButton = preview.getByText('До акцій');
+  expect(previewMessage).toBeVisible();
+  expect(previewButton).toHaveStyle({ fontSize: '14px', fontWeight: '600', padding: '4px 12px' });
   fireEvent.click(screen.getByRole('button', { name: 'Стилі' }));
+  const textFontSize = screen.getByLabelText('Розмір тексту промосмуги, px');
+  fireEvent.change(textFontSize, { target: { value: '2' } });
+  expect(textFontSize).toHaveValue(2);
+  expect(previewMessage).toHaveStyle({ fontSize: '14px' });
+  fireEvent.change(textFontSize, { target: { value: '20' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Насиченість тексту промосмуги' }));
+  fireEvent.click(screen.getByRole('option', { name: '700' }));
+  fireEvent.change(screen.getByLabelText('Розмір тексту кнопки, px'), { target: { value: '18' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Насиченість тексту кнопки' }));
+  fireEvent.click(screen.getByRole('option', { name: '800' }));
+  fireEvent.change(screen.getByLabelText('Вертикальні відступи кнопки, px'), { target: { value: '9' } });
+  fireEvent.change(screen.getByLabelText('Горизонтальні відступи кнопки, px'), { target: { value: '24' } });
+  expect(previewMessage).toHaveStyle({ fontSize: '20px', fontWeight: '700' });
+  expect(previewButton).toHaveStyle({ fontSize: '18px', fontWeight: '800', padding: '9px 24px' });
   fireEvent.click(screen.getByRole('button', { name: 'Вирівнювання' }));
   fireEvent.click(screen.getByRole('option', { name: 'Ліворуч' }));
   fireEvent.click(screen.getByRole('button', { name: 'Показ' }));
@@ -75,7 +94,18 @@ it('publishes a saved draft before activation and applies device settings to the
   fireEvent.click(screen.getByRole('button', { name: 'Опублікувати тему' }));
   await waitFor(() => expect(screen.getByRole('switch', { name: 'Тема на сайті' })).toBeEnabled());
   expect(create).toHaveBeenCalledWith(expect.objectContaining({
-    name: 'Знижки', promoBar: expect.objectContaining({ text: 'Знижки на смартфони', alignment: 'left', showMobile: false })
+    name: 'Знижки',
+    promoBar: expect.objectContaining({
+      text: 'Знижки на смартфони',
+      alignment: 'left',
+      showMobile: false,
+      textFontSize: 20,
+      textFontWeight: 700,
+      buttonFontSize: 18,
+      buttonFontWeight: 800,
+      buttonPaddingY: 9,
+      buttonPaddingX: 24
+    })
   }));
   expect(publish).toHaveBeenCalledWith('theme-1');
   expect(activate).not.toHaveBeenCalled();

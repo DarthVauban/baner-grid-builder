@@ -37,6 +37,22 @@ const promoBar = {
   showDesktop: true,
   showMobile: true
 };
+const defaultPromoBarStyle = {
+  textFontSize: 14,
+  textFontWeight: 'inherit',
+  buttonFontSize: 14,
+  buttonFontWeight: 600,
+  buttonPaddingY: 4,
+  buttonPaddingX: 12
+};
+const editedPromoBarStyle = {
+  textFontSize: 24,
+  textFontWeight: 700,
+  buttonFontSize: 18,
+  buttonFontWeight: 800,
+  buttonPaddingY: 10,
+  buttonPaddingX: 20
+};
 
 before(async () => {
   await runMigrations();
@@ -114,12 +130,11 @@ test('theme publication snapshots the draft and live visibility can change indep
   assert.equal(await publicBar('https://other.example.com'), null);
   assert.match(await sharedEmbed(), /site-themes\/embed\.js/u);
 
-  const editedBar = { ...promoBar, text: 'Оновлена пропозиція', showMobile: false };
+  const editedBar = { ...promoBar, ...editedPromoBarStyle, text: 'Оновлена пропозиція', showMobile: false };
   const draft = await admin.put(themePath(first.id)).send({ name: 'Оновлена тема', promoBar: editedBar }).expect(200);
   assert.equal(draft.body.data.hasUnpublishedChanges, true);
-  assert.equal(draft.body.data.promoBar.text, editedBar.text);
-  assert.equal((await publicBar()).text, promoBar.text);
-  assert.equal((await publicBar()).showMobile, true);
+  assert.deepEqual(draft.body.data.promoBar, editedBar);
+  assert.deepEqual(await publicBar(), { ...promoBar, ...defaultPromoBarStyle });
 
   const hidden = await admin.put(`${themePath(first.id)}/promo-bar/visibility`).send({ enabled: false }).expect(200);
   assert.equal(hidden.body.data.promoBarEnabled, false);
@@ -131,8 +146,7 @@ test('theme publication snapshots the draft and live visibility can change indep
   assert.equal((await publicBar()).text, promoBar.text);
 
   await admin.post(`${themePath(first.id)}/publish`).expect(200);
-  assert.equal((await publicBar()).text, editedBar.text);
-  assert.equal((await publicBar()).showMobile, false);
+  assert.deepEqual(await publicBar(), editedBar);
 
   const second = await createTheme('Літній розпродаж', { ...promoBar, text: 'Літні знижки' });
   await admin.post(`${themePath(second.id)}/publish`).expect(200);
@@ -147,12 +161,52 @@ test('theme publication snapshots the draft and live visibility can change indep
   await admin.delete(themePath(second.id)).expect(204);
 });
 
+test('legacy snapshots retain default styling and older clients can edit without dropping typography', async () => {
+  const name = 'Раніше збережена тема';
+  const legacy = await createTheme(name);
+  await admin.post(`${themePath(legacy.id)}/publish`).expect(200);
+  await setActive(legacy.id, true);
+  await pool.query(`
+    UPDATE site_themes
+    SET draft_promo_bar = $2::JSONB, published_promo_bar = $2::JSONB
+    WHERE id = $1
+  `, [legacy.id, JSON.stringify(promoBar)]);
+
+  const initial = (await admin.get(themesPath).expect(200)).body.data.find((theme) => theme.id === legacy.id);
+  const normalizedBar = { ...promoBar, ...defaultPromoBarStyle };
+  assert.equal(initial.hasUnpublishedChanges, false);
+  assert.deepEqual(initial.promoBar, normalizedBar);
+  assert.deepEqual(await publicBar(), normalizedBar);
+
+  const updatedBar = { ...promoBar, ...editedPromoBarStyle };
+  const edited = await admin.put(themePath(legacy.id)).send({ name, promoBar: updatedBar }).expect(200);
+  assert.equal(edited.body.data.hasUnpublishedChanges, true);
+  assert.deepEqual(edited.body.data.promoBar, updatedBar);
+
+  const restored = await admin.put(themePath(legacy.id)).send({ name, promoBar: normalizedBar }).expect(200);
+  assert.equal(restored.body.data.hasUnpublishedChanges, false);
+
+  await admin.put(themePath(legacy.id)).send({ name, promoBar: updatedBar }).expect(200);
+  const oldClientBar = { ...promoBar, text: 'Змінено зі старого редактора' };
+  const oldClientEdit = await admin.put(themePath(legacy.id)).send({ name, promoBar: oldClientBar }).expect(200);
+  assert.deepEqual(oldClientEdit.body.data.promoBar, { ...oldClientBar, ...editedPromoBarStyle });
+  assert.deepEqual(await publicBar(), normalizedBar);
+  await setActive(legacy.id, false);
+  await admin.delete(themePath(legacy.id)).expect(204);
+});
+
 test('incomplete draft content is allowed but unsafe values are rejected', async () => {
   for (const invalidBar of [
     { buttonUrl: 'javascript:alert(1)' },
     { buttonUrl: '//outside.example.com/sale/' },
     { buttonUrl: '/\\outside.example.com/' },
     { backgroundColor: 'red;position:fixed' },
+    { textFontSize: 9 },
+    { textFontWeight: 450 },
+    { buttonFontSize: 48.5 },
+    { buttonFontWeight: '600' },
+    { buttonPaddingY: -1 },
+    { buttonPaddingX: 49 },
     { paddingX: 1000 },
     { showDesktop: 'yes' }
   ]) {

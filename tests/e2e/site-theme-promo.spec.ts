@@ -33,7 +33,7 @@ for (const fixture of fixtures) {
   test.describe(`site theme promo bar on ${fixture.name}`, () => {
     test.use({ userAgent, viewport, isMobile, hasTouch, deviceScaleFactor });
 
-    test('fits the storefront, preserves its controls, and respects device visibility', async ({ page }) => {
+    test('applies promo typography and button padding while respecting device visibility', async ({ page }) => {
       const scriptResponse = await page.request.get(embedPath);
       expect(scriptResponse.ok()).toBe(true);
       const script = await scriptResponse.text();
@@ -45,6 +45,12 @@ for (const fixture of fixtures) {
         textColor: '#FFE086',
         buttonColor: '#F0CD53',
         buttonTextColor: '#161616',
+        textFontSize: 23,
+        textFontWeight: 700,
+        buttonFontSize: 19,
+        buttonFontWeight: 800,
+        buttonPaddingY: 11,
+        buttonPaddingX: 19,
         alignment: 'center',
         paddingY: 12,
         paddingX: 28,
@@ -66,13 +72,20 @@ for (const fixture of fixtures) {
       await page.goto(storefront);
       const bar = page.locator('[data-mt-site-promo-bar]');
       const inner = bar.locator('[data-mt-site-promo-inner]');
+      const message = inner.locator('span');
+      const cta = bar.getByRole('link', { name: 'До акцій' });
       const header = page.locator('#store-header');
       await expect(bar).toBeVisible();
       await expect(bar).toHaveCount(1);
       await expect(inner).toContainText(literalOffer);
       await expect(inner.locator('strong')).toHaveCount(0);
-      await expect(inner.locator('span')).toHaveCSS('white-space', 'pre-wrap');
-      await expect(bar.getByRole('link', { name: 'До акцій' })).toHaveAttribute('href', /\/sale\/$/u);
+      await expect(message).toHaveCSS('white-space', 'pre-wrap');
+      await expect(message).toHaveCSS('font-size', '23px');
+      await expect(message).toHaveCSS('font-weight', '700');
+      await expect(cta).toHaveAttribute('href', /\/sale\/$/u);
+      await expect(cta).toHaveCSS('font-size', '19px');
+      await expect(cta).toHaveCSS('font-weight', '800');
+      await expect(cta).toHaveCSS('padding', '11px 19px');
       await expect(bar).toHaveCSS('background-color', 'rgb(16, 16, 16)');
       expect(await bar.evaluate((node) => node === document.body.firstElementChild)).toBe(true);
       expect(await bar.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);

@@ -1,6 +1,8 @@
-export const siteThemeEmbedPath = '/api/public/site-themes/embed.js';
+import { promoBarStyleDefaults } from './site-theme-promo-bar.js';
 
-function installSiteThemePromoBar(browser, configPath) {
+export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=2';
+
+function installSiteThemePromoBar(browser, configPath, defaults) {
   const { document, location, navigator } = browser;
   const scriptUrl = document.currentScript?.src;
   if (!scriptUrl) return;
@@ -36,7 +38,6 @@ function installSiteThemePromoBar(browser, configPath) {
       backgroundColor: config.backgroundColor,
       color: config.textColor,
       font: 'inherit',
-      fontSize: '14px',
       lineHeight: '1.4'
     });
 
@@ -57,9 +58,13 @@ function installSiteThemePromoBar(browser, configPath) {
 
     const message = document.createElement('span');
     message.textContent = config.text;
-    message.style.minWidth = '0';
-    message.style.overflowWrap = 'anywhere';
-    message.style.whiteSpace = 'pre-wrap';
+    Object.assign(message.style, {
+      minWidth: '0',
+      overflowWrap: 'anywhere',
+      whiteSpace: 'pre-wrap',
+      fontSize: `${config.textFontSize ?? defaults.textFontSize}px`,
+      fontWeight: String(config.textFontWeight ?? defaults.textFontWeight)
+    });
     inner.append(message);
 
     const href = safeLink(config.buttonUrl);
@@ -74,11 +79,12 @@ function installSiteThemePromoBar(browser, configPath) {
         boxSizing: 'border-box',
         minHeight: '36px',
         maxWidth: '100%',
-        padding: '4px 12px',
+        padding: `${config.buttonPaddingY ?? defaults.buttonPaddingY}px ${config.buttonPaddingX ?? defaults.buttonPaddingX}px`,
         borderRadius: '6px',
         backgroundColor: config.buttonColor,
         color: config.buttonTextColor,
-        fontWeight: '600',
+        fontSize: `${config.buttonFontSize ?? defaults.buttonFontSize}px`,
+        fontWeight: String(config.buttonFontWeight ?? defaults.buttonFontWeight),
         overflowWrap: 'anywhere',
         textDecoration: 'none'
       });
@@ -109,5 +115,5 @@ function installSiteThemePromoBar(browser, configPath) {
 }
 
 export function siteThemeEmbedScript() {
-  return `(${installSiteThemePromoBar.toString()})(window, '/api/public/site-themes/promo-bar');`;
+  return `(${installSiteThemePromoBar.toString()})(window, '/api/public/site-themes/promo-bar', ${JSON.stringify(promoBarStyleDefaults)});`;
 }

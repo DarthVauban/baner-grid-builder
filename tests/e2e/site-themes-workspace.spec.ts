@@ -43,12 +43,28 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
   const offer = 'Знижки на смартфони';
   await page.getByLabel('Назва теми').fill(themeName);
   await page.getByLabel('Текст промосмуги').fill(offer);
+  await page.getByLabel('Текст кнопки').fill('До акцій');
+  await page.getByLabel('Посилання кнопки').fill('/sale/');
   const preview = page.getByRole('region', { name: 'Попередній перегляд' });
   await expect(preview.getByText(offer, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Стилі', exact: true }).click();
   await page.getByRole('button', { name: 'Вирівнювання' }).click();
   await page.getByRole('option', { name: 'Праворуч' }).click();
   await expect(preview.locator('.site-themes__bar-inner')).toHaveCSS('justify-content', 'flex-end');
+  await page.getByRole('spinbutton', { name: 'Розмір тексту промосмуги, px' }).fill('23');
+  await page.getByRole('button', { name: 'Насиченість тексту промосмуги' }).click();
+  await page.getByRole('option', { name: '700', exact: true }).click();
+  await page.getByRole('spinbutton', { name: 'Розмір тексту кнопки, px' }).fill('19');
+  await page.getByRole('button', { name: 'Насиченість тексту кнопки' }).click();
+  await page.getByRole('option', { name: '800', exact: true }).click();
+  await page.getByRole('spinbutton', { name: 'Вертикальні відступи кнопки, px' }).fill('11');
+  await page.getByRole('spinbutton', { name: 'Горизонтальні відступи кнопки, px' }).fill('19');
+  await expect(preview.getByText(offer, { exact: true })).toHaveCSS('font-size', '23px');
+  await expect(preview.getByText(offer, { exact: true })).toHaveCSS('font-weight', '700');
+  const previewButton = preview.getByText('До акцій', { exact: true });
+  await expect(previewButton).toHaveCSS('font-size', '19px');
+  await expect(previewButton).toHaveCSS('font-weight', '800');
+  await expect(previewButton).toHaveCSS('padding', '11px 19px');
   await preview.getByRole('button', { name: 'Мобільний' }).click();
   await expect(preview.getByText(offer, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Показ', exact: true }).click();
@@ -64,7 +80,18 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
   expect(created.status()).toBe(201);
   const input = created.request().postDataJSON() as SiteThemeInput;
   expect(input.name).toBe(themeName);
-  expect(input.promoBar).toMatchObject({ text: offer, alignment: 'right', showDesktop: true, showMobile: false });
+  expect(input.promoBar).toMatchObject({
+    text: offer,
+    alignment: 'right',
+    textFontSize: 23,
+    textFontWeight: 700,
+    buttonFontSize: 19,
+    buttonFontWeight: 800,
+    buttonPaddingY: 11,
+    buttonPaddingX: 19,
+    showDesktop: true,
+    showMobile: false
+  });
   await page.getByRole('button', { name: 'Бібліотека тем' }).click();
   await expect(page.getByRole('heading', { name: themeName })).toBeVisible();
 

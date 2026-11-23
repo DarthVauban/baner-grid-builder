@@ -1,3 +1,5 @@
+export type SiteThemeFontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+
 export interface SiteThemePromoBar {
   text: string;
   buttonText: string;
@@ -6,6 +8,12 @@ export interface SiteThemePromoBar {
   textColor: string;
   buttonColor: string;
   buttonTextColor: string;
+  textFontSize: number;
+  textFontWeight: SiteThemeFontWeight | 'inherit';
+  buttonFontSize: number;
+  buttonFontWeight: SiteThemeFontWeight;
+  buttonPaddingY: number;
+  buttonPaddingX: number;
   alignment: 'left' | 'center' | 'right';
   paddingY: number;
   paddingX: number;

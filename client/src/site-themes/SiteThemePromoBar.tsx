@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import type { StyledSelectOption } from '../components/StyledSelect';
-import type { SiteThemePromoBar } from '../types/site-theme';
+import type { SiteThemeFontWeight, SiteThemePromoBar } from '../types/site-theme';
 
 const alignmentOptions: StyledSelectOption<SiteThemePromoBar['alignment']>[] = [
   { value: 'left', label: 'Ліворуч' },
@@ -10,18 +10,62 @@ const alignmentOptions: StyledSelectOption<SiteThemePromoBar['alignment']>[] = [
   { value: 'right', label: 'Праворуч' }
 ];
 
-const colorFields = [
+const messageColorFields = [
   { field: 'backgroundColor', label: 'Колір фону' },
-  { field: 'textColor', label: 'Колір тексту' },
+  { field: 'textColor', label: 'Колір тексту' }
+] as const;
+
+const buttonColorFields = [
   { field: 'buttonColor', label: 'Колір кнопки' },
   { field: 'buttonTextColor', label: 'Колір тексту кнопки' }
 ] as const;
+
+const fontWeights: SiteThemeFontWeight[] = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+const buttonFontWeightOptions = fontWeights.map((value) => ({ value, label: String(value) }));
+const textFontWeightOptions: StyledSelectOption<SiteThemePromoBar['textFontWeight']>[] = [
+  { value: 'inherit', label: 'Як на сайті' },
+  ...buttonFontWeightOptions
+];
 
 const tabs = [
   { value: 'content', label: 'Контент' },
   { value: 'style', label: 'Стилі' },
   { value: 'visibility', label: 'Показ' }
 ] as const;
+
+function PixelField({
+  label, value, min, max, onChange
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  const [typedValue, setTypedValue] = useState<string | null>(null);
+
+  return <label className="field">
+    <span>{label}</span>
+    <input
+      type="number"
+      min={min}
+      max={max}
+      value={typedValue ?? value}
+      onChange={(event) => {
+        const nextValue = event.currentTarget.valueAsNumber;
+        setTypedValue(event.currentTarget.value);
+        if (Number.isInteger(nextValue) && nextValue >= min && nextValue <= max) onChange(nextValue);
+      }}
+      onBlur={(event) => {
+        const nextValue = event.currentTarget.valueAsNumber;
+        setTypedValue(null);
+        if (!Number.isFinite(nextValue)) return;
+        const boundedValue = Math.max(min, Math.min(max, Math.trunc(nextValue)));
+        if (boundedValue !== value) onChange(boundedValue);
+      }}
+    />
+  </label>;
+}
 
 export function SiteThemePromoBarSettings({
   config, disabled, onChange
@@ -31,6 +75,14 @@ export function SiteThemePromoBarSettings({
   onChange: (patch: Partial<SiteThemePromoBar>) => void;
 }) {
   const [tab, setTab] = useState<(typeof tabs)[number]['value']>('content');
+
+  function renderColorFields(fields: typeof messageColorFields | typeof buttonColorFields) {
+    return fields.map(({ field, label }) => <label className="site-themes__color-field" key={field}>
+      <span>{label}</span>
+      <input type="color" value={config[field]} onChange={(event) => onChange({ [field]: event.target.value })} />
+      <code aria-hidden="true">{config[field].toUpperCase()}</code>
+    </label>);
+  }
 
   return <section className="site-themes__panel site-themes__settings" aria-labelledby="site-theme-settings-heading">
     <header className="site-themes__panel-header">
@@ -73,43 +125,80 @@ export function SiteThemePromoBarSettings({
         </label>
       </>}
       {tab === 'style' && <>
-        {colorFields.map(({ field, label }) => <label className="site-themes__color-field" key={field}>
-          <span>{label}</span>
-          <input type="color" value={config[field]} onChange={(event) => onChange({ [field]: event.target.value })} />
-          <code aria-hidden="true">{config[field].toUpperCase()}</code>
-        </label>)}
-        <div className="field">
-          <span>Вирівнювання</span>
-          <StyledSelect
-            ariaLabel="Вирівнювання"
-            value={config.alignment}
-            options={alignmentOptions}
-            onChange={(alignment) => onChange({ alignment })}
-            disabled={disabled}
-            compact
+        <div className="site-themes__style-group">
+          <h4>Промосмуга</h4>
+          <div className="site-themes__style-grid">{renderColorFields(messageColorFields)}</div>
+          <PixelField
+            label="Розмір тексту промосмуги, px"
+            value={config.textFontSize}
+            min={10}
+            max={48}
+            onChange={(textFontSize) => onChange({ textFontSize })}
           />
+          <div className="field">
+            <span>Насиченість тексту промосмуги</span>
+            <StyledSelect
+              ariaLabel="Насиченість тексту промосмуги"
+              value={config.textFontWeight}
+              options={textFontWeightOptions}
+              onChange={(textFontWeight) => onChange({ textFontWeight })}
+              disabled={disabled}
+              compact
+            />
+          </div>
+          <div className="field">
+            <span>Вирівнювання</span>
+            <StyledSelect
+              ariaLabel="Вирівнювання"
+              value={config.alignment}
+              options={alignmentOptions}
+              onChange={(alignment) => onChange({ alignment })}
+              disabled={disabled}
+              compact
+            />
+          </div>
+          <div className="site-themes__style-grid">
+            <PixelField label="Вертикальні відступи, px" value={config.paddingY} min={0} max={40} onChange={(paddingY) => onChange({ paddingY })} />
+            <PixelField label="Горизонтальні відступи, px" value={config.paddingX} min={0} max={80} onChange={(paddingX) => onChange({ paddingX })} />
+          </div>
         </div>
-        <div className="site-themes__padding-fields">
-          <label className="field">
-            <span>Вертикальні відступи, px</span>
-            <input
-              type="number" min={0} max={40} value={config.paddingY}
-              onChange={(event) => {
-                const value = event.target.valueAsNumber;
-                onChange({ paddingY: Number.isFinite(value) ? Math.max(0, Math.min(40, Math.trunc(value))) : 0 });
-              }}
+        <div className="site-themes__style-group">
+          <h4>Кнопка</h4>
+          <div className="site-themes__style-grid">{renderColorFields(buttonColorFields)}</div>
+          <PixelField
+            label="Розмір тексту кнопки, px"
+            value={config.buttonFontSize}
+            min={10}
+            max={48}
+            onChange={(buttonFontSize) => onChange({ buttonFontSize })}
+          />
+          <div className="field">
+            <span>Насиченість тексту кнопки</span>
+            <StyledSelect
+              ariaLabel="Насиченість тексту кнопки"
+              value={config.buttonFontWeight}
+              options={buttonFontWeightOptions}
+              onChange={(buttonFontWeight) => onChange({ buttonFontWeight })}
+              disabled={disabled}
+              compact
             />
-          </label>
-          <label className="field">
-            <span>Горизонтальні відступи, px</span>
-            <input
-              type="number" min={0} max={80} value={config.paddingX}
-              onChange={(event) => {
-                const value = event.target.valueAsNumber;
-                onChange({ paddingX: Number.isFinite(value) ? Math.max(0, Math.min(80, Math.trunc(value))) : 0 });
-              }}
+          </div>
+          <div className="site-themes__style-grid">
+            <PixelField
+              label="Вертикальні відступи кнопки, px"
+              value={config.buttonPaddingY}
+              min={0}
+              max={32}
+              onChange={(buttonPaddingY) => onChange({ buttonPaddingY })}
             />
-          </label>
+            <PixelField
+              label="Горизонтальні відступи кнопки, px"
+              value={config.buttonPaddingX}
+              min={0}
+              max={48}
+              onChange={(buttonPaddingX) => onChange({ buttonPaddingX })}
+            />
+          </div>
         </div>
       </>}
       {tab === 'visibility' && <>
@@ -162,8 +251,16 @@ export function SiteThemePromoBarPreview({
             className="site-themes__bar-inner"
             style={{ justifyContent, textAlign: config.alignment, padding: `${config.paddingY}px ${config.paddingX}px` }}
           >
-            <span>{config.text}</span>
-            {withButton && <span className="site-themes__bar-button" style={{ color: config.buttonTextColor, backgroundColor: config.buttonColor }}>
+            <span className="site-themes__bar-message" style={{ fontSize: config.textFontSize, fontWeight: config.textFontWeight }}>
+              {config.text}
+            </span>
+            {withButton && <span className="site-themes__bar-button" style={{
+              color: config.buttonTextColor,
+              backgroundColor: config.buttonColor,
+              fontSize: config.buttonFontSize,
+              fontWeight: config.buttonFontWeight,
+              padding: `${config.buttonPaddingY}px ${config.buttonPaddingX}px`
+            }}>
               {config.buttonText}
             </span>}
           </div>

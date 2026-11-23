@@ -20,6 +20,8 @@ router.use(requireAuth, requireToolAccess(siteThemeToolId));
 
 const idSchema = z.uuid();
 const colorSchema = z.string().regex(/^#[0-9a-f]{6}$/iu, 'Вкажіть колір у форматі #RRGGBB.');
+const fontSizeSchema = z.number().int().min(10).max(48);
+const fontWeightSchema = z.literal([100, 200, 300, 400, 500, 600, 700, 800, 900]);
 const textSchema = (maxLength) => z.string().trim().max(maxLength)
   .refine((value) => !value.includes('\0'), 'Видаліть неприпустимі символи.');
 
@@ -46,6 +48,12 @@ const inputSchema = z.object({
     textColor: colorSchema,
     buttonColor: colorSchema,
     buttonTextColor: colorSchema,
+    textFontSize: fontSizeSchema.optional(),
+    textFontWeight: z.union([z.literal('inherit'), fontWeightSchema]).optional(),
+    buttonFontSize: fontSizeSchema.optional(),
+    buttonFontWeight: fontWeightSchema.optional(),
+    buttonPaddingY: z.number().int().min(0).max(32).optional(),
+    buttonPaddingX: z.number().int().min(0).max(48).optional(),
     alignment: z.enum(['left', 'center', 'right']),
     paddingY: z.number().int().min(0).max(40),
     paddingX: z.number().int().min(0).max(80),
