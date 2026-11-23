@@ -1,20 +1,23 @@
 import { isDeepStrictEqual } from 'node:util';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { withPromoBarStyleDefaults } from './site-theme-promo-bar.js';
 
 export const siteThemeToolId = 'site_themes';
 
 const currentStoreCondition = `connection.singleton = TRUE AND connection.status IN ('connected', 'syncing', 'error')`;
 
 function serializeSiteTheme(row) {
+  const promoBar = withPromoBarStyleDefaults(row.draft_promo_bar);
+  const publishedPromoBar = row.published_promo_bar && withPromoBarStyleDefaults(row.published_promo_bar);
   return {
     id: row.id,
     name: row.name,
-    promoBar: row.draft_promo_bar,
+    promoBar,
     promoBarEnabled: row.promo_bar_enabled,
     active: row.active,
     publishedAt: row.published_at?.toISOString() ?? null,
-    hasUnpublishedChanges: row.name !== row.published_name || !isDeepStrictEqual(row.draft_promo_bar, row.published_promo_bar),
+    hasUnpublishedChanges: row.name !== row.published_name || !isDeepStrictEqual(promoBar, publishedPromoBar),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString()
   };
@@ -70,7 +73,7 @@ export function createSiteTheme({ name, promoBar }, actorId) {
       INSERT INTO site_themes (connection_id, connection_generation, name, draft_promo_bar, created_by, updated_by)
       VALUES ($1, $2, $3, $4::JSONB, $5, $5)
       RETURNING *
-    `, [connection.id, connection.generation, name, JSON.stringify(promoBar), actorId]);
+    `, [connection.id, connection.generation, name, JSON.stringify(withPromoBarStyleDefaults(promoBar)), actorId]);
     return serializeSiteTheme(theme);
   });
 }
@@ -78,12 +81,14 @@ export function createSiteTheme({ name, promoBar }, actorId) {
 export function updateSiteTheme(id, { name, promoBar }, actorId) {
   return withCurrentStore(async (client, connection) => {
     const current = await findSiteTheme(client, connection, id);
-    if (current.name === name && isDeepStrictEqual(current.draft_promo_bar, promoBar)) return serializeSiteTheme(current);
+    const currentPromoBar = withPromoBarStyleDefaults(current.draft_promo_bar);
+    const updatedPromoBar = { ...currentPromoBar, ...promoBar };
+    if (current.name === name && isDeepStrictEqual(currentPromoBar, updatedPromoBar)) return serializeSiteTheme(current);
 
     const { rows: [theme] } = await client.query(`
       UPDATE site_themes SET name = $2, draft_promo_bar = $3::JSONB, updated_by = $4, updated_at = NOW()
       WHERE id = $1 RETURNING *
-    `, [id, name, JSON.stringify(promoBar), actorId]);
+    `, [id, name, JSON.stringify(updatedPromoBar), actorId]);
     return serializeSiteTheme(theme);
   });
 }
@@ -170,5 +175,5 @@ export async function getPublishedSiteThemePromoBar(origin) {
   `);
   if (!theme || normalStoreHost(storefront.hostname) !== normalStoreHost(theme.store_domain)) return null;
   const config = theme.published_promo_bar;
-  return config?.showDesktop || config?.showMobile ? config : null;
+  return config?.showDesktop || config?.showMobile ? withPromoBarStyleDefaults(config) : null;
 }
