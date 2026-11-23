@@ -23,6 +23,7 @@ const HoroshopFeedsPage = lazy(() => import('../pages/HoroshopFeedsPage').then((
 const HoroshopStickersPage = lazy(() => import('../pages/HoroshopStickersPage').then((module) => ({ default: module.HoroshopStickersPage })));
 const HoroshopPopularityPage = lazy(() => import('../pages/HoroshopPopularityPage').then((module) => ({ default: module.HoroshopPopularityPage })));
 const HoroshopWidgetsPage = lazy(() => import('../pages/HoroshopWidgetsPage').then((module) => ({ default: module.HoroshopWidgetsPage })));
+const SiteThemesPage = lazy(() => import('../pages/SiteThemesPage').then((module) => ({ default: module.SiteThemesPage })));
 
 const ChatPage = lazy(() => import('../pages/ChatPage').then((module) => ({
   default: module.ChatPage
@@ -210,6 +211,9 @@ export function App() {
             <Route path="editor" element={<Suspense fallback={<LoadingScreen />}><TradeInBuilderPage /></Suspense>} />
             <Route path="prototype" element={<Navigate to="../editor" replace />} />
           </Route>
+        </Route>
+        <Route element={<ToolAccessRoute tool="site_themes" />}>
+          <Route path="tools/site-themes" element={<Suspense fallback={<LoadingScreen />}><SiteThemesPage /></Suspense>} />
         </Route>
         <Route element={<WorkspaceShell />}>
           <Route index element={<DashboardPage />} />

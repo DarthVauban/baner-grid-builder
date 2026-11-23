@@ -50,6 +50,7 @@ import type {
   SavedGrid
 } from '../types/workspace';
 import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
+import type { SiteTheme, SiteThemeInput } from '../types/site-theme';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { BlogPostDocument } from '../types/blog-editor';
 import type { MediaAsset, MediaAssetFeed, MediaFolder, MediaFolderFeed } from '../types/media';
@@ -222,6 +223,25 @@ export const api = {
       { method: 'PUT', body: jsonBody(input) }
     ),
     remove: (id: string) => request<void>(`/api/product-selections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  siteThemes: {
+    list: (signal?: AbortSignal) => request<SiteTheme[]>('/api/site-themes', { signal }),
+    create: (input: SiteThemeInput) => request<SiteTheme>('/api/site-themes', {
+      method: 'POST', body: jsonBody(input)
+    }),
+    update: (id: string, input: SiteThemeInput) => request<SiteTheme>(
+      `/api/site-themes/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(input) }
+    ),
+    publish: (id: string) => request<SiteTheme>(
+      `/api/site-themes/${encodeURIComponent(id)}/publish`, { method: 'POST' }
+    ),
+    setActive: (id: string, active: boolean) => request<SiteTheme>(
+      `/api/site-themes/${encodeURIComponent(id)}/active`, { method: 'PUT', body: jsonBody({ active }) }
+    ),
+    setPromoBarEnabled: (id: string, enabled: boolean) => request<SiteTheme>(
+      `/api/site-themes/${encodeURIComponent(id)}/promo-bar/visibility`, { method: 'PUT', body: jsonBody({ enabled }) }
+    ),
+    remove: (id: string) => request<void>(`/api/site-themes/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   horoshopCartTheme: {
     settings: () => request<HoroshopCartThemeSettingsEnvelope>('/api/horoshop-cart-theme/settings'),

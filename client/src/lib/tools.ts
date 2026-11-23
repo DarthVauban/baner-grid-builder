@@ -48,6 +48,14 @@ export const toolCategories: ToolCategoryDefinition[] = [
 
 export const tools: ToolDefinition[] = [
   {
+    id: 'site_themes',
+    name: 'Теми сайту',
+    description: 'Бібліотека оформлення вітрини та редактор верхньої промосмуги з попереднім переглядом.',
+    path: '/tools/site-themes',
+    icon: 'bannerGrid',
+    category: 'horoshop_widgets'
+  },
+  {
     id: 'horoshop_feeds',
     name: 'Товарні фіди',
     description: 'Масове додавання та виключення товарів із фідів Google Merchant Center і Facebook з перевіркою та історією.',
