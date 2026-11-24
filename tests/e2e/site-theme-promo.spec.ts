@@ -56,6 +56,40 @@ for (const fixture of fixtures) {
   test.describe(`site theme promo bar on ${fixture.name}`, () => {
     test.use({ userAgent, viewport, isMobile, hasTouch, deviceScaleFactor });
 
+    test('keeps the promo bar in view when it loads after a small scroll', async ({ page }) => {
+      const markup = fixture.markup.replace('</main>', '<div style="height:200vh"></div></main>');
+      await mockThemeStorefront(page, markup, {
+        themeId: 'promo',
+        promoBar: {
+          mode: 'standard', text: 'Акція', backgroundColor: '#101010', textColor: '#ffffff',
+          alignment: 'center', paddingY: 12, paddingX: 20, showDesktop: true, showMobile: true
+        },
+        storefrontEffects: {}
+      });
+
+      let releaseAppearance!: () => void;
+      const appearanceReady = new Promise<void>((resolve) => { releaseAppearance = resolve; });
+      await page.route(`${panel}${dataPath}*`, async (route) => {
+        await appearanceReady;
+        await route.fallback();
+      });
+
+      try {
+        await page.goto(storefront);
+        await page.evaluate(async () => {
+          window.scrollTo(0, 1);
+          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        });
+        expect(await page.evaluate(() => window.scrollY)).toBe(1);
+      } finally {
+        releaseAppearance();
+      }
+
+      const bar = page.locator('[data-mt-site-promo-bar]');
+      await expect(bar).toBeInViewport({ ratio: 0.5 });
+      expect(await page.evaluate(() => window.scrollY)).toBe(1);
+    });
+
     test('renders both promo modes with their background, styles and device visibility', async ({ page }) => {
       const promoBar = {
         mode: 'standard',

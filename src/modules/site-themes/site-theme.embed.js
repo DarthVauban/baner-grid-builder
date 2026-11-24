@@ -2,7 +2,7 @@ import { promoBarStyleDefaults } from './site-theme-promo-bar.js';
 import { mountPromoBarGoldGlint, mountPromoBarMarquee, promoBarBackgroundImage } from './site-theme-presentation.js';
 import { mountSiteThemeConfetti, mountSiteThemeCornerRibbons } from './site-theme-storefront-effects.js';
 
-export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=6';
+export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=7';
 
 function installSiteTheme(browser, configPath, defaults, backgroundImage, mountMarquee, mountGoldGlint, mountRibbons, mountConfetti) {
   const { document, location, navigator } = browser;
@@ -162,7 +162,13 @@ function installSiteTheme(browser, configPath, defaults, backgroundImage, mountM
     }
 
     bar.append(inner);
+    const scrollTop = browser.scrollY;
     document.body.prepend(bar);
+    const barHeight = bar.getBoundingClientRect().height;
+    // Undo scroll anchoring when prepending the bar would push it out of view near the top.
+    if (scrollTop >= 0 && scrollTop < barHeight && Math.abs(browser.scrollY - scrollTop - barHeight) < 1) {
+      browser.scrollTo({ top: scrollTop, behavior: 'instant' });
+    }
     if (isMobile) alignMobileHeader(bar);
     if (marquee) mountMarquee(messageContainer, message, config.marqueeSpeed ?? defaults.marqueeSpeed);
     if (config.goldGlint) mountGoldGlint(bar, config.goldGlint);
