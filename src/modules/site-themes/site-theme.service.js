@@ -96,9 +96,9 @@ export function updateSiteTheme(id, { name, promoBar }, actorId) {
 export function publishSiteTheme(id, actorId) {
   return withCurrentStore(async (client, connection) => {
     const current = await findSiteTheme(client, connection, id);
-    const { text, buttonText, buttonUrl } = current.draft_promo_bar;
+    const { text, buttonText, buttonUrl, mode } = withPromoBarStyleDefaults(current.draft_promo_bar);
     if (!text) throw new AppError(422, 'SITE_THEME_PROMO_TEXT_REQUIRED', 'Додайте текст промосмуги перед публікацією.');
-    if (Boolean(buttonText) !== Boolean(buttonUrl)) {
+    if (mode === 'standard' && Boolean(buttonText) !== Boolean(buttonUrl)) {
       throw new AppError(422, 'SITE_THEME_PROMO_BUTTON_INCOMPLETE', 'Вкажіть текст і посилання для кнопки промосмуги.');
     }
 

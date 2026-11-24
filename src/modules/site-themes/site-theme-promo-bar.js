@@ -1,4 +1,7 @@
 export const promoBarStyleDefaults = Object.freeze({
+  mode: 'standard',
+  marqueeSpeed: 60,
+  backgroundImageUrl: '',
   textFontSize: 14,
   textFontWeight: 'inherit',
   buttonFontSize: 14,

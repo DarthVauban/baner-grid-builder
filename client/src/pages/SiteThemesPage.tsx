@@ -6,17 +6,20 @@ import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import { SiteThemePromoBarPreview, SiteThemePromoBarSettings } from '../site-themes/SiteThemePromoBar';
 import { useToast } from '../toast/ToastContext';
-import type { SiteTheme, SiteThemeInput } from '../types/site-theme';
+import type { SiteTheme, SiteThemeInput, SiteThemePromoBar } from '../types/site-theme';
 import '../styles/site-themes.css';
 
 const queryKey = ['site-themes'] as const;
 const blankTheme: SiteThemeInput = {
   name: '',
   promoBar: {
+    mode: 'standard',
+    marqueeSpeed: 60,
     text: 'Спеціальна пропозиція',
     buttonText: '',
     buttonUrl: '',
     backgroundColor: '#171923',
+    backgroundImageUrl: '',
     textColor: '#ffffff',
     buttonColor: '#f5ce62',
     buttonTextColor: '#171923',
@@ -123,6 +126,20 @@ export function SiteThemesPage() {
     else setEditor(null);
   }
 
+  function updatePromoBar(patch: Partial<SiteThemePromoBar>) {
+    setEditor((current) => current && {
+      ...current,
+      input: { ...current.input, promoBar: { ...current.input.promoBar, ...patch } }
+    });
+  }
+
+  function uploadBackgroundImage(file: File) {
+    mutation.mutate(async () => {
+      const asset = await api.siteThemes.uploadBackgroundImage(file);
+      updatePromoBar({ backgroundImageUrl: asset.url });
+    });
+  }
+
   function saveDraft(publish: boolean) {
     if (!editor) return;
     const { id, input } = editor;
@@ -135,7 +152,8 @@ export function SiteThemesPage() {
       showToast('Введіть текст промосмуги, щоб опублікувати тему.', 'error');
       return;
     }
-    if (publish && Boolean(input.promoBar.buttonText.trim()) !== Boolean(input.promoBar.buttonUrl.trim())) {
+    if (publish && input.promoBar.mode === 'standard'
+      && Boolean(input.promoBar.buttonText.trim()) !== Boolean(input.promoBar.buttonUrl.trim())) {
       showToast('Заповніть текст і посилання кнопки або залиште обидва поля порожніми.', 'error');
       return;
     }
@@ -263,7 +281,8 @@ export function SiteThemesPage() {
           <SiteThemePromoBarSettings
             config={editor.input.promoBar}
             disabled={busy}
-            onChange={(patch) => setEditor({ ...editor, input: { ...editor.input, promoBar: { ...editor.input.promoBar, ...patch } } })}
+            onChange={updatePromoBar}
+            onUploadBackgroundImage={uploadBackgroundImage}
           />
         </div>
       </> : <section aria-labelledby="site-theme-library-heading">

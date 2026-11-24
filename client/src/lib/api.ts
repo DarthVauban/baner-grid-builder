@@ -225,6 +225,9 @@ export const api = {
     remove: (id: string) => request<void>(`/api/product-selections/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   siteThemes: {
+    uploadBackgroundImage: (file: File) => request<MediaAsset>('/api/site-themes/background-image', {
+      method: 'POST', headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) }, body: file, timeoutMs: 60_000
+    }),
     list: (signal?: AbortSignal) => request<SiteTheme[]>('/api/site-themes', { signal }),
     create: (input: SiteThemeInput) => request<SiteTheme>('/api/site-themes', {
       method: 'POST', body: jsonBody(input)

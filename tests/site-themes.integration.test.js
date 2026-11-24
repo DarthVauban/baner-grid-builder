@@ -1,6 +1,10 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import sharp from 'sharp';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -11,6 +15,8 @@ process.env.APP_ORIGIN = 'https://panel.example.com';
 process.env.ADMIN_NAME = 'Site Themes Admin';
 process.env.ADMIN_EMAIL = 'site-themes-admin@test.local';
 process.env.ADMIN_PASSWORD = 'AdminPassword123!';
+const mediaDir = await mkdtemp(join(tmpdir(), 'mt-site-theme-images-'));
+process.env.CATALOG_MEDIA_DIR = mediaDir;
 
 const { default: app } = await import('../src/app.js');
 const { pool } = await import('../src/db/pool.js');
@@ -38,6 +44,9 @@ const promoBar = {
   showMobile: true
 };
 const defaultPromoBarStyle = {
+  mode: 'standard',
+  marqueeSpeed: 60,
+  backgroundImageUrl: '',
   textFontSize: 14,
   textFontWeight: 'inherit',
   buttonFontSize: 14,
@@ -46,6 +55,7 @@ const defaultPromoBarStyle = {
   buttonPaddingX: 12
 };
 const editedPromoBarStyle = {
+  ...defaultPromoBarStyle,
   textFontSize: 24,
   textFontWeight: 700,
   buttonFontSize: 18,
@@ -69,6 +79,7 @@ before(async () => {
 
 after(async () => {
   await pool.end();
+  await rm(mediaDir, { recursive: true, force: true });
 });
 
 const themePath = (id) => `${themesPath}/${id}`;
@@ -201,6 +212,12 @@ test('incomplete draft content is allowed but unsafe values are rejected', async
     { buttonUrl: '//outside.example.com/sale/' },
     { buttonUrl: '/\\outside.example.com/' },
     { backgroundColor: 'red;position:fixed' },
+    { backgroundImageUrl: 'data:image/svg+xml,<!-- -->' },
+    { backgroundImageUrl: 'https://user:password@example.com/image.png' },
+    { backgroundImageUrl: '/media/catalog/library/../other.webp' },
+    { mode: 'invalid' },
+    { marqueeSpeed: 19 },
+    { marqueeSpeed: 241 },
     { textFontSize: 9 },
     { textFontWeight: 450 },
     { buttonFontSize: 48.5 },
@@ -216,6 +233,41 @@ test('incomplete draft content is allowed but unsafe values are rejected', async
   const blank = await createTheme('Чернетка', { ...promoBar, text: '', buttonText: '', buttonUrl: '' });
   await admin.post(`${themePath(blank.id)}/publish`).expect(422);
   await admin.delete(themePath(blank.id)).expect(204);
+});
+
+test('uploads a public promo background and publishes a marquee independently of the saved button draft', async () => {
+  const imagePath = `${themesPath}/background-image`;
+  await request(app).post(imagePath).set('Content-Type', 'image/png').expect(401);
+  await admin.post(imagePath).set('Content-Type', 'image/svg+xml').send('<svg />').expect(415);
+  const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: 'red' } }).png().toBuffer();
+  const response = await admin.post(imagePath).set('Content-Type', 'image/png')
+    .set('X-File-Name', 'banner.png').send(png).expect(201);
+  const backgroundImageUrl = response.body.data.url;
+  assert.match(backgroundImageUrl, /^\/media\/catalog\/library\/.*\.webp$/u);
+  await request(app).get(backgroundImageUrl).expect('Content-Type', 'image/webp').expect(200);
+
+  const name = 'Біжуча акція';
+  const marquee = {
+    ...promoBar,
+    buttonUrl: '',
+    mode: 'marquee',
+    marqueeSpeed: 100,
+    backgroundImageUrl
+  };
+  const theme = await createTheme(name, marquee);
+  await admin.post(`${themePath(theme.id)}/publish`).expect(200);
+  await setActive(theme.id, true);
+  assert.deepEqual(await publicBar(), { ...defaultPromoBarStyle, ...marquee });
+
+  await admin.put(themePath(theme.id)).send({
+    name,
+    promoBar: { ...marquee, mode: 'standard', backgroundImageUrl: '' }
+  }).expect(200);
+  await admin.post(`${themePath(theme.id)}/publish`).expect(422);
+  assert.equal((await publicBar()).mode, 'marquee');
+  assert.equal((await publicBar()).backgroundImageUrl, backgroundImageUrl);
+  await setActive(theme.id, false);
+  await admin.delete(themePath(theme.id)).expect(204);
 });
 
 test('a reconnected store does not inherit any draft or active publication from the old connection generation', async () => {

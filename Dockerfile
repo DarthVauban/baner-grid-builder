@@ -5,6 +5,7 @@ RUN npm ci
 COPY tsconfig.json vite.config.ts ./
 COPY build ./build
 COPY client ./client
+COPY src/modules/site-themes/site-theme-presentation.* ./src/modules/site-themes/
 RUN npm run build
 
 FROM node:20-alpine AS runtime

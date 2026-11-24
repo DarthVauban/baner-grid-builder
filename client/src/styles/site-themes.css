@@ -286,6 +286,9 @@
 }
 
 .site-themes__bar {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
   font-size: 14px;
   line-height: 1.4;
 }
@@ -303,6 +306,21 @@
 .site-themes__bar-message {
   min-width: 0;
   white-space: pre-wrap;
+}
+
+.site-themes__marquee {
+  position: relative;
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.site-themes__mode {
+  display: flex;
+}
+
+.site-themes__mode button {
+  flex: 1;
 }
 
 .site-themes__bar-button {
