@@ -26,6 +26,7 @@ const { ensureBootstrapAdmin } = await import('../src/modules/users/user.service
 const admin = request.agent(app);
 const themesPath = '/api/site-themes';
 const publicBarPath = '/api/public/site-themes/promo-bar';
+const appearancePath = '/api/public/site-themes/appearance';
 const sharedEmbedPath = '/api/public/horoshop-widgets/embed.js';
 const shopHost = 'shop.example.com';
 const shopOrigin = `https://${shopHost}`;
@@ -315,4 +316,52 @@ test('a reconnected store does not inherit any draft or active publication from 
   const list = await admin.get(themesPath).expect(200);
   assert.deepEqual(list.body.data, []);
   await admin.put(themePath(theme.id)).send({ name: 'Стара тема', promoBar }).expect(404);
+});
+
+test('standalone effects publish and toggle independently of the promo strip', async () => {
+  const cornerRibbons = {
+    imageUrl: '', opacity: 90,
+    desktop: { placement: 'both', size: 110 }, mobile: { placement: 'right', size: 60 }
+  };
+  const confetti = {
+    primaryColor: '#ffcc48', secondaryColor: '#171717', count: 42, durationMs: 1800,
+    delayMs: 500, frequency: 'session', showDesktop: true, showMobile: true
+  };
+  const storefrontEffects = { cornerRibbons, confetti };
+  const name = 'Святкова вітрина';
+  const emptyPromoBar = { ...promoBar, text: '', buttonText: '', buttonUrl: '' };
+  for (const invalidEffects of [
+    { cornerRibbons: { ...cornerRibbons, mobile: { ...cornerRibbons.mobile, size: 270 } } },
+    { cornerRibbons: { ...cornerRibbons, imageUrl: 'javascript:alert(1)' } },
+    { confetti: { ...confetti, count: 101 } }
+  ]) {
+    await admin.post(themesPath).send({ name, promoBar: emptyPromoBar, storefrontEffects: invalidEffects }).expect(422);
+  }
+  const created = await admin.post(themesPath).send({ name, promoBar: emptyPromoBar, storefrontEffects }).expect(201);
+  const { id } = created.body.data;
+  const path = themePath(id);
+  await admin.put(`${path}/promo-bar/visibility`).send({ enabled: false }).expect(200);
+  await admin.post(`${path}/publish`).expect(200);
+  await setActive(id, true);
+
+  async function appearance(origin = shopOrigin) {
+    return (await request(app).get(appearancePath).set('Origin', origin).expect(200)).body.data;
+  }
+
+  assert.deepEqual(await appearance(), { themeId: id, promoBar: null, storefrontEffects });
+  assert.equal(await publicBar(), null);
+  assert.equal(await appearance('https://other.example.com'), null);
+  assert.match(await sharedEmbed(), /site-themes\/embed\.js/u);
+
+  const olderClient = await admin.put(path).send({ name, promoBar: emptyPromoBar }).expect(200);
+  assert.deepEqual(olderClient.body.data.storefrontEffects, storefrontEffects);
+  await admin.put(path).send({ name, promoBar: emptyPromoBar, storefrontEffects: { confetti: null } }).expect(200);
+  assert.deepEqual((await appearance()).storefrontEffects, storefrontEffects);
+  await admin.put(`${path}/effects/cornerRibbons/visibility`).send({ enabled: false }).expect(200);
+  assert.deepEqual((await appearance()).storefrontEffects, { cornerRibbons: null, confetti });
+  await admin.put(`${path}/effects/confetti/visibility`).send({ enabled: false }).expect(200);
+  assert.equal(await appearance(), null);
+  assert.doesNotMatch(await sharedEmbed(), /site-themes\/embed\.js/u);
+  await setActive(id, false);
+  await admin.delete(path).expect(204);
 });

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { mountPromoBarGoldGlint, mountPromoBarMarquee, promoBarBackgroundImage } from '../../../src/modules/site-themes/site-theme-presentation.js';
+import { mountSiteThemeConfetti, mountSiteThemeCornerRibbons } from '../../../src/modules/site-themes/site-theme-storefront-effects.js';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import type { StyledSelectOption } from '../components/StyledSelect';
-import type { SiteThemeFontWeight, SiteThemePromoBar } from '../types/site-theme';
+import type { SiteThemeFontWeight, SiteThemePromoBar, SiteThemeStorefrontEffects } from '../types/site-theme';
 
 const alignmentOptions: StyledSelectOption<SiteThemePromoBar['alignment']>[] = [
   { value: 'left', label: 'Ліворуч' },
@@ -260,14 +261,16 @@ export function SiteThemePromoBarSettings({
 }
 
 export function SiteThemePromoBarPreview({
-  config, enabled, viewport, onViewportChange, glintReplay
-}: {
+  config, enabled, viewport, onViewportChange, glintReplay, cornerRibbons, confetti, confettiReplay
+}: SiteThemeStorefrontEffects & {
   config: SiteThemePromoBar;
   enabled: boolean;
   viewport: 'desktop' | 'mobile';
   onViewportChange: (value: 'desktop' | 'mobile') => void;
   glintReplay: number;
+  confettiReplay: number;
 }) {
+  const store = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
   const marqueeViewport = useRef<HTMLDivElement>(null);
   const marqueeMessage = useRef<HTMLSpanElement>(null);
@@ -292,6 +295,16 @@ export function SiteThemePromoBarPreview({
     return mountPromoBarGoldGlint(bar.current, goldGlint, true);
   }, [visible, goldGlint, glintReplay]);
 
+  useEffect(() => {
+    if (!store.current || !cornerRibbons) return;
+    return mountSiteThemeCornerRibbons(store.current, cornerRibbons, viewport, promoBarBackgroundImage);
+  }, [cornerRibbons, viewport]);
+
+  useEffect(() => {
+    if (!store.current || !confetti || !confettiReplay) return;
+    return mountSiteThemeConfetti(store.current, confetti, viewport, '', true);
+  }, [confetti, confettiReplay, viewport]);
+
   return <section className="site-themes__panel site-themes__preview" aria-labelledby="site-theme-preview-heading">
     <header className="site-themes__panel-header site-themes__preview-header">
       <h3 id="site-theme-preview-heading">Попередній перегляд</h3>
@@ -306,7 +319,7 @@ export function SiteThemePromoBarPreview({
     </header>
     {previewStatus && <p className="site-themes__preview-status" role="status">{previewStatus}</p>}
     <div className="site-themes__preview-stage">
-      <div className={`site-themes__store site-themes__store--${viewport}`}>
+      <div className={`site-themes__store site-themes__store--${viewport}`} ref={store}>
         {visible && text.trim() && <div className="site-themes__bar" ref={bar} style={{ backgroundColor: config.backgroundColor, backgroundImage, color: config.textColor }}>
           <div
             className="site-themes__bar-inner"

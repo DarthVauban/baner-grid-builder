@@ -1,4 +1,4 @@
-import type { SiteThemeGoldGlint } from '../types/site-theme';
+import type { SiteThemeEffectId, SiteThemeGoldGlint } from '../types/site-theme';
 
 export const defaultGoldGlint: SiteThemeGoldGlint = {
   color: '#ffcc48',
@@ -8,10 +8,35 @@ export const defaultGoldGlint: SiteThemeGoldGlint = {
   intervalSeconds: 12
 };
 
+export const siteThemeEffectCatalog: {
+  id: SiteThemeEffectId;
+  title: string;
+  placement: string;
+  description: string;
+  addLabel: string;
+  editLabel: string;
+}[] = [
+  {
+    id: 'goldGlint', title: 'Золотий відблиск', placement: 'На верхній промосмузі',
+    description: 'Світло проходить уздовж верхньої промосмуги під її вмістом.',
+    addLabel: 'Додати відблиск', editLabel: 'Налаштувати відблиск'
+  },
+  {
+    id: 'cornerRibbons', title: 'Кутові стрічки', placement: 'У верхніх кутах вітрини',
+    description: 'Статичні прикраси з окремим розміщенням для десктопа й мобільного.',
+    addLabel: 'Додати стрічки', editLabel: 'Налаштувати стрічки'
+  },
+  {
+    id: 'confetti', title: 'Залп конфеті', placement: 'З верхніх кутів вітрини',
+    description: 'Короткий сплеск частинок після відкриття сторінки.',
+    addLabel: 'Додати конфеті', editLabel: 'Налаштувати конфеті'
+  }
+];
+
 export function SiteThemeEffectLibrary({ added, disabled, onSelect }: {
-  added: boolean;
+  added: ReadonlySet<SiteThemeEffectId>;
   disabled: boolean;
-  onSelect: () => void;
+  onSelect: (effect: SiteThemeEffectId) => void;
 }) {
   return <section className="site-themes__panel site-themes__settings" aria-labelledby="site-theme-effects-heading">
     <header className="site-themes__panel-header">
@@ -19,19 +44,21 @@ export function SiteThemeEffectLibrary({ added, disabled, onSelect }: {
     </header>
     <div className="site-themes__fields">
       <h4 className="site-themes__effect-title">Чорна п’ятниця</h4>
-      <div className="site-themes__effect-swatch" aria-hidden="true" />
-      <div className="site-themes__effect-description">
-        <strong>Золотий відблиск</strong>
-        <p>Світло проходить уздовж верхньої промосмуги під її вмістом.</p>
-      </div>
-      <button type="button" className="button button--primary" disabled={disabled} onClick={onSelect}>
-        {added ? 'Налаштувати відблиск' : 'Додати відблиск'}
-      </button>
+      {siteThemeEffectCatalog.map((effect) => <article className="site-themes__effect-card" key={effect.id}>
+        <div className={`site-themes__effect-swatch site-themes__effect-visual--${effect.id}`} aria-hidden="true" />
+        <div className="site-themes__effect-description">
+          <strong>{effect.title}</strong>
+          <p>{effect.description}</p>
+        </div>
+        <button type="button" className="button button--primary" disabled={disabled} onClick={() => onSelect(effect.id)}>
+          {added.has(effect.id) ? effect.editLabel : effect.addLabel}
+        </button>
+      </article>)}
     </div>
   </section>;
 }
 
-function EffectSlider({ label, min, max, step = 1, value, display, onChange }: {
+export function EffectSlider({ label, min, max, step = 1, value, display, onChange }: {
   label: string;
   min: number;
   max: number;

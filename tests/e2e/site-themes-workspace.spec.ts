@@ -15,6 +15,7 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
         id: 'b3468f76-57bc-4b3e-b976-9db8b60ecf91',
         promoBarEnabled: true,
         goldGlintEnabled: true,
+        storefrontEffectVisibility: { cornerRibbons: true, confetti: true },
         active: false,
         publishedAt: null,
         hasUnpublishedChanges: true,
@@ -28,6 +29,13 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
   await page.route('**/api/site-themes/*/effects/gold-glint/visibility', (route) => {
     if (!draft) return route.abort();
     draft = { ...draft, goldGlintEnabled: route.request().postDataJSON().enabled };
+    return route.fulfill({ json: { data: draft } });
+  });
+  await page.route('**/api/site-themes/*/effects/cornerRibbons/visibility', (route) => {
+    if (!draft) return route.abort();
+    draft = { ...draft, storefrontEffectVisibility: {
+      ...draft.storefrontEffectVisibility, cornerRibbons: route.request().postDataJSON().enabled
+    } };
     return route.fulfill({ json: { data: draft } });
   });
 
@@ -118,6 +126,25 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
   await expect(glint).toBeVisible();
   await expect(glint.locator('div')).toHaveCSS('opacity', '1');
 
+  await page.getByRole('button', { name: 'Бібліотека ефектів' }).click();
+  await page.getByRole('button', { name: 'Додати стрічки' }).click();
+  const ribbons = preview.locator('[data-mt-site-theme-ribbon]');
+  await expect(ribbons).toHaveCount(2);
+  await page.getByRole('button', { name: 'Кути на мобільному' }).click();
+  await page.getByRole('option', { name: 'Правий кут' }).click();
+  await page.getByRole('slider', { name: 'Розмір на мобільному' }).press('Home');
+  await preview.getByRole('button', { name: 'Мобільний' }).click();
+  await expect(ribbons).toHaveCount(1);
+  await expect(ribbons).toHaveAttribute('data-mt-site-theme-ribbon', 'right');
+  await expect(ribbons).toHaveCSS('width', '28px');
+  await expect(preview.getByText(offer, { exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Бібліотека ефектів' }).click();
+  await page.getByRole('button', { name: 'Додати конфеті' }).click();
+  await page.getByRole('slider', { name: 'Кількість частинок' }).press('Home');
+  await page.getByRole('button', { name: 'Відтворити ефект' }).click();
+  await expect(preview.locator('[data-mt-site-theme-confetti] > span')).toHaveCount(12);
+
   const [created] = await Promise.all([
     page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/site-themes')),
     page.getByRole('button', { name: 'Зберегти чернетку' }).click()
@@ -143,10 +170,18 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
     showDesktop: true,
     showMobile: false
   });
+  expect(input.storefrontEffects).toMatchObject({
+    cornerRibbons: { desktop: { placement: 'both' }, mobile: { placement: 'right', size: 28 } },
+    confetti: { count: 12, frequency: 'session' }
+  });
   const glintSwitch = page.getByRole('switch', { name: 'Показувати золотий відблиск' });
   await expect(glintSwitch).toHaveAttribute('aria-checked', 'true');
   await glintSwitch.click();
   await expect(glintSwitch).toHaveAttribute('aria-checked', 'false');
+  const ribbonSwitch = page.getByRole('switch', { name: 'Показувати кутові стрічки' });
+  await ribbonSwitch.click();
+  await expect(ribbonSwitch).toHaveAttribute('aria-checked', 'false');
+  await expect(ribbons).toHaveCount(0);
   await expect(page.getByText('Є незбережені зміни', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Бібліотека тем' }).click();
   await expect(page.getByRole('heading', { name: themeName })).toBeVisible();

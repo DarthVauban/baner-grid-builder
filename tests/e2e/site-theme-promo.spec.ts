@@ -1,13 +1,34 @@
 import { devices, expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 const embedPath = '/api/public/site-themes/embed.js';
-const dataPath = '/api/public/site-themes/promo-bar';
+const dataPath = '/api/public/site-themes/appearance';
 const panel = 'http://panel.example.test';
 const storefront = 'http://shop.example.test';
 const backgroundPath = '/media/catalog/library/promo.webp';
 const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=', 'base64');
 const literalOffer = '<strong>Знижки на смартфони цього тижня</strong>\nЛише онлайн';
 const desktopMarkup = '<header id="store-header"><nav><a href="/catalog/">Каталог</a></nav></header><main><h1>Смартфони</h1></main>';
+
+async function mockThemeStorefront(page: Page, markup: string, appearance: object) {
+  const scriptResponse = await page.request.get(embedPath);
+  expect(scriptResponse.ok()).toBe(true);
+  const script = await scriptResponse.text();
+  await page.route(`${panel}${embedPath}`, (route) => route.fulfill({
+    contentType: 'application/javascript', body: script
+  }));
+  await page.route(`${panel}${dataPath}*`, (route) => route.fulfill({
+    json: { data: appearance }, headers: { 'access-control-allow-origin': '*' }
+  }));
+  await page.route(`${panel}${backgroundPath}`, (route) => route.fulfill({
+    contentType: 'image/png', body: image
+  }));
+  await page.route(`${storefront}/**`, (route) => route.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0}#store-header{padding:12px}</style></head><body>${markup}<script src="${panel}${embedPath}"></script><script src="${panel}${embedPath}"></script></body></html>`
+  }));
+}
+
 const fixtures = [
   {
     name: 'desktop laptop',
@@ -36,9 +57,6 @@ for (const fixture of fixtures) {
     test.use({ userAgent, viewport, isMobile, hasTouch, deviceScaleFactor });
 
     test('renders both promo modes with their background, styles and device visibility', async ({ page }) => {
-      const scriptResponse = await page.request.get(embedPath);
-      expect(scriptResponse.ok()).toBe(true);
-      const script = await scriptResponse.text();
       const promoBar = {
         mode: 'standard',
         marqueeSpeed: 120,
@@ -67,19 +85,9 @@ for (const fixture of fixtures) {
         showMobile: fixture.mobile
       };
 
-      await page.route(`${panel}${embedPath}`, (route) => route.fulfill({
-        contentType: 'application/javascript', body: script
-      }));
-      await page.route(`${panel}${dataPath}*`, (route) => route.fulfill({
-        json: { data: promoBar }, headers: { 'access-control-allow-origin': '*' }
-      }));
-      await page.route(`${panel}${backgroundPath}`, (route) => route.fulfill({
-        contentType: 'image/png', body: image
-      }));
-      await page.route(`${storefront}/**`, (route) => route.fulfill({
-        contentType: 'text/html',
-        body: `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0}#store-header{padding:12px}</style></head><body>${fixture.markup}<script src="${panel}${embedPath}"></script><script src="${panel}${embedPath}"></script></body></html>`
-      }));
+      await mockThemeStorefront(page, fixture.markup, {
+        themeId: 'promo', promoBar, storefrontEffects: { cornerRibbons: null, confetti: null }
+      });
 
       await page.goto(storefront);
       const bar = page.locator('[data-mt-site-promo-bar]');
@@ -164,6 +172,64 @@ for (const fixture of fixtures) {
       }));
       await expect(bar).toBeHidden();
       await expect(header).toBeVisible();
+    });
+
+    test('shows corner ribbons and a session-limited confetti burst without a promo bar', async ({ page }) => {
+      const themeId = 'black-friday';
+      const sessionKey = `mt-site-theme-confetti:${themeId}`;
+      await mockThemeStorefront(page, fixture.markup, {
+        themeId,
+        promoBar: null,
+        storefrontEffects: {
+          cornerRibbons: {
+            imageUrl: backgroundPath, opacity: 75,
+            desktop: { placement: 'both', size: 126 }, mobile: { placement: 'right', size: 61 }
+          },
+          confetti: {
+            primaryColor: '#ffcc48', secondaryColor: '#171717', count: 16, durationMs: 1200,
+            delayMs: 400, frequency: 'session', showDesktop: true, showMobile: true
+          }
+        }
+      });
+      await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
+      await page.clock.pauseAt(new Date('2026-01-01T00:00:01Z'));
+      await page.goto(storefront);
+
+      const host = page.locator('[data-mt-site-theme-effects]');
+      const ribbons = host.locator('[data-mt-site-theme-ribbon]');
+      const rightRibbon = host.locator('[data-mt-site-theme-ribbon="right"]');
+      const confetti = host.locator('[data-mt-site-theme-confetti]');
+      await expect(host).toHaveCount(1);
+      await expect(page.locator('[data-mt-site-promo-bar]')).toHaveCount(0);
+      await expect(ribbons).toHaveCount(fixture.mobile ? 1 : 2);
+      await expect(rightRibbon).toHaveCSS('width', fixture.mobile ? '61px' : '126px');
+      await expect(rightRibbon).toHaveCSS('opacity', '0.75');
+      await expect(rightRibbon).toHaveCSS('background-image', `url("${panel}${backgroundPath}")`);
+      await expect(confetti).toHaveCount(0);
+      await page.clock.runFor(450);
+      await expect(confetti.locator('span')).toHaveCount(16);
+      await expect(confetti).toHaveCSS('pointer-events', 'none');
+      expect(await page.evaluate((key) => sessionStorage.getItem(key), sessionKey)).toBe('1');
+      await page.clock.runFor(1200);
+      await expect(confetti).toHaveCount(0);
+      await expect(page.locator('#store-header')).toBeVisible();
+      const headerControl = fixture.mobile
+        ? page.getByRole('button', { name: 'Меню' })
+        : page.getByRole('link', { name: 'Каталог' });
+      await headerControl.click({ trial: true });
+
+      await page.reload();
+      await expect(host).toHaveCount(1);
+      await page.clock.runFor(450);
+      await expect(confetti).toHaveCount(0);
+
+      await page.evaluate((key) => sessionStorage.removeItem(key), sessionKey);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.reload();
+      await expect(host).toHaveCount(1);
+      await page.clock.runFor(450);
+      await expect(confetti).toHaveCount(0);
+      await expect(rightRibbon).toBeVisible();
     });
   });
 }
