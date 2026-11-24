@@ -15,6 +15,7 @@ function serializeSiteTheme(row) {
     name: row.name,
     promoBar,
     promoBarEnabled: row.promo_bar_enabled,
+    goldGlintEnabled: row.gold_glint_enabled,
     active: row.active,
     publishedAt: row.published_at?.toISOString() ?? null,
     hasUnpublishedChanges: row.name !== row.published_name || !isDeepStrictEqual(promoBar, publishedPromoBar),
@@ -134,17 +135,25 @@ export function setSiteThemeActive(id, active, actorId) {
   });
 }
 
-export function setSiteThemePromoBarVisibility(id, enabled, actorId) {
+function setSiteThemeElementVisibility(id, enabled, actorId, field) {
   return withCurrentStore(async (client, connection) => {
     const current = await findSiteTheme(client, connection, id);
-    if (current.promo_bar_enabled === enabled) return serializeSiteTheme(current);
+    if (current[field] === enabled) return serializeSiteTheme(current);
 
     const { rows: [theme] } = await client.query(`
-      UPDATE site_themes SET promo_bar_enabled = $2, updated_by = $3, updated_at = NOW()
+      UPDATE site_themes SET ${field} = $2, updated_by = $3, updated_at = NOW()
       WHERE id = $1 RETURNING *
     `, [id, enabled, actorId]);
     return serializeSiteTheme(theme);
   });
+}
+
+export function setSiteThemePromoBarVisibility(id, enabled, actorId) {
+  return setSiteThemeElementVisibility(id, enabled, actorId, 'promo_bar_enabled');
+}
+
+export function setSiteThemeGoldGlintVisibility(id, enabled, actorId) {
+  return setSiteThemeElementVisibility(id, enabled, actorId, 'gold_glint_enabled');
 }
 
 export function deleteSiteTheme(id) {
@@ -167,13 +176,14 @@ export async function getPublishedSiteThemePromoBar(origin) {
   if (!['http:', 'https:'].includes(storefront.protocol) || storefront.origin !== origin) return null;
 
   const { rows: [theme] } = await query(`
-    SELECT theme.published_promo_bar, connection.store_domain FROM site_themes theme
+    SELECT theme.published_promo_bar, theme.gold_glint_enabled, connection.store_domain FROM site_themes theme
     JOIN search_horoshop_connections connection
       ON connection.id = theme.connection_id AND connection.generation = theme.connection_generation
     WHERE ${currentStoreCondition} AND theme.active = TRUE AND theme.promo_bar_enabled = TRUE
     LIMIT 1
   `);
   if (!theme || normalStoreHost(storefront.hostname) !== normalStoreHost(theme.store_domain)) return null;
-  const config = theme.published_promo_bar;
-  return config?.showDesktop || config?.showMobile ? withPromoBarStyleDefaults(config) : null;
+  const config = withPromoBarStyleDefaults(theme.published_promo_bar);
+  if (!config.showDesktop && !config.showMobile) return null;
+  return { ...config, goldGlint: theme.gold_glint_enabled ? config.goldGlint : null };
 }

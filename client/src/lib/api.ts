@@ -244,6 +244,9 @@ export const api = {
     setPromoBarEnabled: (id: string, enabled: boolean) => request<SiteTheme>(
       `/api/site-themes/${encodeURIComponent(id)}/promo-bar/visibility`, { method: 'PUT', body: jsonBody({ enabled }) }
     ),
+    setGoldGlintEnabled: (id: string, enabled: boolean) => request<SiteTheme>(
+      `/api/site-themes/${encodeURIComponent(id)}/effects/gold-glint/visibility`, { method: 'PUT', body: jsonBody({ enabled }) }
+    ),
     remove: (id: string) => request<void>(`/api/site-themes/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   horoshopCartTheme: {

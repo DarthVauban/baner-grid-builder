@@ -13,6 +13,7 @@ import {
   listSiteThemes,
   publishSiteTheme,
   setSiteThemeActive,
+  setSiteThemeGoldGlintVisibility,
   setSiteThemePromoBarVisibility,
   siteThemeToolId,
   updateSiteTheme
@@ -55,6 +56,13 @@ const inputSchema = z.object({
       (value) => !value || Boolean(promoBarBackgroundImage(value)),
       'Завантажте зображення або вкажіть повне HTTPS-посилання.'
     ).optional(),
+    goldGlint: z.object({
+      color: colorSchema,
+      intensity: z.number().int().min(0).max(100),
+      durationMs: z.number().int().min(500).max(4000),
+      repeat: z.enum(['once', 'interval']),
+      intervalSeconds: z.number().int().min(5).max(120)
+    }).nullable().optional(),
     textColor: colorSchema,
     buttonColor: colorSchema,
     buttonTextColor: colorSchema,
@@ -114,6 +122,12 @@ router.put('/:id/promo-bar/visibility', asyncHandler(async (req, res) => {
   const id = parseInput(idSchema, req.params.id);
   const { enabled } = parseInput(visibilitySchema, req.body);
   res.json({ data: await setSiteThemePromoBarVisibility(id, enabled, req.user.id) });
+}));
+
+router.put('/:id/effects/gold-glint/visibility', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const { enabled } = parseInput(visibilitySchema, req.body);
+  res.json({ data: await setSiteThemeGoldGlintVisibility(id, enabled, req.user.id) });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

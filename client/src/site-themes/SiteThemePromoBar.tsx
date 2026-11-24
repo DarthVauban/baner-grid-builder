@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { mountPromoBarMarquee, promoBarBackgroundImage } from '../../../src/modules/site-themes/site-theme-presentation.js';
+import { mountPromoBarGoldGlint, mountPromoBarMarquee, promoBarBackgroundImage } from '../../../src/modules/site-themes/site-theme-presentation.js';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import type { StyledSelectOption } from '../components/StyledSelect';
@@ -260,16 +260,19 @@ export function SiteThemePromoBarSettings({
 }
 
 export function SiteThemePromoBarPreview({
-  config, enabled
+  config, enabled, viewport, onViewportChange, glintReplay
 }: {
   config: SiteThemePromoBar;
   enabled: boolean;
+  viewport: 'desktop' | 'mobile';
+  onViewportChange: (value: 'desktop' | 'mobile') => void;
+  glintReplay: number;
 }) {
-  const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop');
+  const bar = useRef<HTMLDivElement>(null);
   const marqueeViewport = useRef<HTMLDivElement>(null);
   const marqueeMessage = useRef<HTMLSpanElement>(null);
   const visible = enabled && (viewport === 'desktop' ? config.showDesktop : config.showMobile);
-  const { mode, text, textFontSize, textFontWeight, marqueeSpeed } = config;
+  const { mode, text, textFontSize, textFontWeight, marqueeSpeed, goldGlint } = config;
   const withButton = mode !== 'marquee' && Boolean(config.buttonText.trim() && config.buttonUrl.trim());
   const messageStyle = { fontSize: textFontSize, fontWeight: textFontWeight };
   const backgroundImage = promoBarBackgroundImage(config.backgroundImageUrl.trim());
@@ -284,14 +287,19 @@ export function SiteThemePromoBarPreview({
     return mountPromoBarMarquee(marqueeViewport.current, marqueeMessage.current, marqueeSpeed);
   }, [visible, mode, text, textFontSize, textFontWeight, marqueeSpeed]);
 
+  useEffect(() => {
+    if (!visible || !bar.current || !glintReplay || !goldGlint) return;
+    return mountPromoBarGoldGlint(bar.current, goldGlint, true);
+  }, [visible, goldGlint, glintReplay]);
+
   return <section className="site-themes__panel site-themes__preview" aria-labelledby="site-theme-preview-heading">
     <header className="site-themes__panel-header site-themes__preview-header">
       <h3 id="site-theme-preview-heading">Попередній перегляд</h3>
       <div className="site-themes__viewport" role="group" aria-label="Пристрій для перегляду">
-        <button type="button" aria-pressed={viewport === 'desktop'} onClick={() => setViewport('desktop')}>
+        <button type="button" aria-pressed={viewport === 'desktop'} onClick={() => onViewportChange('desktop')}>
           <Icon name="monitor" size={17} /> Десктоп
         </button>
-        <button type="button" aria-pressed={viewport === 'mobile'} onClick={() => setViewport('mobile')}>
+        <button type="button" aria-pressed={viewport === 'mobile'} onClick={() => onViewportChange('mobile')}>
           <Icon name="phone" size={17} /> Мобільний
         </button>
       </div>
@@ -299,7 +307,7 @@ export function SiteThemePromoBarPreview({
     {previewStatus && <p className="site-themes__preview-status" role="status">{previewStatus}</p>}
     <div className="site-themes__preview-stage">
       <div className={`site-themes__store site-themes__store--${viewport}`}>
-        {visible && text.trim() && <div className="site-themes__bar" style={{ backgroundColor: config.backgroundColor, backgroundImage, color: config.textColor }}>
+        {visible && text.trim() && <div className="site-themes__bar" ref={bar} style={{ backgroundColor: config.backgroundColor, backgroundImage, color: config.textColor }}>
           <div
             className="site-themes__bar-inner"
             style={{ justifyContent, textAlign: config.alignment, padding: `${config.paddingY}px ${config.paddingX}px` }}

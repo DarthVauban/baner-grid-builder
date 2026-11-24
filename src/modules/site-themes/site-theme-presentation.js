@@ -128,3 +128,80 @@ export function mountPromoBarMarquee(viewport, message, speed) {
   update();
   return dispose;
 }
+
+export function mountPromoBarGoldGlint(bar, config, preview = false) {
+  const document = bar.ownerDocument;
+  const browser = document.defaultView;
+  if (!browser || typeof bar.animate !== 'function' || !config.intensity) return;
+
+  const motion = browser.matchMedia('(prefers-reduced-motion: reduce)');
+  const repeats = !preview && config.repeat === 'interval';
+  const layer = document.createElement('div');
+  layer.dataset.mtSitePromoGoldGlint = '';
+  layer.setAttribute('aria-hidden', 'true');
+  Object.assign(layer.style, {
+    position: 'absolute', inset: '0', zIndex: '0', overflow: 'hidden', pointerEvents: 'none'
+  });
+
+  const beam = document.createElement('div');
+  Object.assign(beam.style, {
+    width: '100%',
+    height: '100%',
+    opacity: String(config.intensity / 100),
+    backgroundImage: `linear-gradient(110deg, transparent 30%, ${config.color} 46%, transparent 62%)`
+  });
+  layer.append(beam);
+
+  let timer;
+  let animation;
+  let played = false;
+
+  function stop() {
+    browser.clearTimeout(timer);
+    animation?.cancel();
+    animation = undefined;
+    layer.remove();
+  }
+
+  function play() {
+    if (!bar.isConnected) {
+      dispose();
+      return;
+    }
+    if (!document.hidden) {
+      played = true;
+      bar.prepend(layer);
+      animation?.cancel();
+      const currentAnimation = beam.animate(
+        [{ transform: 'translateX(-105%)' }, { transform: 'translateX(105%)' }],
+        { duration: config.durationMs, easing: 'linear' }
+      );
+      animation = currentAnimation;
+      currentAnimation.onfinish = () => {
+        if (animation !== currentAnimation) return;
+        animation = undefined;
+        layer.remove();
+        if (!repeats) dispose();
+      };
+    }
+    if (repeats) timer = browser.setTimeout(play, config.intervalSeconds * 1000);
+  }
+
+  function updateMotion() {
+    stop();
+    if (motion.matches || document.hidden || (played && !repeats)) return;
+    if (preview) play();
+    else timer = browser.setTimeout(play, 450);
+  }
+
+  function dispose() {
+    stop();
+    motion.removeEventListener('change', updateMotion);
+    document.removeEventListener('visibilitychange', updateMotion);
+  }
+
+  motion.addEventListener('change', updateMotion);
+  document.addEventListener('visibilitychange', updateMotion);
+  updateMotion();
+  return dispose;
+}

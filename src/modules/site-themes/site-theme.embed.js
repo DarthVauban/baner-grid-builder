@@ -1,9 +1,9 @@
 import { promoBarStyleDefaults } from './site-theme-promo-bar.js';
-import { mountPromoBarMarquee, promoBarBackgroundImage } from './site-theme-presentation.js';
+import { mountPromoBarGoldGlint, mountPromoBarMarquee, promoBarBackgroundImage } from './site-theme-presentation.js';
 
-export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=3';
+export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=4';
 
-function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage, mountMarquee) {
+function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage, mountMarquee, mountGoldGlint) {
   const { document, location, navigator } = browser;
   const scriptUrl = document.currentScript?.src;
   if (!scriptUrl) return;
@@ -33,6 +33,8 @@ function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage
     bar.setAttribute('aria-label', 'Промоакція');
     Object.assign(bar.style, {
       display: 'block',
+      position: 'relative',
+      isolation: 'isolate',
       width: '100%',
       margin: '0',
       boxSizing: 'border-box',
@@ -51,6 +53,8 @@ function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage
     Object.assign(inner.style, {
       boxSizing: 'border-box',
       display: 'flex',
+      position: 'relative',
+      zIndex: '1',
       flexWrap: 'wrap',
       alignItems: 'center',
       justifyContent: { left: 'flex-start', center: 'center', right: 'flex-end' }[config.alignment],
@@ -106,6 +110,7 @@ function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage
     bar.append(inner);
     document.body.prepend(bar);
     if (marquee) mountMarquee(messageContainer, message, config.marqueeSpeed ?? defaults.marqueeSpeed);
+    if (config.goldGlint) mountGoldGlint(bar, config.goldGlint);
   }
 
   async function start() {
@@ -130,6 +135,6 @@ function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage
 export function siteThemeEmbedScript() {
   return `(${installSiteThemePromoBar.toString()})(
     window, '/api/public/site-themes/promo-bar', ${JSON.stringify(promoBarStyleDefaults)},
-    ${promoBarBackgroundImage.toString()}, ${mountPromoBarMarquee.toString()}
+    ${promoBarBackgroundImage.toString()}, ${mountPromoBarMarquee.toString()}, ${mountPromoBarGoldGlint.toString()}
   );`;
 }
