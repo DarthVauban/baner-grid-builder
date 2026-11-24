@@ -2,7 +2,7 @@ import { promoBarStyleDefaults } from './site-theme-promo-bar.js';
 import { mountPromoBarGoldGlint, mountPromoBarMarquee, promoBarBackgroundImage } from './site-theme-presentation.js';
 import { mountSiteThemeConfetti, mountSiteThemeCornerRibbons } from './site-theme-storefront-effects.js';
 
-export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=5';
+export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=6';
 
 function installSiteTheme(browser, configPath, defaults, backgroundImage, mountMarquee, mountGoldGlint, mountRibbons, mountConfetti) {
   const { document, location, navigator } = browser;
@@ -24,6 +24,58 @@ function installSiteTheme(browser, configPath, defaults, backgroundImage, mountM
     } catch {
       return null;
     }
+  }
+
+  function alignMobileHeader(bar) {
+    const header = document.querySelector('header#header.header');
+    if (!header) return;
+    const style = browser.getComputedStyle(header);
+    if (style.position !== 'fixed' || style.top !== '0px') return;
+
+    const originalTop = header.style.getPropertyValue('top');
+    const originalPriority = header.style.getPropertyPriority('top');
+    let appliedTop = '';
+    let frame = 0;
+
+    function restore() {
+      if (appliedTop && header.style.getPropertyValue('top') === appliedTop) {
+        header.style.setProperty('top', originalTop, originalPriority);
+      }
+      appliedTop = '';
+    }
+
+    function update() {
+      frame = 0;
+      if (!bar.isConnected || !header.isConnected) {
+        observer?.disconnect();
+        browser.removeEventListener('scroll', schedule);
+        browser.removeEventListener('resize', schedule);
+        restore();
+        return;
+      }
+
+      // The native fixed header already has its own space reserved in the page.
+      // Offset it only by the portion of the in-flow promo strip still visible.
+      const rect = bar.getBoundingClientRect();
+      const offset = Math.max(0, Math.min(rect.height, rect.bottom));
+      if (offset === 0) {
+        restore();
+        return;
+      }
+      const top = `${offset}px`;
+      if (header.style.getPropertyValue('top') !== top) header.style.setProperty('top', top, originalPriority);
+      appliedTop = header.style.getPropertyValue('top');
+    }
+
+    function schedule() {
+      if (!frame) frame = browser.requestAnimationFrame(update);
+    }
+
+    const observer = browser.ResizeObserver ? new browser.ResizeObserver(schedule) : null;
+    observer?.observe(bar, { box: 'border-box' });
+    browser.addEventListener('scroll', schedule, { passive: true });
+    browser.addEventListener('resize', schedule);
+    update();
   }
 
   function mountBar(config) {
@@ -111,6 +163,7 @@ function installSiteTheme(browser, configPath, defaults, backgroundImage, mountM
 
     bar.append(inner);
     document.body.prepend(bar);
+    if (isMobile) alignMobileHeader(bar);
     if (marquee) mountMarquee(messageContainer, message, config.marqueeSpeed ?? defaults.marqueeSpeed);
     if (config.goldGlint) mountGoldGlint(bar, config.goldGlint);
   }

@@ -25,7 +25,7 @@ async function mockThemeStorefront(page: Page, markup: string, appearance: objec
   }));
   await page.route(`${storefront}/**`, (route) => route.fulfill({
     contentType: 'text/html',
-    body: `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0}#store-header{padding:12px}</style></head><body>${markup}<script src="${panel}${embedPath}"></script><script src="${panel}${embedPath}"></script></body></html>`
+    body: `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0}#store-header{padding:12px}header#header.header{position:fixed;top:0;inset-inline:0;height:48px;z-index:400;background:#fff}#page{padding-top:48px;min-height:180vh}</style></head><body>${markup}<script src="${panel}${embedPath}"></script><script src="${panel}${embedPath}"></script></body></html>`
   }));
 }
 
@@ -45,7 +45,7 @@ const fixtures = [
   {
     name: 'mobile',
     device: devices['iPhone 13'],
-    markup: '<div id="store-header"><button type="button" onclick="this.textContent = \'Меню відкрите\'">Меню</button></div><main><h1>Мобільний каталог</h1></main>',
+    markup: '<header id="header" class="header"><div id="store-header"><button type="button" onclick="this.textContent = \'Меню відкрите\'">Меню</button></div></header><main id="page"><h1>Мобільний каталог</h1></main>',
     mobile: true
   }
 ];
@@ -119,8 +119,28 @@ for (const fixture of fixtures) {
       const headerBounds = await header.boundingBox();
       expect(barBounds!.width).toBeLessThanOrEqual(viewport.width);
       expect(headerBounds!.y).toBeGreaterThanOrEqual(barBounds!.y + barBounds!.height);
+      expect(await bar.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      })).toBe(true);
 
       if (fixture.mobile) {
+        const mobileHeader = page.locator('header#header.header');
+        const headerOffsetError = () => mobileHeader.evaluate((node) => {
+          const promo = document.querySelector('[data-mt-site-promo-bar]')!;
+          return Math.abs(node.getBoundingClientRect().top - Math.max(0, promo.getBoundingClientRect().bottom));
+        });
+        await bar.evaluate((node: HTMLElement) => { node.style.paddingBottom = '20px'; });
+        await expect.poll(headerOffsetError).toBeLessThan(1);
+        await bar.evaluate((node: HTMLElement) => { node.style.paddingBottom = ''; });
+        await expect.poll(headerOffsetError).toBeLessThan(1);
+        await page.evaluate(() => window.scrollTo(0, 16));
+        await expect.poll(headerOffsetError).toBeLessThan(1);
+        await page.evaluate(() => window.scrollTo(0, 200));
+        await expect.poll(() => mobileHeader.evaluate((node: HTMLElement) => node.style.top)).toBe('');
+        await expect(mobileHeader).toHaveCSS('top', '0px');
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await expect.poll(headerOffsetError).toBeLessThan(1);
         await header.getByRole('button', { name: 'Меню' }).click();
         await expect(header.getByRole('button', { name: 'Меню відкрите' })).toBeVisible();
       } else {
@@ -172,6 +192,7 @@ for (const fixture of fixtures) {
       }));
       await expect(bar).toBeHidden();
       await expect(header).toBeVisible();
+      if (fixture.mobile) await expect(page.locator('header#header.header')).toHaveCSS('top', '0px');
     });
 
     test('shows corner ribbons and a session-limited confetti burst without a promo bar', async ({ page }) => {
