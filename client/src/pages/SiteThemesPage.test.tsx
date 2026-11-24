@@ -35,7 +35,7 @@ it('previews typography and device settings before publishing and activating the
   vi.spyOn(api.siteThemes, 'list').mockImplementation(async () => saved ? [saved] : []);
   const create = vi.spyOn(api.siteThemes, 'create').mockImplementation(async (input) => {
     saved = {
-      ...input, id: 'theme-1', promoBarEnabled: true, active: false, publishedAt: null,
+      ...input, id: 'theme-1', promoBarEnabled: true, goldGlintEnabled: true, active: false, publishedAt: null,
       hasUnpublishedChanges: true, createdAt: date, updatedAt: date
     };
     return saved;

@@ -47,6 +47,7 @@ const defaultPromoBarStyle = {
   mode: 'standard',
   marqueeSpeed: 60,
   backgroundImageUrl: '',
+  goldGlint: null,
   textFontSize: 14,
   textFontWeight: 'inherit',
   buttonFontSize: 14,
@@ -62,6 +63,9 @@ const editedPromoBarStyle = {
   buttonFontWeight: 800,
   buttonPaddingY: 10,
   buttonPaddingX: 20
+};
+const goldGlint = {
+  color: '#ffcc48', intensity: 55, durationMs: 1400, repeat: 'interval', intervalSeconds: 12
 };
 
 before(async () => {
@@ -218,6 +222,9 @@ test('incomplete draft content is allowed but unsafe values are rejected', async
     { mode: 'invalid' },
     { marqueeSpeed: 19 },
     { marqueeSpeed: 241 },
+    { goldGlint: { ...goldGlint, color: 'red;position:fixed' } },
+    { goldGlint: { ...goldGlint, durationMs: 4001 } },
+    { goldGlint: { ...goldGlint, intervalSeconds: 4 } },
     { textFontSize: 9 },
     { textFontWeight: 450 },
     { buttonFontSize: 48.5 },
@@ -266,6 +273,32 @@ test('uploads a public promo background and publishes a marquee independently of
   await admin.post(`${themePath(theme.id)}/publish`).expect(422);
   assert.equal((await publicBar()).mode, 'marquee');
   assert.equal((await publicBar()).backgroundImageUrl, backgroundImageUrl);
+  await setActive(theme.id, false);
+  await admin.delete(themePath(theme.id)).expect(204);
+});
+
+test('publishes a gold glint and toggles its live visibility independently of the draft', async () => {
+  const name = 'Чорна п’ятниця з відблиском';
+  const theme = await createTheme(name, { ...promoBar, goldGlint });
+  const visibilityPath = `${themePath(theme.id)}/effects/gold-glint/visibility`;
+  assert.equal(theme.goldGlintEnabled, true);
+  const publication = await admin.post(`${themePath(theme.id)}/publish`).expect(200);
+  await setActive(theme.id, true);
+  assert.deepEqual((await publicBar()).goldGlint, goldGlint);
+
+  const hidden = await admin.put(visibilityPath).send({ enabled: false }).expect(200);
+  assert.equal(hidden.body.data.goldGlintEnabled, false);
+  assert.equal(hidden.body.data.hasUnpublishedChanges, false);
+  assert.equal(hidden.body.data.publishedAt, publication.body.data.publishedAt);
+  assert.equal((await publicBar()).goldGlint, null);
+
+  const edited = { ...goldGlint, intensity: 75 };
+  await admin.put(themePath(theme.id)).send({ name, promoBar: { ...promoBar, goldGlint: edited } }).expect(200);
+  await admin.put(visibilityPath).send({ enabled: true }).expect(200);
+  assert.deepEqual((await publicBar()).goldGlint, goldGlint);
+  await admin.post(`${themePath(theme.id)}/publish`).expect(200);
+  assert.deepEqual((await publicBar()).goldGlint, edited);
+
   await setActive(theme.id, false);
   await admin.delete(themePath(theme.id)).expect(204);
 });

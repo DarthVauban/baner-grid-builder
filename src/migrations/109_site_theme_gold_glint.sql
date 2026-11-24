@@ -1,0 +1,2 @@
+ALTER TABLE site_themes
+  ADD COLUMN gold_glint_enabled BOOLEAN NOT NULL DEFAULT TRUE;

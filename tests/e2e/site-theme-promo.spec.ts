@@ -47,6 +47,10 @@ for (const fixture of fixtures) {
         buttonUrl: '/sale/',
         backgroundColor: '#101010',
         backgroundImageUrl: backgroundPath,
+        goldGlint: {
+          color: '#ffcc48', intensity: 55, durationMs: 1800,
+          repeat: fixture.name === 'desktop wide' ? 'interval' : 'once', intervalSeconds: 5
+        },
         textColor: '#FFE086',
         buttonColor: '#F0CD53',
         buttonTextColor: '#161616',
@@ -82,6 +86,7 @@ for (const fixture of fixtures) {
       const inner = bar.locator('[data-mt-site-promo-inner]');
       const message = inner.locator('span');
       const cta = bar.getByRole('link', { name: 'До акцій' });
+      const glint = bar.locator('[data-mt-site-promo-gold-glint]');
       const header = page.locator('#store-header');
       await expect(bar).toBeVisible();
       await expect(bar).toHaveCount(1);
@@ -96,6 +101,10 @@ for (const fixture of fixtures) {
       await expect(cta).toHaveCSS('padding', '11px 19px');
       await expect(bar).toHaveCSS('background-color', 'rgb(16, 16, 16)');
       await expect(bar).toHaveCSS('background-image', `url("${panel}${backgroundPath}")`);
+      await expect(glint).toBeVisible();
+      await expect(glint).toHaveCSS('pointer-events', 'none');
+      await expect(inner).toHaveCSS('z-index', '1');
+      expect(await glint.locator('div').evaluate((beam) => beam.getAnimations()[0].effect!.getTiming().duration)).toBe(1800);
       expect(await bar.evaluate((node) => node === document.body.firstElementChild)).toBe(true);
       expect(await bar.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
       const barBounds = await bar.boundingBox();
@@ -115,6 +124,7 @@ for (const fixture of fixtures) {
       const marquee = bar.locator('[data-mt-site-promo-marquee]');
       const track = marquee.locator('[data-mt-site-promo-track]');
       await expect(track).toBeVisible();
+      await expect(glint).toBeVisible();
       await expect(cta).toHaveCount(0);
       await expect(bar).toHaveCSS('background-image', `url("${panel}${backgroundPath}")`);
       await expect(track).toHaveAttribute('aria-hidden', 'true');
@@ -137,8 +147,13 @@ for (const fixture of fixtures) {
         await page.mouse.move(10, viewport.height - 5);
       }
       await expect.poll(() => track.evaluate((element) => element.getAnimations()[0].playState)).toBe('running');
+      if (promoBar.goldGlint.repeat === 'interval') {
+        await expect(glint).toHaveCount(0);
+        await expect(glint).toBeVisible();
+      }
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(track).toHaveCount(0);
+      await expect(glint).toHaveCount(0);
       await expect(marquee).toContainText(literalOffer);
 
       promoBar.showDesktop = fixture.mobile;

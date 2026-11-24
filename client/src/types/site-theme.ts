@@ -1,5 +1,13 @@
 export type SiteThemeFontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
 
+export interface SiteThemeGoldGlint {
+  color: string;
+  intensity: number;
+  durationMs: number;
+  repeat: 'once' | 'interval';
+  intervalSeconds: number;
+}
+
 export interface SiteThemePromoBar {
   mode: 'standard' | 'marquee';
   marqueeSpeed: number;
@@ -8,6 +16,7 @@ export interface SiteThemePromoBar {
   buttonUrl: string;
   backgroundColor: string;
   backgroundImageUrl: string;
+  goldGlint: SiteThemeGoldGlint | null;
   textColor: string;
   buttonColor: string;
   buttonTextColor: string;
@@ -32,6 +41,7 @@ export interface SiteThemeInput {
 export interface SiteTheme extends SiteThemeInput {
   id: string;
   promoBarEnabled: boolean;
+  goldGlintEnabled: boolean;
   active: boolean;
   publishedAt: string | null;
   hasUnpublishedChanges: boolean;

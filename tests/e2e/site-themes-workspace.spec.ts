@@ -14,6 +14,7 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
         ...input,
         id: 'b3468f76-57bc-4b3e-b976-9db8b60ecf91',
         promoBarEnabled: true,
+        goldGlintEnabled: true,
         active: false,
         publishedAt: null,
         hasUnpublishedChanges: true,
@@ -23,6 +24,11 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
       return route.fulfill({ status: 201, json: { data: draft } });
     }
     return draft ? route.fulfill({ json: { data: [draft] } }) : route.continue();
+  });
+  await page.route('**/api/site-themes/*/effects/gold-glint/visibility', (route) => {
+    if (!draft) return route.abort();
+    draft = { ...draft, goldGlintEnabled: route.request().postDataJSON().enabled };
+    return route.fulfill({ json: { data: draft } });
   });
 
   await page.goto('/login');
@@ -100,6 +106,18 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
   await preview.getByRole('button', { name: 'Десктоп' }).click();
   await expect(preview.locator('[data-mt-site-promo-track]')).toBeVisible();
 
+  await page.getByRole('button', { name: 'Бібліотека ефектів' }).click();
+  await expect(page.getByRole('heading', { name: 'Чорна п’ятниця' })).toBeVisible();
+  await page.getByRole('button', { name: 'Додати відблиск' }).click();
+  await page.getByRole('slider', { name: 'Яскравість відблиску' }).press('End');
+  await page.getByRole('slider', { name: 'Тривалість проходу' }).press('End');
+  await page.getByRole('button', { name: 'З інтервалом' }).click();
+  await page.getByRole('slider', { name: 'Інтервал повторення' }).press('Home');
+  await page.getByRole('button', { name: 'Відтворити ефект' }).click();
+  const glint = preview.locator('[data-mt-site-promo-gold-glint]');
+  await expect(glint).toBeVisible();
+  await expect(glint.locator('div')).toHaveCSS('opacity', '1');
+
   const [created] = await Promise.all([
     page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/site-themes')),
     page.getByRole('button', { name: 'Зберегти чернетку' }).click()
@@ -112,6 +130,7 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
     mode: 'marquee',
     marqueeSpeed: 120,
     backgroundImageUrl,
+    goldGlint: { color: '#ffcc48', intensity: 100, durationMs: 4000, repeat: 'interval', intervalSeconds: 5 },
     buttonText: 'До акцій',
     buttonUrl: '/sale/',
     alignment: 'right',
@@ -124,6 +143,11 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
     showDesktop: true,
     showMobile: false
   });
+  const glintSwitch = page.getByRole('switch', { name: 'Показувати золотий відблиск' });
+  await expect(glintSwitch).toHaveAttribute('aria-checked', 'true');
+  await glintSwitch.click();
+  await expect(glintSwitch).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByText('Є незбережені зміни', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Бібліотека тем' }).click();
   await expect(page.getByRole('heading', { name: themeName })).toBeVisible();
 
