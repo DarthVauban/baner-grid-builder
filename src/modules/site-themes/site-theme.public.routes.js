@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { siteThemeEmbedScript } from './site-theme.embed.js';
-import { getPublishedSiteThemePromoBar } from './site-theme.service.js';
+import { getPublishedSiteThemeAppearance, getPublishedSiteThemePromoBar } from './site-theme.service.js';
 
 const router = Router();
 
@@ -14,6 +14,12 @@ router.get('/promo-bar', asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.vary('Origin');
   res.json({ data: await getPublishedSiteThemePromoBar(req.get('origin')) });
+}));
+
+router.get('/appearance', asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.vary('Origin');
+  res.json({ data: await getPublishedSiteThemeAppearance(req.get('origin')) });
 }));
 
 export default router;

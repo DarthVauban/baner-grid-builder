@@ -209,6 +209,32 @@
   background: linear-gradient(113deg, #171718 24%, #72551f 49%, #ffdb79 53%, #8a6621 58%, #171718 76%);
 }
 
+.site-themes__effect-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.site-themes__effect-visual--cornerRibbons {
+  background:
+    linear-gradient(135deg, transparent 11%, #c58e34 12%, #ffe6a0 15%, #241a0e 16% 23%, #a1702c 24%, transparent 26%),
+    linear-gradient(225deg, transparent 11%, #c58e34 12%, #ffe6a0 15%, #241a0e 16% 23%, #a1702c 24%, transparent 26%),
+    #202022;
+}
+
+.site-themes__effect-visual--confetti {
+  background:
+    radial-gradient(circle at 12% 28%, #ffd364 0 2px, transparent 3px),
+    radial-gradient(circle at 42% 58%, #c89230 0 2px, transparent 3px),
+    radial-gradient(circle at 85% 25%, #ffd364 0 2px, transparent 3px),
+    radial-gradient(circle at 66% 42%, #ffebaa 0 2px, transparent 3px),
+    radial-gradient(circle at 23% 64%, #ffebaa 0 1px, transparent 2px),
+    radial-gradient(circle at 90% 76%, #c89230 0 1px, transparent 2px),
+    #202022;
+}
+
 .site-themes__effect-icon {
   flex: 0 0 20px;
   height: 20px;
@@ -336,6 +362,8 @@
 }
 
 .site-themes__store {
+  position: relative;
+  isolation: isolate;
   min-width: 0;
   margin: 0 auto;
   overflow: hidden;

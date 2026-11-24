@@ -50,7 +50,7 @@ import type {
   SavedGrid
 } from '../types/workspace';
 import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
-import type { SiteTheme, SiteThemeInput } from '../types/site-theme';
+import type { SiteTheme, SiteThemeInput, SiteThemeStorefrontEffectId } from '../types/site-theme';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { BlogPostDocument } from '../types/blog-editor';
 import type { MediaAsset, MediaAssetFeed, MediaFolder, MediaFolderFeed } from '../types/media';
@@ -246,6 +246,9 @@ export const api = {
     ),
     setGoldGlintEnabled: (id: string, enabled: boolean) => request<SiteTheme>(
       `/api/site-themes/${encodeURIComponent(id)}/effects/gold-glint/visibility`, { method: 'PUT', body: jsonBody({ enabled }) }
+    ),
+    setStorefrontEffectEnabled: (id: string, effect: SiteThemeStorefrontEffectId, enabled: boolean) => request<SiteTheme>(
+      `/api/site-themes/${encodeURIComponent(id)}/effects/${effect}/visibility`, { method: 'PUT', body: jsonBody({ enabled }) }
     ),
     remove: (id: string) => request<void>(`/api/site-themes/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },

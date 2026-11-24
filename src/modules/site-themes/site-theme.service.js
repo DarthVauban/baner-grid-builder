@@ -6,19 +6,26 @@ import { withPromoBarStyleDefaults } from './site-theme-promo-bar.js';
 export const siteThemeToolId = 'site_themes';
 
 const currentStoreCondition = `connection.singleton = TRUE AND connection.status IN ('connected', 'syncing', 'error')`;
+const storefrontEffectDefaults = { cornerRibbons: null, confetti: null };
+const storefrontVisibilityDefaults = { cornerRibbons: true, confetti: true };
 
 function serializeSiteTheme(row) {
   const promoBar = withPromoBarStyleDefaults(row.draft_promo_bar);
   const publishedPromoBar = row.published_promo_bar && withPromoBarStyleDefaults(row.published_promo_bar);
+  const storefrontEffects = { ...storefrontEffectDefaults, ...row.draft_storefront_effects };
+  const publishedEffects = { ...storefrontEffectDefaults, ...row.published_storefront_effects };
   return {
     id: row.id,
     name: row.name,
     promoBar,
+    storefrontEffects,
+    storefrontEffectVisibility: { ...storefrontVisibilityDefaults, ...row.storefront_effect_visibility },
     promoBarEnabled: row.promo_bar_enabled,
     goldGlintEnabled: row.gold_glint_enabled,
     active: row.active,
     publishedAt: row.published_at?.toISOString() ?? null,
-    hasUnpublishedChanges: row.name !== row.published_name || !isDeepStrictEqual(promoBar, publishedPromoBar),
+    hasUnpublishedChanges: row.name !== row.published_name || !isDeepStrictEqual(promoBar, publishedPromoBar)
+      || !isDeepStrictEqual(storefrontEffects, publishedEffects),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString()
   };
@@ -68,28 +75,33 @@ export async function listSiteThemes() {
   return rows.map(serializeSiteTheme);
 }
 
-export function createSiteTheme({ name, promoBar }, actorId) {
+export function createSiteTheme({ name, promoBar, storefrontEffects }, actorId) {
   return withCurrentStore(async (client, connection) => {
     const { rows: [theme] } = await client.query(`
-      INSERT INTO site_themes (connection_id, connection_generation, name, draft_promo_bar, created_by, updated_by)
-      VALUES ($1, $2, $3, $4::JSONB, $5, $5)
+      INSERT INTO site_themes (connection_id, connection_generation, name, draft_promo_bar, draft_storefront_effects, created_by, updated_by)
+      VALUES ($1, $2, $3, $4::JSONB, $5::JSONB, $6, $6)
       RETURNING *
-    `, [connection.id, connection.generation, name, JSON.stringify(withPromoBarStyleDefaults(promoBar)), actorId]);
+    `, [connection.id, connection.generation, name, JSON.stringify(withPromoBarStyleDefaults(promoBar)),
+      JSON.stringify({ ...storefrontEffectDefaults, ...storefrontEffects }), actorId]);
     return serializeSiteTheme(theme);
   });
 }
 
-export function updateSiteTheme(id, { name, promoBar }, actorId) {
+export function updateSiteTheme(id, { name, promoBar, storefrontEffects }, actorId) {
   return withCurrentStore(async (client, connection) => {
     const current = await findSiteTheme(client, connection, id);
     const currentPromoBar = withPromoBarStyleDefaults(current.draft_promo_bar);
     const updatedPromoBar = { ...currentPromoBar, ...promoBar };
-    if (current.name === name && isDeepStrictEqual(currentPromoBar, updatedPromoBar)) return serializeSiteTheme(current);
+    const currentEffects = { ...storefrontEffectDefaults, ...current.draft_storefront_effects };
+    const updatedEffects = { ...currentEffects, ...storefrontEffects };
+    if (current.name === name && isDeepStrictEqual(currentPromoBar, updatedPromoBar)
+      && isDeepStrictEqual(currentEffects, updatedEffects)) return serializeSiteTheme(current);
 
     const { rows: [theme] } = await client.query(`
-      UPDATE site_themes SET name = $2, draft_promo_bar = $3::JSONB, updated_by = $4, updated_at = NOW()
+      UPDATE site_themes SET name = $2, draft_promo_bar = $3::JSONB,
+        draft_storefront_effects = $4::JSONB, updated_by = $5, updated_at = NOW()
       WHERE id = $1 RETURNING *
-    `, [id, name, JSON.stringify(updatedPromoBar), actorId]);
+    `, [id, name, JSON.stringify(updatedPromoBar), JSON.stringify(updatedEffects), actorId]);
     return serializeSiteTheme(theme);
   });
 }
@@ -98,14 +110,17 @@ export function publishSiteTheme(id, actorId) {
   return withCurrentStore(async (client, connection) => {
     const current = await findSiteTheme(client, connection, id);
     const { text, buttonText, buttonUrl, mode } = withPromoBarStyleDefaults(current.draft_promo_bar);
-    if (!text) throw new AppError(422, 'SITE_THEME_PROMO_TEXT_REQUIRED', 'Додайте текст промосмуги перед публікацією.');
-    if (mode === 'standard' && Boolean(buttonText) !== Boolean(buttonUrl)) {
+    const { cornerRibbons, confetti } = current.draft_storefront_effects;
+    const needsPromoBar = current.promo_bar_enabled || (!cornerRibbons && !confetti);
+    if (needsPromoBar && !text) throw new AppError(422, 'SITE_THEME_PROMO_TEXT_REQUIRED', 'Додайте текст промосмуги перед публікацією.');
+    if (needsPromoBar && mode === 'standard' && Boolean(buttonText) !== Boolean(buttonUrl)) {
       throw new AppError(422, 'SITE_THEME_PROMO_BUTTON_INCOMPLETE', 'Вкажіть текст і посилання для кнопки промосмуги.');
     }
 
     const { rows: [theme] } = await client.query(`
       UPDATE site_themes
-      SET published_name = name, published_promo_bar = draft_promo_bar, published_at = NOW(),
+      SET published_name = name, published_promo_bar = draft_promo_bar,
+          published_storefront_effects = draft_storefront_effects, published_at = NOW(),
           published_by = $2, updated_by = $2, updated_at = NOW()
       WHERE id = $1 RETURNING *
     `, [id, actorId]);
@@ -156,6 +171,19 @@ export function setSiteThemeGoldGlintVisibility(id, enabled, actorId) {
   return setSiteThemeElementVisibility(id, enabled, actorId, 'gold_glint_enabled');
 }
 
+export function setSiteThemeStorefrontEffectVisibility(id, effectId, enabled, actorId) {
+  return withCurrentStore(async (client, connection) => {
+    const current = await findSiteTheme(client, connection, id);
+    const visibility = { ...storefrontVisibilityDefaults, ...current.storefront_effect_visibility };
+    if (visibility[effectId] === enabled) return serializeSiteTheme(current);
+    const { rows: [theme] } = await client.query(`
+      UPDATE site_themes SET storefront_effect_visibility = $2::JSONB, updated_by = $3, updated_at = NOW()
+      WHERE id = $1 RETURNING *
+    `, [id, JSON.stringify({ ...visibility, [effectId]: enabled }), actorId]);
+    return serializeSiteTheme(theme);
+  });
+}
+
 export function deleteSiteTheme(id) {
   return withCurrentStore(async (client, connection) => {
     const current = await findSiteTheme(client, connection, id);
@@ -170,20 +198,36 @@ function normalStoreHost(host) {
   return host.toLowerCase().replace(/^www\./u, '');
 }
 
-export async function getPublishedSiteThemePromoBar(origin) {
+export async function getPublishedSiteThemeAppearance(origin) {
   let storefront;
   try { storefront = new URL(origin); } catch { return null; }
   if (!['http:', 'https:'].includes(storefront.protocol) || storefront.origin !== origin) return null;
 
   const { rows: [theme] } = await query(`
-    SELECT theme.published_promo_bar, theme.gold_glint_enabled, connection.store_domain FROM site_themes theme
+    SELECT theme.id, theme.published_promo_bar, theme.promo_bar_enabled, theme.gold_glint_enabled,
+           theme.published_storefront_effects, theme.storefront_effect_visibility, connection.store_domain
+    FROM site_themes theme
     JOIN search_horoshop_connections connection
       ON connection.id = theme.connection_id AND connection.generation = theme.connection_generation
-    WHERE ${currentStoreCondition} AND theme.active = TRUE AND theme.promo_bar_enabled = TRUE
+    WHERE ${currentStoreCondition} AND theme.active = TRUE
     LIMIT 1
   `);
   if (!theme || normalStoreHost(storefront.hostname) !== normalStoreHost(theme.store_domain)) return null;
   const config = withPromoBarStyleDefaults(theme.published_promo_bar);
-  if (!config.showDesktop && !config.showMobile) return null;
-  return { ...config, goldGlint: theme.gold_glint_enabled ? config.goldGlint : null };
+  const promoBar = theme.promo_bar_enabled && config.text && (config.showDesktop || config.showMobile)
+    ? { ...config, goldGlint: theme.gold_glint_enabled ? config.goldGlint : null }
+    : null;
+  const { cornerRibbons, confetti } = theme.published_storefront_effects;
+  const visibility = { ...storefrontVisibilityDefaults, ...theme.storefront_effect_visibility };
+  const storefrontEffects = {
+    cornerRibbons: visibility.cornerRibbons && cornerRibbons?.opacity
+      && (cornerRibbons.desktop.placement !== 'hidden' || cornerRibbons.mobile.placement !== 'hidden') ? cornerRibbons : null,
+    confetti: visibility.confetti && (confetti?.showDesktop || confetti?.showMobile) ? confetti : null
+  };
+  if (!promoBar && !storefrontEffects.cornerRibbons && !storefrontEffects.confetti) return null;
+  return { themeId: theme.id, promoBar, storefrontEffects };
+}
+
+export async function getPublishedSiteThemePromoBar(origin) {
+  return (await getPublishedSiteThemeAppearance(origin))?.promoBar ?? null;
 }

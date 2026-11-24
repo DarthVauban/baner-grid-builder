@@ -15,6 +15,7 @@ import {
   setSiteThemeActive,
   setSiteThemeGoldGlintVisibility,
   setSiteThemePromoBarVisibility,
+  setSiteThemeStorefrontEffectVisibility,
   siteThemeToolId,
   updateSiteTheme
 } from './site-theme.service.js';
@@ -29,6 +30,15 @@ const fontWeightSchema = z.literal([100, 200, 300, 400, 500, 600, 700, 800, 900]
 const textSchema = (maxLength) => z.string().trim().max(maxLength)
   .refine((value) => !value.includes('\0'), 'Видаліть неприпустимі символи.');
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+const imageUrlSchema = z.string().trim().max(2048).refine(
+  (value) => !value || Boolean(promoBarBackgroundImage(value)),
+  'Завантажте зображення або вкажіть повне HTTPS-посилання.'
+);
+const storefrontEffectIdSchema = z.enum(['cornerRibbons', 'confetti']);
+const ribbonLayoutSchema = z.object({
+  placement: z.enum(['both', 'left', 'right', 'hidden']),
+  size: z.number().int().min(28).max(240)
+});
 
 function isAllowedButtonUrl(value) {
   if (!value) return true;
@@ -45,6 +55,24 @@ function isAllowedButtonUrl(value) {
 
 const inputSchema = z.object({
   name: z.string().trim().min(1).max(120).refine((value) => !value.includes('\0'), 'Видаліть неприпустимі символи.'),
+  storefrontEffects: z.object({
+    cornerRibbons: z.object({
+      imageUrl: imageUrlSchema,
+      opacity: z.number().int().min(0).max(100),
+      desktop: ribbonLayoutSchema,
+      mobile: ribbonLayoutSchema
+    }).nullable().optional(),
+    confetti: z.object({
+      primaryColor: colorSchema,
+      secondaryColor: colorSchema,
+      count: z.number().int().min(12).max(100),
+      durationMs: z.number().int().min(800).max(5000),
+      delayMs: z.number().int().min(0).max(5000),
+      frequency: z.enum(['session', 'page']),
+      showDesktop: z.boolean(),
+      showMobile: z.boolean()
+    }).nullable().optional()
+  }).optional(),
   promoBar: z.object({
     mode: z.enum(['standard', 'marquee']).optional(),
     marqueeSpeed: z.number().int().min(20).max(240).optional(),
@@ -52,10 +80,7 @@ const inputSchema = z.object({
     buttonText: textSchema(80),
     buttonUrl: z.string().trim().max(500).refine(isAllowedButtonUrl, 'Вкажіть шлях від кореня сайту або повне посилання HTTP(S).'),
     backgroundColor: colorSchema,
-    backgroundImageUrl: z.string().trim().max(2048).refine(
-      (value) => !value || Boolean(promoBarBackgroundImage(value)),
-      'Завантажте зображення або вкажіть повне HTTPS-посилання.'
-    ).optional(),
+    backgroundImageUrl: imageUrlSchema.optional(),
     goldGlint: z.object({
       color: colorSchema,
       intensity: z.number().int().min(0).max(100),
@@ -128,6 +153,13 @@ router.put('/:id/effects/gold-glint/visibility', asyncHandler(async (req, res) =
   const id = parseInput(idSchema, req.params.id);
   const { enabled } = parseInput(visibilitySchema, req.body);
   res.json({ data: await setSiteThemeGoldGlintVisibility(id, enabled, req.user.id) });
+}));
+
+router.put('/:id/effects/:effectId/visibility', asyncHandler(async (req, res) => {
+  const id = parseInput(idSchema, req.params.id);
+  const effectId = parseInput(storefrontEffectIdSchema, req.params.effectId);
+  const { enabled } = parseInput(visibilitySchema, req.body);
+  res.json({ data: await setSiteThemeStorefrontEffectVisibility(id, effectId, enabled, req.user.id) });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

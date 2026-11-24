@@ -1,14 +1,16 @@
 import { promoBarStyleDefaults } from './site-theme-promo-bar.js';
 import { mountPromoBarGoldGlint, mountPromoBarMarquee, promoBarBackgroundImage } from './site-theme-presentation.js';
+import { mountSiteThemeConfetti, mountSiteThemeCornerRibbons } from './site-theme-storefront-effects.js';
 
-export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=4';
+export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=5';
 
-function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage, mountMarquee, mountGoldGlint) {
+function installSiteTheme(browser, configPath, defaults, backgroundImage, mountMarquee, mountGoldGlint, mountRibbons, mountConfetti) {
   const { document, location, navigator } = browser;
   const scriptUrl = document.currentScript?.src;
   if (!scriptUrl) return;
 
   const selector = '[data-mt-site-promo-bar]';
+  const mountedSelector = `${selector}, [data-mt-site-theme-effects]`;
   const configUrl = new URL(configPath, scriptUrl);
   const isMobile = navigator.userAgentData?.mobile === true
     || /Android|iPhone|iPad|iPod|Mobile/iu.test(navigator.userAgent)
@@ -114,12 +116,23 @@ function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage
   }
 
   async function start() {
-    if (document.querySelector(selector)) return;
+    if (document.querySelector(mountedSelector)) return;
     try {
       const response = await browser.fetch(configUrl, { credentials: 'omit' });
       if (!response.ok) return;
       const { data } = await response.json();
-      mountBar(data);
+      if (!data || document.querySelector(mountedSelector)) return;
+      mountBar(data.promoBar);
+      const { cornerRibbons, confetti } = data.storefrontEffects;
+      if (!cornerRibbons && !confetti) return;
+      const host = document.createElement('div');
+      host.dataset.mtSiteThemeEffects = '';
+      host.setAttribute('aria-hidden', 'true');
+      Object.assign(host.style, { position: 'absolute', inset: '0 0 auto', height: '0', zIndex: '1000', pointerEvents: 'none' });
+      document.body.append(host);
+      const viewport = isMobile ? 'mobile' : 'desktop';
+      if (cornerRibbons) mountRibbons(host, cornerRibbons, viewport, backgroundImage, configUrl.origin);
+      if (confetti) mountConfetti(host, confetti, viewport, data.themeId);
     } catch {
       return;
     }
@@ -133,8 +146,9 @@ function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage
 }
 
 export function siteThemeEmbedScript() {
-  return `(${installSiteThemePromoBar.toString()})(
-    window, '/api/public/site-themes/promo-bar', ${JSON.stringify(promoBarStyleDefaults)},
-    ${promoBarBackgroundImage.toString()}, ${mountPromoBarMarquee.toString()}, ${mountPromoBarGoldGlint.toString()}
+  return `(${installSiteTheme.toString()})(
+    window, '/api/public/site-themes/appearance', ${JSON.stringify(promoBarStyleDefaults)},
+    ${promoBarBackgroundImage.toString()}, ${mountPromoBarMarquee.toString()}, ${mountPromoBarGoldGlint.toString()},
+    ${mountSiteThemeCornerRibbons.toString()}, ${mountSiteThemeConfetti.toString()}
   );`;
 }

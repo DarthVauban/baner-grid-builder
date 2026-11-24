@@ -4,15 +4,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
-import { defaultGoldGlint, SiteThemeEffectLibrary, SiteThemeGoldGlintSettings } from '../site-themes/SiteThemeEffectLibrary';
+import { defaultGoldGlint, siteThemeEffectCatalog, SiteThemeEffectLibrary, SiteThemeGoldGlintSettings } from '../site-themes/SiteThemeEffectLibrary';
 import { SiteThemePromoBarPreview, SiteThemePromoBarSettings } from '../site-themes/SiteThemePromoBar';
+import {
+  defaultConfetti,
+  defaultCornerRibbons,
+  SiteThemeConfettiSettings,
+  SiteThemeCornerRibbonSettings
+} from '../site-themes/SiteThemeStorefrontEffectSettings';
 import { useToast } from '../toast/ToastContext';
-import type { SiteTheme, SiteThemeInput, SiteThemePromoBar } from '../types/site-theme';
+import type { SiteTheme, SiteThemeEffectId, SiteThemeInput, SiteThemePromoBar, SiteThemeStorefrontEffects } from '../types/site-theme';
 import '../styles/site-themes.css';
 
 const queryKey = ['site-themes'] as const;
 const blankTheme: SiteThemeInput = {
   name: '',
+  storefrontEffects: { cornerRibbons: null, confetti: null },
   promoBar: {
     mode: 'standard',
     marqueeSpeed: 60,
@@ -39,14 +46,16 @@ const blankTheme: SiteThemeInput = {
   }
 };
 
-function matchesDraft(input: SiteThemeInput, saved: SiteThemeInput) {
-  const { goldGlint, ...bar } = input.promoBar;
-  const savedGlint = saved.promoBar.goldGlint;
-  const glintMatches = goldGlint && savedGlint
-    ? (Object.keys(goldGlint) as Array<keyof typeof goldGlint>).every((field) => goldGlint[field] === savedGlint[field])
-    : goldGlint === savedGlint;
-  return input.name === saved.name && glintMatches
-    && (Object.keys(bar) as Array<keyof typeof bar>).every((field) => bar[field] === saved.promoBar[field]);
+function sameConfig(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  const entries = Object.entries(left);
+  return entries.length === Object.keys(right).length
+    && entries.every(([key, value]) => sameConfig(value, (right as Record<string, unknown>)[key]));
+}
+
+function themeInput({ name, promoBar, storefrontEffects }: SiteThemeInput): SiteThemeInput {
+  return { name, promoBar, storefrontEffects };
 }
 
 function statusLabel(theme: SiteTheme) {
@@ -85,14 +94,14 @@ export function SiteThemesPage() {
   const confirm = useConfirmDialog();
   const { showToast } = useToast();
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [panel, setPanel] = useState<'promo' | 'library' | 'glint'>('promo');
+  const [panel, setPanel] = useState<'promo' | 'library' | SiteThemeEffectId>('promo');
   const [previewViewport, setPreviewViewport] = useState<'desktop' | 'mobile'>('desktop');
-  const [glintReplay, setGlintReplay] = useState(0);
+  const [effectReplay, setEffectReplay] = useState(0);
   const list = useQuery({ queryKey, queryFn: ({ signal }) => api.siteThemes.list(signal) });
   const listUnavailable = list.isError && !list.data;
   const themes = list.data ?? [];
   const theme = themes.find((item) => item.id === editor?.id);
-  const dirty = Boolean(editor && !matchesDraft(editor.input, theme ?? blankTheme));
+  const dirty = Boolean(editor && !sameConfig(editor.input, themeInput(theme ?? blankTheme)));
   const mutation = useMutation({
     mutationFn: (operation: () => Promise<void>) => operation(),
     onMutate: () => queryClient.cancelQueries({ queryKey }),
@@ -117,12 +126,12 @@ export function SiteThemesPage() {
   }
 
   function selectTheme(selected: SiteTheme) {
-    setEditor({ id: selected.id, input: { name: selected.name, promoBar: selected.promoBar } });
+    setEditor({ id: selected.id, input: themeInput(selected) });
   }
 
   function showPanel(nextPanel: typeof panel) {
     setPanel(nextPanel);
-    setGlintReplay(0);
+    setEffectReplay(0);
   }
 
   function openEditor(next: EditorState) {
@@ -161,6 +170,22 @@ export function SiteThemesPage() {
     });
   }
 
+  function updateStorefrontEffects(patch: Partial<SiteThemeStorefrontEffects>) {
+    setEditor((current) => current && {
+      ...current,
+      input: { ...current.input, storefrontEffects: { ...current.input.storefrontEffects, ...patch } }
+    });
+  }
+
+  function uploadRibbonImage(file: File) {
+    const ribbons = editor?.input.storefrontEffects.cornerRibbons;
+    if (!ribbons) return;
+    mutation.mutate(async () => {
+      const asset = await api.siteThemes.uploadBackgroundImage(file);
+      updateStorefrontEffects({ cornerRibbons: { ...ribbons, imageUrl: asset.url } });
+    });
+  }
+
   function saveDraft(publish: boolean) {
     if (!editor) return;
     const { id, input } = editor;
@@ -169,11 +194,13 @@ export function SiteThemesPage() {
       document.getElementById('site-theme-name')?.focus();
       return;
     }
-    if (publish && !input.promoBar.text.trim()) {
+    const needsPromoBar = (theme?.promoBarEnabled ?? true)
+      || (!input.storefrontEffects.cornerRibbons && !input.storefrontEffects.confetti);
+    if (publish && needsPromoBar && !input.promoBar.text.trim()) {
       showToast('Введіть текст промосмуги, щоб опублікувати тему.', 'error');
       return;
     }
-    if (publish && input.promoBar.mode === 'standard'
+    if (publish && needsPromoBar && input.promoBar.mode === 'standard'
       && Boolean(input.promoBar.buttonText.trim()) !== Boolean(input.promoBar.buttonUrl.trim())) {
       showToast('Заповніть текст і посилання кнопки або залиште обидва поля порожніми.', 'error');
       return;
@@ -221,12 +248,19 @@ export function SiteThemesPage() {
     });
   }
 
-  function toggleGoldGlint(selected: SiteTheme) {
-    setGlintReplay(0);
+  function isEffectEnabled(effect: SiteThemeEffectId, selected: SiteTheme | undefined = theme) {
+    return (effect === 'goldGlint' ? selected?.goldGlintEnabled : selected?.storefrontEffectVisibility?.[effect]) ?? true;
+  }
+
+  function toggleEffect(selected: SiteTheme, effect: SiteThemeEffectId) {
+    if (panel === effect) setEffectReplay(0);
+    const enabled = !isEffectEnabled(effect, selected);
     mutation.mutate(async () => {
-      const updated = await api.siteThemes.setGoldGlintEnabled(selected.id, !selected.goldGlintEnabled);
+      const updated = effect === 'goldGlint'
+        ? await api.siteThemes.setGoldGlintEnabled(selected.id, enabled)
+        : await api.siteThemes.setStorefrontEffectEnabled(selected.id, effect, enabled);
       updateCachedTheme(updated);
-      showToast(updated.goldGlintEnabled ? 'Відблиск увімкнено.' : 'Відблиск вимкнено.', 'success');
+      showToast(enabled ? 'Ефект увімкнено.' : 'Ефект вимкнено.', 'success');
     });
   }
 
@@ -247,9 +281,53 @@ export function SiteThemesPage() {
   const enabled = theme?.promoBarEnabled ?? true;
   const promoBar = editor?.input.promoBar;
   const glint = promoBar?.goldGlint;
+  const storefrontEffects = editor?.input.storefrontEffects ?? blankTheme.storefrontEffects;
+  const { cornerRibbons, confetti } = storefrontEffects;
+  const configuredEffects = { ...storefrontEffects, goldGlint: glint };
+  const addedEffects = siteThemeEffectCatalog.filter(({ id }) => configuredEffects[id]);
   const replayAvailable = Boolean(enabled && promoBar?.text.trim()
     && (previewViewport === 'desktop' ? promoBar.showDesktop : promoBar.showMobile));
   const canPublish = Boolean(!theme?.publishedAt || dirty || theme.hasUnpublishedChanges);
+
+  function selectEffect(effect: SiteThemeEffectId) {
+    if (!configuredEffects[effect]) {
+      if (effect === 'goldGlint') updatePromoBar({ goldGlint: defaultGoldGlint });
+      else if (effect === 'cornerRibbons') updateStorefrontEffects({ cornerRibbons: defaultCornerRibbons });
+      else updateStorefrontEffects({ confetti: defaultConfetti });
+    }
+    showPanel(effect);
+  }
+
+  function removeEffect(effect: SiteThemeEffectId) {
+    if (effect === 'goldGlint') updatePromoBar({ goldGlint: null });
+    else updateStorefrontEffects({ [effect]: null });
+    showPanel('library');
+  }
+
+  function replayEffect() {
+    setEffectReplay((count) => count + 1);
+  }
+
+  function renderSettings() {
+    if (!promoBar) return null;
+    if (panel === 'library') return <SiteThemeEffectLibrary
+      added={new Set(addedEffects.map(({ id }) => id))} disabled={busy} onSelect={selectEffect}
+    />;
+    if (panel === 'goldGlint' && glint) return <SiteThemeGoldGlintSettings
+      config={glint} disabled={busy} replayAvailable={replayAvailable}
+      onChange={(goldGlint) => updatePromoBar({ goldGlint })} onReplay={replayEffect} onRemove={() => removeEffect('goldGlint')}
+    />;
+    if (panel === 'cornerRibbons' && cornerRibbons) return <SiteThemeCornerRibbonSettings
+      config={cornerRibbons} disabled={busy} onChange={(cornerRibbons) => updateStorefrontEffects({ cornerRibbons })}
+      onUpload={uploadRibbonImage} onRemove={() => removeEffect('cornerRibbons')}
+    />;
+    if (panel === 'confetti' && confetti) return <SiteThemeConfettiSettings
+      config={confetti} disabled={busy}
+      replayAvailable={previewViewport === 'desktop' ? confetti.showDesktop : confetti.showMobile}
+      onChange={(confetti) => updateStorefrontEffects({ confetti })} onReplay={replayEffect} onRemove={() => removeEffect('confetti')}
+    />;
+    return <SiteThemePromoBarSettings config={promoBar} disabled={busy} onChange={updatePromoBar} onUploadBackgroundImage={uploadBackgroundImage} />;
+  }
 
   return <div className="site-themes">
     <header className="site-themes__toolbar">
@@ -310,18 +388,18 @@ export function SiteThemesPage() {
               </button>
               <ThemeSwitch label="Показувати верхню промосмугу" checked={enabled} disabled={busy || !theme} onClick={() => theme && togglePromoBar(theme)} />
             </div>
-            {glint && <div className={`site-themes__element${panel === 'glint' ? ' site-themes__element--selected' : ''}`}>
-              <span className="site-themes__effect-icon" aria-hidden="true" />
-              <button type="button" className="site-themes__element-select" aria-pressed={panel === 'glint'} onClick={() => showPanel('glint')}>
-                <strong>Золотий відблиск</strong><small>На верхній промосмузі</small>
+            {addedEffects.map((effect) => <div key={effect.id} className={`site-themes__element${panel === effect.id ? ' site-themes__element--selected' : ''}`}>
+              <span className={`site-themes__effect-icon site-themes__effect-visual--${effect.id}`} aria-hidden="true" />
+              <button type="button" className="site-themes__element-select" aria-pressed={panel === effect.id} onClick={() => showPanel(effect.id)}>
+                <strong>{effect.title}</strong><small>{effect.placement}</small>
               </button>
               <ThemeSwitch
-                label="Показувати золотий відблиск"
-                checked={theme?.goldGlintEnabled ?? true}
+                label={`Показувати ${effect.title.toLocaleLowerCase('uk-UA')}`}
+                checked={isEffectEnabled(effect.id)}
                 disabled={busy || !theme}
-                onClick={() => theme && toggleGoldGlint(theme)}
+                onClick={() => theme && toggleEffect(theme, effect.id)}
               />
-            </div>}
+            </div>)}
             {!theme && <p className="site-themes__hint site-themes__element-hint">Перемикачі доступні після збереження теми.</p>}
             <div className="site-themes__effects-action">
               <button type="button" className="button button--secondary" disabled={busy} onClick={() => showPanel('library')}>
@@ -334,38 +412,22 @@ export function SiteThemesPage() {
             config={editor.input.promoBar}
             enabled={enabled}
             viewport={previewViewport}
-            onViewportChange={setPreviewViewport}
-            glintReplay={glintReplay}
+            onViewportChange={(viewport) => {
+              setPreviewViewport(viewport);
+              setEffectReplay(0);
+            }}
+            glintReplay={panel === 'goldGlint' ? effectReplay : 0}
+            cornerRibbons={isEffectEnabled('cornerRibbons') ? cornerRibbons : null}
+            confetti={confetti}
+            confettiReplay={panel === 'confetti' ? effectReplay : 0}
           />
-          {panel === 'library' ? <SiteThemeEffectLibrary
-            added={Boolean(glint)}
-            disabled={busy}
-            onSelect={() => {
-              if (!glint) updatePromoBar({ goldGlint: defaultGoldGlint });
-              showPanel('glint');
-            }}
-          /> : panel === 'glint' && glint ? <SiteThemeGoldGlintSettings
-            config={glint}
-            disabled={busy}
-            replayAvailable={replayAvailable}
-            onChange={(goldGlint) => updatePromoBar({ goldGlint })}
-            onReplay={() => setGlintReplay((count) => count + 1)}
-            onRemove={() => {
-              updatePromoBar({ goldGlint: null });
-              showPanel('library');
-            }}
-          /> : <SiteThemePromoBarSettings
-            config={editor.input.promoBar}
-            disabled={busy}
-            onChange={updatePromoBar}
-            onUploadBackgroundImage={uploadBackgroundImage}
-          />}
+          {renderSettings()}
         </div>
       </> : <section aria-labelledby="site-theme-library-heading">
         <header className="site-themes__library-header">
           <div>
             <h2 id="site-theme-library-heading">Бібліотека тем</h2>
-            <p>Створюйте теми й керуйте показом промосмуги на вітрині Хорошопа.</p>
+            <p>Створюйте теми й керуйте промосмугою та ефектами на вітрині Хорошопа.</p>
           </div>
           <button
             type="button"
@@ -396,7 +458,7 @@ export function SiteThemesPage() {
                 </div>
                 {item.publishedAt && item.hasUnpublishedChanges && <p className="site-themes__hint">Є неопубліковані зміни</p>}
                 <div className="site-themes__card-actions">
-                  <button type="button" className="button button--secondary button--small" disabled={busy} onClick={() => openEditor({ id: item.id, input: { name: item.name, promoBar: item.promoBar } })}>Редагувати</button>
+                  <button type="button" className="button button--secondary button--small" disabled={busy} onClick={() => openEditor({ id: item.id, input: themeInput(item) })}>Редагувати</button>
                   {item.publishedAt && <button type="button" className="button button--secondary button--small" disabled={busy} onClick={() => void toggleActive(item)}>
                     {item.active ? 'Вимкнути' : 'Увімкнути'}
                   </button>}
@@ -406,7 +468,7 @@ export function SiteThemesPage() {
                     disabled={busy}
                     aria-label={`Дублювати тему «${item.name}»`}
                     title="Дублювати"
-                    onClick={() => openEditor({ id: null, input: { name: `${item.name.slice(0, 112)} — копія`, promoBar: item.promoBar } })}
+                    onClick={() => openEditor({ id: null, input: { ...themeInput(item), name: `${item.name.slice(0, 112)} — копія` } })}
                   ><Icon name="copy" size={17} /></button>
                   {!item.active && <button
                     type="button"

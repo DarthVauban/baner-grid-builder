@@ -1,6 +1,6 @@
 import { query } from '../../db/pool.js';
 import { siteThemeEmbedPath } from '../site-themes/site-theme.embed.js';
-import { getPublishedSiteThemePromoBar } from '../site-themes/site-theme.service.js';
+import { getPublishedSiteThemeAppearance } from '../site-themes/site-theme.service.js';
 
 export const horoshopWidgetEmbedPath = '/api/public/horoshop-widgets/embed.js';
 
@@ -42,7 +42,7 @@ export async function loadHoroshopWidgetManifest() {
   const storeDomain = current?.store_domain || '';
   if (!storeDomain) return { storeDomain: '', widgets: [] };
 
-  const [settings, supportSites, formCampaigns, siteThemePromoBar] = await Promise.all([
+  const [settings, supportSites, formCampaigns, siteThemeAppearance] = await Promise.all([
     Promise.all(publishedWidgets.map(({ table }) => query(
     `SELECT public_id, published_version
      FROM ${table}
@@ -54,13 +54,13 @@ export async function loadHoroshopWidgetManifest() {
            WHERE connection_id = $1 AND connection_generation = $2
              AND status = 'active' AND archived_at IS NULL
            LIMIT 1`, [current.id, current.generation]),
-    getPublishedSiteThemePromoBar(`https://${storeDomain}`)
+    getPublishedSiteThemeAppearance(`https://${storeDomain}`)
   ]);
   const widgets = [
     { id: 'popup-banners', path: '/api/public/popup-banners/embed.js' },
     { id: 'product-promo', path: '/api/public/product-selections/promo-loader.js', when: 'promo-token' }
   ];
-  if (siteThemePromoBar) widgets.push({ id: 'site-themes', path: siteThemeEmbedPath });
+  if (siteThemeAppearance) widgets.push({ id: 'site-themes', path: siteThemeEmbedPath });
   publishedWidgets.forEach((widget, index) => {
     const row = settings[index].rows[0];
     if (!row) return;
