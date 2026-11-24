@@ -1,10 +1,13 @@
 export type SiteThemeFontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
 
 export interface SiteThemePromoBar {
+  mode: 'standard' | 'marquee';
+  marqueeSpeed: number;
   text: string;
   buttonText: string;
   buttonUrl: string;
   backgroundColor: string;
+  backgroundImageUrl: string;
   textColor: string;
   buttonColor: string;
   buttonTextColor: string;

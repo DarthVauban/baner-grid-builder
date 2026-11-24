@@ -1,8 +1,9 @@
 import { promoBarStyleDefaults } from './site-theme-promo-bar.js';
+import { mountPromoBarMarquee, promoBarBackgroundImage } from './site-theme-presentation.js';
 
-export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=2';
+export const siteThemeEmbedPath = '/api/public/site-themes/embed.js?v=3';
 
-function installSiteThemePromoBar(browser, configPath, defaults) {
+function installSiteThemePromoBar(browser, configPath, defaults, backgroundImage, mountMarquee) {
   const { document, location, navigator } = browser;
   const scriptUrl = document.currentScript?.src;
   if (!scriptUrl) return;
@@ -36,6 +37,10 @@ function installSiteThemePromoBar(browser, configPath, defaults) {
       margin: '0',
       boxSizing: 'border-box',
       backgroundColor: config.backgroundColor,
+      backgroundImage: backgroundImage(config.backgroundImageUrl, configUrl.origin),
+      backgroundPosition: 'center',
+      backgroundSize: 'cover',
+      backgroundRepeat: 'no-repeat',
       color: config.textColor,
       font: 'inherit',
       lineHeight: '1.4'
@@ -65,9 +70,16 @@ function installSiteThemePromoBar(browser, configPath, defaults) {
       fontSize: `${config.textFontSize ?? defaults.textFontSize}px`,
       fontWeight: String(config.textFontWeight ?? defaults.textFontWeight)
     });
-    inner.append(message);
+    const marquee = config.mode === 'marquee';
+    const messageContainer = marquee ? document.createElement('div') : inner;
+    if (marquee) {
+      messageContainer.dataset.mtSitePromoMarquee = '';
+      Object.assign(messageContainer.style, { flex: '1 1 100%', minWidth: '0', position: 'relative', overflow: 'hidden' });
+      inner.append(messageContainer);
+    }
+    messageContainer.append(message);
 
-    const href = safeLink(config.buttonUrl);
+    const href = marquee ? null : safeLink(config.buttonUrl);
     if (config.buttonText && href) {
       const button = document.createElement('a');
       button.textContent = config.buttonText;
@@ -93,6 +105,7 @@ function installSiteThemePromoBar(browser, configPath, defaults) {
 
     bar.append(inner);
     document.body.prepend(bar);
+    if (marquee) mountMarquee(messageContainer, message, config.marqueeSpeed ?? defaults.marqueeSpeed);
   }
 
   async function start() {
@@ -115,5 +128,8 @@ function installSiteThemePromoBar(browser, configPath, defaults) {
 }
 
 export function siteThemeEmbedScript() {
-  return `(${installSiteThemePromoBar.toString()})(window, '/api/public/site-themes/promo-bar', ${JSON.stringify(promoBarStyleDefaults)});`;
+  return `(${installSiteThemePromoBar.toString()})(
+    window, '/api/public/site-themes/promo-bar', ${JSON.stringify(promoBarStyleDefaults)},
+    ${promoBarBackgroundImage.toString()}, ${mountPromoBarMarquee.toString()}
+  );`;
 }

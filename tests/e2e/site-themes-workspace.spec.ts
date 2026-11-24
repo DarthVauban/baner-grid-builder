@@ -3,6 +3,10 @@ import type { SiteTheme, SiteThemeInput } from '../../client/src/types/site-them
 
 test('the theme tool opens without the workspace sidebar and saves a draft with device-specific preview', async ({ page }) => {
   let draft: SiteTheme | null = null;
+  const backgroundImageUrl = '/media/catalog/library/promo.webp';
+  await page.route('**/api/site-themes/background-image', (route) => route.fulfill({
+    status: 201, json: { data: { url: backgroundImageUrl } }
+  }));
   await page.route('**/api/site-themes', (route) => {
     if (route.request().method() === 'POST') {
       const input = route.request().postDataJSON() as SiteThemeInput;
@@ -50,7 +54,10 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
   await page.getByRole('button', { name: 'Стилі', exact: true }).click();
   await page.getByRole('button', { name: 'Вирівнювання' }).click();
   await page.getByRole('option', { name: 'Праворуч' }).click();
-  await expect(preview.locator('.site-themes__bar-inner')).toHaveCSS('justify-content', 'flex-end');
+  await expect.poll(() => preview.locator('.site-themes__bar-inner').evaluate((bar) => {
+    const rightEdge = bar.getBoundingClientRect().right - Number.parseFloat(getComputedStyle(bar).paddingRight);
+    return Math.abs(rightEdge - bar.lastElementChild!.getBoundingClientRect().right);
+  })).toBeLessThan(1);
   await page.getByRole('spinbutton', { name: 'Розмір тексту промосмуги, px' }).fill('23');
   await page.getByRole('button', { name: 'Насиченість тексту промосмуги' }).click();
   await page.getByRole('option', { name: '700', exact: true }).click();
@@ -65,13 +72,33 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
   await expect(previewButton).toHaveCSS('font-size', '19px');
   await expect(previewButton).toHaveCSS('font-weight', '800');
   await expect(previewButton).toHaveCSS('padding', '11px 19px');
+  const imageField = page.getByLabel('Посилання на фонове зображення');
+  await imageField.fill('https://images.example.test/promo.webp');
+  await expect(preview.locator('.site-themes__bar')).toHaveCSS('background-image', 'url("https://images.example.test/promo.webp")');
+  await page.getByRole('button', { name: 'Прибрати фонове зображення' }).click();
+  await expect(preview.locator('.site-themes__bar')).toHaveCSS('background-image', 'none');
+  await page.getByLabel('Завантажити фонове зображення').setInputFiles({
+    name: 'promo.png', mimeType: 'image/png', buffer: Buffer.from('test upload')
+  });
+  await expect(imageField).toHaveValue(backgroundImageUrl);
+
+  await page.getByRole('button', { name: 'Контент', exact: true }).click();
+  await page.getByRole('button', { name: 'Біжучий текст', exact: true }).click();
+  await page.getByRole('spinbutton', { name: 'Швидкість тексту, px/с' }).fill('120');
+  await expect(previewButton).toHaveCount(0);
+  await expect(preview.locator('[data-mt-site-promo-track]')).toBeVisible();
+  await page.getByRole('button', { name: 'Текст і кнопка', exact: true }).click();
+  await expect(previewButton).toBeVisible();
+  await page.getByRole('button', { name: 'Біжучий текст', exact: true }).click();
+  await expect(page.getByRole('spinbutton', { name: 'Швидкість тексту, px/с' })).toHaveValue('120');
+
   await preview.getByRole('button', { name: 'Мобільний' }).click();
-  await expect(preview.getByText(offer, { exact: true })).toBeVisible();
+  await expect(preview.locator('[data-mt-site-promo-track]')).toBeVisible();
   await page.getByRole('button', { name: 'Показ', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Показувати на мобільному' }).uncheck();
   await expect(preview.getByText(offer, { exact: true })).toHaveCount(0);
   await preview.getByRole('button', { name: 'Десктоп' }).click();
-  await expect(preview.getByText(offer, { exact: true })).toBeVisible();
+  await expect(preview.locator('[data-mt-site-promo-track]')).toBeVisible();
 
   const [created] = await Promise.all([
     page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/site-themes')),
@@ -82,6 +109,11 @@ test('the theme tool opens without the workspace sidebar and saves a draft with 
   expect(input.name).toBe(themeName);
   expect(input.promoBar).toMatchObject({
     text: offer,
+    mode: 'marquee',
+    marqueeSpeed: 120,
+    backgroundImageUrl,
+    buttonText: 'До акцій',
+    buttonUrl: '/sale/',
     alignment: 'right',
     textFontSize: 23,
     textFontWeight: 700,

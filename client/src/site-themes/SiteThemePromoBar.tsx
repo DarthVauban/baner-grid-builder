@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { mountPromoBarMarquee, promoBarBackgroundImage } from '../../../src/modules/site-themes/site-theme-presentation.js';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import type { StyledSelectOption } from '../components/StyledSelect';
@@ -68,13 +69,15 @@ function PixelField({
 }
 
 export function SiteThemePromoBarSettings({
-  config, disabled, onChange
+  config, disabled, onChange, onUploadBackgroundImage
 }: {
   config: SiteThemePromoBar;
   disabled: boolean;
   onChange: (patch: Partial<SiteThemePromoBar>) => void;
+  onUploadBackgroundImage: (file: File) => void;
 }) {
   const [tab, setTab] = useState<(typeof tabs)[number]['value']>('content');
+  const marquee = config.mode === 'marquee';
 
   function renderColorFields(fields: typeof messageColorFields | typeof buttonColorFields) {
     return fields.map(({ field, label }) => <label className="site-themes__color-field" key={field}>
@@ -99,6 +102,10 @@ export function SiteThemePromoBarSettings({
     <fieldset className="site-themes__fields" disabled={disabled}>
       <legend className="visually-hidden">{tabs.find((item) => item.value === tab)?.label}</legend>
       {tab === 'content' && <>
+        <div className="site-themes__viewport site-themes__mode" role="group" aria-label="Режим промосмуги">
+          <button type="button" aria-pressed={!marquee} onClick={() => onChange({ mode: 'standard' })}>Текст і кнопка</button>
+          <button type="button" aria-pressed={marquee} onClick={() => onChange({ mode: 'marquee' })}>Біжучий текст</button>
+        </div>
         <label className="field">
           <span>Текст промосмуги</span>
           <textarea
@@ -108,26 +115,62 @@ export function SiteThemePromoBarSettings({
             onChange={(event) => onChange({ text: event.target.value })}
           />
         </label>
-        <label className="field">
-          <span>Текст кнопки</span>
-          <input maxLength={80} value={config.buttonText} onChange={(event) => onChange({ buttonText: event.target.value })} />
-        </label>
-        <label className="field">
-          <span>Посилання кнопки</span>
-          <input
-            inputMode="url"
-            maxLength={500}
-            value={config.buttonUrl}
-            placeholder="/aktsii/"
-            onChange={(event) => onChange({ buttonUrl: event.target.value })}
-          />
-          <small className="site-themes__hint">Кнопка з’явиться, коли заповнено текст і посилання.</small>
-        </label>
+        {marquee ? <PixelField
+          label="Швидкість тексту, px/с"
+          value={config.marqueeSpeed}
+          min={20}
+          max={240}
+          onChange={(marqueeSpeed) => onChange({ marqueeSpeed })}
+        /> : <>
+          <label className="field">
+            <span>Текст кнопки</span>
+            <input maxLength={80} value={config.buttonText} onChange={(event) => onChange({ buttonText: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>Посилання кнопки</span>
+            <input
+              inputMode="url"
+              maxLength={500}
+              value={config.buttonUrl}
+              placeholder="/aktsii/"
+              onChange={(event) => onChange({ buttonUrl: event.target.value })}
+            />
+            <small className="site-themes__hint">Кнопка з’явиться, коли заповнено текст і посилання.</small>
+          </label>
+        </>}
       </>}
       {tab === 'style' && <>
         <div className="site-themes__style-group">
           <h4>Промосмуга</h4>
           <div className="site-themes__style-grid">{renderColorFields(messageColorFields)}</div>
+          <label className="field">
+            <span>Посилання на фонове зображення</span>
+            <input
+              inputMode="url"
+              maxLength={2048}
+              value={config.backgroundImageUrl}
+              placeholder="https://…"
+              onChange={(event) => onChange({ backgroundImageUrl: event.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Завантажити фонове зображення</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+                if (file) onUploadBackgroundImage(file);
+                input.value = '';
+              }}
+            />
+          </label>
+          {config.backgroundImageUrl && <button
+            type="button"
+            className="button button--secondary button--small"
+            onClick={() => onChange({ backgroundImageUrl: '' })}
+          >Прибрати фонове зображення</button>}
           <PixelField
             label="Розмір тексту промосмуги, px"
             value={config.textFontSize}
@@ -162,7 +205,7 @@ export function SiteThemePromoBarSettings({
             <PixelField label="Горизонтальні відступи, px" value={config.paddingX} min={0} max={80} onChange={(paddingX) => onChange({ paddingX })} />
           </div>
         </div>
-        <div className="site-themes__style-group">
+        {!marquee && <div className="site-themes__style-group">
           <h4>Кнопка</h4>
           <div className="site-themes__style-grid">{renderColorFields(buttonColorFields)}</div>
           <PixelField
@@ -199,7 +242,7 @@ export function SiteThemePromoBarSettings({
               onChange={(buttonPaddingX) => onChange({ buttonPaddingX })}
             />
           </div>
-        </div>
+        </div>}
       </>}
       {tab === 'visibility' && <>
         <label className="site-themes__checkbox">
@@ -223,13 +266,23 @@ export function SiteThemePromoBarPreview({
   enabled: boolean;
 }) {
   const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop');
+  const marqueeViewport = useRef<HTMLDivElement>(null);
+  const marqueeMessage = useRef<HTMLSpanElement>(null);
   const visible = enabled && (viewport === 'desktop' ? config.showDesktop : config.showMobile);
-  const withButton = Boolean(config.buttonText.trim() && config.buttonUrl.trim());
+  const { mode, text, textFontSize, textFontWeight, marqueeSpeed } = config;
+  const withButton = mode !== 'marquee' && Boolean(config.buttonText.trim() && config.buttonUrl.trim());
+  const messageStyle = { fontSize: textFontSize, fontWeight: textFontWeight };
+  const backgroundImage = promoBarBackgroundImage(config.backgroundImageUrl.trim());
   const justifyContent = { left: 'flex-start', center: 'center', right: 'flex-end' }[config.alignment];
   let previewStatus = '';
   if (!enabled) previewStatus = 'Промосмугу вимкнено.';
   else if (!visible) previewStatus = 'Промосмугу приховано для цього пристрою.';
-  else if (!config.text.trim()) previewStatus = 'Додайте текст, щоб побачити промосмугу.';
+  else if (!text.trim()) previewStatus = 'Додайте текст, щоб побачити промосмугу.';
+
+  useEffect(() => {
+    if (!marqueeViewport.current || !marqueeMessage.current) return;
+    return mountPromoBarMarquee(marqueeViewport.current, marqueeMessage.current, marqueeSpeed);
+  }, [visible, mode, text, textFontSize, textFontWeight, marqueeSpeed]);
 
   return <section className="site-themes__panel site-themes__preview" aria-labelledby="site-theme-preview-heading">
     <header className="site-themes__panel-header site-themes__preview-header">
@@ -246,14 +299,14 @@ export function SiteThemePromoBarPreview({
     {previewStatus && <p className="site-themes__preview-status" role="status">{previewStatus}</p>}
     <div className="site-themes__preview-stage">
       <div className={`site-themes__store site-themes__store--${viewport}`}>
-        {visible && config.text.trim() && <div className="site-themes__bar" style={{ backgroundColor: config.backgroundColor, color: config.textColor }}>
+        {visible && text.trim() && <div className="site-themes__bar" style={{ backgroundColor: config.backgroundColor, backgroundImage, color: config.textColor }}>
           <div
             className="site-themes__bar-inner"
             style={{ justifyContent, textAlign: config.alignment, padding: `${config.paddingY}px ${config.paddingX}px` }}
           >
-            <span className="site-themes__bar-message" style={{ fontSize: config.textFontSize, fontWeight: config.textFontWeight }}>
-              {config.text}
-            </span>
+            {mode === 'marquee' ? <div className="site-themes__marquee" ref={marqueeViewport}>
+              <span className="site-themes__bar-message" style={messageStyle} ref={marqueeMessage}>{text}</span>
+            </div> : <span className="site-themes__bar-message" style={messageStyle}>{text}</span>}
             {withButton && <span className="site-themes__bar-button" style={{
               color: config.buttonTextColor,
               backgroundColor: config.buttonColor,
