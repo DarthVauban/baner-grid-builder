@@ -1,0 +1,24 @@
+.campaign-page { display: grid; gap: 20px; min-width: 0; }
+.campaign-layout { display: grid; grid-template-columns: minmax(190px, 260px) minmax(0,1fr); align-items: start; gap: 20px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.campaign-main, .campaign-library { display: grid; gap: 12px; min-width: 0; }
+.campaign-panel { padding: clamp(16px, 2.5vw, 28px); border: 1px solid var(--line); border-radius: 16px; background: var(--surface); min-width: 0; }
+.campaign-panel h2 { margin: 0; font-size: 18px; }
+.campaign-panel p { color: var(--muted); margin: 10px 0 14px; }
+.campaign-name { display: grid; gap: 6px; font-weight: 600; }
+.campaign-panel :is(input, textarea) { width: 100%; min-width: 0; padding: 10px 12px; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.campaign-panel textarea { display: block; margin: 10px 0; resize: vertical; }
+.campaign-bar, .campaign-actions, .campaign-section__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.campaign-bar { justify-content: space-between; margin: 22px 0 14px; }
+.campaign-bar small, .campaign-section small { font-weight: 400; color: var(--muted); }
+.campaign-actions { margin-top: 20px; }
+.campaign-library__item { text-align: left; border: 0; background: transparent; color: inherit; padding: 10px; border-radius: 8px; cursor: pointer; overflow-wrap: anywhere; }
+.campaign-library__item[aria-current="true"] { background: var(--surface-soft); font-weight: 700; }
+.campaign-section { border-top: 1px solid var(--line); padding: 10px 0; }
+.campaign-section__head input { flex: 1 1 150px; width: auto; }
+.campaign-section__products { padding-top: 12px; }
+.campaign-section__products ul { list-style: none; padding: 0; }
+.campaign-section__products li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; }
+.campaign-section__products small { display: block; }
+.campaign-report { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border-radius: 8px; background: var(--surface-soft); max-height: 340px; overflow: auto; }
+.campaign-error { color: var(--danger, #a32036); }
+@media (max-width: 800px) { .campaign-layout { grid-template-columns: 1fr; } }

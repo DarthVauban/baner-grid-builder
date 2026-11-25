@@ -193,3 +193,62 @@ test('out-of-stock products can be saved and remain visible in the public select
 
   await admin.delete(`/api/product-selections/${created.body.data.id}`).expect(204);
 });
+
+test('thematic campaigns resolve mixed lists, persist category edits and serve current catalog pages', async () => {
+  const base = '/api/thematic-campaigns';
+  await request(app).get(base).expect(401);
+  await pool.query(`INSERT INTO search_horoshop_modifications
+    (connection_id, generation, product_id, external_id, sku, titles, last_seen_sync_id)
+    VALUES ($1,$2,$3,'black','BLACK-50',$4::jsonb,$5)`, [connectionId, generation, productId, JSON.stringify({ uk: 'Чорний' }), syncId]);
+  const resolved = (await admin.post(base + '/resolve').send({
+    entries: ['Смартфон TECNO Spark 50 4/128GB', 'BLACK-50', 'TECNO-50', 'POCO-X7-PRO', 'BLACK-50', '???']
+  }).expect(200)).body.data;
+  assert.deepEqual(resolved.matched.map((item) => item.id), [productId, unavailableProductId]);
+  assert.equal(resolved.matched[0].category, 'smartphones');
+  assert.equal(resolved.duplicates, 3);
+  assert.deepEqual(resolved.unmatched, ['???']);
+  const first = randomUUID(), second = randomUUID();
+  const extra = Array.from({ length: 125 }, () => randomUUID());
+  for (const [index, id] of extra.entries()) {
+    await pool.query(`INSERT INTO search_horoshop_products
+      (id,connection_id,generation,external_id,sku,titles,price,primary_image_url,canonical_url,last_seen_sync_id)
+      VALUES ($1,$2,$3,$4,$4,$5::jsonb,'123','/image.jpg','/item/',$6)`,
+    [id, connectionId, generation, 'extra-' + index, JSON.stringify({ uk: 'Для подарунка ' + index }), syncId]);
+  }
+  const input = { generation, name: 'Різдво', sections: [
+    { id: first, name: 'Телефони', categories: ['smartphones'], productIds: [productId, unavailableProductId] },
+    { id: second, name: 'Подарунки', categories: ['gift'], productIds: extra }
+  ] };
+  const created = (await admin.post(base).send(input).expect(201)).body.data;
+  const resource = base + '/' + created.id;
+  const widget = '/api/public/thematic-campaigns/' + created.publicId;
+  assert.ok((await admin.get(base).expect(200)).body.data.some((row) => row.id === created.id));
+  const detail = (await admin.get(resource).expect(200)).body.data;
+  assert.equal(detail.sections[1].products.length, 125);
+  assert.equal(detail.sections[0].products[0].sku, 'TECNO-50');
+  await admin.put(resource).send({ ...input, revision: 1, sections: [input.sections[0], { ...input.sections[1], productIds: [productId] }] }).expect(422);
+  const embed = await request(app).get(widget + '/embed.js').expect(200);
+  assert.match(embed.text, /Різдво/u);
+  assert.doesNotMatch(embed.text, /TECNO Spark|encrypted_credentials/u);
+  const page = (await request(app).get(widget + '/products').query({ revision: 1, section: second }).expect(200)).body.data;
+  assert.equal(page.products.length, 24);
+  assert.equal(page.nextCursor, 26);
+  const tail = (await request(app).get(widget + '/products').query({ revision: 1, section: second, cursor: 122 }).expect(200)).body.data;
+  assert.equal(tail.products.length, 5);
+  assert.equal(tail.nextCursor, null);
+  assert.equal(tail.products[0].pageUrl, 'https://shop.example.com/item/');
+  await pool.query('UPDATE search_horoshop_products SET visible = FALSE WHERE id = $1', [extra[0]]);
+  const filtered = (await request(app).get(widget + '/products').query({ revision: 1, section: second }).expect(200)).body.data;
+  assert.equal(filtered.nextCursor, 27);
+  assert.equal(filtered.products[0].productExternalId, 'extra-1');
+  const continued = (await request(app).get(widget + '/products').query({ revision: 1, section: second, cursor: page.nextCursor }).expect(200)).body.data;
+  assert.equal(continued.products[0].productExternalId, 'extra-24');
+  const revision = (await admin.put(resource).send({ ...input, name: 'Зимові акції', revision: 1,
+    sections: [{ ...input.sections[0], name: 'Усі подарунки', categories: ['smartphones', 'gift'], productIds: [productId, ...extra] }]
+  }).expect(200)).body.data.revision;
+  assert.equal(revision, 2);
+  await admin.put(resource).send({ ...input, revision: 1 }).expect(409);
+  await request(app).get(widget + '/products').query({ revision: 1 }).expect(409);
+  await admin.delete(resource).query({ revision }).expect(204);
+  await request(app).get(widget + '/embed.js').expect(404);
+});

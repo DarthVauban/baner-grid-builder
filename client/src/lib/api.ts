@@ -142,6 +142,7 @@ import type {
 } from '../types/popup-banner';
 import type { HoroshopCatalogFeed } from '../types/horoshop-catalog';
 import type { ProductSelection, ProductSelectionInput } from '../types/product-selection';
+import type { CampaignDetail, CampaignInput, CampaignResolution, CampaignSummary } from '../types/thematic-campaign';
 import type { PopupBannerAnalytics, ProductSelectionAnalytics } from '../types/analytics';
 import type {
   HoroshopCatalogMenuSettings,
@@ -202,6 +203,16 @@ import type { SmartSearchEntry } from '../search/types';
 export { ApiError } from './api-client';
 
 export const api = {
+  thematicCampaigns: {
+    list: (signal?: AbortSignal) => request<CampaignSummary[]>('/api/thematic-campaigns', { signal }),
+    get: (id: string) => request<CampaignDetail>(`/api/thematic-campaigns/${encodeURIComponent(id)}`),
+    resolve: (entries: string[]) => request<CampaignResolution>('/api/thematic-campaigns/resolve', { method: 'POST', body: jsonBody({ entries }) }),
+    create: (input: CampaignInput) => request<CampaignSummary>('/api/thematic-campaigns', { method: 'POST', body: jsonBody(input) }),
+    update: (id: string, input: CampaignInput, revision: number) => request<CampaignSummary>(`/api/thematic-campaigns/${encodeURIComponent(id)}`, {
+      method: 'PUT', body: jsonBody({ ...input, revision })
+    }),
+    remove: (id: string, revision: number) => request<void>(`/api/thematic-campaigns/${encodeURIComponent(id)}?revision=${revision}`, { method: 'DELETE' })
+  },
   horoshopWidgets: {
     releases: (signal?: AbortSignal) => request<HoroshopWidgetReleases>('/api/horoshop-widgets/releases', { signal }),
     publish: () => request<HoroshopWidgetRelease>('/api/horoshop-widgets/releases', { method: 'POST' })

@@ -19,6 +19,7 @@ import { ToolAccessRoute } from '../components/ToolAccessRoute';
 import { BlogPublicationsPage } from '../pages/BlogPublicationsPage';
 import { getSmartSearchReturnPath } from '../search/smart-search-auth';
 
+const ThematicCampaignsPage = lazy(() => import('../pages/ThematicCampaignsPage'));
 const HoroshopFeedsPage = lazy(() => import('../pages/HoroshopFeedsPage').then((module) => ({ default: module.HoroshopFeedsPage })));
 const HoroshopStickersPage = lazy(() => import('../pages/HoroshopStickersPage').then((module) => ({ default: module.HoroshopStickersPage })));
 const HoroshopPopularityPage = lazy(() => import('../pages/HoroshopPopularityPage').then((module) => ({ default: module.HoroshopPopularityPage })));
@@ -231,6 +232,7 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="product_selection" />}>
             <Route path="tools/product-selection" element={<ProductSelectionPage />} />
+            <Route path="tools/thematic-campaigns" element={<Suspense fallback={<LoadingScreen />}><ThematicCampaignsPage /></Suspense>} />
           </Route>
           <Route element={<ToolAccessRoute tool="blog_publications" />}>
             <Route path="tools/blog-publications" element={<BlogPublicationsPage />} />

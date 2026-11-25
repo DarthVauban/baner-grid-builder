@@ -158,7 +158,7 @@ function mapSelection(row, items = []) {
   };
 }
 
-function offerFromRow(row) {
+export function offerFromRow(row) {
   const expectsModification = Boolean(row.modification_external_id);
   const missing = !row.product_id || (expectsModification && !row.modification_id);
   const useModification = Boolean(row.modification_id);

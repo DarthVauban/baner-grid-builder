@@ -13,9 +13,6 @@ const SELECTION_STYLES = `.mt-product-selection {
 .mt-product-selection *, .mt-product-selection *::before, .mt-product-selection *::after {
   box-sizing: border-box !important;
 }
-.p-review-add {
-  display: none !important;
-}
 .mt-product-selection__grid {
   display: grid !important;
   grid-template-columns: repeat(var(--mt-selection-desktop-columns), minmax(0, 1fr)) !important;
@@ -166,14 +163,18 @@ const PROMO_STYLES = `.mt-product-promo-old-price {
   color: #dc2626 !important;
 }`;
 
-export function productSelectionEmbedScript(selection, origin = '') {
+export function productSelectionEmbedScript(selection, origin = '', campaign = null) {
   return `(function () {
   "use strict";
   var sourceScript = document.currentScript;
   if (!sourceScript) return;
   var payload = ${JSON.stringify(selection)};
   var apiOrigin = ${JSON.stringify(origin)};
-  var styleId = "mt-product-selection-styles-v2";
+  var styleId = ${JSON.stringify(campaign ? 'mt-thematic-campaign-styles' : 'mt-product-selection-styles-v2')};
+  function surface() {
+    return window.matchMedia && window.matchMedia("(max-width: 720px)").matches ? "mobile" : "desktop";
+  }
+  ${campaign ? 'function track() {}' : `
   var eventQueue = [];
   var eventTimer = 0;
   var visitorKey = "";
@@ -184,10 +185,6 @@ export function productSelectionEmbedScript(selection, origin = '') {
       localStorage.setItem("mt-product-selection-visitor", visitorKey);
     }
   } catch (_) { visitorKey = Math.random().toString(36).slice(2) + Date.now(); }
-
-  function surface() {
-    return window.matchMedia && window.matchMedia("(max-width: 720px)").matches ? "mobile" : "desktop";
-  }
 
   function flushEvents() {
     clearTimeout(eventTimer);
@@ -219,13 +216,13 @@ export function productSelectionEmbedScript(selection, origin = '') {
 
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") flushEvents();
-  });
+  });`}
 
   function installStyles() {
     if (document.getElementById(styleId)) return;
     var style = document.createElement("style");
     style.id = styleId;
-    style.textContent = ${JSON.stringify(SELECTION_STYLES)};
+    style.textContent = ${JSON.stringify(SELECTION_STYLES + (campaign ? campaign.styles : '.p-review-add { display: none !important; }'))};
     (document.head || document.documentElement).appendChild(style);
   }
 
@@ -475,7 +472,10 @@ export function productSelectionEmbedScript(selection, origin = '') {
     return card;
   }
 
-  function mount() {
+  ${campaign ? `function mount() {
+    installStyles();
+    (${campaign.mount.toString()})(sourceScript, payload, createCard);
+  }` : `function mount() {
     if (!payload.products || !payload.products.length) return;
     installStyles();
     var duplicate = document.querySelector('[data-mt-product-selection="' + payload.id + '"]');
@@ -522,6 +522,7 @@ export function productSelectionEmbedScript(selection, origin = '') {
     }
   }
 
+  `}
   if (document.readyState === "loading" && sourceScript.parentNode === document.head) document.addEventListener("DOMContentLoaded", mount, { once: true });
   else mount();
 })();`;

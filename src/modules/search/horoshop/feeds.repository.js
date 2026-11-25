@@ -238,21 +238,7 @@ export class HoroshopFeedRepository {
   }
 
   async allProductsForResolve(connection) {
-    const [products, modifications] = await Promise.all([
-      this.pool.query(`SELECT id, sku, titles FROM search_horoshop_products
-        WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY sku, id`,
-      [connection.id, connection.generation]),
-      this.pool.query(`SELECT product_id, sku, titles FROM search_horoshop_modifications
-        WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, [connection.id, connection.generation])
-    ]);
-    const byProduct = new Map();
-    for (const row of modifications.rows) {
-      const offers = byProduct.get(row.product_id) || [];
-      offers.push({ sku: row.sku, titles: objectValue(row.titles) });
-      byProduct.set(row.product_id, offers);
-    }
-    return products.rows.map((row) => ({ id: row.id, sku: row.sku,
-      titles: objectValue(row.titles), modifications: byProduct.get(row.id) || [] }));
+    return this.catalogRepository.allProductsForResolve(connection);
   }
 
   async createDraft(connection, actorId, action, items) {
