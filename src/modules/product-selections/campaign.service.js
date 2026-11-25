@@ -116,31 +116,50 @@ export async function publicCampaign(publicId) {
   const header = await pool.query(`SELECT c.name, c.sections, c.revision ${publicJoin} WHERE c.public_id = $1`, [publicId]);
   const row = header.rows[0];
   if (!row) throw notFound();
-  const totals = await pool.query(`SELECT i.section_id, COUNT(*) AS total ${publicJoin} ${publicItems}
-    WHERE c.public_id = $1 AND c.revision = $2 GROUP BY i.section_id`, [publicId, row.revision]);
-  const counts = new Map(totals.rows.map((item) => [item.section_id, Number(item.total)]));
-  return { id: publicId, name: row.name, revision: row.revision,
-    sections: row.sections.filter((section) => counts.has(section.id))
-      .map(({ id, name }) => ({ id, name, count: counts.get(id) })) };
+  const totals = await pool.query(`SELECT i.section_id, p.brand, COUNT(*) AS total ${publicJoin} ${publicItems}
+    WHERE c.public_id = $1 AND c.revision = $2 GROUP BY i.section_id, p.brand ORDER BY p.brand`, [publicId, row.revision]);
+  const sections = row.sections.map(({ id, name }) => ({ id, name, count: 0, brands: [] }));
+  const byId = new Map(sections.map((section) => [section.id, section]));
+  for (const item of totals.rows) {
+    const section = byId.get(item.section_id);
+    section.count += Number(item.total);
+    if (item.brand) section.brands.push(item.brand);
+  }
+  return { id: publicId, name: row.name, revision: row.revision, sections: sections.filter((section) => section.count) };
 }
 
-export async function campaignPage(publicId, { section, cursor, revision }) {
-  const params = [publicId, revision, cursor];
-  if (section) params.push(section);
+export async function campaignPage(publicId, { section, cursor, revision, brand = [], q = '' }) {
+  const params = [publicId, revision];
+  const bind = (value) => '$' + params.push(value);
+  const conditions = ['c.public_id = $1', 'c.revision = $2'];
+  if (section) conditions.push('i.section_id = ' + bind(section));
+  if (brand.length) conditions.push(`LOWER(p.brand) IN (${brand.map(bind).join(', ')})`);
+  if (q) {
+    const match = bind('%' + q.replace(/[\\%_]/gu, '\\$&') + '%');
+    const fields = ['p.sku', 'p.brand', ...['uk', 'ua', 'ru', 'en'].map((lang) => `(p.titles->>'${lang}')`)];
+    conditions.push('(' + fields.map((field) => field + ' ILIKE ' + match).join(' OR ') + ')');
+  }
+  const from = `${publicJoin} ${publicItems} WHERE ${conditions.join(' AND ')}`;
+  let total;
+  if (cursor === 0 && (q || brand.length)) {
+    const count = await pool.query('SELECT COUNT(*) AS total ' + from, params);
+    total = Number(count.rows[0].total);
+  }
   const result = await pool.query(`SELECT i.position, h.store_domain, p.id AS product_id, p.external_id AS product_external_id,
-    p.sku AS product_sku, p.titles AS product_titles, p.price AS product_price, p.old_price AS product_old_price,
+    p.sku AS product_sku, p.brand, p.titles AS product_titles, p.price AS product_price, p.old_price AS product_old_price,
     p.currency AS product_currency, p.availability AS product_availability, p.primary_image_url, p.canonical_url,
-    p.source_data AS product_source_data ${publicJoin} ${publicItems}
-    WHERE c.public_id = $1 AND c.revision = $2 AND i.position >= $3 ${section ? 'AND i.section_id = $4' : ''}
+    p.source_data AS product_source_data ${from} AND i.position >= ${bind(cursor)}
     ORDER BY i.position LIMIT 25`, params);
   if (!result.rowCount) {
     const current = await pool.query(`SELECT c.revision ${publicJoin} WHERE c.public_id = $1`, [publicId]);
     if (!current.rowCount) throw notFound();
     if (current.rows[0].revision !== revision) throw staleRevision();
   }
-  const products = result.rows.slice(0, 24).map(offerFromRow).filter((item) => item.imageUrl && item.pageUrl).map((item) => ({
-    productExternalId: item.productExternalId, article: item.sku, title: item.title || item.sku, imageUrl: item.imageUrl, pageUrl: item.pageUrl,
-    price: item.price, oldPrice: item.oldPrice, currency: item.currency, available: item.available, availability: item.availability, buyId: item.buyId
-  }));
-  return { products, nextCursor: result.rows[24]?.position ?? null };
+  const products = result.rows.slice(0, 24).map((row) => ({ ...offerFromRow(row), brand: row.brand || '' }))
+    .filter((item) => item.imageUrl && item.pageUrl).map((item) => ({
+      productExternalId: item.productExternalId, article: item.sku, brand: item.brand, title: item.title || item.sku,
+      imageUrl: item.imageUrl, pageUrl: item.pageUrl, price: item.price, oldPrice: item.oldPrice, currency: item.currency,
+      available: item.available, availability: item.availability, buyId: item.buyId
+    }));
+  return { products, nextCursor: result.rows[24]?.position ?? null, total };
 }

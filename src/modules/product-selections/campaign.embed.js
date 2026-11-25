@@ -1,24 +1,16 @@
 /* global document, location, history, window, requestAnimationFrame */
-export const campaignStyles = `
-.mt-campaign h2 { margin: 0 0 20px; color: inherit; font-size: clamp(24px,4vw,38px); line-height: 1.15 }
-.mt-campaign__body { display: grid; grid-template-columns: minmax(150px, 215px) minmax(0,1fr); gap: 24px; align-items: start }
-.mt-campaign__nav { display: grid; gap: 4px; position: sticky; top: 16px; max-height: 70vh; overflow: auto }
-.mt-campaign__nav a { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; padding: 10px 12px; border-radius: 7px; color: inherit; text-decoration: none; overflow-wrap: anywhere }
-.mt-campaign__nav a[aria-current="true"] { background: #fff3a4; font-weight: 700 }
-.mt-campaign__nav small { color: #535966 }
-.mt-campaign__mobile { display: none }
-.mt-campaign__more { margin: 20px auto 0; padding: 10px 20px; display: block; border: 1px solid #c7cbd0; border-radius: 8px; background: white; color: #17191d; cursor: pointer }
-.mt-campaign__more[hidden], .mt-campaign__status:empty {display:none}
-@media (max-width: 720px) {
-  .mt-campaign__nav { display:none }
-  .mt-campaign__body { display: block }
-  .mt-campaign__mobile { position: sticky; top: 0; z-index: 2; display: grid; gap: 4px; padding: 8px 0; margin-bottom: 12px; background: white }
-  .mt-campaign__mobile select { width: 100%; padding: 10px; border: 1px solid #c7cbd0; border-radius: 8px; background: white; color: inherit }
-}`;
+export { campaignStyles } from './campaign.styles.js';
 
-// Serialized into the external script. All runtime dependencies are supplied by the card embed.
+/**
+ * Serialized into the public storefront script. The shared card handles Horoshop's native cart.
+ * @param {HTMLScriptElement} script
+ * @param {{id: string, revision: number, name: string, sections: Array<{id: string, name: string, count: number, brands: string[]}>}} campaign
+ * @param {(product: object) => HTMLElement} createCard
+ */
 export function mountCampaign(script, campaign, createCard) {
   const key = 'mt-section-' + campaign.id;
+  const brandKey = 'mt-brand-' + campaign.id;
+  const queryKey = 'mt-q-' + campaign.id;
   if (document.getElementById(key)) return;
   function element(tag, className, text) {
     const node = document.createElement(tag);
@@ -26,72 +18,164 @@ export function mountCampaign(script, campaign, createCard) {
     if (text) node.textContent = text;
     return node;
   }
+  function campaignElement(tag, part, text) {
+    return element(tag, 'mt-campaign__' + part, text);
+  }
+  function brandsFor(names) {
+    const brands = new Map();
+    for (const name of names) {
+      const normalized = name.trim().toLowerCase();
+      if (normalized && !brands.has(normalized)) brands.set(normalized, name.trim());
+    }
+    return new Map([...brands].sort((a, b) => a[1].localeCompare(b[1], 'uk')));
+  }
+  const sections = campaign.sections.map((section) => ({ ...section, brands: brandsFor(section.brands || []) }));
+  const all = { id: '', name: 'Усі товари', count: sections.reduce((sum, section) => sum + section.count, 0),
+    brands: brandsFor(campaign.sections.flatMap((section) => section.brands || [])) };
+  const groups = new Map([all, ...sections].map((group) => [group.id, group]));
   const root = element('section', 'mt-product-selection mt-campaign');
   root.id = key;
-  root.style.setProperty('--mt-selection-desktop-columns', '3');
-  root.append(element('h2', '', campaign.name));
   if (script.parentNode === document.head) document.body.append(root);
   else script.after(root);
-  if (!campaign.sections.length) {
-    root.append(element('p', '', 'Наразі в цій акції немає товарів.'));
+
+  const body = campaignElement('div', 'body');
+  const sidebar = campaignElement('aside', 'sidebar');
+  const mast = campaignElement('div', 'mast');
+  const name = element('h2');
+  const words = campaign.name.trim().split(/\s+/u);
+  const accent = words.pop();
+  if (words.length) name.append(words.join(' ') + ' ');
+  name.append(element('span', '', accent));
+  mast.append(name);
+  sidebar.append(mast);
+  body.append(sidebar);
+  root.append(body);
+  if (!sections.length) {
+    body.append(element('p', '', 'Наразі в цій акції немає товарів.'));
     return;
   }
-  const groups = [{ id: '', name: 'Усі товари', count: campaign.sections.reduce((sum, group) => sum + group.count, 0) }, ...campaign.sections];
-  const body = element('div', 'mt-campaign__body');
-  const nav = element('nav', 'mt-campaign__nav');
+
+  const nav = campaignElement('nav', 'nav');
   nav.setAttribute('aria-label', 'Категорії акції');
-  const mobile = element('label', 'mt-campaign__mobile', 'Категорії');
+  const mobile = campaignElement('label', 'mobile', 'Категорії');
   const select = element('select');
   mobile.append(select);
-  const content = element('div');
+  sidebar.append(campaignElement('div', 'catlabel', 'Категорії'), nav, mobile);
+  const content = campaignElement('div', 'catalog');
+  const top = campaignElement('div', 'top');
+  const heading = campaignElement('h3', 'title');
+  const count = campaignElement('span', 'count');
+  const searchLabel = campaignElement('label', 'search');
+  const search = element('input');
+  search.type = 'search';
+  search.maxLength = 200;
+  search.placeholder = 'Пошук у добірці';
+  search.setAttribute('aria-label', search.placeholder);
+  searchLabel.append(search);
+  top.append(heading, count, searchLabel);
+  const chips = campaignElement('div', 'brands');
+  chips.setAttribute('role', 'group');
+  chips.setAttribute('aria-label', 'Бренди');
   const grid = element('div', 'mt-product-selection__grid');
-  const status = element('p', 'mt-campaign__status');
+  const status = campaignElement('p', 'status');
   status.setAttribute('role', 'status');
-  const more = element('button', 'mt-campaign__more', 'Показати ще');
+  const more = campaignElement('button', 'more', 'Показати ще');
   more.type = 'button';
-  content.append(grid, status, more);
-  body.append(nav, content);
-  root.append(mobile, body);
-  let active = '';
+  content.append(top, chips, grid, status, more);
+  body.append(content);
+
+  let active = all;
+  let selected = new Set();
+  let query = '';
+  let timer;
   let nextCursor = 0;
   let controller;
   let stale = false;
   let pageCount = 0;
-  function linkFor(id) {
+  function urlFor(group, brands, term) {
     const url = new URL(location.href);
-    if (id) url.searchParams.set(key, id);
+    if (group.id) url.searchParams.set(key, group.id);
     else url.searchParams.delete(key);
+    url.searchParams.delete(brandKey);
+    for (const brand of brands) if (group.brands.has(brand)) url.searchParams.append(brandKey, brand);
+    if (term) url.searchParams.set(queryKey, term);
+    else url.searchParams.delete(queryKey);
     return url;
   }
-  function openCategory(id) {
-    if (active === id) return;
-    rememberPosition();
-    history.pushState({ ...history.state, [key]: null }, '', linkFor(id));
-    if (root.getBoundingClientRect().top < 0) root.scrollIntoView({ block: 'start' });
+  function rememberPosition() {
+    history.replaceState({ ...history.state, [key]: { revision: campaign.revision, section: active.id,
+      brands: [...selected], query, pages: pageCount, scroll: window.scrollY } }, '');
+  }
+  function navigate(group, brands, term, replace = false) {
+    clearTimeout(timer);
+    const url = urlFor(group, brands, term.trim());
+    if (url.href === location.href) return;
+    if (!replace) rememberPosition();
+    history[replace ? 'replaceState' : 'pushState']({ ...history.state, [key]: null }, '', url);
+    if (group !== active && root.getBoundingClientRect().top < 0) root.scrollIntoView({ block: 'start' });
     void display();
   }
-  for (const group of groups) {
+  for (const group of groups.values()) {
     const link = element('a', '', group.name);
-    link.href = linkFor(group.id);
     link.dataset.section = group.id;
     link.append(element('small', '', String(group.count)));
     link.addEventListener('click', (event) => {
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      openCategory(group.id);
+      navigate(group, selected, search.value);
     });
     nav.append(link);
     const option = element('option', '', group.name + ' (' + group.count + ')');
     option.value = group.id;
     select.append(option);
   }
-  select.onchange = () => openCategory(select.value);
+  select.onchange = () => navigate(groups.get(select.value), selected, search.value);
+  search.oninput = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => navigate(active, selected, search.value, Boolean(query)), 220);
+  };
 
+  function showChips() {
+    const focused = chips.contains(document.activeElement) ? document.activeElement.dataset.brand : undefined;
+    const buttons = [];
+    for (const [brand, label] of [['', 'Усі бренди'], ...active.brands]) {
+      const button = campaignElement('button', 'chip', label);
+      button.type = 'button';
+      button.dataset.brand = brand;
+      button.setAttribute('aria-pressed', String(brand ? selected.has(brand) : !selected.size));
+      buttons.push(button);
+    }
+    chips.replaceChildren(...buttons);
+    chips.hidden = !active.brands.size;
+    if (focused !== undefined) buttons.find((button) => button.dataset.brand === focused)?.focus({ preventScroll: true });
+  }
+  chips.onclick = (event) => {
+    const button = event.target.closest('button[data-brand]');
+    if (!button) return;
+    const brand = button.dataset.brand;
+    const brands = new Set(selected);
+    if (!brand) brands.clear();
+    else if (brands.has(brand)) brands.delete(brand);
+    else brands.add(brand);
+    navigate(active, brands, search.value);
+  };
+
+  function campaignCard(product) {
+    const card = createCard(product);
+    const detail = [product.brand, product.article].filter(Boolean).join(' · ');
+    if (detail) card.append(campaignElement('div', 'meta', detail));
+    const footer = campaignElement('div', 'foot');
+    footer.append(card.querySelector('.mt-product-selection__price'), card.querySelector('.mt-product-selection__buy'));
+    card.append(footer);
+    return card;
+  }
   async function loadPage(signal) {
     const url = new URL('products', script.src);
     url.searchParams.set('revision', String(campaign.revision));
     url.searchParams.set('cursor', String(nextCursor));
-    if (active) url.searchParams.set('section', active);
+    if (active.id) url.searchParams.set('section', active.id);
+    for (const brand of selected) url.searchParams.append('brand', brand);
+    if (query) url.searchParams.set('q', query);
     more.disabled = true;
     status.textContent = 'Завантажуємо товари…';
     try {
@@ -101,12 +185,17 @@ export function mountCampaign(script, campaign, createCard) {
         stale = response.status === 409 || response.status === 404;
         throw new Error();
       }
+      /** @type {{data: {products: object[], nextCursor: number | null, total?: number}}} */
       const { data } = await response.json();
       if (signal.aborted) return false;
-      grid.append(...data.products.map(createCard));
+      if (typeof data.total === 'number') {
+        count.textContent = String(data.total);
+        count.hidden = false;
+      }
+      grid.append(...data.products.map(campaignCard));
       pageCount += 1;
       nextCursor = data.nextCursor;
-      status.textContent = grid.childElementCount ? '' : 'У цьому розділі поки немає товарів.';
+      status.textContent = grid.childElementCount || nextCursor !== null ? '' : 'Товарів не знайдено.';
       more.textContent = 'Показати ще';
       more.hidden = nextCursor === null;
       return true;
@@ -121,30 +210,37 @@ export function mountCampaign(script, campaign, createCard) {
     }
   }
   async function display() {
+    clearTimeout(timer);
     controller?.abort();
     controller = new AbortController();
     const signal = controller.signal;
-    const id = new URL(location.href).searchParams.get(key);
-    active = groups.some((group) => group.id === id) ? id : '';
-    select.value = active;
+    const params = new URL(location.href).searchParams;
+    active = groups.get(params.get(key)) || all;
+    selected = new Set(params.getAll(brandKey).map((brand) => brand.toLowerCase()).filter((brand) => active.brands.has(brand)));
+    query = (params.get(queryKey) || '').trim().slice(0, 200);
+    if (search.value.trim() !== query) search.value = query;
+    select.value = active.id;
+    heading.textContent = active.name;
+    count.textContent = String(active.count);
+    count.hidden = Boolean(query || selected.size);
     for (const link of nav.children) {
-      link.setAttribute('aria-current', String(link.dataset.section === active));
-      link.href = linkFor(link.dataset.section);
+      const group = groups.get(link.dataset.section);
+      link.setAttribute('aria-current', String(group === active));
+      link.href = urlFor(group, selected, query);
     }
+    showChips();
     nextCursor = 0;
     stale = false;
     pageCount = 0;
     grid.replaceChildren();
     more.hidden = true;
     const saved = history.state?.[key];
-    const restore = saved?.section === active && saved.revision === campaign.revision ? saved : null;
+    const restore = saved?.section === active.id && saved.revision === campaign.revision && (saved.query || '') === query
+      && JSON.stringify(saved.brands || []) === JSON.stringify([...selected]) ? saved : null;
     do {
       if (!await loadPage(signal)) return;
     } while (nextCursor !== null && restore && pageCount < restore.pages);
     if (restore) requestAnimationFrame(() => { if (!signal.aborted) window.scrollTo(0, restore.scroll); });
-  }
-  function rememberPosition() {
-    history.replaceState({ ...history.state, [key]: { revision: campaign.revision, section: active, pages: pageCount, scroll: window.scrollY } }, '');
   }
   grid.addEventListener('click', (event) => {
     if (event.target.closest('a')) rememberPosition();

@@ -229,6 +229,10 @@ export function productSelectionEmbedScript(selection, origin = '', campaign = n
   function money(value, currency) {
     var raw = String(value || "").trim();
     if (!raw) return "";
+    ${campaign ? `if (String(currency || "").toUpperCase() === "UAH") {
+      var number = Number(raw.replace(/\\s/g, "").replace(",", "."));
+      return (Number.isFinite(number) ? number.toLocaleString("uk-UA", { maximumFractionDigits: 2 }) : raw) + " ₴";
+    }` : ''}
     var currencyText = String(currency || "").trim().toUpperCase() === "UAH" ? "грн" : String(currency || "").trim();
     return [raw, currencyText].filter(Boolean).join(" ");
   }

@@ -27,7 +27,14 @@ function validSections(input, ctx) {
 const create = z.object(fields).strict().superRefine(validSections);
 const update = z.object({ ...fields, revision }).strict().superRefine(validSections);
 const entries = z.object({ entries: z.array(z.string().trim().min(1).max(500)).min(1).max(maxProducts) });
-const paging = z.object({ section: id.optional(), revision: z.coerce.number().int().positive(), cursor: z.coerce.number().int().min(0).max(maxProducts).default(0) });
+const brand = z.string().trim().min(1).max(500);
+const paging = z.object({
+  section: id.optional(), revision: z.coerce.number().int().positive(),
+  cursor: z.coerce.number().int().min(0).max(maxProducts).default(0),
+  brand: z.union([brand.transform((name) => [name]), z.array(brand).max(maxProducts)]).default([])
+    .transform((names) => [...new Set(names.map((name) => name.toLowerCase()))]),
+  q: z.string().trim().max(200).default('')
+});
 
 export const campaignRoutes = Router();
 campaignRoutes.use(requireAuth, requireToolAccess('product_selection'));

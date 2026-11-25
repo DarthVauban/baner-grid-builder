@@ -211,9 +211,10 @@ test('thematic campaigns resolve mixed lists, persist category edits and serve c
   const extra = Array.from({ length: 125 }, () => randomUUID());
   for (const [index, id] of extra.entries()) {
     await pool.query(`INSERT INTO search_horoshop_products
-      (id,connection_id,generation,external_id,sku,titles,price,primary_image_url,canonical_url,last_seen_sync_id)
-      VALUES ($1,$2,$3,$4,$4,$5::jsonb,'123','/image.jpg','/item/',$6)`,
-    [id, connectionId, generation, 'extra-' + index, JSON.stringify({ uk: 'Для подарунка ' + index }), syncId]);
+      (id,connection_id,generation,external_id,sku,titles,price,primary_image_url,canonical_url,last_seen_sync_id,brand)
+      VALUES ($1,$2,$3,$4,$4,$5::jsonb,'123','/image.jpg','/item/',$6,$7)`,
+    [id, connectionId, generation, 'extra-' + index, JSON.stringify({ uk: 'Для подарунка ' + index }), syncId,
+      index < 75 ? null : index % 2 ? 'Sony' : 'SONY']);
   }
   const input = { generation, name: 'Різдво', sections: [
     { id: first, name: 'Телефони', categories: ['smartphones'], productIds: [productId, unavailableProductId] },
@@ -229,7 +230,22 @@ test('thematic campaigns resolve mixed lists, persist category edits and serve c
   await admin.put(resource).send({ ...input, revision: 1, sections: [input.sections[0], { ...input.sections[1], productIds: [productId] }] }).expect(422);
   const embed = await request(app).get(widget + '/embed.js').expect(200);
   assert.match(embed.text, /Різдво/u);
+  assert.match(embed.text, /"brands":\[/u);
   assert.doesNotMatch(embed.text, /TECNO Spark|encrypted_credentials/u);
+  const offers = (filters) => request(app).get(widget + '/products').query({ revision: 1, ...filters });
+  const byBrand = (await offers({ brand: 'sOnY', section: second }).expect(200)).body.data;
+  assert.equal(byBrand.total, 50);
+  assert.equal(byBrand.products[0].article, 'extra-75');
+  assert.equal(byBrand.products.length, 24);
+  const brandPage = (await offers({ brand: 'sony', section: second, cursor: byBrand.nextCursor }).expect(200)).body.data;
+  assert.equal(brandPage.products[0].article, 'extra-99');
+  const multi = (await offers({ section: first }).query('brand=poco&brand=tecno').expect(200)).body.data;
+  assert.deepEqual(multi.products.map((p) => p.brand), ['Tecno', 'Poco']);
+  assert.equal((await offers({ brand: 'sony', section: first }).expect(200)).body.data.total, 0);
+  assert.equal((await offers({ brand: 'sony', q: 'подарунка 120' }).expect(200)).body.data.total, 1);
+  assert.equal((await offers({ q: 'EXTRA-120' }).expect(200)).body.data.products[0].article, 'extra-120');
+  await offers({ brand: '   ' }).expect(422);
+  await offers({ q: 'a'.repeat(201) }).expect(422);
   const page = (await request(app).get(widget + '/products').query({ revision: 1, section: second }).expect(200)).body.data;
   assert.equal(page.products.length, 24);
   assert.equal(page.nextCursor, 26);
