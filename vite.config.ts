@@ -37,8 +37,10 @@ export default defineConfig({
               includeDependenciesRecursively: false,
               name(id) {
                 const normalizedId = id.replaceAll('\\', '/');
+                // Keep Tiptap's runtime dependencies out of the route that imports its chunk.
                 if (normalizedId.includes('/node_modules/@tiptap/')
-                  || normalizedId.includes('/node_modules/prosemirror-')) {
+                  || normalizedId.includes('/node_modules/prosemirror-')
+                  || /\/node_modules\/(?:orderedmap|rope-sequence|fast-equals|linkifyjs)\//u.test(normalizedId)) {
                   return 'tiptap-editor';
                 }
                 if (normalizedId.includes('/node_modules/@lezer/')

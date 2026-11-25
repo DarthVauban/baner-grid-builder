@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
 import { build, loadConfigFromFile } from 'vite';
 
-test('production map modules stay below the Vite chunk budget and retain a standalone worker', async () => {
+test('production bundles keep the public map lean and load the blog editor without import cycles', async () => {
   const result = await build({ logLevel: 'silent', build: { write: false } });
   const files = [result].flat().flatMap((bundle) => bundle.output);
   const mapChunks = files.filter((file) => file.type === 'chunk'
@@ -38,6 +38,20 @@ test('production map modules stay below the Vite chunk budget and retain a stand
     assert.ok(Object.keys(chunk.modules).every((id) => !editorBundle.test(id)), `Unexpected editor module in ${name}`);
   }
   assert.doesNotMatch(String(storeMapHtml.source), editorBundle);
+
+  const blogEditor = files.find((file) => file.type === 'chunk'
+    && file.facadeModuleId?.replaceAll('\\', '/').endsWith('/pages/BlogPostEditorPage.tsx'));
+  assert.ok(blogEditor, 'The blog editor must remain a separate route bundle');
+  initialImports.clear();
+  function checkStaticImports(name, chain) {
+    assert.ok(!chain.includes(name), `Circular blog editor import: ${[...chain, name].join(' -> ')}`);
+    if (initialImports.has(name)) return;
+    initialImports.add(name);
+    for (const imported of byName.get(name)?.imports || []) {
+      checkStaticImports(imported, [...chain, name]);
+    }
+  }
+  checkStaticImports(blogEditor.fileName, []);
 });
 
 test('shader extraction preserves Unicode, escapes, nested literals, tagged templates and interpolation', async () => {
