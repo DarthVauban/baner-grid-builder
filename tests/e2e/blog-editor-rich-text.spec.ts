@@ -14,6 +14,7 @@ async function login(page: Page) {
 }
 
 async function selectEditorText(editor: Locator, query?: string) {
+  await editor.focus();
   await editor.evaluate((element, selector) => {
     const target = selector ? element.querySelector(selector) : element;
     const text = target?.firstChild;
