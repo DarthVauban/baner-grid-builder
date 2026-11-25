@@ -1,4 +1,10 @@
 export const campaignStyles = `
+/* Horoshop uses separate article templates on desktop and mobile. */
+section.page:has(> .page-content .mt-campaign) > h1.main-h,
+section.blog > .blog__inner:has(> .text .mt-campaign) > h1.heading--xl {
+  display: none !important;
+}
+
 .mt-campaign.mt-product-selection {
   --mt-selection-text: #000;
   --mt-selection-accent: #ffe101;
@@ -151,46 +157,6 @@ export const campaignStyles = `
   border-radius: 20px;
   font: 600 12px/1.45 Arial,sans-serif;
   font-variant-numeric: tabular-nums;
-}
-
-.mt-campaign__search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  width: 200px;
-  max-width: 100%;
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid #d6d6d3;
-  border-radius: 5px;
-  color: #5b5b58;
-  background: white;
-}
-
-.mt-campaign__search::before {
-  content: '';
-  width: 15px;
-  height: 15px;
-  flex: none;
-  background: center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%235c5c59' stroke-width='1.6'%3E%3Ccircle cx='8' cy='8' r='5.5'/%3E%3Cpath d='m12 12 5 5'/%3E%3C/svg%3E");
-}
-
-.mt-campaign__search input {
-  width: 100%;
-  min-width: 0;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  padding: 5px 0 !important;
-  outline: 0;
-  font: inherit;
-  font-size: 13px;
-  color: #111;
-}
-
-.mt-campaign__search:focus-within {
-  outline: 2px solid #777;
 }
 
 .mt-campaign__brands {
@@ -486,9 +452,6 @@ export const campaignStyles = `
   .mt-campaign :is(.mt-product-selection__grid,.mt-campaign__skeletons) {
     grid-template-columns: repeat(2,minmax(0,1fr)) !important;
     gap: 13px 10px !important;
-  }
-  .mt-campaign__search {
-    width: 155px;
   }
   .mt-campaign__brands {
     flex-wrap: nowrap;

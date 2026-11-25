@@ -10,7 +10,6 @@ export { campaignStyles } from './campaign.styles.js';
 export function mountCampaign(script, campaign, createCard) {
   const key = 'mt-section-' + campaign.id;
   const brandKey = 'mt-brand-' + campaign.id;
-  const queryKey = 'mt-q-' + campaign.id;
   if (document.getElementById(key)) return;
   function element(tag, className, text) {
     const node = document.createElement(tag);
@@ -65,14 +64,7 @@ export function mountCampaign(script, campaign, createCard) {
   const top = campaignElement('div', 'top');
   const heading = campaignElement('h3', 'title');
   const count = campaignElement('span', 'count');
-  const searchLabel = campaignElement('label', 'search');
-  const search = element('input');
-  search.type = 'search';
-  search.maxLength = 200;
-  search.placeholder = 'Пошук у добірці';
-  search.setAttribute('aria-label', search.placeholder);
-  searchLabel.append(search);
-  top.append(heading, count, searchLabel);
+  top.append(heading, count);
   const chips = campaignElement('div', 'brands');
   chips.setAttribute('role', 'group');
   chips.setAttribute('aria-label', 'Бренди');
@@ -89,8 +81,6 @@ export function mountCampaign(script, campaign, createCard) {
 
   let active = all;
   let selected = new Set();
-  let query = '';
-  let timer;
   let nextCursor = 0;
   let controller;
   let stale = false;
@@ -101,26 +91,23 @@ export function mountCampaign(script, campaign, createCard) {
   const pending = new Map();
   let intentTimer;
   let chipGroup;
-  function urlFor(group, brands, term) {
+  function urlFor(group, brands) {
     const url = new URL(location.href);
     if (group.id) url.searchParams.set(key, group.id);
     else url.searchParams.delete(key);
     url.searchParams.delete(brandKey);
     for (const brand of brands) if (group.brands.has(brand)) url.searchParams.append(brandKey, brand);
-    if (term) url.searchParams.set(queryKey, term);
-    else url.searchParams.delete(queryKey);
     return url;
   }
   function rememberPosition() {
     history.replaceState({ ...history.state, [key]: { revision: campaign.revision, section: active.id,
-      brands: [...selected], query, pages: pageCount, scroll: window.scrollY } }, '');
+      brands: [...selected], pages: pageCount, scroll: window.scrollY } }, '');
   }
-  function navigate(group, brands, term, replace = false) {
-    clearTimeout(timer);
-    const url = urlFor(group, brands, term.trim());
+  function navigate(group, brands) {
+    const url = urlFor(group, brands);
     if (url.href === location.href) return;
-    if (!replace) rememberPosition();
-    history[replace ? 'replaceState' : 'pushState']({ ...history.state, [key]: null }, '', url);
+    rememberPosition();
+    history.pushState({ ...history.state, [key]: null }, '', url);
     if (group !== active && root.getBoundingClientRect().top < 0) root.scrollIntoView({ block: 'start' });
     void display();
   }
@@ -131,28 +118,14 @@ export function mountCampaign(script, campaign, createCard) {
     link.addEventListener('click', (event) => {
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      navigate(group, selected, search.value);
+      navigate(group, selected);
     });
     nav.append(link);
     const option = element('option', '', group.name + ' (' + group.count + ')');
     option.value = group.id;
     select.append(option);
   }
-  select.onchange = () => navigate(groups.get(select.value), selected, search.value);
-  function applySearch() {
-    navigate(active, selected, search.value, Boolean(query));
-  }
-  search.oninput = () => {
-    clearTimeout(timer);
-    if (search.value.trim()) timer = setTimeout(applySearch, 150);
-    else applySearch();
-  };
-  search.onkeydown = (event) => {
-    if (event.key === 'Enter' && !event.isComposing) {
-      event.preventDefault();
-      applySearch();
-    }
-  };
+  select.onchange = () => navigate(groups.get(select.value), selected);
 
   function showChips() {
     if (chipGroup !== active) {
@@ -183,7 +156,7 @@ export function mountCampaign(script, campaign, createCard) {
   }
   chips.onclick = (event) => {
     const button = event.target.closest('button[data-brand]');
-    if (button) navigate(active, toggledBrands(button.dataset.brand), search.value);
+    if (button) navigate(active, toggledBrands(button.dataset.brand));
   };
 
   function campaignCard(product, priority) {
@@ -207,13 +180,12 @@ export function mountCampaign(script, campaign, createCard) {
     card.append(footer);
     return card;
   }
-  function productsUrl(group, brands, term, cursor) {
+  function productsUrl(group, brands, cursor) {
     const url = new URL('products', script.src);
     url.searchParams.set('revision', String(campaign.revision));
     url.searchParams.set('cursor', String(cursor));
     if (group.id) url.searchParams.set('section', group.id);
     for (const brand of [...brands].sort()) if (group.brands.has(brand)) url.searchParams.append('brand', brand);
-    if (term) url.searchParams.set('q', term);
     return url.href;
   }
   function cachedPage(url) {
@@ -290,8 +262,8 @@ export function mountCampaign(script, campaign, createCard) {
     if (!link && !chip) return;
     const group = link ? groups.get(link.dataset.section) : active;
     const brands = chip ? toggledBrands(chip.dataset.brand) : selected;
-    const url = productsUrl(group, brands, search.value.trim(), 0);
-    if (url === productsUrl(active, selected, query, 0)) return;
+    const url = productsUrl(group, brands, 0);
+    if (url === productsUrl(active, selected, 0)) return;
     const warm = async () => {
       if (pending.size) return;
       try {
@@ -311,7 +283,7 @@ export function mountCampaign(script, campaign, createCard) {
 
   async function loadPage(signal) {
     const first = pageCount === 0;
-    const url = productsUrl(active, selected, query, nextCursor);
+    const url = productsUrl(active, selected, nextCursor);
     more.disabled = true;
     grid.setAttribute('aria-busy', 'true');
     status.textContent = '';
@@ -325,7 +297,7 @@ export function mountCampaign(script, campaign, createCard) {
       if (first) {
         grid.replaceChildren(...cards);
         count.textContent = String(active.count);
-        count.hidden = Boolean(query || selected.size);
+        count.hidden = Boolean(selected.size);
       } else {
         grid.append(...cards);
       }
@@ -363,18 +335,21 @@ export function mountCampaign(script, campaign, createCard) {
     }
   }
   async function display() {
-    clearTimeout(timer);
     clearTimeout(intentTimer);
     controller?.abort();
     controller = new AbortController();
     const signal = controller.signal;
-    const params = new URL(location.href).searchParams;
+    const url = new URL(location.href);
+    const params = url.searchParams;
+    const legacySearchKey = 'mt-q-' + campaign.id;
+    if (params.has(legacySearchKey)) {
+      params.delete(legacySearchKey);
+      history.replaceState({ ...history.state, [key]: null }, '', url);
+    }
     active = groups.get(params.get(key)) || all;
     selected = new Set(params.getAll(brandKey).map((brand) => brand.toLowerCase()).filter((brand) => active.brands.has(brand)));
-    query = (params.get(queryKey) || '').trim().slice(0, 200);
-    if (search.value.trim() !== query) search.value = query;
     select.value = active.id;
-    const firstUrl = productsUrl(active, selected, query, 0);
+    const firstUrl = productsUrl(active, selected, 0);
     for (const [url, entry] of pending) {
       if (url !== firstUrl) {
         pending.delete(url);
@@ -383,11 +358,11 @@ export function mountCampaign(script, campaign, createCard) {
     }
     heading.textContent = active.name;
     count.textContent = String(active.count);
-    count.hidden = Boolean(query || selected.size);
+    count.hidden = Boolean(selected.size);
     for (const link of nav.children) {
       const group = groups.get(link.dataset.section);
       link.setAttribute('aria-current', String(group === active));
-      link.href = urlFor(group, selected, query);
+      link.href = urlFor(group, selected);
     }
     showChips();
     nextCursor = 0;
@@ -395,11 +370,11 @@ export function mountCampaign(script, campaign, createCard) {
     pageCount = 0;
     more.hidden = true;
     const saved = history.state?.[key];
-    const restore = saved?.section === active.id && saved.revision === campaign.revision && (saved.query || '') === query
+    const restore = saved?.section === active.id && saved.revision === campaign.revision
       && JSON.stringify(saved.brands || []) === JSON.stringify([...selected]) ? saved : null;
     do {
       if (!await loadPage(signal)) return;
-    } while (nextCursor !== null && (restore ? pageCount < restore.pages : cachedPage(productsUrl(active, selected, query, nextCursor))));
+    } while (nextCursor !== null && (restore ? pageCount < restore.pages : cachedPage(productsUrl(active, selected, nextCursor))));
     if (restore) requestAnimationFrame(() => { if (!signal.aborted) window.scrollTo(0, restore.scroll); });
   }
   grid.addEventListener('click', (event) => {

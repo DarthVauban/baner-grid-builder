@@ -5,7 +5,7 @@ import { campaignStyles, mountCampaign } from '../../src/modules/product-selecti
 const shop = 'https://campaign-shop.test';
 const workspace = 'https://campaign-workspace.test';
 const campaign = { id: 'winter', revision: 1, name: 'Різдво', sections: [
-  { id: 'phones', name: 'Телефони', count: 25, brands: ['Samsung', 'Sony'] },
+  { id: 'phones', name: 'Телефони', count: 25, brands: ['Nokia', 'Samsung', 'Sony'] },
   { id: 'audio', name: 'Аудіо', count: 1, brands: ['JBL'] }
 ] };
 for (const mobile of [false, true]) {
@@ -13,8 +13,15 @@ for (const mobile of [false, true]) {
     const device = devices[mobile ? 'Pixel 7' : 'Desktop Chrome'];
     test.use({ viewport: device.viewport, userAgent: device.userAgent, isMobile: mobile, hasTouch: mobile });
     test.beforeEach(async ({ page }) => {
+      const article = (title: string, content: string) => mobile
+        ? `<section class="blog wrapper"><div class="blog__inner"><nav class="breadcrumbs">Каталог</nav>
+            <h1 class="heading heading--xl">${title}</h1><div class="catalog__banners"></div><div class="text">${content}</div></div></section>`
+        : `<section class="page"><nav class="breadcrumbs">Каталог</nav><h1 class="main-h">${title}</h1>
+            <div class="page-content"><div class="article-text __fullWidth text">${content}</div></div></section>`;
       await page.route(shop + '/sale**', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body:
-        `<meta name="viewport" content="width=device-width,initial-scale=1"><main><script async src="${workspace}/winter/embed.js"></script></main>
+        `<meta name="viewport" content="width=device-width,initial-scale=1"><header><input placeholder="Пошук магазину"></header><main id="main">
+        ${article('Акційні добірки товарів', '<script async src="' + workspace + '/winter/embed.js"></script>')}
+        ${article('Інша стаття', '')}</main>
         <script>let added;window.AjaxCart={getInstance:()=>({getProductById:()=>added,appendProduct:()=>{added={quantity:1}}})}</script>`
       }));
       await page.route(workspace + '/winter/embed.js', (route) => route.fulfill({ contentType: 'application/javascript; charset=utf-8',
@@ -25,6 +32,7 @@ for (const mobile of [false, true]) {
       const morePhones = Promise.withResolvers<void>();
       await page.route(workspace + '/winter/products?**', async (route) => {
         const params = new URL(route.request().url()).searchParams;
+        expect(params.has('q')).toBe(false);
         const id = params.get('section') || 'all';
         const offset = Number(params.get('cursor'));
         calls.push(id + ':' + offset);
@@ -34,7 +42,7 @@ for (const mobile of [false, true]) {
         const products = Array.from({ length: count }, (_, i) => ({ title: id + '-' + i,
           brand: id === 'audio' || i === 25 ? 'JBL' : i === 24 ? 'Sony' : 'Samsung',
           article: 'P1', pageUrl: shop + '/product', imageUrl: shop + '/photo.svg', price: '500', currency: 'UAH', available: true, buyId: '42' }))
-          .filter((p) => (!brands.length || brands.includes(p.brand.toLowerCase())) && p.title.includes(params.get('q') || ''));
+          .filter((p) => !brands.length || brands.includes(p.brand.toLowerCase()));
         return route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { data: {
           products: products.slice(offset, offset + 24), total: products.length, nextCursor: offset + 24 < products.length ? offset + 24 : null
         } } });
@@ -48,13 +56,20 @@ for (const mobile of [false, true]) {
           : `<div class="product-order__block--buy">${buy}</div>`;
         return route.fulfill({ contentType: 'text/html', body: '<meta itemprop="sku" content="P1">' + markup });
       });
-      await page.goto(shop + '/sale?ref=mail');
+      await page.goto(shop + '/sale?ref=mail&mt-q-winter=old-search');
       const cards = page.locator('.mt-product-selection__card');
       await expect(cards).toHaveCount(24);
+      await expect(page).toHaveURL(shop + '/sale?ref=mail');
+      await expect(page.locator('h1').filter({ hasText: 'Акційні добірки товарів' })).toBeHidden();
+      await expect(page.getByRole('heading', { name: 'Інша стаття' })).toBeVisible();
+      await expect(page.locator('.breadcrumbs').first()).toBeVisible();
+      await expect(page.getByPlaceholder('Пошук магазину')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Різдво' })).toBeVisible();
+      await expect(page.locator('.mt-campaign input')).toHaveCount(0);
       await expect(cards.first().locator('strong')).toHaveText('500 ₴');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (mobile) {
-        await expect(page.getByRole('navigation')).toBeHidden();
+        await expect(page.getByRole('navigation', { name: 'Категорії акції' })).toBeHidden();
         await page.getByRole('combobox', { name: 'Категорії' }).selectOption('phones');
       } else {
         await expect(page.getByRole('combobox')).toBeHidden();
@@ -71,17 +86,14 @@ for (const mobile of [false, true]) {
       await expect(page.locator('.mt-campaign__count')).toHaveText('1');
       await page.getByRole('button', { name: 'Samsung' }).click();
       await expect(cards).toHaveCount(24);
-      const search = page.getByRole('searchbox', { name: 'Пошук у добірці' });
-      await search.fill('phones-24');
-      await expect(cards).toHaveCount(1);
       await page.reload();
-      await expect(search).toHaveValue('phones-24');
       await expect(sony).toHaveAttribute('aria-pressed', 'true');
-      await search.fill('нічого');
-      await expect(page.getByRole('status')).toHaveText('Товарів не знайдено.');
-      await search.fill('');
-      await expect(cards).toHaveCount(24);
+      await expect(page.getByRole('button', { name: 'Samsung' })).toHaveAttribute('aria-pressed', 'true');
       await page.getByRole('button', { name: 'Усі бренди' }).click();
+      await page.getByRole('button', { name: 'Nokia' }).click();
+      await expect(page.getByRole('status')).toHaveText('Товарів не знайдено.');
+      await page.getByRole('button', { name: 'Усі бренди' }).click();
+      await expect(cards).toHaveCount(24);
       await expect(sony).toHaveAttribute('aria-pressed', 'false');
       await page.getByRole('button', { name: 'Показати ще' }).click();
       try {
