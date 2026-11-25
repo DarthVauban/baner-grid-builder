@@ -521,6 +521,18 @@ test('information popup persists exit intent as a display condition', async () =
   await admin.patch(`/api/popup-banners/${created.body.data.id}/status`).send({ status: 'paused' }).expect(200);
 });
 
+test('popup buttons accept store paths and reject unapproved external destinations', async () => {
+  const rejected = await admin.post('/api/popup-banners').send(input({
+    content: { ...input().content, primaryUrl: 'https://other.example.com/offer/' }
+  })).expect(422);
+  assert.equal(rejected.body.error.code, 'POPUP_CTA_URL_INVALID');
+
+  const accepted = await admin.post('/api/popup-banners').send(input({
+    content: { ...input().content, primaryUrl: '/offer/' }
+  })).expect(201);
+  assert.equal(accepted.body.data.content.primaryUrl, '/offer/');
+});
+
 test('exit intent is rejected for product promo and out-of-stock campaigns', async () => {
   await admin.post('/api/popup-banners').send(input({
     campaignType: 'product_promo',
@@ -1043,7 +1055,7 @@ test('page and product exclusions override broad popup targeting', async () => {
   const excludedPage = await request(app)
     .get('/api/public/popup-banners/resolve')
     .set('Origin', 'https://shop.example.com')
-    .query({ pageUrl: 'https://shop.example.com/checkout/?step=delivery#address' })
+    .query({ pageUrl: 'https://shop.example.com/checkout/complete/synthetic-order/?step=delivery#address' })
     .expect(200);
   assert.equal(excludedPage.body.data, null);
 

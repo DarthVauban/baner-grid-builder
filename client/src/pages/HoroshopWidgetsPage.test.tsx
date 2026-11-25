@@ -13,6 +13,7 @@ vi.mock('../toast/ToastContext', () => ({ useToast: () => ({ showToast: vi.fn() 
 afterEach(() => vi.restoreAllMocks());
 
 function renderPage(ids: ToolId[], blocked: ToolId[] = []) {
+  vi.spyOn(api.horoshopWidgets, 'releases').mockResolvedValue({ releases: [], canPublish: false });
   vi.spyOn(api.users, 'toolCatalog').mockResolvedValue({
     tools: ids.map((toolId) => ({
       toolId,
@@ -51,5 +52,27 @@ describe('HoroshopWidgetsPage', () => {
     expect(await screen.findByText('Кнопки форм')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Кнопки форм/u })).not.toBeInTheDocument();
     expect(screen.getByText('Для відкриття увімкніть 2FA у профілі.')).toBeInTheDocument();
+  });
+
+  it('copies a previous immutable release for rollback', async () => {
+    const head = {
+      id: 'release-new', buildSha: '12345678', storeDomain: 'shop.example.com',
+      publishedAt: '2026-11-25T10:00:00Z', publisherName: 'Admin',
+      embedCode: '<script src="https://panel.example.com/api/public/horoshop-widgets/assets/new.js" integrity="sha384-new" crossorigin="anonymous"></script>'
+    };
+    const previous = {
+      ...head, id: 'release-old', buildSha: 'aabbccdd',
+      publishedAt: '2026-11-24T10:00:00Z',
+      embedCode: head.embedCode.replaceAll('new', 'old')
+    };
+    renderPage(['form_builder']);
+    vi.mocked(api.horoshopWidgets.releases).mockResolvedValue({ releases: [head, previous], canPublish: false });
+    const select = await screen.findByRole('button', { name: 'Випуск' });
+    expect(select).toHaveTextContent(head.buildSha);
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole('option', { name: /aabbccdd/u }));
+    fireEvent.click(screen.getByRole('button', { name: 'Копіювати скрипт' }));
+    await waitFor(() => expect(copyToClipboard).toHaveBeenCalledWith(previous.embedCode));
+    expect(screen.queryByRole('button', { name: 'Створити випуск' })).not.toBeInTheDocument();
   });
 });

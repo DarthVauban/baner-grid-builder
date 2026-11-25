@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { storefrontPageUrl } from '../../lib/storefront-page-context.js';
 import { getUserToolAccess } from '../access/access.service.js';
 import { workflowSummarySettings } from './workflow-summary.js';
 
@@ -567,6 +568,7 @@ export function buildButtonScriptBody(config, publicOrigin = '') {
   "use strict";
   var config = ${scriptJson(payload)};
   var loaderUrl = ${scriptJson(loaderUrl)};
+  var pageUrl = (${storefrontPageUrl.toString()});
   var buttonNode = null;
   var pendingInsert = false;
   function warn(message){ if (window.console && console.warn) console.warn("[MT forms] " + message); }
@@ -694,7 +696,7 @@ export function buildButtonScriptBody(config, publicOrigin = '') {
       price: read(selectors.price, fallbacks.price),
       oldPrice: read(selectors.oldPrice, fallbacks.oldPrice),
       productCode: read(selectors.productCode, fallbacks.productCode),
-      url: window.location.href,
+      url: pageUrl(window.location.href),
       domain: window.location.hostname
     };
   }
@@ -757,9 +759,7 @@ export function buildButtonScriptBody(config, publicOrigin = '') {
           formId: config.formId,
           product: collectProduct(),
           context: {
-            sourceUrl: window.location.href,
-            pageTitle: document.title,
-            referrer: document.referrer
+            sourceUrl: pageUrl(window.location.href)
           }
         });
       });

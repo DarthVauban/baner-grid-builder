@@ -75,9 +75,9 @@ async function loadSettingsRow() {
   return result.rows[0];
 }
 
-async function loadCatalogRows(connectionId, generation) {
+async function loadCatalogRows(connectionId, generation, db = { query }) {
   if (!connectionId || !generation) return [];
-  const result = await query(
+  const result = await db.query(
     `SELECT product.canonical_url, product.stickers AS product_stickers,
             modification.page_url, modification.stickers AS modification_stickers
      FROM search_horoshop_products AS product
@@ -96,9 +96,9 @@ async function loadCatalogRows(connectionId, generation) {
   return result.rows;
 }
 
-async function loadStickerRows(connectionId, generation) {
+async function loadStickerRows(connectionId, generation, db = { query }) {
   if (!connectionId || !generation) return [];
-  const result = await query(
+  const result = await db.query(
     `SELECT external_id, title
      FROM search_horoshop_stickers
      WHERE connection_id = $1 AND generation = $2 AND active = TRUE AND enabled = TRUE`,
@@ -231,8 +231,8 @@ export async function setTitleLabelsEnabled(enabled, userId, origin = '') {
   return getTitleLabelSettings(origin);
 }
 
-export async function loadPublishedTitleLabels(publicId) {
-  const result = await query(
+export async function loadPublishedTitleLabels(publicId, db = { query }) {
+  const result = await db.query(
     `SELECT settings.published_rules, settings.published_version,
             connection.id AS connection_id, connection.generation, connection.store_domain
      FROM horoshop_title_label_settings AS settings
@@ -247,8 +247,8 @@ export async function loadPublishedTitleLabels(publicId) {
   if (!row?.connection_id || !row.store_domain) return null;
   const rules = jsonArray(row.published_rules).map(normalizeRule).filter((rule) => rule.enabled);
   const [rows, stickerRows] = await Promise.all([
-    loadCatalogRows(row.connection_id, row.generation),
-    loadStickerRows(row.connection_id, row.generation)
+    loadCatalogRows(row.connection_id, row.generation, db),
+    loadStickerRows(row.connection_id, row.generation, db)
   ]);
   const index = catalogIndex(rows, row.store_domain, stickerRows);
   return {

@@ -31,8 +31,8 @@ const publishedWidgets = [
   }
 ];
 
-export async function loadHoroshopWidgetManifest() {
-  const connection = await query(
+export async function loadHoroshopWidgetManifest(db = { query }) {
+  const connection = await db.query(
     `SELECT id, generation, store_domain
      FROM search_horoshop_connections
      WHERE singleton = TRUE AND status IN ('connected', 'syncing', 'error')
@@ -43,18 +43,18 @@ export async function loadHoroshopWidgetManifest() {
   if (!storeDomain) return { storeDomain: '', widgets: [] };
 
   const [settings, supportSites, formCampaigns, siteThemeAppearance] = await Promise.all([
-    Promise.all(publishedWidgets.map(({ table }) => query(
+    Promise.all(publishedWidgets.map(({ table }) => db.query(
     `SELECT public_id, published_version
      FROM ${table}
      WHERE id = TRUE AND enabled = TRUE AND published_version > 0
      LIMIT 1`
     ))),
-    query('SELECT public_id, allowed_origins FROM support_chat_sites WHERE enabled = TRUE ORDER BY created_at'),
-    query(`SELECT id FROM application_form_campaigns
+    db.query('SELECT public_id, allowed_origins FROM support_chat_sites WHERE enabled = TRUE ORDER BY created_at'),
+    db.query(`SELECT id FROM application_form_campaigns
            WHERE connection_id = $1 AND connection_generation = $2
              AND status = 'active' AND archived_at IS NULL
            LIMIT 1`, [current.id, current.generation]),
-    getPublishedSiteThemeAppearance(`https://${storeDomain}`)
+    getPublishedSiteThemeAppearance(`https://${storeDomain}`, db)
   ]);
   const widgets = [
     { id: 'popup-banners', path: '/api/public/popup-banners/embed.js' },
@@ -106,6 +106,7 @@ export function horoshopWidgetLoaderScript({ storeDomain, widgets }, origin) {
       }
       const url = new URL(widget.path, config.origin);
       const alreadyInstalled = Array.from(document.querySelectorAll('script[src]')).some((script) => {
+        if (widget.integrity) return script.src === url.href && script.integrity === widget.integrity;
         try {
           const existing = new URL(script.src, location.href);
           return existing.origin === url.origin && existing.pathname === url.pathname
@@ -116,6 +117,10 @@ export function horoshopWidgetLoaderScript({ storeDomain, widgets }, origin) {
       const script = document.createElement('script');
       script.async = true;
       script.src = url.href;
+      if (widget.integrity) {
+        script.integrity = widget.integrity;
+        script.crossOrigin = 'anonymous';
+      }
       script.dataset.mtHoroshopWidget = widget.id;
       if (site) script.dataset.site = site;
       if (widget.id === 'product-promo') script.dataset.mtProductPromoLoader = 'true';

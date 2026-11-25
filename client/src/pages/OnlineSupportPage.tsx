@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { SupportMessageText, SupportProductCard } from '../components/SupportProductCard';
+import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { api } from '../lib/api';
 import {
   requestSupportDesktopNotificationPermission,
@@ -267,6 +268,30 @@ function MessageBubble({ item }: { item: SupportMessage }) {
   </article>;
 }
 
+function RevokeVisitorSessionButton({ id, onRevoked }: { id: string; onRevoked: () => Promise<void> }) {
+  const confirm = useConfirmDialog();
+  const { showToast } = useToast();
+  const revoke = useMutation({ mutationFn: api.onlineSupport.revokeVisitorSession });
+
+  async function revokeSession() {
+    const accepted = await confirm({ title: 'Завершити сесію покупця?',
+      message: 'Покупець втратить доступ до цього діалогу. Історія залишиться доступною операторам.',
+      confirmLabel: 'Завершити сесію', tone: 'danger' });
+    if (!accepted) return;
+    try {
+      await revoke.mutateAsync(id);
+      await onRevoked();
+      showToast('Сесію покупця завершено.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Не вдалося завершити сесію.', 'error');
+    }
+  }
+
+  return <button className="button button--secondary" type="button" disabled={revoke.isPending} onClick={() => void revokeSession()}>
+    Завершити сесію покупця
+  </button>;
+}
+
 function ConversationsPanel() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -444,7 +469,11 @@ function ConversationsPanel() {
           <div><dt>Оператор</dt><dd>{current.assignedUser?.name || 'Не призначено'}</dd></div>
           <div><dt>Створено</dt><dd>{new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(current.createdAt))}</dd></div>
         </dl>}
-        <section><span>Поточна сторінка</span><strong>{current.visitor.lastPageTitle || 'Без назви'}</strong>{current.visitor.lastPageUrl && <a href={current.visitor.lastPageUrl} target="_blank" rel="noreferrer">Відкрити сторінку <Icon name="openInNew" size={14} /></a>}</section>
+        <section><span>Сторінка товару</span>{current.visitor.lastPageUrl
+          ? <a href={current.visitor.lastPageUrl} target="_blank" rel="noreferrer">Відкрити сторінку <Icon name="openInNew" size={14} /></a>
+          : <strong>Не визначено</strong>}</section>
+        {user?.role === 'admin' && <section>{current.visitor.sessionRevokedAt ? <strong>Сесію покупця завершено</strong>
+          : <RevokeVisitorSessionButton id={current.id} onRevoked={refreshCurrent} />}</section>}
       </> : <p className="online-support-list-state">Інформація з’явиться після вибору діалогу.</p>}
     </aside>
   </div>;

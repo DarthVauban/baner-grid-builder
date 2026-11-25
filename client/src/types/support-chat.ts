@@ -55,6 +55,7 @@ export interface SupportVisitor {
   firstPageUrl: string;
   lastPageUrl: string;
   lastPageTitle: string;
+  sessionRevokedAt?: string | null;
   createdAt: string;
   lastSeenAt: string;
 }
@@ -87,7 +88,7 @@ export interface SupportPublicConversation {
 }
 
 export interface SupportPublicSession {
-  token: string;
+  token?: string;
   settings: SupportChatSettings;
   visitor: SupportVisitor;
   conversation: SupportPublicConversation | null;

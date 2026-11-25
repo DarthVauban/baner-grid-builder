@@ -17,6 +17,8 @@ const schema = z.object({
     z.enum(['development', 'production']).optional()
   ),
   APP_ORIGIN: z.string().optional(),
+  STORE_MAP_FRAME_ORIGINS: z.string().optional(),
+  POPUP_CTA_HOSTS: z.string().optional(),
   STOREFRONT_ORIGIN: z.preprocess(
     (value) => String(value || '').trim() || undefined,
     z.string().url().optional()

@@ -1,8 +1,8 @@
 import { devices, expect, test } from '@playwright/test';
+import type { PublicStoreMapData } from '../../client/src/types/store-map';
 
 const publicMapData = {
   settings: {
-    publicId: '00000000-0000-4000-8000-000000000001',
     title: 'Мапа магазинів',
     markerSvg: '',
     markerWidth: 42,
@@ -11,43 +11,34 @@ const publicMapData = {
     markerAnchorY: 51,
     centerLatitude: 49.2,
     centerLongitude: 31.1,
-    defaultZoom: 6,
-    updatedAt: '2026-09-16T08:00:00.000Z'
+    defaultZoom: 6
   },
   points: [
     {
       id: '00000000-0000-4000-8000-000000000101',
-      externalId: 'TT-101',
       name: 'м. Київ, Центр',
       city: 'Київ',
       address: 'вул. Хрещатик, 1',
       hoursText: '09:00 - 20:00',
       schedule: { timezone: 'Europe/Kyiv', days: {} },
-      publicationStatus: 'ACTIVE',
       openStatusOverride: 'AUTO',
       latitude: 50.4501,
-      longitude: 30.5234,
-      createdAt: '2026-09-16T08:00:00.000Z',
-      updatedAt: '2026-09-16T08:00:00.000Z'
+      longitude: 30.5234
     },
     {
       id: '00000000-0000-4000-8000-000000000102',
-      externalId: 'TT-102',
       name: 'м. Львів, Центр',
       city: 'Львів',
       address: 'просп. Свободи, 1',
       hoursText: '09:00 - 20:00',
       schedule: { timezone: 'Europe/Kyiv', days: {} },
-      publicationStatus: 'ACTIVE',
       openStatusOverride: 'AUTO',
       latitude: 49.8397,
-      longitude: 24.0297,
-      createdAt: '2026-09-16T08:00:00.000Z',
-      updatedAt: '2026-09-16T08:00:00.000Z'
+      longitude: 24.0297
     }
   ],
   cities: ['Київ', 'Львів']
-};
+} satisfies PublicStoreMapData;
 
 const emptyMapStyle = {
   version: 8,
@@ -154,3 +145,42 @@ test('store map loads OpenFreeMap on independent desktop and mobile surfaces', a
     await context.close();
   }
 });
+
+for (const surface of surfaces) {
+  test(`store map frame allows the storefront and blocks other parents on ${surface.name}`, async ({ browser, baseURL }) => {
+    const context = await browser.newContext(surface.device);
+    try {
+      const page = await context.newPage();
+      const panel = 'https://mt-panel.sbs';
+      const storefront = 'https://mobiletrend.com.ua';
+      const other = 'https://untrusted.example';
+      await page.route(`${panel}/**`, async (route) => {
+        const url = new URL(route.request().url());
+        const response = await route.fetch({ url: new URL(url.pathname + url.search, baseURL).href });
+        await route.fulfill({ response });
+      });
+      await page.route(`${panel}/api/public/store-map`, (route) => route.fulfill({ json: { data: publicMapData } }));
+      await page.route('https://tiles.openfreemap.org/**', (route) => route.fulfill({ json: emptyMapStyle }));
+
+      for (const origin of [storefront, other]) {
+        await page.route(`${origin}/map-embed-test`, (route) => route.fulfill({
+          contentType: 'text/html',
+          body: `<!doctype html><title>Map parent</title><iframe title="Store map" src="${panel}/store-map/widget"></iframe>`
+        }));
+      }
+
+      await page.goto(`${storefront}/map-embed-test`);
+      const frame = page.frameLocator('iframe[title="Store map"]');
+      await expect(frame.locator('.store-map-widget')).toBeVisible();
+
+      const cspViolation = page.waitForEvent('console', {
+        predicate: (message) => /frame-ancestors/u.test(message.text())
+      });
+      await page.goto(`${other}/map-embed-test`);
+      await cspViolation;
+      await expect(frame.locator('.store-map-widget')).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}

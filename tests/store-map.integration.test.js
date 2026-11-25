@@ -58,8 +58,23 @@ test('store map CRUD, public feed, settings and embed script work through REST A
   const publicData = await request(app).get('/api/public/store-map').expect(200);
   assert.equal(publicData.body.data.points.length, 1);
   assert.deepEqual(publicData.body.data.cities, ['Київ']);
+  assert.deepEqual(publicData.body.data.points[0], {
+    id: created.body.data.id,
+    name: 'м. Київ, Даринок',
+    city: 'Київ',
+    address: 'вул. Якова Гніздовського, 1А',
+    hoursText: '08:00 - 19:30',
+    schedule: created.body.data.schedule,
+    openStatusOverride: 'TEMPORARILY_CLOSED',
+    latitude: 50.45165,
+    longitude: 30.63891
+  });
 
   const currentSettings = await admin.get('/api/store-map/settings').expect(200);
+  const { publicId, updatedAt, ...publicSettings } = currentSettings.body.data;
+  assert.ok(publicId);
+  assert.ok(updatedAt);
+  assert.deepEqual(publicData.body.data.settings, publicSettings);
   const safeSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 52"><path fill="#ffd500" d="M20 0C9 0 0 9 0 20c0 15 20 32 20 32s20-17 20-32C40 9 31 0 20 0z"/></svg>';
   const savedSettings = await admin.put('/api/store-map/settings').send({
     ...currentSettings.body.data,
@@ -80,10 +95,51 @@ test('store map CRUD, public feed, settings and embed script work through REST A
     .expect(200);
   assert.match(embedScript.text, /store-map\/widget/);
   assert.match(embedScript.text, /iframe/);
+  assert.doesNotMatch(embedScript.text, /geolocation/u);
 
   await admin.delete(`/api/store-map/points/${created.body.data.id}`).expect(204);
   const afterDelete = await request(app).get('/api/public/store-map').expect(200);
   assert.equal(afterDelete.body.data.points.length, 0);
+});
+
+test('public widgets restrict frame ancestors and keep chat policy private to its site', async () => {
+  const map = await request(app).get('/store-map/widget').set('Origin', 'https://untrusted.example');
+  assert.match(
+    map.headers['content-security-policy'],
+    /frame-ancestors 'self' https:\/\/mobiletrend\.com\.ua https:\/\/www\.mobiletrend\.com\.ua$/u
+  );
+  assert.equal(map.headers['permissions-policy'], 'geolocation=()');
+  assert.equal(map.headers['x-frame-options'], undefined);
+
+  const registration = await request(app).get('/store-map/register');
+  assert.match(registration.headers['content-security-policy'], /frame-ancestors 'self'$/u);
+  assert.equal(registration.headers['permissions-policy'], 'geolocation=(self)');
+
+  const { rows: [site] } = await pool.query(
+    'SELECT public_id, enabled, allowed_origins FROM support_chat_sites LIMIT 1'
+  );
+  try {
+    await pool.query('UPDATE support_chat_sites SET enabled = TRUE, allowed_origins = $1 WHERE public_id = $2', [
+      JSON.stringify([
+        'https://shop.example',
+        'https://shop.example/',
+        'https://*.example',
+        'https://not-an-origin.example/path',
+        "https://example; frame-ancestors *"
+      ]),
+      site.public_id
+    ]);
+    const chat = await request(app).get('/support-chat/widget')
+      .query({ site: site.public_id, embedOrigin: 'https://untrusted.example' });
+    assert.match(chat.headers['content-security-policy'], /frame-ancestors 'self' https:\/\/shop\.example$/u);
+    assert.equal(chat.headers['cache-control'], 'no-store');
+    assert.equal(chat.headers['referrer-policy'], 'no-referrer');
+    assert.equal(chat.headers['x-frame-options'], undefined);
+  } finally {
+    await pool.query('UPDATE support_chat_sites SET enabled = $1, allowed_origins = $2 WHERE public_id = $3', [
+      site.enabled, JSON.stringify(site.allowed_origins), site.public_id
+    ]);
+  }
 });
 
 test('XLSX-shaped rows can be previewed and imported with row-level validation', async () => {

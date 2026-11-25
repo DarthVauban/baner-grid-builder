@@ -51,6 +51,7 @@ button { cursor: pointer; }
 .support-contact-card form button:disabled { cursor: default; opacity: .5; }
 .support-contact-saved { align-self: center; margin: 0; border-radius: 999px; padding: 7px 11px; color: #2d6840; background: #e5f5ea; font-size: 10px; font-weight: 800; }
 .support-widget-error { margin: 0; border-radius: 11px; padding: 9px 11px; color: #9c2434; background: #ffe8eb; font-size: 11px; }
+.support-session-restart { align-self: flex-start; border: 0; border-radius: 11px; padding: 9px 11px; background: var(--support-accent); color: #111; cursor: pointer; font: inherit; }
 .support-widget-state { min-height: 100%; display: grid; place-content: center; justify-items: center; gap: 10px; color: #686861; font-size: 12px; }
 .support-widget-state span { width: 25px; height: 25px; border: 3px solid #ddd; border-top-color: #111; border-radius: 99px; animation: support-spin .7s linear infinite; }
 .support-composer { display: grid; grid-template-columns: minmax(0,1fr) 44px; gap: 9px; padding: 11px 12px 8px; border-top: 1px solid #e0e0d9; background: #fff; }

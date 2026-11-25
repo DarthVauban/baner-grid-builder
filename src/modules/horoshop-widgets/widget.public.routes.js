@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { env } from '../../config/env.js';
+import { findHoroshopWidgetAsset } from './widget-release.service.js';
 import { horoshopWidgetLoaderScript, loadHoroshopWidgetManifest } from './widget.service.js';
 
 const router = Router();
@@ -18,6 +19,16 @@ router.get('/embed.js', asyncHandler(async (req, res) => {
   res.type('application/javascript').send(
     horoshopWidgetLoaderScript(manifest, env.APP_ORIGIN || requestOrigin(req))
   );
+}));
+
+router.get('/assets/:filename', asyncHandler(async (req, res) => {
+  const asset = await findHoroshopWidgetAsset(req.params.filename);
+  if (!asset) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.sendStatus(404);
+  }
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  return res.type(asset.extension).send(asset.body);
 }));
 
 export default router;

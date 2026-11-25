@@ -190,7 +190,7 @@ test('embed adapter preserves Horoshop links, labels, icons and markup', () => {
     alt: image.getAttribute('alt')
   }));
 
-  dom.window.eval(catalogMenuEmbedScript('compact-columns'));
+  dom.window.eval(catalogMenuEmbedScript('compact-columns', 'https://panel.example.com/catalog-menu.css', null, 'sha384-example'));
   dom.window.eval(catalogMenuEmbedScript('compact-columns'));
 
   assert.equal(root.getAttribute('data-mt-catalog-menu'), 'v1');
@@ -204,6 +204,12 @@ test('embed adapter preserves Horoshop links, labels, icons and markup', () => {
     src: image.getAttribute('src'),
     alt: image.getAttribute('alt')
   })), originalImages);
+  const link = dom.window.document.querySelector('link#mt-horoshop-catalog-menu-v1');
+  assert.ok(link);
+  assert.equal(link.integrity, 'sha384-example');
+  assert.equal(link.crossOrigin, 'anonymous');
+  link.dispatchEvent(new dom.window.Event('error'));
+  assert.equal(dom.window.document.querySelector('style#mt-horoshop-catalog-menu-v1').textContent, catalogMenuCss('compact-columns'));
   assert.equal(dom.window.document.querySelectorAll('#mt-horoshop-catalog-menu-v1').length, 1);
   dom.window.close();
 });

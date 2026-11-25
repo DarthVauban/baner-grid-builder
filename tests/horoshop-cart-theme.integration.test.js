@@ -194,6 +194,33 @@ test('embed adapter preserves Horoshop cart markup, links and event handlers', a
   dom.window.close();
 });
 
+test('desktop and mobile cart contracts retain themed CSS after the pinned stylesheet fails', () => {
+  for (const surface of ['desktop', 'mobile']) {
+    const mobile = surface === 'mobile';
+    const cart = mobile ? '<aside id="cart-drawer" class="cart"></aside>' : '<section id="cart" class="popup __cart"></section>';
+    const dom = new JSDOM(`<!doctype html><body>${cart}</body>`, { runScripts: 'outside-only', url: 'https://shop.example.com/' });
+    Object.defineProperty(dom.window, 'innerWidth', { value: mobile ? 390 : 1280 });
+    Object.defineProperty(dom.window.navigator, 'userAgent', {
+      value: mobile
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36'
+    });
+    try {
+      dom.window.eval(cartThemeEmbedScript('balanced-upsell', 'https://panel.example.com/cart.css', 'sha384-example'));
+      const link = dom.window.document.querySelector('link#mt-horoshop-cart-theme-v1');
+      assert.ok(link);
+      assert.equal(link.integrity, 'sha384-example');
+      assert.equal(link.crossOrigin, 'anonymous');
+      link.dispatchEvent(new dom.window.Event('error'));
+      const fallback = dom.window.document.querySelector('style#mt-horoshop-cart-theme-v1');
+      assert.equal(fallback.textContent, cartThemeCss('balanced-upsell'));
+      assert.ok(dom.window.document.querySelector(`[data-mt-cart-surface="${surface}"]`));
+    } finally {
+      dom.window.close();
+    }
+  }
+});
+
 test('embed adapter advances exactly one themed card per carousel click without native drift', async () => {
   const dom = new JSDOM(`<!doctype html><html><head></head><body>
     <div class="overlay">

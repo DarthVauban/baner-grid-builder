@@ -33,6 +33,8 @@ export default defineConfig({
               }
             },
             {
+              // React and other shared dependencies must stay outside editor chunks.
+              includeDependenciesRecursively: false,
               name(id) {
                 const normalizedId = id.replaceAll('\\', '/');
                 if (normalizedId.includes('/node_modules/@tiptap/')

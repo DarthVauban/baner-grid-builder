@@ -580,8 +580,10 @@ test('form builder and applications list have separate access and process public
       imageUrl: '/content/images/phone.webp'
     },
     context: {
-      sourceUrl: 'http://shop.example.com/products/smartphone-x',
-      pageTitle: 'Smartphone X',
+      sourceUrl: 'http://shop.example.com/products/smartphone-x?customer=test-customer#order',
+      canonicalUrl: 'http://shop.example.com/products/smartphone-x?customer=test-customer',
+      referrer: 'https://shop.example.com/account/orders/test-order',
+      pageTitle: 'Synthetic private page title',
       utm_source: 'newsletter'
     },
     idempotencyKey: 'same-customer-1'
@@ -616,6 +618,10 @@ test('form builder and applications list have separate access and process public
     fields: formInput.fields.map((field) => field.key === 'addons' ? { ...field, showInSummary: true } : field)
   }).expect(200);
   const applicationAfterSummaryUpdate = await manager.get(`/api/applications/${feed.body.data.items[0].id}`).expect(200);
+  assert.equal(applicationAfterSummaryUpdate.body.data.sourceUrl, 'http://shop.example.com/products/smartphone-x');
+  assert.equal(applicationAfterSummaryUpdate.body.data.canonicalUrl, 'http://shop.example.com/products/smartphone-x');
+  assert.equal(applicationAfterSummaryUpdate.body.data.referrer, '');
+  assert.equal(applicationAfterSummaryUpdate.body.data.pageTitle, '');
   assert.equal(applicationAfterSummaryUpdate.body.data.values.find((value) => value.key === 'addons').showInSummary, true);
 
   const formFilters = await manager.get('/api/applications/forms').expect(200);

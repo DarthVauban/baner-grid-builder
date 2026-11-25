@@ -1,4 +1,5 @@
 import { storeMapRegistrationApi } from './api-store-map-registration';
+import { loadPublicStoreMap } from './api-store-map-public';
 import type {
   LoginInput,
   LoginResponse,
@@ -50,6 +51,7 @@ import type {
   SavedGrid
 } from '../types/workspace';
 import type { ToolCatalog, ToolId, UserToolAccess } from '../types/tool';
+import type { HoroshopWidgetRelease, HoroshopWidgetReleases } from '../types/horoshop-widgets';
 import type { SiteTheme, SiteThemeInput, SiteThemeStorefrontEffectId } from '../types/site-theme';
 import type { BlogPublication, PublicationCounts, PublicationInput, PublicationStatus } from '../types/publication';
 import type { BlogPostDocument } from '../types/blog-editor';
@@ -164,7 +166,6 @@ import type {
   TradeInSettingsInput
 } from '../types/trade-in';
 import type {
-  PublicStoreMapData,
   StoreMapImportPreview,
   StoreMapPoint,
   StoreMapPointInput,
@@ -201,6 +202,10 @@ import type { SmartSearchEntry } from '../search/types';
 export { ApiError } from './api-client';
 
 export const api = {
+  horoshopWidgets: {
+    releases: (signal?: AbortSignal) => request<HoroshopWidgetReleases>('/api/horoshop-widgets/releases', { signal }),
+    publish: () => request<HoroshopWidgetRelease>('/api/horoshop-widgets/releases', { method: 'POST' })
+  },
   smartSearch: {
     entry: (signal?: AbortSignal) => request<SmartSearchEntry>('/api/integrations/smart-search/entry', { signal })
   },
@@ -574,6 +579,9 @@ export const api = {
       `/api/support-chat/conversations/${encodeURIComponent(id)}/customer`,
       { method: 'PATCH', body: jsonBody(input) }
     ),
+    revokeVisitorSession: (id: string) => request<void>(
+      `/api/support-chat/conversations/${encodeURIComponent(id)}/revoke-visitor-session`, { method: 'POST' }
+    ),
     setStatus: (id: string, status: SupportConversationStatus) => request<SupportConversation>(
       `/api/support-chat/conversations/${encodeURIComponent(id)}/status`,
       { method: 'PATCH', body: jsonBody({ status }) }
@@ -886,7 +894,7 @@ export const api = {
         body: jsonBody({ rows, ...options }),
         timeoutMs: 180_000
       }),
-    publicData: () => request<PublicStoreMapData>('/api/public/store-map')
+    publicData: loadPublicStoreMap
   },
   facebookPublications: {
     stores: (params: { search?: string; status?: string } = {}) =>

@@ -325,13 +325,14 @@ export function catalogMenuCss(themeId) {
   return `${baseCss}\n${themeCss[themeId] || themeCss['compact-columns']}`;
 }
 
-export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCategoryExternalId = null) {
+export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCategoryExternalId = null, stylesheetIntegrity = '') {
   const css = catalogMenuCss(themeId);
   return `(() => {
   if (window.__mtHoroshopCatalogMenuV1) return;
   window.__mtHoroshopCatalogMenuV1 = true;
   const themeId = ${JSON.stringify(themeId)};
   const stylesheetUrl = ${JSON.stringify(stylesheetUrl)};
+  const stylesheetIntegrity = ${JSON.stringify(stylesheetIntegrity)};
   const defaultCategoryExternalId = ${JSON.stringify(defaultCategoryExternalId)};
   const defaultTarget = defaultCategoryExternalId ? 'menu-tab-' + defaultCategoryExternalId : '';
   const styleId = 'mt-horoshop-catalog-menu-v1';
@@ -339,18 +340,29 @@ export function catalogMenuEmbedScript(themeId, stylesheetUrl = '', defaultCateg
 
   function installStyle() {
     if (document.getElementById(styleId)) return;
+    const parent = document.head || document.documentElement;
+    const inlineStyle = () => {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = ${JSON.stringify(css)};
+      return style;
+    };
     if (stylesheetUrl) {
       const link = document.createElement('link');
       link.id = styleId;
       link.rel = 'stylesheet';
       link.href = stylesheetUrl;
-      (document.head || document.documentElement).appendChild(link);
+      if (stylesheetIntegrity) {
+        link.integrity = stylesheetIntegrity;
+        link.crossOrigin = 'anonymous';
+      }
+      link.addEventListener('error', () => {
+        if (link.isConnected) link.replaceWith(inlineStyle());
+      }, { once: true });
+      parent.appendChild(link);
       return;
     }
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = ${JSON.stringify(css)};
-    (document.head || document.documentElement).appendChild(style);
+    parent.appendChild(inlineStyle());
   }
 
   function panelForLink(link, content) {

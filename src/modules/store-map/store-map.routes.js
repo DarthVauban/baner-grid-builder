@@ -12,6 +12,8 @@ import {
   normalizeStoreMapText,
   sanitizeStoreMapSvg,
   scheduleFromHoursText,
+  serializePublicStoreMapPoint,
+  serializePublicStoreMapSettings,
   serializeStoreMapPoint,
   serializeStoreMapSettings,
   storeMapEmbedScript,
@@ -227,19 +229,23 @@ publicRouter.get('/embed.js', (req, res) => {
 
 publicRouter.get('/', asyncHandler(async (req, res) => {
   const [settingsResult, pointsResult] = await Promise.all([
-    query('SELECT * FROM store_map_settings WHERE id = TRUE'),
     query(
-      `SELECT *
+      `SELECT title, marker_svg, marker_width, marker_height, marker_anchor_x, marker_anchor_y,
+              center_latitude, center_longitude, default_zoom
+       FROM store_map_settings WHERE id = TRUE`
+    ),
+    query(
+      `SELECT id, name, city, address, hours_text, schedule, open_status_override, latitude, longitude
        FROM store_map_points
        WHERE archived_at IS NULL AND publication_status = 'ACTIVE'
        ORDER BY normalized_city, normalized_name`
     )
   ]);
-  const points = pointsResult.rows.map(serializeStoreMapPoint);
+  const points = pointsResult.rows.map(serializePublicStoreMapPoint);
   res.setHeader('Cache-Control', 'public, max-age=60');
   res.json({
     data: {
-      settings: serializeStoreMapSettings(settingsResult.rows[0]),
+      settings: serializePublicStoreMapSettings(settingsResult.rows[0]),
       points,
       cities: [...new Set(points.map((point) => point.city))].sort((left, right) => left.localeCompare(right, 'uk'))
     }

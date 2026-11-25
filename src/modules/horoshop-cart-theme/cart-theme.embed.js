@@ -855,13 +855,14 @@ export function cartThemeCss(themeId) {
   return `${baseCss}\n${themeCss[themeId] || themeCss['balanced-upsell']}`;
 }
 
-export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
+export function cartThemeEmbedScript(themeId, stylesheetUrl = '', stylesheetIntegrity = '') {
   const css = cartThemeCss(themeId);
   return `(() => {
   if (window.__mtHoroshopCartThemeV1) return;
   window.__mtHoroshopCartThemeV1 = true;
   const themeId = ${JSON.stringify(themeId)};
   const stylesheetUrl = ${JSON.stringify(stylesheetUrl)};
+  const stylesheetIntegrity = ${JSON.stringify(stylesheetIntegrity)};
   const styleId = 'mt-horoshop-cart-theme-v1';
   const carouselControllers = new WeakMap();
   const enhancedImages = new WeakSet();
@@ -876,20 +877,32 @@ export function cartThemeEmbedScript(themeId, stylesheetUrl = '') {
   function installStyle() {
     const existing = document.getElementById(styleId);
     if (existing) return existing;
+    const parent = document.head || document.documentElement;
+    const inlineStyle = () => {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = ${JSON.stringify(css)};
+      return style;
+    };
     if (stylesheetUrl) {
       const link = document.createElement('link');
       link.id = styleId;
       link.rel = 'stylesheet';
       link.href = stylesheetUrl;
+      if (stylesheetIntegrity) {
+        link.integrity = stylesheetIntegrity;
+        link.crossOrigin = 'anonymous';
+      }
       link.addEventListener('load', requestCarouselRefresh, { once: true });
-      (document.head || document.documentElement).appendChild(link);
+      link.addEventListener('error', () => {
+        if (!link.isConnected) return;
+        link.replaceWith(inlineStyle());
+        requestCarouselRefresh();
+      }, { once: true });
+      parent.appendChild(link);
       return link;
     }
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = ${JSON.stringify(css)};
-    (document.head || document.documentElement).appendChild(style);
-    return style;
+    return parent.appendChild(inlineStyle());
   }
 
   function upgradeRecommendationImageUrl(value) {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { env } from '../../config/env.js';
 import { z } from 'zod';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
@@ -24,10 +25,16 @@ import {
   serializeSupportMessage,
   serializeSupportSettings,
   serializeSupportVisitor,
-  supportWidgetEmbedScript
+  supportWidgetEmbedScript,
+  supportSessionLifetimeMs
 } from './support-chat.service.js';
 
 const router = Router();
+
+router.use((req, res, next) => {
+  if (req.path !== '/embed.js') res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 const publicLimiter = rateLimit({
   windowMs: 60_000,
@@ -45,18 +52,18 @@ const messageLimiter = rateLimit({
 });
 router.use(publicLimiter);
 
+const siteSchema = z.union([z.string().uuid(), z.literal('')]);
 const sessionSchema = z.object({
-  siteId: z.union([z.string().uuid(), z.literal('')]).optional().default(''),
+  siteId: siteSchema.optional().default(''),
+  transport: z.enum(['cookie', 'bearer']).default('bearer'),
   visitorToken: z.string().trim().max(200).optional().default(''),
   embedOrigin: z.string().trim().max(500).optional().default(''),
-  pageUrl: z.string().trim().max(4000).optional().default(''),
-  pageTitle: z.string().trim().max(500).optional().default('')
+  pageUrl: z.string().trim().max(4000).optional().default('')
 });
 const messageSchema = z.object({
   body: z.string().trim().min(1).max(5000),
   clientMessageId: z.string().uuid(),
-  pageUrl: z.string().trim().max(4000).optional().default(''),
-  pageTitle: z.string().trim().max(500).optional().default('')
+  pageUrl: z.string().trim().max(4000).optional().default('')
 });
 const contactSchema = z.object({
   name: z.string().trim().max(160).default(''),
@@ -71,11 +78,46 @@ function bearerToken(req) {
   return value.startsWith('Bearer ') ? value.slice(7).trim() : '';
 }
 
+function requireSameOrigin(req) {
+  const origin = req.get('origin');
+  const fetchSite = req.get('sec-fetch-site');
+  const apiOrigin = requestOrigin(req);
+  if ((origin && origin !== apiOrigin) || (fetchSite && fetchSite !== 'same-origin')) {
+    throw new AppError(403, 'SUPPORT_ORIGIN_DENIED', 'Запит до сесії чату дозволено лише з віджета.');
+  }
+}
+
+function supportCookie(req, key) {
+  const secure = req.secure || env.isProduction;
+  return {
+    name: `${secure ? '__Host-' : ''}mt-support-${key.toLowerCase()}`,
+    options: {
+      httpOnly: true,
+      secure,
+      sameSite: secure ? 'none' : 'lax',
+      partitioned: secure,
+      path: secure ? '/' : '/api/public/support-chat'
+    }
+  };
+}
+
+function visitorCredential(req) {
+  const token = bearerToken(req);
+  if (token) return { token, transport: 'bearer' };
+  requireSameOrigin(req);
+  const siteId = parseInput(siteSchema, req.get('x-support-chat-site') || '');
+  const cookie = supportCookie(req, siteId || 'default');
+  return { token: req.cookies?.[cookie.name], transport: 'cookie' };
+}
+
+async function authenticatedVisitor(req) {
+  const { token, transport } = visitorCredential(req);
+  return loadSupportVisitorByToken(token, transport);
+}
+
 function requestOrigin(req) {
-  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
-  const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim();
-  const host = forwardedHost || req.get('host');
-  try { return new URL(`${forwardedProto}://${host}`).origin; } catch { return ''; }
+  const host = req.get('host');
+  return host ? normalizeSupportOrigin(`${req.protocol}://${host}`) : '';
 }
 
 function settingsFromVisitor(visitor) {
@@ -124,17 +166,27 @@ async function loadPublicConversation(visitorId) {
   };
 }
 
-async function publicSessionPayload(visitor, token) {
+async function publicSessionPayload(visitor) {
   return {
-    token,
     settings: settingsFromVisitor(visitor),
     visitor: serializeSupportVisitor(visitor),
     conversation: await loadPublicConversation(visitor.id)
   };
 }
 
+router.get('/session/transport', (req, res) => {
+  requireSameOrigin(req);
+  const probe = supportCookie(req, 'transport');
+  const available = req.cookies?.[probe.name] === '1';
+  if (!available) res.cookie(probe.name, '1', { ...probe.options, maxAge: 10 * 60_000 });
+  res.json({ data: { cookie: available } });
+});
+
 router.post('/session', asyncHandler(async (req, res) => {
   const input = parseInput(sessionSchema, req.body);
+  const transport = input.transport;
+  if (transport === 'cookie') requireSameOrigin(req);
+  const cookie = supportCookie(req, input.siteId || 'default');
   const site = await loadSupportSite(input.siteId, { requireEnabled: true });
   const embedOrigin = normalizeSupportOrigin(input.embedOrigin);
   const allowedOrigins = Array.isArray(site.allowed_origins) ? site.allowed_origins : [];
@@ -142,25 +194,45 @@ router.post('/session', asyncHandler(async (req, res) => {
   if (allowedOrigins.length && embedOrigin !== nativeOrigin && (!embedOrigin || !allowedOrigins.includes(embedOrigin))) {
     throw new AppError(403, 'SUPPORT_ORIGIN_DENIED', 'Цей сайт не має доступу до віджета онлайн-підтримки.');
   }
-  const pageUrl = normalizeSupportPageUrl(input.pageUrl);
-  let token = input.visitorToken;
-  let visitor = null;
-  if (token) {
+  const pageReferences = await resolveSupportProductReferences({ pageUrl: normalizeSupportPageUrl(input.pageUrl) });
+  const pageUrl = pageReferences[0]?.url || '';
+
+  async function resume(token, tokenTransport) {
+    if (!token) return null;
     try {
-      visitor = await loadSupportVisitorByToken(token);
-      if (visitor.site_id !== site.id) visitor = null;
-    } catch {
-      visitor = null;
+      const visitor = await loadSupportVisitorByToken(token, tokenTransport);
+      return visitor.site_id === site.id ? visitor : null;
+    } catch (error) {
+      if (!(error instanceof AppError) || error.status !== 401) throw error;
+      return null;
+    }
+  }
+
+  let token = transport === 'cookie' ? req.cookies?.[cookie.name] : input.visitorToken;
+  let visitor = await resume(token, transport);
+  if (!visitor && transport === 'cookie' && input.visitorToken) {
+    const previous = await resume(input.visitorToken, 'bearer');
+    if (previous) {
+      token = createSupportSessionToken();
+      const migrated = await query(
+        `UPDATE support_chat_visitors
+         SET session_token_hash = $1, session_transport = 'cookie', session_expires_at = $2
+         WHERE id = $3 AND session_token_hash = $4 AND session_revoked_at IS NULL AND session_expires_at > NOW()
+         RETURNING id`,
+        [hashSupportSessionToken(token), new Date(Date.now() + supportSessionLifetimeMs.cookie), previous.id, hashSupportSessionToken(input.visitorToken)]
+      );
+      if (!migrated.rows[0]) throw new AppError(409, 'SUPPORT_SESSION_CHANGED', 'Сесія чату оновилась. Завантажте віджет повторно.');
+      visitor = await loadSupportVisitorByToken(token, 'cookie');
     }
   }
   if (!visitor) {
     token = createSupportSessionToken();
     const created = await query(
       `INSERT INTO support_chat_visitors (
-         site_id, session_token_hash, first_page_url, last_page_url, last_page_title
-       ) VALUES ($1, $2, $3, $3, $4)
+         site_id, session_token_hash, first_page_url, last_page_url, session_transport, session_expires_at
+       ) VALUES ($1, $2, $3, $3, $4, $5)
        RETURNING *`,
-      [site.id, hashSupportSessionToken(token), pageUrl, input.pageTitle]
+      [site.id, hashSupportSessionToken(token), pageUrl, transport, new Date(Date.now() + supportSessionLifetimeMs[transport])]
     );
     visitor = {
       ...created.rows[0],
@@ -183,30 +255,33 @@ router.post('/session', asyncHandler(async (req, res) => {
     const updated = await query(
       `UPDATE support_chat_visitors
        SET last_page_url = CASE WHEN $1 = '' THEN last_page_url ELSE $1 END,
-           last_page_title = CASE WHEN $2 = '' THEN last_page_title ELSE $2 END,
            last_seen_at = NOW()
-       WHERE id = $3
+       WHERE id = $2
        RETURNING *`,
-      [pageUrl, input.pageTitle, visitor.id]
+      [pageUrl, visitor.id]
     );
     visitor = { ...visitor, ...updated.rows[0] };
   }
-  res.json({ data: await publicSessionPayload(visitor, token) });
+  const data = await publicSessionPayload(visitor);
+  if (transport === 'cookie') {
+    const expires = new Date(visitor.session_expires_at);
+    res.cookie(cookie.name, token, { ...cookie.options, expires });
+  }
+  res.json({ data: transport === 'bearer' ? { ...data, token } : data });
 }));
 
 router.get('/session', asyncHandler(async (req, res) => {
-  const token = bearerToken(req);
-  const visitor = await loadSupportVisitorByToken(token);
+  const visitor = await authenticatedVisitor(req);
   await query('UPDATE support_chat_visitors SET last_seen_at = NOW() WHERE id = $1', [visitor.id]);
-  res.json({ data: await publicSessionPayload(visitor, token) });
+  res.json({ data: await publicSessionPayload(visitor) });
 }));
 
 router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
   const input = parseInput(messageSchema, req.body);
-  const visitor = await loadSupportVisitorByToken(bearerToken(req));
+  const visitor = await authenticatedVisitor(req);
   const withinWorkingHours = isWithinSupportWorkingHours(visitor);
-  const pageUrl = normalizeSupportPageUrl(input.pageUrl);
-  const resolvedProductReferences = await resolveSupportProductReferences({ body: input.body, pageUrl });
+  const resolvedProductReferences = await resolveSupportProductReferences({ body: input.body, pageUrl: normalizeSupportPageUrl(input.pageUrl) });
+  const pageUrl = resolvedProductReferences.find((reference) => reference.source === 'page')?.url || '';
   const client = await pool.connect();
   let conversationId;
   let insertedMessageId = null;
@@ -284,10 +359,9 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
     await client.query(
       `UPDATE support_chat_visitors
        SET last_page_url = CASE WHEN $1 = '' THEN last_page_url ELSE $1 END,
-           last_page_title = CASE WHEN $2 = '' THEN last_page_title ELSE $2 END,
            last_seen_at = NOW()
-       WHERE id = $3`,
-      [pageUrl, input.pageTitle, visitor.id]
+       WHERE id = $2`,
+      [pageUrl, visitor.id]
     );
     await client.query('COMMIT');
   } catch (error) {
@@ -310,7 +384,7 @@ router.post('/messages', messageLimiter, asyncHandler(async (req, res) => {
 
 router.put('/contact', asyncHandler(async (req, res) => {
   const input = parseInput(contactSchema, req.body);
-  const visitor = await loadSupportVisitorByToken(bearerToken(req));
+  const visitor = await authenticatedVisitor(req);
   const updated = await query(
     `UPDATE support_chat_visitors
      SET name = $1, email = $2, phone = $3, last_seen_at = NOW()
@@ -331,7 +405,7 @@ router.put('/contact', asyncHandler(async (req, res) => {
 }));
 
 router.post('/read', asyncHandler(async (req, res) => {
-  const visitor = await loadSupportVisitorByToken(bearerToken(req));
+  const visitor = await authenticatedVisitor(req);
   await query(
     `UPDATE support_chat_conversations SET visitor_last_read_at = NOW()
      WHERE visitor_id = $1`,
@@ -341,18 +415,45 @@ router.post('/read', asyncHandler(async (req, res) => {
 }));
 
 router.get('/stream', asyncHandler(async (req, res) => {
-  const visitor = await loadSupportVisitorByToken(bearerToken(req));
+  const { token, transport } = visitorCredential(req);
+  const visitor = await loadSupportVisitorByToken(token, transport);
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Cache-Control', 'no-store, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
-  const send = (payload) => res.write(`event: support\ndata: ${JSON.stringify(payload)}\n\n`);
-  const unsubscribe = subscribeToSupportVisitorUpdates(visitor.id, send);
-  const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), 25_000);
+  let checking = false;
+  let invalidated = false;
+  let closed = false;
+  function cleanup() {
+    if (closed) return;
+    closed = true;
+    clearInterval(heartbeat);
+    unsubscribe();
+  }
+  async function send(updated = false) {
+    invalidated ||= updated;
+    if (checking || closed) return;
+    checking = true;
+    try {
+      await loadSupportVisitorByToken(token, transport);
+      if (closed) return;
+      res.write(invalidated ? 'event: support\ndata: {}\n\n' : ': keep-alive\n\n');
+      invalidated = false;
+    } catch (error) {
+      if (closed) return;
+      if (error instanceof AppError && error.status === 401) res.write('event: session_ended\ndata: {}\n\n');
+      res.end();
+      cleanup();
+    } finally {
+      checking = false;
+    }
+  }
+  const unsubscribe = subscribeToSupportVisitorUpdates(visitor.id, () => { void send(true); });
+  const heartbeat = setInterval(() => { void send(); }, 25_000);
   heartbeat.unref();
   res.write('event: connected\ndata: {}\n\n');
-  req.on('close', () => { clearInterval(heartbeat); unsubscribe(); });
+  res.on('close', cleanup);
 }));
 
 router.get('/embed.js', asyncHandler(async (req, res) => {

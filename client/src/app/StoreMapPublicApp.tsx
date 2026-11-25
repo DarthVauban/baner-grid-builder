@@ -10,7 +10,8 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { StyledSelect } from '../components/StyledSelect';
-import type { PublicStoreMapData, StoreMapPoint, StoreMapSchedule } from '../types/store-map';
+import { loadPublicStoreMap } from '../lib/api-store-map-public';
+import type { PublicStoreMapData, PublicStoreMapPoint } from '../types/store-map';
 
 // Keep a stable cache-buster so deployments that change the worker response
 // CSP do not reuse a previously cached response with the old policy.
@@ -44,9 +45,9 @@ function timeToMinutes(value: string) {
   return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null;
 }
 
-function isOpen(point: StoreMapPoint, now: Date) {
+function isOpen(point: PublicStoreMapPoint, now: Date) {
   if (point.openStatusOverride === 'TEMPORARILY_CLOSED' || point.openStatusOverride === 'CLOSED') return false;
-  const schedule = point.schedule as StoreMapSchedule;
+  const schedule = point.schedule;
   const clock = currentKyivClock(now);
   const intervals = schedule.days?.[clock.day] || [];
   return intervals.some((interval) => {
@@ -60,7 +61,7 @@ function isOpen(point: StoreMapPoint, now: Date) {
   });
 }
 
-function operatingStatus(point: StoreMapPoint) {
+function operatingStatus(point: PublicStoreMapPoint) {
   if (point.openStatusOverride === 'TEMPORARILY_CLOSED') {
     return { label: 'Тимч. зачинено', modifier: 'temporary' };
   }
@@ -70,7 +71,7 @@ function operatingStatus(point: StoreMapPoint) {
   return { label: 'За розкладом', modifier: 'schedule' };
 }
 
-function routeUrl(point: StoreMapPoint) {
+function routeUrl(point: PublicStoreMapPoint) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${point.latitude},${point.longitude}`)}`;
 }
 
@@ -84,7 +85,7 @@ function escapeHtml(value: string) {
   })[character] || character);
 }
 
-function popupMarkup(point: StoreMapPoint) {
+function popupMarkup(point: PublicStoreMapPoint) {
   const status = operatingStatus(point);
   return `<article class="store-map-popup">
     <div class="store-map-popup__heading">
@@ -113,16 +114,11 @@ export function StoreMapPublicApp() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const previewToken = new URLSearchParams(window.location.search).get('preview');
-    const dataUrl = previewToken
-      ? `/api/public/store-map?preview=${encodeURIComponent(previewToken)}`
-      : '/api/public/store-map';
-    fetch(dataUrl, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Не вдалося завантажити торгові точки.');
-        const payload = await response.json() as { data: PublicStoreMapData };
-        setData(payload.data);
-        document.title = payload.data.settings.title;
+    const previewToken = new URLSearchParams(window.location.search).get('preview') || undefined;
+    loadPublicStoreMap(controller.signal, previewToken)
+      .then((payload) => {
+        setData(payload);
+        document.title = payload.settings.title;
       })
       .catch((fetchError) => {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
@@ -159,7 +155,7 @@ export function StoreMapPublicApp() {
     });
   }, [city, clock, data?.points, openFilter, search]);
 
-  const selectPoint = useCallback((point: StoreMapPoint, source: 'map' | 'list') => {
+  const selectPoint = useCallback((point: PublicStoreMapPoint, source: 'map' | 'list') => {
     const map = mapRef.current;
     if (!map || !data) return;
 

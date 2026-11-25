@@ -2,7 +2,8 @@ import { devices, expect, test, type Locator, type Page } from '@playwright/test
 import { createServer } from 'node:http';
 import type { PopupPreviewPayload } from '../../client/src/types/popup-banner';
 
-const panelOrigin = 'http://panel.example.test';
+const panelOrigin = 'https://panel.example.test';
+const shopOrigin = 'https://shop.example.test';
 const serverOrigin = 'http://localhost:4175';
 
 test.afterEach(async ({ page }) => {
@@ -41,16 +42,23 @@ function promoPayload(position: 'top' | 'bottom' = 'bottom'): PopupPreviewPayloa
       title: number === 1 ? 'DC UPS 830P 20000mAh Black' : 'Повербанк 20000mAh',
       price: '2549', oldPrice: '', currency: 'UAH', buyId: `${number}`,
       imageUrl: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="54" height="54"%3E%3Crect width="54" height="54" fill="black"/%3E%3C/svg%3E',
-      pageUrl: `http://shop.example.test/product-${number}/`
+      pageUrl: `${shopOrigin}/product-${number}/`
     }))
   };
 }
 
 async function storefront(page: Page, mobile: boolean, position: 'top' | 'bottom' = 'bottom') {
   const events: string[] = [];
+  await page.request.post(`${serverOrigin}/api/auth/login`, { data: {
+    email: 'e2e-admin@test.local', password: 'E2E-admin-password-2026'
+  } });
+  const settings = (await (await page.request.get(`${serverOrigin}/api/support-chat/settings`)).json()).data;
+  expect((await page.request.put(`${serverOrigin}/api/support-chat/settings`, { data: {
+    ...settings, enabled: true, allowedOrigins: [shopOrigin]
+  } })).ok()).toBe(true);
   for (const kind of ['popup-banners', 'support-chat']) {
     const response = await page.request.get(`${serverOrigin}/api/public/${kind}/embed.js`, {
-      headers: { 'x-forwarded-host': 'panel.example.test', 'x-forwarded-proto': 'http' }
+      headers: { Host: 'panel.example.test', 'x-forwarded-host': 'panel.example.test', 'x-forwarded-proto': 'https' }
     });
     expect(response.ok()).toBe(true);
     const script = await response.text();
@@ -65,6 +73,7 @@ async function storefront(page: Page, mobile: boolean, position: 'top' | 'bottom
   await page.route(`${panelOrigin}/web-assets/**`, async (route) => route.fulfill({
     response: await route.fetch({ url: route.request().url().replace(panelOrigin, serverOrigin) })
   }));
+  await page.route('**/api/public/support-chat/session/transport', (route) => route.fulfill({ json: { data: { cookie: false } } }));
   await page.route('**/api/public/support-chat/session', (route) => route.fulfill({ json: { data: {
     token: 'floating-widget-test-session-token', conversation: null,
     visitor: { id: 'visitor', name: '', email: '', phone: '' },
@@ -79,14 +88,14 @@ async function storefront(page: Page, mobile: boolean, position: 'top' | 'bottom
       'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type'
     } });
   });
-  await page.route('http://shop.example.test/**', (route) => route.fulfill({
+  await page.route(`${shopOrigin}/**`, (route) => route.fulfill({
     contentType: 'text/html',
     body: `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"></head>
       <body><h1>Магазин</h1><button>Каталог</button>${mobile
         ? '<div id="cart-drawer" class="cart" hidden></div>'
         : '<section id="cart" class="popup __cart" hidden></section>'}</body></html>`
   }));
-  await page.goto('http://shop.example.test/sale/');
+  await page.goto(`${shopOrigin}/sale/`);
   return {
     events,
     load: (kind: 'popup-banners' | 'support-chat') => page.addScriptTag({ url: `${panelOrigin}/api/public/${kind}/embed.js` })

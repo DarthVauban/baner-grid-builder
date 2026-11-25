@@ -1,6 +1,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
+import { once } from 'node:events';
 
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'pg-mem://online-support-tests';
@@ -138,6 +139,8 @@ test('widget creates a persistent conversation with one automatic reply and opti
   assert.equal(resumed.body.data.visitor.name, 'Ірина Коваль');
   assert.equal(resumed.body.data.visitor.email, 'buyer@example.com');
   assert.equal(resumed.body.data.visitor.phone, '+380671234567');
+  assert.equal(resumed.headers['cache-control'], 'no-store');
+  assert.equal(resumed.body.data.token, undefined);
   assert.equal(resumed.body.data.conversation.messages.length, 3);
 });
 
@@ -152,7 +155,8 @@ test('operator can claim, read, reply and change support conversation status', a
 
   const detail = await admin.get(`/api/support-chat/conversations/${conversationId}`).expect(200);
   assert.equal(detail.body.data.messages.length, 3);
-  assert.equal(detail.body.data.conversation.visitor.lastPageTitle, 'Apple iPhone 16');
+  assert.equal(detail.body.data.conversation.visitor.lastPageUrl, 'https://mobiletrend.com.ua/apple-iphone-16/');
+  assert.equal(detail.body.data.conversation.visitor.lastPageTitle, '');
 
   const customer = await admin.patch(`/api/support-chat/conversations/${conversationId}/customer`).send({
     name: 'Ірина Ковальчук',
@@ -266,4 +270,81 @@ test('outside working hours uses the offline reply once and exposes the required
     .send({ body: 'Мій номер залишу нижче.', clientMessageId: crypto.randomUUID() })
     .expect(201);
   assert.equal(second.body.data.messages.filter((item) => item.senderType === 'system').length, 1);
+});
+
+test('cookie bootstrap migrates a legacy visitor and rejects cross-origin cookie access', async () => {
+  const payload = { siteId, embedOrigin: 'https://mobiletrend.com.ua' };
+  const legacy = await request(app).post('/api/public/support-chat/session').send(payload).expect(200);
+  const previous = legacy.body.data;
+  await pool.query("UPDATE support_chat_visitors SET session_transport = 'legacy' WHERE id = $1", [previous.visitor.id]);
+  const safeOrigin = { Host: 'mt-panel.sbs', 'X-Forwarded-Proto': 'https', Origin: 'https://mt-panel.sbs', 'Sec-Fetch-Site': 'same-origin' };
+  const session = await request(app).post('/api/public/support-chat/session').set(safeOrigin).send({
+    ...payload, transport: 'cookie', visitorToken: previous.token,
+    pageUrl: 'https://mobiletrend.com.ua/apple-iphone-16/?recipient=private#private', pageTitle: 'Private title'
+  }).expect(200);
+  assert.equal(session.body.data.visitor.id, previous.visitor.id);
+  assert.equal(session.body.data.token, undefined);
+  assert.equal(session.headers['cache-control'], 'no-store');
+  const cookie = session.headers['set-cookie'][0];
+  assert.match(cookie, /^__Host-mt-support-/);
+  for (const attribute of ['HttpOnly', 'Secure', 'Partitioned', 'SameSite=None', 'Path=/']) assert.ok(cookie.includes(attribute));
+  const scoped = { ...safeOrigin, Cookie: cookie.split(';')[0], 'X-Support-Chat-Site': siteId };
+  const restored = await request(app).get('/api/public/support-chat/session').set(scoped).expect(200);
+  assert.equal(restored.body.data.visitor.lastPageUrl, 'https://mobiletrend.com.ua/apple-iphone-16/');
+  assert.equal(restored.body.data.visitor.lastPageTitle, '');
+  assert.equal(restored.body.data.token, undefined);
+  await request(app).post('/api/public/support-chat/read').set({ ...scoped, Origin: 'https://unknown.example', 'Sec-Fetch-Site': 'cross-site' }).expect(403);
+  await request(app).get('/api/public/support-chat/session/transport').set({ ...safeOrigin,
+    Origin: 'https://unknown.example', 'X-Forwarded-Host': 'unknown.example' }).expect(403);
+  await request(app).get('/api/public/support-chat/session').set('Authorization', `Bearer ${previous.token}`).expect(401).expect('Cache-Control', 'no-store');
+  const submitted = await request(app).post('/api/public/support-chat/messages').set(scoped).send({
+    body: 'Тестове звернення', clientMessageId: crypto.randomUUID(),
+    pageUrl: 'https://mobiletrend.com.ua/checkout/complete/nonpublic-id?email=private', pageTitle: 'Private order title'
+  }).expect(201);
+  const persisted = await pool.query('SELECT last_page_url, last_page_title FROM support_chat_visitors WHERE id = $1', [previous.visitor.id]);
+  assert.deepEqual(persisted.rows[0], { last_page_url: 'https://mobiletrend.com.ua/apple-iphone-16/', last_page_title: '' });
+  assert.equal(submitted.body.data.messages[0].productCards.length, 0);
+});
+
+test('independent visitor sessions remain isolated and revocation closes an active stream', async () => {
+  const path = '/api/public/support-chat';
+  const createSession = async () => (await request(app).post(`${path}/session`).send({ siteId, embedOrigin: 'https://mobiletrend.com.ua' }).expect(200)).body.data;
+  const first = await createSession();
+  const second = await createSession();
+  const auth = (session) => ({ Authorization: `Bearer ${session.token}` });
+  const sent = await request(app).post(`${path}/messages`).set(auth(first)).send({
+    body: 'Перший приватний діалог', clientMessageId: crypto.randomUUID()
+  }).expect(201);
+  const other = await request(app).get(`${path}/session`).set(auth(second)).expect(200);
+  assert.equal(other.body.data.conversation, null);
+  const revokePath = `/api/support-chat/conversations/${sent.body.data.id}/revoke-visitor-session`;
+  await request(app).post(revokePath).set(auth(second)).expect(401);
+
+  const server = app.listen(0, '127.0.0.1');
+  const controller = new AbortController();
+  try {
+    await once(server, 'listening');
+    const stream = await fetch(`http://127.0.0.1:${server.address().port}${path}/stream`, {
+      headers: auth(first), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(4000)])
+    });
+    assert.equal(stream.headers.get('cache-control'), 'no-store, no-transform');
+    const reader = stream.body.getReader();
+    const decoder = new TextDecoder();
+    assert.match(decoder.decode((await reader.read()).value), /event: connected/u);
+    await admin.post(revokePath).expect(204);
+    assert.match(decoder.decode((await reader.read()).value), /event: session_ended/u);
+    assert.equal((await reader.read()).done, true);
+  } finally {
+    controller.abort();
+    server.closeAllConnections();
+    server.close();
+  }
+  await request(app).get(`${path}/session`).set(auth(first)).expect(401);
+  await request(app).put(`${path}/contact`).set(auth(first)).send({ name: 'Тест' }).expect(401);
+  await request(app).get(`${path}/session`).set(auth(second)).expect(200);
+  await pool.query('UPDATE support_chat_visitors SET last_seen_at = $1 WHERE id = $2', [new Date(Date.now() - 3 * 3600_000), second.visitor.id]);
+  await request(app).get(`${path}/session`).set(auth(second)).expect(401);
+  const renewed = await request(app).post(`${path}/session`).send({ siteId, embedOrigin: 'https://mobiletrend.com.ua', visitorToken: second.token }).expect(200);
+  assert.notEqual(renewed.body.data.visitor.id, second.visitor.id);
+  assert.equal(renewed.body.data.conversation, null);
 });

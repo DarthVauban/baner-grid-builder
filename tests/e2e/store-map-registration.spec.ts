@@ -167,7 +167,9 @@ for (const surface of surfaces) {
     expect(item.submittedData.name).toBe(name);
     await expect(workspace.getByRole('dialog')).toHaveCount(0);
     const points = (await (await request.get('/api/public/store-map')).json()).data.points;
-    expect(points.find((point: { id: string }) => point.id === item.pointId)).toMatchObject({ name: `${name} — перевірено`, latitude: item.latitude, longitude: item.longitude, externalId: '' });
+    const approvedPoint = points.find((point: { id: string }) => point.id === item.pointId);
+    expect(approvedPoint).toMatchObject({ name: `${name} — перевірено`, latitude: item.latitude, longitude: item.longitude });
+    expect(approvedPoint).not.toHaveProperty('externalId');
     expect(errors).toEqual([]);
     await workspace.screenshot({ path: testInfo.outputPath(`store-map-requests-${surface.name}.png`), fullPage: true });
     await seller.close();

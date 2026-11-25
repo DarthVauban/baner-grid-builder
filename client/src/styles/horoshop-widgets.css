@@ -8,6 +8,9 @@
 .horoshop-widgets-setup__heading h2, .horoshop-widgets-list__heading h2 { margin: 2px 0 4px; color: var(--ink); font-size: 21px; }
 .horoshop-widgets-setup__heading p, .horoshop-widgets-list__heading p { margin: 0; }
 .horoshop-widgets-setup__heading > div > p:last-child { color: var(--muted); font-size: 12px; }
+.horoshop-widgets-setup__release { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.horoshop-widgets-setup__release label { display: grid; flex: 1; min-width: min(100%, 280px); gap: 5px; color: var(--muted); font-size: 12px; }
+.horoshop-widgets-setup__release > p { flex: 1; margin: 0; color: var(--muted); font-size: 12px; }
 .horoshop-widgets-setup__code { overflow: auto; margin: 0; border: 1px solid #28344c; border-radius: 14px; padding: 17px 19px; color: #eff4ff; background: #111b2d; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .horoshop-widgets-setup__steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .horoshop-widgets-setup__steps p { display: flex; align-items: flex-start; gap: 9px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
