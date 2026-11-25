@@ -294,6 +294,7 @@ function RevokeVisitorSessionButton({ id, onRevoked }: { id: string; onRevoked: 
 
 function ConversationsPanel() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<SupportConversationStatus | ''>('');
