@@ -140,16 +140,11 @@ export async function campaignPage(publicId, { section, cursor, revision, brand 
     conditions.push('(' + fields.map((field) => field + ' ILIKE ' + match).join(' OR ') + ')');
   }
   const from = `${publicJoin} ${publicItems} WHERE ${conditions.join(' AND ')}`;
-  let total;
-  if (cursor === 0 && (q || brand.length)) {
-    const count = await pool.query('SELECT COUNT(*) AS total ' + from, params);
-    total = Number(count.rows[0].total);
-  }
   const result = await pool.query(`SELECT i.position, h.store_domain, p.id AS product_id, p.external_id AS product_external_id,
     p.sku AS product_sku, p.brand, p.titles AS product_titles, p.price AS product_price, p.old_price AS product_old_price,
     p.currency AS product_currency, p.availability AS product_availability, p.primary_image_url, p.canonical_url,
-    p.source_data AS product_source_data ${from} AND i.position >= ${bind(cursor)}
-    ORDER BY i.position LIMIT 25`, params);
+    p.source_data AS product_source_data ${from} AND i.position >= $${params.length + 1}
+    ORDER BY i.position LIMIT 25`, [...params, cursor]);
   if (!result.rowCount) {
     const current = await pool.query(`SELECT c.revision ${publicJoin} WHERE c.public_id = $1`, [publicId]);
     if (!current.rowCount) throw notFound();
@@ -161,5 +156,14 @@ export async function campaignPage(publicId, { section, cursor, revision, brand 
       imageUrl: item.imageUrl, pageUrl: item.pageUrl, price: item.price, oldPrice: item.oldPrice, currency: item.currency,
       available: item.available, availability: item.availability, buyId: item.buyId
     }));
-  return { products, nextCursor: result.rows[24]?.position ?? null, total };
+  const nextCursor = result.rows[24]?.position ?? null;
+  let total;
+  if (cursor === 0 && (q || brand.length)) {
+    total = result.rowCount;
+    if (nextCursor !== null) {
+      const count = await pool.query('SELECT COUNT(*) AS total ' + from, params);
+      total = Number(count.rows[0].total);
+    }
+  }
+  return { products, nextCursor, total };
 }

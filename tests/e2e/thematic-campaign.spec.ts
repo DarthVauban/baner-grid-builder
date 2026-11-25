@@ -22,11 +22,13 @@ for (const mobile of [false, true]) {
     });
     test('navigates categories, pages, returns from the product and buys through the native surface', async ({ page }) => {
       const calls: string[] = [];
-      await page.route(workspace + '/winter/products?**', (route) => {
+      const morePhones = Promise.withResolvers<void>();
+      await page.route(workspace + '/winter/products?**', async (route) => {
         const params = new URL(route.request().url()).searchParams;
         const id = params.get('section') || 'all';
         const offset = Number(params.get('cursor'));
         calls.push(id + ':' + offset);
+        if (id === 'phones' && offset === 24) await morePhones.promise;
         const count = id === 'audio' ? 1 : id === 'phones' ? 25 : 26;
         const brands = params.getAll('brand');
         const products = Array.from({ length: count }, (_, i) => ({ title: id + '-' + i,
@@ -82,6 +84,13 @@ for (const mobile of [false, true]) {
       await page.getByRole('button', { name: 'Усі бренди' }).click();
       await expect(sony).toHaveAttribute('aria-pressed', 'false');
       await page.getByRole('button', { name: 'Показати ще' }).click();
+      try {
+        await expect(page.locator('.mt-campaign__skeletons')).toBeVisible();
+        await expect(cards.first()).toBeVisible();
+        await expect(cards).toHaveCount(24);
+      } finally {
+        morePhones.resolve();
+      }
       await expect(cards).toHaveCount(25);
       await cards.last().getByRole('link', { name: 'phones-24', exact: true }).last().click();
       await page.goBack();
@@ -94,7 +103,7 @@ for (const mobile of [false, true]) {
       expect(calls).toContain('phones:24');
       expect(calls.at(-1)).toBe('audio:0');
     });
-    test('keeps products visible during filter and photo requests and reuses a recent result', async ({ page }) => {
+    test('shows card skeletons for pending filters and reveals products independently of their photos', async ({ page }) => {
       if (!mobile) await page.setViewportSize({ width: 1520, height: 900 });
       const phonesData = Promise.withResolvers<void>();
       const phonesPhoto = Promise.withResolvers<void>();
@@ -106,20 +115,29 @@ for (const mobile of [false, true]) {
         const result = params.get('brand') || params.get('section') || 'all';
         calls.push(result);
         if (result === 'phones') await phonesData.promise;
-        if (result === 'sony') await sonyData.promise;
+        if (result === 'sony') {
+          await sonyData.promise;
+          if (calls.filter((key) => key === 'sony').length === 1) {
+            return route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, body: '' });
+          }
+        }
         const products = Array.from({ length: 12 }, (_, i) => ({
-          title: result + '-' + i, imageUrl: shop + '/' + result + '.svg', pageUrl: shop + '/product',
+          title: result + '-' + i,
+          imageUrl: shop + '/' + (result === 'phones' && i === 1 ? 'missing' : result + (i ? '-other' : '')) + '.svg',
+          pageUrl: shop + '/product',
           article: String(i), price: '500', currency: 'UAH', available: true
         }));
         await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { data: { products, total: products.length, nextCursor: null } } });
       });
       await page.route(shop + '/*.svg', async (route) => {
+        if (route.request().url().endsWith('/missing.svg')) return route.fulfill({ status: 404, body: '' });
         if (route.request().url().endsWith('/phones.svg')) await phonesPhoto.promise;
         if (route.request().url().endsWith('/samsung.svg')) await samsungPhoto.promise;
         await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"/>' });
       });
       await page.goto(shop + '/sale');
       const grid = page.locator('.mt-product-selection__grid');
+      const placeholders = page.locator('.mt-campaign__skeletons');
       const title = grid.locator('.mt-product-selection__title').first();
       const photos = grid.locator('img');
       await expect(title).toHaveText('all-0');
@@ -140,13 +158,28 @@ for (const mobile of [false, true]) {
       try {
         await categoryRequest;
         await expect(grid).toHaveAttribute('aria-busy', 'true');
-        await expect(title).toHaveText('all-0');
+        await expect(page.getByRole('heading', { name: 'Телефони', exact: true })).toBeVisible();
+        await expect(placeholders).toBeVisible();
+        await expect(placeholders.locator('.mt-campaign__skeleton')).toHaveCount(columns * 2);
+        expect(await placeholders.evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(' ').length)).toBe(columns);
+        await expect(grid).toBeHidden();
         const photoRequest = page.waitForRequest(shop + '/phones.svg');
         phonesData.resolve();
         await photoRequest;
-        expect(await title.textContent()).toBe('all-0');
-        phonesPhoto.resolve();
         await expect(title).toHaveText('phones-0');
+        await expect(title).toBeVisible();
+        await expect(grid).toHaveAttribute('aria-busy', 'false');
+        await expect(placeholders).toBeHidden();
+        const media = grid.locator('.mt-product-selection__media');
+        await expect(media.first()).toHaveClass(/mt-campaign__photo-pending/u);
+        await expect(grid.getByRole('button', { name: 'Купити' }).first()).toBeEnabled();
+        await expect.poll(() => photos.nth(2).evaluate((img) => img.naturalWidth)).toBe(20);
+        await expect(media.nth(2)).not.toHaveClass(/mt-campaign__photo-pending/u);
+        await expect(media.nth(1)).not.toHaveClass(/mt-campaign__photo-pending/u);
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        expect(await media.first().evaluate((node) => getComputedStyle(node, '::after').animationName)).toBe('none');
+        phonesPhoto.resolve();
+        await expect(media.first()).not.toHaveClass(/mt-campaign__photo-pending/u);
         expect(await photos.first().evaluate((img) => img.complete && img.naturalWidth > 0)).toBe(true);
         const firstPhone = await grid.locator('article').first().elementHandle();
         const sony = page.getByRole('button', { name: 'Sony', exact: true });
@@ -154,13 +187,24 @@ for (const mobile of [false, true]) {
         await sony.click();
         await brandRequest;
         await expect(grid).toHaveAttribute('aria-busy', 'true');
-        await expect(title).toHaveText('phones-0');
+        await expect(placeholders).toBeVisible();
+        await expect(grid).toBeHidden();
         sonyData.resolve();
+        await expect(page.getByRole('status')).toContainText('Показано попередні результати.');
+        await expect(placeholders).toBeHidden();
+        await expect(title).toHaveText('phones-0');
+        await expect(title).toBeVisible();
+        await page.getByRole('button', { name: 'Спробувати ще' }).click();
         await expect(title).toHaveText('sony-0');
+        await placeholders.evaluate((node) => {
+          new MutationObserver(() => { if (!node.hidden) node.dataset.flashed = 'true'; })
+            .observe(node, { attributes: true, attributeFilter: ['hidden'] });
+        });
         await page.getByRole('button', { name: 'Усі бренди' }).click();
         await expect(title).toHaveText('phones-0');
         expect(await grid.evaluate((node, original) => node.firstElementChild === original, firstPhone)).toBe(true);
-        expect(calls).toEqual(['all', 'phones', 'sony']);
+        expect(calls).toEqual(['all', 'phones', 'sony', 'sony']);
+        expect(await placeholders.getAttribute('data-flashed')).toBeNull();
 
         // A later selection wins even if an earlier result is waiting for its images.
         const pendingPhoto = page.waitForRequest(shop + '/samsung.svg');

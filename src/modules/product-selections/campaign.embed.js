@@ -1,4 +1,4 @@
-/* global document, location, history, window, requestAnimationFrame */
+/* global document, location, history, window, requestAnimationFrame, cancelAnimationFrame */
 export { campaignStyles } from './campaign.styles.js';
 
 /**
@@ -77,11 +77,14 @@ export function mountCampaign(script, campaign, createCard) {
   chips.setAttribute('role', 'group');
   chips.setAttribute('aria-label', 'Бренди');
   const grid = element('div', 'mt-product-selection__grid');
+  const skeletons = campaignElement('div', 'skeletons');
+  skeletons.setAttribute('aria-hidden', 'true');
+  skeletons.hidden = true;
   const status = campaignElement('p', 'status');
   status.setAttribute('role', 'status');
   const more = campaignElement('button', 'more', 'Показати ще');
   more.type = 'button';
-  content.append(top, chips, status, grid, more);
+  content.append(top, chips, status, grid, skeletons, more);
   body.append(content);
 
   let active = all;
@@ -136,9 +139,19 @@ export function mountCampaign(script, campaign, createCard) {
     select.append(option);
   }
   select.onchange = () => navigate(groups.get(select.value), selected, search.value);
+  function applySearch() {
+    navigate(active, selected, search.value, Boolean(query));
+  }
   search.oninput = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => navigate(active, selected, search.value, Boolean(query)), 220);
+    if (search.value.trim()) timer = setTimeout(applySearch, 150);
+    else applySearch();
+  };
+  search.onkeydown = (event) => {
+    if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault();
+      applySearch();
+    }
   };
 
   function showChips() {
@@ -175,6 +188,18 @@ export function mountCampaign(script, campaign, createCard) {
 
   function campaignCard(product, priority) {
     const card = createCard(product, priority);
+    const image = card.querySelector('img');
+    if (!image.complete) {
+      const media = image.parentElement;
+      media.classList.add('mt-campaign__photo-pending');
+      const finish = () => {
+        media.classList.remove('mt-campaign__photo-pending');
+        image.removeEventListener('load', finish);
+        image.removeEventListener('error', finish);
+      };
+      image.addEventListener('load', finish);
+      image.addEventListener('error', finish);
+    }
     const detail = [product.brand, product.article].filter(Boolean).join(' · ');
     if (detail) card.append(campaignElement('div', 'meta', detail));
     const footer = campaignElement('div', 'foot');
@@ -239,7 +264,23 @@ export function mountCampaign(script, campaign, createCard) {
     return page.cards;
   }
   function columnsInGrid() {
-    return window.getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+    return window.getComputedStyle(grid.hidden ? skeletons : grid).gridTemplateColumns.split(' ').length;
+  }
+  function showSkeletons(first) {
+    const size = Math.min(active.count, columnsInGrid() * 2);
+    if (skeletons.childElementCount !== size) {
+      const cards = Array.from({ length: size }, () => {
+        const placeholder = campaignElement('div', 'skeleton');
+        placeholder.append(element('div', 'mt-product-selection__media'), campaignElement('div', 'skeleton-lines'),
+          campaignElement('div', 'skeleton-foot'));
+        return placeholder;
+      });
+      skeletons.replaceChildren(...cards);
+    }
+    grid.hidden = first;
+    skeletons.hidden = false;
+    status.classList.add('mt-campaign__status-loading');
+    status.textContent = 'Завантажуємо товари…';
   }
   function warmSelection(event) {
     clearTimeout(intentTimer);
@@ -251,13 +292,15 @@ export function mountCampaign(script, campaign, createCard) {
     const brands = chip ? toggledBrands(chip.dataset.brand) : selected;
     const url = productsUrl(group, brands, search.value.trim(), 0);
     if (url === productsUrl(active, selected, query, 0)) return;
-    intentTimer = setTimeout(async () => {
+    const warm = async () => {
       if (pending.size) return;
       try {
         const page = await requestPage(url);
         prepareCards(page, columnsInGrid(), true);
       } catch { /* A click can retry a speculative request. */ }
-    }, event.type === 'pointerdown' ? 0 : 90);
+    };
+    if (event.type === 'pointerover') intentTimer = setTimeout(warm, 60);
+    else void warm();
   }
   for (const menu of [nav, chips]) {
     menu.addEventListener('pointerover', warmSelection);
@@ -266,40 +309,21 @@ export function mountCampaign(script, campaign, createCard) {
     menu.addEventListener('pointerleave', () => clearTimeout(intentTimer));
   }
 
-  async function waitForPhotos(cards, columns, signal) {
-    // A stalled CDN image must not hold the catalogue indefinitely.
-    const images = cards.slice(0, columns * 2).map((card) => card.querySelector('img'));
-    const decoding = images.filter((image) => image.decode).map((image) => image.decode());
-    if (!decoding.length) return;
-    let timeout;
-    let stopWaiting;
-    try {
-      await Promise.race([Promise.allSettled(decoding), new Promise((resolve) => {
-        stopWaiting = resolve;
-        signal.addEventListener('abort', stopWaiting, { once: true });
-        timeout = setTimeout(resolve, 1000);
-      })]);
-    } finally {
-      clearTimeout(timeout);
-      signal.removeEventListener('abort', stopWaiting);
-    }
-  }
   async function loadPage(signal) {
     const first = pageCount === 0;
     const url = productsUrl(active, selected, query, nextCursor);
     more.disabled = true;
     grid.setAttribute('aria-busy', 'true');
-    if (!grid.childElementCount) status.textContent = 'Завантажуємо товари…';
+    status.textContent = '';
+    // Cached pages commit in the same turn, before a placeholder can be painted.
+    const frame = requestAnimationFrame(() => { if (!signal.aborted) showSkeletons(first); });
     try {
       const page = await requestPage(url);
       if (signal.aborted) return false;
       const columns = columnsInGrid();
       const cards = prepareCards(page, columns, false);
-      if (first && grid.childElementCount) await waitForPhotos(cards, columns, signal);
-      if (signal.aborted) return false;
       if (first) {
         grid.replaceChildren(...cards);
-        heading.textContent = active.name;
         count.textContent = String(active.count);
         count.hidden = Boolean(query || selected.size);
       } else {
@@ -320,12 +344,19 @@ export function mountCampaign(script, campaign, createCard) {
       stale = error.status === 409 || error.status === 404;
       if (stale) pages.clear();
       status.textContent = stale ? 'Склад акції змінився.' : 'Не вдалося завантажити товари.';
-      if (first && grid.childElementCount) status.textContent += ' Показано попередні результати.';
+      if (first && grid.childElementCount) {
+        status.textContent += ' Показано попередні результати.';
+        count.hidden = true;
+      }
       more.hidden = false;
       more.textContent = stale ? 'Оновити сторінку' : 'Спробувати ще';
       return false;
     } finally {
+      cancelAnimationFrame(frame);
       if (!signal.aborted) {
+        grid.hidden = false;
+        skeletons.hidden = true;
+        status.classList.remove('mt-campaign__status-loading');
         more.disabled = false;
         grid.setAttribute('aria-busy', 'false');
       }
@@ -350,11 +381,9 @@ export function mountCampaign(script, campaign, createCard) {
         entry.request.abort();
       }
     }
-    if (!heading.textContent) {
-      heading.textContent = active.name;
-      count.textContent = String(active.count);
-      count.hidden = Boolean(query || selected.size);
-    }
+    heading.textContent = active.name;
+    count.textContent = String(active.count);
+    count.hidden = Boolean(query || selected.size);
     for (const link of nav.children) {
       const group = groups.get(link.dataset.section);
       link.setAttribute('aria-current', String(group === active));
