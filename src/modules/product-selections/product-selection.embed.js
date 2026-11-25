@@ -414,7 +414,7 @@ export function productSelectionEmbedScript(selection, origin = '', campaign = n
     return already ? "already" : appendNative(descriptor);
   }
 
-  function createCard(product) {
+  function createCard(product, imagePriority) {
     var card = document.createElement("article");
     card.className = "mt-product-selection__card";
     var media = document.createElement("a");
@@ -422,9 +422,10 @@ export function productSelectionEmbedScript(selection, origin = '', campaign = n
     media.href = product.pageUrl;
     var image = document.createElement("img");
     image.className = "mt-product-selection__image";
-    image.src = product.imageUrl;
     image.alt = product.title;
-    image.loading = "lazy";
+    image.loading = imagePriority ? "eager" : "lazy";
+    if (imagePriority) image.fetchPriority = imagePriority;
+    image.src = product.imageUrl;
     media.appendChild(image);
     var title = document.createElement("a");
     title.className = "mt-product-selection__title";

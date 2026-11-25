@@ -245,7 +245,7 @@ export const campaignStyles = `
 }
 
 .mt-campaign .mt-product-selection__grid {
-  grid-template-columns: repeat(5,minmax(0,1fr)) !important;
+  grid-template-columns: repeat(4,minmax(0,1fr)) !important;
   gap: 14px 16px !important;
 }
 
@@ -361,12 +361,6 @@ export const campaignStyles = `
 
 .mt-campaign [hidden],.mt-campaign__status:empty {
   display: none !important;
-}
-
-@container (max-width:1250px) {
-  .mt-campaign .mt-product-selection__grid {
-    grid-template-columns: repeat(4,minmax(0,1fr)) !important;
-  }
 }
 
 @container (max-width:1000px) {

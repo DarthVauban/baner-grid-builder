@@ -12,14 +12,16 @@ for (const mobile of [false, true]) {
   test.describe(mobile ? 'mobile campaign' : 'desktop campaign', () => {
     const device = devices[mobile ? 'Pixel 7' : 'Desktop Chrome'];
     test.use({ viewport: device.viewport, userAgent: device.userAgent, isMobile: mobile, hasTouch: mobile });
-    test('navigates categories, pages, returns from the product and buys through the native surface', async ({ page }) => {
-      const calls: string[] = [];
+    test.beforeEach(async ({ page }) => {
       await page.route(shop + '/sale**', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body:
         `<meta name="viewport" content="width=device-width,initial-scale=1"><main><script async src="${workspace}/winter/embed.js"></script></main>
         <script>let added;window.AjaxCart={getInstance:()=>({getProductById:()=>added,appendProduct:()=>{added={quantity:1}}})}</script>`
       }));
       await page.route(workspace + '/winter/embed.js', (route) => route.fulfill({ contentType: 'application/javascript; charset=utf-8',
         body: productSelectionEmbedScript(campaign, '', { styles: campaignStyles, mount: mountCampaign }) }));
+    });
+    test('navigates categories, pages, returns from the product and buys through the native surface', async ({ page }) => {
+      const calls: string[] = [];
       await page.route(workspace + '/winter/products?**', (route) => {
         const params = new URL(route.request().url()).searchParams;
         const id = params.get('section') || 'all';
@@ -91,6 +93,91 @@ for (const mobile of [false, true]) {
       await expect(cards).toHaveCount(1);
       expect(calls).toContain('phones:24');
       expect(calls.at(-1)).toBe('audio:0');
+    });
+    test('keeps products visible during filter and photo requests and reuses a recent result', async ({ page }) => {
+      if (!mobile) await page.setViewportSize({ width: 1520, height: 900 });
+      const phonesData = Promise.withResolvers<void>();
+      const phonesPhoto = Promise.withResolvers<void>();
+      const sonyData = Promise.withResolvers<void>();
+      const samsungPhoto = Promise.withResolvers<void>();
+      const calls: string[] = [];
+      await page.route(workspace + '/winter/products?**', async (route) => {
+        const params = new URL(route.request().url()).searchParams;
+        const result = params.get('brand') || params.get('section') || 'all';
+        calls.push(result);
+        if (result === 'phones') await phonesData.promise;
+        if (result === 'sony') await sonyData.promise;
+        const products = Array.from({ length: 12 }, (_, i) => ({
+          title: result + '-' + i, imageUrl: shop + '/' + result + '.svg', pageUrl: shop + '/product',
+          article: String(i), price: '500', currency: 'UAH', available: true
+        }));
+        await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { data: { products, total: products.length, nextCursor: null } } });
+      });
+      await page.route(shop + '/*.svg', async (route) => {
+        if (route.request().url().endsWith('/phones.svg')) await phonesPhoto.promise;
+        if (route.request().url().endsWith('/samsung.svg')) await samsungPhoto.promise;
+        await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"/>' });
+      });
+      await page.goto(shop + '/sale');
+      const grid = page.locator('.mt-product-selection__grid');
+      const title = grid.locator('.mt-product-selection__title').first();
+      const photos = grid.locator('img');
+      await expect(title).toHaveText('all-0');
+      const columns = mobile ? 2 : 4;
+      expect(await grid.evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(' ').length)).toBe(columns);
+      await expect(photos.nth(columns - 1)).toHaveAttribute('fetchpriority', 'high');
+      await expect(photos.nth(columns * 2 - 1)).toHaveAttribute('loading', 'eager');
+      await expect(photos.nth(columns * 2)).toHaveAttribute('loading', 'lazy');
+      const categoryRequest = page.waitForRequest((req) => new URL(req.url()).searchParams.get('section') === 'phones');
+      if (mobile) {
+        await page.getByRole('combobox').selectOption('phones');
+      } else {
+        const phones = page.getByRole('link', { name: 'Телефони 25' });
+        await phones.hover();
+        await categoryRequest;
+        await phones.click();
+      }
+      try {
+        await categoryRequest;
+        await expect(grid).toHaveAttribute('aria-busy', 'true');
+        await expect(title).toHaveText('all-0');
+        const photoRequest = page.waitForRequest(shop + '/phones.svg');
+        phonesData.resolve();
+        await photoRequest;
+        expect(await title.textContent()).toBe('all-0');
+        phonesPhoto.resolve();
+        await expect(title).toHaveText('phones-0');
+        expect(await photos.first().evaluate((img) => img.complete && img.naturalWidth > 0)).toBe(true);
+        const firstPhone = await grid.locator('article').first().elementHandle();
+        const sony = page.getByRole('button', { name: 'Sony', exact: true });
+        const brandRequest = page.waitForRequest((req) => new URL(req.url()).searchParams.get('brand') === 'sony');
+        await sony.click();
+        await brandRequest;
+        await expect(grid).toHaveAttribute('aria-busy', 'true');
+        await expect(title).toHaveText('phones-0');
+        sonyData.resolve();
+        await expect(title).toHaveText('sony-0');
+        await page.getByRole('button', { name: 'Усі бренди' }).click();
+        await expect(title).toHaveText('phones-0');
+        expect(await grid.evaluate((node, original) => node.firstElementChild === original, firstPhone)).toBe(true);
+        expect(calls).toEqual(['all', 'phones', 'sony']);
+
+        // A later selection wins even if an earlier result is waiting for its images.
+        const pendingPhoto = page.waitForRequest(shop + '/samsung.svg');
+        await page.getByRole('button', { name: 'Samsung' }).click();
+        await pendingPhoto;
+        await page.getByRole('button', { name: 'Усі бренди' }).click();
+        const photoFinished = page.waitForResponse(shop + '/samsung.svg');
+        samsungPhoto.resolve();
+        await (await photoFinished).finished();
+        await expect(grid).toHaveAttribute('aria-busy', 'false');
+        await expect(title).toHaveText('phones-0');
+      } finally {
+        phonesData.resolve();
+        phonesPhoto.resolve();
+        sonyData.resolve();
+        samsungPhoto.resolve();
+      }
     });
   });
 }
