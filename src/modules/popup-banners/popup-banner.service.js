@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import * as XLSX from 'xlsx';
+import { env } from '../../config/env.js';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { storefrontPageUrl } from '../../lib/storefront-page-context.js';
 import { loadPromoCodeRow, promoCodeSnapshot } from '../promo-codes/promo-code.service.js';
 import { horoshopWidgetEmbedCode } from '../horoshop-widgets/widget.service.js';
 import { createFloatingWidgetLayoutRuntime } from '../horoshop-widgets/floating-layout.js';
@@ -9,8 +11,21 @@ import { createPopupTimerRuntime, isTimerExpired, normalizeTimerConfig } from '.
 
 import { normalizeProductPopupConfig, productPopupOfferIsUsable } from './popup-product.config.js';
 import { createProductPopupRuntime } from './popup-product.runtime.js';
+import { popupDestination } from './popup-destination.js';
 
 export const popupBannerToolId = 'popup_banners';
+const popupCtaHosts = (env.POPUP_CTA_HOSTS || '').split(',').map((host) => host.trim()).filter(Boolean);
+
+function validatePopupDestination(value, storeDomain) {
+  if (value && !popupDestination(value, `https://${storeDomain}`, popupCtaHosts)) {
+    throw new AppError(422, 'POPUP_CTA_URL_INVALID', 'Вкажіть шлях у магазині або HTTPS-посилання на дозволений сайт.');
+  }
+}
+
+function publicPageUrl(value) {
+  const canonical = storefrontPageUrl(value);
+  return canonical ? new URL(canonical) : null;
+}
 
 const defaultContent = {
   eyebrow: 'Важлива інформація',
@@ -750,6 +765,7 @@ async function savePopupCampaign(existingId, input, actorUserId) {
     if (!connection) throw new AppError(409, 'HOROSHOP_NOT_CONNECTED', 'Підключіть магазин Хорошоп перед створенням попап-кампанії.');
     const campaignType = normalizeCampaignType(input.campaignType, input.targeting);
     const content = normalizeContent(input.content);
+    validatePopupDestination(content.primaryUrl, connection.store_domain);
     const styles = normalizeStyles(input.styles);
     if (campaignType === 'product_popup') styles.layout = 'modal';
     const targeting = normalizeTargeting(input.targeting);
@@ -918,6 +934,7 @@ export async function setPopupCampaignStatus(id, status, actorUserId) {
       }
       const targeting = normalizeTargeting(current.targeting);
       validateTargetPage(targeting, current.current_store_domain);
+      validatePopupDestination(normalizeContent(current.content).primaryUrl, current.current_store_domain);
       if (targeting.mode === 'products') {
         const targets = await client.query('SELECT 1 FROM popup_banner_product_targets WHERE campaign_id = $1 LIMIT 1', [id]);
         if (!targets.rows[0]) throw new AppError(422, 'POPUP_TARGETS_EMPTY', 'Додайте хоча б один товар до кампанії.');
@@ -1389,7 +1406,7 @@ export async function previewPopupCampaign(input) {
 }
 
 export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', stockState = 'unknown', requestOrigin = '' }) {
-  const pageUrl = normalizedPageUrl(rawPageUrl);
+  const pageUrl = publicPageUrl(rawPageUrl);
   if (!pageUrl) throw new AppError(422, 'POPUP_PAGE_URL_INVALID', 'Не вдалося визначити сторінку для попапа.');
   const connectionResult = await query(
     `SELECT id, generation, store_domain FROM search_horoshop_connections
@@ -1425,7 +1442,9 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       ? (await query('SELECT product_id, modification_id FROM popup_banner_product_targets WHERE campaign_id = $1', [campaign.id])).rows
       : [];
     if (!matchesTargeting(campaign, product, pageUrl, targets, stockState)) continue;
-    const content = normalizeContent(campaign.content);
+    const content = Object.fromEntries(Object.entries(normalizeContent(campaign.content))
+      .map(([key, value]) => [key, templateText(value, product)]));
+    if (!popupDestination(content.primaryUrl, pageUrl.origin, popupCtaHosts)) content.primaryUrl = '';
     const recommendations = targeting.mode === 'out_of_stock'
       ? await resolveOutOfStockRecommendations(connection, product, targeting.recommendationLimit)
       : [];
@@ -1458,7 +1477,7 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
           : String(campaign.updated_at || ''),
         type: campaignType,
         mode: targeting.mode,
-        content: Object.fromEntries(Object.entries(content).map(([key, value]) => [key, templateText(value, product)])),
+        content,
         styles: normalizeStyles(campaign.styles),
         behavior: normalizeBehavior(campaign.behavior),
         formConfig: publishedFormConfig,
@@ -1477,7 +1496,8 @@ export async function recordPopupEvent({ publicId, eventType, pageUrl, article, 
   if (!campaign.rows[0]) throw new AppError(404, 'POPUP_CAMPAIGN_NOT_FOUND', 'Попап-кампанію не знайдено.');
   const connectionResult = await query('SELECT id, generation, store_domain FROM search_horoshop_connections WHERE singleton = TRUE LIMIT 1');
   const connection = connectionResult.rows[0];
-  const parsedPage = normalizedPageUrl(pageUrl);
+  const candidatePage = publicPageUrl(pageUrl);
+  const parsedPage = connection && sameStoreHost(candidatePage?.hostname, connection.store_domain) ? candidatePage : null;
   const product = connection && parsedPage ? await resolveProduct(connection, article, parsedPage) : null;
   const visitorKeyHash = visitorKey
     ? createHash('sha256').update(String(visitorKey).slice(0, 200)).digest('hex') : null;
@@ -1556,7 +1576,7 @@ export async function submitPopupContact({ publicId, values, pageUrl, article, v
       || !isWithinBehaviorSchedule(campaign.behavior)) {
       throw new AppError(404, 'POPUP_FORM_NOT_AVAILABLE', 'Ця контактна форма більше не доступна.');
     }
-    const parsedPage = normalizedPageUrl(pageUrl);
+    const parsedPage = publicPageUrl(pageUrl);
     const parsedOrigin = normalizedPageUrl(requestOrigin);
     if (!parsedPage || !sameStoreHost(parsedPage.hostname, campaign.store_domain)
       || (parsedOrigin && !sameStoreHost(parsedOrigin.hostname, campaign.store_domain))) {
@@ -1794,6 +1814,9 @@ export function popupEmbedScript(origin) {
   const localStorage = timerRuntime.storage('localStorage');
   const sessionStorage = timerRuntime.storage('sessionStorage');
   const apiOrigin = ${JSON.stringify(origin)};
+  const pageUrl = (${storefrontPageUrl.toString()});
+  const popupDestination = (${popupDestination.toString()});
+  const popupCtaHosts = ${JSON.stringify(popupCtaHosts)};
   let previewPayload = window.__MT_POPUP_PREVIEW__ || null;
   if (!previewPayload && script?.dataset.previewPayload) {
     try { previewPayload = JSON.parse(script.dataset.previewPayload); } catch {}
@@ -1852,7 +1875,8 @@ export function popupEmbedScript(origin) {
     fetch(new URL('/api/public/popup-banners/events', apiOrigin), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ publicId, eventType, pageUrl: location.href, article: productArticle, visitorKey, metadata }),
+      referrerPolicy: 'no-referrer',
+      body: JSON.stringify({ publicId, eventType, pageUrl: pageUrl(location.href), article: productArticle, visitorKey, metadata }),
       keepalive: true
     }).catch(() => {});
   }
@@ -2162,9 +2186,10 @@ export function popupEmbedScript(origin) {
     row.append(code, copy); offer.append(value, row);
     if (promo.scopeNote) { const note = document.createElement('p'); note.className = 'promo-code-note'; note.textContent = promo.scopeNote; offer.append(note); }
     container.append(offer);
-    if (withCta && campaign.content.primaryUrl && campaign.content.primaryLabel) {
+    const destination = popupDestination(campaign.content.primaryUrl, location.origin, popupCtaHosts);
+    if (withCta && destination && campaign.content.primaryLabel) {
       const cta = document.createElement('a'); cta.className = 'promo-code-cta';
-      cta.href = campaign.content.primaryUrl; cta.textContent = campaign.content.primaryLabel;
+      cta.href = destination; cta.textContent = campaign.content.primaryLabel;
       cta.addEventListener('click', (clickEvent) => {
         if (previewMode) { clickEvent.preventDefault(); return; }
         event(campaign.publicId, 'promo_cta', productArticle, { action: 'promo_cta' });
@@ -2488,7 +2513,8 @@ export function popupEmbedScript(origin) {
             const response = await fetch(new URL('/api/public/popup-banners/' + campaign.publicId + '/contacts', apiOrigin), {
               method: 'POST',
               headers: { 'content-type': 'application/json', accept: 'application/json' },
-              body: JSON.stringify({ values, pageUrl: location.href, article: productArticle, visitorKey })
+              referrerPolicy: 'no-referrer',
+              body: JSON.stringify({ values, pageUrl: pageUrl(location.href), article: productArticle, visitorKey })
             });
             const envelope = await response.json().catch(() => ({}));
             if (!response.ok || !envelope.data?.promoCode?.code) throw new Error(envelope.error?.message || 'Не вдалося зберегти контакт.');
@@ -2693,9 +2719,9 @@ export function popupEmbedScript(origin) {
     primary.addEventListener('click', () => {
       if (previewMode) return;
       event(campaign.publicId, campaign.behavior.requireAcknowledgement ? 'acknowledge' : 'click', productArticle);
-      const target = campaign.content.primaryUrl;
+      const target = popupDestination(campaign.content.primaryUrl, location.origin, popupCtaHosts);
       close(null);
-      if (target) { try { location.assign(new URL(target, location.href).href); } catch {} }
+      if (target) location.assign(target);
     });
     const timerContainer = countdown ? document.createElement('div') : null;
     if (timerContainer) content.append(timerContainer);
@@ -2721,7 +2747,7 @@ export function popupEmbedScript(origin) {
     const behavior = payload.campaign.behavior;
     const show = () => {
       clearPendingRender();
-      if (location.href === evaluatedUrl) render(payload, productArticle);
+      if (pageUrl(location.href) === evaluatedUrl) render(payload, productArticle);
     };
     if (behavior.trigger === 'exit_intent') {
       const mobile = isMobileInteractionSurface();
@@ -2815,23 +2841,24 @@ export function popupEmbedScript(origin) {
   }
 
   async function evaluate() {
-    const evaluatedUrl = location.href;
+    const evaluatedUrl = pageUrl(location.href);
     currentUrl = evaluatedUrl;
     clearPendingRender();
     if (activeCleanup) activeCleanup();
     activeCleanup = null;
     currentHost?.remove(); currentHost = null;
+    if (!evaluatedUrl) return;
     const productArticle = article();
     const productStockState = stockState();
     const url = new URL('/api/public/popup-banners/resolve', apiOrigin);
-    url.searchParams.set('pageUrl', location.href);
+    url.searchParams.set('pageUrl', evaluatedUrl);
     if (productArticle) url.searchParams.set('article', productArticle);
     url.searchParams.set('stockState', productStockState);
     try {
-      const response = await fetch(url, { headers: { accept: 'application/json' } });
+      const response = await fetch(url, { referrerPolicy: 'no-referrer', headers: { accept: 'application/json' } });
       if (!response.ok) return;
       const envelope = await response.json();
-      if (!envelope.data || location.href !== evaluatedUrl) return;
+      if (!envelope.data || pageUrl(location.href) !== evaluatedUrl) return;
       timerRuntime.sync(envelope.data.serverNow);
       if (!deviceAllowed(envelope.data.campaign.behavior)) return;
       scheduleRender(envelope.data, productArticle, evaluatedUrl);
@@ -2843,7 +2870,7 @@ export function popupEmbedScript(origin) {
     return;
   }
   evaluate();
-  setInterval(() => { if (location.href !== currentUrl) evaluate(); }, 1000);
+  setInterval(() => { if (pageUrl(location.href) !== currentUrl) evaluate(); }, 1000);
   let observedStockState = stockState();
   new MutationObserver(() => {
     const nextStockState = stockState();

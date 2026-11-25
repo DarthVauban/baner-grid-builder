@@ -120,8 +120,8 @@ export async function setCartThemeEnabled(enabled, userId, origin = '') {
   return getCartThemeSettings(origin);
 }
 
-export async function loadPublishedCartTheme(publicId) {
-  const result = await query(
+export async function loadPublishedCartTheme(publicId, db = { query }) {
+  const result = await db.query(
     `SELECT published_theme_id, published_version
      FROM horoshop_cart_theme_settings
      WHERE public_id = $1 AND enabled = TRUE AND published_theme_id IS NOT NULL

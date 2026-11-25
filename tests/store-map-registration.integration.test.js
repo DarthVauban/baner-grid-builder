@@ -98,7 +98,7 @@ test('one-time registration keeps original location and only publishes an edited
   assert.equal(points[0].id, approved.body.data.pointId);
   assert.equal(points[0].name, review.name);
   assert.equal(points[0].latitude, review.latitude);
-  assert.equal(points[0].externalId, '');
+  assert.equal(Object.hasOwn(points[0], 'externalId'), false);
   const links = await admin.get(`${base}/links`).expect(200);
   assert.ok(links.body.data[0].usedAt);
   assert.equal(JSON.stringify(links.body).includes(link.token), false);

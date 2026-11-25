@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { query } from '../../db/pool.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
-import { requireAuth } from '../../middleware/auth.js';
+import { requireAuth, requireRole } from '../../middleware/auth.js';
+import { AppError } from '../../lib/app-error.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { publishSupportChatUpdate } from './support-chat.events.js';
 import { createSupportOperatorRouter, createSupportPreferenceRouter } from './support-chat.operator.routes.js';
@@ -11,6 +12,10 @@ import { loadSupportSite, isValidSupportTimezone, normalizeSupportOrigin,
   serializeSupportSettings, supportChatToolId, supportWorkingDayKeys } from './support-chat.service.js';
 
 const router = Router();
+router.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 router.use(requireAuth);
 router.use(createSupportPreferenceRouter());
 router.use(requireToolAccess(supportChatToolId));
@@ -81,6 +86,22 @@ router.put('/settings', asyncHandler(async (req, res) => {
   );
   publishSupportChatUpdate({ type: 'settings' });
   res.json({ data: serializeSupportSettings(result.rows[0]) });
+}));
+
+router.post('/conversations/:id/revoke-visitor-session', requireRole('admin'), asyncHandler(async (req, res) => {
+  const conversationId = parseInput(z.string().uuid(), req.params.id);
+  const result = await query(
+    `UPDATE support_chat_visitors
+     SET session_revoked_by = CASE WHEN session_revoked_at IS NULL THEN $2 ELSE session_revoked_by END,
+         session_revoked_at = COALESCE(session_revoked_at, NOW())
+     WHERE id = (SELECT visitor_id FROM support_chat_conversations WHERE id = $1)
+     RETURNING id`,
+    [conversationId, req.user.id]
+  );
+  const visitor = result.rows[0];
+  if (!visitor) throw new AppError(404, 'SUPPORT_CONVERSATION_NOT_FOUND', 'Діалог не знайдено.');
+  publishSupportChatUpdate({ type: 'visitor-session-revoked', conversationId, visitorId: visitor.id });
+  res.status(204).end();
 }));
 
 router.use(createSupportOperatorRouter());

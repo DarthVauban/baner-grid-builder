@@ -198,12 +198,12 @@ function normalStoreHost(host) {
   return host.toLowerCase().replace(/^www\./u, '');
 }
 
-export async function getPublishedSiteThemeAppearance(origin) {
+export async function getPublishedSiteThemeAppearance(origin, db = { query }) {
   let storefront;
   try { storefront = new URL(origin); } catch { return null; }
   if (!['http:', 'https:'].includes(storefront.protocol) || storefront.origin !== origin) return null;
 
-  const { rows: [theme] } = await query(`
+  const { rows: [theme] } = await db.query(`
     SELECT theme.id, theme.published_promo_bar, theme.promo_bar_enabled, theme.gold_glint_enabled,
            theme.published_storefront_effects, theme.storefront_effect_visibility, connection.store_domain
     FROM site_themes theme

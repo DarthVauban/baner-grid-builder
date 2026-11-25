@@ -42,6 +42,7 @@ import horoshopPhotoRoutes from './modules/search/horoshop/photo.routes.js';
 import horoshopPhotoDesktopRoutes from './modules/search/horoshop/photo-desktop.routes.js';
 import supportChatRoutes from './modules/support-chat/support-chat.routes.js';
 import publicSupportChatRoutes from './modules/support-chat/support-chat.public.routes.js';
+import { loadSupportSite } from './modules/support-chat/support-chat.service.js';
 import popupBannerRoutes from './modules/popup-banners/popup-banner.routes.js';
 import publicPopupBannerRoutes from './modules/popup-banners/popup-banner.public.routes.js';
 import promoCodeRoutes from './modules/promo-codes/promo-code.routes.js';
@@ -58,6 +59,7 @@ import publicHoroshopTitleLabelsRoutes from './modules/horoshop-title-labels/tit
 import horoshopCheckoutTelegramRoutes from './modules/horoshop-checkout-telegram/checkout-telegram.routes.js';
 import publicHoroshopCheckoutTelegramRoutes from './modules/horoshop-checkout-telegram/checkout-telegram.public.routes.js';
 import publicHoroshopWidgetRoutes from './modules/horoshop-widgets/widget.public.routes.js';
+import horoshopWidgetReleaseRoutes from './modules/horoshop-widgets/widget-release.routes.js';
 import { catalogMediaDir } from './modules/catalog/catalog.media.js';
 import { catalogToolId, loadPreviewProduct, loadPublicProduct } from './modules/catalog/catalog.service.js';
 import {
@@ -76,6 +78,7 @@ import { tradeInToolId } from './modules/trade-in/trade-in.service.js';
 import { env } from './config/env.js';
 import { query } from './db/pool.js';
 import { asyncHandler } from './lib/async-handler.js';
+import { mobileTrendFrameOrigins, widgetFrameAncestors } from './lib/widget-frame-origins.js';
 import { requireAuth } from './middleware/auth.js';
 import { requireToolAccess } from './modules/access/access.service.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
@@ -89,7 +92,13 @@ const tradeInIndex = path.join(webDistDir, 'trade-in.html');
 const storeMapIndex = path.join(webDistDir, 'store-map.html');
 const storeMapRegistrationIndex = path.join(webDistDir, 'store-map-registration.html');
 const supportChatIndex = path.join(webDistDir, 'support-chat.html');
-export const storeMapWidgetContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors *";
+export const storeMapWidgetContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'";
+const supportChatWidgetContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'";
+const widgetFrameOptions = { allowLocalHttp: !env.isProduction };
+const storeMapFrameAncestors = widgetFrameAncestors(
+  env.STORE_MAP_FRAME_ORIGINS?.split(',') ?? mobileTrendFrameOrigins,
+  widgetFrameOptions
+);
 export function isStoreMapWorkerAsset(requestPath) {
   return /^\/web-assets\/maplibre-gl-worker-[A-Za-z0-9_-]+\.js$/u.test(requestPath);
 }
@@ -275,6 +284,7 @@ app.use('/api/public/horoshop-catalog-menu', publicEmbedCors, publicHoroshopCata
 app.use('/api/public/horoshop-cart-theme', publicEmbedCors, publicHoroshopCartThemeRoutes);
 app.use('/api/public/horoshop-title-labels', publicEmbedCors, publicHoroshopTitleLabelsRoutes);
 app.use('/api/public/horoshop-checkout-telegram', publicEmbedCors, publicHoroshopCheckoutTelegramRoutes);
+app.use('/api/horoshop-widgets', horoshopWidgetReleaseRoutes);
 app.use('/api/public/horoshop-widgets', publicEmbedCors, publicHoroshopWidgetRoutes);
 app.use('/api', notFoundHandler);
 
@@ -388,7 +398,7 @@ app.get('/trade-in', (req, res, next) => {
 });
 
 function sendStoreMapRegistrationHtml(req, res) {
-  res.setHeader('Content-Security-Policy', storeMapWidgetContentSecurityPolicy.replace('frame-ancestors *', "frame-ancestors 'self'"));
+  res.setHeader('Content-Security-Policy', `${storeMapWidgetContentSecurityPolicy}; frame-ancestors 'self'`);
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'geolocation=(self)');
   res.setHeader('Cache-Control', 'no-store');
@@ -402,21 +412,27 @@ app.get('/store-map/widget', (req, res) => {
   res.removeHeader('X-Frame-Options');
   res.setHeader(
     'Content-Security-Policy',
-    storeMapWidgetContentSecurityPolicy
+    `${storeMapWidgetContentSecurityPolicy}; ${storeMapFrameAncestors}`
   );
+  res.setHeader('Permissions-Policy', 'geolocation=()');
   res.setHeader('Cache-Control', 'no-cache');
   return sendBuiltHtml(res, storeMapIndex, 'Store map widget');
 });
 
-app.get('/support-chat/widget', (req, res) => {
+app.get('/support-chat/widget', asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  if (req.query.site !== undefined && typeof req.query.site !== 'string') return res.sendStatus(404);
+  const site = await loadSupportSite(req.query.site);
+  const configured = Array.isArray(site.allowed_origins) ? site.allowed_origins : [];
+  const origins = !site.enabled ? [] : configured.length ? configured : mobileTrendFrameOrigins;
   res.removeHeader('X-Frame-Options');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors *"
+    `${supportChatWidgetContentSecurityPolicy}; ${widgetFrameAncestors(origins, widgetFrameOptions)}`
   );
-  res.setHeader('Cache-Control', 'no-cache');
   return sendBuiltHtml(res, supportChatIndex, 'Support chat widget');
-});
+}));
 
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();

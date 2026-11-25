@@ -202,8 +202,8 @@ export async function setCatalogMenuEnabled(enabled, userId, origin = '') {
   return getCatalogMenuSettings(origin);
 }
 
-export async function loadPublishedCatalogMenu(publicId) {
-  const result = await query(
+export async function loadPublishedCatalogMenu(publicId, db = { query }) {
+  const result = await db.query(
     `SELECT published_theme_id, published_default_category_external_id, published_version
      FROM horoshop_catalog_menu_settings
      WHERE public_id = $1 AND enabled = TRUE AND published_theme_id IS NOT NULL

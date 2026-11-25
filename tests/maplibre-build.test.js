@@ -24,6 +24,20 @@ test('production map modules stay below the Vite chunk budget and retain a stand
   }
   visit(workspace);
   assert.ok(mapChunks.every((chunk) => !initialImports.has(chunk.fileName)), 'Workspace startup must not download MapLibre');
+
+  const storeMap = files.find((file) => file.type === 'chunk' && file.isEntry && file.name === 'storeMap');
+  const storeMapHtml = files.find((file) => file.type === 'asset' && file.fileName === 'store-map.html');
+  assert.ok(storeMap);
+  assert.ok(storeMapHtml);
+  initialImports.clear();
+  visit(storeMap);
+  const editorBundle = /(?:codemirror|tiptap|prosemirror)/iu;
+  for (const name of initialImports) {
+    const chunk = byName.get(name);
+    assert.ok(chunk);
+    assert.ok(Object.keys(chunk.modules).every((id) => !editorBundle.test(id)), `Unexpected editor module in ${name}`);
+  }
+  assert.doesNotMatch(String(storeMapHtml.source), editorBundle);
 });
 
 test('shader extraction preserves Unicode, escapes, nested literals, tagged templates and interpolation', async () => {

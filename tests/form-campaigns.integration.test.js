@@ -431,32 +431,35 @@ test('preorder placement targets an exact Horoshop modification and creates an a
   assert.equal(paused.body.data, null);
 });
 
-async function renderEmbed({ userAgent, width }) {
+async function renderEmbed({ userAgent, width, mountTargets = true, onFetch = () => {} }) {
   const dom = new JSDOM(`<!doctype html><html><head>
     <meta itemprop="sku" content="IPHONE-17-BLUE">
-    </head><body><div id="desktop-buy"></div><div id="mobile-buy"></div></body></html>`, {
-    url: 'https://shop.example.com/iphone-17-blue/',
+    </head><body>${mountTargets ? '<div id="desktop-buy"></div><div id="mobile-buy"></div>' : ''}</body></html>`, {
+    url: 'https://shop.example.com/iphone-17-blue/?customer=synthetic#checkout',
     runScripts: 'outside-only'
   });
   Object.defineProperty(dom.window.navigator, 'userAgent', { configurable: true, value: userAgent });
   Object.defineProperty(dom.window, 'innerWidth', { configurable: true, value: width });
-  dom.window.fetch = async () => ({
-    ok: true,
-    json: async () => ({
-      data: {
-        campaign: {
-          publicId: randomUUID(),
-          name: 'Передзамовлення',
-          buttonText: 'Передзамовити',
-          buttonStyles,
-          placement
-        },
-        form: { publicId: randomUUID(), name: 'Форма' },
-        product: { title: 'Apple iPhone 17 Blue', sku: 'IPHONE-17-BLUE' },
-        contextToken: 'signed-context'
-      }
-    })
-  });
+  dom.window.fetch = async (url) => {
+    onFetch(url);
+    return {
+      ok: true,
+      json: async () => ({
+        data: {
+          campaign: {
+            publicId: randomUUID(),
+            name: 'Передзамовлення',
+            buttonText: 'Передзамовити',
+            buttonStyles,
+            placement
+          },
+          form: { publicId: randomUUID(), name: 'Форма' },
+          product: { title: 'Apple iPhone 17 Blue', sku: 'IPHONE-17-BLUE' },
+          contextToken: 'signed-context'
+        }
+      })
+    };
+  };
   dom.window.eval(formCampaignEmbedScript('https://panel.example.com'));
   dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
   await new Promise((resolve) => setTimeout(resolve, 240));
@@ -479,4 +482,27 @@ test('embed keeps independently verified desktop and mobile placement contracts'
   assert.equal(mobile.window.document.querySelector('#mobile-buy > .mt-application-campaign-button')?.textContent, 'Передзамовити');
   assert.equal(mobile.window.document.querySelector('#desktop-buy + .mt-application-campaign-button'), null);
   mobile.window.close();
+});
+
+test('embed waits for a missing placement without requesting the same campaign again', async () => {
+  const calls = [];
+  const dom = await renderEmbed({
+    userAgent: 'Mozilla/5.0 (Linux; Android 16) Mobile Safari/537.36',
+    width: 390,
+    mountTargets: false,
+    onFetch: (url) => calls.push(url)
+  });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].searchParams.get('pageUrl'), 'https://shop.example.com/iphone-17-blue/');
+    const target = dom.window.document.createElement('div');
+    target.id = 'mobile-buy';
+    dom.window.document.body.append(target);
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    assert.equal(target.querySelectorAll('.mt-application-campaign-button').length, 1);
+    assert.equal(calls.length, 1);
+  } finally {
+    dom.window.close();
+  }
 });

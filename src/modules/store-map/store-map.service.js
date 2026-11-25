@@ -107,27 +107,32 @@ export function sanitizeStoreMapSvg(value) {
     .trim();
 }
 
-export function serializeStoreMapPoint(row) {
+export function serializePublicStoreMapPoint(row) {
   return {
     id: row.id,
-    externalId: row.external_id || '',
     name: row.name,
     city: row.city,
     address: row.address,
     hoursText: row.hours_text || '',
     schedule: row.schedule || {},
-    publicationStatus: row.publication_status,
     openStatusOverride: row.open_status_override,
     latitude: Number(row.latitude),
-    longitude: Number(row.longitude),
+    longitude: Number(row.longitude)
+  };
+}
+
+export function serializeStoreMapPoint(row) {
+  return {
+    ...serializePublicStoreMapPoint(row),
+    externalId: row.external_id || '',
+    publicationStatus: row.publication_status,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
-export function serializeStoreMapSettings(row) {
+export function serializePublicStoreMapSettings(row) {
   return {
-    publicId: row.public_id,
     title: row.title,
     markerSvg: row.marker_svg || '',
     markerWidth: Number(row.marker_width),
@@ -136,7 +141,14 @@ export function serializeStoreMapSettings(row) {
     markerAnchorY: Number(row.marker_anchor_y),
     centerLatitude: Number(row.center_latitude),
     centerLongitude: Number(row.center_longitude),
-    defaultZoom: Number(row.default_zoom),
+    defaultZoom: Number(row.default_zoom)
+  };
+}
+
+export function serializeStoreMapSettings(row) {
+  return {
+    ...serializePublicStoreMapSettings(row),
+    publicId: row.public_id,
     updatedAt: row.updated_at
   };
 }
@@ -410,7 +422,6 @@ export function storeMapEmbedScript(origin) {
   frame.style.height = (Number(script.dataset.height) || 680) + 'px';
   frame.style.border = '0';
   frame.style.borderRadius = script.dataset.radius || '16px';
-  frame.setAttribute('allow', 'geolocation');
   container.appendChild(frame);
   window.addEventListener('message', (event) => {
     if (event.origin !== widgetUrl.origin || event.source !== frame.contentWindow) return;

@@ -181,8 +181,8 @@ export async function setCheckoutTelegramEnabled(enabled, userId, origin = '') {
   return getCheckoutTelegramSettings(origin);
 }
 
-export async function loadPublishedCheckoutTelegram(publicId) {
-  const result = await query(
+export async function loadPublishedCheckoutTelegram(publicId, db = { query }) {
+  const result = await db.query(
     `SELECT published_config, published_version
      FROM horoshop_checkout_telegram_settings
      WHERE public_id = $1 AND enabled = TRUE AND published_version > 0

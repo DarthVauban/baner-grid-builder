@@ -5,6 +5,7 @@ import { pool } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
+import { storefrontPageUrl } from '../../lib/storefront-page-context.js';
 import { publishChatUpdates } from '../chat/chat.events.js';
 import { createNotification } from '../notifications/notification.service.js';
 import { publishNotificationUpdates } from '../notifications/notification.events.js';
@@ -122,7 +123,7 @@ function validateSubmission(form, rawValues) {
   return values;
 }
 
-function loaderScript() {
+export function loaderScript() {
   return `(function(){
   "use strict";
   if (window.MTApplicationForms) return;
@@ -134,6 +135,7 @@ function loaderScript() {
   var previewMode = Boolean(previewPayload || previewChannel);
   var previewState = loaderScript && loaderScript.dataset.previewState === "success" ? "success" : "form";
   var previewBackdrop = null;
+  var pageUrl = (${storefrontPageUrl.toString()});
   var apiBase = (function(){
     try { return new URL("/api/public/application-forms", loaderScript && loaderScript.src ? loaderScript.src : window.location.href).toString().replace(/\\/$/, ""); }
     catch (error) { return "/api/public/application-forms"; }
@@ -308,13 +310,17 @@ function loaderScript() {
         });
         try {
           if (previewMode) { showSuccess("00007"); return; }
+          var pageContext = options.context || {};
+          var product = Object.assign({}, options.product || {});
+          if (product.url) product.url = pageUrl(product.url);
           var sent = await fetch(options.submitUrl || apiBase + "/" + encodeURIComponent(formId) + "/applications", {
             method: "POST",
+            referrerPolicy: "no-referrer",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               values: values,
-              product: options.product || {},
-              context: Object.assign({ sourceUrl: location.href, pageTitle: document.title, referrer: document.referrer }, options.context || {}),
+              product: product,
+              context: { sourceUrl: pageUrl(pageContext.sourceUrl || location.href) },
               contextToken: options.contextToken || "",
               idempotencyKey: (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()) + Math.random()),
               honeypot: trap.value
@@ -401,7 +407,19 @@ export async function createPublicApplication({
   if (bankField) bankField.options = form.banks.map((bank) => ({ label: bank.label, value: bank.value }));
   const values = validateSubmission(form, input.values);
   const context = { ...(input.context || {}), ...contextOverride };
-  const productInput = productOverride ? { ...(input.product || {}), ...productOverride } : (input.product || {});
+  const embedded = ['public_form', 'preorder_campaign'].includes(source);
+  let productInput = { ...(input.product || {}), ...productOverride };
+  if (embedded) {
+    const allowedFields = ['title', 'url', 'imageUrl', 'image', 'price', 'oldPrice', 'currency', 'sku', 'productCode', 'availability', 'externalProductId', 'externalModificationId', 'domain'];
+    productInput = Object.fromEntries(allowedFields.map((key) => [key, productInput[key]]));
+    context.sourceUrl = storefrontPageUrl(context.sourceUrl || context.url || productInput.url);
+    context.canonicalUrl = storefrontPageUrl(productOverride?.url || context.canonicalUrl || context.sourceUrl);
+    context.referrer = '';
+    context.pageTitle = '';
+    context.productTitle = '';
+    context.url = '';
+    productInput.url = storefrontPageUrl(productInput.url || context.sourceUrl);
+  }
   const product = buildSafeProductSnapshot(productInput, context);
   const client = await pool.connect();
   let applicationId;

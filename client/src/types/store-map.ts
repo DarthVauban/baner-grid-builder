@@ -11,18 +11,21 @@ export interface StoreMapSchedule {
   days?: Record<string, StoreMapScheduleInterval[]>;
 }
 
-export interface StoreMapPoint {
+export interface PublicStoreMapPoint {
   id: string;
-  externalId: string;
   name: string;
   city: string;
   address: string;
   hoursText: string;
   schedule: StoreMapSchedule;
-  publicationStatus: StoreMapPublicationStatus;
   openStatusOverride: StoreMapOpenStatusOverride;
   latitude: number;
   longitude: number;
+}
+
+export interface StoreMapPoint extends PublicStoreMapPoint {
+  externalId: string;
+  publicationStatus: StoreMapPublicationStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -39,8 +42,7 @@ export interface StoreMapPointInput {
   longitude: number;
 }
 
-export interface StoreMapSettings {
-  publicId: string;
+export interface PublicStoreMapSettings {
   title: string;
   markerSvg: string;
   markerWidth: number;
@@ -50,6 +52,10 @@ export interface StoreMapSettings {
   centerLatitude: number;
   centerLongitude: number;
   defaultZoom: number;
+}
+
+export interface StoreMapSettings extends PublicStoreMapSettings {
+  publicId: string;
   updatedAt: string;
 }
 
@@ -87,8 +93,8 @@ export interface StoreMapImportPreview {
 }
 
 export interface PublicStoreMapData {
-  settings: StoreMapSettings;
-  points: StoreMapPoint[];
+  settings: PublicStoreMapSettings;
+  points: PublicStoreMapPoint[];
   cities: string[];
 }
 

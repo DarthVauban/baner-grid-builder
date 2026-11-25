@@ -4,6 +4,7 @@ import { AppError } from '../../lib/app-error.js';
 import { createFloatingWidgetLayoutRuntime } from '../horoshop-widgets/floating-layout.js';
 
 export const supportChatToolId = 'online_support';
+export const supportSessionLifetimeMs = { cookie: 30 * 86400_000, bearer: 8 * 3600_000 };
 export const supportWorkingDayKeys = [
   'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
 ];
@@ -83,7 +84,11 @@ export function normalizeSupportOrigin(value) {
 export function normalizeSupportPageUrl(value) {
   try {
     const parsed = new URL(String(value || '').trim());
-    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href.slice(0, 4000) : '';
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return '';
+    const segments = decodeURIComponent(parsed.pathname).split(/[\\/]/u);
+    if (segments.some((segment) => /^(?:checkout|account|customer|order|orders|profile|auth|login|logout|register|reset|recover|password|payment|payments)(?:$|[-_])/iu.test(segment))) return '';
+    const location = `${parsed.origin}${parsed.pathname}`;
+    return location.length <= 2000 ? location : '';
   } catch {
     return '';
   }
@@ -117,9 +122,10 @@ export function serializeSupportVisitor(row) {
     name: row.name || '',
     email: row.email || '',
     phone: row.phone || '',
-    firstPageUrl: row.first_page_url || '',
-    lastPageUrl: row.last_page_url || '',
-    lastPageTitle: row.last_page_title || '',
+    firstPageUrl: normalizeSupportPageUrl(row.first_page_url),
+    lastPageUrl: normalizeSupportPageUrl(row.last_page_url),
+    lastPageTitle: '',
+    sessionRevokedAt: row.session_revoked_at || null,
     createdAt: row.visitor_created_at || row.created_at,
     lastSeenAt: row.last_seen_at
   };
@@ -174,7 +180,7 @@ export async function loadSupportSite(publicId = '', { requireEnabled = false } 
   return result.rows[0];
 }
 
-export async function loadSupportVisitorByToken(token, { requireEnabled = true } = {}) {
+export async function loadSupportVisitorByToken(token, transport) {
   if (!token || token.length < 32 || token.length > 200) {
     throw new AppError(401, 'SUPPORT_SESSION_REQUIRED', 'Сесію чату не знайдено.');
   }
@@ -188,11 +194,19 @@ export async function loadSupportVisitorByToken(token, { requireEnabled = true }
      FROM support_chat_visitors AS visitor
      JOIN support_chat_sites AS site ON site.id = visitor.site_id
      WHERE visitor.session_token_hash = $1
-       AND ($2::BOOLEAN = FALSE OR site.enabled = TRUE)`,
-    [hashSupportSessionToken(token), requireEnabled]
+       AND visitor.session_revoked_at IS NULL
+       AND visitor.session_expires_at > NOW()
+       AND site.enabled = TRUE`,
+    [hashSupportSessionToken(token)]
   );
-  if (!result.rows[0]) throw new AppError(401, 'SUPPORT_SESSION_INVALID', 'Сесія чату недійсна або завершена.');
-  return result.rows[0];
+  const visitor = result.rows[0];
+  const legacy = visitor?.session_transport === 'legacy';
+  const allowedTransport = visitor?.session_transport === transport || (transport === 'bearer' && legacy);
+  const idleLimit = !legacy && transport === 'bearer' ? 2 * 3600_000 : 7 * 86400_000;
+  if (!visitor || !allowedTransport || new Date(visitor.last_seen_at).getTime() <= Date.now() - idleLimit) {
+    throw new AppError(401, 'SUPPORT_SESSION_INVALID', 'Сесія чату недійсна або завершена.');
+  }
+  return visitor;
 }
 
 export function supportWidgetEmbedScript(origin) {
@@ -205,13 +219,13 @@ export function supportWidgetEmbedScript(origin) {
   const floatingLayout = (${createFloatingWidgetLayoutRuntime.toString()})(window);
   let open = false;
   const widgetOrigin = ${JSON.stringify(origin)};
+  const safePage = ${normalizeSupportPageUrl.toString()};
   const frame = document.createElement('iframe');
   const widgetUrl = new URL('/support-chat/widget', widgetOrigin);
   if (siteId) widgetUrl.searchParams.set('site', siteId);
   widgetUrl.searchParams.set('embedOrigin', window.location.origin);
-  widgetUrl.searchParams.set('pageUrl', window.location.href);
-  widgetUrl.searchParams.set('pageTitle', document.title);
   frame.src = widgetUrl.toString();
+  frame.referrerPolicy = 'no-referrer';
   frame.title = 'Онлайн-підтримка';
   frame.setAttribute('aria-label', 'Онлайн-підтримка');
   frame.style.position = 'fixed';
@@ -239,6 +253,12 @@ export function supportWidgetEmbedScript(origin) {
 
   window.addEventListener('message', (event) => {
     if (event.origin !== widgetUrl.origin || event.source !== frame.contentWindow) return;
+    if (event.data?.type === 'mt-support-chat:page') {
+      const candidate = safePage(window.location.href);
+      const product = document.querySelector('meta[property="og:type"][content="product"], meta[property="product:retailer_item_id"], [itemtype$="/Product"]');
+      frame.contentWindow.postMessage({ type: 'mt-support-chat:page', pageUrl: product ? candidate : '' }, widgetUrl.origin);
+      return;
+    }
     if (event.data?.type !== 'mt-support-chat:frame') return;
     open = event.data.open === true;
     floatingLayout.setSupportOpen(open);

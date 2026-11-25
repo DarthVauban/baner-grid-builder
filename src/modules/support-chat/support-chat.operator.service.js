@@ -39,7 +39,7 @@ export function decodeSupportCursor(value, scope) {
 
 const rowSql = `SELECT conversation.*, to_char(conversation.updated_at, 'YYYY-MM-DD HH24:MI:SS.USOF') AS cursor_updated_at,
   visitor.id AS visitor_id, visitor.name, visitor.email, visitor.phone,
-  visitor.first_page_url, visitor.last_page_url, visitor.last_page_title,
+  visitor.first_page_url, visitor.last_page_url, visitor.session_revoked_at,
   visitor.created_at AS visitor_created_at, visitor.last_seen_at,
   assignee.name AS assigned_user_name
   FROM support_chat_conversations AS conversation
@@ -115,7 +115,7 @@ export async function listSupportConversations({ status = '', search = '', limit
       `${rowSql} WHERE ($1 = '' OR conversation.status = $1)
      AND ($2 = '' OR COALESCE(visitor.name, '') ILIKE '%' || $2 || '%'
        OR COALESCE(visitor.email, '') ILIKE '%' || $2 || '%'
-       OR COALESCE(visitor.phone, '') ILIKE '%' || $2 || '%' OR visitor.last_page_title ILIKE '%' || $2 || '%')
+       OR COALESCE(visitor.phone, '') ILIKE '%' || $2 || '%')
      AND ($3::TIMESTAMPTZ IS NULL OR conversation.updated_at < $3::TIMESTAMPTZ
        OR (conversation.updated_at = $3::TIMESTAMPTZ AND conversation.id < $4::UUID))
      ORDER BY conversation.updated_at DESC, conversation.id DESC LIMIT $5`,

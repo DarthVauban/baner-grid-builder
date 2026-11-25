@@ -81,9 +81,11 @@ function deferred<T>() {
 describe('SupportChatWidgetApp', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     sessionFixture = emptySession;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
+      if (path.endsWith('/session/transport')) return response({ cookie: false });
       if (path.endsWith('/session') && init?.method === 'POST') return response(sessionFixture);
       if (path.endsWith('/stream')) return new Response(null, { status: 204 });
       if (path.endsWith('/read')) return new Response(null, { status: 204 });

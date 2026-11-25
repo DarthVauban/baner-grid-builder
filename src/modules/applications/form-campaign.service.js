@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
 import { pool, query } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
+import { storefrontPageUrl } from '../../lib/storefront-page-context.js';
 import { cleanText, cleanUrl, loadPublishedForm } from './application.service.js';
 
 const tokenAudience = 'application-form-campaign';
@@ -481,14 +482,8 @@ export async function archiveFormCampaign(id, actorUserId) {
 }
 
 function normalizedPageUrl(value) {
-  try {
-    const url = new URL(String(value || ''));
-    if (!['http:', 'https:'].includes(url.protocol)) return null;
-    url.hash = '';
-    return url;
-  } catch {
-    return null;
-  }
+  const canonical = storefrontPageUrl(value);
+  return canonical ? new URL(canonical) : null;
 }
 
 function sameStoreHost(left, right) {
@@ -793,17 +788,20 @@ export async function resolveFormCampaignSubmission({ publicId, contextToken, so
   return { campaign, form, product };
 }
 
-export function formCampaignEmbedScript(origin) {
+export function formCampaignEmbedScript(origin, formLoaderAsset = null) {
   return `(() => {
   if (window.__mtApplicationFormCampaignsLoaded) return;
   window.__mtApplicationFormCampaignsLoaded = true;
   const apiOrigin = ${JSON.stringify(origin)};
+  const formLoaderAsset = ${JSON.stringify(formLoaderAsset)};
   let button = null;
   let resolveTimer = null;
-  let lastKey = '';
+  const pageUrl = (${storefrontPageUrl.toString()});
+  let current = null;
+  let suspended = false;
 
   function endpoint(path) { return new URL('/api/public/application-form-campaigns' + path, apiOrigin || location.href); }
-  function formLoaderUrl() { return new URL('/api/public/application-forms/loader.js', apiOrigin || location.href).href; }
+  function formLoaderUrl() { return new URL(formLoaderAsset?.path || '/api/public/application-forms/loader.js', apiOrigin || location.href).href; }
   function article() {
     const direct = document.querySelector('[itemprop="sku"], meta[property="product:retailer_item_id"], [data-product-article]');
     const directValue = direct?.content || direct?.dataset?.productArticle || direct?.textContent;
@@ -830,7 +828,9 @@ export function formCampaignEmbedScript(origin) {
   function ensureLoader() {
     if (window.MTApplicationForms) return Promise.resolve();
     return new Promise((resolve, reject) => {
-      const existing = document.querySelector('script[data-mt-application-loader="true"]');
+      const existing = Array.from(document.querySelectorAll('script[data-mt-application-loader="true"]')).find((script) => (
+        !formLoaderAsset || (script.src === formLoaderUrl() && script.integrity === formLoaderAsset.integrity)
+      ));
       if (existing) {
         existing.addEventListener('load', resolve, { once: true });
         existing.addEventListener('error', reject, { once: true });
@@ -838,7 +838,13 @@ export function formCampaignEmbedScript(origin) {
       }
       const script = document.createElement('script');
       script.src = formLoaderUrl(); script.async = true; script.dataset.mtApplicationLoader = 'true';
-      script.onload = resolve; script.onerror = reject; document.head.appendChild(script);
+      if (formLoaderAsset) {
+        script.integrity = formLoaderAsset.integrity;
+        script.crossOrigin = 'anonymous';
+      }
+      script.onload = resolve;
+      script.onerror = (event) => { script.remove(); reject(event); };
+      document.head.appendChild(script);
     });
   }
   function insert(node, target, position) {
@@ -847,10 +853,10 @@ export function formCampaignEmbedScript(origin) {
     else if (position === 'start') target.prepend(node);
     else target.append(node);
   }
-  function render(payload) {
+  function render(state) {
+    const payload = state.payload;
     removeButton();
-    const device = isMobileSurface() ? 'mobile' : 'desktop';
-    const placement = payload.campaign.placement[device];
+    const placement = payload.campaign.placement[state.surface];
     let target;
     try { target = document.querySelector(placement.selector); } catch { return false; }
     if (!target) return false;
@@ -860,49 +866,94 @@ export function formCampaignEmbedScript(origin) {
     Object.assign(button.style, payload.campaign.buttonStyles || {}, {
       border: '0', cursor: 'pointer', fontFamily: 'inherit'
     });
-    button.addEventListener('click', async () => {
-      button.disabled = true;
+    const mountedButton = button;
+    mountedButton.addEventListener('click', async () => {
+      mountedButton.disabled = true;
       try {
+        if (Date.now() - state.loadedAt >= 8 * 60_000) await fetchCampaign(state);
+        const fresh = state.payload;
+        if (!fresh || current !== state || !mountedButton.isConnected) return;
         await ensureLoader();
+        if (current !== state || !mountedButton.isConnected) return;
         window.MTApplicationForms?.open({
-          formId: payload.form.publicId,
-          product: payload.product,
-          submitUrl: endpoint('/' + encodeURIComponent(payload.campaign.publicId) + '/applications').href,
-          contextToken: payload.contextToken,
-          context: { campaignPublicId: payload.campaign.publicId, campaignName: payload.campaign.name }
+          formId: fresh.form.publicId,
+          product: fresh.product,
+          submitUrl: endpoint('/' + encodeURIComponent(fresh.campaign.publicId) + '/applications').href,
+          contextToken: fresh.contextToken,
+          context: { sourceUrl: state.pageUrl }
         });
-      } finally { button.disabled = false; }
+      } catch {} finally { mountedButton.disabled = false; }
     });
     insert(button, target, placement.insertPosition);
     return true;
   }
-  async function resolveCampaign(force = false) {
-    const key = location.href + '|' + article() + '|' + (isMobileSurface() ? 'mobile' : 'desktop');
-    if (!force && key === lastKey && button?.isConnected) return;
-    lastKey = key;
+  async function fetchCampaign(state) {
+    const url = endpoint('/resolve');
+    url.searchParams.set('pageUrl', state.pageUrl);
+    url.searchParams.set('article', state.article);
+    const response = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', signal: state.controller.signal });
+    if (response.status === 429 || response.status >= 500) throw new Error('Campaign resolution temporarily unavailable');
+    state.payload = response.ok ? (await response.json()).data || null : null;
+    state.loadedAt = Date.now();
+    if (!state.payload && current === state) removeButton();
+  }
+  async function loadCampaign(state) {
     try {
-      const url = endpoint('/resolve');
-      url.searchParams.set('pageUrl', location.href);
-      url.searchParams.set('article', article());
-      const response = await fetch(url, { credentials: 'omit' });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body.data) { removeButton(); return; }
-      if (!render(body.data)) schedule(true);
-    } catch { removeButton(); }
+      await fetchCampaign(state);
+      if (current === state && state.payload) render(state);
+    } catch {
+      if (current === state && ++state.failures <= 2) {
+        state.retry = setTimeout(() => loadCampaign(state), 1000 * 2 ** (state.failures - 1));
+      }
+    }
   }
-  function schedule(force = false) {
-    clearTimeout(resolveTimer);
-    resolveTimer = setTimeout(() => resolveCampaign(force), 140);
+  function clearCampaign() {
+    clearTimeout(current?.retry);
+    current?.controller.abort();
+    current = null;
+    removeButton();
   }
-  const observer = new MutationObserver(() => schedule(false));
+  function resolveCampaign() {
+    if (suspended) return;
+    const sourceUrl = pageUrl(location.href);
+    const sku = article();
+    const surface = isMobileSurface() ? 'mobile' : 'desktop';
+    const key = JSON.stringify([sourceUrl, sku, surface]);
+    if (current?.key === key) {
+      if (current.payload && !button?.isConnected) render(current);
+      return;
+    }
+    clearCampaign();
+    if (!sourceUrl) return;
+    current = { key, pageUrl: sourceUrl, article: sku, surface, controller: new AbortController(), failures: 0 };
+    void loadCampaign(current);
+  }
+  function schedule() {
+    if (suspended || resolveTimer !== null) return;
+    resolveTimer = setTimeout(() => { resolveTimer = null; resolveCampaign(); }, 140);
+  }
+  const observer = new MutationObserver(schedule);
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  addEventListener('resize', () => schedule(true), { passive: true });
-  addEventListener('popstate', () => schedule(true));
+  addEventListener('resize', schedule, { passive: true });
+  addEventListener('popstate', schedule);
+  addEventListener('pagehide', () => {
+    suspended = true;
+    observer.disconnect();
+    clearTimeout(resolveTimer);
+    resolveTimer = null;
+    clearCampaign();
+  });
+  addEventListener('pageshow', () => {
+    if (!suspended) return;
+    suspended = false;
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    schedule();
+  });
   for (const method of ['pushState', 'replaceState']) {
     const original = history[method];
-    history[method] = function(...args) { const value = original.apply(this, args); schedule(true); return value; };
+    history[method] = function(...args) { const value = original.apply(this, args); schedule(); return value; };
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => schedule(true), { once: true });
-  else schedule(true);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, { once: true });
+  else schedule();
 })();`;
 }
