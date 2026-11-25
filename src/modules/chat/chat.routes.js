@@ -132,24 +132,30 @@ router.get('/contacts', asyncHandler(async (req, res) => {
   })) });
 }));
 
-router.get('/unread-count', asyncHandler(async (req, res) => {
+async function countUnreadMessages(userId, conversationId) {
   const result = await query(
     `SELECT COUNT(*)::INTEGER AS count
      FROM chat_messages AS message
      JOIN chat_members AS member ON member.conversation_id = message.conversation_id
      WHERE member.user_id = $1
        AND message.sender_id <> $1
-       AND message.created_at > COALESCE(member.last_read_at, member.joined_at)`,
-    [req.user.id]
+       AND message.created_at >= member.joined_at
+       AND (member.last_read_at IS NULL OR message.created_at > member.last_read_at)
+       ${conversationId ? 'AND message.conversation_id = $2' : ''}`,
+    conversationId ? [userId, conversationId] : [userId]
   );
-  res.json({ data: Number(result.rows[0]?.count || 0) });
+  return Number(result.rows[0].count);
+}
+
+router.get('/unread-count', asyncHandler(async (req, res) => {
+  res.json({ data: await countUnreadMessages(req.user.id) });
 }));
 
 router.get('/conversations', asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT conversation.id, conversation.conversation_type, conversation.title,
             conversation.created_by, conversation.icon_mime, conversation.updated_at,
-            member.member_role AS my_role, member.last_read_at, member.joined_at
+            member.member_role AS my_role
      FROM chat_conversations AS conversation
      JOIN chat_members AS member ON member.conversation_id = conversation.id AND member.user_id = $1
      LEFT JOIN (SELECT DISTINCT conversation_id FROM chat_messages) AS populated
@@ -192,12 +198,7 @@ router.get('/conversations', asyncHandler(async (req, res) => {
        WHERE message.conversation_id = $1 ORDER BY message.created_at DESC LIMIT 1`,
       [row.id]
     );
-    const unread = await query(
-      `SELECT COUNT(*)::INTEGER AS count FROM chat_messages
-       WHERE conversation_id = $1 AND sender_id <> $2
-         AND created_at > COALESCE($3::TIMESTAMPTZ, $4::TIMESTAMPTZ)`,
-      [row.id, req.user.id, row.last_read_at, row.joined_at]
-    );
+    const unreadCount = await countUnreadMessages(req.user.id, row.id);
     return {
       id: row.id,
       type: row.conversation_type,
@@ -214,7 +215,7 @@ router.get('/conversations', asyncHandler(async (req, res) => {
         senderName: latest.rows[0].sender_name,
         createdAt: latest.rows[0].created_at
       } : null,
-      unreadCount: Number(unread.rows[0]?.count || 0),
+      unreadCount,
       updatedAt: row.updated_at
     };
   }));

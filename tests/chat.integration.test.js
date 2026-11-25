@@ -104,6 +104,11 @@ test('chat access, contacts and interactive task links work through REST API', a
     type: 'typing', conversationId, senderId: plannerId, senderName: 'Chat Planner', isTyping: true
   });
 
+  // PostgreSQL's NOW() gives the membership and the first message the same transaction timestamp.
+  await pool.query(
+    'UPDATE chat_members SET joined_at = $3 WHERE conversation_id = $1 AND user_id = $2',
+    [conversationId, colleagueId, conversation.body.data.message.createdAt]
+  );
   const colleagueConversations = await colleague.get('/api/chat/conversations').expect(200);
   assert.equal(colleagueConversations.body.data[0].unreadCount, 1);
   const unread = await colleague.get('/api/chat/unread-count').expect(200);
@@ -113,8 +118,13 @@ test('chat access, contacts and interactive task links work through REST API', a
   assert.equal(messages.body.data[0].entities[0].available, true);
   assert.equal(messages.body.data[0].entities[0].data.myResponseStatus, 'pending');
   await colleague.post(`/api/chat/conversations/${conversationId}/read`).expect(204);
+  // A message exactly at the read marker has already been read.
+  const readMarker = await pool.query('SELECT last_read_at FROM chat_members WHERE conversation_id = $1 AND user_id = $2', [conversationId, colleagueId]);
+  await pool.query('UPDATE chat_messages SET created_at = $2 WHERE id = $1', [firstMessageId, readMarker.rows[0].last_read_at]);
   const read = await colleague.get('/api/chat/unread-count').expect(200);
   assert.equal(read.body.data, 0);
+  const readConversations = await colleague.get('/api/chat/conversations').expect(200);
+  assert.equal(readConversations.body.data[0].unreadCount, 0);
 
   await colleague.post(`/api/tasks/${task.body.data.id}/respond`).send({ response: 'accepted' }).expect(200);
   const acceptedMessages = await colleague.get(`/api/chat/conversations/${conversationId}/messages`).expect(200);
