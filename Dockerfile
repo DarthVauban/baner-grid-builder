@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -8,7 +8,7 @@ COPY client ./client
 COPY src/modules/site-themes/site-theme-presentation.* src/modules/site-themes/site-theme-storefront-effects.* ./src/modules/site-themes/
 RUN npm run build
 
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 ARG APP_BUILD_SHA=development
 ENV NODE_ENV=production
 ENV APP_BUILD_SHA=$APP_BUILD_SHA

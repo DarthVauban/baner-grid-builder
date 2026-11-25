@@ -26,7 +26,12 @@ describe('RichTextField', () => {
     await waitFor(() => {
       expect(onChange).toHaveBeenCalled();
       expect(onChange.mock.calls.at(-1)?.[0]).toContain('<table class="mt-blog-table">');
-      expect(onChange.mock.calls.at(-1)?.[0]).toContain('<th colspan="1" rowspan="1">');
+      const html = onChange.mock.calls.at(-1)?.[0] || '';
+      const output = new DOMParser().parseFromString(html, 'text/html');
+      const table = output.querySelector<HTMLTableElement>('table.mt-blog-table');
+      expect(table?.rows.length).toBe(3);
+      expect(table?.rows[0].querySelectorAll('th')).toHaveLength(3);
+      expect(table?.rows[0].cells[0]).toMatchObject({ colSpan: 1, rowSpan: 1 });
     });
     expect(screen.getByRole('toolbar', { name: 'Керування таблицею' })).toBeInTheDocument();
   });
