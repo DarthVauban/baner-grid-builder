@@ -1,5 +1,8 @@
 import { devices, expect, test, type Locator, type Page } from '@playwright/test';
 import { createServer } from 'node:http';
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { PopupPreviewPayload } from '../../client/src/types/popup-banner';
 
 const panelOrigin = 'https://panel.example.test';
@@ -66,13 +69,18 @@ async function storefront(page: Page, mobile: boolean, position: 'top' | 'bottom
       contentType: 'application/javascript; charset=utf-8', body: script
     }));
   }
-  // Serve the actual compiled chat app on a separate origin, as on Horoshop.
-  await page.route(`${panelOrigin}/support-chat/widget?**`, async (route) => route.fulfill({
-    response: await route.fetch({ url: route.request().url().replace(panelOrigin, serverOrigin) })
-  }));
-  await page.route(`${panelOrigin}/web-assets/**`, async (route) => route.fulfill({
-    response: await route.fetch({ url: route.request().url().replace(panelOrigin, serverOrigin) })
-  }));
+  // Keep the real frame headers and compiled assets on the panel origin. Claim each
+  // intercepted request immediately, even when the frame disappears mid-preload.
+  const widgetPath = '/support-chat/widget?' + new URLSearchParams({ embedOrigin: shopOrigin });
+  const widget = await page.request.get(serverOrigin + widgetPath);
+  expect(widget.ok()).toBe(true);
+  await page.route(panelOrigin + widgetPath, (route) => route.fulfill({ response: widget }));
+  const assetDir = fileURLToPath(new URL('../../dist/web/web-assets/', import.meta.url));
+  const assets = new Map(readdirSync(assetDir).map((name) => ['/web-assets/' + name, path.join(assetDir, name)]));
+  await page.route(`${panelOrigin}/web-assets/**`, (route) => {
+    const asset = assets.get(new URL(route.request().url()).pathname);
+    return asset ? route.fulfill({ path: asset }) : route.fulfill({ status: 404 });
+  });
   await page.route('**/api/public/support-chat/session/transport', (route) => route.fulfill({ json: { data: { cookie: false } } }));
   await page.route('**/api/public/support-chat/session', (route) => route.fulfill({ json: { data: {
     token: 'floating-widget-test-session-token', conversation: null,
@@ -214,6 +222,8 @@ for (const surface of [
       await fixture.load('popup-banners');
       await fixture.load('support-chat');
       await expect(page.locator('#mt-popup-banner-root')).toBeVisible();
+      const chat = page.frameLocator('iframe[title="Онлайн-підтримка"]');
+      await expect(chat.getByRole('button', { name: 'Відкрити онлайн-підтримку' })).toBeVisible();
       await expect(page.locator('iframe[title="Онлайн-підтримка"]')).toHaveCSS('bottom', '16px');
     });
   });

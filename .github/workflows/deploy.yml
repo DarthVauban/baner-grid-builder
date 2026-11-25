@@ -102,8 +102,10 @@ jobs:
           sha256sum deployment-image.tar.gz > deployment-image.tar.gz.sha256
 
       - name: Sync deployment configuration
+        id: sync_release
+        continue-on-error: true
         uses: appleboy/scp-action@v1
-        with:
+        with: &release_transfer
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -116,6 +118,15 @@ jobs:
           target: ${{ env.APP_DIR }}
           overwrite: true
           command_timeout: 20m
+
+      - name: Back off after a failed SSH transfer
+        if: steps.sync_release.outcome == 'failure'
+        run: sleep 30
+
+      - name: Retry deployment file transfer
+        if: steps.sync_release.outcome == 'failure'
+        uses: appleboy/scp-action@v1
+        with: *release_transfer
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
