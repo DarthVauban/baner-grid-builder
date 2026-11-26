@@ -104,6 +104,7 @@ for (const mobile of [false, true]) {
       }
     });
     test('navigates categories, pages, returns from the product and buys through the native surface', async ({ page }) => {
+      if (mobile) await page.setViewportSize({ width: 320, height: device.viewport.height });
       const calls: string[] = [];
       const morePhones = Promise.withResolvers<void>();
       const promoToken = '00000000-0000-4000-8000-000000000001';
@@ -119,7 +120,8 @@ for (const mobile of [false, true]) {
         const brands = params.getAll('brand');
         const products = Array.from({ length: count }, (_, i) => ({ title: id + '-' + i,
           brand: id === 'audio' || i === 25 ? 'JBL' : i === 24 ? 'Sony' : 'Samsung',
-          article: 'P1', pageUrl: promoPage, imageUrl: shop + '/photo.svg', price: '500', oldPrice: '550',
+          article: 'P1', pageUrl: promoPage, imageUrl: shop + '/photo.svg',
+          price: id === 'all' && i === 0 ? '18999' : '500', oldPrice: id === 'all' && i === 0 ? '21840' : '550',
           highlightPrice: true, currency: 'UAH', available: true, buyId: '42' }))
           .filter((p) => !brands.length || brands.includes(p.brand.toLowerCase()));
         return route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { data: {
@@ -160,8 +162,16 @@ for (const mobile of [false, true]) {
       await expect(page.getByPlaceholder('Пошук магазину')).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Різдво' })).toBeVisible();
       await expect(page.locator('.mt-campaign input')).toHaveCount(0);
-      await expect(cards.first().locator('strong')).toHaveText('500 ₴');
-      await expect(cards.first().locator('.mt-product-selection__price.is-promo del')).toHaveText('550 ₴');
+      const price = cards.first().locator('.mt-product-selection__price.is-promo');
+      await expect(price.locator('strong')).toHaveText('18 999 ₴');
+      await expect(price.locator('del')).toHaveText('21 840 ₴');
+      expect(await price.evaluate((row) => {
+        const current = row.querySelector('strong')!.getBoundingClientRect();
+        const previous = row.querySelector('del')!.getBoundingClientRect();
+        const card = row.closest('.mt-product-selection__card')!.getBoundingClientRect();
+        return previous.left >= current.right && previous.right <= card.right
+          && previous.top < current.bottom && previous.bottom > current.top;
+      })).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (mobile) {
         await expect(page.getByRole('navigation', { name: 'Категорії акції' })).toBeHidden();

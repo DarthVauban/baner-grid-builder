@@ -350,9 +350,9 @@ section.blog > .blog__inner > .article:has(> .text .mt-campaign) > :is(h1.headin
 }
 
 .mt-campaign .mt-product-selection__price {
-  display: grid !important;
+  flex-wrap: nowrap !important;
   min-height: 0 !important;
-  gap: 2px !important;
+  white-space: nowrap;
 }
 
 .mt-campaign .mt-product-selection__buy {
