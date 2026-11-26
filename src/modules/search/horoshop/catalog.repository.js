@@ -134,7 +134,7 @@ export class HoroshopCatalogRepository {
 
   async allProductsForResolve(connection) {
     const [products, modifications] = await Promise.all([
-      this.pool.query(`SELECT id, sku, titles, category_external_id FROM search_horoshop_products
+      this.pool.query(`SELECT id, sku, titles, category_external_id, availability FROM search_horoshop_products
         WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY sku, id`,
       [connection.id, connection.generation]),
       this.pool.query(`SELECT product_id, sku, titles FROM search_horoshop_modifications
@@ -147,7 +147,7 @@ export class HoroshopCatalogRepository {
       byProduct.set(row.product_id, offers);
     }
     return products.rows.map((row) => ({ id: row.id, sku: row.sku, categoryExternalId: row.category_external_id,
-      titles: jsonObject(row.titles), modifications: byProduct.get(row.id) || [] }));
+      titles: jsonObject(row.titles), availability: row.availability, modifications: byProduct.get(row.id) || [] }));
   }
 
   async getConnection() {

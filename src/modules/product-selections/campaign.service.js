@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { pool } from '../../db/pool.js';
 import { AppError } from '../../lib/app-error.js';
 import { HoroshopCatalogRepository } from '../search/horoshop/catalog.repository.js';
 import { resolveStickerEntries, titleFor } from '../search/horoshop/sticker.domain.js';
-import { offerFromRow } from './product-selection.service.js';
+import { offerFromRow, offerPricePresentation, productPricing, promoProductUrl, promoSettingsForPage } from './product-selection.service.js';
 
 const catalog = new HoroshopCatalogRepository();
 const notFound = () => new AppError(404, 'CAMPAIGN_NOT_FOUND', 'Тематичну акцію не знайдено.');
@@ -26,7 +27,7 @@ export async function resolveCampaignList(entries) {
   function describe(id) {
     const product = byId.get(id);
     const category = product.categoryExternalId || '';
-    return { id, sku: product.sku, title: titleFor(product.titles, product.sku),
+    return { id, sku: product.sku, title: titleFor(product.titles, product.sku), availability: product.availability,
       category, categoryName: categoryNames.get(category) || category || 'Інші товари' };
   }
   return {
@@ -45,7 +46,7 @@ export async function readCampaign(userId, id) {
   const row = (await pool.query('SELECT * FROM thematic_campaigns WHERE id = $1 AND user_id = $2', [id, userId])).rows[0];
   if (!row) throw notFound();
   const result = await pool.query(`
-    SELECT i.product_id, i.section_id, p.sku, p.titles, p.active
+    SELECT i.product_id, i.section_id, p.sku, p.titles, p.availability, p.active
     FROM thematic_campaigns c LEFT JOIN thematic_campaign_items i ON i.campaign_id = c.id
     LEFT JOIN search_horoshop_products p ON p.id = i.product_id
     WHERE c.id = $1 AND c.user_id = $2 AND c.revision = $3 ORDER BY i.position`, [id, userId, row.revision]);
@@ -54,9 +55,9 @@ export async function readCampaign(userId, id) {
   const byId = new Map(sections.map((section) => [section.id, section]));
   for (const item of result.rows) {
     if (item.product_id) byId.get(item.section_id).products.push({ id: item.product_id, sku: item.sku,
-      title: titleFor(item.titles, item.sku), inactive: !item.active });
+      title: titleFor(item.titles, item.sku), availability: item.availability, inactive: !item.active });
   }
-  return { ...summary(row), generation: row.generation, sections };
+  return { ...summary(row), generation: row.generation, pricing: productPricing(row), sections };
 }
 
 export async function saveCampaign(userId, id, input) {
@@ -67,16 +68,25 @@ export async function saveCampaign(userId, id, input) {
       WHERE generation = $1 AND status IN ('connected','syncing') FOR SHARE`, [input.generation])).rows[0];
     if (!connection) throw staleCatalog();
     const metadata = input.sections.map(({ id, name, categories }) => ({ id, name, categories }));
-    const values = [userId, connection.id, input.generation, input.name, JSON.stringify(metadata)];
+    const pricing = input.pricing;
+    const priceValue = pricing?.priceMode === 'none' ? 0 : pricing?.priceValue ?? null;
+    const values = [userId, connection.id, input.generation, input.name, JSON.stringify(metadata),
+      pricing?.priceMode ?? null, priceValue, pricing?.highlightPromoPrice ?? null];
     const saved = id
-      ? await db.query(`UPDATE thematic_campaigns SET name = $4, sections = $5::jsonb, revision = revision + 1, updated_at = NOW()
-          WHERE user_id = $1 AND connection_id = $2 AND generation = $3 AND id = $6 AND revision = $7 RETURNING *`,
+      ? await db.query(`UPDATE thematic_campaigns SET name = $4, sections = $5::jsonb, revision = revision + 1, updated_at = NOW(),
+          price_mode = COALESCE($6, price_mode), price_value = COALESCE($7, price_value),
+          highlight_promo_price = COALESCE($8, highlight_promo_price)
+          WHERE user_id = $1 AND connection_id = $2 AND generation = $3 AND id = $9 AND revision = $10 RETURNING *`,
         [...values, id, input.revision])
-      : await db.query(`INSERT INTO thematic_campaigns(user_id, connection_id, generation, name, sections)
-          VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING *`, values);
+      : await db.query(`INSERT INTO thematic_campaigns(user_id, connection_id, generation, name, sections,
+          price_mode, price_value, highlight_promo_price)
+          VALUES ($1, $2, $3, $4, $5::jsonb, COALESCE($6, 'none'), COALESCE($7::NUMERIC, 0), COALESCE($8, FALSE)) RETURNING *`, values);
     if (!saved.rowCount) throw staleRevision();
     const campaign = saved.rows[0];
     const items = input.sections.flatMap((section) => section.productIds.map((productId) => ({ productId, sectionId: section.id })));
+    const previousItems = id ? (await db.query(`SELECT product_id, promo_token FROM thematic_campaign_items
+      WHERE campaign_id = $1`, [id])).rows : [];
+    const promoTokens = new Map(previousItems.map((item) => [item.product_id, item.promo_token]));
     if (id) await db.query('DELETE FROM thematic_campaign_items WHERE campaign_id = $1', [id]);
     for (let offset = 0; offset < items.length; offset += 400) {
       const batch = items.slice(offset, offset + 400);
@@ -88,10 +98,11 @@ export async function saveCampaign(userId, id, input) {
       const params = [campaign.id];
       const tuples = batch.map((item, index) => {
         const start = params.length + 1;
-        params.push(item.productId, item.sectionId, offset + index);
-        return `($1, $${start}, $${start + 1}, $${start + 2})`;
+        params.push(item.productId, item.sectionId, offset + index, promoTokens.get(item.productId) ?? randomUUID());
+        return `($1, $${start}, $${start + 1}, $${start + 2}, $${start + 3})`;
       });
-      await db.query(`INSERT INTO thematic_campaign_items(campaign_id, product_id, section_id, position) VALUES ${tuples.join(',')}`, params);
+      await db.query(`INSERT INTO thematic_campaign_items(campaign_id, product_id, section_id, position, promo_token)
+        VALUES ${tuples.join(',')}`, params);
     }
     await db.query('COMMIT');
     return summary(campaign);
@@ -111,6 +122,12 @@ const publicJoin = `FROM thematic_campaigns c JOIN search_horoshop_connections h
 const publicItems = `JOIN thematic_campaign_items i ON i.campaign_id = c.id
   JOIN search_horoshop_products p ON p.id = i.product_id AND p.connection_id = h.id AND p.generation = h.generation
   AND p.active = TRUE AND p.visible = TRUE AND p.price <> '' AND p.canonical_url <> '' AND p.primary_image_url <> ''`;
+
+export async function resolveCampaignPromo(token, pageUrl) {
+  const result = await pool.query(`SELECT c.price_mode, c.price_value, c.highlight_promo_price,
+    h.store_domain, p.canonical_url ${publicJoin} ${publicItems} WHERE i.promo_token = $1 LIMIT 1`, [token]);
+  return promoSettingsForPage(result.rows[0], pageUrl);
+}
 
 export async function publicCampaign(publicId) {
   const header = await pool.query(`SELECT c.name, c.sections, c.revision ${publicJoin} WHERE c.public_id = $1`, [publicId]);
@@ -140,7 +157,8 @@ export async function campaignPage(publicId, { section, cursor, revision, brand 
     conditions.push('(' + fields.map((field) => field + ' ILIKE ' + match).join(' OR ') + ')');
   }
   const from = `${publicJoin} ${publicItems} WHERE ${conditions.join(' AND ')}`;
-  const result = await pool.query(`SELECT i.position, h.store_domain, p.id AS product_id, p.external_id AS product_external_id,
+  const result = await pool.query(`SELECT i.position, i.promo_token, h.store_domain, c.price_mode, c.price_value,
+    c.highlight_promo_price, p.id AS product_id, p.external_id AS product_external_id,
     p.sku AS product_sku, p.brand, p.titles AS product_titles, p.price AS product_price, p.old_price AS product_old_price,
     p.currency AS product_currency, p.availability AS product_availability, p.primary_image_url, p.canonical_url,
     p.source_data AS product_source_data ${from} AND i.position >= $${params.length + 1}
@@ -150,12 +168,18 @@ export async function campaignPage(publicId, { section, cursor, revision, brand 
     if (!current.rowCount) throw notFound();
     if (current.rows[0].revision !== revision) throw staleRevision();
   }
-  const products = result.rows.slice(0, 24).map((row) => ({ ...offerFromRow(row), brand: row.brand || '' }))
-    .filter((item) => item.imageUrl && item.pageUrl).map((item) => ({
-      productExternalId: item.productExternalId, article: item.sku, brand: item.brand, title: item.title || item.sku,
-      imageUrl: item.imageUrl, pageUrl: item.pageUrl, price: item.price, oldPrice: item.oldPrice, currency: item.currency,
-      available: item.available, availability: item.availability, buyId: item.buyId
-    }));
+  const products = result.rows.slice(0, 24).flatMap((row) => {
+    const item = offerFromRow(row);
+    if (!item.imageUrl || !item.pageUrl) return [];
+    const pricing = productPricing(row);
+    const synthetic = pricing.priceMode !== 'none' && pricing.priceValue > 0;
+    return [{
+      productExternalId: item.productExternalId, article: item.sku, brand: row.brand || '', title: item.title || item.sku,
+      imageUrl: item.imageUrl, pageUrl: promoProductUrl(item.pageUrl, item.promoToken, synthetic), price: item.price,
+      currency: item.currency, available: item.available, availability: item.availability, buyId: item.buyId,
+      ...offerPricePresentation(item, pricing)
+    }];
+  });
   const nextCursor = result.rows[24]?.position ?? null;
   let total;
   if (cursor === 0 && (q || brand.length)) {

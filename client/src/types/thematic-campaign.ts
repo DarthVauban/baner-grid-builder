@@ -1,4 +1,12 @@
-export interface CampaignProduct { id: string; sku: string; title: string; inactive?: boolean }
+import type { ProductPricing } from './product-selection';
+
+export interface CampaignProduct {
+  id: string;
+  sku: string;
+  title: string;
+  availability: string | null;
+  inactive?: boolean;
+}
 export interface CampaignMatch extends CampaignProduct { category: string; categoryName: string }
 export interface CampaignResolution {
   generation: string;
@@ -9,9 +17,10 @@ export interface CampaignResolution {
 }
 export interface CampaignSection { id: string; name: string; categories: string[]; products: CampaignProduct[] }
 export interface CampaignSummary { id: string; publicId: string; name: string; revision: number }
-export interface CampaignDetail extends CampaignSummary { generation: string; sections: CampaignSection[] }
+export interface CampaignDetail extends CampaignSummary { generation: string; pricing: ProductPricing; sections: CampaignSection[] }
 export interface CampaignInput {
   name: string;
   generation: string;
+  pricing?: ProductPricing;
   sections: Array<{ id: string; name: string; categories: string[]; productIds: string[] }>;
 }

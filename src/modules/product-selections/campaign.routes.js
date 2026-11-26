@@ -4,6 +4,7 @@ import { parseInput } from '../../lib/validation.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
+import { productPricingFields, validateProductPricing } from './product-pricing.validation.js';
 import { resolveCampaignList, listCampaigns, readCampaign, saveCampaign, removeCampaign, publicCampaign, campaignPage } from './campaign.service.js';
 import { productSelectionEmbedScript } from './product-selection.embed.js';
 import { mountCampaign, campaignStyles } from './campaign.embed.js';
@@ -15,7 +16,12 @@ const section = z.object({
   id, name: z.string().trim().min(1).max(200),
   categories: z.array(z.string().max(500)).max(maxProducts), productIds: z.array(id).min(1).max(maxProducts)
 }).strict();
-const fields = { generation: id, name: z.string().trim().min(1).max(160), sections: z.array(section).min(1).max(maxProducts) };
+const fields = {
+  generation: id,
+  name: z.string().trim().min(1).max(160),
+  sections: z.array(section).min(1).max(maxProducts),
+  pricing: z.object(productPricingFields).strict().superRefine(validateProductPricing).optional()
+};
 function validSections(input, ctx) {
   const items = input.sections.flatMap((group) => group.productIds);
   const categories = input.sections.flatMap((group) => group.categories);

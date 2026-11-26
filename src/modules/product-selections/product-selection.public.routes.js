@@ -5,6 +5,7 @@ import { AppError } from '../../lib/app-error.js';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { productPromoLoaderScript, productSelectionEmbedScript } from './product-selection.embed.js';
+import { resolveCampaignPromo } from './campaign.service.js';
 import {
   loadPublicProductSelection,
   recordProductSelectionEvents,
@@ -51,7 +52,7 @@ router.get('/promo-loader.js', (req, res) => {
 router.get('/promo/:token', asyncHandler(async (req, res) => {
   const token = parseInput(uuidSchema, req.params.token);
   const input = parseInput(promoQuerySchema, req.query);
-  const promo = await resolveProductPromo(token, input.page);
+  const promo = await resolveProductPromo(token, input.page) ?? await resolveCampaignPromo(token, input.page);
   if (!promo) throw new AppError(404, 'PRODUCT_PROMO_NOT_FOUND', 'Промооформлення для цієї сторінки недоступне.');
   res.setHeader('Cache-Control', 'no-store');
   res.json({ data: promo });

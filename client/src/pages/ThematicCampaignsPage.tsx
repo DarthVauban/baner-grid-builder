@@ -2,13 +2,18 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { copyToClipboard } from '../lib/banner-generator';
+import { horoshopAvailability } from '../lib/horoshop-availability';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { useToast } from '../toast/ToastContext';
 import { HoroshopProductSearchDialog } from '../components/HoroshopProductSearchDialog';
 import { Icon } from '../components/Icon';
+import { ProductPricingFields } from '../components/ProductPricingFields';
 import { StyledSelect } from '../components/StyledSelect';
+import type { ProductPricing } from '../types/product-selection';
 import type { CampaignMatch, CampaignResolution, CampaignSection, CampaignSummary } from '../types/thematic-campaign';
 import '../styles/thematic-campaigns.css';
+
+const defaultPricing: ProductPricing = { priceMode: 'none', priceValue: 0, highlightPromoPrice: false };
 
 function addMatches(sections: CampaignSection[], matches: CampaignMatch[]) {
   const updated = sections.map((section) => ({ ...section, products: [...section.products] }));
@@ -47,8 +52,23 @@ function SectionEditor({ section, sections, update, move, merge, remove }: {
     {open && <div className="campaign-section__products">
       {sections.length > 1 && <StyledSelect ariaLabel="Об’єднати товари з розділом" placeholder="Об’єднати з іншим розділом"
         value="" searchable options={sections.filter((other) => other.id !== section.id).map((other) => ({ value: other.id, label: other.name }))} onChange={merge} />}
-      <ul>{section.products.slice(0, limit).map((product) => <li key={product.id}><span>{product.title} <small>{product.sku}{product.inactive && ' · Відсутній у каталозі'}</small></span>
-        <button className="icon-button" aria-label={`Прибрати ${product.title}`} type="button" onClick={() => remove(product.id)}>×</button></li>)}</ul>
+      <ul className="campaign-products">{section.products.slice(0, limit).map((product) => {
+        const availability = product.inactive
+          ? { label: 'Відсутній у каталозі', tone: 'unavailable' }
+          : horoshopAvailability(product.availability);
+        return <li className="campaign-product" key={product.id}>
+          <div className="campaign-product__details">
+            <strong>{product.title}</strong>
+            <div className="campaign-product__meta">
+              <small>{product.sku}</small>
+              <span className={`horoshop-badge horoshop-badge--${availability.tone}`}><i aria-hidden="true" />{availability.label}</span>
+            </div>
+          </div>
+          <button className="button button--small button--danger" aria-label={`Прибрати ${product.title} з акції`} type="button" onClick={() => remove(product.id)}>
+            <Icon name="delete" size={16} />Прибрати
+          </button>
+        </li>;
+      })}</ul>
       {section.products.length > limit && <button className="button button--secondary button--small" onClick={() => setLimit(limit + 24)}>Показати ще</button>}
     </div>}
   </div>;
@@ -62,6 +82,7 @@ export default function ThematicCampaignsPage() {
   const library = useQuery({ queryKey: ['thematic-campaigns'], queryFn: ({ signal }) => apiClient.list(signal) });
   const [saved, setSaved] = useState<CampaignSummary | null>(null);
   const [name, setName] = useState('');
+  const [pricing, setPricing] = useState(defaultPricing);
   const [sections, setSections] = useState<CampaignSection[]>([]);
   const [generation, setGeneration] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -82,7 +103,7 @@ export default function ThematicCampaignsPage() {
   }
   function changeSections(next: CampaignSection[]) { setSections(next); setDirty(true); }
   function reset() {
-    setSaved(null); setName(''); setSections([]); setGeneration(''); setReport(null); setText(''); setDirty(false);
+    setSaved(null); setName(''); setPricing(defaultPricing); setSections([]); setGeneration(''); setReport(null); setText(''); setDirty(false);
   }
   async function open(id?: string) {
     if (dirty && !await confirm({ title: 'Відкрити іншу акцію?', message: 'Поточні зміни ще не збережено.', confirmLabel: 'Продовжити' })) return;
@@ -90,6 +111,7 @@ export default function ThematicCampaignsPage() {
       if (!id) { reset(); return; }
       const record = await apiClient.get(id);
       reset(); setSaved(record); setName(record.name); setSections(record.sections); setGeneration(record.generation);
+      setPricing(record.pricing ?? defaultPricing);
     });
   }
   async function resolveList() {
@@ -113,9 +135,13 @@ export default function ThematicCampaignsPage() {
   }
   async function save() {
     await run(async () => {
-      const input = { name: name.trim(), generation, sections: sections.map((section) => ({
-        id: section.id, name: section.name.trim(), categories: section.categories, productIds: section.products.map((product) => product.id)
-      })) };
+      const input = {
+        name: name.trim(), generation,
+        pricing: { ...pricing, priceValue: pricing.priceMode === 'none' ? 0 : pricing.priceValue },
+        sections: sections.map((section) => ({
+          id: section.id, name: section.name.trim(), categories: section.categories, productIds: section.products.map((product) => product.id)
+        }))
+      };
       const result = saved ? await apiClient.update(saved.id, input, saved.revision) : await apiClient.create(input);
       setSaved(result); setName(result.name); setDirty(false);
       await queryClient.invalidateQueries({ queryKey: ['thematic-campaigns'] });
@@ -143,6 +169,17 @@ export default function ThematicCampaignsPage() {
       <div className="campaign-main">
         <section className="campaign-panel">
           <label className="campaign-name">Назва акції<input placeholder="Наприклад, Чорна п’ятниця" maxLength={160} value={name} onChange={(event) => { setName(event.target.value); setDirty(true); }} /></label>
+          <section className="campaign-pricing" aria-labelledby="campaign-pricing-heading">
+            <h2 id="campaign-pricing-heading">Косметична стара ціна</h2>
+            <p>Надбавка визначає перекреслену ціну. Ціну для оплати визначає кошик Хорошопа.</p>
+            <div className="campaign-pricing__fields">
+              <ProductPricingFields pricing={pricing} onChange={(patch) => {
+                setPricing((current) => ({ ...current, ...patch }));
+                setDirty(true);
+              }} />
+            </div>
+            {pricing.priceMode !== 'none' && <p>Для показу старої ціни на сторінці товару потрібен спільний код віджетів Хорошопа.</p>}
+          </section>
           <div className="campaign-bar"><h2>Склад акції <small>{total.toLocaleString('uk-UA')}</small></h2>
             <button className="button button--secondary" onClick={() => { setError(''); setDialog(true); }}><Icon name="add" size={16} />Вставити список</button></div>
           {!total && <p>Вставте назви чи артикули товарів. Розділи сформуються з категорій каталогу.</p>}

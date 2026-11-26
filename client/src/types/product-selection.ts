@@ -1,5 +1,11 @@
 export type ProductSelectionPriceMode = 'none' | 'percent' | 'fixed';
 
+export interface ProductPricing {
+  priceMode: ProductSelectionPriceMode;
+  priceValue: number;
+  highlightPromoPrice: boolean;
+}
+
 export interface ProductSelectionItemReference {
   productExternalId: string;
   modificationExternalId: string | null;
@@ -20,14 +26,11 @@ export interface ProductSelectionItem extends ProductSelectionItemReference {
   missing: boolean;
 }
 
-export interface ProductSelection {
+export interface ProductSelection extends ProductPricing {
   id: string;
   publicId: string;
   name: string;
   heading: string;
-  priceMode: ProductSelectionPriceMode;
-  priceValue: number;
-  highlightPromoPrice: boolean;
   buttonLabel: string;
   desktopColumns: number;
   mobileColumns: number;
@@ -40,12 +43,9 @@ export interface ProductSelection {
   updatedAt: string;
 }
 
-export interface ProductSelectionInput {
+export interface ProductSelectionInput extends ProductPricing {
   name: string;
   heading: string;
-  priceMode: ProductSelectionPriceMode;
-  priceValue: number;
-  highlightPromoPrice: boolean;
   buttonLabel: string;
   desktopColumns: number;
   mobileColumns: number;

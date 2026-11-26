@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
+import { ProductPricingFields } from '../components/ProductPricingFields';
 import { StyledSelect } from '../components/StyledSelect';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { copyToClipboard } from '../lib/banner-generator';
@@ -11,8 +12,7 @@ import type { HoroshopCatalogModification, HoroshopCatalogProduct } from '../typ
 import type {
   ProductSelection,
   ProductSelectionInput,
-  ProductSelectionItem,
-  ProductSelectionPriceMode
+  ProductSelectionItem
 } from '../types/product-selection';
 import '../styles/product-selection.css';
 
@@ -227,11 +227,6 @@ export function ProductSelectionPage() {
       value: item.externalId, label: `${localizedTitle(item.titles) || item.externalId} (${item.productCount})`
     }))
   ];
-  const priceModeOptions = [
-    { value: 'none', label: 'Без штучної старої ціни' },
-    { value: 'percent', label: 'Відсоток до поточної ціни' },
-    { value: 'fixed', label: 'Фіксована надбавка' }
-  ];
   const tabs: Array<{
     id: EditorTab;
     label: string;
@@ -286,9 +281,7 @@ export function ProductSelectionPage() {
             <section className="product-selection-section product-selection-promo-settings">
               <header><span><Icon name="productCard" size={18} /></span><div><h2>Косметична стара ціна</h2><p>Це лише візуальний маркетинговий елемент. Ціна кошика залишається актуальною.</p></div></header>
               <div className="product-selection-settings is-promo-grid">
-                <label><span>Спосіб розрахунку</span><StyledSelect value={draft.priceMode} options={priceModeOptions} onChange={(value) => setDraft((current) => ({ ...current, priceMode: value as ProductSelectionPriceMode }))} ariaLabel="Режим старої ціни" /></label>
-                {draft.priceMode !== 'none' && <label><span>{draft.priceMode === 'percent' ? 'Надбавка, %' : 'Надбавка, грн'}</span><input type="number" min="0.01" step={draft.priceMode === 'percent' ? '0.1' : '1'} value={draft.priceValue} onChange={(event) => setDraft((current) => ({ ...current, priceValue: Number(event.target.value) }))} /></label>}
-                <label className="product-selection-checkbox"><input type="checkbox" checked={draft.highlightPromoPrice} onChange={(event) => setDraft((current) => ({ ...current, highlightPromoPrice: event.target.checked }))} /><span><strong>Червона акційна ціна</strong><small>Підсвічувати поточну ціну, коли показується стара.</small></span></label>
+                <ProductPricingFields pricing={draft} onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))} />
               </div>
             </section>
             <aside className="product-selection-help-card"><span><Icon name="check" size={20} /></span><div><strong>Наступний крок</strong><p>Перейдіть до вкладки «Товари» й додайте потрібні позиції із синхронізованого каталогу.</p></div><button className="button button--secondary button--small" type="button" onClick={() => setTab('products')}>Обрати товари <Icon name="arrow" size={15} /></button></aside>

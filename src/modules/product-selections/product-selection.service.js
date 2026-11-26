@@ -128,12 +128,31 @@ function syntheticOldPrice(current, mode, value) {
   return null;
 }
 
-function promoProductUrl(value, token, enabled) {
+export function promoProductUrl(value, token, enabled) {
   const pageUrl = publicHttpUrl(value);
   if (!pageUrl || !enabled) return pageUrl;
   const parsed = new URL(pageUrl);
   parsed.searchParams.set('mt_promo', token);
   return parsed.href;
+}
+
+export function productPricing(row) {
+  return {
+    priceMode: row.price_mode,
+    priceValue: Number(row.price_value || 0),
+    highlightPromoPrice: row.highlight_promo_price !== false
+  };
+}
+
+export function offerPricePresentation(item, pricing) {
+  const current = numericValue(item.price);
+  const calculated = syntheticOldPrice(current, pricing.priceMode, pricing.priceValue);
+  const fallback = numericValue(item.oldPrice);
+  const oldPrice = calculated ?? (fallback !== null && fallback > (current ?? 0) ? fallback : null);
+  return {
+    oldPrice: oldPrice === null ? '' : String(oldPrice),
+    highlightPrice: Boolean(pricing.highlightPromoPrice && oldPrice !== null)
+  };
 }
 
 function mapSelection(row, items = []) {
@@ -142,9 +161,7 @@ function mapSelection(row, items = []) {
     publicId: row.public_id,
     name: row.name,
     heading: row.heading,
-    priceMode: row.price_mode,
-    priceValue: Number(row.price_value || 0),
-    highlightPromoPrice: row.highlight_promo_price !== false,
+    ...productPricing(row),
     buttonLabel: row.button_label,
     desktopColumns: Number(row.desktop_columns || 4),
     mobileColumns: Number(row.mobile_columns || 2),
@@ -438,30 +455,24 @@ export async function loadPublicProductSelection(publicId) {
     generation: row.generation,
     store_domain: row.store_domain
   });
-  const synthetic = row.price_mode !== 'none' && Number(row.price_value) > 0;
+  const pricing = productPricing(row);
+  const synthetic = pricing.priceMode !== 'none' && pricing.priceValue > 0;
   const products = storedItems.filter((item) => (
     !item.missing && item.visible && item.title && item.imageUrl && item.pageUrl && item.price
-  )).map((item) => {
-    const current = numericValue(item.price);
-    const calculated = syntheticOldPrice(current, row.price_mode, Number(row.price_value));
-    const fallbackOld = numericValue(item.oldPrice);
-    const oldPrice = calculated ?? (fallbackOld !== null && fallbackOld > (current ?? 0) ? fallbackOld : null);
-    return {
-      productExternalId: item.productExternalId,
-      modificationExternalId: item.modificationExternalId,
-      article: item.sku,
-      title: item.title,
-      imageUrl: item.imageUrl,
-      pageUrl: promoProductUrl(item.pageUrl, item.promoToken, synthetic),
-      price: item.price,
-      oldPrice: oldPrice === null ? '' : String(oldPrice),
-      currency: item.currency,
-      buyId: item.buyId,
-      availability: item.availability,
-      available: item.available,
-      highlightPrice: Boolean(row.highlight_promo_price && oldPrice !== null)
-    };
-  });
+  )).map((item) => ({
+    productExternalId: item.productExternalId,
+    modificationExternalId: item.modificationExternalId,
+    article: item.sku,
+    title: item.title,
+    imageUrl: item.imageUrl,
+    pageUrl: promoProductUrl(item.pageUrl, item.promoToken, synthetic),
+    price: item.price,
+    currency: item.currency,
+    buyId: item.buyId,
+    availability: item.availability,
+    available: item.available,
+    ...offerPricePresentation(item, pricing)
+  }));
   return {
     id: row.public_id,
     heading: row.heading,
@@ -662,15 +673,18 @@ export async function resolveProductPromo(token, pageUrl) {
     WHERE item.promo_token = $1
     LIMIT 1
   `, [token]);
-  const row = result.rows[0];
-  const expectedUrl = publicHttpUrl(row?.modification_page_url || row?.canonical_url, storeOrigin(row?.store_domain));
-  if (!row || (row.modification_external_id && !row.modification_id)
-    || row.price_mode === 'none' || Number(row.price_value) <= 0
-    || !expectedUrl || !sameProductLocation(pageUrl, expectedUrl)) return null;
+  return promoSettingsForPage(result.rows[0], pageUrl);
+}
+
+export function promoSettingsForPage(row, pageUrl) {
+  if (!row || (row.modification_external_id && !row.modification_id)) return null;
+  const pricing = productPricing(row);
+  const expectedUrl = publicHttpUrl(row.modification_page_url || row.canonical_url, storeOrigin(row.store_domain));
+  if (pricing.priceMode === 'none' || pricing.priceValue <= 0 || !expectedUrl || !sameProductLocation(pageUrl, expectedUrl)) return null;
   return {
-    mode: row.price_mode,
-    value: Number(row.price_value),
-    highlightPromoPrice: row.highlight_promo_price !== false
+    mode: pricing.priceMode,
+    value: pricing.priceValue,
+    highlightPromoPrice: pricing.highlightPromoPrice
   };
 }
 
