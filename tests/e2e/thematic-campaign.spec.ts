@@ -4,9 +4,11 @@ import { campaignStyles, mountCampaign } from '../../src/modules/product-selecti
 
 const shop = 'https://campaign-shop.test';
 const workspace = 'https://campaign-workspace.test';
+const trimmersName = 'Машинки для стрижки та тримери';
 const campaign = { id: 'winter', revision: 1, name: 'Різдво', sections: [
   { id: 'phones', name: 'Телефони', count: 25, brands: ['Nokia', 'Samsung', 'Sony'] },
-  { id: 'audio', name: 'Аудіо', count: 1, brands: ['JBL'] }
+  { id: 'audio', name: 'Аудіо', count: 1, brands: ['JBL'] },
+  { id: 'trimmers', name: trimmersName, count: 44, brands: [] }
 ] };
 for (const mobile of [false, true]) {
   test.describe(mobile ? 'mobile campaign' : 'desktop campaign', () => {
@@ -77,6 +79,28 @@ for (const mobile of [false, true]) {
       }
       await page.goto(shop + '/blog-post');
       await expect(page.getByRole('textbox', { name: 'Новий коментар' })).toBeVisible();
+    });
+    test('keeps the category count together beside a long name', async ({ page }) => {
+      if (!mobile) await page.setViewportSize({ width: 920, height: 800 });
+      await page.route(workspace + '/winter/products?**', (route) => route.fulfill({
+        headers: { 'access-control-allow-origin': '*' }, json: { data: { products: [], total: 0, nextCursor: null } }
+      }));
+      await page.goto(shop + '/sale?mt-section-winter=trimmers');
+      if (mobile) {
+        const categories = page.getByRole('combobox', { name: 'Категорії' });
+        await expect(categories).toBeVisible();
+        await expect(categories.locator('option:checked')).toHaveText(`${trimmersName} (44)`);
+      } else {
+        const category = page.locator('.mt-campaign__nav a[aria-current=true]');
+        const count = category.locator('small');
+        await expect(count).toBeVisible();
+        await expect(count).toHaveText('44');
+        expect(await count.evaluate((node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return range.getClientRects().length;
+        })).toBe(1);
+      }
     });
     test('navigates categories, pages, returns from the product and buys through the native surface', async ({ page }) => {
       const calls: string[] = [];

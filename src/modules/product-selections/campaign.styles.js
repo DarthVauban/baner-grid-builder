@@ -125,9 +125,11 @@ section.blog > .blog__inner > .article:has(> .text .mt-campaign) > :is(h1.headin
 }
 
 .mt-campaign__nav small {
+  flex-shrink: 0;
   color: #bcbcbc;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .mt-campaign__nav [aria-current=true] small {
