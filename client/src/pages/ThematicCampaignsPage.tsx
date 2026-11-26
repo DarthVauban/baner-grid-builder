@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { copyToClipboard } from '../lib/banner-generator';
+import { horoshopAvailability } from '../lib/horoshop-availability';
 import { useConfirmDialog } from '../dialogs/ConfirmDialogContext';
 import { useToast } from '../toast/ToastContext';
 import { HoroshopProductSearchDialog } from '../components/HoroshopProductSearchDialog';
@@ -47,8 +48,23 @@ function SectionEditor({ section, sections, update, move, merge, remove }: {
     {open && <div className="campaign-section__products">
       {sections.length > 1 && <StyledSelect ariaLabel="Об’єднати товари з розділом" placeholder="Об’єднати з іншим розділом"
         value="" searchable options={sections.filter((other) => other.id !== section.id).map((other) => ({ value: other.id, label: other.name }))} onChange={merge} />}
-      <ul>{section.products.slice(0, limit).map((product) => <li key={product.id}><span>{product.title} <small>{product.sku}{product.inactive && ' · Відсутній у каталозі'}</small></span>
-        <button className="icon-button" aria-label={`Прибрати ${product.title}`} type="button" onClick={() => remove(product.id)}>×</button></li>)}</ul>
+      <ul className="campaign-products">{section.products.slice(0, limit).map((product) => {
+        const availability = product.inactive
+          ? { label: 'Відсутній у каталозі', tone: 'unavailable' }
+          : horoshopAvailability(product.availability);
+        return <li className="campaign-product" key={product.id}>
+          <div className="campaign-product__details">
+            <strong>{product.title}</strong>
+            <div className="campaign-product__meta">
+              <small>{product.sku}</small>
+              <span className={`horoshop-badge horoshop-badge--${availability.tone}`}><i aria-hidden="true" />{availability.label}</span>
+            </div>
+          </div>
+          <button className="button button--small button--danger" aria-label={`Прибрати ${product.title} з акції`} type="button" onClick={() => remove(product.id)}>
+            <Icon name="delete" size={16} />Прибрати
+          </button>
+        </li>;
+      })}</ul>
       {section.products.length > limit && <button className="button button--secondary button--small" onClick={() => setLimit(limit + 24)}>Показати ще</button>}
     </div>}
   </div>;

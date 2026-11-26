@@ -1,4 +1,10 @@
-export interface CampaignProduct { id: string; sku: string; title: string; inactive?: boolean }
+export interface CampaignProduct {
+  id: string;
+  sku: string;
+  title: string;
+  availability: string | null;
+  inactive?: boolean;
+}
 export interface CampaignMatch extends CampaignProduct { category: string; categoryName: string }
 export interface CampaignResolution {
   generation: string;

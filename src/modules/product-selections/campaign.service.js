@@ -26,7 +26,7 @@ export async function resolveCampaignList(entries) {
   function describe(id) {
     const product = byId.get(id);
     const category = product.categoryExternalId || '';
-    return { id, sku: product.sku, title: titleFor(product.titles, product.sku),
+    return { id, sku: product.sku, title: titleFor(product.titles, product.sku), availability: product.availability,
       category, categoryName: categoryNames.get(category) || category || 'Інші товари' };
   }
   return {
@@ -45,7 +45,7 @@ export async function readCampaign(userId, id) {
   const row = (await pool.query('SELECT * FROM thematic_campaigns WHERE id = $1 AND user_id = $2', [id, userId])).rows[0];
   if (!row) throw notFound();
   const result = await pool.query(`
-    SELECT i.product_id, i.section_id, p.sku, p.titles, p.active
+    SELECT i.product_id, i.section_id, p.sku, p.titles, p.availability, p.active
     FROM thematic_campaigns c LEFT JOIN thematic_campaign_items i ON i.campaign_id = c.id
     LEFT JOIN search_horoshop_products p ON p.id = i.product_id
     WHERE c.id = $1 AND c.user_id = $2 AND c.revision = $3 ORDER BY i.position`, [id, userId, row.revision]);
@@ -54,7 +54,7 @@ export async function readCampaign(userId, id) {
   const byId = new Map(sections.map((section) => [section.id, section]));
   for (const item of result.rows) {
     if (item.product_id) byId.get(item.section_id).products.push({ id: item.product_id, sku: item.sku,
-      title: titleFor(item.titles, item.sku), inactive: !item.active });
+      title: titleFor(item.titles, item.sku), availability: item.availability, inactive: !item.active });
   }
   return { ...summary(row), generation: row.generation, sections };
 }

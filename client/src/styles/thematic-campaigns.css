@@ -16,9 +16,12 @@
 .campaign-section { border-top: 1px solid var(--line); padding: 10px 0; }
 .campaign-section__head input { flex: 1 1 150px; width: auto; }
 .campaign-section__products { padding-top: 12px; }
-.campaign-section__products ul { list-style: none; padding: 0; }
-.campaign-section__products li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; }
-.campaign-section__products small { display: block; }
+.campaign-products { display: grid; gap: 8px; list-style: none; padding: 0; margin: 12px 0; }
+.campaign-product { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.campaign-product__details { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.campaign-product__details strong { font-size: 14px; line-height: 1.4; }
+.campaign-product__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.campaign-product__meta .horoshop-badge { max-width: 100%; padding: 4px 8px; white-space: normal; }
 .campaign-report { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border-radius: 8px; background: var(--surface-soft); max-height: 340px; overflow: auto; }
 .campaign-error { color: var(--danger, #a32036); }
 @media (max-width: 800px) { .campaign-layout { grid-template-columns: 1fr; } }

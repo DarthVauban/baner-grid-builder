@@ -204,6 +204,7 @@ test('thematic campaigns resolve mixed lists, persist category edits and serve c
     entries: ['Смартфон TECNO Spark 50 4/128GB', 'BLACK-50', 'TECNO-50', 'POCO-X7-PRO', 'BLACK-50', '???']
   }).expect(200)).body.data;
   assert.deepEqual(resolved.matched.map((item) => item.id), [productId, unavailableProductId]);
+  assert.deepEqual(resolved.matched.map((item) => item.availability), ['В наявності', 'Немає в наявності']);
   assert.equal(resolved.matched[0].category, 'smartphones');
   assert.equal(resolved.duplicates, 3);
   assert.deepEqual(resolved.unmatched, ['???']);
@@ -226,7 +227,9 @@ test('thematic campaigns resolve mixed lists, persist category edits and serve c
   assert.ok((await admin.get(base).expect(200)).body.data.some((row) => row.id === created.id));
   const detail = (await admin.get(resource).expect(200)).body.data;
   assert.equal(detail.sections[1].products.length, 125);
+  assert.equal(detail.sections[1].products[0].availability, null);
   assert.equal(detail.sections[0].products[0].sku, 'TECNO-50');
+  assert.deepEqual(detail.sections[0].products.map((item) => item.availability), ['В наявності', 'Немає в наявності']);
   await admin.put(resource).send({ ...input, revision: 1, sections: [input.sections[0], { ...input.sections[1], productIds: [productId] }] }).expect(422);
   const embed = await request(app).get(widget + '/embed.js').expect(200);
   assert.match(embed.text, /Різдво/u);
@@ -259,6 +262,9 @@ test('thematic campaigns resolve mixed lists, persist category edits and serve c
   assert.equal(filtered.products[0].productExternalId, 'extra-1');
   const continued = (await request(app).get(widget + '/products').query({ revision: 1, section: second, cursor: page.nextCursor }).expect(200)).body.data;
   assert.equal(continued.products[0].productExternalId, 'extra-24');
+  await pool.query('UPDATE search_horoshop_products SET availability = $2 WHERE id = $1', [productId, 'Очікується']);
+  const refreshed = (await admin.get(resource).expect(200)).body.data;
+  assert.equal(refreshed.sections[0].products[0].availability, 'Очікується');
   const revision = (await admin.put(resource).send({ ...input, name: 'Зимові акції', revision: 1,
     sections: [{ ...input.sections[0], name: 'Усі подарунки', categories: ['smartphones', 'gift'], productIds: [productId, ...extra] }]
   }).expect(200)).body.data.revision;

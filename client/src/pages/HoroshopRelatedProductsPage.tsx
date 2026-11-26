@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon';
 import { StyledSelect } from '../components/StyledSelect';
 import { HoroshopAccessoryManager } from '../components/horoshop/HoroshopAccessoryManager';
 import { api } from '../lib/api';
+import { horoshopAvailability } from '../lib/horoshop-availability';
 import type {
   HoroshopCatalogModification,
   HoroshopCatalogProduct,
@@ -13,29 +14,13 @@ import type {
   HoroshopLocalizedText
 } from '../types/horoshop-catalog';
 
-type AvailabilityTone = 'available' | 'waiting' | 'unavailable' | 'unknown';
-
 function titleFor(titles: HoroshopLocalizedText, fallback: string) {
   return titles.uk || titles.ua || titles.ru || titles.en || Object.values(titles)[0] || fallback;
 }
 
-function availabilityFor(value: string | null | undefined, active = true): { label: string; tone: AvailabilityTone } {
-  if (!active) return { label: 'Неактивний', tone: 'unavailable' };
-  const label = value?.trim();
-  if (!label) return { label: 'Наявність не вказана', tone: 'unknown' };
-  const normalized = label.toLocaleLowerCase('uk-UA');
-  if (/немає|відсут|нет\s+в\s+налич|out\s+of\s+stock|not\s+available|^0$/u.test(normalized)) {
-    return { label, tone: 'unavailable' };
-  }
-  if (/очіку|під\s+замовлення|предзаказ|preorder|wait/u.test(normalized)) {
-    return { label, tone: 'waiting' };
-  }
-  return { label, tone: 'available' };
-}
-
 function cardAvailabilityFor(product: HoroshopCatalogProduct) {
   const statuses = (product.modifications.length > 0 ? product.modifications : [product])
-    .map((item) => availabilityFor(item.availability, item.active));
+    .map((item) => horoshopAvailability(item.availability, item.active));
   if (statuses.some((status) => status.tone === 'available')) {
     return { label: 'Є в наявності', tone: 'available' as const };
   }
@@ -92,7 +77,7 @@ function ProductImage({ src, brand, small = false }: { src: string | null; brand
 }
 
 function AvailabilityBadge({ value, active }: { value: string | null; active: boolean }) {
-  const state = availabilityFor(value, active);
+  const state = horoshopAvailability(value, active);
   return <span className={`horoshop-badge horoshop-badge--${state.tone}`}><i />{state.label}</span>;
 }
 
