@@ -30,6 +30,10 @@ button { cursor: pointer; }
 .support-message p { margin: 0; font-size: 13px; line-height: 1.48; white-space: pre-wrap; }
 .support-message small { font-size: 10px; font-weight: 800; }
 .support-message time { justify-self: end; color: inherit; opacity: .55; font-size: 9px; }
+.support-message__error { font-size: 10px; opacity: .75; }
+.support-message__delivery { justify-self: end; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 10px; }
+.support-message__delivery button { min-height: 30px; border: 0; padding: 3px 0; color: inherit; background: transparent; font: inherit; text-decoration: underline; }
+.support-message__delivery button:disabled { cursor: default; opacity: .5; }
 .support-message--visitor { align-self: flex-end; border-bottom-right-radius: 5px; color: #111; background: var(--support-accent); }
 .support-message--operator { align-self: flex-start; border-bottom-left-radius: 5px; color: #181818; background: #fff; box-shadow: 0 5px 18px rgba(17,17,17,.07); }
 .support-message--system { align-self: flex-start; border: 1px solid #e3e3dc; border-bottom-left-radius: 5px; color: #45453f; background: #eeeeea; }

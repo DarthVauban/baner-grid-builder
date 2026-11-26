@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmDialogProvider } from '../dialogs/ConfirmDialogContext';
@@ -198,6 +198,7 @@ function previewPayload(campaign: PopupCampaignInput): PopupPreviewPayload {
       styles: campaign.styles,
       behavior: campaign.behavior,
       timerConfig: campaign.timerConfig,
+      productPopup: campaign.productPopup,
       formConfig: campaign.formConfig,
       promoCode: campaign.promoCodeId ? {
         libraryId: promoCode.id,
@@ -232,6 +233,10 @@ function renderPage() {
       </ToastProvider>
     </QueryClientProvider>
   );
+}
+
+async function openCampaign(campaign = baseCampaign) {
+  fireEvent.click(await screen.findByRole('button', { name: new RegExp(campaign.name, 'u') }));
 }
 
 beforeEach(() => {
@@ -271,10 +276,149 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('PopupBannersPage', () => {
+  it('configures a single-product popup with uploaded artwork, editable copy, independent price switches and element styles', async () => {
+    const upload = vi.spyOn(api.popupBanners, 'uploadImage').mockResolvedValue({
+      id: 'art', folderId: null, name: 'art.png', url: '/media/catalog/library/art.webp', mimeType: 'image/webp',
+      width: 880, height: 1000, size: 500, originalSize: 1000, altText: '', createdBy: null, createdAt: '', updatedAt: ''
+    });
+    const create = vi.spyOn(api.popupBanners, 'create').mockImplementation(async (input) => ({ ...structuredClone(baseCampaign), ...input, id: 'product-popup', status: 'draft' }));
+    renderPage();
+    await screen.findByRole('button', { name: /Попередження про вживаний товар/u });
+    fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
+    fireEvent.click(screen.getByRole('dialog').querySelector('button')!); // close without creating a draft
+    fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Попап із товаром/u }));
+    expect(screen.getByText('Рекомендований розмір: 880 × 1000 px (22:25)')).toBeInTheDocument();
+    expect(screen.getByText('Рекомендований розмір: 1000 × 1000 px (1:1)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Обрати товар' }));
+    const choose = await screen.findAllByRole('button', { name: 'Обрати' });
+    fireEvent.click(choose[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Обрати' })[0]); // choosing another replaces the single product
+    expect(screen.getByRole('button', { name: /Товар банера/u })).toHaveTextContent('1 із 1');
+    fireEvent.click(screen.getByRole('button', { name: /Контент і дизайн/u }));
+    expect(screen.getByRole('textbox', { name: 'Посилання «Детальніше» з каталогу' })).toHaveAttribute('readonly');
+    fireEvent.change(screen.getByRole('textbox', { name: /Назва товару на банері/u }), { target: { value: 'Назва для цієї акції' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Спеціальна пропозиція' }), { target: { value: 'Пропозиція тижня' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Головний заголовок' }), { target: { value: 'Обирайте вигідно' } });
+    fireEvent.click(screen.getByRole('switch', { name: 'Показувати стару ціну' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Показувати лейбл вигоди' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Джерело старої ціни' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Встановити вручну' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Стара ціна' }), { target: { value: '699' } });
+    fireEvent.click(screen.getByRole('switch', { name: 'Показувати стару ціну' }));
+    expect(screen.getByRole('switch', { name: 'Показувати лейбл вигоди' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Елемент банера' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Актуальна ціна' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту, px' }), { target: { value: '40' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Розмір шрифту на телефоні, px' }), { target: { value: '30' } });
+    const file = new File(['image'], 'product.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Зображення банера для desktop'), { target: { files: [file] } });
+    await waitFor(() => expect(upload).toHaveBeenCalledWith(file));
+    expect(await screen.findByText('Завантажено: 880 × 1000 px')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled());
+    upload.mockResolvedValueOnce({ ...(await upload.mock.results[0].value), url: '/media/catalog/library/mobile.webp', width: 1000 });
+    const mobileFile = new File(['mobile'], 'mobile.png', { type: 'image/png' });
+    fireEvent.drop(screen.getByLabelText('Зображення банера для телефона').closest('section')!, { dataTransfer: { files: [mobileFile] } });
+    await waitFor(() => expect(upload).toHaveBeenCalledWith(mobileFile));
+    expect(await screen.findByText('Завантажено: 1000 × 1000 px')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      campaignType: 'product_popup', content: expect.objectContaining({ eyebrow: 'Пропозиція тижня', title: 'Обирайте вигідно', imageUrl: '/media/catalog/library/art.webp', primaryUrl: '' }),
+      productPopup: expect.objectContaining({ mobileImageUrl: '/media/catalog/library/mobile.webp', mobileImageWidth: 1000, mobileImageHeight: 1000, imageWidth: 880, imageHeight: 1000, titleOverride: 'Назва для цієї акції', showOldPrice: false, showSavings: true, oldPriceSource: 'manual', manualOldPrice: '699', elements: expect.objectContaining({ price: expect.objectContaining({ fontSize: 40, fontSizeMobile: 30 }) }) }),
+      promoItems: [{ productExternalId: 'promo-product-2', modificationExternalId: null }]
+    }), expect.anything()));
+  }, 10_000);
+
+  it('starts in the campaign library without mounting the editor or preview', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: /Попередження про вживаний товар/u })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Умови доставки великої техніки/u })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Розділи конструктора' })).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Живий перегляд банера')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(api.popupBanners.preview).not.toHaveBeenCalled();
+    expect(api.popupBanners.catalog).not.toHaveBeenCalled();
+  });
+
+  it('keeps an empty library visible until the user chooses to create a campaign', async () => {
+    vi.mocked(api.popupBanners.list).mockResolvedValue([]);
+    renderPage();
+
+    expect(await screen.findByText('Кампаній ще немає')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Створити кампанію' }));
+    expect(screen.getByRole('dialog', { name: 'Оберіть тип банера' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрити' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Кампаній ще немає')).toBeInTheDocument();
+  });
+
+  it('shows a load error without an empty library prompt or editor', async () => {
+    vi.mocked(api.popupBanners.list).mockRejectedValue(new Error('Unavailable'));
+    renderPage();
+
+    expect(await screen.findByText('Не вдалося завантажити кампанії.')).toBeInTheDocument();
+    expect(screen.queryByText('Кампаній ще немає')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    'Попап із товаром', 'Товарний промобанер', 'Банер із промокодом', 'Форма за промокод',
+    'Банер із таймером', 'Інформаційний попап', 'Альтернативи відсутнього товару'
+  ])('opens the editor after selecting %s in the new campaign dialog', async (label) => {
+    renderPage();
+    await screen.findByRole('button', { name: /Попередження про вживаний товар/u });
+    fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Оберіть тип банера' });
+    expect(within(dialog).getAllByRole('button')).toHaveLength(8);
+    expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: new RegExp(label, 'u') }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Назва кампанії' })).toBeInTheDocument();
+    const steps = within(screen.getByRole('navigation', { name: 'Розділи конструктора' }));
+    expect(steps.queryByRole('button', { name: /Бібліотека/u })).not.toBeInTheDocument();
+    expect(steps.getByRole('button', { name: /Контент і дизайн/u })).toHaveTextContent(/^1/u);
+  });
+
+  it('returns to the library and opens another campaign', async () => {
+    renderPage();
+    await openCampaign();
+    fireEvent.click(screen.getByRole('button', { name: 'До бібліотеки' }));
+
+    expect(await screen.findByRole('region', { name: 'Бібліотека кампаній' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
+    await openCampaign(secondCampaign);
+    expect(screen.getByDisplayValue(secondCampaign.name)).toBeInTheDocument();
+  });
+
+  it('preserves unsaved edits when the type dialog is closed or library navigation is cancelled', async () => {
+    renderPage();
+    await openCampaign();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Назва кампанії' }), { target: { value: 'Незбережена назва' } });
+    fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Незбережена назва')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'До бібліотеки' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Продовжити редагування' }));
+    expect(screen.getByDisplayValue('Незбережена назва')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'До бібліотеки' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'До бібліотеки' }));
+    expect(await screen.findByRole('region', { name: 'Бібліотека кампаній' })).toBeInTheDocument();
+  });
+
   it('opens an existing campaign in the redesigned workspace', async () => {
     renderPage();
 
-    expect(await screen.findByDisplayValue(baseCampaign.name)).toBeInTheDocument();
+    await openCampaign();
+    expect(screen.getByDisplayValue(baseCampaign.name)).toBeInTheDocument();
     expect(screen.getByText('Живий перегляд')).toBeInTheDocument();
     expect(screen.getAllByText('mobiletrend.com.ua')).toHaveLength(1);
     expect(screen.getByRole('button', { name: /Контент і дизайн/u })).toHaveClass('is-active');
@@ -299,6 +443,7 @@ describe('PopupBannersPage', () => {
 
   it('exits fullscreen with Escape inside a replacement preview frame and restores the workspace on unmount', async () => {
     const { container, unmount } = renderPage();
+    await openCampaign();
     await screen.findByTitle('Живий перегляд банера');
     const originalOverflow = document.body.style.overflow;
     container.inert = false;
@@ -321,9 +466,8 @@ describe('PopupBannersPage', () => {
 
   it('filters the campaign library by search and status', async () => {
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
-
-    fireEvent.click(screen.getByRole('button', { name: /Бібліотека/u }));
+    await screen.findByRole('region', { name: 'Бібліотека кампаній' });
+    await screen.findByRole('button', { name: /Умови доставки великої техніки/u });
     fireEvent.change(screen.getByRole('textbox', { name: 'Пошук кампаній' }), { target: { value: 'доставки' } });
     expect(screen.getByRole('button', { name: /Умови доставки великої техніки/u })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Попередження про вживаний товар/u })).not.toBeInTheDocument();
@@ -337,7 +481,7 @@ describe('PopupBannersPage', () => {
       vi.mocked(api.popupBanners.list).mockResolvedValue([baseCampaign, secondCampaign].filter((campaign) => campaign.id !== id));
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: 'Видалити кампанію' }));
     fireEvent.click(screen.getByRole('button', { name: 'Видалити' }));
@@ -358,7 +502,7 @@ describe('PopupBannersPage', () => {
       vi.mocked(api.popupBanners.list).mockResolvedValue([]);
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: 'Видалити кампанію' }));
     fireEvent.click(screen.getByRole('button', { name: 'Видалити' }));
@@ -370,7 +514,7 @@ describe('PopupBannersPage', () => {
 
   it('navigates to targeting and exposes the branded rule controls', async () => {
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
     fireEvent.click(screen.getByRole('radio', { name: /Умови каталогу/u }));
@@ -388,7 +532,7 @@ describe('PopupBannersPage', () => {
       productTargets: []
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
     fireEvent.click(screen.getByRole('radio', { name: /Цільова сторінка/u }));
@@ -424,7 +568,7 @@ describe('PopupBannersPage', () => {
       }]
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
     expect(screen.getByText('Де не показувати')).toBeInTheDocument();
@@ -458,7 +602,7 @@ describe('PopupBannersPage', () => {
       updatedAt: baseCampaign.updatedAt
     }));
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Умови показу/u }));
     fireEvent.click(screen.getByRole('radio', { name: /Товар відсутній/u }));
@@ -480,7 +624,8 @@ describe('PopupBannersPage', () => {
 
   it('marks edited content as unsaved and enables saving', async () => {
     renderPage();
-    const name = await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
+    const name = screen.getByDisplayValue(baseCampaign.name);
 
     fireEvent.change(name, { target: { value: 'Оновлена кампанія' } });
 
@@ -490,7 +635,7 @@ describe('PopupBannersPage', () => {
 
   it('exposes button and acknowledgement colors in the branded editor', async () => {
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')).toHaveLength(2);
     expect(screen.getAllByLabelText('Колір кнопки: вибрати колір')[0]).toHaveValue('#ffe101');
@@ -517,7 +662,7 @@ describe('PopupBannersPage', () => {
 
   it('configures exit intent as a display condition for an information popup', async () => {
     const { container } = renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getByRole('button', { name: /Поведінка й розклад/u }));
     fireEvent.click(screen.getByRole('button', { name: 'Умова появи' }));
@@ -552,7 +697,7 @@ describe('PopupBannersPage', () => {
       createdAt: baseCampaign.createdAt, updatedAt: baseCampaign.updatedAt, publishedAt: null
     }));
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     expect(screen.getByRole('heading', { name: 'Оберіть тип банера' })).toBeInTheDocument();
@@ -645,7 +790,7 @@ describe('PopupBannersPage', () => {
       publishedAt: null
     }));
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Банер із промокодом/u }));
@@ -690,7 +835,7 @@ describe('PopupBannersPage', () => {
       return saved;
     });
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Банер із таймером/u }));
     expect(screen.getByText('Зворотний відлік')).toBeInTheDocument();
@@ -739,7 +884,7 @@ describe('PopupBannersPage', () => {
       publishedAt: null
     }));
     renderPage();
-    await screen.findByDisplayValue(baseCampaign.name);
+    await openCampaign();
 
     fireEvent.click(screen.getAllByRole('button', { name: /Нова кампанія/u })[0]);
     fireEvent.click(screen.getByRole('button', { name: /Форма за промокод/u }));

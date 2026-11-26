@@ -231,6 +231,15 @@ export const tools: ToolDefinition[] = [
 
 export const workspaceSections: WorkspaceSectionDefinition[] = [
   {
+    id: 'thematic_campaigns',
+    accessToolId: 'product_selection',
+    name: 'Тематичні акції',
+    description: 'Акційні добірки за назвами й артикулами з навігацією між категоріями на вітрині.',
+    path: '/tools/thematic-campaigns',
+    icon: 'productSelection',
+    category: 'horoshop_api'
+  },
+  {
     id: 'form_buttons',
     accessToolId: 'form_builder',
     name: 'Кнопки форм',

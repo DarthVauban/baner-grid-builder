@@ -19,7 +19,7 @@ async function setupPreview(page: Page, campaignType: 'product_promo' | 'lead_fo
       campaign: {
         publicId: 'preview', revision: 'preview-layout', type: input.campaignType, mode: input.targeting.mode,
         content: input.content, styles: input.styles, behavior: input.behavior,
-        timerConfig: input.timerConfig, formConfig: input.formConfig,
+        timerConfig: input.timerConfig, formConfig: input.formConfig, productPopup: input.productPopup,
         promoCode: input.campaignType === 'lead_form'
           ? { code: 'CONTACT15', type: 'percent_coupon', discountValue: 15, currency: '', scopeNote: 'Для першого замовлення' }
           : null
@@ -36,7 +36,9 @@ async function setupPreview(page: Page, campaignType: 'product_promo' | 'lead_fo
   await page.getByRole('button', { name: 'Увійти' }).click();
   await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
   await page.goto('/tools/popup-banners');
-  await page.getByRole('button', { name: campaignType === 'lead_form' ? /Форма за промокод/u : /Товарний промобанер/u }).click();
+  await expect(page.getByRole('region', { name: 'Бібліотека кампаній' })).toBeVisible();
+  await page.getByRole('button', { name: /Нова кампанія/u }).click();
+  await page.getByRole('dialog', { name: 'Оберіть тип банера' }).getByRole('button', { name: campaignType === 'lead_form' ? /Форма за промокод/u : /Товарний промобанер/u }).click();
   const preview = page.frameLocator('iframe[title="Живий перегляд банера"]');
   await expect(campaignType === 'lead_form' ? preview.locator('.lead-form') : preview.locator('.card')).toBeVisible();
 }
@@ -59,12 +61,16 @@ async function setColor(control: Locator, value: string) {
   }, value);
 }
 
-test('retired builder links lead to the original popup editor', async ({ page }) => {
+test('retired builder links lead to the campaign library', async ({ page }) => {
   await setupPreview(page);
   for (const path of ['builder', 'builder/00000000-0000-4000-8000-000000000001', 'prototypes/blocks', 'prototypes/product', 'legacy']) {
     await page.goto('/tools/popup-banners/' + path);
     await expect(page).toHaveURL(/\/tools\/popup-banners$/u);
-    await expect(page.getByRole('heading', { name: 'Оберіть тип банера' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Бібліотека кампаній' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Назва кампанії' })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: /Нова кампанія/u }).click();
+    await expect(page.getByRole('dialog', { name: 'Оберіть тип банера' })).toBeVisible();
     await expect(page.getByRole('button', { name: /Альтернативи відсутнього товару/u })).toBeVisible();
     await expect(page.getByRole('button', { name: /Банер із таймером/u })).toBeVisible();
   }
@@ -78,6 +84,39 @@ for (const surface of [
     test.use({
       viewport: surface.device.viewport, userAgent: surface.device.userAgent,
       isMobile: surface.device.isMobile, hasTouch: surface.device.hasTouch, deviceScaleFactor: surface.device.deviceScaleFactor
+    });
+
+    test('opens campaign types in a scrollable dialog above the library', async ({ page }, testInfo) => {
+      await setupPreview(page);
+      await page.getByRole('button', { name: 'До бібліотеки', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Повернутися до бібліотеки?' }).getByRole('button', { name: 'До бібліотеки', exact: true }).click();
+      await expect(page.getByRole('region', { name: 'Бібліотека кампаній' })).toBeVisible();
+      await expect(page.getByTitle('Живий перегляд банера')).toHaveCount(0);
+      const create = page.getByRole('button', { name: /Нова кампанія/u });
+      await create.click();
+
+      const dialog = page.getByRole('dialog', { name: 'Оберіть тип банера' });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole('button')).toHaveCount(8);
+      const firstType = dialog.getByRole('button', { name: /Попап із товаром/u });
+      const lastType = dialog.getByRole('button', { name: /Альтернативи відсутнього товару/u });
+      await expect(firstType).toBeFocused();
+      await lastType.focus();
+      await page.keyboard.press('Tab');
+      await expect(dialog.getByRole('button', { name: 'Закрити', exact: true })).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(lastType).toBeFocused();
+      await lastType.scrollIntoViewIfNeeded();
+      await expectUncovered(lastType);
+      const bounds = (await dialog.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+      await page.screenshot({ path: testInfo.outputPath(`campaign-types-${surface.name}.png`) });
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect(create).toBeFocused();
+      await expect(page.getByRole('region', { name: 'Бібліотека кампаній' })).toBeVisible();
     });
 
     test('keeps the toolbar above the workspace and switches formats without leaving fullscreen', async ({ page }, testInfo) => {

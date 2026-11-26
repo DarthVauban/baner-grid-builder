@@ -132,6 +132,24 @@ export class HoroshopCatalogRepository {
     this.pool = databasePool;
   }
 
+  async allProductsForResolve(connection) {
+    const [products, modifications] = await Promise.all([
+      this.pool.query(`SELECT id, sku, titles, category_external_id FROM search_horoshop_products
+        WHERE connection_id = $1 AND generation = $2 AND active = TRUE ORDER BY sku, id`,
+      [connection.id, connection.generation]),
+      this.pool.query(`SELECT product_id, sku, titles FROM search_horoshop_modifications
+        WHERE connection_id = $1 AND generation = $2 AND active = TRUE`, [connection.id, connection.generation])
+    ]);
+    const byProduct = new Map();
+    for (const row of modifications.rows) {
+      const offers = byProduct.get(row.product_id) || [];
+      offers.push({ sku: row.sku, titles: jsonObject(row.titles) });
+      byProduct.set(row.product_id, offers);
+    }
+    return products.rows.map((row) => ({ id: row.id, sku: row.sku, categoryExternalId: row.category_external_id,
+      titles: jsonObject(row.titles), modifications: byProduct.get(row.id) || [] }));
+  }
+
   async getConnection() {
     const result = await this.pool.query(`
       SELECT id, generation, store_domain, encrypted_credentials, polling_interval_minutes,

@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
 import { defaultTimerConfig } from './popup-timer.js';
+import { productPopupConfigSchema } from './popup-product.config.js';
+import productPopupImageRoutes from './popup-product-image.routes.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { horoshopCatalogService } from '../search/horoshop/catalog.service.js';
@@ -24,6 +26,7 @@ import {
 
 const router = Router();
 router.use(requireAuth, requireToolAccess(popupBannerToolId));
+router.use('/image', productPopupImageRoutes);
 
 const idSchema = z.string().uuid();
 const catalogSchema = z.object({
@@ -206,8 +209,9 @@ const timerConfigSchema = z.object({
   durationMinutes: z.number().int().min(1).max(43200)
 }).optional().default(defaultTimerConfig);
 const campaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown', 'product_popup']).default('message'),
   timerConfig: timerConfigSchema,
+  productPopup: productPopupConfigSchema,
   name: z.string().trim().min(1).max(160),
   priority: z.number().int().min(0).max(1000),
   content: contentSchema,
@@ -229,6 +233,15 @@ const campaignSchema = z.object({
   message: 'Дата завершення має бути пізніше дати початку.',
   path: ['endsAt']
 }).superRefine((value, context) => {
+  if (value.campaignType === 'product_popup') {
+    if (value.promoItems.length !== 1) context.addIssue({ code: 'custom', path: ['promoItems'], message: 'Оберіть один товар для попапа.' });
+    if (!/^\/media\/catalog\/library\/[^/?#]+\.webp$/u.test(value.content.imageUrl)) context.addIssue({ code: 'custom', path: ['content', 'imageUrl'], message: 'Завантажте власне зображення для попапа.' });
+    if (value.targeting.mode === 'out_of_stock') context.addIssue({ code: 'custom', path: ['targeting', 'mode'], message: 'Попап із товаром не підтримує сценарій відсутнього товару.' });
+    if ((value.productPopup.showOldPrice || value.productPopup.showSavings) && value.productPopup.oldPriceSource === 'manual' && !(Number(value.productPopup.manualOldPrice.replace(',', '.')) > 0)) context.addIssue({ code: 'custom', path: ['productPopup', 'manualOldPrice'], message: 'Вкажіть стару ціну.' });
+    if (!value.content.title) context.addIssue({ code: 'custom', path: ['content', 'title'], message: 'Вкажіть головний заголовок.' });
+    if (!value.content.primaryLabel) context.addIssue({ code: 'custom', path: ['content', 'primaryLabel'], message: 'Вкажіть текст кнопки покупки.' });
+    return;
+  }
   if (value.campaignType === 'countdown') {
     if (value.targeting.mode === 'out_of_stock') context.addIssue({
       code: 'custom', path: ['targeting', 'mode'], message: 'Банер із таймером не підтримує сценарій відсутнього товару.'
@@ -281,8 +294,9 @@ const campaignSchema = z.object({
   });
 });
 const previewCampaignSchema = z.object({
-  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown']).default('message'),
+  campaignType: z.enum(['message', 'out_of_stock_recommendations', 'product_promo', 'promo_code', 'lead_form', 'countdown', 'product_popup']).default('message'),
   timerConfig: timerConfigSchema,
+  productPopup: productPopupConfigSchema,
   name: z.string().trim().max(160).optional().default(''),
   priority: z.number().int().min(0).max(1000).optional().default(0),
   content: contentSchema,

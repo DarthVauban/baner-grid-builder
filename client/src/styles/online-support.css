@@ -46,6 +46,9 @@
 .online-support-message p { margin: 0; font-size: 11px; line-height: 1.5; white-space: pre-wrap; }
 .online-support-message small { font-size: 8px; font-weight: 900; }
 .online-support-message time { justify-self: end; color: inherit; opacity: .55; font-size: 8px; }
+.online-support-message__delivery { justify-self: end; display: flex; align-items: center; gap: 6px; font-size: 9px; }
+.online-support-message__delivery button { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; text-decoration: underline; cursor: pointer; }
+.online-support-message__delivery button:disabled { opacity: .55; cursor: default; }
 .online-support-message.is-visitor { align-self: flex-start; border-bottom-left-radius: 4px; color: var(--ink); background: var(--surface); }
 .online-support-message.is-operator { align-self: flex-end; border-bottom-right-radius: 4px; color: #fff; background: var(--brand); }
 .online-support-message.is-operator a:not(.support-product-card) { color: inherit; text-decoration-color: rgba(255,255,255,.7); }
