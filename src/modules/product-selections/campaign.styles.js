@@ -1,8 +1,19 @@
 export const campaignStyles = `
-/* Horoshop uses separate article templates on desktop and mobile. */
+/* Desktop page and blog templates. */
 section.page:has(> .page-content .mt-campaign) > h1.main-h,
-section.blog > .blog__inner:has(> .text .mt-campaign) > h1.heading--xl {
+section.page > .article:has(> .article-text .mt-campaign) > :is(h1.main-h, .article__meta),
+/* Mobile page and blog templates. */
+section.blog > .blog__inner:has(> .text .mt-campaign) > h1.heading--xl,
+section.blog > .blog__inner > .article:has(> .text .mt-campaign) > :is(h1.heading--xl, .article-meta) {
   display: none !important;
+}
+
+.layout:has(> .layout-main > .layout-main-inner > section.page > .article > .article-text .mt-campaign) > aside.layout-aside {
+  display: none !important;
+}
+
+.layout > .layout-main > .layout-main-inner:has(> section.page > .article > .article-text .mt-campaign) {
+  padding-left: 0 !important;
 }
 
 .mt-campaign.mt-product-selection {
