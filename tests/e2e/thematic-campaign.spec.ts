@@ -27,6 +27,47 @@ for (const mobile of [false, true]) {
       await page.route(workspace + '/winter/embed.js', (route) => route.fulfill({ contentType: 'application/javascript; charset=utf-8',
         body: productSelectionEmbedScript(campaign, '', { styles: campaignStyles, mount: mountCampaign }) }));
     });
+    test('hides the blog heading and sidebar and gives the campaign the available width', async ({ page }) => {
+      const article = (title: string, content = '') => mobile
+        ? `<section class="blog wrapper"><div class="blog__inner"><div class="article">
+            <nav class="breadcrumbs">Підбірки товарів</nav><h1 class="heading heading--xl">${title}</h1>
+            <div class="article-meta">Дата публікації</div><div class="text">${content}</div>
+          </div></div></section>`
+        : `<div class="wrapper"><div class="layout"><div class="layout-main"><div class="layout-main-inner">
+            <section class="page"><div class="article"><nav class="breadcrumbs">Підбірки товарів</nav>
+            <h1 class="main-h">${title}</h1><div class="article__meta">Дата публікації</div>
+            <div class="article-text __fullWidth text">${content}</div></div></section>
+          </div></div><aside class="layout-aside"><nav class="sideMenu">Меню: ${title}</nav></aside></div></div>`;
+      await page.route(shop + '/blog-sale', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body:
+        `<meta name="viewport" content="width=device-width,initial-scale=1"><style>
+          .layout { display: flex } .layout-main { flex: 1 1 auto; min-width: 0 }
+          .layout-main-inner { padding-left: 20px } .layout-aside { order: -1; flex: 0 0 220px }
+        </style><header>Шапка магазину</header><main id="main">
+        ${article('Чорна п’ятниця', `<script async src="${workspace}/winter/embed.js"></script>`)}
+        ${article('Інша стаття')}</main>`
+      }));
+      await page.route(workspace + '/winter/products?**', (route) => route.fulfill({
+        headers: { 'access-control-allow-origin': '*' }, json: { data: { products: [], total: 0, nextCursor: null } }
+      }));
+      await page.goto(shop + '/blog-sale');
+      const root = page.locator('.mt-campaign');
+      const host = page.locator('.article').filter({ has: root });
+      const other = page.locator('.article').filter({ hasText: 'Інша стаття' });
+      await expect(root.getByRole('heading', { name: 'Різдво' })).toBeVisible();
+      await expect(host.locator('h1')).toBeHidden();
+      await expect(host.getByText('Дата публікації')).toBeHidden();
+      await expect(host.locator('.breadcrumbs')).toBeVisible();
+      await expect(other.getByRole('heading', { name: 'Інша стаття' })).toBeVisible();
+      await expect(other.getByText('Дата публікації')).toBeVisible();
+      await expect(page.getByRole('banner')).toBeVisible();
+      if (!mobile) {
+        const layout = page.locator('.layout').filter({ has: root });
+        await expect(layout.locator('.layout-aside')).toBeHidden();
+        await expect(page.getByText('Меню: Інша стаття')).toBeVisible();
+        const bounds = await layout.boundingBox();
+        expect(await root.boundingBox()).toMatchObject({ x: bounds?.x, width: bounds?.width });
+      }
+    });
     test('navigates categories, pages, returns from the product and buys through the native surface', async ({ page }) => {
       const calls: string[] = [];
       const morePhones = Promise.withResolvers<void>();
