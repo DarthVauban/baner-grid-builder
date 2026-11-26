@@ -21,7 +21,8 @@ for (const mobile of [false, true]) {
         : `<section class="page"><nav class="breadcrumbs">Каталог</nav><h1 class="main-h">${title}</h1>
             <div class="page-content"><div class="article-text __fullWidth text">${content}</div></div></section>`;
       await page.route(shop + '/sale**', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body:
-        `<meta name="viewport" content="width=device-width,initial-scale=1"><header><input placeholder="Пошук магазину"></header><main id="main">
+        `<meta name="viewport" content="width=device-width,initial-scale=1"><style>.text a:hover { color: #4a4a4a }</style>
+        <header><input placeholder="Пошук магазину"></header><main id="main">
         ${article('Акційні добірки товарів', '<script async src="' + workspace + '/winter/embed.js"></script>')}
         ${article('Інша стаття', '')}</main>
         <script>let added;window.AjaxCart={getInstance:()=>({getProductById:()=>added,appendProduct:()=>{added={quantity:1}}})}</script>`
@@ -148,7 +149,15 @@ for (const mobile of [false, true]) {
         await page.getByRole('combobox', { name: 'Категорії' }).selectOption('phones');
       } else {
         await expect(page.getByRole('combobox')).toBeHidden();
-        await page.getByRole('link', { name: 'Телефони 25' }).click();
+        const categories = page.getByRole('navigation', { name: 'Категорії акції' });
+        const selectedCategory = categories.locator('a[aria-current=true]');
+        await selectedCategory.hover();
+        await expect(selectedCategory).toHaveCSS('color', 'rgb(0, 0, 0)');
+        await expect(selectedCategory).toHaveCSS('background-color', 'rgb(255, 225, 1)');
+        const phones = categories.getByRole('link', { name: 'Телефони 25' });
+        await phones.hover();
+        await expect(phones).toHaveCSS('color', 'rgb(255, 225, 1)');
+        await phones.click();
       }
       await expect(cards.first()).toContainText('phones-0');
       await expect(page.getByRole('heading', { name: 'Телефони', exact: true })).toBeVisible();

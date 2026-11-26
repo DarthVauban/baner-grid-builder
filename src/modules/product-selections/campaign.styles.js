@@ -113,8 +113,9 @@ section.blog > .blog__inner > .article:has(> .text .mt-campaign) > :is(h1.headin
   overflow-wrap: anywhere;
 }
 
-.mt-campaign__nav a:hover {
+.mt-campaign__nav a:hover:not([aria-current=true]) {
   background: #262626;
+  color: var(--mt-selection-accent);
 }
 
 .mt-campaign__nav a[aria-current=true] {
