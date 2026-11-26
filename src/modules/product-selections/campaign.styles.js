@@ -1,10 +1,10 @@
 export const campaignStyles = `
 /* Desktop page and blog templates. */
 section.page:has(> .page-content .mt-campaign) > h1.main-h,
-section.page > .article:has(> .article-text .mt-campaign) > :is(h1.main-h, .article__meta),
+section.page > .article:has(> .article-text .mt-campaign) > :is(h1.main-h, .article__meta, [id="comments-container"]),
 /* Mobile page and blog templates. */
 section.blog > .blog__inner:has(> .text .mt-campaign) > h1.heading--xl,
-section.blog > .blog__inner > .article:has(> .text .mt-campaign) > :is(h1.heading--xl, .article-meta) {
+section.blog > .blog__inner > .article:has(> .text .mt-campaign) > :is(h1.heading--xl, .article-meta, .blog__comments) {
   display: none !important;
 }
 
