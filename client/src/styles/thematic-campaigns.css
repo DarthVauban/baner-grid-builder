@@ -7,6 +7,11 @@
 .campaign-name { display: grid; gap: 6px; font-weight: 600; }
 .campaign-panel :is(input, textarea) { width: 100%; min-width: 0; padding: 10px 12px; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .campaign-panel textarea { display: block; margin: 10px 0; resize: vertical; }
+.campaign-pricing { margin-top: 22px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.campaign-pricing__fields { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(120px, .6fr); gap: 10px; }
+.campaign-pricing__fields > label:not(.product-pricing-checkbox) { display: grid; align-content: start; min-width: 0; gap: 6px; color: var(--muted); font-size: 13px; }
+.campaign-pricing__fields .product-pricing-checkbox input { width: 18px; padding: 0; }
+.campaign-pricing > p:last-child { margin-bottom: 0; }
 .campaign-bar, .campaign-actions, .campaign-section__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .campaign-bar { justify-content: space-between; margin: 22px 0 14px; }
 .campaign-bar small, .campaign-section small { font-weight: 400; color: var(--muted); }
@@ -25,3 +30,4 @@
 .campaign-report { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border-radius: 8px; background: var(--surface-soft); max-height: 340px; overflow: auto; }
 .campaign-error { color: var(--danger, #a32036); }
 @media (max-width: 800px) { .campaign-layout { grid-template-columns: 1fr; } }
+@media (max-width: 540px) { .campaign-pricing__fields { grid-template-columns: 1fr; } }

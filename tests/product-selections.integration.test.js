@@ -274,3 +274,52 @@ test('thematic campaigns resolve mixed lists, persist category edits and serve c
   await admin.delete(resource).query({ revision }).expect(204);
   await request(app).get(widget + '/embed.js').expect(404);
 });
+
+test('thematic campaigns apply the selection pricing modes on cards and tokenized product pages', async () => {
+  const base = '/api/thematic-campaigns';
+  const input = { generation, name: 'Акційна ціна', sections: [
+    { id: randomUUID(), name: 'Телефони', categories: ['smartphones'], productIds: [productId] }
+  ] };
+  const created = (await admin.post(base).send(input).expect(201)).body.data;
+  const resource = base + '/' + created.id;
+  const products = '/api/public/thematic-campaigns/' + created.publicId + '/products';
+  const getProduct = async (revision) => (await request(app).get(products).query({ revision }).expect(200)).body.data.products[0];
+
+  const detail = (await admin.get(resource).expect(200)).body.data;
+  assert.deepEqual(detail.pricing, { priceMode: 'none', priceValue: 0, highlightPromoPrice: false });
+  const original = await getProduct(1);
+  assert.equal(new URL(original.pageUrl).searchParams.has('mt_promo'), false);
+  assert.equal(original.highlightPrice, false);
+  await admin.put(resource).send({ ...input, revision: 1, pricing: { priceMode: 'percent', priceValue: 0 } }).expect(422);
+
+  const percent = { priceMode: 'percent', priceValue: 10, highlightPromoPrice: true };
+  await admin.put(resource).send({ ...input, revision: 1, pricing: percent }).expect(200);
+  assert.deepEqual((await admin.get(resource).expect(200)).body.data.pricing, percent);
+  const discounted = await getProduct(2);
+  assert.equal(discounted.price, '8999');
+  assert.equal(discounted.oldPrice, '9890');
+  assert.equal(discounted.highlightPrice, true);
+  const token = new URL(discounted.pageUrl).searchParams.get('mt_promo');
+  assert.ok(token);
+  const promo = '/api/public/product-selections/promo/' + token;
+  assert.deepEqual((await request(app).get(promo).query({ page: discounted.pageUrl }).expect(200)).body.data,
+    { mode: 'percent', value: 10, highlightPromoPrice: true });
+  await request(app).get(promo).query({ page: 'https://another.example.com/tecno-spark-50/' }).expect(404);
+  await request(app).get(promo).query({ page: 'https://shop.example.com/another-product/' }).expect(404);
+
+  await admin.put(resource).send({ ...input, revision: 2, name: 'Змінена акція' }).expect(200);
+  assert.deepEqual((await admin.get(resource).expect(200)).body.data.pricing, percent);
+  const fixed = { priceMode: 'fixed', priceValue: 450.5, highlightPromoPrice: false };
+  await admin.put(resource).send({ ...input, revision: 3, pricing: fixed }).expect(200);
+  const fixedProduct = await getProduct(4);
+  assert.equal(fixedProduct.price, '8999');
+  assert.equal(fixedProduct.oldPrice, '9449.5');
+  assert.equal(fixedProduct.highlightPrice, false);
+  assert.equal(new URL(fixedProduct.pageUrl).searchParams.get('mt_promo'), token);
+  assert.deepEqual((await request(app).get(promo).query({ page: discounted.pageUrl }).expect(200)).body.data,
+    { mode: 'fixed', value: 450.5, highlightPromoPrice: false });
+
+  await admin.put(resource).send({ ...input, revision: 4, pricing: { priceMode: 'none', highlightPromoPrice: false } }).expect(200);
+  assert.equal((await getProduct(5)).pageUrl, original.pageUrl);
+  await request(app).get(promo).query({ page: discounted.pageUrl }).expect(404);
+});

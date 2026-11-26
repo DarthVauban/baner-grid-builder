@@ -1,5 +1,5 @@
 import { test, expect, devices } from '@playwright/test';
-import { productSelectionEmbedScript } from '../../src/modules/product-selections/product-selection.embed.js';
+import { productPromoLoaderScript, productSelectionEmbedScript } from '../../src/modules/product-selections/product-selection.embed.js';
 import { campaignStyles, mountCampaign } from '../../src/modules/product-selections/campaign.embed.js';
 
 const shop = 'https://campaign-shop.test';
@@ -106,6 +106,8 @@ for (const mobile of [false, true]) {
     test('navigates categories, pages, returns from the product and buys through the native surface', async ({ page }) => {
       const calls: string[] = [];
       const morePhones = Promise.withResolvers<void>();
+      const promoToken = '00000000-0000-4000-8000-000000000001';
+      const promoPage = shop + '/product?mt_promo=' + promoToken;
       await page.route(workspace + '/winter/products?**', async (route) => {
         const params = new URL(route.request().url()).searchParams;
         expect(params.has('q')).toBe(false);
@@ -117,20 +119,36 @@ for (const mobile of [false, true]) {
         const brands = params.getAll('brand');
         const products = Array.from({ length: count }, (_, i) => ({ title: id + '-' + i,
           brand: id === 'audio' || i === 25 ? 'JBL' : i === 24 ? 'Sony' : 'Samsung',
-          article: 'P1', pageUrl: shop + '/product', imageUrl: shop + '/photo.svg', price: '500', currency: 'UAH', available: true, buyId: '42' }))
+          article: 'P1', pageUrl: promoPage, imageUrl: shop + '/photo.svg', price: '500', oldPrice: '550',
+          highlightPrice: true, currency: 'UAH', available: true, buyId: '42' }))
           .filter((p) => !brands.length || brands.includes(p.brand.toLowerCase()));
         return route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { data: {
           products: products.slice(offset, offset + 24), total: products.length, nextCursor: offset + 24 < products.length ? offset + 24 : null
         } } });
       });
       await page.route(shop + '/photo.svg', (route) => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>' }));
-      await page.route(shop + '/product', (route) => {
+      await page.route(workspace + '/promo-loader.js', (route) => route.fulfill({
+        contentType: 'application/javascript; charset=utf-8', body: productPromoLoaderScript(workspace)
+      }));
+      await page.route(workspace + '/api/public/product-selections/promo/' + promoToken + '?**', (route) => {
+        expect(new URL(route.request().url()).searchParams.get('page')).toBe(promoPage);
+        return route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: {
+          data: { mode: 'percent', value: 10, highlightPromoPrice: true }
+        } });
+      });
+      await page.route(shop + '/product**', (route) => {
         const uaMobile = /Android|Mobile/u.test(route.request().headers()['user-agent']);
         expect(uaMobile).toBe(mobile);
         const buy = '<button class="j-buy-button-add" id="j-buy-button-widget-42" data-quantity="1"></button>';
         const markup = uaMobile ? `<div class="product__block--orderBox"><div data-view-block="orderBox"><div class="product-card--main" itemprop="offers"><div class="product-card__buy-button">${buy}</div></div></div></div>`
           : `<div class="product-order__block--buy">${buy}</div>`;
-        return route.fulfill({ contentType: 'text/html', body: '<meta itemprop="sku" content="P1">' + markup });
+        const priceMeta = '<meta itemprop="price" content="500"><meta itemprop="priceCurrency" content="UAH">';
+        const priceBox = uaMobile
+          ? `<div class="product-card__price-box">${priceMeta}<span class="product-card__price">500 грн</span></div>`
+          : `<div class="product-price__box">${priceMeta}<span class="product-price__item">500 грн</span></div>`;
+        return route.fulfill({ contentType: 'text/html; charset=utf-8', body:
+          `<meta name="viewport" content="width=device-width,initial-scale=1"><meta itemprop="sku" content="P1">
+          ${markup}${priceBox}<script src="${workspace}/promo-loader.js"></script>` });
       });
       await page.goto(shop + '/sale?ref=mail&mt-q-winter=old-search');
       const cards = page.locator('.mt-product-selection__card');
@@ -143,6 +161,7 @@ for (const mobile of [false, true]) {
       await expect(page.getByRole('heading', { name: 'Різдво' })).toBeVisible();
       await expect(page.locator('.mt-campaign input')).toHaveCount(0);
       await expect(cards.first().locator('strong')).toHaveText('500 ₴');
+      await expect(cards.first().locator('.mt-product-selection__price.is-promo del')).toHaveText('550 ₴');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (mobile) {
         await expect(page.getByRole('navigation', { name: 'Категорії акції' })).toBeHidden();
@@ -189,6 +208,11 @@ for (const mobile of [false, true]) {
       }
       await expect(cards).toHaveCount(25);
       await cards.last().getByRole('link', { name: 'phones-24', exact: true }).last().click();
+      await expect(page).toHaveURL(promoPage);
+      const oldPrice = page.locator('.mt-product-promo-old-price');
+      await expect(oldPrice).toHaveText('550 грн');
+      await expect(oldPrice).toHaveAttribute('data-mt-promo-surface', mobile ? 'mobile' : 'desktop');
+      await expect(page.locator('.mt-product-promo-current-price')).toHaveText('500 грн');
       await page.goBack();
       await expect(cards).toHaveCount(25);
       await expect(page).toHaveURL(/ref=mail&mt-section-winter=phones/u);

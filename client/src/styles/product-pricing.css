@@ -1,0 +1,5 @@
+.product-pricing-checkbox { display: flex; grid-column: 1 / -1; align-items: flex-start; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.product-pricing-checkbox input { width: 18px; height: 18px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--brand); }
+.product-pricing-checkbox > span { display: grid; gap: 3px; }
+.product-pricing-checkbox > span strong { color: var(--ink); font-size: 12px; }
+.product-pricing-checkbox > span small { color: var(--muted); font-size: 10px; line-height: 1.4; }

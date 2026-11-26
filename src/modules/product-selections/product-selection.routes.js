@@ -5,6 +5,7 @@ import { parseInput } from '../../lib/validation.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { horoshopCatalogService } from '../search/horoshop/catalog.service.js';
+import { productPricingFields, validateProductPricing } from './product-pricing.validation.js';
 import {
   createProductSelection,
   deleteProductSelection,
@@ -37,21 +38,13 @@ const selectionItemSchema = z.object({
 const selectionSchema = z.object({
   name: z.string().trim().min(1, 'Вкажіть назву вибірки.').max(160),
   heading: z.string().trim().min(1, 'Вкажіть заголовок блоку.').max(200),
-  priceMode: z.enum(['none', 'percent', 'fixed']).default('none'),
-  priceValue: z.coerce.number().min(0).max(1_000_000).default(0),
-  highlightPromoPrice: z.boolean().default(true),
+  ...productPricingFields,
   buttonLabel: z.string().trim().min(1).max(80).default('Купити'),
   desktopColumns: z.coerce.number().int().min(2).max(5).default(4),
   mobileColumns: z.coerce.number().int().min(1).max(2).default(2),
   items: z.array(selectionItemSchema).min(1, 'Додайте хоча б один товар.').max(100)
 }).superRefine((input, context) => {
-  if (input.priceMode !== 'none' && input.priceValue <= 0) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['priceValue'],
-      message: 'Для старої ціни вкажіть значення більше нуля.'
-    });
-  }
+  validateProductPricing(input, context);
   const keys = new Set();
   input.items.forEach((item, index) => {
     const key = `${item.productExternalId}\0${item.modificationExternalId || ''}`;
