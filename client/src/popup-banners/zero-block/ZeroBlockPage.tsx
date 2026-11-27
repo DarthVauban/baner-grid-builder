@@ -19,7 +19,7 @@ function LibraryLink() {
   return <Link to={base} className="button button--secondary button--small"><Icon name="arrowLeft" size={17} /> До кампаній</Link>;
 }
 
-function CreateCampaign() {
+export function CreateZeroBlockCampaignPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -52,7 +52,7 @@ function CreateCampaign() {
   </section>;
 }
 
-function CampaignContacts() {
+export function ZeroBlockContactsPage() {
   const [params, setParams] = useSearchParams();
   const campaignId = params.get('campaign') || undefined;
   const page = Math.max(1, Number(params.get('page')) || 1);
@@ -86,7 +86,6 @@ function CampaignContacts() {
 
 export default function ZeroBlockPage() {
   const { id } = useParams();
-  if (!id || id === 'new') return <CreateCampaign />;
-  if (id === 'contacts') return <CampaignContacts />;
+  if (!id) return null;
   return <PaintLibraryProvider adapter={zeroBlockApi.paints}><PopupBuilder key={id} widgetId={id} /></PaintLibraryProvider>;
 }

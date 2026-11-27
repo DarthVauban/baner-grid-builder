@@ -8,6 +8,14 @@ const api = '/api/popup-banners/zero-block';
 type Fixture = { token: string; store: string };
 const editor = (page: Page) => page.getByRole('region', { name: 'Конструктор Zero Block' });
 
+async function expectFullscreenEditor(page: Page) {
+  await expect(editor(page)).toBeVisible();
+  await expect(page.locator('.app-shell')).toHaveCount(0);
+  await expect(editor(page)).toHaveCSS('position', 'fixed');
+  const bounds = await editor(page).boundingBox();
+  expect(bounds).toEqual({ x: 0, y: 0, ...page.viewportSize() });
+}
+
 async function reset(request: APIRequestContext): Promise<Fixture> {
   const response = await request.post('/__e2e/zero-block/reset');
   expect(response.ok()).toBe(true);
@@ -24,8 +32,9 @@ async function openWorkspace(page: Page) {
   await page.getByRole('button', { name: 'Нова кампанія' }).click();
   await page.getByRole('dialog').getByRole('button', { name: /Zero Block/ }).click();
   await page.getByRole('textbox', { name: 'Назва кампанії' }).fill('Весняна пропозиція');
+  await expect(page.locator('.app-shell')).toHaveCount(1);
   await page.getByRole('button', { name: 'Створити чернетку' }).click();
-  await expect(editor(page)).toBeVisible();
+  await expectFullscreenEditor(page);
 }
 
 test('the workspace editor keeps canvas nodes, saves independent designs and restores the draft', async ({ page, request }, info) => {
@@ -70,9 +79,17 @@ test('the workspace editor keeps canvas nodes, saves independent designs and res
   await shell.getByRole('button', { name: 'Перегляд', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Закрити перегляд' })).toBeVisible();
   await page.reload();
+  await expectFullscreenEditor(page);
   await expect(editor(page).getByText('Весняна пропозиція')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Змінити ширину полотна' })).toHaveAttribute('title', /970 px/u);
   await expect(page.locator('.popup-toggle').first()).toHaveCSS('display', 'flex');
+
+  await editor(page).getByRole('link', { name: 'До кампаній' }).click();
+  await expect(page.getByRole('region', { name: 'Бібліотека кампаній' })).toBeVisible();
+  await expect(page.locator('.app-shell')).toHaveCount(1);
+  await page.getByRole('link', { name: 'Заявки Zero Block' }).click();
+  await expect(page.getByRole('heading', { name: 'Заявки Zero Block' })).toBeVisible();
+  await expect(page.locator('.app-shell')).toHaveCount(1);
 });
 
 test.describe('the workspace at phone width', () => {

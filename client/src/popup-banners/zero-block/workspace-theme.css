@@ -52,15 +52,7 @@
   --editor-properties-width: minmax(210px, 300px);
 }
 
-.page-container:has(> .builder-shell) { max-width: none; }
-.page-container > .builder-shell {
-  position: relative;
-  inset: auto;
-  min-height: min(780px, calc(100dvh - var(--workspace-topbar-height, 68px) - 36px));
-  height: calc(100dvh - var(--workspace-topbar-height, 68px) - 36px);
-  border-radius: 16px;
-  font-family: var(--font-sans);
-}
+.builder-shell { font-family: var(--font-sans); }
 .builder-shell .builder-header { min-height: 74px; }
 .builder-shell .button--primary.ui-button--primary {
   color: #fff;
@@ -123,8 +115,8 @@
   .builder-shell .builder-main { --editor-rail-width: 132px; --editor-properties-width: minmax(180px, 235px); }
 }
 @media (max-width: 780px) {
-  .page-container > .builder-shell { height: auto; min-height: 100dvh; }
-  .builder-shell .builder-main { overflow: visible; }
+  .builder-shell .builder-design-screen { overflow: auto; }
+  .builder-shell .builder-main { flex: none; overflow: visible; }
   .builder-shell .builder-header-identity { width: 100%; }
   .builder-shell .builder-header-identity > .ui-link { min-height: 36px; padding-inline: 8px; }
   .builder-shell .builder-header-actions { min-width: 0; }
