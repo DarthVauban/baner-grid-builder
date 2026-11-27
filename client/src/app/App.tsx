@@ -113,6 +113,7 @@ const OnlineSupportPage = lazy(() => import('../pages/OnlineSupportPage').then((
 const PopupBannersPage = lazy(() => import('../pages/PopupBannersPage').then((module) => ({
   default: module.PopupBannersPage
 })));
+const ZeroBlockPage = lazy(() => import('../popup-banners/zero-block/ZeroBlockPage'));
 const PromoCodesPage = lazy(() => import('../pages/PromoCodesPage').then((module) => ({
   default: module.PromoCodesPage
 })));
@@ -275,6 +276,7 @@ export function App() {
           </Route>
           <Route element={<ToolAccessRoute tool="popup_banners" />}>
             <Route path="tools/popup-banners" element={<Suspense fallback={<LoadingScreen />}><PopupBannersPage /></Suspense>} />
+            <Route path="tools/popup-banners/zero-block/:id" element={<Suspense fallback={<LoadingScreen />}><ZeroBlockPage /></Suspense>} />
             <Route path="tools/popup-banners/builder/:id?" element={<Navigate to="/tools/popup-banners" replace />} />
             <Route path="tools/popup-banners/prototypes/*" element={<Navigate to="/tools/popup-banners" replace />} />
             <Route path="tools/popup-banners/legacy" element={<Navigate to="/tools/popup-banners" replace />} />

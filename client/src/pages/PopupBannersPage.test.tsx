@@ -375,7 +375,7 @@ describe('PopupBannersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Нова кампанія/u }));
 
     const dialog = screen.getByRole('dialog', { name: 'Оберіть тип банера' });
-    expect(within(dialog).getAllByRole('button')).toHaveLength(8);
+    expect(within(dialog).getByRole('button', { name: /Zero Block/ })).toBeVisible();
     expect(screen.queryByRole('textbox', { name: 'Назва кампанії' })).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: new RegExp(label, 'u') }));
 

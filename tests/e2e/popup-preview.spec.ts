@@ -97,7 +97,7 @@ for (const surface of [
 
       const dialog = page.getByRole('dialog', { name: 'Оберіть тип банера' });
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole('button')).toHaveCount(8);
+      await expect(dialog.getByRole('button', { name: /Zero Block/u })).toBeVisible();
       const firstType = dialog.getByRole('button', { name: /Попап із товаром/u });
       const lastType = dialog.getByRole('button', { name: /Альтернативи відсутнього товару/u });
       await expect(firstType).toBeFocused();

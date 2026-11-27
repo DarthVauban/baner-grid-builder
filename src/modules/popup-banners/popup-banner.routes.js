@@ -5,6 +5,7 @@ import { parseInput } from '../../lib/validation.js';
 import { defaultTimerConfig } from './popup-timer.js';
 import { productPopupConfigSchema } from './popup-product.config.js';
 import productPopupImageRoutes from './popup-product-image.routes.js';
+import zeroBlockRoutes from './zero-block/admin.routes.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireToolAccess } from '../access/access.service.js';
 import { horoshopCatalogService } from '../search/horoshop/catalog.service.js';
@@ -27,6 +28,7 @@ import {
 const router = Router();
 router.use(requireAuth, requireToolAccess(popupBannerToolId));
 router.use('/image', productPopupImageRoutes);
+router.use('/zero-block', zeroBlockRoutes);
 
 const idSchema = z.string().uuid();
 const catalogSchema = z.object({

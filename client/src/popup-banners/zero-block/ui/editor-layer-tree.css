@@ -1,0 +1,13 @@
+.ui-editor-layer-collapse{display:grid;place-items:center;flex:none;width:24px;align-self:stretch;padding:0;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--color-muted);cursor:pointer}
+.ui-editor-layer-collapse:hover{background:var(--color-canvas)}
+.ui-editor-layer-collapse:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-2px}
+.ui-editor-layer-position[data-drop=inside]>.ui-editor-layer{outline:2px solid var(--editor-selection);outline-offset:-2px;background:var(--color-canvas)}
+.ui-editor-layer-position[data-drop=inside]::after{display:none}
+.ui-editor-layer-rename{min-width:0;width:100%;margin:4px;padding:6px;border:1px solid var(--editor-selection);border-radius:var(--radius-sm);font:inherit;font-size:var(--text-sm);color:var(--color-ink);background:var(--color-card);user-select:text;-webkit-user-select:text}
+.ui-editor-layer-rename:focus{outline:none}
+.ui-editor-layer-rename[aria-invalid=true]{border-color:var(--color-danger)}
+
+.ui-editor-layer-tree .ui-editor-layer-select{touch-action:pan-y;cursor:grab}
+.ui-editor-layer-tree [data-dragging] .ui-editor-layer-select{cursor:grabbing}
+.ui-editor-layer-lock{flex:none}
+.ui-editor-layer-lock[aria-pressed=mixed]{color:var(--color-warning)}

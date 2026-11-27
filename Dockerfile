@@ -6,6 +6,7 @@ COPY tsconfig.json vite.config.ts ./
 COPY build ./build
 COPY client ./client
 COPY src/modules/site-themes/site-theme-presentation.* src/modules/site-themes/site-theme-storefront-effects.* ./src/modules/site-themes/
+COPY src/modules/popup-banners/zero-block ./src/modules/popup-banners/zero-block
 RUN npm run build
 
 FROM node:24-alpine AS runtime

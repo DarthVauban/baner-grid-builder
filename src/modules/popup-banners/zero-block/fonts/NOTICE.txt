@@ -1,0 +1,6 @@
+Text component fonts, bundled 2026-10-21.
+Source: https://github.com/google/fonts/tree/main/ofl/ (roboto, montserrat, inter).
+Original variable TTF files verified against the Git blob IDs in manifest.json.
+Converted without subsetting to WOFF2 using fontTools. Font family names and license records preserved.
+Roboto, Montserrat and Inter: SIL Open Font License 1.1. See the corresponding *-OFL.txt for copyright and full terms.
+Proxima Nova is not redistributed. Other families use system fonts and fallbacks.

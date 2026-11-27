@@ -12,6 +12,8 @@ import { createPopupTimerRuntime, isTimerExpired, normalizeTimerConfig } from '.
 import { normalizeProductPopupConfig, productPopupOfferIsUsable } from './popup-product.config.js';
 import { createProductPopupRuntime } from './popup-product.runtime.js';
 import { popupDestination } from './popup-destination.js';
+import { publicZeroBlocks, zeroStoreOrigin } from './zero-block/workspace.js';
+import { zeroRuntimePath } from './zero-block/assets.js';
 
 export const popupBannerToolId = 'popup_banners';
 const popupCtaHosts = (env.POPUP_CTA_HOSTS || '').split(',').map((host) => host.trim()).filter(Boolean);
@@ -435,7 +437,7 @@ function serializeCampaign(row, targets = [], promoProducts = [], excludedTarget
     productPopup: normalizeProductPopupConfig(row.product_popup),
     id: row.id,
     publicId: row.public_id,
-    campaignType: normalizeCampaignType(row.campaign_type, row.targeting),
+    campaignType: row.zero_block ? 'zero_block' : normalizeCampaignType(row.campaign_type, row.targeting),
     name: row.name,
     status: row.status,
     priority: Number(row.priority),
@@ -531,7 +533,7 @@ export async function listPopupCampaigns() {
     `SELECT campaign.*, connection.store_domain
      FROM popup_banner_campaigns AS campaign
      LEFT JOIN search_horoshop_connections AS connection ON connection.id = campaign.connection_id
-     WHERE campaign.campaign_type <> 'block'
+     WHERE campaign.campaign_type <> 'block' OR (campaign.zero_block = TRUE AND campaign.zero_deleted_at IS NULL)
      ORDER BY campaign.priority DESC, campaign.updated_at DESC`
   );
   const statsResult = await query(
@@ -1405,7 +1407,7 @@ export async function previewPopupCampaign(input) {
   };
 }
 
-export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', stockState = 'unknown', requestOrigin = '' }) {
+export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', stockState = 'unknown', requestOrigin = '', zeroBlock }) {
   const pageUrl = publicPageUrl(rawPageUrl);
   if (!pageUrl) throw new AppError(422, 'POPUP_PAGE_URL_INVALID', 'Не вдалося визначити сторінку для попапа.');
   const connectionResult = await query(
@@ -1416,6 +1418,8 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
   if (!connection || !sameStoreHost(pageUrl.hostname, connection.store_domain)) return null;
   const originUrl = normalizedPageUrl(requestOrigin);
   if (originUrl && !sameStoreHost(originUrl.hostname, connection.store_domain)) return null;
+  const zero = zeroBlock && requestOrigin === pageUrl.origin
+    && zeroStoreOrigin(requestOrigin, connection.store_domain) ? await publicZeroBlocks(connection) : null;
   const product = await resolveProduct(connection, article, pageUrl);
   const campaigns = await query(
     `SELECT campaign.* FROM popup_banner_campaigns AS campaign
@@ -1470,6 +1474,7 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       serverNow: new Date().toISOString(),
       campaign: {
         publicId: campaign.public_id,
+        ...(zeroBlock ? { priority: campaign.priority } : {}),
         timerConfig,
         productPopup: normalizeProductPopupConfig(campaign.product_popup),
         revision: campaign.updated_at instanceof Date
@@ -1485,10 +1490,11 @@ export async function resolvePopupCampaign({ pageUrl: rawPageUrl, article = '', 
       },
       product: product ? { article: product.sku, title: product.title } : null,
       recommendations,
-      products: promoProducts
+      products: promoProducts,
+      ...(zeroBlock ? { zeroBlock: zero } : {})
     };
   }
-  return null;
+  return zero?.campaigns.length ? { serverNow: new Date().toISOString(), campaign: null, zeroBlock: zero } : null;
 }
 
 export async function recordPopupEvent({ publicId, eventType, pageUrl, article, visitorKey, metadata }) {
@@ -1805,7 +1811,7 @@ export async function popupBannerAnalytics({ days = 30, campaignId = null } = {}
   };
 }
 
-export function popupEmbedScript(origin) {
+export function popupEmbedScript(origin, zeroBlockRuntime = { path: zeroRuntimePath }) {
   return `(() => {
   if (window.__mtPopupBannersLoaded) return;
   window.__mtPopupBannersLoaded = true;
@@ -1814,6 +1820,7 @@ export function popupEmbedScript(origin) {
   const localStorage = timerRuntime.storage('localStorage');
   const sessionStorage = timerRuntime.storage('sessionStorage');
   const apiOrigin = ${JSON.stringify(origin)};
+  const zeroBlockRuntimeAsset = ${JSON.stringify(zeroBlockRuntime)};
   const pageUrl = (${storefrontPageUrl.toString()});
   const popupDestination = (${popupDestination.toString()});
   const popupCtaHosts = ${JSON.stringify(popupCtaHosts)};
@@ -1828,9 +1835,14 @@ export function popupEmbedScript(origin) {
   const articleSelector = script?.dataset.articleSelector || '';
   let currentHost = null;
   let currentUrl = '';
+  let browserUrl = location.href;
   let pendingTimer = null;
   let pendingCleanup = null;
   let activeCleanup = null;
+  let zeroRuntime = null;
+  let zeroModule = null;
+  let resolveSequence = 0;
+  let readyLegacy = null;
   const visitorStorageKey = 'mt-popup-visitor';
   let visitorKey = previewMode ? 'preview' : localStorage.getItem(visitorStorageKey);
   if (!previewMode && !visitorKey) {
@@ -2743,11 +2755,45 @@ export function popupEmbedScript(origin) {
     pendingCleanup = null;
   }
 
+  function hideLegacy() {
+    if (activeCleanup) activeCleanup();
+    activeCleanup = null;
+    currentHost?.remove();
+    currentHost = null;
+  }
+
+  function legacyPriority() {
+    if (!readyLegacy || readyLegacy.evaluatedUrl !== currentUrl || !deviceAllowed(readyLegacy.payload.campaign.behavior)) return -1;
+    if (!currentHost && (readyLegacy.shown || isSuppressed(readyLegacy.payload))) return -1;
+    return readyLegacy.payload.campaign.priority || 0;
+  }
+
+  function showLegacy() {
+    if (legacyPriority() < 0 || currentHost || readyLegacy.shown) return;
+    readyLegacy.shown = true;
+    render(readyLegacy.payload, readyLegacy.productArticle);
+  }
+
+  function loadZeroBlock() {
+    return new Promise((resolve) => {
+      const dependency = document.createElement('script');
+      dependency.src = new URL(zeroBlockRuntimeAsset.path, apiOrigin).href;
+      dependency.crossOrigin = 'anonymous';
+      if (script?.nonce) dependency.nonce = script.nonce;
+      if (zeroBlockRuntimeAsset.integrity) dependency.integrity = zeroBlockRuntimeAsset.integrity;
+      dependency.onload = () => resolve(window.__mtZeroBlockRuntimeModule || null);
+      dependency.onerror = () => { dependency.remove(); resolve(null); };
+      document.head.append(dependency);
+    });
+  }
+
   function scheduleRender(payload, productArticle, evaluatedUrl) {
     const behavior = payload.campaign.behavior;
     const show = () => {
       clearPendingRender();
-      if (pageUrl(location.href) === evaluatedUrl) render(payload, productArticle);
+      if (pageUrl(location.href) !== evaluatedUrl) return;
+      readyLegacy = { payload, productArticle, evaluatedUrl, shown: false };
+      if (!zeroRuntime?.evaluate()) showLegacy();
     };
     if (behavior.trigger === 'exit_intent') {
       const mobile = isMobileInteractionSurface();
@@ -2840,13 +2886,16 @@ export function popupEmbedScript(origin) {
     pendingTimer = setTimeout(show, behavior.delayMs);
   }
 
-  async function evaluate() {
+  async function evaluate(refresh = false) {
     const evaluatedUrl = pageUrl(location.href);
-    currentUrl = evaluatedUrl;
-    clearPendingRender();
-    if (activeCleanup) activeCleanup();
-    activeCleanup = null;
-    currentHost?.remove(); currentHost = null;
+    const sequence = ++resolveSequence;
+    if (!refresh) {
+      currentUrl = evaluatedUrl;
+      zeroRuntime?.navigate(location.href);
+      clearPendingRender();
+      readyLegacy = null;
+      hideLegacy();
+    }
     if (!evaluatedUrl) return;
     const productArticle = article();
     const productStockState = stockState();
@@ -2854,15 +2903,46 @@ export function popupEmbedScript(origin) {
     url.searchParams.set('pageUrl', evaluatedUrl);
     if (productArticle) url.searchParams.set('article', productArticle);
     url.searchParams.set('stockState', productStockState);
+    if (zeroBlockRuntimeAsset) url.searchParams.set('zeroBlock', '1');
     try {
       const response = await fetch(url, { referrerPolicy: 'no-referrer', headers: { accept: 'application/json' } });
-      if (!response.ok) return;
+      if (!response.ok) throw new Error('Popup configuration unavailable');
       const envelope = await response.json();
-      if (!envelope.data || pageUrl(location.href) !== evaluatedUrl) return;
-      timerRuntime.sync(envelope.data.serverNow);
-      if (!deviceAllowed(envelope.data.campaign.behavior)) return;
-      scheduleRender(envelope.data, productArticle, evaluatedUrl);
-    } catch {}
+      if (!Object.hasOwn(envelope, 'data')) throw new Error('Invalid popup configuration');
+      if (sequence !== resolveSequence || pageUrl(location.href) !== evaluatedUrl) return;
+      const data = envelope.data;
+      if (data?.serverNow) timerRuntime.sync(data.serverNow);
+      if (zeroBlockRuntimeAsset && data?.zeroBlock?.campaigns?.length && !zeroRuntime) {
+        zeroModule ||= loadZeroBlock();
+        const module = await zeroModule;
+        if (sequence !== resolveSequence || pageUrl(location.href) !== evaluatedUrl) return;
+        if (module) zeroRuntime ||= module.createZeroBlockRuntime(apiOrigin, {
+          legacyPriority, showLegacy, hideLegacy, pageUrl,
+          onEvent: (id, type) => event(id, type, article())
+        });
+        else zeroModule = null;
+      }
+      zeroRuntime?.navigate(location.href);
+      zeroRuntime?.update(data?.zeroBlock || null, data?.serverNow);
+      if (!refresh && data?.campaign && deviceAllowed(data.campaign.behavior)) {
+        scheduleRender(data, productArticle, evaluatedUrl);
+        // A zero-delay legacy candidate should enter the same priority decision.
+        if (data.campaign.behavior.trigger !== 'delay' || data.campaign.behavior.delayMs > 0) zeroRuntime?.evaluate();
+      } else if (!zeroRuntime?.evaluate()) showLegacy();
+    } catch {
+      if (sequence === resolveSequence && pageUrl(location.href) === evaluatedUrl) {
+        zeroRuntime?.update(null);
+        showLegacy();
+      }
+    }
+  }
+
+  function syncNavigation() {
+    if (location.href === browserUrl) return;
+    browserUrl = location.href;
+    zeroRuntime?.navigate(browserUrl);
+    if (pageUrl(browserUrl) !== currentUrl) evaluate();
+    else if (!zeroRuntime?.evaluate()) showLegacy();
   }
 
   if (previewMode) {
@@ -2870,7 +2950,10 @@ export function popupEmbedScript(origin) {
     return;
   }
   evaluate();
-  setInterval(() => { if (pageUrl(location.href) !== currentUrl) evaluate(); }, 1000);
+  addEventListener('popstate', syncNavigation);
+  addEventListener('hashchange', syncNavigation);
+  setInterval(syncNavigation, 250);
+  if (zeroBlockRuntimeAsset) setInterval(() => { if (!document.hidden && pageUrl(location.href) === currentUrl) evaluate(true); }, 30000);
   let observedStockState = stockState();
   new MutationObserver(() => {
     const nextStockState = stockState();

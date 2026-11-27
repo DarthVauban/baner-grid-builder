@@ -13,6 +13,7 @@ import { loadPublishedCheckoutTelegram } from '../horoshop-checkout-telegram/che
 import { titleLabelsEmbedScript } from '../horoshop-title-labels/title-labels.embed.js';
 import { loadPublishedTitleLabels } from '../horoshop-title-labels/title-labels.service.js';
 import { popupEmbedScript } from '../popup-banners/popup-banner.service.js';
+import { zeroRuntimeScript } from '../popup-banners/zero-block/assets.js';
 import { productPromoLoaderScript } from '../product-selections/product-selection.embed.js';
 import { siteThemeEmbedScript } from '../site-themes/site-theme.embed.js';
 import { supportWidgetEmbedScript } from '../support-chat/support-chat.service.js';
@@ -56,8 +57,10 @@ export async function findHoroshopWidgetAsset(filename) {
 async function renderWidget(widget, origin, db, saveAsset) {
   const site = new URL(widget.path, origin).searchParams.get('site');
   switch (widget.id) {
-    case 'popup-banners':
-      return popupEmbedScript(origin);
+    case 'popup-banners': {
+      const runtime = await saveAsset(await zeroRuntimeScript(), 'js');
+      return popupEmbedScript(origin, runtime);
+    }
     case 'product-promo':
       return productPromoLoaderScript(origin);
     case 'site-themes':

@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { asyncHandler } from '../../lib/async-handler.js';
 import { parseInput } from '../../lib/validation.js';
+import zeroBlockRoutes from './zero-block/public.routes.js';
 import {
   popupEmbedScript,
   recordPopupEvent,
@@ -11,6 +12,7 @@ import {
 } from './popup-banner.service.js';
 
 const router = Router();
+router.use('/zero-block', zeroBlockRoutes);
 router.use(rateLimit({
   windowMs: 60_000,
   limit: 180,
@@ -22,7 +24,8 @@ router.use(rateLimit({
 const resolveSchema = z.object({
   pageUrl: z.string().trim().min(1).max(4000),
   article: z.string().trim().max(300).optional().default(''),
-  stockState: z.enum(['unknown', 'in_stock', 'out_of_stock']).optional().default('unknown')
+  stockState: z.enum(['unknown', 'in_stock', 'out_of_stock']).optional().default('unknown'),
+  zeroBlock: z.literal('1').optional()
 });
 const eventSchema = z.object({
   publicId: z.string().uuid(),

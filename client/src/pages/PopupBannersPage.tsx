@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ProductPopupEditor } from '../components/ProductPopupEditor';
 import { PopupToggle as Toggle } from '../components/PopupToggle';
 import { defaultProductPopupConfig } from '../lib/popup-product';
@@ -19,6 +19,7 @@ import type {
   PopupCampaignInput,
   PopupCampaignStatus,
   PopupCampaignType,
+  PopupLegacyCampaignType,
   PopupDesktopPosition,
   PopupLayout,
   PopupLeadBlock,
@@ -47,6 +48,7 @@ const statusLabels: Record<PopupCampaignStatus, string> = {
 };
 
 const campaignTypeLabels: Record<PopupCampaignType, string> = {
+  zero_block: 'Zero Block',
   product_popup: 'Попап із товаром',
   message: 'Інформаційний попап',
   out_of_stock_recommendations: 'Альтернативи товару',
@@ -111,7 +113,7 @@ const targetModeLabels: Record<PopupTargetMode, string> = {
   all_pages: 'Усі сторінки'
 };
 
-function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampaignInput {
+function emptyCampaign(campaignType: PopupLegacyCampaignType = 'message'): PopupCampaignInput {
   const draft: PopupCampaignInput = {
     campaignType,
     name: 'Попередження про товар',
@@ -341,6 +343,7 @@ function emptyCampaign(campaignType: PopupCampaignType = 'message'): PopupCampai
 }
 
 function campaignInput(campaign: PopupCampaign): PopupCampaignInput {
+  if (campaign.campaignType === 'zero_block') throw new Error('Zero Block має окремий редактор.');
   const styles = { ...campaign.styles };
   const formConfig = campaign.formConfig || emptyCampaign(campaign.campaignType).formConfig;
   const blocks = formConfig.blocks?.length
@@ -701,6 +704,12 @@ function CampaignTypePicker({ onSelect, onClose }: { onSelect: (type: PopupCampa
           <small>Спільний відлік до дати або персональний таймер для кожного відвідувача. Автоматично приховується після завершення.</small>
           <b>Створити банер <Icon name="arrow" size={16} /></b>
         </button>
+        <button type="button" onClick={() => onSelect('zero_block')}>
+          <span><Icon name="bannerGrid" size={25} /></span>
+          <strong>Zero Block</strong>
+          <small>Вільне полотно з окремими композиціями для комп’ютера й телефона.</small>
+          <b>Створити банер <Icon name="arrow" size={16} /></b>
+        </button>
       </div>
     </div>
     <div className="popup-type-picker__group is-scenarios">
@@ -850,6 +859,7 @@ function Preview({ input }: { input: PopupCampaignInput }) {
 }
 
 export function PopupBannersPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const confirm = useConfirmDialog();
@@ -971,6 +981,10 @@ export function PopupBannersPage() {
         : 'Кожен перегляд';
 
   function editCampaign(campaign: PopupCampaign) {
+    if (campaign.campaignType === 'zero_block') {
+      navigate(`/tools/popup-banners/zero-block/${encodeURIComponent(campaign.id)}`);
+      return;
+    }
     setSelectedId(campaign.id);
     setIsCreating(false);
     setChoosingType(false);
@@ -987,6 +1001,11 @@ export function PopupBannersPage() {
   }
 
   function beginCampaign(campaignType: PopupCampaignType) {
+    if (campaignType === 'zero_block') {
+      setChoosingType(false);
+      navigate('/tools/popup-banners/zero-block/new');
+      return;
+    }
     setSelectedId('');
     setIsCreating(true);
     setDraft(emptyCampaign(campaignType));
@@ -1305,6 +1324,7 @@ export function PopupBannersPage() {
         <p>Створюйте охайні повідомлення та показуйте їх потрібним покупцям у потрібний момент.</p>
       </div>
       <div className="popup-banners-header__actions">
+        <Link className="button button--secondary" to="/tools/popup-banners/zero-block/contacts"><Icon name="formBuilder" size={17} /> Заявки Zero Block</Link>
         <Link className="button button--secondary" to="/tools/promo-codes"><Icon name="copy" size={17} /> Промокоди</Link>
         <button className="button button--secondary" type="button" onClick={() => void copyEmbed()} disabled={!embed.data?.code}><Icon name="copy" size={17} /> Спільний код віджетів</button>
         <button className="button button--primary" type="button" onClick={createNew} disabled={saving}><Icon name="add" size={18} /> Нова кампанія</button>

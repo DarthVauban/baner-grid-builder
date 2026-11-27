@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import './StyledSelect.css';
@@ -10,6 +10,7 @@ export interface StyledSelectOption<T extends SelectValue = string> {
   value: T;
   label: string;
   disabled?: boolean;
+  icon?: ReactNode;
 }
 
 interface StyledSelectProps<T extends SelectValue = string> {
@@ -18,6 +19,8 @@ interface StyledSelectProps<T extends SelectValue = string> {
   onChange: (value: T) => void;
   disabled?: boolean;
   ariaLabel?: string;
+  ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
   className?: string;
   compact?: boolean;
   searchable?: boolean;
@@ -35,6 +38,8 @@ export function StyledSelect<T extends SelectValue = string>({
   onChange,
   disabled = false,
   ariaLabel,
+  ariaInvalid,
+  ariaDescribedBy,
   className = '',
   compact = false,
   searchable = false,
@@ -46,6 +51,10 @@ export function StyledSelect<T extends SelectValue = string>({
   const menuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const dialog = open && typeof HTMLElement.prototype.showPopover === 'function'
+    ? rootRef.current?.closest('[role="dialog"], [role="alertdialog"]')
+    : null;
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const [search, setSearch] = useState('');
   const filteredOptions = useMemo(() => {
@@ -80,20 +89,24 @@ export function StyledSelect<T extends SelectValue = string>({
     };
     const keydown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
         setOpen(false);
         buttonRef.current?.focus();
       }
     };
     document.addEventListener('pointerdown', close);
-    document.addEventListener('keydown', keydown);
+    document.addEventListener('keydown', keydown, true);
     return () => {
       document.removeEventListener('pointerdown', close);
-      document.removeEventListener('keydown', keydown);
+      document.removeEventListener('keydown', keydown, true);
     };
   }, [open]);
 
   useLayoutEffect(() => {
     if (!open) return undefined;
+    const list = menuRef.current;
+    if (dialog) list?.showPopover();
 
     function updatePosition() {
       const button = buttonRef.current;
@@ -122,10 +135,11 @@ export function StyledSelect<T extends SelectValue = string>({
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     return () => {
+      if (dialog && list?.matches(':popover-open')) list.hidePopover();
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [open, filteredOptions.length]);
+  }, [open, dialog, filteredOptions.length]);
 
   function move(step: number) {
     if (!filteredOptions.length) return;
@@ -178,7 +192,8 @@ export function StyledSelect<T extends SelectValue = string>({
     }
   }
 
-  const menu = <div ref={menuRef} className={`custom-select__menu custom-select__menu--portal${compact ? ' custom-select__menu--compact' : ''}`} role="listbox" aria-label={ariaLabel} style={menuStyle}>
+  const menu = <div id={menuId} ref={menuRef} popover={dialog ? 'manual' : undefined}
+    className={`custom-select__menu custom-select__menu--portal${compact ? ' custom-select__menu--compact' : ''}`} role="listbox" aria-label={ariaLabel} style={menuStyle}>
     {searchable && <div className="custom-select__search">
       <Icon name="search" size={15} />
       <input
@@ -195,6 +210,7 @@ export function StyledSelect<T extends SelectValue = string>({
       const highlightedOption = index === highlighted;
       return <button
         key={String(option.value)}
+        id={`${menuId}-option-${index}`}
         className={`${active ? 'active ' : ''}${highlightedOption ? 'highlighted' : ''}`.trim()}
         type="button"
         role="option"
@@ -203,7 +219,7 @@ export function StyledSelect<T extends SelectValue = string>({
         onMouseEnter={() => setHighlighted(index)}
         onClick={() => selectOption(option)}
       >
-        <span>{option.label}</span>
+        <span>{option.icon}{option.label}</span>
         {active && <Icon name="check" size={15} />}
       </button>;
     })}
@@ -217,14 +233,18 @@ export function StyledSelect<T extends SelectValue = string>({
       type="button"
       disabled={disabled}
       aria-label={ariaLabel}
+      aria-invalid={ariaInvalid}
+      aria-describedby={ariaDescribedBy}
       aria-haspopup="listbox"
       aria-expanded={open}
+      aria-controls={open ? menuId : undefined}
+      aria-activedescendant={open && filteredOptions[highlighted] ? `${menuId}-option-${highlighted}` : undefined}
       onClick={() => !disabled && setOpen((current) => !current)}
       onKeyDown={handleKeyDown}
     >
       <span>{selected?.label || placeholder || ''}</span>
       <Icon name="chevronRight" size={17} />
     </button>
-    {open && createPortal(menu, document.body)}
+    {open && createPortal(menu, dialog || document.body)}
   </div>;
 }
