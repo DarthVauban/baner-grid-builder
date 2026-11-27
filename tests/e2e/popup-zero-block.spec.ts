@@ -2,6 +2,7 @@ import { devices, expect, test, type APIRequestContext, type Page } from '@playw
 import { createElement } from '../../src/modules/popup-banners/zero-block/document.mjs';
 import { enableFormFlow } from '../../src/modules/popup-banners/zero-block/form-flow.mjs';
 import type { PopupDocument, Widget } from '../../client/src/popup-banners/zero-block/types';
+import { adminTest } from './support/admin-session';
 
 const tool = '/tools/popup-banners';
 const api = '/api/popup-banners/zero-block';
@@ -23,11 +24,6 @@ async function reset(request: APIRequestContext): Promise<Fixture> {
 }
 
 async function openWorkspace(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('e2e-admin@test.local');
-  await page.locator('input[name="password"]').fill('E2E-admin-password-2026');
-  await page.getByRole('button', { name: 'Увійти' }).click();
-  await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
   await page.goto(tool);
   await page.getByRole('button', { name: 'Нова кампанія' }).click();
   await page.getByRole('dialog').getByRole('button', { name: /Zero Block/ }).click();
@@ -37,7 +33,7 @@ async function openWorkspace(page: Page) {
   await expectFullscreenEditor(page);
 }
 
-test('the workspace editor keeps canvas nodes, saves independent designs and restores the draft', async ({ page, request }, info) => {
+adminTest('the workspace editor keeps canvas nodes, saves independent designs and restores the draft', async ({ page, request }, info) => {
   await reset(request);
   await openWorkspace(page);
   const shell = editor(page);
@@ -92,11 +88,11 @@ test('the workspace editor keeps canvas nodes, saves independent designs and res
   await expect(page.locator('.app-shell')).toHaveCount(1);
 });
 
-test.describe('the workspace at phone width', () => {
+adminTest.describe('the workspace at phone width', () => {
   const phone = devices['iPhone 13'];
-  test.use({ viewport: phone.viewport, userAgent: phone.userAgent, hasTouch: phone.hasTouch,
+  adminTest.use({ viewport: phone.viewport, userAgent: phone.userAgent, hasTouch: phone.hasTouch,
     isMobile: phone.isMobile, deviceScaleFactor: phone.deviceScaleFactor });
-  test('touch opens the palette and its menu remains within the viewport', async ({ page, request }, info) => {
+  adminTest('touch opens the palette and its menu remains within the viewport', async ({ page, request }, info) => {
     await reset(request);
     await openWorkspace(page);
     const shell = editor(page);
