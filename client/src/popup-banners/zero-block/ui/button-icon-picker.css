@@ -1,0 +1,5 @@
+.ui-button-icon-picker,.ui-button-icon-content{display:grid;gap:var(--space-3);min-width:0}
+.ui-button-icon-label{font-size:var(--text-sm);line-height:1.5;font-weight:600;color:var(--color-ink)}
+.ui-button-icon-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--control-lg),1fr));gap:var(--space-2);max-height:calc(var(--control-lg)*6);overflow:auto;padding:var(--space-1);overscroll-behavior:contain}
+.ui-button-icon-picker img{object-fit:contain;display:block}
+.ui-button-icon-error{margin:0;color:var(--color-danger);font-size:var(--text-sm);line-height:1.5}

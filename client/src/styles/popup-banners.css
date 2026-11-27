@@ -412,10 +412,6 @@
 .popup-wide-target-note p { color: var(--muted); }
 
 .popup-toggle-list { display: grid; gap: 7px; }
-.popup-toggle { display: flex !important; align-items: center; justify-content: space-between; gap: 15px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
-.popup-toggle__copy { display: grid; gap: 3px; color: var(--ink) !important; letter-spacing: 0 !important; }
-.popup-toggle__copy strong { font-size: 10px; }
-.popup-toggle__copy small { color: var(--muted); font-size: 8px; font-weight: 400; line-height: 1.4; }
 
 .popup-editor__preview { position: sticky; top: 82px; display: grid; gap: 12px; min-width: 0; padding: 16px; }
 .popup-live-preview { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }

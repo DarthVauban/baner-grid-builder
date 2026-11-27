@@ -34,6 +34,8 @@
   box-shadow: 0 18px 44px rgba(15,23,42,.16);
 }
 .custom-select__menu--portal { position: fixed; z-index: 320; }
+.custom-select__menu--portal[popover] { margin: 0; right: auto; bottom: auto; }
+.custom-select__menu--portal > button > span:has(svg) { display: inline-flex; align-items: center; gap: 6px; }
 .custom-select__search {
   position: sticky;
   top: 0;

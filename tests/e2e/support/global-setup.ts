@@ -35,10 +35,11 @@ export default async function globalSetup() {
   await migrationModule.runMigrations();
   await userModule.ensureBootstrapAdmin();
   const { createFeedFixtureApplication } = await import('./horoshop-feeds-fixture.js');
+  const { withZeroBlockFixture } = await import('./zero-block-fixture.js');
   const fixture = createFeedFixtureApplication(appModule.default);
 
   const server = await new Promise<Server>((resolve, reject) => {
-    const instance = fixture.app.listen(port, () => resolve(instance));
+    const instance = withZeroBlockFixture(fixture.app).listen(port, () => resolve(instance));
     instance.once('error', reject);
   });
 

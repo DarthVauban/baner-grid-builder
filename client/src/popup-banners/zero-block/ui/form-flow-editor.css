@@ -1,0 +1,13 @@
+.ui-flow-config,.ui-flow-reward-editor,.ui-flow-styles,.ui-flow-style-properties{display:grid;gap:var(--space-3);min-width:0;align-content:start}
+.ui-flow-reward-editor,.ui-flow-styles{border:0;margin:0;padding:0}.ui-flow-reward-editor>legend,.ui-flow-styles>legend{font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-3)}
+.ui-flow-actions{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}.ui-flow-actions h4{margin:0}
+.ui-flow-hint{font-size:var(--text-sm);line-height:1.6;color:var(--color-muted);margin:0}
+.ui-flow-reward-types{display:grid;gap:var(--space-2)}
+.ui-flow-choice{appearance:none;display:grid;gap:var(--space-3);width:100%;min-width:0;padding:var(--space-3);border:1px solid var(--color-line);border-radius:var(--radius-lg);background:var(--color-card);color:var(--color-ink);font:inherit;cursor:pointer;text-align:left}
+.ui-flow-choice:hover{background:var(--color-canvas)}.ui-flow-choice[aria-checked=true]{border-color:var(--focus-ring);box-shadow:inset 0 0 0 1px var(--focus-ring)}.ui-flow-choice:focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}.ui-flow-choice:disabled{opacity:.55;cursor:default}
+.ui-flow-choice-label{display:flex;justify-content:space-between;gap:var(--space-2);font-weight:600}.ui-flow-reference{display:grid;gap:var(--space-2);padding:var(--space-3);min-width:0;background:var(--color-canvas);border-radius:var(--radius-md);font-size:var(--text-sm);color:var(--color-ink);pointer-events:none}.ui-flow-reference strong{font-size:var(--text-base)}
+.ui-flow-style-control{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-2);align-items:end}
+.ui-form-builder-fields:has(.ui-flow-config[data-enabled=true]){overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.ui-form-builder-fields:has(.ui-flow-config[data-enabled=true]) .ui-form-builder-list{overflow:visible;min-height:max-content}
+@media(prefers-reduced-motion:reduce){.ui-flow-choice{transition:none}}
+.ui-flow-reward-editor[data-layout=wide]{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4);align-items:start}.ui-flow-reward-editor[data-layout=wide]>.ui-flow-reward-types{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr))}.ui-flow-reward-editor[data-layout=wide]>.ui-flow-hint,.ui-flow-reward-editor[data-layout=wide]>.ui-file-field{grid-column:1/-1}
+@media(max-width:760px){.ui-flow-reward-editor[data-layout=wide]{grid-template-columns:minmax(0,1fr)}.ui-flow-reward-editor[data-layout=wide]>.ui-flow-reward-types{grid-template-columns:minmax(0,1fr)}}

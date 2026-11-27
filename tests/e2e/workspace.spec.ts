@@ -1,28 +1,26 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import sharp from 'sharp';
+import { adminTest } from './support/admin-session';
 
 const admin = {
   email: 'e2e-admin@test.local',
   password: 'E2E-admin-password-2026'
 };
 
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(admin.email);
-  await page.locator('input[name="password"]').fill(admin.password);
-  await page.getByRole('button', { name: 'Увійти' }).click();
-  await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
-}
-
 test('anonymous users are redirected and the bootstrap admin can sign in', async ({ page }) => {
   await page.goto('/tools/banner-grid');
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole('heading', { name: 'Увійти до простору' })).toBeVisible();
-  await login(page);
+  await page.getByLabel('Email').fill(admin.email);
+  await page.locator('input[name="password"]').fill(admin.password);
+  const signIn = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/auth/login'
+    && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Увійти' }).click();
+  expect((await signIn).status(), 'E2E admin sign-in from the login screen').toBe(200);
+  await expect(page.getByRole('heading', { name: 'Вітаємо, E2E' })).toBeVisible();
 });
 
-test('admin can save a banner grid through the browser', async ({ page }) => {
-  await login(page);
+adminTest('admin can save a banner grid through the browser', async ({ page }) => {
   await page.goto('/tools/banner-grid');
   await expect(page.getByRole('heading', { name: 'Банерна сітка' })).toBeVisible();
 
@@ -48,8 +46,7 @@ test('admin can save a banner grid through the browser', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Оновити сітку' })).toBeVisible();
 });
 
-test('admin can build, preview, save and export a blog article', async ({ page }) => {
-  await login(page);
+adminTest('admin can build, preview, save and export a blog article', async ({ page }) => {
   await page.goto('/tools/blog-publications');
   await page.getByRole('button', { name: 'Нова публікація' }).click();
   await page.getByRole('textbox', { name: 'Робоча назва' }).fill('E2E blog editor article');
@@ -81,9 +78,7 @@ test('admin can build, preview, save and export a blog article', async ({ page }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
-test('critical protected modules render with live API data', async ({ page }) => {
-  await login(page);
-
+adminTest('critical protected modules render with live API data', async ({ page }) => {
   const screens = [
     ['/tools', 'Інструменти'],
     ['/catalog/products', 'Каталог смартфонів'],

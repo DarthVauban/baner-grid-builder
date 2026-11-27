@@ -1,0 +1,25 @@
+export type FormFieldType = 'text' | 'tel' | 'email' | 'number' | 'checkbox' | 'radio' | 'textarea';
+export type FormStyleValue = string | number | boolean;
+export type FormStyleLayer = Record<string, Record<string, Record<string, FormStyleValue>>>;
+export type FieldAppearance = { version: 1; base?: FormStyleLayer; mobile?: FormStyleLayer; laptop?:FormStyleLayer; tablet?:FormStyleLayer; mobileLandscape?:FormStyleLayer };
+export type FormAppearance = FieldAppearance & { types?: Partial<Record<FormFieldType, {base?: FormStyleLayer; mobile?: FormStyleLayer; laptop?:FormStyleLayer; tablet?:FormStyleLayer; mobileLandscape?:FormStyleLayer}>> };
+export type FormStylePreset = { id: string; name: string; appearance: FormAppearance; revision: number; updatedAt: number };
+export type FormStylePresetAdapter = { list: () => Promise<FormStylePreset[]>; save: (name: string, appearance: FormAppearance, prior?: FormStylePreset) => Promise<FormStylePreset>; remove: (preset: FormStylePreset) => Promise<void> };
+export type RichTextRun={text:string;productField?:'name'|'availability'|'price'|'article';bold?:boolean;italic?:boolean;underline?:boolean;strike?:boolean;link?:string;color?:string;fontSize?:number;fontFamily?:string;fontWeight?:number;highlight?:string;letterSpacing?:number;script?:'super'|'sub'|'baseline';linkTarget?:'same_tab'|'new_tab';nofollow?:boolean;lineColor?:string;lineWidth?:number;collapse?:{expand:string;collapse:string;color?:string;underline:'none'|'solid'|'dashed'|'dotted'}};
+export type RichTextDocument={version:1;blocks:{runs:RichTextRun[];list?:'bullet'|'ordered';align?:'left'|'center'|'right'|'justify';indent?:number;lineHeight?:number;letterSpacing?:number}[]};
+export type ZeroFormDesign={version:1;base?:Record<string,FormStyleValue>;mobile?:Record<string,FormStyleValue>; laptop?:Record<string,FormStyleValue>; tablet?:Record<string,FormStyleValue>; mobileLandscape?:Record<string,FormStyleValue>};
+export type FieldVisibility={action:'show'|'hide';match:'all'|'any';rules:{fieldId:string;operator:string;value?:string;upper?:string}[]};
+export type FormField = {
+  id: string; variable: string; label: string; type: FormFieldType; required: boolean; placeholder: string;
+  options?: { id: string; label: string }[]; phone?: { mode: 'none' | 'country' | 'custom'; country: string };
+  appearance?: FieldAppearance; helpText?: string;
+  disabled?:boolean;joinNext?:boolean;width?:'auto'|'100'|'50'|'33'|'25';rows?:number;
+  validation?:'none'|'email'|'phone'|'name'|'website'|'number';mask?:string;defaultValue?:string|string[];defaultChecked?:boolean;
+  choiceMode?:'single'|'multiple';checkboxLabel?:RichTextDocument;belowSubmit?:boolean;choiceLayout?:'default'|'row'|'1'|'2'|'3'|'4';choiceMobileColumns?:boolean;
+  customAnswer?:{enabled:boolean;label:string};visibility?:FieldVisibility;
+};
+export type RewardFile={id:string;name:string;mime:string;byteLength:number};
+export type FormReward={type:'promo'|'file'|'offer';title:string;description:string;buttonText:string;promo?:import('./promo-types').PromoContent;fileId?:string;fileName?:string;url?:string;target?:'same_tab'|'new_tab'};
+export type FormStep={id:string;title:string;description:string;fieldIds:string[]};
+export type FormFlow={version:1;steps:FormStep[];nextText:string;backText:string;progress:'bar'|'dots'|'counter'|'none';reward:FormReward;base?:Record<string,FormStyleValue>;mobile?:Record<string,FormStyleValue>; laptop?:Record<string,FormStyleValue>; tablet?:Record<string,FormStyleValue>; mobileLandscape?:Record<string,FormStyleValue>};
+export type FormContent = { formId: string; fields: FormField[]; submitText: string; appearance?: FormAppearance;design?:ZeroFormDesign;flow?:FormFlow;behavior?:{name?:string;success?:RichTextDocument;footer?:RichTextDocument;successUrl?:string;errors?:Partial<Record<'required'|'email'|'phone'|'name',string>>} };

@@ -1,0 +1,11 @@
+export type ShapeKind='rectangle'|'circle'|'line';
+export type ShapeUnit='%'|'px';
+export type ShapeFillLayer={type:'solid'|'linear'|'radial'|'conic';color?:string;stops?:{color:string;position:number}[];angle?:number;x?:number;y?:number;xUnit?:ShapeUnit;yUnit?:ShapeUnit;radialShape?:'circle'|'ellipse';radialSize?:'closest-side'|'closest-corner'|'farthest-side'|'farthest-corner'|'custom';radiusX?:number;radiusY?:number;radiusUnit?:ShapeUnit};
+export type ShapeCorners={topLeft:number;topRight:number;bottomRight:number;bottomLeft:number};
+export type ShapeBorder={color:string;style:'solid'|'dotted'|'dashed'|'none';widths:{top:number;right:number;bottom:number;left:number}};
+export type ShapeShadow={color:string;opacity:number;x:number;y:number;blur:number;spread:number};
+export type ShapeImagePosition={fit:'cover'|'contain'|'custom';x:number;y:number;xUnit:ShapeUnit;yUnit:ShapeUnit;width:number;height:number;widthUnit:ShapeUnit;heightUnit:ShapeUnit;attachment:'scroll'|'fixed'};
+export type ShapeStyles={opacity:number;rotation:number;flipX:boolean;flipY:boolean;fill:ShapeFillLayer[];corners:ShapeCorners;border:ShapeBorder;shadows:ShapeShadow[];hoverShadows?:ShapeShadow[];hoverDuration:number;imagePosition:ShapeImagePosition};
+export type ShapeImage={resourceId:string|null;alt:string;zoom:boolean;lazy:'on'|'no-thumbnail'|'off'};
+export type ShapeLink={nofollow:boolean;track:boolean;eventName:string};
+export type ShapeContent={accessibleName:string;shape?:{version:1;kind:ShapeKind;image?:Partial<ShapeImage>;link?:Partial<ShapeLink>;base?:Partial<ShapeStyles>;mobile?:Partial<ShapeStyles>; laptop?:Partial<ShapeStyles>; tablet?:Partial<ShapeStyles>; mobileLandscape?:Partial<ShapeStyles>}};

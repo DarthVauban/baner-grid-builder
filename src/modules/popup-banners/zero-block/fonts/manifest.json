@@ -1,0 +1,38 @@
+{
+  "roboto": {
+    "file": "kk-roboto-v1.woff2",
+    "sourceGitBlob": "5522a368d9072fd88c299916e61fcff369949061",
+    "sha256": "848eb172f4619f70f8f7e2fef4a6a69a90700873768f96db0cf224e1d531fd5a",
+    "bytes": 222500
+  },
+  "roboto-italic": {
+    "file": "kk-roboto-italic-v1.woff2",
+    "sourceGitBlob": "a122c13964daac37f1186a22603a5180d2dba5d6",
+    "sha256": "690f88f740790c3cad30803192d8e9f3f6a80db83be2f8dd1cc1ec63e088a014",
+    "bytes": 256748
+  },
+  "montserrat": {
+    "file": "kk-montserrat-v1.woff2",
+    "sourceGitBlob": "c97aca18592834d8706549c279cb8d5ac5d85f69",
+    "sha256": "e82e300e2690b02e81ea799099da18e5a2322bb84a8bb51a3515119214713a28",
+    "bytes": 215864
+  },
+  "montserrat-italic": {
+    "file": "kk-montserrat-italic-v1.woff2",
+    "sourceGitBlob": "c8b8441744f2092ea8cbeb7b6f881e53bfe9c623",
+    "sha256": "15a5bc38390e518340cdbd9ae01c25a48a1d772a7bc99f9eb84b15ca66bfe700",
+    "bytes": 230552
+  },
+  "inter": {
+    "file": "kk-inter-v1.woff2",
+    "sourceGitBlob": "047c92f6e2212473dc436020afed689527076d44",
+    "sha256": "ad851c66576204e48c17bc13b7776baa32af6fd9bd4b427773c746b7f7ff502a",
+    "bytes": 350520
+  },
+  "inter-italic": {
+    "file": "kk-inter-italic-v1.woff2",
+    "sourceGitBlob": "c177578428248f08eedcc60e292acc6f414c2167",
+    "sha256": "920cf1f3758918b21e4ab263ef6e1d4984105601e59021ccf0443ba3bd9c176f",
+    "bytes": 386652
+  }
+}

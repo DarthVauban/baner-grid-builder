@@ -1,9 +1,10 @@
-import { devices, expect, test, type Locator, type Page } from '@playwright/test';
+import { devices, expect, type Locator, type Page } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PopupPreviewPayload } from '../../client/src/types/popup-banner';
+import { adminTest as test } from './support/admin-session';
 
 const panelOrigin = 'https://panel.example.test';
 const shopOrigin = 'https://shop.example.test';
@@ -52,9 +53,6 @@ function promoPayload(position: 'top' | 'bottom' = 'bottom'): PopupPreviewPayloa
 
 async function storefront(page: Page, mobile: boolean, position: 'top' | 'bottom' = 'bottom') {
   const events: string[] = [];
-  await page.request.post(`${serverOrigin}/api/auth/login`, { data: {
-    email: 'e2e-admin@test.local', password: 'E2E-admin-password-2026'
-  } });
   const settings = (await (await page.request.get(`${serverOrigin}/api/support-chat/settings`)).json()).data;
   expect((await page.request.put(`${serverOrigin}/api/support-chat/settings`, { data: {
     ...settings, enabled: true, allowedOrigins: [shopOrigin]

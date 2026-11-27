@@ -1,7 +1,8 @@
 export type PopupCampaignStatus = 'draft' | 'active' | 'paused';
 import type { PromoCodeSnapshot } from './promo-code';
 
-export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown' | 'product_popup';
+export type PopupCampaignType = 'message' | 'out_of_stock_recommendations' | 'product_promo' | 'promo_code' | 'lead_form' | 'countdown' | 'product_popup' | 'zero_block';
+export type PopupLegacyCampaignType = Exclude<PopupCampaignType, 'zero_block'>;
 
 
 export type PopupProductElement = 'eyebrow' | 'heading' | 'productTitle' | 'price' | 'oldPrice' | 'savings' | 'buyButton' | 'detailsButton' | 'closeButton';
@@ -215,7 +216,7 @@ export interface PopupCampaign {
 }
 
 export interface PopupCampaignInput {
-  campaignType: PopupCampaignType;
+  campaignType: PopupLegacyCampaignType;
   name: string;
   priority: number;
   content: PopupContent;
@@ -251,7 +252,7 @@ export interface PopupPreviewPayload {
   campaign: {
     publicId: string;
     revision: string;
-    type: PopupCampaignType;
+    type: PopupLegacyCampaignType;
     mode: PopupTargetMode;
     content: PopupContent;
     styles: PopupStyles;

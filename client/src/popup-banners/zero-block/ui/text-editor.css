@@ -1,0 +1,20 @@
+.ui-text-stack{display:grid;align-content:start;gap:var(--space-4);min-width:0}
+.ui-text-row,.ui-text-heading{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
+.ui-text-heading{position:sticky;top:0;z-index:1;padding-block:var(--space-2);background:var(--color-card);border-bottom:1px solid var(--color-line)}
+.ui-text-heading h3,.ui-text-stack h4{margin:0;min-width:0;overflow-wrap:anywhere;font-size:var(--text-body)}
+.ui-text-heading h3{font-size:var(--text-lg)}
+.ui-text-control{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:var(--space-2)}
+.ui-text-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);min-width:0}
+.ui-text-hint,.ui-text-error{margin:0;line-height:1.5;font-size:var(--text-sm);overflow-wrap:anywhere;color:var(--color-muted)}
+.ui-text-error{color:var(--color-danger)}
+.ui-inline-text-box{position:absolute;z-index:6;cursor:text;user-select:text;-webkit-user-select:text}
+.ui-inline-text-area{user-select:text;-webkit-user-select:text;cursor:text;min-height:1em}
+.ui-inline-text-area:focus{outline:1px solid var(--editor-selection);outline-offset:var(--space-1)}
+.ui-inline-text-toolbar{display:flex;flex-direction:column;align-items:stretch;gap:var(--space-2);padding:var(--space-2);background:var(--color-card);border:1px solid var(--color-line);border-radius:var(--radius-md);box-shadow:var(--shadow-card);color:var(--color-ink);min-width:0;width:max-content;max-width:100%;pointer-events:auto}
+.ui-inline-text-actions{display:flex;align-items:center;gap:var(--space-1);min-width:0}.ui-inline-text-actions>*{flex:none}.ui-inline-text-toolbar .ui-text-error{flex-basis:100%}
+.ui-inline-text-actions>.ui-inline-text-commands{display:flex;flex:1;align-items:center;gap:var(--space-1);min-width:0;overflow-x:auto;overscroll-behavior-x:contain;padding:var(--space-2);margin-block:calc(-1 * var(--space-2))}.ui-inline-text-commands>*{flex:none}
+.ui-inline-text-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:var(--space-3);min-width:0}.ui-inline-text-options>.ui-text-row{grid-column:1/-1}
+.ui-button-style-fields{border:0;padding:0;margin:0;min-width:0}
+.ui-inline-button-box{position:absolute;z-index:6;user-select:text;-webkit-user-select:text;cursor:text}
+.ui-inline-button-box .kk-button-caption{user-select:text;-webkit-user-select:text;cursor:text;min-width:1ch}
+.ui-inline-button-box .kk-button-caption:focus{outline:1px solid var(--editor-selection);outline-offset:var(--space-1)}
